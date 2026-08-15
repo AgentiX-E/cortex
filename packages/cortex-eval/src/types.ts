@@ -1,3 +1,5 @@
+/* istanbul ignore file -- type-only declarations, no runtime code */
+
 /** Core types for the Cortex scientific evaluation harness. */
 
 /** LongMemEval-style capability tags. */

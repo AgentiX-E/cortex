@@ -69,7 +69,7 @@ export function formatAblationReport(report: AblationReport): string {
     `| ${report.feature.name} | ${pct(ab.featureAggregate.min)} | ${pct(ab.featureAggregate.avg)} | ${pct(ab.featureAggregate.max)} | ${pct(ab.featureAggregate.median)} |`,
     '',
     `- Δ accuracy (feature − baseline): **${(ab.delta >= 0 ? '+' : '') + pct(ab.delta)}**`,
-    `- Welch t-test p-value: **${ab.pValue.toExponential(3)}** (significant: ${ab.significant ? 'yes' : 'no'})`,
+    `- Welch t-test p-value: **${Number.isNaN(ab.pValue) ? 'n/a (single deterministic run)' : ab.pValue.toExponential(3)}** (significant: ${ab.significant ? 'yes' : 'no'})`,
     `- Cohen's d: **${formatEffectSize(ab.effectSize)}**`,
     '',
     '## Per-capability breakdown (feature system)',

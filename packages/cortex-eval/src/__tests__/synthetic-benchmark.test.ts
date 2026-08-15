@@ -25,6 +25,16 @@ describe('mulberry32', () => {
 describe('generateSyntheticBenchmark', () => {
   it('throws on invalid parameters', () => {
     expect(() => generateSyntheticBenchmark({ numPeople: 0 })).toThrow();
+    expect(() => generateSyntheticBenchmark({ attributesPerPerson: 0 })).toThrow();
+    expect(() => generateSyntheticBenchmark({ abstentionPerPerson: -1 })).toThrow();
+  });
+
+  it('uses default parameters when options are omitted', () => {
+    const ds = generateSyntheticBenchmark();
+    expect(ds.name).toBe('synthetic');
+    expect(ds.questions.length).toBeGreaterThan(0);
+    expect(ds.questions.some((q) => q.capability === 'IE')).toBe(true);
+    expect(ds.questions.some((q) => q.capability === 'ABS')).toBe(true);
   });
 
   it('produces IE and ABS questions in deterministic order', () => {

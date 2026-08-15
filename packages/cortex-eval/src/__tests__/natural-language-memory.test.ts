@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import type { LLM } from '@agentix-e/cortex-core';
+import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
   parseQaAnswer,
+  clearEmbeddingCache,
 } from '../natural-language-memory.js';
 import { HashEmbedding } from '../embedding.js';
 
@@ -102,5 +103,78 @@ describe('NaturalLanguageMemorySystem', () => {
     const llm = scriptedLlm(() => 'blue');
     const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
     expect(await system.answer('What is X?', [])).toBeNull();
+  });
+
+  it('passes temperature 0 to the LLM by default for determinism', async () => {
+    let captured: number | undefined;
+    const llm: LLM = {
+      complete: async (_prompt, opts) => {
+        captured = opts?.temperature;
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    await system.answer('What is the favorite color?', ['My favorite color is blue.']);
+    expect(captured).toBe(0);
+  });
+
+  it('caches embeddings across instances to avoid recomputation', async () => {
+    clearEmbeddingCache();
+    let embedCalls = 0;
+    const counting: EmbeddingModel = {
+      dimension: () => 64,
+      embed: async (texts) => {
+        embedCalls += texts.length;
+        return texts.map(() => new Float64Array(64));
+      },
+    };
+    const llm = scriptedLlm(() => 'blue');
+    const s1 = new NaturalLanguageMemorySystem('s1', { embedding: counting, llm });
+    const s2 = new NaturalLanguageMemorySystem('s2', { embedding: counting, llm });
+    await s1.answer('What is X?', ['turn A']);
+    await s2.answer('What is X?', ['turn A']);
+    // 'What is X?' and 'turn A' are each embedded once despite two instances.
+    expect(embedCalls).toBe(2);
+  });
+
+  it('skips re-ingesting turns already indexed in the same instance', async () => {
+    clearEmbeddingCache();
+    let embedCalls = 0;
+    const counting: EmbeddingModel = {
+      dimension: () => 64,
+      embed: async (texts) => {
+        embedCalls += texts.length;
+        return texts.map(() => new Float64Array(64));
+      },
+    };
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
+    await system.answer('What is X?', ['turn A']);
+    await system.answer('What is X?', ['turn A']);
+    // The turn is indexed once; the second call skips both re-embedding and
+    // re-indexing because the turn id is already present.
+    expect(embedCalls).toBe(2);
+  });
+
+  it('clearEmbeddingCache invalidates the shared cache', async () => {
+    clearEmbeddingCache();
+    let embedCalls = 0;
+    const counting: EmbeddingModel = {
+      dimension: () => 64,
+      embed: async (texts) => {
+        embedCalls += texts.length;
+        return texts.map(() => new Float64Array(64));
+      },
+    };
+    const llm = scriptedLlm(() => 'blue');
+    const makeSystem = (): NaturalLanguageMemorySystem =>
+      new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
+    await makeSystem().answer('What is X?', ['turn A']);
+    clearEmbeddingCache();
+    // A fresh instance has an empty turn index, so both the query and the turn
+    // are re-embedded after the cache is cleared.
+    await makeSystem().answer('What is X?', ['turn A']);
+    expect(embedCalls).toBe(4);
   });
 });

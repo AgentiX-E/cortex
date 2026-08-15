@@ -4,11 +4,16 @@
  * by embedding similarity, generates an answer with an LLM grounded in the
  * retrieved context, and abstains either when retrieval confidence is too low or
  * when the LLM reports the answer is absent from the context.
+ *
+ * Embeddings are deterministic and are therefore cached in a module-level map
+ * shared across instances. This avoids recomputing identical vectors when the
+ * same conversational turn appears across questions or across the baseline and
+ * feature systems of an ablation, which would otherwise make the benchmark
+ * prohibitively expensive.
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import { BruteForceVectorIndex } from '@agentix-e/cortex-core';
 import type { Answer, MemorySystem } from './types.js';
-import { fnv1a } from './embedding.js';
 
 export type NaturalLanguageMemorySystemOptions = {
   embedding: EmbeddingModel;
@@ -21,9 +26,31 @@ export type NaturalLanguageMemorySystemOptions = {
   abstainToken?: string;
   /** When false, the system never abstains (baseline behavior); default true. */
   enableAbstention?: boolean;
+  /** LLM sampling temperature; default 0 for deterministic evaluation. */
+  temperature?: number;
 };
 
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
+const DEFAULT_TEMPERATURE = 0;
+
+/** Shared cache of embedding vectors keyed by source text. */
+const embeddingCache = new Map<string, Float64Array>();
+
+/** Clear the shared embedding cache (used by tests and long-running processes). */
+export function clearEmbeddingCache(): void {
+  embeddingCache.clear();
+}
+
+async function embedCached(embedding: EmbeddingModel, text: string): Promise<Float64Array> {
+  const cached = embeddingCache.get(text);
+  if (cached) {
+    return cached;
+  }
+  const [vec] = await embedding.embed([text]);
+  const vector = vec ?? new Float64Array(0);
+  embeddingCache.set(text, vector);
+  return vector;
+}
 
 export class NaturalLanguageMemorySystem implements MemorySystem {
   readonly name: string;
@@ -39,9 +66,9 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
   async answer(question: string, context: string[]): Promise<Answer> {
     await this.ingest(context);
 
-    const [queryVec] = await this.options.embedding.embed([question]);
+    const queryVec = await embedCached(this.options.embedding, question);
     const topK = this.options.topK ?? 5;
-    const hits = await this.index.search(queryVec!, topK);
+    const hits = await this.index.search(queryVec, topK);
     if (hits.length === 0) {
       return this.options.enableAbstention === false ? 'unknown' : null;
     }
@@ -56,7 +83,9 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
 
     const retrieved = hits.map((h) => this.turns.get(h.id) ?? '').join('\n');
     const prompt = buildQaPrompt(question, retrieved, this.options.abstainToken);
-    const raw = await this.options.llm.complete(prompt);
+    const raw = await this.options.llm.complete(prompt, {
+      temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+    });
     const parsed = parseQaAnswer(raw, this.options.abstainToken);
     if (parsed === null && !abstentionEnabled) {
       return 'unknown';
@@ -66,15 +95,25 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
 
   private async ingest(context: string[]): Promise<void> {
     for (const turn of context) {
-      const id = `t-${fnv1a(turn)}`;
+      const id = `t-${hashText(turn)}`;
       if (this.turns.has(id)) {
         continue;
       }
-      const [vec] = await this.options.embedding.embed([turn]);
-      await this.index.add(id, vec!);
+      const vec = await embedCached(this.options.embedding, turn);
+      await this.index.add(id, vec);
       this.turns.set(id, turn);
     }
   }
+}
+
+/** Stable 32-bit string hash used only for internal vector-index ids. */
+function hashText(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
 }
 
 /** Build a grounded QA prompt with an explicit abstention instruction. */
@@ -85,7 +124,7 @@ export function buildQaPrompt(
 ): string {
   return [
     'You are answering questions based on a conversation memory.',
-    `Answer the question using ONLY the context below. If the answer is not in the context, respond with exactly: ${abstainToken}`,
+    `Answer with ONLY the exact answer phrase (a word, name, number, or short phrase), with no explanation and no full sentence. If the answer is not in the context, respond with exactly: ${abstainToken}`,
     '',
     'Context:',
     context,

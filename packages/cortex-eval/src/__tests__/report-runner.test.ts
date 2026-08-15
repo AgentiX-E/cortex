@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import type { LLM } from '@agentix-e/cortex-core';
 import { runAblationReport, formatAblationReport } from '../report.js';
-import { runEmbeddingBenchmark } from '../runner.js';
+import { runEmbeddingBenchmark, runNaturalLanguageBenchmark } from '../runner.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
 import { createLlmFromEnv } from '../llm-factory.js';
 import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
@@ -149,5 +150,41 @@ describe('createLlmFromEnv', () => {
     const llm = createLlmFromEnv({ DEEPSEEK_API_KEY: 'deepseek-key' });
     expect(typeof llm.complete).toBe('function');
     expect(typeof llm.completeStructured).toBe('function');
+  });
+});
+
+describe('formatAblationReport single deterministic run', () => {
+  it('labels the p-value as n/a when runs is 1', async () => {
+    const ds = createLongMemEvalMini();
+    const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
+    const report = await runAblationReport(ds, baseline, feature, { runs: 1 });
+    const md = formatAblationReport(report);
+    expect(Number.isNaN(report.ablation.pValue)).toBe(true);
+    expect(md).toContain('n/a (single deterministic run)');
+  });
+});
+
+describe('runNaturalLanguageBenchmark', () => {
+  const embedding = new HashEmbedding(64);
+  const llm: LLM = {
+    complete: async (prompt) => (prompt.includes('color') ? 'blue' : 'UNANSWERABLE'),
+    completeStructured: async <T>() => ({}) as T,
+  };
+
+  it('runs a natural-language ablation and returns a report', async () => {
+    const { report, markdown } = await runNaturalLanguageBenchmark(instances, embedding, llm, {
+      abstainThreshold: 0.5,
+      runs: 1,
+    });
+    expect(report.questionCount).toBe(2);
+    expect(markdown).toContain('Cortex Benchmark Report');
+    expect(markdown).toContain('n/a (single deterministic run)');
+  });
+
+  it('uses default threshold and runs when options are omitted', async () => {
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm);
+    expect(report.questionCount).toBe(2);
+    expect(report.ablation.featureAggregate.avg).toBeGreaterThanOrEqual(0);
   });
 });

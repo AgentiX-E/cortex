@@ -44,11 +44,42 @@ describe('runBenchmark', () => {
 });
 
 describe('runAblation', () => {
-  it('requires at least 3 runs', async () => {
+  it('requires at least 1 run', async () => {
     const ds = makeDataset();
     const base = new FactMemorySystem('base');
     const feat = new FactMemorySystem('feat');
-    await expect(runAblation(ds, base, feat, { runs: 2 })).rejects.toThrow();
+    await expect(runAblation(ds, base, feat, { runs: 0 })).rejects.toThrow();
+  });
+
+  it('supports a single deterministic run with no statistical test', async () => {
+    const ds = makeDataset();
+    const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.delta).toBeGreaterThan(0);
+    expect(Number.isNaN(result.pValue)).toBe(true);
+    expect(result.significant).toBe(false);
+    expect(result.effectSize).toBe(Infinity);
+  });
+
+  it('reports zero effect size when a single run has equal means', async () => {
+    const ds = makeDataset();
+    const baseline = new FactMemorySystem('b', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('f', { fallback: 'unknown' });
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.delta).toBe(0);
+    expect(result.effectSize).toBe(0);
+  });
+
+  it('reports negative infinite effect size when a single run regresses', async () => {
+    const ds = makeDataset();
+    // Baseline abstains correctly on the ABS question (overlap 1/6 < 0.2) while
+    // answering the IE/KU questions (overlap 0.4); feature never abstains.
+    const baseline = new FactMemorySystem('b', { abstainThreshold: 0.2 });
+    const feature = new FactMemorySystem('f', { fallback: 'unknown' });
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.delta).toBeLessThan(0);
+    expect(result.effectSize).toBe(-Infinity);
   });
 
   it('reports significant improvement when the feature abstains correctly', async () => {

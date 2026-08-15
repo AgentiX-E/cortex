@@ -33,4 +33,13 @@ describe('EmbeddingMemorySystem', () => {
     expect(a1).toBe('blue');
     expect(a2).toBe('blue');
   });
+
+  it('skips context entries that are not key=value facts', async () => {
+    const s = new EmbeddingMemorySystem('s', { embedding, fallback: 'unknown' });
+    const answer = await s.answer('What is the favorite color?', [
+      'not a fact',
+      'favorite color=blue',
+    ]);
+    expect(answer).toBe('blue');
+  });
 });

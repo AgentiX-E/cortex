@@ -56,6 +56,7 @@ jobs:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           ABSTAIN_THRESHOLD: '0.5'
+          RUNS: '1'
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Upload benchmark report

@@ -25,8 +25,8 @@ export async function runAblation(
   const runs = options.runs ?? 3;
   const alpha = options.alpha ?? 0.05;
   const abstentionAware = options.abstentionAware ?? true;
-  if (runs < 3) {
-    throw new Error(`ablation requires at least 3 runs, got ${runs}`);
+  if (runs < 1) {
+    throw new Error(`ablation requires at least 1 run, got ${runs}`);
   }
 
   const baselineScores: number[] = [];
@@ -41,8 +41,18 @@ export async function runAblation(
   const baselineAggregate = aggregate(baselineScores);
   const featureAggregate = aggregate(featureScores);
   const delta = featureAggregate.avg - baselineAggregate.avg;
-  const pValue = tTestPValue(baselineScores, featureScores);
-  const effectSize = cohensD(baselineScores, featureScores);
+
+  // A single deterministic run cannot estimate variance, so a t-test is not
+  // meaningful. Report a NaN p-value and let the renderer label it explicitly.
+  const pValue = runs < 2 ? Number.NaN : tTestPValue(baselineScores, featureScores);
+  const effectSize =
+    runs < 2
+      ? delta === 0
+        ? 0
+        : delta > 0
+          ? Infinity
+          : -Infinity
+      : cohensD(baselineScores, featureScores);
 
   return {
     feature: feature.name,
@@ -50,7 +60,7 @@ export async function runAblation(
     featureAggregate,
     delta,
     pValue,
-    significant: pValue < alpha,
+    significant: runs >= 2 && pValue < alpha,
     effectSize,
   };
 }

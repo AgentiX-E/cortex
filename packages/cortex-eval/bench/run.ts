@@ -20,11 +20,15 @@ async function main(): Promise<void> {
   const embedding = createEmbeddingFromEnv(process.env);
   const llm = createLlmFromEnv(process.env);
   const threshold = Number(process.env['ABSTAIN_THRESHOLD'] ?? 0.5);
+  // Default to a single deterministic run: with temperature 0 the systems are
+  // deterministic, so repeated runs add cost without variance. Set RUNS>1 only
+  // when sampling variance is deliberately introduced.
+  const runs = Number(process.env['RUNS'] ?? 1);
   const { report, markdown } = await runNaturalLanguageBenchmark(
     instances as never,
     embedding,
     llm,
-    { abstainThreshold: threshold, runs: 3 },
+    { abstainThreshold: threshold, runs },
   );
   writeFileSync('benchmark-report.md', markdown);
   writeFileSync('benchmark-report.json', JSON.stringify(report, null, 2));
