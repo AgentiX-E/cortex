@@ -52,10 +52,16 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  const message = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
-  console.error(message);
+  const message = err instanceof Error ? err.message : String(err);
+  const full = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : message;
+  // Emit a GitHub Actions error annotation (single line) so the failure reason
+  // is visible through the check-runs API even when the raw log stream is
+  // unavailable. Workflow-command special characters are percent-escaped.
+  const annotation = message.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  console.error(`::error::${annotation}`);
+  console.error(full);
   try {
-    writeFileSync('benchmark-error.log', message);
+    writeFileSync('benchmark-error.log', full);
   } catch {
     // Ignore write errors; the console output is the primary diagnostic.
   }
