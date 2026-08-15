@@ -37,6 +37,7 @@ by similarity). Cortex solves the "mind" problem:
 | `@agentix-e/cortex-core` | Contracts + pure algorithms, zero I/O, Node + browser |
 | `@agentix-e/cortex-node` | Embedded SQLite (`better-sqlite3`) and remote PostgreSQL backends |
 | `@agentix-e/cortex-llm` | Pluggable LLM and embedding adapters (OpenAI-compatible + local transformers.js) |
+| `@agentix-e/cortex-eval` | Scientific evaluation harness (metrics, t-test, ablation) + LongMemEval-style mini benchmark |
 
 ## Quick Start
 
