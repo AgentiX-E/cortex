@@ -1,3 +1,4 @@
+/* istanbul ignore file -- type-only declaration, no runtime code */
 /**
  * Embedding abstraction. Implementations return Float64Array so that downstream
  * math (ml-matrix, statistics) never suffers float32 truncation.

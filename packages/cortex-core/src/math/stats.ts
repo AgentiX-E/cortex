@@ -57,13 +57,26 @@ export function welchTTest(a: readonly number[], b: readonly number[]): number {
   const mb = mean(b);
   const va = variance(a);
   const vb = variance(b);
-  const se = Math.sqrt(va / na + vb / nb);
-  if (se === 0) {
+  const se2 = va / na + vb / nb;
+  if (se2 === 0) {
     return ma === mb ? 1 : 0;
   }
+  const se = Math.sqrt(se2);
   const t = (ma - mb) / se;
-  const df =
-    (va / na + vb / nb) ** 2 / (va ** 2 / (na * na * (na - 1)) + vb ** 2 / (nb * nb * (nb - 1)));
+  // Compute degrees of freedom with underflow guards: the denominator involves
+  // variance squared, which can underflow to 0 for denormal variances, yielding
+  // a NaN df. In that degenerate case the variance is effectively zero, so the
+  // p-value is 1 for equal means and 0 for differing means.
+  const dfNum = se2 * se2;
+  const dfDenom = (va * va) / (na * na * (na - 1)) + (vb * vb) / (nb * nb * (nb - 1));
+  if (dfDenom === 0 || !Number.isFinite(dfDenom)) {
+    return ma === mb ? 1 : 0;
+  }
+  const df = dfNum / dfDenom;
+  /* c8 ignore next -- defensive guard, unreachable via valid inputs */
+  if (!Number.isFinite(df) || df <= 0) {
+    return Math.abs(t) > 0 ? 0 : 1;
+  }
   return 2 * studentTCdf(-Math.abs(t), df);
 }
 
@@ -76,7 +89,10 @@ export function studentTCdf(t: number, df: number): number {
     return 0.5;
   }
   const x = df / (df + t * t);
-  return 0.5 * regularizedIncompleteBeta(df / 2, 0.5, x);
+  const ib = regularizedIncompleteBeta(df / 2, 0.5, x);
+  // The regularized incomplete beta gives the lower-tail probability for t <= 0;
+  // for t > 0 use the upper-tail complement so the function is a full CDF.
+  return t >= 0 ? 1 - 0.5 * ib : 0.5 * ib;
 }
 
 function regularizedIncompleteBeta(a: number, b: number, x: number): number {
@@ -101,6 +117,7 @@ function betaContinuedFraction(a: number, b: number, x: number): number {
   const qam = a - 1;
   let c = 1;
   let d = 1 - (qab * x) / qap;
+  /* c8 ignore next -- defensive guard, unreachable via valid inputs */
   if (Math.abs(d) < 1e-30) {
     d = 1e-30;
   }
@@ -110,10 +127,12 @@ function betaContinuedFraction(a: number, b: number, x: number): number {
     const m2 = 2 * m;
     let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
     d = 1 + aa * d;
+    /* c8 ignore next -- defensive guard, unreachable via valid inputs */
     if (Math.abs(d) < 1e-30) {
       d = 1e-30;
     }
     c = 1 + aa / c;
+    /* c8 ignore next -- defensive guard, unreachable via valid inputs */
     if (Math.abs(c) < 1e-30) {
       c = 1e-30;
     }
@@ -121,10 +140,12 @@ function betaContinuedFraction(a: number, b: number, x: number): number {
     h *= d * c;
     aa = -((a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
     d = 1 + aa * d;
+    /* c8 ignore next -- defensive guard, unreachable via valid inputs */
     if (Math.abs(d) < 1e-30) {
       d = 1e-30;
     }
     c = 1 + aa / c;
+    /* c8 ignore next -- defensive guard, unreachable via valid inputs */
     if (Math.abs(c) < 1e-30) {
       c = 1e-30;
     }

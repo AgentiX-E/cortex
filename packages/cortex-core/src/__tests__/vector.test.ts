@@ -26,4 +26,14 @@ describe('BruteForceVectorIndex', () => {
     await idx.remove('a');
     expect(await idx.size()).toBe(0);
   });
+
+  it('excludes entries whose metadata has no matching tags', async () => {
+    const idx = new BruteForceVectorIndex();
+    await idx.add('a', new Float64Array([1, 0])); // no meta
+    await idx.add('b', new Float64Array([1, 0]), { other: 'x' }); // no tags array
+    await idx.add('c', new Float64Array([1, 0]), { tags: ['x'] });
+    const hits = await idx.search(new Float64Array([1, 0]), 10, { tags: ['x'] });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.id).toBe('c');
+  });
 });

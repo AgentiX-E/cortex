@@ -1,3 +1,4 @@
+/* istanbul ignore file -- type-only declaration, no runtime code */
 /**
  * LLM abstraction: a minimal completion primitive so Cortex never depends on a
  * specific provider SDK. Adapters use fetch (OpenAI-compatible) or a local model.

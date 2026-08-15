@@ -9,4 +9,6 @@ export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai
 export {
   TransformersEmbedding,
   type TransformersEmbeddingOptions,
+  type FeatureExtractor,
 } from './embedding/transformers.js';
+export { createTransformersPipeline } from './embedding/transformers-pipeline.js';

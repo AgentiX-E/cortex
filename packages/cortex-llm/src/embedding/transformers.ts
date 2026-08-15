@@ -2,17 +2,25 @@
  * Local embedding adapter backed by transformers.js (@xenova/transformers).
  * Runs fully offline in Node and the browser; float32 model outputs are widened
  * to Float64Array for downstream Cortex math.
+ *
+ * The pipeline loader is injectable so the conversion/caching logic can be tested
+ * without the optional peer dependency installed.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import { makeDefaultPipelineFactory, type FeatureExtractor } from './transformers-pipeline.js';
+
+export type { FeatureExtractor } from './transformers-pipeline.js';
 
 export type TransformersEmbeddingOptions = {
   model: string;
   dimensions: number;
+  /** Injectable pipeline factory; defaults to lazy-importing @xenova/transformers. */
+  pipelineFactory?: () => Promise<FeatureExtractor>;
 };
 
 export class TransformersEmbedding implements EmbeddingModel {
   private readonly options: TransformersEmbeddingOptions;
-  private extractor: unknown = null;
+  private extractor: FeatureExtractor | null = null;
 
   constructor(options: TransformersEmbeddingOptions) {
     this.options = options;
@@ -24,24 +32,15 @@ export class TransformersEmbedding implements EmbeddingModel {
 
   async embed(texts: string[]): Promise<Float64Array[]> {
     const extractor = await this.getExtractor();
-    const pipelineFn = extractor as (
-      inputs: string[],
-      opts: unknown,
-    ) => Promise<{
-      tolist: () => number[][];
-    }>;
-    const outputs = await pipelineFn(texts, { pooling: 'mean', normalize: true });
+    const outputs = await extractor(texts, { pooling: 'mean', normalize: true });
     return outputs.tolist().map((row) => new Float64Array(row));
   }
 
-  private async getExtractor(): Promise<unknown> {
+  private async getExtractor(): Promise<FeatureExtractor> {
     if (!this.extractor) {
-      // Lazy-load the optional peer dependency so the core package installs
-      // without pulling in heavy native modules (sharp) unless actually used.
-      const { pipeline } = (await import('@xenova/transformers')) as {
-        pipeline: (task: string, model: string) => Promise<unknown>;
-      };
-      this.extractor = await pipeline('feature-extraction', this.options.model);
+      const factory =
+        this.options.pipelineFactory ?? makeDefaultPipelineFactory(this.options.model);
+      this.extractor = await factory();
     }
     return this.extractor;
   }

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createMemory } from '../domain/memory.js';
 import { decideRetrieval, decideWrite, defaultValueFunction } from '../value/value.js';
-import { currentValue, findContradictions } from '../temporal/bitemporal.js';
+import { currentValue, findContradictions, currentFacts } from '../temporal/bitemporal.js';
 import type { Fact } from '../domain/fact.js';
+import { isFactCurrentAt } from '../domain/fact.js';
 import { resolveContradiction } from '../contradiction/resolve.js';
 
 describe('value-driven decisions', () => {
@@ -64,6 +65,25 @@ describe('bitemporal facts', () => {
     const facts = [fact({ id: 'a', object: 'engineer' }), fact({ id: 'b', object: 'manager' })];
     expect(findContradictions(facts).length).toBe(1);
   });
+
+  it('returns undefined when no current value exists', () => {
+    const current = currentValue([fact({ subject: 'other' })], 'user', 'job', 100);
+    expect(current).toBeUndefined();
+  });
+
+  it('filters to current facts only', () => {
+    const expired = fact({ id: 'old', validUntil: 50 });
+    const active = fact({ id: 'now', validFrom: 50 });
+    const current = currentFacts([expired, active], 100);
+    expect(current.map((f) => f.id)).toEqual(['now']);
+  });
+
+  it('handles finite valid and system intervals', () => {
+    const f = fact({ validFrom: 10, validUntil: 20, systemFrom: 5, systemUntil: 15 });
+    expect(isFactCurrentAt(f, 15, 10)).toBe(true);
+    expect(isFactCurrentAt(f, 15, 20)).toBe(false);
+    expect(isFactCurrentAt(f, 25, 10)).toBe(false);
+  });
 });
 
 describe('contradiction resolution', () => {
@@ -98,5 +118,28 @@ describe('contradiction resolution', () => {
     ];
     const r = resolveContradiction(facts);
     expect(r.winner.object).toBe('NYC');
+  });
+
+  it('throws on empty fact list', () => {
+    expect(() => resolveContradiction([])).toThrow();
+  });
+
+  it('returns the single fact unchanged', () => {
+    const single: Fact = {
+      id: 's',
+      subject: 'u',
+      predicate: 'p',
+      object: 'x',
+      validFrom: 0,
+      validUntil: Infinity,
+      systemFrom: 0,
+      systemUntil: Infinity,
+      source: 's',
+      sourceTrust: 0.8,
+      confidence: 0.9,
+    };
+    const r = resolveContradiction([single]);
+    expect(r.winner.id).toBe('s');
+    expect(r.belief).toBeCloseTo(0.9, 12);
   });
 });

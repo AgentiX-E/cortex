@@ -38,4 +38,37 @@ describe('MemoryGraph', () => {
   it('significance function is monotonically increasing', () => {
     expect(significanceOf(1)).toBeLessThan(significanceOf(10));
   });
+
+  it('finds the shortest path between two nodes', () => {
+    const g = new MemoryGraph();
+    g.strengthen('a', 'b');
+    g.strengthen('b', 'c');
+    expect(g.shortestPath('a', 'c')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns null for disconnected nodes', () => {
+    const g = new MemoryGraph();
+    g.ensureNode('a');
+    g.ensureNode('b');
+    expect(g.shortestPath('a', 'b')).toBeNull();
+  });
+
+  it('returns a singleton path for a self-path', () => {
+    const g = new MemoryGraph();
+    g.ensureNode('a');
+    expect(g.shortestPath('a', 'a')).toEqual(['a']);
+  });
+
+  it('edgeWeight returns 0 for a missing edge', () => {
+    const g = new MemoryGraph();
+    expect(g.edgeWeight('x', 'y')).toBe(0);
+  });
+
+  it('tracks node and edge counts', () => {
+    const g = new MemoryGraph();
+    g.strengthen('a', 'b');
+    g.strengthen('b', 'c');
+    expect(g.nodeCount()).toBe(3);
+    expect(g.edgeCount()).toBe(2);
+  });
 });
