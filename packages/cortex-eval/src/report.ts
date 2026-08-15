@@ -1,0 +1,98 @@
+/**
+ * Scientific benchmark report: runs a baseline-vs-feature ablation and produces
+ * a structured report plus a Markdown rendering for CI artifacts.
+ */
+import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
+import { runAblation, type AblationOptions } from './ablation.js';
+import { evaluate } from './benchmark.js';
+
+export type AblationReport = {
+  dataset: string;
+  questionCount: number;
+  baseline: { name: string; metrics: Metrics };
+  feature: { name: string; metrics: Metrics };
+  ablation: AblationResult;
+  generatedAt: string;
+};
+
+export type AblationReportOptions = {
+  runs?: number;
+  alpha?: number;
+  abstentionAware?: boolean;
+  generatedAt?: string;
+};
+
+export async function runAblationReport(
+  dataset: BenchmarkDataset,
+  baseline: MemorySystem,
+  feature: MemorySystem,
+  options: AblationReportOptions = {},
+): Promise<AblationReport> {
+  const ablationOptions: AblationOptions = {};
+  if (options.runs !== undefined) {
+    ablationOptions.runs = options.runs;
+  }
+  if (options.alpha !== undefined) {
+    ablationOptions.alpha = options.alpha;
+  }
+  if (options.abstentionAware !== undefined) {
+    ablationOptions.abstentionAware = options.abstentionAware;
+  }
+  const ablation = await runAblation(dataset, baseline, feature, ablationOptions);
+  const baselineMetrics = await evaluate(dataset, baseline);
+  const featureMetrics = await evaluate(dataset, feature);
+  return {
+    dataset: dataset.name,
+    questionCount: dataset.questions.length,
+    baseline: { name: baseline.name, metrics: baselineMetrics },
+    feature: { name: feature.name, metrics: featureMetrics },
+    ablation,
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+  };
+}
+
+export function formatAblationReport(report: AblationReport): string {
+  const pct = (x: number): string => `${(x * 100).toFixed(2)}%`;
+  const ab = report.ablation;
+  const lines: string[] = [
+    `# Cortex Benchmark Report`,
+    '',
+    `- Dataset: \`${report.dataset}\` (${report.questionCount} questions)`,
+    `- Generated at: ${report.generatedAt}`,
+    `- Feature: \`${report.feature.name}\` vs baseline \`${report.baseline.name}\``,
+    '',
+    '## Ablation (abstention-aware accuracy)',
+    '',
+    '| System | min | avg | max | median |',
+    '|---|---|---|---|---|',
+    `| ${report.baseline.name} | ${pct(ab.baselineAggregate.min)} | ${pct(ab.baselineAggregate.avg)} | ${pct(ab.baselineAggregate.max)} | ${pct(ab.baselineAggregate.median)} |`,
+    `| ${report.feature.name} | ${pct(ab.featureAggregate.min)} | ${pct(ab.featureAggregate.avg)} | ${pct(ab.featureAggregate.max)} | ${pct(ab.featureAggregate.median)} |`,
+    '',
+    `- Δ accuracy (feature − baseline): **${(ab.delta >= 0 ? '+' : '') + pct(ab.delta)}**`,
+    `- Welch t-test p-value: **${ab.pValue.toExponential(3)}** (significant: ${ab.significant ? 'yes' : 'no'})`,
+    `- Cohen's d: **${formatEffectSize(ab.effectSize)}**`,
+    '',
+    '## Per-capability breakdown (feature system)',
+    '',
+    '| Capability | Accuracy | Total |',
+    '|---|---|---|',
+  ];
+  for (const [capability, result] of Object.entries(report.feature.metrics.perCapability)) {
+    lines.push(`| ${capability} | ${pct(result.accuracy)} | ${result.total} |`);
+  }
+  lines.push('', `- Overall accuracy: ${pct(report.feature.metrics.accuracy)}`);
+  lines.push(`- Abstention rate: ${pct(report.feature.metrics.abstentionRate)}`);
+  lines.push(`- Abstention correct rate: ${pct(report.feature.metrics.abstentionCorrectRate)}`);
+  lines.push('');
+  return lines.join('\n');
+}
+
+function formatEffectSize(d: number): string {
+  if (d === Infinity) {
+    return '+∞';
+  }
+  if (d === -Infinity) {
+    return '-∞';
+  }
+  return d.toFixed(3);
+}

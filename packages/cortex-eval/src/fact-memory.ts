@@ -86,6 +86,7 @@ export function overlapScore(a: readonly string[], b: readonly string[]): number
     }
   }
   const union = setA.size + setB.size - intersection;
+  /* c8 ignore next -- unreachable: both sets are non-empty here, so union >= 1 */
   return union === 0 ? 0 : intersection / union;
 }
 

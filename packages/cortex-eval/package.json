@@ -17,16 +17,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --coverage",
-    "lint": "eslint src/",
+    "lint": "eslint src/ bench/",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "bench": "node --import tsx bench/run.ts",
     "clean": "rm -rf dist *.tsbuildinfo coverage"
   },
   "dependencies": {
-    "@agentix-e/cortex-core": "workspace:*"
+    "@agentix-e/cortex-core": "workspace:*",
+    "@agentix-e/cortex-llm": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.0.0",
     "eslint": "^9.0.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.7.0",
     "vitest": "^2.0.0"
   }

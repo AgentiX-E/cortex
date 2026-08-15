@@ -1,0 +1,64 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+  EMBEDDING_BASE_URL: ${{ secrets.EMBEDDING_BASE_URL }}
+  EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+  EMBEDDING_DIMENSIONS: ${{ secrets.EMBEDDING_DIMENSIONS }}
+
+jobs:
+  longmemeval-s:
+    name: LongMemEval-S ablation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Verify library
+        run: pnpm check
+
+      - name: Download LongMemEval-S
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+
+      - name: Run benchmark
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          ABSTAIN_THRESHOLD: '0.5'
+        run: pnpm --filter @agentix-e/cortex-eval bench
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: longmemeval-s-report
+          path: |
+            packages/cortex-eval/benchmark-report.md
+            packages/cortex-eval/benchmark-report.json
+          retention-days: 30

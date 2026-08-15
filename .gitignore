@@ -4,3 +4,5 @@ coverage/
 *.tsbuildinfo
 .env
 .DS_Store
+benchmark-report.md
+benchmark-report.json
