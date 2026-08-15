@@ -3,9 +3,10 @@
  * naive baseline and an abstaining feature system over the same embedding, runs
  * a scientific ablation, and renders a Markdown report.
  */
-import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import { loadLongMemEval, type LongMemEvalInstance } from './datasets/longmemeval-loader.js';
 import { EmbeddingMemorySystem } from './embedding-memory.js';
+import { NaturalLanguageMemorySystem } from './natural-language-memory.js';
 import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
 
 export type BenchmarkRunnerOptions = {
@@ -28,6 +29,31 @@ export async function runEmbeddingBenchmark(
   });
   const feature = new EmbeddingMemorySystem('abstain-feature', {
     embedding,
+    abstainThreshold: threshold,
+  });
+  const report = await runAblationReport(dataset, baseline, feature, {
+    runs: options.runs ?? 3,
+  });
+  return { report, markdown: formatAblationReport(report) };
+}
+
+/** Natural-language QA benchmark: baseline never abstains; feature abstains. */
+export async function runNaturalLanguageBenchmark(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const threshold = options.abstainThreshold ?? 0.5;
+  const baseline = new NaturalLanguageMemorySystem('nl-naive-baseline', {
+    embedding,
+    llm,
+    enableAbstention: false,
+  });
+  const feature = new NaturalLanguageMemorySystem('nl-abstain-feature', {
+    embedding,
+    llm,
     abstainThreshold: threshold,
   });
   const report = await runAblationReport(dataset, baseline, feature, {

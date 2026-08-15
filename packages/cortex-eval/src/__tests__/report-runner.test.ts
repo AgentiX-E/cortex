@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { runAblationReport, formatAblationReport } from '../report.js';
 import { runEmbeddingBenchmark } from '../runner.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
+import { createLlmFromEnv } from '../llm-factory.js';
+import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
 import { HashEmbedding } from '../embedding.js';
 import { FactMemorySystem } from '../fact-memory.js';
 import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';
@@ -114,7 +116,14 @@ describe('createEmbeddingFromEnv', () => {
       EMBEDDING_MODEL: 'text-embedding-3-small',
       EMBEDDING_DIMENSIONS: '1536',
     });
+    expect(embedding).toBeInstanceOf(OpenAIEmbedding);
     expect(embedding.dimension()).toBe(1536);
+  });
+
+  it('uses Zhipu embedding-3 defaults with ZHIPU_API_KEY', () => {
+    const embedding = createEmbeddingFromEnv({ ZHIPU_API_KEY: 'zhipu-key' });
+    expect(embedding).toBeInstanceOf(OpenAIEmbedding);
+    expect(embedding.dimension()).toBe(1024);
   });
 
   it('falls back to HashEmbedding when credentials are missing', () => {
@@ -124,11 +133,21 @@ describe('createEmbeddingFromEnv', () => {
 
   it('falls back when the dimension is invalid', () => {
     const embedding = createEmbeddingFromEnv({
-      EMBEDDING_API_KEY: 'k',
-      EMBEDDING_BASE_URL: 'https://api.example.com/v1',
-      EMBEDDING_MODEL: 'm',
+      ZHIPU_API_KEY: 'k',
       EMBEDDING_DIMENSIONS: 'not-a-number',
     });
     expect(embedding).toBeInstanceOf(HashEmbedding);
+  });
+});
+
+describe('createLlmFromEnv', () => {
+  it('throws when DEEPSEEK_API_KEY is missing', () => {
+    expect(() => createLlmFromEnv({})).toThrow(/DEEPSEEK_API_KEY/);
+  });
+
+  it('returns an OpenAI-compatible LLM for DeepSeek', () => {
+    const llm = createLlmFromEnv({ DEEPSEEK_API_KEY: 'deepseek-key' });
+    expect(typeof llm.complete).toBe('function');
+    expect(typeof llm.completeStructured).toBe('function');
   });
 });

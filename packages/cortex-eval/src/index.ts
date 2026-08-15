@@ -26,7 +26,11 @@ export {
   type AblationReport,
   type AblationReportOptions,
 } from './report.js';
-export { runEmbeddingBenchmark, type BenchmarkRunnerOptions } from './runner.js';
+export {
+  runEmbeddingBenchmark,
+  runNaturalLanguageBenchmark,
+  type BenchmarkRunnerOptions,
+} from './runner.js';
 export { createLongMemEvalMini } from './datasets/longmemeval-mini.js';
 export {
   generateSyntheticBenchmark,
@@ -42,9 +46,24 @@ export {
 } from './datasets/longmemeval-loader.js';
 export { FactMemorySystem, type FactMemorySystemOptions } from './fact-memory.js';
 export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embedding-memory.js';
+export {
+  NaturalLanguageMemorySystem,
+  buildQaPrompt,
+  parseQaAnswer,
+  type NaturalLanguageMemorySystemOptions,
+} from './natural-language-memory.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,
   DEFAULT_HASH_DIMENSION,
+  DEFAULT_ZHIPU_BASE_URL,
+  DEFAULT_ZHIPU_EMBEDDING_MODEL,
+  DEFAULT_ZHIPU_EMBEDDING_DIMENSIONS,
   type EmbeddingEnv,
 } from './embedding-factory.js';
+export {
+  createLlmFromEnv,
+  DEFAULT_DEEPSEEK_BASE_URL,
+  DEFAULT_DEEPSEEK_MODEL,
+  type LlmEnv,
+} from './llm-factory.js';
