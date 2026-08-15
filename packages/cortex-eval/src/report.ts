@@ -4,7 +4,8 @@
  */
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
 import { runAblation, type AblationOptions } from './ablation.js';
-import { evaluate } from './benchmark.js';
+import { evaluateWithScorer } from './benchmark.js';
+import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 
 export type AblationReport = {
   dataset: string;
@@ -20,6 +21,7 @@ export type AblationReportOptions = {
   alpha?: number;
   abstentionAware?: boolean;
   generatedAt?: string;
+  scorer?: AnswerScorer;
 };
 
 export async function runAblationReport(
@@ -28,7 +30,8 @@ export async function runAblationReport(
   feature: MemorySystem,
   options: AblationReportOptions = {},
 ): Promise<AblationReport> {
-  const ablationOptions: AblationOptions = {};
+  const scorer = options.scorer ?? exactMatchScorer;
+  const ablationOptions: AblationOptions = { scorer };
   if (options.runs !== undefined) {
     ablationOptions.runs = options.runs;
   }
@@ -39,8 +42,8 @@ export async function runAblationReport(
     ablationOptions.abstentionAware = options.abstentionAware;
   }
   const ablation = await runAblation(dataset, baseline, feature, ablationOptions);
-  const baselineMetrics = await evaluate(dataset, baseline);
-  const featureMetrics = await evaluate(dataset, feature);
+  const baselineMetrics = await evaluateWithScorer(dataset, baseline, scorer);
+  const featureMetrics = await evaluateWithScorer(dataset, feature, scorer);
   return {
     dataset: dataset.name,
     questionCount: dataset.questions.length,

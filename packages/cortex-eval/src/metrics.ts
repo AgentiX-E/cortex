@@ -11,7 +11,9 @@ import type {
   Capability,
   Metrics,
   PerCapabilityResult,
+  Question,
 } from './types.js';
+import type { AnswerJudge } from './judge.js';
 
 const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
 
@@ -88,6 +90,92 @@ export function computeMetrics(dataset: BenchmarkDataset, answers: Answer[]): Me
     abstentionCorrectRate: abstained === 0 ? 0 : abstentionCorrect / abstained,
     // Exact-match accuracy already treats a correct abstention (null==null) as
     // correct, so abstention-aware accuracy equals accuracy.
+    abstentionAwareAccuracy: accuracy,
+    total,
+    correct,
+    perCapability,
+  };
+}
+
+/** A scorer decides whether an answer is correct for a question. */
+export type AnswerScorer = (question: Question, answer: Answer) => Promise<boolean> | boolean;
+
+/** Exact-match scorer (normalized string equality). */
+export function exactMatchScorer(question: Question, answer: Answer): boolean {
+  return exactMatch(answer, question.expected);
+}
+
+/** LLM-judge scorer: abstentions are graded structurally, others via the judge. */
+export function judgeScorer(judge: AnswerJudge): AnswerScorer {
+  return async (question, answer) => {
+    if (question.expected === null) {
+      return answer === null;
+    }
+    if (answer === null) {
+      return false;
+    }
+    return judge(question.question, answer, question.expected);
+  };
+}
+
+/** Compute metrics using an arbitrary (possibly async) answer scorer. */
+export async function computeMetricsAsync(
+  dataset: BenchmarkDataset,
+  answers: Answer[],
+  scorer: AnswerScorer,
+): Promise<Metrics> {
+  if (dataset.questions.length !== answers.length) {
+    throw new Error(
+      `answer count mismatch: ${answers.length} answers for ${dataset.questions.length} questions`,
+    );
+  }
+  const perCapability = Object.fromEntries(
+    ALL_CAPABILITIES.map((c) => [c, emptyCapability()]),
+  ) as Record<Capability, PerCapabilityResult>;
+
+  let correct = 0;
+  let abstained = 0;
+  let abstentionCorrect = 0;
+
+  for (let i = 0; i < dataset.questions.length; i++) {
+    const q = dataset.questions[i]!;
+    const answer = answers[i]!;
+    const isCorrect = await scorer(q, answer);
+    const isAbstain = answer === null;
+
+    if (isCorrect) {
+      correct++;
+    }
+    if (isAbstain) {
+      abstained++;
+      if (q.expected === null) {
+        abstentionCorrect++;
+      }
+    }
+
+    const bucket = perCapability[q.capability];
+    bucket.total++;
+    if (isCorrect) {
+      bucket.correct++;
+    }
+    if (isAbstain) {
+      bucket.abstained++;
+    }
+  }
+
+  for (const c of ALL_CAPABILITIES) {
+    const bucket = perCapability[c];
+    bucket.accuracy = bucket.total === 0 ? 0 : bucket.correct / bucket.total;
+  }
+
+  const total = dataset.questions.length;
+  const accuracy = total === 0 ? 0 : correct / total;
+  return {
+    accuracy,
+    abstentionRate: total === 0 ? 0 : abstained / total,
+    abstentionCorrectRate: abstained === 0 ? 0 : abstentionCorrect / abstained,
+    // A correct abstention (null==null) is graded as correct by the scorer, so
+    // abstention-aware accuracy equals accuracy.
     abstentionAwareAccuracy: accuracy,
     total,
     correct,

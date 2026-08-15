@@ -14,11 +14,22 @@ export {
   normalizeAnswer,
   exactMatch,
   computeMetrics,
+  computeMetricsAsync,
+  exactMatchScorer,
+  judgeScorer,
   aggregate,
   cohensD,
   tTestPValue,
+  type AnswerScorer,
 } from './metrics.js';
-export { runBenchmark, evaluate } from './benchmark.js';
+export { runBenchmark, evaluate, evaluateWithScorer } from './benchmark.js';
+export {
+  createLlmJudge,
+  buildJudgePrompt,
+  parseJudgeResponse,
+  clearJudgeCache,
+  type AnswerJudge,
+} from './judge.js';
 export { runAblation, type AblationOptions } from './ablation.js';
 export {
   runAblationReport,
@@ -44,6 +55,7 @@ export {
   type LongMemEvalTurn,
   type LongMemEvalInstance,
 } from './datasets/longmemeval-loader.js';
+export { sampleInstances } from './datasets/sampling.js';
 export { FactMemorySystem, type FactMemorySystemOptions } from './fact-memory.js';
 export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embedding-memory.js';
 export {

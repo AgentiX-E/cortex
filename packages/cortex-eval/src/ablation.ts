@@ -3,8 +3,8 @@
  * aggregate their accuracies, and compare with a Welch t-test + Cohen's d.
  */
 import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
-import { evaluate } from './benchmark.js';
-import { aggregate, cohensD, tTestPValue } from './metrics.js';
+import { evaluateWithScorer } from './benchmark.js';
+import { aggregate, cohensD, exactMatchScorer, tTestPValue, type AnswerScorer } from './metrics.js';
 
 export type AblationOptions = {
   /** Number of independent runs per system (default 3). */
@@ -13,6 +13,8 @@ export type AblationOptions = {
   alpha?: number;
   /** Use abstention-aware accuracy as the comparison metric (default true). */
   abstentionAware?: boolean;
+  /** Answer scorer; defaults to exact match. */
+  scorer?: AnswerScorer;
 };
 
 /** Run a baseline vs feature ablation and report statistical significance. */
@@ -25,6 +27,7 @@ export async function runAblation(
   const runs = options.runs ?? 3;
   const alpha = options.alpha ?? 0.05;
   const abstentionAware = options.abstentionAware ?? true;
+  const scorer = options.scorer ?? exactMatchScorer;
   if (runs < 1) {
     throw new Error(`ablation requires at least 1 run, got ${runs}`);
   }
@@ -32,8 +35,8 @@ export async function runAblation(
   const baselineScores: number[] = [];
   const featureScores: number[] = [];
   for (let i = 0; i < runs; i++) {
-    const b = await evaluate(dataset, baseline);
-    const f = await evaluate(dataset, feature);
+    const b = await evaluateWithScorer(dataset, baseline, scorer);
+    const f = await evaluateWithScorer(dataset, feature, scorer);
     baselineScores.push(abstentionAware ? b.abstentionAwareAccuracy : b.accuracy);
     featureScores.push(abstentionAware ? f.abstentionAwareAccuracy : f.accuracy);
   }

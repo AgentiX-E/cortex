@@ -3,11 +3,15 @@ import {
   normalizeAnswer,
   exactMatch,
   computeMetrics,
+  computeMetricsAsync,
+  exactMatchScorer,
+  judgeScorer,
   aggregate,
   cohensD,
   tTestPValue,
 } from '../metrics.js';
 import type { BenchmarkDataset, Question } from '../types.js';
+import type { AnswerJudge } from '../judge.js';
 
 const q = (capability: Question['capability'], expected: string | null): Question => ({
   id: `q-${capability}`,
@@ -88,6 +92,46 @@ describe('aggregate', () => {
 
   it('averages the two middle values for even-length input', () => {
     expect(aggregate([1, 2, 3, 4]).median).toBeCloseTo(2.5, 12);
+  });
+});
+
+describe('answer scorers', () => {
+  it('exactMatchScorer mirrors exactMatch', () => {
+    expect(exactMatchScorer(q('IE', 'blue'), 'Blue')).toBe(true);
+    expect(exactMatchScorer(q('IE', 'blue'), 'red')).toBe(false);
+    expect(exactMatchScorer(q('ABS', null), null)).toBe(true);
+  });
+
+  it('judgeScorer grades abstentions structurally', async () => {
+    const judge: AnswerJudge = async () => true;
+    const scorer = judgeScorer(judge);
+    expect(await scorer(q('ABS', null), null)).toBe(true);
+    expect(await scorer(q('ABS', null), 'wrong')).toBe(false);
+    expect(await scorer(q('IE', 'x'), null)).toBe(false);
+  });
+
+  it('judgeScorer delegates non-abstention answers to the judge', async () => {
+    const judge: AnswerJudge = async (_q, predicted, expected) => predicted === expected;
+    const scorer = judgeScorer(judge);
+    expect(await scorer(q('IE', 'blue'), 'blue')).toBe(true);
+    expect(await scorer(q('IE', 'blue'), 'red')).toBe(false);
+  });
+});
+
+describe('computeMetricsAsync', () => {
+  it('throws on answer count mismatch', async () => {
+    const ds: BenchmarkDataset = { name: 'd', questions: [q('IE', 'x')] };
+    await expect(computeMetricsAsync(ds, [], exactMatchScorer)).rejects.toThrow();
+  });
+
+  it('computes accuracy with an async scorer', async () => {
+    const ds: BenchmarkDataset = {
+      name: 'd',
+      questions: [q('IE', 'a'), q('ABS', null)],
+    };
+    const m = await computeMetricsAsync(ds, ['a', null], exactMatchScorer);
+    expect(m.accuracy).toBe(1);
+    expect(m.abstentionCorrectRate).toBeCloseTo(1, 12);
   });
 });
 

@@ -7,6 +7,8 @@ import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import { loadLongMemEval, type LongMemEvalInstance } from './datasets/longmemeval-loader.js';
 import { EmbeddingMemorySystem } from './embedding-memory.js';
 import { NaturalLanguageMemorySystem } from './natural-language-memory.js';
+import { createLlmJudge, type AnswerJudge } from './judge.js';
+import { judgeScorer } from './metrics.js';
 import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
 
 export type BenchmarkRunnerOptions = {
@@ -14,6 +16,8 @@ export type BenchmarkRunnerOptions = {
   abstainThreshold?: number;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
+  /** Optional answer judge; defaults to an LLM judge over the same LLM. */
+  judge?: AnswerJudge;
 };
 
 export async function runEmbeddingBenchmark(
@@ -56,8 +60,11 @@ export async function runNaturalLanguageBenchmark(
     llm,
     abstainThreshold: threshold,
   });
+  // Natural-language answers need semantic equivalence grading, not exact match.
+  const judge = options.judge ?? createLlmJudge(llm);
   const report = await runAblationReport(dataset, baseline, feature, {
     runs: options.runs ?? 3,
+    scorer: judgeScorer(judge),
   });
   return { report, markdown: formatAblationReport(report) };
 }

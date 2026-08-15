@@ -2,7 +2,7 @@
  * Benchmark runner: run a memory system over a dataset and evaluate its answers.
  */
 import type { Answer, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
-import { computeMetrics } from './metrics.js';
+import { computeMetrics, computeMetricsAsync, type AnswerScorer } from './metrics.js';
 
 /** Run a system over every question, preserving question order. */
 export async function runBenchmark(
@@ -20,4 +20,14 @@ export async function runBenchmark(
 export async function evaluate(dataset: BenchmarkDataset, system: MemorySystem): Promise<Metrics> {
   const answers = await runBenchmark(dataset, system);
   return computeMetrics(dataset, answers);
+}
+
+/** Run a system and evaluate with an arbitrary (possibly async) scorer. */
+export async function evaluateWithScorer(
+  dataset: BenchmarkDataset,
+  system: MemorySystem,
+  scorer: AnswerScorer,
+): Promise<Metrics> {
+  const answers = await runBenchmark(dataset, system);
+  return computeMetricsAsync(dataset, answers, scorer);
 }

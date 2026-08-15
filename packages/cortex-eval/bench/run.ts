@@ -12,6 +12,7 @@ import {
   createEmbeddingFromEnv,
   createLlmFromEnv,
   runNaturalLanguageBenchmark,
+  sampleInstances,
 } from '@agentix-e/cortex-eval';
 
 async function main(): Promise<void> {
@@ -26,8 +27,9 @@ async function main(): Promise<void> {
   const instances = parsed as never[];
 
   // A small LIMIT keeps first-run smoke tests cheap and fast; omit for the full set.
+  // Stratified sampling keeps every capability (including abstention) represented.
   const limit = Number(process.env['LIMIT'] ?? 0);
-  const sampled = limit > 0 ? instances.slice(0, limit) : instances;
+  const sampled = sampleInstances(instances as never, limit);
 
   const embedding = createEmbeddingFromEnv(process.env);
   const llm = createLlmFromEnv(process.env);
