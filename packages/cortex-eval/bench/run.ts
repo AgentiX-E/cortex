@@ -2,6 +2,10 @@
  * Benchmark entry point. Reads the LongMemEval JSON from LONGMEMEVAL_PATH, builds
  * a DeepSeek LLM and a Zhipu embedding from environment variables, runs the
  * natural-language QA ablation, and writes Markdown + JSON reports.
+ *
+ * On failure the script writes `benchmark-error.log` with the full message and
+ * stack before exiting non-zero. The workflow uploads this file as an artifact
+ * so failures can be diagnosed even when the runner log stream is unavailable.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -13,10 +17,18 @@ import {
 async function main(): Promise<void> {
   const dataPath = process.env['LONGMEMEVAL_PATH'];
   if (!dataPath) {
-    console.error('LONGMEMEVAL_PATH is required');
-    process.exit(1);
+    throw new Error('LONGMEMEVAL_PATH is required');
   }
-  const instances = JSON.parse(readFileSync(dataPath, 'utf8')) as unknown;
+  const parsed = JSON.parse(readFileSync(dataPath, 'utf8')) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error(`LONGMEMEVAL_PATH must contain a JSON array, got ${typeof parsed}`);
+  }
+  const instances = parsed as never[];
+
+  // A small LIMIT keeps first-run smoke tests cheap and fast; omit for the full set.
+  const limit = Number(process.env['LIMIT'] ?? 0);
+  const sampled = limit > 0 ? instances.slice(0, limit) : instances;
+
   const embedding = createEmbeddingFromEnv(process.env);
   const llm = createLlmFromEnv(process.env);
   const threshold = Number(process.env['ABSTAIN_THRESHOLD'] ?? 0.5);
@@ -24,18 +36,28 @@ async function main(): Promise<void> {
   // deterministic, so repeated runs add cost without variance. Set RUNS>1 only
   // when sampling variance is deliberately introduced.
   const runs = Number(process.env['RUNS'] ?? 1);
-  const { report, markdown } = await runNaturalLanguageBenchmark(
-    instances as never,
-    embedding,
-    llm,
-    { abstainThreshold: threshold, runs },
+
+  console.log(
+    `Running benchmark on ${sampled.length} instance(s) ` +
+      `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, abstainThreshold=${threshold})...`,
   );
+
+  const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
+    abstainThreshold: threshold,
+    runs,
+  });
   writeFileSync('benchmark-report.md', markdown);
   writeFileSync('benchmark-report.json', JSON.stringify(report, null, 2));
   console.log(markdown);
 }
 
 main().catch((err) => {
-  console.error(err);
+  const message = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
+  console.error(message);
+  try {
+    writeFileSync('benchmark-error.log', message);
+  } catch {
+    // Ignore write errors; the console output is the primary diagnostic.
+  }
   process.exit(1);
 });

@@ -57,13 +57,16 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           ABSTAIN_THRESHOLD: '0.5'
           RUNS: '1'
+          LIMIT: '10'
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Upload benchmark report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: longmemeval-s-report
           path: |
             packages/cortex-eval/benchmark-report.md
             packages/cortex-eval/benchmark-report.json
+            packages/cortex-eval/benchmark-error.log
           retention-days: 30
