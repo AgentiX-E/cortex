@@ -1,0 +1,35 @@
+{
+  "name": "@agentix-e/cortex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cortex — a value-driven cognitive memory layer for AI agents, for Node.js and the browser",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgentiX-E/cortex.git"
+  },
+  "license": "MIT",
+  "author": "Lambertyan",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --check '**/*.ts'",
+    "format:fix": "prettier --write '**/*.ts'",
+    "clean": "pnpm -r clean",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm format"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

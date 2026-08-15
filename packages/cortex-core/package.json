@@ -1,0 +1,35 @@
+{
+  "name": "@agentix-e/cortex-core",
+  "version": "0.1.0",
+  "description": "cortex-core — value-driven cognitive memory contracts and pure algorithms (zero I/O, Node + browser)",
+  "license": "MIT",
+  "author": "Lambertyan",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo coverage"
+  },
+  "dependencies": {
+    "ml-matrix": "^6.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
+    "fast-check": "^3.23.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  }
+}
