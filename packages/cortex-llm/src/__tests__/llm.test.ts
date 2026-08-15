@@ -143,6 +143,50 @@ describe('OpenAICompatibleLLM (real local server)', () => {
   });
 });
 
+describe('OpenAIEmbedding request body', () => {
+  it('sends the dimensions parameter for variable-dimension models', async () => {
+    let captured: Record<string, unknown> | null = null;
+    const fetchFn = async (_url: string, init: { body?: string }) => {
+      captured = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+      return new Response(JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://example.invalid',
+      apiKey: 'k',
+      model: 'embedding-3',
+      dimensions: 1024,
+      fetchFn: fetchFn as never,
+    });
+    await emb.embed(['hello']);
+    expect(captured!['model']).toBe('embedding-3');
+    expect(captured!['dimensions']).toBe(1024);
+    expect(captured!['input']).toEqual(['hello']);
+  });
+
+  it('omits the dimensions parameter when it is not positive', async () => {
+    let captured: Record<string, unknown> | null = null;
+    const fetchFn = async (_url: string, init: { body?: string }) => {
+      captured = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+      return new Response(JSON.stringify({ data: [{ embedding: [1] }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://example.invalid',
+      apiKey: 'k',
+      model: 'embedding-2',
+      dimensions: 0,
+      fetchFn: fetchFn as never,
+    });
+    await emb.embed(['hello']);
+    expect('dimensions' in captured!).toBe(false);
+  });
+});
+
 describe('TransformersEmbedding', () => {
   it('returns the configured dimension', () => {
     const emb = new TransformersEmbedding({ model: 'm', dimensions: 7 });

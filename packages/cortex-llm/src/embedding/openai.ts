@@ -25,13 +25,19 @@ export class OpenAIEmbedding implements EmbeddingModel {
 
   async embed(texts: string[]): Promise<Float64Array[]> {
     const fetchFn = this.options.fetchFn ?? fetch;
+    const body: Record<string, unknown> = { model: this.options.model, input: texts };
+    // Variable-dimension models (e.g. Zhipu embedding-3) require an explicit
+    // `dimensions` parameter; omitting it yields 400 Bad Request.
+    if (this.options.dimensions > 0) {
+      body['dimensions'] = this.options.dimensions;
+    }
     const res = await fetchFn(`${this.options.baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.options.apiKey}`,
       },
-      body: JSON.stringify({ model: this.options.model, input: texts }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       throw new Error(`Embedding request failed: ${res.status} ${res.statusText}`);
