@@ -157,6 +157,23 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(embedCalls).toBe(2);
   });
 
+  it('batches multiple turns into a single embedding request', async () => {
+    clearEmbeddingCache();
+    let embedCallCount = 0;
+    const counting: EmbeddingModel = {
+      dimension: () => 64,
+      embed: async (texts) => {
+        embedCallCount++;
+        return texts.map(() => new Float64Array(64));
+      },
+    };
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
+    await system.answer('What is X?', ['turn A', 'turn B', 'turn C']);
+    // One batched ingest for the three turns plus one query embedding.
+    expect(embedCallCount).toBe(2);
+  });
+
   it('clearEmbeddingCache invalidates the shared cache', async () => {
     clearEmbeddingCache();
     let embedCalls = 0;

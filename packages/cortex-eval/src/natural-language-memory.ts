@@ -32,6 +32,8 @@ export type NaturalLanguageMemorySystemOptions = {
 
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
 const DEFAULT_TEMPERATURE = 0;
+/** Zhipu embedding-3 accepts at most 64 inputs per request. */
+const EMBEDDING_BATCH_SIZE = 64;
 
 /** Shared cache of embedding vectors keyed by source text. */
 const embeddingCache = new Map<string, Float64Array>();
@@ -41,15 +43,40 @@ export function clearEmbeddingCache(): void {
   embeddingCache.clear();
 }
 
-async function embedCached(embedding: EmbeddingModel, text: string): Promise<Float64Array> {
-  const cached = embeddingCache.get(text);
-  if (cached) {
-    return cached;
+/**
+ * Embed many texts in bounded batches, reusing cached vectors and persisting new
+ * ones. Batching avoids one round-trip per turn, which is the dominant cost for
+ * LongMemEval-scale haystacks (hundreds of turns per question).
+ */
+async function embedManyCached(
+  embedding: EmbeddingModel,
+  texts: string[],
+): Promise<Float64Array[]> {
+  const result = new Array<Float64Array>(texts.length);
+  const missing: number[] = [];
+  for (let i = 0; i < texts.length; i++) {
+    const cached = embeddingCache.get(texts[i]!);
+    if (cached) {
+      result[i] = cached;
+    } else {
+      missing.push(i);
+    }
   }
-  const [vec] = await embedding.embed([text]);
-  const vector = vec ?? new Float64Array(0);
-  embeddingCache.set(text, vector);
-  return vector;
+  for (let start = 0; start < missing.length; start += EMBEDDING_BATCH_SIZE) {
+    const chunk = missing.slice(start, start + EMBEDDING_BATCH_SIZE);
+    const vectors = await embedding.embed(chunk.map((i) => texts[i]!));
+    for (let j = 0; j < chunk.length; j++) {
+      const idx = chunk[j]!;
+      const vector = vectors[j] ?? new Float64Array(0);
+      embeddingCache.set(texts[idx]!, vector);
+      result[idx] = vector;
+    }
+  }
+  return result;
+}
+
+async function embedCached(embedding: EmbeddingModel, text: string): Promise<Float64Array> {
+  return (await embedManyCached(embedding, [text]))[0]!;
 }
 
 export class NaturalLanguageMemorySystem implements MemorySystem {
@@ -94,13 +121,21 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
   }
 
   private async ingest(context: string[]): Promise<void> {
+    const pending: string[] = [];
     for (const turn of context) {
       const id = `t-${hashText(turn)}`;
-      if (this.turns.has(id)) {
-        continue;
+      if (!this.turns.has(id)) {
+        pending.push(turn);
       }
-      const vec = await embedCached(this.options.embedding, turn);
-      await this.index.add(id, vec);
+    }
+    if (pending.length === 0) {
+      return;
+    }
+    const vectors = await embedManyCached(this.options.embedding, pending);
+    for (let i = 0; i < pending.length; i++) {
+      const turn = pending[i]!;
+      const id = `t-${hashText(turn)}`;
+      await this.index.add(id, vectors[i]!);
       this.turns.set(id, turn);
     }
   }
