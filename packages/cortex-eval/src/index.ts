@@ -78,6 +78,8 @@ export {
   buildQaPrompt,
   parseQaAnswer,
   type NaturalLanguageMemorySystemOptions,
+  type AbstainReason,
+  type DecisionTrace,
 } from './natural-language-memory.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {

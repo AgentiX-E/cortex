@@ -14,6 +14,15 @@ import { retrieveTopK } from './retrieval.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
+export type AbstainReason = 'empty' | 'threshold' | 'llm' | 'answered';
+
+export type DecisionTrace = {
+  question: string;
+  top1Score: number;
+  abstained: boolean;
+  reason: AbstainReason;
+};
+
 export type NaturalLanguageMemorySystemOptions = {
   embedding: EmbeddingModel;
   llm: LLM;
@@ -27,6 +36,8 @@ export type NaturalLanguageMemorySystemOptions = {
   enableAbstention?: boolean;
   /** LLM sampling temperature; default 0 for deterministic evaluation. */
   temperature?: number;
+  /** Optional callback for per-question decision tracing (diagnostic). */
+  onDecision?: (trace: DecisionTrace) => void;
 };
 
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
@@ -44,8 +55,14 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
   async answer(question: string, context: string[]): Promise<Answer> {
     const topK = this.options.topK ?? 5;
     const hits = await retrieveTopK(this.options.embedding, question, context, topK);
+    const trace = (top1Score: number, abstained: boolean, reason: AbstainReason): void => {
+      this.options.onDecision?.({ question, top1Score, abstained, reason });
+    };
+
     if (hits.length === 0) {
-      return this.options.enableAbstention === false ? 'unknown' : null;
+      const answer = this.options.enableAbstention === false ? 'unknown' : null;
+      trace(0, answer === null, 'empty');
+      return answer;
     }
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (
@@ -53,6 +70,7 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
       this.options.abstainThreshold != null &&
       hits[0]!.score < this.options.abstainThreshold
     ) {
+      trace(hits[0]!.score, true, 'threshold');
       return null;
     }
 
@@ -62,9 +80,15 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
     const parsed = parseQaAnswer(raw, this.options.abstainToken);
-    if (parsed === null && !abstentionEnabled) {
-      return 'unknown';
+    if (parsed === null) {
+      if (!abstentionEnabled) {
+        trace(hits[0]!.score, false, 'answered');
+        return 'unknown';
+      }
+      trace(hits[0]!.score, true, 'llm');
+      return null;
     }
+    trace(hits[0]!.score, false, 'answered');
     return parsed;
   }
 }

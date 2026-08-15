@@ -5,6 +5,7 @@ import {
   buildQaPrompt,
   parseQaAnswer,
   clearEmbeddingCache,
+  type DecisionTrace,
 } from '../natural-language-memory.js';
 import { HashEmbedding } from '../embedding.js';
 
@@ -211,5 +212,64 @@ describe('NaturalLanguageMemorySystem', () => {
     // are re-embedded after the cache is cleared.
     await makeSystem().answer('What is X?', ['turn A']);
     expect(embedCalls).toBe(4);
+  });
+
+  it('traces the abstain reason via onDecision', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      abstainThreshold: 0.99,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is X?', ['turn A']);
+    expect(traces).toHaveLength(1);
+    expect(traces[0]!.abstained).toBe(true);
+    expect(traces[0]!.reason).toBe('threshold');
+  });
+
+  it('traces the llm abstain reason when the LLM returns UNANSWERABLE', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm = scriptedLlm(() => 'UNANSWERABLE');
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is X?', ['turn A']);
+    expect(traces).toHaveLength(1);
+    expect(traces[0]!.abstained).toBe(true);
+    expect(traces[0]!.reason).toBe('llm');
+  });
+
+  it('traces the answered reason when the LLM produces an answer', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is X?', ['turn A']);
+    expect(traces[0]!.abstained).toBe(false);
+    expect(traces[0]!.reason).toBe('answered');
+  });
+
+  it('traces the empty reason for empty context', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is X?', []);
+    expect(traces[0]!.abstained).toBe(true);
+    expect(traces[0]!.reason).toBe('empty');
   });
 });

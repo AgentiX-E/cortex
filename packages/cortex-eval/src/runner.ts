@@ -9,6 +9,7 @@ import { EmbeddingMemorySystem } from './embedding-memory.js';
 import { NaturalLanguageMemorySystem } from './natural-language-memory.js';
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
+import type { DecisionTrace } from './natural-language-memory.js';
 import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
 
 export type BenchmarkRunnerOptions = {
@@ -18,6 +19,8 @@ export type BenchmarkRunnerOptions = {
   runs?: number;
   /** Optional answer judge; defaults to an LLM judge over the same LLM. */
   judge?: AnswerJudge;
+  /** Optional callback for per-question decision tracing (diagnostic). */
+  onDecision?: (trace: DecisionTrace) => void;
 };
 
 export async function runEmbeddingBenchmark(
@@ -59,6 +62,7 @@ export async function runNaturalLanguageBenchmark(
     embedding,
     llm,
     abstainThreshold: threshold,
+    ...(options.onDecision ? { onDecision: options.onDecision } : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);

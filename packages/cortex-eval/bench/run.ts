@@ -62,12 +62,27 @@ async function main(): Promise<void> {
   console.log('=== Retrieval diagnostics ===');
   console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));
 
+  // Trace per-question decisions so threshold- and LLM-driven abstentions can be
+  // separated instead of being conflated into a single abstention rate.
+  const decisions: unknown[] = [];
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
     runs,
+    onDecision: (trace) => decisions.push(trace),
   });
+  const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
+  for (const d of decisions) {
+    const reason = (d as { reason: string }).reason;
+    reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
+  }
+  console.log('=== Decision reasons (feature system) ===');
+  console.log(JSON.stringify(reasonCounts));
+
   writeFileSync('benchmark-report.md', markdown);
-  writeFileSync('benchmark-report.json', JSON.stringify(report, null, 2));
+  writeFileSync(
+    'benchmark-report.json',
+    JSON.stringify({ ...report, decisionReasons: reasonCounts }, null, 2),
+  );
   console.log(markdown);
 }
 
