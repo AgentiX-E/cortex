@@ -1,0 +1,81 @@
+import { describe, it, expect } from 'vitest';
+import {
+  loadLongMemEval,
+  toCapability,
+  flattenSessions,
+  type LongMemEvalInstance,
+} from '../datasets/longmemeval-loader.js';
+
+describe('toCapability', () => {
+  it('maps abstention questions', () => {
+    expect(toCapability('q1_abs', 'single-session-user')).toBe('ABS');
+  });
+
+  it('maps single-session types to IE', () => {
+    expect(toCapability('q1', 'single-session-user')).toBe('IE');
+    expect(toCapability('q2', 'single-session-assistant')).toBe('IE');
+    expect(toCapability('q3', 'single-session-preference')).toBe('IE');
+  });
+
+  it('maps temporal-reasoning to TR', () => {
+    expect(toCapability('q4', 'temporal-reasoning')).toBe('TR');
+  });
+
+  it('maps knowledge-update to KU', () => {
+    expect(toCapability('q5', 'knowledge-update')).toBe('KU');
+  });
+
+  it('maps multi-session to MR', () => {
+    expect(toCapability('q6', 'multi-session')).toBe('MR');
+  });
+
+  it('falls back to IE for unknown types', () => {
+    expect(toCapability('q7', 'unknown-type')).toBe('IE');
+  });
+});
+
+describe('flattenSessions', () => {
+  it('flattens turns into role-prefixed strings', () => {
+    const flat = flattenSessions([
+      [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi' },
+      ],
+    ]);
+    expect(flat).toEqual(['user: hello', 'assistant: hi']);
+  });
+
+  it('returns empty for undefined sessions', () => {
+    expect(flattenSessions(undefined)).toEqual([]);
+  });
+});
+
+describe('loadLongMemEval', () => {
+  const sample: LongMemEvalInstance[] = [
+    {
+      question_id: 'q1',
+      question_type: 'single-session-user',
+      question: 'What is the color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'My color is blue.' }]],
+    },
+    {
+      question_id: 'q2_abs',
+      question_type: 'single-session-user',
+      question: 'What is the food?',
+      answer: 'none',
+      haystack_sessions: [[{ role: 'user', content: 'My color is blue.' }]],
+    },
+  ];
+
+  it('loads instances into a benchmark dataset', () => {
+    const ds = loadLongMemEval(sample);
+    expect(ds.name).toBe('longmemeval');
+    expect(ds.questions).toHaveLength(2);
+    expect(ds.questions[0]!.capability).toBe('IE');
+    expect(ds.questions[0]!.expected).toBe('blue');
+    expect(ds.questions[1]!.capability).toBe('ABS');
+    expect(ds.questions[1]!.expected).toBeNull();
+    expect(ds.questions[0]!.context).toEqual(['user: My color is blue.']);
+  });
+});
