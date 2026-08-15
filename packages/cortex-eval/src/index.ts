@@ -58,10 +58,19 @@ export {
 export { sampleInstances } from './datasets/sampling.js';
 export {
   computeRetrievalDiagnostics,
+  checkEmbeddingDeterminism,
   flattenTurns,
   percentile,
   type RetrievalDiagnostic,
 } from './retrieval-diagnostics.js';
+export {
+  retrieveTopK,
+  embedManyCached,
+  embedOneCached,
+  clearEmbeddingCache,
+  hashText,
+  type RetrievalHit,
+} from './retrieval.js';
 export { FactMemorySystem, type FactMemorySystemOptions } from './fact-memory.js';
 export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embedding-memory.js';
 export {

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { computeRetrievalDiagnostics, flattenTurns, percentile } from '../retrieval-diagnostics.js';
+import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import {
+  computeRetrievalDiagnostics,
+  checkEmbeddingDeterminism,
+  flattenTurns,
+  percentile,
+} from '../retrieval-diagnostics.js';
 import { HashEmbedding } from '../embedding.js';
 import type { LongMemEvalInstance, LongMemEvalTurn } from '../datasets/longmemeval-loader.js';
 
@@ -31,6 +37,28 @@ describe('percentile', () => {
 
   it('returns 0 for an empty list', () => {
     expect(percentile([], 0.25)).toBe(0);
+  });
+});
+
+describe('checkEmbeddingDeterminism', () => {
+  it('returns zero for a deterministic embedding', async () => {
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 2, 3, 4])),
+    };
+    expect(await checkEmbeddingDeterminism(embedding, ['a', 'b'])).toBe(0);
+  });
+
+  it('returns the maximum drift for a non-deterministic embedding', async () => {
+    let flip = false;
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => {
+        flip = !flip;
+        return texts.map(() => new Float64Array(flip ? [1, 2] : [3, 4]));
+      },
+    };
+    expect(await checkEmbeddingDeterminism(embedding, ['a'])).toBe(2);
   });
 });
 

@@ -1,16 +1,15 @@
 /**
  * Retrieval-quality diagnostics for LongMemEval-style datasets. Before tuning an
  * abstention threshold by hand, measure the retrieval signal: for each answerable
- * question, embed the query and every turn, retrieve the top-k, and record
- * whether a turn marked `has_answer` was actually recalled. The resulting score
- * distributions and recall@k make threshold selection a data-driven decision.
+ * question, retrieve the top-k turns via the shared retrieval implementation and
+ * record whether a turn marked `has_answer` was actually recalled. The resulting
+ * score distributions and recall@k make threshold selection a data-driven
+ * decision. A separate determinism probe verifies the embedding provider returns
+ * stable vectors across repeated calls.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
-import { cosineSimilarity } from '@agentix-e/cortex-core';
 import type { LongMemEvalInstance, LongMemEvalTurn } from './datasets/longmemeval-loader.js';
-
-/** Zhipu embedding-3 accepts at most 64 inputs per request. */
-const EMBED_BATCH = 64;
+import { retrieveTopK } from './retrieval.js';
 
 export type RetrievalDiagnostic = {
   totalQuestions: number;
@@ -47,13 +46,27 @@ export function percentile(sorted: readonly number[], p: number): number {
   return sorted[idx]!;
 }
 
-async function embedAll(embedding: EmbeddingModel, texts: string[]): Promise<Float64Array[]> {
-  const result: Float64Array[] = [];
-  for (let start = 0; start < texts.length; start += EMBED_BATCH) {
-    const chunk = texts.slice(start, start + EMBED_BATCH);
-    result.push(...(await embedding.embed(chunk)));
+/**
+ * Probe the embedding provider for determinism: embed each text twice and return
+ * the maximum absolute element-wise difference across both runs. A value near
+ * zero means the provider is deterministic; a large value means repeated calls
+ * drift, which would confound retrieval scores.
+ */
+export async function checkEmbeddingDeterminism(
+  embedding: EmbeddingModel,
+  texts: string[],
+): Promise<number> {
+  let maxDiff = 0;
+  for (const text of texts) {
+    const [v1] = await embedding.embed([text]);
+    const [v2] = await embedding.embed([text]);
+    const a = v1 ?? new Float64Array(0);
+    const b = v2 ?? new Float64Array(0);
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      maxDiff = Math.max(maxDiff, Math.abs(a[i]! - b[i]!));
+    }
   }
-  return result;
+  return maxDiff;
 }
 
 /** Compute retrieval recall and score distributions over answerable questions. */
@@ -70,32 +83,23 @@ export async function computeRetrievalDiagnostics(
 
   for (const inst of instances) {
     const turns = flattenTurns(inst.haystack_sessions);
-    const answerIndices: number[] = [];
-    for (let i = 0; i < turns.length; i++) {
-      if (turns[i]!.has_answer === true) {
-        answerIndices.push(i);
+    const answerTexts = new Set<string>();
+    for (const turn of turns) {
+      if (turn.has_answer === true) {
+        answerTexts.add(`${turn.role}: ${turn.content}`);
       }
     }
     // Abstention questions have no evidence turn, so they carry no retrieval signal.
-    if (answerIndices.length === 0) {
+    if (answerTexts.size === 0) {
       continue;
     }
     answerable++;
 
-    const [queryVec] = await embedding.embed([inst.question]);
-    const turnTexts = turns.map((t) => `${t.role}: ${t.content}`);
-    const turnVecs = await embedAll(embedding, turnTexts);
-
-    const scored = turns.map((_, i) => ({
-      idx: i,
-      score: cosineSimilarity(queryVec!, turnVecs[i]!),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-
-    const top1Idx = scored[0]!.idx;
-    const topKIdxs = scored.slice(0, topK).map((s) => s.idx);
-    const hitAt1 = answerIndices.includes(top1Idx);
-    const hitAtK = topKIdxs.some((idx) => answerIndices.includes(idx));
+    const context = turns.map((t) => `${t.role}: ${t.content}`);
+    const hits = await retrieveTopK(embedding, inst.question, context, topK);
+    const top1 = hits[0];
+    const hitAt1 = top1 !== undefined && answerTexts.has(top1.text);
+    const hitAtK = hits.some((h) => answerTexts.has(h.text));
     if (hitAt1) {
       recallAt1++;
     }
@@ -104,9 +108,10 @@ export async function computeRetrievalDiagnostics(
     }
 
     if (hitAt1) {
-      hitScores.push(scored[0]!.score);
+      hitScores.push(top1!.score);
     } else {
-      missScores.push(scored[0]!.score);
+      // Answerable questions have non-empty context, so top-1 is always defined.
+      missScores.push(top1!.score);
     }
   }
 

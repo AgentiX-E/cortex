@@ -9,6 +9,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
+  checkEmbeddingDeterminism,
   computeRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
@@ -45,12 +46,21 @@ async function main(): Promise<void> {
       `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, abstainThreshold=${threshold})...`,
   );
 
+  // Verify the embedding provider is deterministic before trusting retrieval
+  // scores; a large drift would confound the threshold comparison.
+  const determinism = await checkEmbeddingDeterminism(embedding, [
+    'determinism probe alpha',
+    'determinism probe beta',
+  ]);
+  console.log(`Embedding determinism (max abs diff): ${determinism}`);
+
   // Measure the retrieval signal before grading so the abstention threshold can
   // be set from data instead of guessed.
   const diagnostics = await computeRetrievalDiagnostics(sampled as never, embedding, 5);
-  writeFileSync('benchmark-diagnostics.json', JSON.stringify(diagnostics, null, 2));
+  const diagnosticsWithDeterminism = { ...diagnostics, embeddingMaxAbsDiff: determinism };
+  writeFileSync('benchmark-diagnostics.json', JSON.stringify(diagnosticsWithDeterminism, null, 2));
   console.log('=== Retrieval diagnostics ===');
-  console.log(JSON.stringify(diagnostics, null, 2));
+  console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));
 
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
