@@ -152,8 +152,8 @@ describe('NaturalLanguageMemorySystem', () => {
     const system = new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
     await system.answer('What is X?', ['turn A']);
     await system.answer('What is X?', ['turn A']);
-    // The turn is indexed once; the second call skips both re-embedding and
-    // re-indexing because the turn id is already present.
+    // The shared embedding cache serves the second call, so the turn and query
+    // are each embedded exactly once despite two independent per-question indexes.
     expect(embedCalls).toBe(2);
   });
 
@@ -172,6 +172,24 @@ describe('NaturalLanguageMemorySystem', () => {
     await system.answer('What is X?', ['turn A', 'turn B', 'turn C']);
     // One batched ingest for the three turns plus one query embedding.
     expect(embedCallCount).toBe(2);
+  });
+
+  it('isolates retrieval per question (no cross-question leakage)', async () => {
+    clearEmbeddingCache();
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm, topK: 1 });
+    await system.answer('What is zzzalpha?', ['zzzalpha fact']);
+    await system.answer('What is zzzbeta?', ['zzzbeta fact']);
+    // The second question's retrieved context must not contain the first question's turn.
+    expect(prompts[1]).toContain('zzzbeta fact');
+    expect(prompts[1]).not.toContain('zzzalpha fact');
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {

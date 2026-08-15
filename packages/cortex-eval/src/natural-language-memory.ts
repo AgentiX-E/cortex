@@ -82,8 +82,6 @@ async function embedCached(embedding: EmbeddingModel, text: string): Promise<Flo
 export class NaturalLanguageMemorySystem implements MemorySystem {
   readonly name: string;
   private readonly options: NaturalLanguageMemorySystemOptions;
-  private readonly index = new BruteForceVectorIndex();
-  private readonly turns = new Map<string, string>();
 
   constructor(name: string, options: NaturalLanguageMemorySystemOptions) {
     this.name = name;
@@ -91,11 +89,32 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
   }
 
   async answer(question: string, context: string[]): Promise<Answer> {
-    await this.ingest(context);
+    // Build a per-question index: LongMemEval questions have independent
+    // haystacks, so retrieval state must not leak across questions. Embedding
+    // vectors are still shared through the module-level cache.
+    const index = new BruteForceVectorIndex();
+    const turns = new Map<string, string>();
+
+    const pending: string[] = [];
+    for (const turn of context) {
+      const id = `t-${hashText(turn)}`;
+      if (!turns.has(id)) {
+        pending.push(turn);
+      }
+    }
+    if (pending.length > 0) {
+      const vectors = await embedManyCached(this.options.embedding, pending);
+      for (let i = 0; i < pending.length; i++) {
+        const turn = pending[i]!;
+        const id = `t-${hashText(turn)}`;
+        await index.add(id, vectors[i]!);
+        turns.set(id, turn);
+      }
+    }
 
     const queryVec = await embedCached(this.options.embedding, question);
     const topK = this.options.topK ?? 5;
-    const hits = await this.index.search(queryVec, topK);
+    const hits = await index.search(queryVec, topK);
     if (hits.length === 0) {
       return this.options.enableAbstention === false ? 'unknown' : null;
     }
@@ -108,7 +127,7 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
       return null;
     }
 
-    const retrieved = hits.map((h) => this.turns.get(h.id) ?? '').join('\n');
+    const retrieved = hits.map((h) => turns.get(h.id) ?? '').join('\n');
     const prompt = buildQaPrompt(question, retrieved, this.options.abstainToken);
     const raw = await this.options.llm.complete(prompt, {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
@@ -118,26 +137,6 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
       return 'unknown';
     }
     return parsed;
-  }
-
-  private async ingest(context: string[]): Promise<void> {
-    const pending: string[] = [];
-    for (const turn of context) {
-      const id = `t-${hashText(turn)}`;
-      if (!this.turns.has(id)) {
-        pending.push(turn);
-      }
-    }
-    if (pending.length === 0) {
-      return;
-    }
-    const vectors = await embedManyCached(this.options.embedding, pending);
-    for (let i = 0; i < pending.length; i++) {
-      const turn = pending[i]!;
-      const id = `t-${hashText(turn)}`;
-      await this.index.add(id, vectors[i]!);
-      this.turns.set(id, turn);
-    }
   }
 }
 
