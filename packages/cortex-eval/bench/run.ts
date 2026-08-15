@@ -9,6 +9,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
+  computeRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
   runNaturalLanguageBenchmark,
@@ -43,6 +44,13 @@ async function main(): Promise<void> {
     `Running benchmark on ${sampled.length} instance(s) ` +
       `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, abstainThreshold=${threshold})...`,
   );
+
+  // Measure the retrieval signal before grading so the abstention threshold can
+  // be set from data instead of guessed.
+  const diagnostics = await computeRetrievalDiagnostics(sampled as never, embedding, 5);
+  writeFileSync('benchmark-diagnostics.json', JSON.stringify(diagnostics, null, 2));
+  console.log('=== Retrieval diagnostics ===');
+  console.log(JSON.stringify(diagnostics, null, 2));
 
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,

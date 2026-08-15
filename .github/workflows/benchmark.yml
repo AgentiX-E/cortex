@@ -68,5 +68,6 @@ jobs:
           path: |
             packages/cortex-eval/benchmark-report.md
             packages/cortex-eval/benchmark-report.json
+            packages/cortex-eval/benchmark-diagnostics.json
             packages/cortex-eval/benchmark-error.log
           retention-days: 30

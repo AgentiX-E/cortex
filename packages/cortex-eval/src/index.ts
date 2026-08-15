@@ -56,6 +56,12 @@ export {
   type LongMemEvalInstance,
 } from './datasets/longmemeval-loader.js';
 export { sampleInstances } from './datasets/sampling.js';
+export {
+  computeRetrievalDiagnostics,
+  flattenTurns,
+  percentile,
+  type RetrievalDiagnostic,
+} from './retrieval-diagnostics.js';
 export { FactMemorySystem, type FactMemorySystemOptions } from './fact-memory.js';
 export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embedding-memory.js';
 export {
