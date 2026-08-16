@@ -21,6 +21,12 @@ export type DecisionTrace = {
   top1Score: number;
   abstained: boolean;
   reason: AbstainReason;
+  /** Context actually injected into the LLM (empty when abstained pre-LLM). */
+  retrieved?: string;
+  /** Raw LLM response (undefined when the LLM was not called). */
+  llmRaw?: string;
+  /** Final answer returned to the benchmark. */
+  answer?: Answer;
 };
 
 export type NaturalLanguageMemorySystemOptions = {
@@ -114,7 +120,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (retrieved === '') {
       const answer = abstentionEnabled ? null : 'unknown';
-      this.trace(question, 0, answer === null, 'empty');
+      this.emitTrace(question, 0, answer === null, 'empty', { retrieved, answer });
       return answer;
     }
     if (
@@ -122,7 +128,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       this.options.abstainThreshold != null &&
       top1Score < this.options.abstainThreshold
     ) {
-      this.trace(question, top1Score, true, 'threshold');
+      this.emitTrace(question, top1Score, true, 'threshold', { retrieved, answer: null });
       return null;
     }
 
@@ -133,23 +139,32 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const parsed = parseQaAnswer(raw, this.options.abstainToken);
     if (parsed === null) {
       if (!abstentionEnabled) {
-        this.trace(question, top1Score, false, 'answered');
+        this.emitTrace(question, top1Score, false, 'answered', {
+          retrieved,
+          llmRaw: raw,
+          answer: 'unknown',
+        });
         return 'unknown';
       }
-      this.trace(question, top1Score, true, 'llm');
+      this.emitTrace(question, top1Score, true, 'llm', { retrieved, llmRaw: raw, answer: null });
       return null;
     }
-    this.trace(question, top1Score, false, 'answered');
+    this.emitTrace(question, top1Score, false, 'answered', {
+      retrieved,
+      llmRaw: raw,
+      answer: parsed,
+    });
     return parsed;
   }
 
-  private trace(
+  private emitTrace(
     question: string,
     top1Score: number,
     abstained: boolean,
     reason: AbstainReason,
+    extra: { retrieved?: string; llmRaw?: string; answer?: Answer },
   ): void {
-    this.options.onDecision?.({ question, top1Score, abstained, reason });
+    this.options.onDecision?.({ question, top1Score, abstained, reason, ...extra });
   }
 }
 

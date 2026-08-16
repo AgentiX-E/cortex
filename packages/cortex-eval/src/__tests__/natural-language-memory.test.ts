@@ -273,6 +273,37 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(traces[0]!.reason).toBe('empty');
   });
 
+  it('records retrieved evidence, raw LLM output, and answer in the trace', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is the favorite color?', ['My favorite color is blue.']);
+    expect(traces[0]!.retrieved).toContain('favorite color is blue');
+    expect(traces[0]!.llmRaw).toBe('blue');
+    expect(traces[0]!.answer).toBe('blue');
+  });
+
+  it('leaves raw LLM output undefined when the LLM is not called', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm = scriptedLlm(() => 'blue');
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      abstainThreshold: 0.99,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is X?', ['turn A']);
+    expect(traces[0]!.reason).toBe('threshold');
+    expect(traces[0]!.llmRaw).toBeUndefined();
+    expect(traces[0]!.answer).toBeNull();
+  });
+
   describe('answerSessions', () => {
     it('retrieves whole sessions and answers from the aggregated evidence', async () => {
       const llm = scriptedLlm((prompt) =>

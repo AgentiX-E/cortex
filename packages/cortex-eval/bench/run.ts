@@ -16,6 +16,9 @@ import {
   createLlmFromEnv,
   runNaturalLanguageBenchmark,
   sampleInstances,
+  toCapability,
+  type DecisionTrace,
+  type LongMemEvalInstance,
 } from '@agentix-e/cortex-eval';
 
 async function main(): Promise<void> {
@@ -74,8 +77,10 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));
 
   // Trace per-question decisions so threshold- and LLM-driven abstentions can be
-  // separated instead of being conflated into a single abstention rate.
-  const decisions: unknown[] = [];
+  // separated instead of being conflated into a single abstention rate. The
+  // trace also carries the retrieved evidence and raw LLM output for MR
+  // failure analysis.
+  const decisions: DecisionTrace[] = [];
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
     runs,
@@ -83,11 +88,30 @@ async function main(): Promise<void> {
   });
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
   for (const d of decisions) {
-    const reason = (d as { reason: string }).reason;
-    reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
+    reasonCounts[d.reason] = (reasonCounts[d.reason] ?? 0) + 1;
   }
   console.log('=== Decision reasons (feature system) ===');
   console.log(JSON.stringify(reasonCounts));
+
+  // Dump per-question diagnostics for multi-session (MR) questions so the exact
+  // LLM failure mode (missing evidence / wrong format / multi-hop) is visible in
+  // the uploaded artifact rather than guessed from aggregate scores.
+  const mrDiagnostics = (sampled as LongMemEvalInstance[])
+    .filter((inst) => toCapability(inst.question_id, inst.question_type) === 'MR')
+    .map((inst) => {
+      const trace = [...decisions].reverse().find((d) => d.question === inst.question);
+      return {
+        question_id: inst.question_id,
+        question: inst.question,
+        ground_truth: inst.answer,
+        answer_session_ids: inst.answer_session_ids ?? [],
+        haystack_dates: inst.haystack_dates ?? [],
+        decision: trace ?? null,
+      };
+    });
+  writeFileSync('benchmark-mr-diagnostics.json', JSON.stringify(mrDiagnostics, null, 2));
+  console.log('=== MR diagnostics ===');
+  console.log(JSON.stringify(mrDiagnostics, null, 2));
 
   writeFileSync('benchmark-report.md', markdown);
   writeFileSync(
