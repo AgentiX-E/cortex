@@ -296,7 +296,7 @@ export function buildAggregationQaPrompt(
     '  - Treat an "exchange" as TWO items: return the old item AND pick up the replacement.',
     '  - Count the same event mentioned in multiple sessions only once.',
     '',
-    'Step 2 — Count the enumerated items and write the final answer.',
+    'Step 2 — Count the items you enumerated in Step 1 (do NOT re-filter or exclude any of them) and write the final answer.',
     'End your response with a single line in the exact form:',
     '  Answer: <final count or short answer>',
     '',

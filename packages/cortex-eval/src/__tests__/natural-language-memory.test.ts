@@ -46,6 +46,11 @@ describe('buildAggregationQaPrompt', () => {
     expect(prompt).toContain('session evidence');
   });
 
+  it('tells the model not to re-filter the enumerated items in step 2', () => {
+    const prompt = buildAggregationQaPrompt('How many X?', 'ctx');
+    expect(prompt).toContain('do NOT re-filter or exclude any of them');
+  });
+
   it('forbids substituting a related verb for the exact action', () => {
     const prompt = buildAggregationQaPrompt('How many projects have I led?', 'ctx');
     expect(prompt).toContain('Do NOT substitute or infer a different verb');
