@@ -20,11 +20,19 @@ const routingDataset: BenchmarkDataset = {
       expected: 'b',
       context: ['flat b'],
     },
+    {
+      id: 'q3',
+      capability: 'IE',
+      question: 'Q3',
+      expected: 'c',
+      context: ['flat c'],
+      sessions: [['session c']],
+    },
   ],
 };
 
 describe('runBenchmark session routing', () => {
-  it('routes session-grouped questions to answerSessions and falls back otherwise', async () => {
+  it('routes only multi-session questions to answerSessions', async () => {
     const calls: string[] = [];
     const system: SessionAwareMemorySystem = {
       name: 's',
@@ -38,8 +46,10 @@ describe('runBenchmark session routing', () => {
       },
     };
     const answers = await runBenchmark(routingDataset, system);
-    expect(answers).toEqual(['y', 'x']);
-    expect(calls).toEqual(['sessions:1', 'answer']);
+    expect(answers).toEqual(['y', 'x', 'x']);
+    // q1 (MR) uses answerSessions; q2 (IE, no sessions) and q3 (IE with
+    // sessions) both use the flattened answer path.
+    expect(calls).toEqual(['sessions:1', 'answer', 'answer']);
   });
 
   it('uses flat context for non-session-aware systems', async () => {
@@ -52,7 +62,7 @@ describe('runBenchmark session routing', () => {
       },
     };
     const answers = await runBenchmark(routingDataset, system);
-    expect(answers).toEqual(['x', 'x']);
-    expect(calls).toEqual(['context:1', 'context:1']);
+    expect(answers).toEqual(['x', 'x', 'x']);
+    expect(calls).toEqual(['context:1', 'context:1', 'context:1']);
   });
 });

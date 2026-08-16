@@ -22,9 +22,11 @@ export async function runBenchmark(
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
   for (const q of dataset.questions) {
-    // Session-aware systems receive session-grouped context when available;
-    // otherwise they fall back to the flattened context contract.
-    if (isSessionAware(system) && q.sessions && q.sessions.length > 0) {
+    // Only multi-session questions benefit from session-boundary-aware answering:
+    // their answer is aggregated across sessions. Single-session capabilities
+    // (IE/KU/TR/ABS) keep the turn-level path because coarse session filtering
+    // can drop the answer session and regress those questions.
+    if (isSessionAware(system) && q.capability === 'MR' && q.sessions && q.sessions.length > 0) {
       answers.push(await system.answerSessions(q.question, q.sessions));
     } else {
       answers.push(await system.answer(q.question, q.context));
