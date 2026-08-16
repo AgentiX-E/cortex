@@ -133,6 +133,42 @@ export function exactMatchScorer(question: Question, answer: Answer): boolean {
   return exactMatch(answer, question.expected);
 }
 
+/** Extract the first integer or decimal number from an answer string. */
+export function extractLeadingNumber(s: string): number | undefined {
+  const match = s.trim().match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : undefined;
+}
+
+/** True when the question asks for a count or quantity. */
+export function isCountingQuestion(question: string): boolean {
+  return /\b(how many|how much|number of|count|total)\b/i.test(question);
+}
+
+/**
+ * Deterministic numeric equivalence for counting questions. An LLM judge is
+ * unreliable for numeric answers ("5 distinct projects" vs "2") because it
+ * focuses on semantics rather than the leading number, so counting questions
+ * with numeric answers are compared arithmetically before delegating to the
+ * judge. Returns `undefined` when the question is not a counting question or
+ * either answer lacks a leading number, signalling the caller to fall back to
+ * the LLM judge.
+ */
+export function numericAnswerVerdict(
+  question: string,
+  predicted: string,
+  expected: string,
+): boolean | undefined {
+  if (!isCountingQuestion(question)) {
+    return undefined;
+  }
+  const p = extractLeadingNumber(predicted);
+  const e = extractLeadingNumber(expected);
+  if (p === undefined || e === undefined) {
+    return undefined;
+  }
+  return p === e;
+}
+
 /** LLM-judge scorer: abstentions are graded structurally, others via the judge. */
 export function judgeScorer(judge: AnswerJudge): AnswerScorer {
   return async (question, answer) => {
@@ -141,6 +177,12 @@ export function judgeScorer(judge: AnswerJudge): AnswerScorer {
     }
     if (answer === null) {
       return false;
+    }
+    // Counting questions are graded numerically first, so a verbose answer
+    // cannot trick the LLM judge into accepting "5" for "2".
+    const numeric = numericAnswerVerdict(question.question, answer, question.expected);
+    if (numeric !== undefined) {
+      return numeric;
     }
     return judge(question.question, answer, question.expected);
   };

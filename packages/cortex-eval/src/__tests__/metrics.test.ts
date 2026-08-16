@@ -8,6 +8,9 @@ import {
   mcnemarPValue,
   exactMatchScorer,
   judgeScorer,
+  extractLeadingNumber,
+  isCountingQuestion,
+  numericAnswerVerdict,
   aggregate,
   cohensD,
   tTestPValue,
@@ -117,6 +120,55 @@ describe('answer scorers', () => {
     const scorer = judgeScorer(judge);
     expect(await scorer(q('IE', 'blue'), 'blue')).toBe(true);
     expect(await scorer(q('IE', 'blue'), 'red')).toBe(false);
+  });
+
+  it('judgeScorer grades counting questions numerically without the judge', async () => {
+    let judgeCalled = false;
+    const judge: AnswerJudge = async () => {
+      judgeCalled = true;
+      return true;
+    };
+    const scorer = judgeScorer(judge);
+    const counting = (expected: string) => {
+      const question = {
+        id: 'c',
+        capability: 'MR' as const,
+        question: 'How many items?',
+        expected,
+        context: [],
+      };
+      return question;
+    };
+    // "3" vs "3" is accepted, and "5" vs "2" is rejected, both without the judge.
+    expect(await scorer(counting('3'), '3')).toBe(true);
+    expect(await scorer(counting('2'), '5')).toBe(false);
+    expect(judgeCalled).toBe(false);
+  });
+});
+
+describe('numeric answer helpers', () => {
+  it('extracts the leading number', () => {
+    expect(extractLeadingNumber('5 distinct projects')).toBe(5);
+    expect(extractLeadingNumber('  3.5 ')).toBe(3.5);
+    expect(extractLeadingNumber('two')).toBeUndefined();
+  });
+
+  it('detects counting questions', () => {
+    expect(isCountingQuestion('How many items do I need?')).toBe(true);
+    expect(isCountingQuestion('What is the number of items?')).toBe(true);
+    expect(isCountingQuestion('What color is it?')).toBe(false);
+  });
+
+  it('returns a numeric verdict for counting questions with numeric answers', () => {
+    expect(numericAnswerVerdict('How many?', '3', '3')).toBe(true);
+    expect(numericAnswerVerdict('How many?', '5', '2')).toBe(false);
+    expect(numericAnswerVerdict('How many?', '5 distinct projects', '2')).toBe(false);
+  });
+
+  it('returns undefined when numeric comparison does not apply', () => {
+    expect(numericAnswerVerdict('What color?', 'blue', 'blue')).toBeUndefined();
+    expect(numericAnswerVerdict('How many?', 'blue', '2')).toBeUndefined();
+    expect(numericAnswerVerdict('How many?', '2', 'two')).toBeUndefined();
   });
 });
 

@@ -4,7 +4,6 @@
  */
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
 import { runAblation, type AblationOptions } from './ablation.js';
-import { evaluateWithScorer } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 
 export type AblationReport = {
@@ -41,14 +40,15 @@ export async function runAblationReport(
   if (options.abstentionAware !== undefined) {
     ablationOptions.abstentionAware = options.abstentionAware;
   }
+  // The ablation already evaluates both systems once; reuse those metrics so the
+  // report never re-evaluates them (which would double LLM cost and introduce
+  // non-determinism between the ablation table and the per-capability section).
   const ablation = await runAblation(dataset, baseline, feature, ablationOptions);
-  const baselineMetrics = await evaluateWithScorer(dataset, baseline, scorer);
-  const featureMetrics = await evaluateWithScorer(dataset, feature, scorer);
   return {
     dataset: dataset.name,
     questionCount: dataset.questions.length,
-    baseline: { name: baseline.name, metrics: baselineMetrics },
-    feature: { name: feature.name, metrics: featureMetrics },
+    baseline: { name: baseline.name, metrics: ablation.baselineMetrics },
+    feature: { name: feature.name, metrics: ablation.featureMetrics },
     ablation,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
   };

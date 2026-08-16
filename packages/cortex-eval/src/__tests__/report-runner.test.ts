@@ -9,6 +9,7 @@ import { HashEmbedding } from '../embedding.js';
 import { FactMemorySystem } from '../fact-memory.js';
 import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';
 import type { LongMemEvalInstance } from '../datasets/longmemeval-loader.js';
+import type { MemorySystem } from '../types.js';
 
 const instances: LongMemEvalInstance[] = [
   {
@@ -50,6 +51,31 @@ describe('runAblationReport', () => {
     });
     expect(report.ablation.delta).toBeGreaterThan(0);
     expect(report.ablation.mcnemarSignificant).toBe(false);
+  });
+
+  it('evaluates each system exactly once (no double evaluation)', async () => {
+    const ds = createLongMemEvalMini();
+    let baselineCalls = 0;
+    let featureCalls = 0;
+    const baseline: MemorySystem = {
+      name: 'counting-baseline',
+      answer: async () => {
+        baselineCalls++;
+        return 'blue';
+      },
+    };
+    const feature: MemorySystem = {
+      name: 'counting-feature',
+      answer: async () => {
+        featureCalls++;
+        return 'blue';
+      },
+    };
+    await runAblationReport(ds, baseline, feature, { runs: 1 });
+    // Each question is answered once per system, not once in the ablation and
+    // again for the report metrics.
+    expect(baselineCalls).toBe(ds.questions.length);
+    expect(featureCalls).toBe(ds.questions.length);
   });
 });
 

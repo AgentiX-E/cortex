@@ -119,5 +119,7 @@ export async function runAblation(
       baselineCorrectFeatureIncorrect,
       baselineIncorrectFeatureCorrect,
     },
+    baselineMetrics: baseFirst.metrics,
+    featureMetrics: featFirst.metrics,
   };
 }

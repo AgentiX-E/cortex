@@ -271,9 +271,11 @@ export function buildQaPrompt(
 /**
  * Build a multi-session aggregation prompt. Unlike single-session extraction,
  * this forces the LLM to enumerate every matching item with its exact action
- * BEFORE counting, which prevents the common failure mode of collapsing an
- * "exchange" (return the old item AND pick up the replacement) into a single
- * item. The enumeration is parsed back into a final answer by
+ * BEFORE counting. The enumeration serves two purposes: it prevents the common
+ * failure mode of collapsing an "exchange" (return the old item AND pick up the
+ * replacement) into a single item, and it makes verb precision explicit so the
+ * model does not substitute a related-but-different action (e.g. "participated"
+ * for "led"). The enumeration is parsed back into a final answer by
  * `parseAggregationAnswer`.
  */
 export function buildAggregationQaPrompt(
@@ -289,7 +291,9 @@ export function buildAggregationQaPrompt(
     'Work in two steps.',
     '',
     "Step 1 — Enumerate every item matching the question's EXACT action, one per line:",
-    '  - <item> | <action: pick up | return | ...> | <session date>',
+    '  - <item> | <exact action verb from the question> | <session date>',
+    '  - Include an item ONLY when the context explicitly states that exact action (or a direct grammatical form of it).',
+    '  - Do NOT substitute or infer a different verb: for example "participated", "presented", "planned", and "working on" are NOT "led" or "leading".',
     '  - Treat an "exchange" as TWO items: return the old item AND pick up the replacement.',
     '  - Count the same event mentioned in multiple sessions only once.',
     '',

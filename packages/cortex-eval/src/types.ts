@@ -101,4 +101,8 @@ export type AblationResult = {
     /** Questions the baseline got wrong and the feature got right. */
     baselineIncorrectFeatureCorrect: number;
   };
+  /** Metrics from the first evaluation of the baseline system. */
+  baselineMetrics: Metrics;
+  /** Metrics from the first evaluation of the feature system. */
+  featureMetrics: Metrics;
 };
