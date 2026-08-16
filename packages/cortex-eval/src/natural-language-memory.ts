@@ -292,7 +292,6 @@ export function buildAggregationQaPrompt(
     '',
     "Step 1 — Enumerate every item matching the question's EXACT action, one per line:",
     '  - <item> | <exact action verb from the question> | <session date>',
-    '  - Include an item ONLY when the context explicitly states that exact action (or a direct grammatical form of it).',
     '  - Do NOT substitute or infer a different verb: for example "participated", "presented", "planned", and "working on" are NOT "led" or "leading".',
     '  - Treat an "exchange" as TWO items: return the old item AND pick up the replacement.',
     '  - Count the same event mentioned in multiple sessions only once.',
