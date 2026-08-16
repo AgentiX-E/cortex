@@ -285,7 +285,7 @@ export function buildAggregationQaPrompt(
     'Counting rules:',
     '- Identify the EXACT action the question asks about (e.g. "led" vs "participated"; "pick up" vs "return").',
     '- Count ONLY items matching that exact action.',
-    '- A return and a pick-up are TWO separate items, even for the same kind of item (an exchange counts as TWO).',
+    '- "exchange" means returning the old item AND picking up a replacement: count BOTH the return and the pick-up (TWO items total).',
     '- The same event mentioned multiple times counts only once.',
     '',
     'Identify EVERY relevant item, deduplicate, and compute the final answer.',

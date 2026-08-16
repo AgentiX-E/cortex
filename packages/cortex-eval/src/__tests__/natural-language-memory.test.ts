@@ -39,7 +39,7 @@ describe('buildAggregationQaPrompt', () => {
   it('instructs the LLM to combine evidence across sessions and deduplicate', () => {
     const prompt = buildAggregationQaPrompt('How many X?', 'session evidence');
     expect(prompt).toContain('MULTIPLE conversation sessions');
-    expect(prompt).toContain('counts as TWO');
+    expect(prompt).toContain('TWO items total');
     expect(prompt).toContain('Question: How many X?');
     expect(prompt).toContain('session evidence');
   });
@@ -497,7 +497,7 @@ describe('NaturalLanguageMemorySystem', () => {
       // whole-session evidence and the deduplication instruction.
       const aggregationPrompt = prompts[prompts.length - 1]!;
       expect(aggregationPrompt).toContain('favorite color is blue');
-      expect(aggregationPrompt).toContain('counts as TWO');
+      expect(aggregationPrompt).toContain('TWO items total');
     });
 
     it('never abstains on empty sessions when abstention is disabled', async () => {
