@@ -140,8 +140,13 @@ describe('parseAggregationAnswer', () => {
     expect(parseAggregationAnswer(raw)).toBe('3');
   });
 
-  it('accepts a Count label', () => {
-    expect(parseAggregationAnswer('item one\nitem two\nCount: 2')).toBe('2');
+  it('accepts a final answer label', () => {
+    expect(parseAggregationAnswer('item one\nitem two\nFinal answer: 2')).toBe('2');
+  });
+
+  it('ignores an intermediate Count line in favour of the final Answer', () => {
+    const raw = 'Count: 5 distinct projects led or currently leading.\n\nAnswer: 5';
+    expect(parseAggregationAnswer(raw)).toBe('5');
   });
 
   it('falls back to the last non-empty line', () => {

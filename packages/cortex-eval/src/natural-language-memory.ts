@@ -395,9 +395,13 @@ export function parseQaAnswer(raw: string, abstainToken: string = DEFAULT_ABSTAI
 
 /**
  * Parse the aggregation response produced by `buildAggregationQaPrompt`. It
- * prefers an explicit `Answer:` / `Count:` label, then falls back to the last
- * non-empty line. If the last line is an evidence bullet (the model never wrote
- * a final answer), it abstains rather than mistaking an item for the answer.
+ * prefers the explicit `Answer:` label (the prompt's canonical final answer),
+ * then falls back to the last non-empty line. The intermediate `Count:` line is
+ * deliberately ignored because the prompt can emit it as part of the step-2
+ * narration before the final `Answer:` line; matching `Count:` first would leak
+ * the verbose narration into the extracted answer. If the last line is an
+ * evidence bullet (the model never wrote a final answer), it abstains rather
+ * than mistaking an item for the answer.
  */
 export function parseAggregationAnswer(
   raw: string,
@@ -407,7 +411,7 @@ export function parseAggregationAnswer(
   if (trimmed === '' || trimmed.toUpperCase() === abstainToken.toUpperCase()) {
     return null;
   }
-  const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|count|final answer)\s*:\s*(.+?)\s*$/im);
+  const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|final answer)\s*:\s*(.+?)\s*$/im);
   if (labelled) {
     return stripWrappingQuotes(labelled[1]!.trim());
   }
