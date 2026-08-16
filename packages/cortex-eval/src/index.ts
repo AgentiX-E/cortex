@@ -85,6 +85,8 @@ export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embe
 export {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
+  buildAggregationQaPrompt,
+  truncateText,
   parseQaAnswer,
   type NaturalLanguageMemorySystemOptions,
   type AbstainReason,

@@ -34,10 +34,12 @@ export type NaturalLanguageMemorySystemOptions = {
   llm: LLM;
   /** Number of retrieved turns passed to the LLM (default 15). */
   topK?: number;
-  /** Number of retrieved sessions passed to the LLM in session mode (default 5). */
+  /** Number of retrieved sessions passed to the LLM in session mode (default 10). */
   sessionTopK?: number;
   /** Number of neighbouring turns to include around each turn hit (default 1). */
   contextRadius?: number;
+  /** Per-session character budget when aggregating sessions (default 2000). */
+  maxSessionChars?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
   abstainThreshold?: number;
   /** The LLM's abstention marker (default UNANSWERABLE). */
@@ -53,8 +55,11 @@ export type NaturalLanguageMemorySystemOptions = {
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
 const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_TOP_K = 15;
-const DEFAULT_SESSION_TOP_K = 5;
+const DEFAULT_SESSION_TOP_K = 10;
 const DEFAULT_CONTEXT_RADIUS = 1;
+const DEFAULT_MAX_SESSION_CHARS = 2000;
+
+type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
 
 export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   readonly name: string;
@@ -77,14 +82,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
             hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return this.respond(question, hits[0]?.score ?? 0, retrieved);
+    return this.respondWith(question, hits[0]?.score ?? 0, retrieved, buildQaPrompt);
   }
 
   /**
-   * Hierarchical (coarse-to-fine) answering: select relevant sessions, then focus
-   * on relevant turns within them. The LLM receives focused turn windows rather
-   * than whole sessions, which keeps single-session evidence clean while still
-   * aggregating evidence spread across sessions for multi-session questions.
+   * Multi-session aggregation answering: retrieve whole sessions and inject their
+   * (bounded) content so the LLM can aggregate evidence spread across sessions.
+   * Whole sessions are injected instead of turn-level focusing because aggregation
+   * evidence is dispersed and turn-level focusing compresses it away.
    */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
     const sessionTopK = this.options.sessionTopK ?? DEFAULT_SESSION_TOP_K;
@@ -94,29 +99,24 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessions,
       sessionTopK,
     );
-
-    // Pool the turns of the selected sessions, then run turn-level retrieval
-    // within that subset so the answer turn is surfaced without the noise of
-    // every turn in a long session. Every hit maps to a non-empty session, so
-    // the session lookup is always defined.
-    const pooledTurns = sessionHits.flatMap((h) => sessions[h.sessionIndex]!);
-    const topK = this.options.topK ?? DEFAULT_TOP_K;
-    const turnHits = await retrieveTopK(this.options.embedding, question, pooledTurns, topK);
-    const retrieved =
-      turnHits.length === 0
-        ? ''
-        : expandContextWindow(
-            pooledTurns,
-            turnHits.map((h) => h.index),
-            this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
-          );
-
-    // Threshold on the turn-level score keeps abstention semantics consistent
-    // with the flattened `answer` path.
-    return this.respond(question, turnHits[0]?.score ?? 0, retrieved);
+    const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
+    const retrieved = sessionHits.map((h) => truncateText(h.text, maxChars)).join('\n\n');
+    // Threshold on the top-1 session score keeps abstention consistent across
+    // the turn-level and session-level paths.
+    return this.respondWith(
+      question,
+      sessionHits[0]?.score ?? 0,
+      retrieved,
+      buildAggregationQaPrompt,
+    );
   }
 
-  private async respond(question: string, top1Score: number, retrieved: string): Promise<Answer> {
+  private async respondWith(
+    question: string,
+    top1Score: number,
+    retrieved: string,
+    promptBuilder: PromptBuilder,
+  ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (retrieved === '') {
       const answer = abstentionEnabled ? null : 'unknown';
@@ -132,7 +132,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       return null;
     }
 
-    const prompt = buildQaPrompt(question, retrieved, this.options.abstainToken);
+    const prompt = promptBuilder(question, retrieved, this.options.abstainToken);
     const raw = await this.options.llm.complete(prompt, {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
@@ -187,6 +187,41 @@ export function buildQaPrompt(
     '',
     'Answer:',
   ].join('\n');
+}
+
+/**
+ * Build a multi-session aggregation prompt. Unlike single-session extraction,
+ * this instructs the LLM to combine evidence across sessions, deduplicate, and
+ * compute a final count/list, which is what LongMemEval multi-session questions
+ * require.
+ */
+export function buildAggregationQaPrompt(
+  question: string,
+  context: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  return [
+    'You are answering a question based on MULTIPLE conversation sessions.',
+    'The answer may require combining information spread across several sessions.',
+    'Read ALL context carefully. Identify EVERY relevant item or event mentioned, remove duplicates, and compute the final answer.',
+    'Answer with ONLY the final answer (a number, name, or short list), with no explanation.',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ].join('\n');
+}
+
+/** Bound a session's length so aggregation injects signal without overflowing. */
+export function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, maxChars)}\n[truncated]`;
 }
 
 /** Parse the LLM response; returns null when it abstains or returns empty. */

@@ -3,6 +3,8 @@ import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
+  buildAggregationQaPrompt,
+  truncateText,
   parseQaAnswer,
   clearEmbeddingCache,
   type DecisionTrace,
@@ -27,6 +29,31 @@ describe('buildQaPrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildAggregationQaPrompt', () => {
+  it('instructs the LLM to combine evidence across sessions and deduplicate', () => {
+    const prompt = buildAggregationQaPrompt('How many X?', 'session evidence');
+    expect(prompt).toContain('MULTIPLE conversation sessions');
+    expect(prompt).toContain('remove duplicates');
+    expect(prompt).toContain('Question: How many X?');
+    expect(prompt).toContain('session evidence');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildAggregationQaPrompt('Q?', 'ctx', 'NONE');
+    expect(prompt).toContain('NONE');
+  });
+});
+
+describe('truncateText', () => {
+  it('returns the text unchanged when within the budget', () => {
+    expect(truncateText('short', 10)).toBe('short');
+  });
+
+  it('truncates and marks oversized text', () => {
+    expect(truncateText('abcdef', 3)).toBe('abc\n[truncated]');
   });
 });
 
@@ -341,7 +368,7 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(await system.answerSessions('What is X?', [[], []])).toBeNull();
     });
 
-    it('focuses on relevant turns within selected sessions (coarse-to-fine)', async () => {
+    it('injects whole sessions and aggregates evidence for multi-session answers', async () => {
       const prompts: string[] = [];
       const llm: LLM = {
         complete: async (prompt) => {
@@ -360,8 +387,11 @@ describe('NaturalLanguageMemorySystem', () => {
         ['another unrelated session'],
       ]);
       expect(answer).toBe('blue');
-      // The answer turn is surfaced despite being surrounded by unrelated turns.
+      // Whole-session injection means the answer turn is present alongside its
+      // surrounding turns, and the aggregation prompt guides the LLM to combine
+      // evidence across sessions.
       expect(prompts[0]).toContain('favorite color is blue');
+      expect(prompts[0]).toContain('remove duplicates');
     });
 
     it('never abstains on empty sessions when abstention is disabled', async () => {
