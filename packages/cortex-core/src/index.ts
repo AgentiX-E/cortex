@@ -28,6 +28,9 @@ export {
   welchTTest,
   studentTCdf,
   logGamma,
+  binomialCdf,
+  wilsonScoreInterval,
+  type ConfidenceInterval,
 } from './math/stats.js';
 export { sinkhorn, squaredEuclideanCostMatrix, type SinkhornResult } from './math/ot.js';
 export {

@@ -4,6 +4,8 @@ import {
   exactMatch,
   computeMetrics,
   computeMetricsAsync,
+  scoreEvaluation,
+  mcnemarPValue,
   exactMatchScorer,
   judgeScorer,
   aggregate,
@@ -132,6 +134,49 @@ describe('computeMetricsAsync', () => {
     const m = await computeMetricsAsync(ds, ['a', null], exactMatchScorer);
     expect(m.accuracy).toBe(1);
     expect(m.abstentionCorrectRate).toBeCloseTo(1, 12);
+  });
+});
+
+describe('scoreEvaluation', () => {
+  it('returns per-question correctness aligned with the dataset', async () => {
+    const ds: BenchmarkDataset = {
+      name: 'd',
+      questions: [q('IE', 'a'), q('IE', 'b'), q('ABS', null)],
+    };
+    const scored = await scoreEvaluation(ds, ['a', 'wrong', null], exactMatchScorer);
+    expect(scored.correct).toEqual([true, false, true]);
+    expect(scored.metrics.correct).toBe(2);
+  });
+
+  it('handles an empty dataset', async () => {
+    const scored = await scoreEvaluation({ name: 'd', questions: [] }, [], exactMatchScorer);
+    expect(scored.correct).toEqual([]);
+    expect(scored.metrics.accuracy).toBe(0);
+    expect(scored.metrics.abstentionCorrectRate).toBe(0);
+  });
+});
+
+describe('mcnemarPValue', () => {
+  it('matches hand-computed exact binomial tails', () => {
+    // One discordant pair cannot distinguish the systems: p = 2 * 0.5 = 1.
+    expect(mcnemarPValue(0, 1)).toBeCloseTo(1, 12);
+    // Five discordant pairs all favouring the feature: p = 2 * 0.5^5 = 0.0625.
+    expect(mcnemarPValue(0, 5)).toBeCloseTo(0.0625, 12);
+    // Ten discordant pairs all favouring the feature: p = 2 * 0.5^10.
+    expect(mcnemarPValue(0, 10)).toBeCloseTo(0.001953125, 12);
+  });
+
+  it('returns 1 when the systems agree on every question', () => {
+    expect(mcnemarPValue(0, 0)).toBe(1);
+  });
+
+  it('is symmetric in its arguments', () => {
+    expect(mcnemarPValue(2, 5)).toBeCloseTo(mcnemarPValue(5, 2), 12);
+  });
+
+  it('rejects non-integer or negative counts', () => {
+    expect(() => mcnemarPValue(-1, 0)).toThrow();
+    expect(() => mcnemarPValue(0.5, 1)).toThrow();
   });
 });
 

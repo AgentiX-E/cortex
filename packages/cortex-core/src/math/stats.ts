@@ -95,6 +95,64 @@ export function studentTCdf(t: number, df: number): number {
   return t >= 0 ? 1 - 0.5 * ib : 0.5 * ib;
 }
 
+/**
+ * Lower-tail binomial cumulative distribution function P(X ≤ k) for
+ * X ~ Binomial(n, p). The binomial CDF is the regularized incomplete beta
+ * I_{1-p}(n-k, k+1); clamping keeps the identity exact at the boundaries where
+ * the continued-fraction representation would otherwise lose precision.
+ */
+export function binomialCdf(k: number, n: number, p: number): number {
+  if (n <= 0) {
+    return k >= 0 ? 1 : 0;
+  }
+  if (k < 0) {
+    return 0;
+  }
+  if (k >= n) {
+    return 1;
+  }
+  if (p <= 0) {
+    return 1;
+  }
+  if (p >= 1) {
+    return 0;
+  }
+  return regularizedIncompleteBeta(n - k, k + 1, 1 - p);
+}
+
+/** A two-sided confidence interval for a proportion. */
+export type ConfidenceInterval = {
+  lower: number;
+  upper: number;
+};
+
+/**
+ * Wilson score interval for a binomial proportion. Unlike the normal
+ * approximation, it never produces an interval outside [0, 1] and is accurate
+ * for small samples and extreme proportions. `z` is the quantile of the standard
+ * normal distribution (1.96 for a 95% interval).
+ */
+export function wilsonScoreInterval(correct: number, total: number, z = 1.96): ConfidenceInterval {
+  if (total <= 0) {
+    return { lower: 0, upper: 1 };
+  }
+  if (correct < 0 || correct > total) {
+    throw new Error(`correct count ${correct} out of range for total ${total}`);
+  }
+  const n = total;
+  const p = correct / n;
+  const z2 = z * z;
+  const denom = 1 + z2 / n;
+  const center = (p + z2 / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / denom;
+  // Floating-point noise can push an extreme proportion a hair outside [0, 1];
+  // clamp so the returned interval is always a valid probability range.
+  return {
+    lower: Math.max(0, center - margin),
+    upper: Math.min(1, center + margin),
+  };
+}
+
 function regularizedIncompleteBeta(a: number, b: number, x: number): number {
   if (x <= 0) {
     return 0;

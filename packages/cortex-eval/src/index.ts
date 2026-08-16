@@ -16,14 +16,22 @@ export {
   exactMatch,
   computeMetrics,
   computeMetricsAsync,
+  scoreEvaluation,
+  mcnemarPValue,
   exactMatchScorer,
   judgeScorer,
   aggregate,
   cohensD,
   tTestPValue,
   type AnswerScorer,
+  type ScoredEvaluation,
 } from './metrics.js';
-export { runBenchmark, evaluate, evaluateWithScorer } from './benchmark.js';
+export {
+  runBenchmark,
+  evaluate,
+  evaluateWithScorer,
+  evaluateWithScorerDetailed,
+} from './benchmark.js';
 export {
   createLlmJudge,
   buildJudgePrompt,
@@ -92,6 +100,7 @@ export {
   truncateText,
   truncateSession,
   parseQaAnswer,
+  parseAggregationAnswer,
   type NaturalLanguageMemorySystemOptions,
   type AbstainReason,
   type DecisionTrace,

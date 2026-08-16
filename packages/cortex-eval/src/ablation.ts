@@ -1,10 +1,25 @@
 /**
- * Ablation framework: run a baseline system and a feature system multiple times,
- * aggregate their accuracies, and compare with a Welch t-test + Cohen's d.
+ * Ablation framework: run a baseline system and a feature system, aggregate their
+ * accuracies, and compare them with scientifically valid tests.
+ *
+ * - Wilson 95% intervals quantify finite-sample accuracy uncertainty.
+ * - The exact paired McNemar test compares the two systems on the SAME questions,
+ *   which is valid even for a single deterministic evaluation.
+ * - A Welch t-test + Cohen's d is reported only when repeated runs actually
+ *   introduce sampling variance (stochastic temperature), because a t-test over
+ *   identical deterministic repeats is undefined.
  */
+import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
 import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
-import { evaluateWithScorer } from './benchmark.js';
-import { aggregate, cohensD, exactMatchScorer, tTestPValue, type AnswerScorer } from './metrics.js';
+import { evaluateWithScorer, evaluateWithScorerDetailed } from './benchmark.js';
+import {
+  aggregate,
+  cohensD,
+  exactMatchScorer,
+  mcnemarPValue,
+  tTestPValue,
+  type AnswerScorer,
+} from './metrics.js';
 
 export type AblationOptions = {
   /** Number of independent runs per system (default 3). */
@@ -32,30 +47,61 @@ export async function runAblation(
     throw new Error(`ablation requires at least 1 run, got ${runs}`);
   }
 
-  const baselineScores: number[] = [];
-  const featureScores: number[] = [];
-  for (let i = 0; i < runs; i++) {
+  // The first evaluation captures per-question correctness so the paired McNemar
+  // test and the Wilson intervals can be computed. These are question-level
+  // statistics that a run-level t-test cannot provide for a deterministic system.
+  const baseFirst = await evaluateWithScorerDetailed(dataset, baseline, scorer);
+  const featFirst = await evaluateWithScorerDetailed(dataset, feature, scorer);
+
+  let baselineCorrectFeatureIncorrect = 0;
+  let baselineIncorrectFeatureCorrect = 0;
+  for (let i = 0; i < baseFirst.correct.length; i++) {
+    const baseCorrect = baseFirst.correct[i]!;
+    const featCorrect = featFirst.correct[i]!;
+    if (baseCorrect && !featCorrect) {
+      baselineCorrectFeatureIncorrect++;
+    } else if (!baseCorrect && featCorrect) {
+      baselineIncorrectFeatureCorrect++;
+    }
+  }
+
+  const baselineConfidence = wilsonScoreInterval(
+    baseFirst.metrics.correct,
+    baseFirst.metrics.total,
+  );
+  const featureConfidence = wilsonScoreInterval(featFirst.metrics.correct, featFirst.metrics.total);
+  const mcnemar = mcnemarPValue(baselineCorrectFeatureIncorrect, baselineIncorrectFeatureCorrect);
+  const mcnemarSignificant = mcnemar < alpha;
+
+  const toScore = (m: typeof baseFirst.metrics): number =>
+    abstentionAware ? m.abstentionAwareAccuracy : m.accuracy;
+
+  const baselineScores = [toScore(baseFirst.metrics)];
+  const featureScores = [toScore(featFirst.metrics)];
+  for (let i = 1; i < runs; i++) {
     const b = await evaluateWithScorer(dataset, baseline, scorer);
     const f = await evaluateWithScorer(dataset, feature, scorer);
-    baselineScores.push(abstentionAware ? b.abstentionAwareAccuracy : b.accuracy);
-    featureScores.push(abstentionAware ? f.abstentionAwareAccuracy : f.accuracy);
+    baselineScores.push(toScore(b));
+    featureScores.push(toScore(f));
   }
 
   const baselineAggregate = aggregate(baselineScores);
   const featureAggregate = aggregate(featureScores);
   const delta = featureAggregate.avg - baselineAggregate.avg;
 
-  // A single deterministic run cannot estimate variance, so a t-test is not
-  // meaningful. Report a NaN p-value and let the renderer label it explicitly.
-  const pValue = runs < 2 ? Number.NaN : tTestPValue(baselineScores, featureScores);
-  const effectSize =
-    runs < 2
-      ? delta === 0
-        ? 0
-        : delta > 0
-          ? Infinity
-          : -Infinity
-      : cohensD(baselineScores, featureScores);
+  // A t-test over runs is only meaningful when the repeats carry real variance
+  // (stochastic temperature > 0). Identical deterministic repeats have zero
+  // variance, so the t-test is undefined and reported as NaN.
+  const hasVariance =
+    baselineScores.length >= 2 && (stddev(baselineScores) > 0 || stddev(featureScores) > 0);
+  const pValue = hasVariance ? tTestPValue(baselineScores, featureScores) : Number.NaN;
+  const effectSize = hasVariance
+    ? cohensD(baselineScores, featureScores)
+    : delta === 0
+      ? 0
+      : delta > 0
+        ? Infinity
+        : -Infinity;
 
   return {
     feature: feature.name,
@@ -63,7 +109,15 @@ export async function runAblation(
     featureAggregate,
     delta,
     pValue,
-    significant: runs >= 2 && pValue < alpha,
+    significant: hasVariance && pValue < alpha,
     effectSize,
+    baselineConfidence,
+    featureConfidence,
+    mcnemarPValue: mcnemar,
+    mcnemarSignificant,
+    discordant: {
+      baselineCorrectFeatureIncorrect,
+      baselineIncorrectFeatureCorrect,
+    },
   };
 }

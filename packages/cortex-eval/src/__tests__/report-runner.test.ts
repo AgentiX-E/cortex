@@ -49,7 +49,7 @@ describe('runAblationReport', () => {
       abstentionAware: false,
     });
     expect(report.ablation.delta).toBeGreaterThan(0);
-    expect(report.ablation.significant).toBe(true);
+    expect(report.ablation.mcnemarSignificant).toBe(false);
   });
 });
 
@@ -87,6 +87,33 @@ describe('formatAblationReport', () => {
       ablation: { ...base.ablation, effectSize: 0.42 },
     });
     expect(finite).toContain('0.420');
+  });
+
+  it('renders negative delta, McNemar significance, and a defined t-test', async () => {
+    const base = await runAblationReport(
+      createLongMemEvalMini(),
+      new FactMemorySystem('naive', { fallback: 'unknown' }),
+      new FactMemorySystem('abstain', { abstainThreshold: 0.3 }),
+      { runs: 3 },
+    );
+    const md = formatAblationReport({
+      ...base,
+      ablation: {
+        ...base.ablation,
+        delta: -0.25,
+        pValue: 0.001,
+        significant: true,
+        mcnemarPValue: 0.03125,
+        mcnemarSignificant: true,
+        discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 6 },
+      },
+    });
+    // A negative delta renders without a spurious "+" sign.
+    expect(md).toContain('-25.00%');
+    expect(md).toContain('significant: yes');
+    expect(md).toContain('1.000e-3');
+    expect(md).toContain('3.125e-2');
+    expect(md).toContain('baseline-wrong/feature-correct = 6');
   });
 });
 
@@ -154,14 +181,14 @@ describe('createLlmFromEnv', () => {
 });
 
 describe('formatAblationReport single deterministic run', () => {
-  it('labels the p-value as n/a when runs is 1', async () => {
+  it('labels the p-value as n/a when runs are deterministic', async () => {
     const ds = createLongMemEvalMini();
     const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
     const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
     const report = await runAblationReport(ds, baseline, feature, { runs: 1 });
     const md = formatAblationReport(report);
     expect(Number.isNaN(report.ablation.pValue)).toBe(true);
-    expect(md).toContain('n/a (single deterministic run)');
+    expect(md).toContain('n/a (deterministic)');
   });
 });
 
@@ -179,7 +206,7 @@ describe('runNaturalLanguageBenchmark', () => {
     });
     expect(report.questionCount).toBe(2);
     expect(markdown).toContain('Cortex Benchmark Report');
-    expect(markdown).toContain('n/a (single deterministic run)');
+    expect(markdown).toContain('n/a (deterministic)');
   });
 
   it('uses default threshold and runs when options are omitted', async () => {

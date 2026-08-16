@@ -1,5 +1,7 @@
 /* istanbul ignore file -- type-only declarations, no runtime code */
 
+import type { ConfidenceInterval } from '@agentix-e/cortex-core';
+
 /** Core types for the Cortex scientific evaluation harness. */
 
 /** LongMemEval-style capability tags. */
@@ -78,10 +80,25 @@ export type AblationResult = {
   featureAggregate: AggregateStats;
   /** Mean accuracy difference (feature − baseline). */
   delta: number;
-  /** Welch two-tailed p-value. */
+  /** Welch two-tailed p-value over stochastic runs; NaN when runs < 2. */
   pValue: number;
-  /** True when p < 0.05. */
+  /** True when the over-run t-test is significant at alpha. */
   significant: boolean;
-  /** Cohen's d effect size. */
+  /** Cohen's d effect size over stochastic runs. */
   effectSize: number;
+  /** Wilson 95% confidence interval for baseline accuracy. */
+  baselineConfidence: ConfidenceInterval;
+  /** Wilson 95% confidence interval for feature accuracy. */
+  featureConfidence: ConfidenceInterval;
+  /** Exact paired McNemar two-tailed p-value (paired over questions). */
+  mcnemarPValue: number;
+  /** True when the paired McNemar test is significant at alpha. */
+  mcnemarSignificant: boolean;
+  /** Discordant pairs feeding the McNemar test. */
+  discordant: {
+    /** Questions the baseline got right and the feature got wrong. */
+    baselineCorrectFeatureIncorrect: number;
+    /** Questions the baseline got wrong and the feature got right. */
+    baselineIncorrectFeatureCorrect: number;
+  };
 };

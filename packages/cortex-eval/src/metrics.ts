@@ -3,7 +3,7 @@
  * accuracy, per-capability breakdown, and run aggregation. All statistics reuse
  * the high-precision primitives from @agentix-e/cortex-core.
  */
-import { mean, variance, welchTTest } from '@agentix-e/cortex-core';
+import { binomialCdf, mean, variance, welchTTest } from '@agentix-e/cortex-core';
 import type {
   AggregateStats,
   Answer,
@@ -100,6 +100,34 @@ export function computeMetrics(dataset: BenchmarkDataset, answers: Answer[]): Me
 /** A scorer decides whether an answer is correct for a question. */
 export type AnswerScorer = (question: Question, answer: Answer) => Promise<boolean> | boolean;
 
+/** Evaluation output including per-question correctness for paired tests. */
+export type ScoredEvaluation = {
+  metrics: Metrics;
+  /** Correctness of each answer, aligned with `dataset.questions`. */
+  correct: boolean[];
+};
+
+/**
+ * Exact paired McNemar test. Given two systems evaluated on the SAME questions,
+ * `b` counts questions the baseline answered correctly but the feature answered
+ * incorrectly, and `c` counts the reverse. Under the null hypothesis the
+ * discordant pairs split evenly, so the two-tailed p-value is the exact binomial
+ * tail of Bin(b + c, 0.5) at min(b, c). Unlike a Welch t-test over repeated
+ * runs, this is meaningful for a single deterministic evaluation.
+ */
+export function mcnemarPValue(b: number, c: number): number {
+  if (!Number.isInteger(b) || !Number.isInteger(c) || b < 0 || c < 0) {
+    throw new Error(`discordant counts must be non-negative integers, got b=${b}, c=${c}`);
+  }
+  const n = b + c;
+  if (n === 0) {
+    // No discordant pairs: the systems agree on every question.
+    return 1;
+  }
+  const tail = binomialCdf(Math.min(b, c), n, 0.5);
+  return Math.min(1, 2 * tail);
+}
+
 /** Exact-match scorer (normalized string equality). */
 export function exactMatchScorer(question: Question, answer: Answer): boolean {
   return exactMatch(answer, question.expected);
@@ -124,6 +152,15 @@ export async function computeMetricsAsync(
   answers: Answer[],
   scorer: AnswerScorer,
 ): Promise<Metrics> {
+  return (await scoreEvaluation(dataset, answers, scorer)).metrics;
+}
+
+/** Compute metrics plus per-question correctness using an arbitrary scorer. */
+export async function scoreEvaluation(
+  dataset: BenchmarkDataset,
+  answers: Answer[],
+  scorer: AnswerScorer,
+): Promise<ScoredEvaluation> {
   if (dataset.questions.length !== answers.length) {
     throw new Error(
       `answer count mismatch: ${answers.length} answers for ${dataset.questions.length} questions`,
@@ -136,12 +173,14 @@ export async function computeMetricsAsync(
   let correct = 0;
   let abstained = 0;
   let abstentionCorrect = 0;
+  const correctPerQuestion: boolean[] = [];
 
   for (let i = 0; i < dataset.questions.length; i++) {
     const q = dataset.questions[i]!;
     const answer = answers[i]!;
     const isCorrect = await scorer(q, answer);
     const isAbstain = answer === null;
+    correctPerQuestion.push(isCorrect);
 
     if (isCorrect) {
       correct++;
@@ -171,15 +210,18 @@ export async function computeMetricsAsync(
   const total = dataset.questions.length;
   const accuracy = total === 0 ? 0 : correct / total;
   return {
-    accuracy,
-    abstentionRate: total === 0 ? 0 : abstained / total,
-    abstentionCorrectRate: abstained === 0 ? 0 : abstentionCorrect / abstained,
-    // A correct abstention (null==null) is graded as correct by the scorer, so
-    // abstention-aware accuracy equals accuracy.
-    abstentionAwareAccuracy: accuracy,
-    total,
-    correct,
-    perCapability,
+    metrics: {
+      accuracy,
+      abstentionRate: total === 0 ? 0 : abstained / total,
+      abstentionCorrectRate: abstained === 0 ? 0 : abstentionCorrect / abstained,
+      // A correct abstention (null==null) is graded as correct by the scorer, so
+      // abstention-aware accuracy equals accuracy.
+      abstentionAwareAccuracy: accuracy,
+      total,
+      correct,
+      perCapability,
+    },
+    correct: correctPerQuestion,
   };
 }
 

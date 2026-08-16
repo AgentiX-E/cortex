@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { runBenchmark, evaluate } from '../benchmark.js';
 import { runAblation } from '../ablation.js';
 import { FactMemorySystem } from '../fact-memory.js';
-import type { BenchmarkDataset, Question } from '../types.js';
+import type { BenchmarkDataset, MemorySystem, Question } from '../types.js';
 
 function makeDataset(): BenchmarkDataset {
   const q = (
@@ -82,7 +82,7 @@ describe('runAblation', () => {
     expect(result.effectSize).toBe(-Infinity);
   });
 
-  it('reports significant improvement when the feature abstains correctly', async () => {
+  it('reports the improvement with an exact paired McNemar test', async () => {
     const ds = makeDataset();
     // Baseline never abstains: for the ABS question it returns a wrong answer.
     const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
@@ -90,8 +90,15 @@ describe('runAblation', () => {
     const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
     const result = await runAblation(ds, baseline, feature, { runs: 3 });
     expect(result.delta).toBeGreaterThan(0);
-    expect(result.significant).toBe(true);
-    expect(result.effectSize).toBeGreaterThan(0);
+    // Deterministic repeats carry no variance, so the over-run t-test is n/a.
+    expect(result.significant).toBe(false);
+    expect(Number.isNaN(result.pValue)).toBe(true);
+    // Exactly one discordant pair (baseline wrong, feature right) is not enough
+    // for the paired McNemar test to reach significance on a three-question set.
+    expect(result.discordant.baselineCorrectFeatureIncorrect).toBe(0);
+    expect(result.discordant.baselineIncorrectFeatureCorrect).toBe(1);
+    expect(result.mcnemarPValue).toBeCloseTo(1, 12);
+    expect(result.mcnemarSignificant).toBe(false);
   });
 
   it('uses default options when none are provided', async () => {
@@ -100,7 +107,9 @@ describe('runAblation', () => {
     const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
     const result = await runAblation(ds, baseline, feature);
     expect(result.delta).toBeGreaterThan(0);
-    expect(result.significant).toBe(true);
+    expect(result.mcnemarSignificant).toBe(false);
+    expect(result.baselineConfidence.lower).toBeLessThanOrEqual(result.baselineConfidence.upper);
+    expect(result.featureConfidence.lower).toBeLessThanOrEqual(result.featureConfidence.upper);
   });
 
   it('supports comparing raw accuracy instead of abstention-aware accuracy', async () => {
@@ -113,5 +122,38 @@ describe('runAblation', () => {
     });
     expect(typeof result.delta).toBe('number');
     expect(typeof result.pValue).toBe('number');
+  });
+
+  it('reports a t-test only when stochastic runs introduce variance', async () => {
+    const ds: BenchmarkDataset = {
+      name: 'stochastic',
+      questions: [
+        {
+          id: 'q',
+          capability: 'KU',
+          question: 'Is the answer yes?',
+          expected: 'yes',
+          context: ['yes'],
+        },
+      ],
+    };
+    // The stochastic system alternates correct/wrong across runs, so its run
+    // scores have real variance; the deterministic baseline stays constant.
+    let flip = false;
+    const stochastic: MemorySystem = {
+      name: 'stochastic',
+      answer: async () => {
+        flip = !flip;
+        return flip ? 'yes' : 'no';
+      },
+    };
+    const deterministic: MemorySystem = {
+      name: 'deterministic',
+      answer: async () => 'no',
+    };
+    const result = await runAblation(ds, deterministic, stochastic, { runs: 3 });
+    // Real variance → the over-run Welch t-test is defined (non-NaN p-value).
+    expect(Number.isNaN(result.pValue)).toBe(false);
+    expect(Number.isFinite(result.effectSize)).toBe(true);
   });
 });

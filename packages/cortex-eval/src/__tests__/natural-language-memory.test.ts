@@ -9,6 +9,7 @@ import {
   truncateText,
   truncateSession,
   parseQaAnswer,
+  parseAggregationAnswer,
   clearEmbeddingCache,
   type DecisionTrace,
 } from '../natural-language-memory.js';
@@ -36,10 +37,11 @@ describe('buildQaPrompt', () => {
 });
 
 describe('buildAggregationQaPrompt', () => {
-  it('instructs the LLM to combine evidence across sessions and deduplicate', () => {
+  it('instructs the LLM to enumerate items before counting', () => {
     const prompt = buildAggregationQaPrompt('How many X?', 'session evidence');
     expect(prompt).toContain('MULTIPLE conversation sessions');
-    expect(prompt).toContain('TWO items total');
+    expect(prompt).toContain('Step 1 — Enumerate');
+    expect(prompt).toContain('exchange');
     expect(prompt).toContain('Question: How many X?');
     expect(prompt).toContain('session evidence');
   });
@@ -129,6 +131,38 @@ describe('parseQaAnswer', () => {
   it('strips surrounding quotes', () => {
     expect(parseQaAnswer('"blue"')).toBe('blue');
     expect(parseQaAnswer("'blue'")).toBe('blue');
+  });
+});
+
+describe('parseAggregationAnswer', () => {
+  it('extracts the labelled final answer', () => {
+    const raw = '- navy blazer | pick up | 2023/02/15\n- boots | return | 2023/02/15\nAnswer: 3';
+    expect(parseAggregationAnswer(raw)).toBe('3');
+  });
+
+  it('accepts a Count label', () => {
+    expect(parseAggregationAnswer('item one\nitem two\nCount: 2')).toBe('2');
+  });
+
+  it('falls back to the last non-empty line', () => {
+    expect(parseAggregationAnswer('evidence line\n3')).toBe('3');
+  });
+
+  it('abstains when the last line is an evidence bullet', () => {
+    expect(parseAggregationAnswer('- blazer | pick up')).toBeNull();
+  });
+
+  it('returns null for the abstention token (case-insensitive)', () => {
+    expect(parseAggregationAnswer('UNANSWERABLE')).toBeNull();
+    expect(parseAggregationAnswer('unanswerable')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseAggregationAnswer('   ')).toBeNull();
+  });
+
+  it('strips surrounding quotes from the final answer', () => {
+    expect(parseAggregationAnswer('Answer: "blue"')).toBe('blue');
   });
 });
 
@@ -399,6 +433,18 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(answer).toBe('blue');
     });
 
+    it('parses the enumerated final answer from the aggregation response', async () => {
+      const llm = scriptedLlm(
+        () => '- blazer | pick up | 2023/02/15\n- boots | return | 2023/02/15\nAnswer: 3',
+      );
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions('How many items?', [
+        ['I need to pick up a blazer.'],
+        ['I need to return boots.'],
+      ]);
+      expect(answer).toBe('3');
+    });
+
     it('abstains before the aggregation LLM call when retrieval is below threshold', async () => {
       const prompts: string[] = [];
       const llm: LLM = {
@@ -494,10 +540,10 @@ describe('NaturalLanguageMemorySystem', () => {
       ]);
       expect(answer).toBe('blue');
       // The final prompt is the aggregation prompt, which receives the injected
-      // whole-session evidence and the deduplication instruction.
+      // whole-session evidence and the enumerate-then-count instruction.
       const aggregationPrompt = prompts[prompts.length - 1]!;
       expect(aggregationPrompt).toContain('favorite color is blue');
-      expect(aggregationPrompt).toContain('TWO items total');
+      expect(aggregationPrompt).toContain('Step 1 — Enumerate');
     });
 
     it('never abstains on empty sessions when abstention is disabled', async () => {

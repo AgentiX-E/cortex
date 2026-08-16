@@ -73,6 +73,7 @@ const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
+type AnswerParser = (raw: string, abstainToken?: string) => Answer;
 
 export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   readonly name: string;
@@ -95,7 +96,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
             hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return this.respondWith(question, hits[0]?.score ?? 0, retrieved, buildQaPrompt);
+    return this.respondWith(question, hits[0]?.score ?? 0, retrieved, buildQaPrompt, parseQaAnswer);
   }
 
   /**
@@ -115,6 +116,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       hits[0]?.score ?? 0,
       retrieved,
       buildAggregationQaPrompt,
+      parseAggregationAnswer,
       expansionQueries,
     );
   }
@@ -171,6 +173,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     top1Score: number,
     retrieved: string,
     promptBuilder: PromptBuilder,
+    parser: AnswerParser,
     expansionQueries: string[] = [],
   ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
@@ -200,7 +203,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const raw = await this.options.llm.complete(prompt, {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
-    const parsed = parseQaAnswer(raw, this.options.abstainToken);
+    const parsed = parser(raw, this.options.abstainToken);
     if (parsed === null) {
       if (!abstentionEnabled) {
         this.emitTrace(question, top1Score, false, 'answered', {
@@ -267,10 +270,11 @@ export function buildQaPrompt(
 
 /**
  * Build a multi-session aggregation prompt. Unlike single-session extraction,
- * this instructs the LLM to combine evidence across sessions, deduplicate, and
- * compute a final count/list, which is what LongMemEval multi-session questions
- * require. The counting rules make fine-grained semantics explicit (an exchange
- * counts as two items) so the LLM does not under-count dispersed actions.
+ * this forces the LLM to enumerate every matching item with its exact action
+ * BEFORE counting, which prevents the common failure mode of collapsing an
+ * "exchange" (return the old item AND pick up the replacement) into a single
+ * item. The enumeration is parsed back into a final answer by
+ * `parseAggregationAnswer`.
  */
 export function buildAggregationQaPrompt(
   question: string,
@@ -282,14 +286,17 @@ export function buildAggregationQaPrompt(
     'The answer may require combining information spread across several sessions.',
     'Read ALL context carefully.',
     '',
-    'Counting rules:',
-    '- Identify the EXACT action the question asks about (e.g. "led" vs "participated"; "pick up" vs "return").',
-    '- Count ONLY items matching that exact action.',
-    '- "exchange" means returning the old item AND picking up a replacement: count BOTH the return and the pick-up (TWO items total).',
-    '- The same event mentioned multiple times counts only once.',
+    'Work in two steps.',
     '',
-    'Identify EVERY relevant item, deduplicate, and compute the final answer.',
-    'Answer with ONLY the final answer (a number, name, or short list), with no explanation.',
+    "Step 1 — Enumerate every item matching the question's EXACT action, one per line:",
+    '  - <item> | <action: pick up | return | ...> | <session date>',
+    '  - Treat an "exchange" as TWO items: return the old item AND pick up the replacement.',
+    '  - Count the same event mentioned in multiple sessions only once.',
+    '',
+    'Step 2 — Count the enumerated items and write the final answer.',
+    'End your response with a single line in the exact form:',
+    '  Answer: <final count or short answer>',
+    '',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context:',
@@ -383,5 +390,39 @@ export function parseQaAnswer(raw: string, abstainToken: string = DEFAULT_ABSTAI
   if (trimmed === '' || trimmed.toUpperCase() === abstainToken.toUpperCase()) {
     return null;
   }
-  return trimmed.replace(/^["']+|["']+$/g, '');
+  return stripWrappingQuotes(trimmed);
+}
+
+/**
+ * Parse the aggregation response produced by `buildAggregationQaPrompt`. It
+ * prefers an explicit `Answer:` / `Count:` label, then falls back to the last
+ * non-empty line. If the last line is an evidence bullet (the model never wrote
+ * a final answer), it abstains rather than mistaking an item for the answer.
+ */
+export function parseAggregationAnswer(
+  raw: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): Answer {
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed.toUpperCase() === abstainToken.toUpperCase()) {
+    return null;
+  }
+  const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|count|final answer)\s*:\s*(.+?)\s*$/im);
+  if (labelled) {
+    return stripWrappingQuotes(labelled[1]!.trim());
+  }
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const last = lines[lines.length - 1];
+  if (last && !/^[-*•]/.test(last)) {
+    return stripWrappingQuotes(last);
+  }
+  return null;
+}
+
+/** Remove one layer of surrounding single/double quotes. */
+function stripWrappingQuotes(s: string): string {
+  return s.replace(/^["']+|["']+$/g, '');
 }

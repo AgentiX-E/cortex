@@ -8,7 +8,13 @@ import type {
   Metrics,
   SessionAwareMemorySystem,
 } from './types.js';
-import { computeMetrics, computeMetricsAsync, type AnswerScorer } from './metrics.js';
+import {
+  computeMetrics,
+  computeMetricsAsync,
+  scoreEvaluation,
+  type AnswerScorer,
+  type ScoredEvaluation,
+} from './metrics.js';
 
 /** True when the system opts into session-boundary-aware answering. */
 function isSessionAware(system: MemorySystem): system is SessionAwareMemorySystem {
@@ -49,4 +55,18 @@ export async function evaluateWithScorer(
 ): Promise<Metrics> {
   const answers = await runBenchmark(dataset, system);
   return computeMetricsAsync(dataset, answers, scorer);
+}
+
+/**
+ * Run a system and evaluate with an arbitrary scorer, returning per-question
+ * correctness alongside the aggregate metrics. The correctness vector enables
+ * paired tests (McNemar) that compare two systems on the SAME questions.
+ */
+export async function evaluateWithScorerDetailed(
+  dataset: BenchmarkDataset,
+  system: MemorySystem,
+  scorer: AnswerScorer,
+): Promise<ScoredEvaluation> {
+  const answers = await runBenchmark(dataset, system);
+  return scoreEvaluation(dataset, answers, scorer);
 }
