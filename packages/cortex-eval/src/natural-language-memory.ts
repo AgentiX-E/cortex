@@ -269,7 +269,8 @@ export function buildQaPrompt(
  * Build a multi-session aggregation prompt. Unlike single-session extraction,
  * this instructs the LLM to combine evidence across sessions, deduplicate, and
  * compute a final count/list, which is what LongMemEval multi-session questions
- * require.
+ * require. The counting rules make fine-grained semantics explicit (an exchange
+ * counts as two items) so the LLM does not under-count dispersed actions.
  */
 export function buildAggregationQaPrompt(
   question: string,
@@ -279,7 +280,15 @@ export function buildAggregationQaPrompt(
   return [
     'You are answering a question based on MULTIPLE conversation sessions.',
     'The answer may require combining information spread across several sessions.',
-    'Read ALL context carefully. Identify EVERY relevant item or event mentioned, remove duplicates, and compute the final answer.',
+    'Read ALL context carefully.',
+    '',
+    'Counting rules:',
+    '- Each distinct item to pick up counts once.',
+    '- Each distinct item to return counts once.',
+    '- An item that is both returned and re-picked-up (an exchange) counts as TWO.',
+    '- The same item mentioned multiple times counts only once.',
+    '',
+    'Identify EVERY relevant item, deduplicate, and compute the final answer.',
     'Answer with ONLY the final answer (a number, name, or short list), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
@@ -302,18 +311,21 @@ export function truncateText(text: string, maxChars: number): string {
 
 /**
  * Build a query-expansion prompt that asks the LLM to turn an abstract question
- * into the concrete phrases whose mention would be evidence for the answer. The
- * expanded phrases are used for targeted recall of dispersed evidence sessions.
+ * into the concrete object names whose mention would be evidence for the answer.
+ * The expanded phrases are used for targeted recall of dispersed evidence
+ * sessions. Emphasizing specific objects (not verbs or categories) is what
+ * recovers sessions about e.g. "boots" from a question about "clothing".
  */
 export function buildQueryExpansionPrompt(question: string): string {
   return [
     'You are helping retrieve evidence from a conversation memory.',
-    'Given a question, list the concrete phrases or entities whose mention would be evidence for the answer.',
-    'Output ONLY a comma-separated list of short phrases, with no explanation and no numbering.',
+    'Given a question, list the SPECIFIC CONCRETE OBJECTS or ITEMS whose names would appear in the evidence for the answer.',
+    'List only specific named things (not verbs, not abstract categories).',
+    'Output ONLY a comma-separated list of short noun phrases, with no explanation and no numbering.',
     '',
     `Question: ${question}`,
     '',
-    'Phrases:',
+    'Specific items:',
   ].join('\n');
 }
 

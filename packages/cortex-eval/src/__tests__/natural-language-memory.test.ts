@@ -38,7 +38,7 @@ describe('buildAggregationQaPrompt', () => {
   it('instructs the LLM to combine evidence across sessions and deduplicate', () => {
     const prompt = buildAggregationQaPrompt('How many X?', 'session evidence');
     expect(prompt).toContain('MULTIPLE conversation sessions');
-    expect(prompt).toContain('remove duplicates');
+    expect(prompt).toContain('counts as TWO');
     expect(prompt).toContain('Question: How many X?');
     expect(prompt).toContain('session evidence');
   });
@@ -63,7 +63,7 @@ describe('buildQueryExpansionPrompt', () => {
   it('asks for concrete evidence phrases', () => {
     const prompt = buildQueryExpansionPrompt('How many items of clothing?');
     expect(prompt).toContain('How many items of clothing?');
-    expect(prompt).toContain('Phrases:');
+    expect(prompt).toContain('Specific items:');
   });
 });
 
@@ -385,7 +385,7 @@ describe('NaturalLanguageMemorySystem', () => {
       // Query expansion calls the LLM once; the aggregation prompt is never
       // reached because the threshold abstains before it.
       expect(prompts).toHaveLength(1);
-      expect(prompts[0]).toContain('Phrases:');
+      expect(prompts[0]).toContain('Specific items:');
     });
 
     it('returns null for empty sessions when abstention is enabled', async () => {
@@ -414,7 +414,7 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(answer).toBe('blue');
       // Only the aggregation LLM call happens; no query-expansion prompt.
       expect(prompts).toHaveLength(1);
-      expect(prompts[0]).not.toContain('Phrases:');
+      expect(prompts[0]).not.toContain('Specific items:');
     });
 
     it('falls back to base recall when query expansion returns empty', async () => {
@@ -422,7 +422,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Phrases:')) {
+          if (prompt.includes('Specific items:')) {
             return '';
           }
           return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
@@ -441,7 +441,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Phrases:')) {
+          if (prompt.includes('Specific items:')) {
             return 'color';
           }
           return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
@@ -462,7 +462,7 @@ describe('NaturalLanguageMemorySystem', () => {
       // whole-session evidence and the deduplication instruction.
       const aggregationPrompt = prompts[prompts.length - 1]!;
       expect(aggregationPrompt).toContain('favorite color is blue');
-      expect(aggregationPrompt).toContain('remove duplicates');
+      expect(aggregationPrompt).toContain('counts as TWO');
     });
 
     it('never abstains on empty sessions when abstention is disabled', async () => {
