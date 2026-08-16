@@ -7,6 +7,7 @@ import {
   buildQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
+  truncateSession,
   parseQaAnswer,
   clearEmbeddingCache,
   type DecisionTrace,
@@ -56,6 +57,40 @@ describe('truncateText', () => {
 
   it('truncates and marks oversized text', () => {
     expect(truncateText('abcdef', 3)).toBe('abc\n[truncated]');
+  });
+});
+
+describe('truncateSession', () => {
+  it('returns short text unchanged', () => {
+    expect(truncateSession('short', 100)).toBe('short');
+  });
+
+  it('preserves user turns while capping verbose assistant turns', () => {
+    const text = [
+      '[2023/02/15] user: fact about boots',
+      `[2023/02/15] assistant: ${'x'.repeat(500)}`,
+      '[2023/02/15] user: another fact',
+    ].join('\n');
+    const result = truncateSession(text, 500);
+    expect(result).toContain('fact about boots');
+    expect(result).toContain('another fact');
+    expect(result).not.toContain('x'.repeat(500));
+  });
+
+  it('marks the session when truncation occurs', () => {
+    const text = `[2023/02/15] user: fact\n[2023/02/15] assistant: ${'y'.repeat(300)}`;
+    expect(truncateSession(text, 150)).toContain('[truncated]');
+  });
+
+  it('stops keeping user turns once the budget is exhausted', () => {
+    const text = [
+      '[2023/02/15] user: first fact',
+      '[2023/02/15] user: second fact that exceeds the budget',
+    ].join('\n');
+    const result = truncateSession(text, 30);
+    expect(result).toContain('first fact');
+    expect(result).not.toContain('second fact');
+    expect(result).toContain('[truncated]');
   });
 });
 

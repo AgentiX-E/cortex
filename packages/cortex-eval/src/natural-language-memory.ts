@@ -107,7 +107,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
     const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(question, sessions);
     const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
-    const retrieved = hits.map((h) => truncateText(h.text, maxChars)).join('\n\n');
+    const retrieved = hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n');
     // Threshold on the top-1 session score keeps abstention consistent across
     // the turn-level and session-level paths.
     return this.respondWith(
@@ -307,6 +307,46 @@ export function truncateText(text: string, maxChars: number): string {
     return text;
   }
   return `${text.slice(0, maxChars)}\n[truncated]`;
+}
+
+/** Matches the start of a `[date] role:` turn prefix. */
+const TURN_BOUNDARY = /(?=\[\d{4}\/\d{2}\/\d{2}[^\]]*\] )/;
+
+/** Cap for a verbose assistant turn when a session exceeds its budget. */
+const ASSISTANT_HEAD_CHARS = 200;
+
+/**
+ * Bound a session's length while preserving user turns, which carry the facts.
+ * Simple character truncation can drop later user turns (where dispersed evidence
+ * such as an exchanged item lives) because a long assistant reply consumes the
+ * budget first. This keeps every user turn complete and caps assistant turns.
+ */
+export function truncateSession(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  const turns = text.split(TURN_BOUNDARY).filter((s) => s.length > 0);
+  const kept: string[] = [];
+  let used = 0;
+  let truncated = false;
+  for (const turn of turns) {
+    if (/\] user:/.test(turn)) {
+      if (used + turn.length > maxChars) {
+        truncated = true;
+        break;
+      }
+      kept.push(turn);
+      used += turn.length;
+    } else {
+      const head = turn.slice(0, ASSISTANT_HEAD_CHARS);
+      if (head.length < turn.length) {
+        truncated = true;
+      }
+      kept.push(head);
+      used += head.length;
+    }
+  }
+  return truncated ? `${kept.join('')}\n[truncated]` : kept.join('');
 }
 
 /**

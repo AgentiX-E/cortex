@@ -90,6 +90,7 @@ export {
   buildQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
+  truncateSession,
   parseQaAnswer,
   type NaturalLanguageMemorySystemOptions,
   type AbstainReason,
