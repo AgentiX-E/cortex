@@ -44,7 +44,7 @@ export type NaturalLanguageMemorySystemOptions = {
 
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
 const DEFAULT_TEMPERATURE = 0;
-const DEFAULT_TOP_K = 10;
+const DEFAULT_TOP_K = 15;
 const DEFAULT_CONTEXT_RADIUS = 1;
 
 export class NaturalLanguageMemorySystem implements MemorySystem {

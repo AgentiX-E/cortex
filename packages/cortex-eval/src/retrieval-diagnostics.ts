@@ -8,7 +8,11 @@
  * stable vectors across repeated calls.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
-import type { LongMemEvalInstance, LongMemEvalTurn } from './datasets/longmemeval-loader.js';
+import {
+  turnText,
+  type LongMemEvalInstance,
+  type LongMemEvalTurn,
+} from './datasets/longmemeval-loader.js';
 import { retrieveTopK } from './retrieval.js';
 
 export type RetrievalDiagnostic = {
@@ -82,11 +86,18 @@ export async function computeRetrievalDiagnostics(
   let recallAt5 = 0;
 
   for (const inst of instances) {
-    const turns = flattenTurns(inst.haystack_sessions);
+    const sessions = inst.haystack_sessions ?? [];
+    const dates = inst.haystack_dates;
+    const context: string[] = [];
     const answerTexts = new Set<string>();
-    for (const turn of turns) {
-      if (turn.has_answer === true) {
-        answerTexts.add(`${turn.role}: ${turn.content}`);
+    for (let i = 0; i < sessions.length; i++) {
+      const date = dates?.[i];
+      for (const turn of sessions[i]!) {
+        const text = turnText(turn, date);
+        context.push(text);
+        if (turn.has_answer === true) {
+          answerTexts.add(text);
+        }
       }
     }
     // Abstention questions have no evidence turn, so they carry no retrieval signal.
@@ -95,7 +106,6 @@ export async function computeRetrievalDiagnostics(
     }
     answerable++;
 
-    const context = turns.map((t) => `${t.role}: ${t.content}`);
     const hits = await retrieveTopK(embedding, inst.question, context, topK);
     const top1 = hits[0];
     const hitAt1 = top1 !== undefined && answerTexts.has(top1.text);

@@ -52,6 +52,7 @@ export {
   loadLongMemEval,
   toCapability,
   flattenSessions,
+  turnText,
   type LongMemEvalTurn,
   type LongMemEvalInstance,
 } from './datasets/longmemeval-loader.js';

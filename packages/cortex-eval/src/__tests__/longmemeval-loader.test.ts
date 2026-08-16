@@ -3,6 +3,7 @@ import {
   loadLongMemEval,
   toCapability,
   flattenSessions,
+  turnText,
   type LongMemEvalInstance,
 } from '../datasets/longmemeval-loader.js';
 
@@ -34,6 +35,18 @@ describe('toCapability', () => {
   });
 });
 
+describe('turnText', () => {
+  it('prefixes the session date when provided', () => {
+    expect(turnText({ role: 'user', content: 'hello' }, '2023-05-01')).toBe(
+      '[2023-05-01] user: hello',
+    );
+  });
+
+  it('omits the date prefix when absent', () => {
+    expect(turnText({ role: 'user', content: 'hello' })).toBe('user: hello');
+  });
+});
+
 describe('flattenSessions', () => {
   it('flattens turns into role-prefixed strings', () => {
     const flat = flattenSessions([
@@ -43,6 +56,14 @@ describe('flattenSessions', () => {
       ],
     ]);
     expect(flat).toEqual(['user: hello', 'assistant: hi']);
+  });
+
+  it('injects session dates when provided', () => {
+    const flat = flattenSessions(
+      [[{ role: 'user', content: 'a' }], [{ role: 'user', content: 'b' }]],
+      ['2023-05-01', '2023-05-02'],
+    );
+    expect(flat).toEqual(['[2023-05-01] user: a', '[2023-05-02] user: b']);
   });
 
   it('returns empty for undefined sessions', () => {
@@ -77,5 +98,20 @@ describe('loadLongMemEval', () => {
     expect(ds.questions[1]!.capability).toBe('ABS');
     expect(ds.questions[1]!.expected).toBeNull();
     expect(ds.questions[0]!.context).toEqual(['user: My color is blue.']);
+  });
+
+  it('injects session dates into the context for temporal reasoning', () => {
+    const dated: LongMemEvalInstance[] = [
+      {
+        question_id: 'q1',
+        question_type: 'temporal-reasoning',
+        question: 'When did X happen?',
+        answer: '2023-05-02',
+        haystack_sessions: [[{ role: 'user', content: 'X happened' }]],
+        haystack_dates: ['2023-05-02'],
+      },
+    ];
+    const ds = loadLongMemEval(dated);
+    expect(ds.questions[0]!.context).toEqual(['[2023-05-02] user: X happened']);
   });
 });

@@ -49,12 +49,24 @@ export function toCapability(questionId: string, questionType: string): Capabili
   return TYPE_TO_CAPABILITY[questionType] ?? 'IE';
 }
 
-/** Flatten all session turns into a single ordered list of context strings. */
-export function flattenSessions(sessions?: LongMemEvalTurn[][]): string[] {
+/** Render a turn as a context string, optionally prefixing its session date. */
+export function turnText(turn: LongMemEvalTurn, date?: string): string {
+  const prefix = date ? `[${date}] ` : '';
+  return `${prefix}${turn.role}: ${turn.content}`;
+}
+
+/**
+ * Flatten all session turns into a single ordered list of context strings.
+ * When `dates` is provided (aligned with `sessions`), each turn carries its
+ * session date so temporal reasoning can see chronological ordering.
+ */
+export function flattenSessions(sessions?: LongMemEvalTurn[][], dates?: string[]): string[] {
   const out: string[] = [];
-  for (const session of sessions ?? []) {
-    for (const turn of session) {
-      out.push(`${turn.role}: ${turn.content}`);
+  const list = sessions ?? [];
+  for (let i = 0; i < list.length; i++) {
+    const date = dates?.[i];
+    for (const turn of list[i]!) {
+      out.push(turnText(turn, date));
     }
   }
   return out;
@@ -66,7 +78,7 @@ export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): Benc
     capability: toCapability(inst.question_id, inst.question_type),
     question: inst.question,
     expected: inst.question_id.endsWith('_abs') ? null : inst.answer,
-    context: flattenSessions(inst.haystack_sessions),
+    context: flattenSessions(inst.haystack_sessions, inst.haystack_dates),
   }));
   return { name: 'longmemeval', questions };
 }
