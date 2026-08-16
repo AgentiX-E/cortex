@@ -133,9 +133,19 @@ export function exactMatchScorer(question: Question, answer: Answer): boolean {
   return exactMatch(answer, question.expected);
 }
 
-/** Extract the first integer or decimal number from an answer string. */
-export function extractLeadingNumber(s: string): number | undefined {
-  const match = s.trim().match(/-?\d+(?:\.\d+)?/);
+/**
+ * Extract the first integer or decimal number from an answer value. Accepts
+ * strings and numbers because a dataset may store a numeric answer as a JSON
+ * number rather than a string; any other type yields `undefined` so the caller
+ * can fall back to the LLM judge.
+ */
+export function extractLeadingNumber(value: unknown): number | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return undefined;
+  }
+  const match = String(value)
+    .trim()
+    .match(/-?\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : undefined;
 }
 
@@ -155,8 +165,8 @@ export function isCountingQuestion(question: string): boolean {
  */
 export function numericAnswerVerdict(
   question: string,
-  predicted: string,
-  expected: string,
+  predicted: unknown,
+  expected: unknown,
 ): boolean | undefined {
   if (!isCountingQuestion(question)) {
     return undefined;

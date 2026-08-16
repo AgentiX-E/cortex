@@ -153,6 +153,13 @@ describe('numeric answer helpers', () => {
     expect(extractLeadingNumber('two')).toBeUndefined();
   });
 
+  it('accepts a numeric answer stored as a JSON number', () => {
+    // Some datasets store counting answers as JSON numbers, not strings.
+    expect(extractLeadingNumber(3)).toBe(3);
+    expect(numericAnswerVerdict('How many?', 3, 3)).toBe(true);
+    expect(numericAnswerVerdict('How many?', 5, 2)).toBe(false);
+  });
+
   it('detects counting questions', () => {
     expect(isCountingQuestion('How many items do I need?')).toBe(true);
     expect(isCountingQuestion('What is the number of items?')).toBe(true);
