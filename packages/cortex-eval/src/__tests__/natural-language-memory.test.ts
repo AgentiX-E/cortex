@@ -310,6 +310,29 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(await system.answerSessions('What is X?', [[], []])).toBeNull();
     });
 
+    it('focuses on relevant turns within selected sessions (coarse-to-fine)', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        [
+          'My favorite color is blue.',
+          'some unrelated chatter about weather',
+          'more unrelated chatter',
+        ],
+        ['another unrelated session'],
+      ]);
+      expect(answer).toBe('blue');
+      // The answer turn is surfaced despite being surrounded by unrelated turns.
+      expect(prompts[0]).toContain('favorite color is blue');
+    });
+
     it('never abstains on empty sessions when abstention is disabled', async () => {
       const llm = scriptedLlm(() => 'blue');
       const system = new NaturalLanguageMemorySystem('s', {

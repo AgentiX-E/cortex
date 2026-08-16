@@ -74,17 +74,40 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     return this.respond(question, hits[0]?.score ?? 0, retrieved);
   }
 
-  /** Session-level answering: retrieve whole sessions, then aggregate evidence. */
+  /**
+   * Hierarchical (coarse-to-fine) answering: select relevant sessions, then focus
+   * on relevant turns within them. The LLM receives focused turn windows rather
+   * than whole sessions, which keeps single-session evidence clean while still
+   * aggregating evidence spread across sessions for multi-session questions.
+   */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
     const sessionTopK = this.options.sessionTopK ?? DEFAULT_SESSION_TOP_K;
-    const hits = await retrieveTopKSessions(
+    const sessionHits = await retrieveTopKSessions(
       this.options.embedding,
       question,
       sessions,
       sessionTopK,
     );
-    const retrieved = hits.map((h) => h.text).join('\n\n');
-    return this.respond(question, hits[0]?.score ?? 0, retrieved);
+
+    // Pool the turns of the selected sessions, then run turn-level retrieval
+    // within that subset so the answer turn is surfaced without the noise of
+    // every turn in a long session. Every hit maps to a non-empty session, so
+    // the session lookup is always defined.
+    const pooledTurns = sessionHits.flatMap((h) => sessions[h.sessionIndex]!);
+    const topK = this.options.topK ?? DEFAULT_TOP_K;
+    const turnHits = await retrieveTopK(this.options.embedding, question, pooledTurns, topK);
+    const retrieved =
+      turnHits.length === 0
+        ? ''
+        : expandContextWindow(
+            pooledTurns,
+            turnHits.map((h) => h.index),
+            this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
+          );
+
+    // Threshold on the turn-level score keeps abstention semantics consistent
+    // with the flattened `answer` path.
+    return this.respond(question, turnHits[0]?.score ?? 0, retrieved);
   }
 
   private async respond(question: string, top1Score: number, retrieved: string): Promise<Answer> {
