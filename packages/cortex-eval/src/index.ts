@@ -65,6 +65,7 @@ export {
 } from './retrieval-diagnostics.js';
 export {
   retrieveTopK,
+  expandContextWindow,
   embedManyCached,
   embedOneCached,
   clearEmbeddingCache,

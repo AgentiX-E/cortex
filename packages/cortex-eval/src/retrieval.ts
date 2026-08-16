@@ -69,6 +69,8 @@ export type RetrievalHit = {
   id: string;
   text: string;
   score: number;
+  /** Position of this turn in the original `context` array. */
+  index: number;
 };
 
 /**
@@ -84,12 +86,15 @@ export async function retrieveTopK(
 ): Promise<RetrievalHit[]> {
   const index = new BruteForceVectorIndex();
   const texts = new Map<string, string>();
+  const idToIndex = new Map<string, number>();
 
   const pending: string[] = [];
-  for (const turn of context) {
+  for (let i = 0; i < context.length; i++) {
+    const turn = context[i]!;
     const id = `t-${hashText(turn)}`;
     if (!texts.has(id)) {
       pending.push(turn);
+      idToIndex.set(id, i);
     }
   }
   if (pending.length > 0) {
@@ -104,6 +109,34 @@ export async function retrieveTopK(
 
   const queryVec = await embedOneCached(embedding, question);
   const hits = await index.search(queryVec, topK);
-  // Every hit id was inserted via `texts.set`, so the lookup is always defined.
-  return hits.map((h) => ({ id: h.id, text: texts.get(h.id)!, score: h.score }));
+  // Every hit id was inserted via `texts.set`, so the lookups are always defined.
+  return hits.map((h) => ({
+    id: h.id,
+    text: texts.get(h.id)!,
+    score: h.score,
+    index: idToIndex.get(h.id) ?? -1,
+  }));
+}
+
+/**
+ * Expand a set of retrieved turn indices into a coherent context window: return
+ * the turns at `indices` plus up to `radius` neighbours on each side, preserving
+ * order and de-duplicating overlaps.
+ */
+export function expandContextWindow(context: string[], indices: number[], radius: number): string {
+  const selected = new Set<number>();
+  for (const idx of indices) {
+    if (idx < 0 || idx >= context.length) {
+      continue;
+    }
+    const start = Math.max(0, idx - radius);
+    const end = Math.min(context.length - 1, idx + radius);
+    for (let j = start; j <= end; j++) {
+      selected.add(j);
+    }
+  }
+  return [...selected]
+    .sort((a, b) => a - b)
+    .map((i) => context[i]!)
+    .join('\n');
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import {
   retrieveTopK,
+  expandContextWindow,
   embedManyCached,
   embedOneCached,
   clearEmbeddingCache,
@@ -81,5 +82,34 @@ describe('retrieveTopK', () => {
     };
     const hits = await retrieveTopK(embedding, 'q', [], 5);
     expect(hits).toEqual([]);
+  });
+
+  it('reports each hit original context index', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array(4)),
+    };
+    const hits = await retrieveTopK(embedding, 'q', ['a', 'b', 'c'], 3);
+    expect(hits.map((h) => h.index).sort()).toEqual([0, 1, 2]);
+  });
+});
+
+describe('expandContextWindow', () => {
+  it('includes neighbours around each hit and de-duplicates overlaps', () => {
+    const context = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const expanded = expandContextWindow(context, [1, 4], 1);
+    expect(expanded).toBe('a\nb\nc\nd\ne\nf');
+  });
+
+  it('clamps the window at the boundaries', () => {
+    const context = ['a', 'b', 'c'];
+    expect(expandContextWindow(context, [0], 1)).toBe('a\nb');
+    expect(expandContextWindow(context, [2], 1)).toBe('b\nc');
+  });
+
+  it('skips invalid indices', () => {
+    const context = ['a', 'b'];
+    expect(expandContextWindow(context, [-1, 5], 1)).toBe('');
   });
 });

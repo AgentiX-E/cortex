@@ -10,7 +10,7 @@
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import type { Answer, MemorySystem } from './types.js';
-import { retrieveTopK } from './retrieval.js';
+import { expandContextWindow, retrieveTopK } from './retrieval.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -26,8 +26,10 @@ export type DecisionTrace = {
 export type NaturalLanguageMemorySystemOptions = {
   embedding: EmbeddingModel;
   llm: LLM;
-  /** Number of retrieved turns passed to the LLM (default 5). */
+  /** Number of retrieved turns passed to the LLM (default 10). */
   topK?: number;
+  /** Number of neighbouring turns to include around each hit (default 1). */
+  contextRadius?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
   abstainThreshold?: number;
   /** The LLM's abstention marker (default UNANSWERABLE). */
@@ -42,6 +44,8 @@ export type NaturalLanguageMemorySystemOptions = {
 
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
 const DEFAULT_TEMPERATURE = 0;
+const DEFAULT_TOP_K = 10;
+const DEFAULT_CONTEXT_RADIUS = 1;
 
 export class NaturalLanguageMemorySystem implements MemorySystem {
   readonly name: string;
@@ -53,7 +57,7 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
   }
 
   async answer(question: string, context: string[]): Promise<Answer> {
-    const topK = this.options.topK ?? 5;
+    const topK = this.options.topK ?? DEFAULT_TOP_K;
     const hits = await retrieveTopK(this.options.embedding, question, context, topK);
     const trace = (top1Score: number, abstained: boolean, reason: AbstainReason): void => {
       this.options.onDecision?.({ question, top1Score, abstained, reason });
@@ -74,7 +78,13 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
       return null;
     }
 
-    const retrieved = hits.map((h) => h.text).join('\n');
+    // Expand each hit into its local context window so the LLM sees coherent
+    // dialogue rather than isolated single turns.
+    const retrieved = expandContextWindow(
+      context,
+      hits.map((h) => h.index),
+      this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
+    );
     const prompt = buildQaPrompt(question, retrieved, this.options.abstainToken);
     const raw = await this.options.llm.complete(prompt, {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
@@ -101,7 +111,9 @@ export function buildQaPrompt(
 ): string {
   return [
     'You are answering questions based on a conversation memory.',
-    `Answer with ONLY the exact answer phrase (a word, name, number, or short phrase), with no explanation and no full sentence. If the answer is not in the context, respond with exactly: ${abstainToken}`,
+    'Read the context carefully and extract the answer to the question.',
+    'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context:',
     context,
