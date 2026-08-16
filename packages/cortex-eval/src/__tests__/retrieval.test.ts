@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import {
   retrieveTopK,
+  retrieveTopKSessions,
   expandContextWindow,
+  meanPool,
   embedManyCached,
   embedOneCached,
   clearEmbeddingCache,
@@ -111,5 +113,53 @@ describe('expandContextWindow', () => {
   it('skips invalid indices', () => {
     const context = ['a', 'b'];
     expect(expandContextWindow(context, [-1, 5], 1)).toBe('');
+  });
+});
+
+describe('meanPool', () => {
+  it('returns an empty vector for empty input', () => {
+    expect(Array.from(meanPool([]))).toEqual([]);
+  });
+
+  it('averages equal-length vectors element-wise', () => {
+    const result = meanPool([new Float64Array([1, 2]), new Float64Array([3, 4])]);
+    expect(Array.from(result)).toEqual([2, 3]);
+  });
+});
+
+describe('retrieveTopKSessions', () => {
+  it('returns top-k sessions with text, index, and score', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array(4)),
+    };
+    const hits = await retrieveTopKSessions(embedding, 'q', [['turn a'], ['turn b']], 2);
+    expect(hits).toHaveLength(2);
+    expect(hits[0]!.text).toBe('turn a');
+    expect(hits[0]!.sessionIndex).toBeGreaterThanOrEqual(0);
+    expect(hits[0]!.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it('returns an empty list when all sessions are empty', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array(4)),
+    };
+    const hits = await retrieveTopKSessions(embedding, 'q', [[], []], 2);
+    expect(hits).toEqual([]);
+  });
+
+  it('skips sessions whose pooled vector is empty', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      // Returning no vectors makes every turn vector empty, so the pooled
+      // session vector is empty and the session is skipped.
+      embed: async () => [],
+    };
+    const hits = await retrieveTopKSessions(embedding, 'q', [['turn a']], 2);
+    expect(hits).toEqual([]);
   });
 });

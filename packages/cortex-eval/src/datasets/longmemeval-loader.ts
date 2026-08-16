@@ -62,23 +62,37 @@ export function turnText(turn: LongMemEvalTurn, date?: string): string {
  */
 export function flattenSessions(sessions?: LongMemEvalTurn[][], dates?: string[]): string[] {
   const out: string[] = [];
+  for (const session of sessionsToContext(sessions, dates)) {
+    out.push(...session);
+  }
+  return out;
+}
+
+/**
+ * Render sessions as grouped context strings, preserving session boundaries so
+ * multi-session reasoning can aggregate evidence across sessions.
+ */
+export function sessionsToContext(sessions?: LongMemEvalTurn[][], dates?: string[]): string[][] {
   const list = sessions ?? [];
+  const out: string[][] = [];
   for (let i = 0; i < list.length; i++) {
     const date = dates?.[i];
-    for (const turn of list[i]!) {
-      out.push(turnText(turn, date));
-    }
+    out.push(list[i]!.map((turn) => turnText(turn, date)));
   }
   return out;
 }
 
 export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): BenchmarkDataset {
-  const questions: Question[] = instances.map((inst) => ({
-    id: inst.question_id,
-    capability: toCapability(inst.question_id, inst.question_type),
-    question: inst.question,
-    expected: inst.question_id.endsWith('_abs') ? null : inst.answer,
-    context: flattenSessions(inst.haystack_sessions, inst.haystack_dates),
-  }));
+  const questions: Question[] = instances.map((inst) => {
+    const sessions = sessionsToContext(inst.haystack_sessions, inst.haystack_dates);
+    return {
+      id: inst.question_id,
+      capability: toCapability(inst.question_id, inst.question_type),
+      question: inst.question,
+      expected: inst.question_id.endsWith('_abs') ? null : inst.answer,
+      context: sessions.flat(),
+      sessions,
+    };
+  });
   return { name: 'longmemeval', questions };
 }

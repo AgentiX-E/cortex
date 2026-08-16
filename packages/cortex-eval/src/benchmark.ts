@@ -1,8 +1,19 @@
 /**
  * Benchmark runner: run a memory system over a dataset and evaluate its answers.
  */
-import type { Answer, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
+import type {
+  Answer,
+  BenchmarkDataset,
+  MemorySystem,
+  Metrics,
+  SessionAwareMemorySystem,
+} from './types.js';
 import { computeMetrics, computeMetricsAsync, type AnswerScorer } from './metrics.js';
+
+/** True when the system opts into session-boundary-aware answering. */
+function isSessionAware(system: MemorySystem): system is SessionAwareMemorySystem {
+  return 'answerSessions' in system;
+}
 
 /** Run a system over every question, preserving question order. */
 export async function runBenchmark(
@@ -11,7 +22,13 @@ export async function runBenchmark(
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
   for (const q of dataset.questions) {
-    answers.push(await system.answer(q.question, q.context));
+    // Session-aware systems receive session-grouped context when available;
+    // otherwise they fall back to the flattened context contract.
+    if (isSessionAware(system) && q.sessions && q.sessions.length > 0) {
+      answers.push(await system.answerSessions(q.question, q.sessions));
+    } else {
+      answers.push(await system.answer(q.question, q.context));
+    }
   }
   return answers;
 }

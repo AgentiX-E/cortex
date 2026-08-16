@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import {
   checkEmbeddingDeterminism,
   computeRetrievalDiagnostics,
+  computeSessionRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
   runNaturalLanguageBenchmark,
@@ -55,9 +56,19 @@ async function main(): Promise<void> {
   console.log(`Embedding determinism (max abs diff): ${determinism}`);
 
   // Measure the retrieval signal before grading so the abstention threshold can
-  // be set from data instead of guessed.
-  const diagnostics = await computeRetrievalDiagnostics(sampled as never, embedding, 5);
-  const diagnosticsWithDeterminism = { ...diagnostics, embeddingMaxAbsDiff: determinism };
+  // be set from data instead of guessed. Turn-level recall is complemented by
+  // session-level recall, which is the signal multi-session aggregation uses.
+  const turnDiagnostics = await computeRetrievalDiagnostics(sampled as never, embedding, 5);
+  const sessionDiagnostics = await computeSessionRetrievalDiagnostics(
+    sampled as never,
+    embedding,
+    5,
+  );
+  const diagnosticsWithDeterminism = {
+    ...turnDiagnostics,
+    session: sessionDiagnostics,
+    embeddingMaxAbsDiff: determinism,
+  };
   writeFileSync('benchmark-diagnostics.json', JSON.stringify(diagnosticsWithDeterminism, null, 2));
   console.log('=== Retrieval diagnostics ===');
   console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));

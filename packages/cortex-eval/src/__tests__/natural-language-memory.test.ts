@@ -272,4 +272,52 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(traces[0]!.abstained).toBe(true);
     expect(traces[0]!.reason).toBe('empty');
   });
+
+  describe('answerSessions', () => {
+    it('retrieves whole sessions and answers from the aggregated evidence', async () => {
+      const llm = scriptedLlm((prompt) =>
+        prompt.includes('favorite color') ? 'blue' : 'UNANSWERABLE',
+      );
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue.'],
+        ['unrelated session'],
+      ]);
+      expect(answer).toBe('blue');
+    });
+
+    it('abstains before calling the LLM when session retrieval is below threshold', async () => {
+      let called = false;
+      const llm = scriptedLlm(() => {
+        called = true;
+        return 'blue';
+      });
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        abstainThreshold: 0.99,
+      });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue.'],
+      ]);
+      expect(answer).toBeNull();
+      expect(called).toBe(false);
+    });
+
+    it('returns null for empty sessions when abstention is enabled', async () => {
+      const llm = scriptedLlm(() => 'blue');
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      expect(await system.answerSessions('What is X?', [[], []])).toBeNull();
+    });
+
+    it('never abstains on empty sessions when abstention is disabled', async () => {
+      const llm = scriptedLlm(() => 'blue');
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableAbstention: false,
+      });
+      expect(await system.answerSessions('What is X?', [[], []])).toBe('unknown');
+    });
+  });
 });

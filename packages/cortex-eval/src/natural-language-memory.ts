@@ -9,8 +9,8 @@
  * the system and the diagnostics harness use identical logic.
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
-import type { Answer, MemorySystem } from './types.js';
-import { expandContextWindow, retrieveTopK } from './retrieval.js';
+import type { Answer, SessionAwareMemorySystem } from './types.js';
+import { expandContextWindow, retrieveTopK, retrieveTopKSessions } from './retrieval.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -26,9 +26,11 @@ export type DecisionTrace = {
 export type NaturalLanguageMemorySystemOptions = {
   embedding: EmbeddingModel;
   llm: LLM;
-  /** Number of retrieved turns passed to the LLM (default 10). */
+  /** Number of retrieved turns passed to the LLM (default 15). */
   topK?: number;
-  /** Number of neighbouring turns to include around each hit (default 1). */
+  /** Number of retrieved sessions passed to the LLM in session mode (default 5). */
+  sessionTopK?: number;
+  /** Number of neighbouring turns to include around each turn hit (default 1). */
   contextRadius?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
   abstainThreshold?: number;
@@ -45,9 +47,10 @@ export type NaturalLanguageMemorySystemOptions = {
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
 const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_TOP_K = 15;
+const DEFAULT_SESSION_TOP_K = 5;
 const DEFAULT_CONTEXT_RADIUS = 1;
 
-export class NaturalLanguageMemorySystem implements MemorySystem {
+export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   readonly name: string;
   private readonly options: NaturalLanguageMemorySystemOptions;
 
@@ -56,35 +59,50 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
     this.options = options;
   }
 
+  /** Turn-level answering for the flattened `MemorySystem.answer` contract. */
   async answer(question: string, context: string[]): Promise<Answer> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const hits = await retrieveTopK(this.options.embedding, question, context, topK);
-    const trace = (top1Score: number, abstained: boolean, reason: AbstainReason): void => {
-      this.options.onDecision?.({ question, top1Score, abstained, reason });
-    };
+    const retrieved =
+      hits.length === 0
+        ? ''
+        : expandContextWindow(
+            context,
+            hits.map((h) => h.index),
+            this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
+          );
+    return this.respond(question, hits[0]?.score ?? 0, retrieved);
+  }
 
-    if (hits.length === 0) {
-      const answer = this.options.enableAbstention === false ? 'unknown' : null;
-      trace(0, answer === null, 'empty');
+  /** Session-level answering: retrieve whole sessions, then aggregate evidence. */
+  async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
+    const sessionTopK = this.options.sessionTopK ?? DEFAULT_SESSION_TOP_K;
+    const hits = await retrieveTopKSessions(
+      this.options.embedding,
+      question,
+      sessions,
+      sessionTopK,
+    );
+    const retrieved = hits.map((h) => h.text).join('\n\n');
+    return this.respond(question, hits[0]?.score ?? 0, retrieved);
+  }
+
+  private async respond(question: string, top1Score: number, retrieved: string): Promise<Answer> {
+    const abstentionEnabled = this.options.enableAbstention !== false;
+    if (retrieved === '') {
+      const answer = abstentionEnabled ? null : 'unknown';
+      this.trace(question, 0, answer === null, 'empty');
       return answer;
     }
-    const abstentionEnabled = this.options.enableAbstention !== false;
     if (
       abstentionEnabled &&
       this.options.abstainThreshold != null &&
-      hits[0]!.score < this.options.abstainThreshold
+      top1Score < this.options.abstainThreshold
     ) {
-      trace(hits[0]!.score, true, 'threshold');
+      this.trace(question, top1Score, true, 'threshold');
       return null;
     }
 
-    // Expand each hit into its local context window so the LLM sees coherent
-    // dialogue rather than isolated single turns.
-    const retrieved = expandContextWindow(
-      context,
-      hits.map((h) => h.index),
-      this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
-    );
     const prompt = buildQaPrompt(question, retrieved, this.options.abstainToken);
     const raw = await this.options.llm.complete(prompt, {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
@@ -92,14 +110,23 @@ export class NaturalLanguageMemorySystem implements MemorySystem {
     const parsed = parseQaAnswer(raw, this.options.abstainToken);
     if (parsed === null) {
       if (!abstentionEnabled) {
-        trace(hits[0]!.score, false, 'answered');
+        this.trace(question, top1Score, false, 'answered');
         return 'unknown';
       }
-      trace(hits[0]!.score, true, 'llm');
+      this.trace(question, top1Score, true, 'llm');
       return null;
     }
-    trace(hits[0]!.score, false, 'answered');
+    this.trace(question, top1Score, false, 'answered');
     return parsed;
+  }
+
+  private trace(
+    question: string,
+    top1Score: number,
+    abstained: boolean,
+    reason: AbstainReason,
+  ): void {
+    this.options.onDecision?.({ question, top1Score, abstained, reason });
   }
 }
 

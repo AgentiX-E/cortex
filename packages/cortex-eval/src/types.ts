@@ -13,6 +13,12 @@ export type Question = {
   expected: string | null;
   /** Session facts available to the memory system before answering. */
   context: string[];
+  /**
+   * Session-grouped context (each element is one session's ordered turns). It
+   * preserves session boundaries for multi-session reasoning. When present, a
+   * session-aware system receives this instead of the flattened `context`.
+   */
+  sessions?: string[][];
 };
 
 export type BenchmarkDataset = {
@@ -27,6 +33,15 @@ export type Answer = string | null;
 export type MemorySystem = {
   name: string;
   answer: (question: string, context: string[]) => Answer | Promise<Answer>;
+};
+
+/**
+ * A memory system that can exploit session boundaries. The benchmark routes
+ * session-grouped questions to `answerSessions` and falls back to `answer` with
+ * the flattened context otherwise.
+ */
+export type SessionAwareMemorySystem = MemorySystem & {
+  answerSessions: (question: string, sessions: string[][]) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {

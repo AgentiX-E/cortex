@@ -9,11 +9,12 @@
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import {
+  sessionsToContext,
   turnText,
   type LongMemEvalInstance,
   type LongMemEvalTurn,
 } from './datasets/longmemeval-loader.js';
-import { retrieveTopK } from './retrieval.js';
+import { retrieveTopK, retrieveTopKSessions } from './retrieval.js';
 
 export type RetrievalDiagnostic = {
   totalQuestions: number;
@@ -131,6 +132,81 @@ export async function computeRetrievalDiagnostics(
     answerableQuestions: answerable,
     recallAt1: answerable === 0 ? 0 : recallAt1 / answerable,
     recallAt5: answerable === 0 ? 0 : recallAt5 / answerable,
+    hitScores: sortedHits,
+    missScores: [...missScores].sort((a, b) => a - b),
+    recommendedThreshold: percentile(sortedHits, 0.25),
+  };
+}
+
+export type SessionRetrievalDiagnostic = {
+  totalQuestions: number;
+  answerableQuestions: number;
+  /** Fraction of answerable questions whose answer session is the top-1 hit. */
+  recallAt1: number;
+  /** Fraction of answerable questions whose answer session is within the top-k hits. */
+  recallAtK: number;
+  hitScores: number[];
+  missScores: number[];
+  recommendedThreshold: number;
+};
+
+/**
+ * Session-level recall diagnostics: for each answerable question, retrieve whole
+ * sessions and record whether a session marked with `has_answer` was recalled.
+ * This measures the retrieval signal that multi-session aggregation actually
+ * relies on (whole-session evidence rather than isolated turns).
+ */
+export async function computeSessionRetrievalDiagnostics(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  topK = 5,
+): Promise<SessionRetrievalDiagnostic> {
+  const hitScores: number[] = [];
+  const missScores: number[] = [];
+  let answerable = 0;
+  let recallAt1 = 0;
+  let recallAtK = 0;
+
+  for (const inst of instances) {
+    const sessions = sessionsToContext(inst.haystack_sessions, inst.haystack_dates);
+    const rawSessions = inst.haystack_sessions ?? [];
+    const answerSessionIndices = new Set<number>();
+    for (let i = 0; i < rawSessions.length; i++) {
+      if (rawSessions[i]!.some((turn) => turn.has_answer === true)) {
+        answerSessionIndices.add(i);
+      }
+    }
+    // Abstention questions have no evidence turn, so they carry no retrieval signal.
+    if (answerSessionIndices.size === 0) {
+      continue;
+    }
+    answerable++;
+
+    const hits = await retrieveTopKSessions(embedding, inst.question, sessions, topK);
+    const top1 = hits[0];
+    const hitAt1 = top1 !== undefined && answerSessionIndices.has(top1.sessionIndex);
+    const hitAtK = hits.some((h) => answerSessionIndices.has(h.sessionIndex));
+    if (hitAt1) {
+      recallAt1++;
+    }
+    if (hitAtK) {
+      recallAtK++;
+    }
+
+    if (hitAt1) {
+      hitScores.push(top1!.score);
+    } else {
+      // Answerable questions have non-empty sessions, so top-1 is always defined.
+      missScores.push(top1!.score);
+    }
+  }
+
+  const sortedHits = [...hitScores].sort((a, b) => a - b);
+  return {
+    totalQuestions: instances.length,
+    answerableQuestions: answerable,
+    recallAt1: answerable === 0 ? 0 : recallAt1 / answerable,
+    recallAtK: answerable === 0 ? 0 : recallAtK / answerable,
     hitScores: sortedHits,
     missScores: [...missScores].sort((a, b) => a - b),
     recommendedThreshold: percentile(sortedHits, 0.25),

@@ -140,3 +140,85 @@ export function expandContextWindow(context: string[], indices: number[], radius
     .map((i) => context[i]!)
     .join('\n');
 }
+
+/** Mean-pool a list of equal-length vectors into a single centroid vector. */
+export function meanPool(vectors: readonly Float64Array[]): Float64Array {
+  if (vectors.length === 0) {
+    return new Float64Array(0);
+  }
+  const dim = vectors[0]!.length;
+  const sum = new Float64Array(dim);
+  for (const v of vectors) {
+    for (let i = 0; i < dim; i++) {
+      sum[i] = sum[i]! + v[i]!;
+    }
+  }
+  for (let i = 0; i < dim; i++) {
+    sum[i] = sum[i]! / vectors.length;
+  }
+  return sum;
+}
+
+export type SessionHit = {
+  id: string;
+  /** Index of this session in the input `sessions` array. */
+  sessionIndex: number;
+  /** The full session text (all turns joined). */
+  text: string;
+  score: number;
+};
+
+/**
+ * Session-level retrieval: represent each session by the mean of its turn
+ * embeddings, index those session centroids, and return the top-k sessions for
+ * `question`. Retrieving whole sessions (rather than isolated turns) lets a
+ * multi-session question aggregate evidence that is spread across sessions.
+ */
+export async function retrieveTopKSessions(
+  embedding: EmbeddingModel,
+  question: string,
+  sessions: string[][],
+  topK: number,
+): Promise<SessionHit[]> {
+  // Flatten all turns once so a single batched embedding pass covers every
+  // session, and remember where each session's turns begin/end.
+  const flat: string[] = [];
+  const bounds: number[] = [0];
+  for (const session of sessions) {
+    flat.push(...session);
+    bounds.push(flat.length);
+  }
+
+  const vectors = flat.length > 0 ? await embedManyCached(embedding, flat) : [];
+  const index = new BruteForceVectorIndex();
+  const texts = new Map<string, string>();
+  const idToSession = new Map<string, number>();
+
+  for (let s = 0; s < sessions.length; s++) {
+    const session = sessions[s]!;
+    if (session.length === 0) {
+      continue;
+    }
+    const sessionVec = meanPool(vectors.slice(bounds[s], bounds[s + 1]));
+    if (sessionVec.length === 0) {
+      continue;
+    }
+    const id = `s-${hashText(session.join('\n'))}`;
+    await index.add(id, sessionVec);
+    texts.set(id, session.join('\n'));
+    idToSession.set(id, s);
+  }
+
+  if (texts.size === 0) {
+    return [];
+  }
+  const queryVec = await embedOneCached(embedding, question);
+  const hits = await index.search(queryVec, topK);
+  // Every hit id was inserted via `texts.set`, so the lookups are always defined.
+  return hits.map((h) => ({
+    id: h.id,
+    sessionIndex: idToSession.get(h.id) ?? -1,
+    text: texts.get(h.id)!,
+    score: h.score,
+  }));
+}

@@ -3,6 +3,7 @@ import {
   loadLongMemEval,
   toCapability,
   flattenSessions,
+  sessionsToContext,
   turnText,
   type LongMemEvalInstance,
 } from '../datasets/longmemeval-loader.js';
@@ -71,6 +72,31 @@ describe('flattenSessions', () => {
   });
 });
 
+describe('sessionsToContext', () => {
+  it('preserves session boundaries as grouped context strings', () => {
+    const grouped = sessionsToContext([
+      [{ role: 'user', content: 'a' }],
+      [
+        { role: 'user', content: 'b' },
+        { role: 'assistant', content: 'c' },
+      ],
+    ]);
+    expect(grouped).toEqual([['user: a'], ['user: b', 'assistant: c']]);
+  });
+
+  it('injects session dates into each grouped session', () => {
+    const grouped = sessionsToContext(
+      [[{ role: 'user', content: 'a' }], [{ role: 'user', content: 'b' }]],
+      ['2023-05-01', '2023-05-02'],
+    );
+    expect(grouped).toEqual([['[2023-05-01] user: a'], ['[2023-05-02] user: b']]);
+  });
+
+  it('returns an empty list for undefined sessions', () => {
+    expect(sessionsToContext(undefined)).toEqual([]);
+  });
+});
+
 describe('loadLongMemEval', () => {
   const sample: LongMemEvalInstance[] = [
     {
@@ -98,6 +124,7 @@ describe('loadLongMemEval', () => {
     expect(ds.questions[1]!.capability).toBe('ABS');
     expect(ds.questions[1]!.expected).toBeNull();
     expect(ds.questions[0]!.context).toEqual(['user: My color is blue.']);
+    expect(ds.questions[0]!.sessions).toEqual([['user: My color is blue.']]);
   });
 
   it('injects session dates into the context for temporal reasoning', () => {

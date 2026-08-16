@@ -5,6 +5,7 @@ export type {
   BenchmarkDataset,
   Answer,
   MemorySystem,
+  SessionAwareMemorySystem,
   PerCapabilityResult,
   Metrics,
   AggregateStats,
@@ -52,6 +53,7 @@ export {
   loadLongMemEval,
   toCapability,
   flattenSessions,
+  sessionsToContext,
   turnText,
   type LongMemEvalTurn,
   type LongMemEvalInstance,
@@ -59,19 +61,24 @@ export {
 export { sampleInstances } from './datasets/sampling.js';
 export {
   computeRetrievalDiagnostics,
+  computeSessionRetrievalDiagnostics,
   checkEmbeddingDeterminism,
   flattenTurns,
   percentile,
   type RetrievalDiagnostic,
+  type SessionRetrievalDiagnostic,
 } from './retrieval-diagnostics.js';
 export {
   retrieveTopK,
+  retrieveTopKSessions,
   expandContextWindow,
+  meanPool,
   embedManyCached,
   embedOneCached,
   clearEmbeddingCache,
   hashText,
   type RetrievalHit,
+  type SessionHit,
 } from './retrieval.js';
 export { FactMemorySystem, type FactMemorySystemOptions } from './fact-memory.js';
 export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embedding-memory.js';
