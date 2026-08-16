@@ -222,3 +222,29 @@ export async function retrieveTopKSessions(
     score: h.score,
   }));
 }
+
+/**
+ * Multi-query targeted recall: retrieve sessions for each query independently
+ * and merge the results by session id, keeping the highest score. Query expansion
+ * turns an abstract question (e.g. "items of clothing") into concrete phrases
+ * (e.g. "blazer", "dress") so dispersed evidence sessions are recalled even when
+ * the abstract question alone ranks them too low.
+ */
+export async function retrieveByQueries(
+  embedding: EmbeddingModel,
+  queries: string[],
+  sessions: string[][],
+  topKPerQuery: number,
+): Promise<SessionHit[]> {
+  const bestById = new Map<string, SessionHit>();
+  for (const query of queries) {
+    const hits = await retrieveTopKSessions(embedding, query, sessions, topKPerQuery);
+    for (const hit of hits) {
+      const existing = bestById.get(hit.id);
+      if (!existing || hit.score > existing.score) {
+        bestById.set(hit.id, hit);
+      }
+    }
+  }
+  return [...bestById.values()].sort((a, b) => b.score - a.score);
+}

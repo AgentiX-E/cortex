@@ -17,9 +17,25 @@ import {
   runNaturalLanguageBenchmark,
   sampleInstances,
   toCapability,
+  turnText,
   type DecisionTrace,
   type LongMemEvalInstance,
 } from '@agentix-e/cortex-eval';
+
+/** Resolve an instance's answer session ids to their full session text. */
+function answerSessionsContent(inst: LongMemEvalInstance): string[] {
+  const sessionIds = inst.haystack_session_ids ?? [];
+  const sessions = inst.haystack_sessions ?? [];
+  const dates = inst.haystack_dates ?? [];
+  const out: string[] = [];
+  for (const answerId of inst.answer_session_ids ?? []) {
+    const idx = sessionIds.indexOf(answerId);
+    if (idx >= 0 && idx < sessions.length) {
+      out.push(sessions[idx]!.map((turn) => turnText(turn, dates[idx])).join('\n'));
+    }
+  }
+  return out;
+}
 
 async function main(): Promise<void> {
   const dataPath = process.env['LONGMEMEVAL_PATH'];
@@ -106,6 +122,7 @@ async function main(): Promise<void> {
         ground_truth: inst.answer,
         answer_session_ids: inst.answer_session_ids ?? [],
         haystack_dates: inst.haystack_dates ?? [],
+        answer_sessions_content: answerSessionsContent(inst),
         decision: trace ?? null,
       };
     });

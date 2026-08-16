@@ -71,6 +71,7 @@ export {
 export {
   retrieveTopK,
   retrieveTopKSessions,
+  retrieveByQueries,
   expandContextWindow,
   meanPool,
   embedManyCached,
@@ -86,6 +87,8 @@ export {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
   buildAggregationQaPrompt,
+  buildQueryExpansionPrompt,
+  parseQueryExpansion,
   truncateText,
   parseQaAnswer,
   type NaturalLanguageMemorySystemOptions,

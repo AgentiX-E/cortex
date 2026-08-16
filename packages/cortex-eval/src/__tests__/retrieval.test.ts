@@ -3,6 +3,7 @@ import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import {
   retrieveTopK,
   retrieveTopKSessions,
+  retrieveByQueries,
   expandContextWindow,
   meanPool,
   embedManyCached,
@@ -160,6 +161,30 @@ describe('retrieveTopKSessions', () => {
       embed: async () => [],
     };
     const hits = await retrieveTopKSessions(embedding, 'q', [['turn a']], 2);
+    expect(hits).toEqual([]);
+  });
+});
+
+describe('retrieveByQueries', () => {
+  it('merges sessions across queries, keeping one entry per session', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const hits = await retrieveByQueries(embedding, ['q1', 'q2'], [['turn a'], ['turn b']], 2);
+    const ids = new Set(hits.map((h) => h.id));
+    expect(ids.size).toBe(hits.length);
+    expect(hits.length).toBeLessThanOrEqual(2);
+  });
+
+  it('returns an empty list when all queries match no session', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async () => [],
+    };
+    const hits = await retrieveByQueries(embedding, ['q1', 'q2'], [['turn a']], 2);
     expect(hits).toEqual([]);
   });
 });

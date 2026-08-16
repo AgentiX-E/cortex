@@ -10,7 +10,13 @@
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
-import { expandContextWindow, retrieveTopK, retrieveTopKSessions } from './retrieval.js';
+import {
+  expandContextWindow,
+  retrieveByQueries,
+  retrieveTopK,
+  retrieveTopKSessions,
+  type SessionHit,
+} from './retrieval.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -27,6 +33,8 @@ export type DecisionTrace = {
   llmRaw?: string;
   /** Final answer returned to the benchmark. */
   answer?: Answer;
+  /** Query-expansion phrases used for targeted session recall (MR only). */
+  expansionQueries?: string[];
 };
 
 export type NaturalLanguageMemorySystemOptions = {
@@ -40,6 +48,10 @@ export type NaturalLanguageMemorySystemOptions = {
   contextRadius?: number;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
+  /** When true, expand the question into concrete phrases before MR recall (default true). */
+  enableQueryExpansion?: boolean;
+  /** Top sessions recalled per expansion phrase (default 3). */
+  queryExpansionTopKPerQuery?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
   abstainThreshold?: number;
   /** The LLM's abstention marker (default UNANSWERABLE). */
@@ -58,6 +70,7 @@ const DEFAULT_TOP_K = 15;
 const DEFAULT_SESSION_TOP_K = 10;
 const DEFAULT_CONTEXT_RADIUS = 1;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
+const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
 
@@ -86,29 +99,71 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Multi-session aggregation answering: retrieve whole sessions and inject their
-   * (bounded) content so the LLM can aggregate evidence spread across sessions.
-   * Whole sessions are injected instead of turn-level focusing because aggregation
-   * evidence is dispersed and turn-level focusing compresses it away.
+   * Multi-session aggregation answering: expand the abstract question into
+   * concrete retrieval phrases, recall evidence sessions for both the question
+   * and each phrase, then inject their (bounded) content so the LLM can aggregate
+   * evidence spread across sessions.
    */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
+    const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(question, sessions);
+    const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
+    const retrieved = hits.map((h) => truncateText(h.text, maxChars)).join('\n\n');
+    // Threshold on the top-1 session score keeps abstention consistent across
+    // the turn-level and session-level paths.
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildAggregationQaPrompt,
+      expansionQueries,
+    );
+  }
+
+  private async retrieveSessionsForQuestion(
+    question: string,
+    sessions: string[][],
+  ): Promise<{ hits: SessionHit[]; expansionQueries: string[] }> {
     const sessionTopK = this.options.sessionTopK ?? DEFAULT_SESSION_TOP_K;
-    const sessionHits = await retrieveTopKSessions(
+    const baseHits = await retrieveTopKSessions(
       this.options.embedding,
       question,
       sessions,
       sessionTopK,
     );
-    const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
-    const retrieved = sessionHits.map((h) => truncateText(h.text, maxChars)).join('\n\n');
-    // Threshold on the top-1 session score keeps abstention consistent across
-    // the turn-level and session-level paths.
-    return this.respondWith(
-      question,
-      sessionHits[0]?.score ?? 0,
-      retrieved,
-      buildAggregationQaPrompt,
+
+    if (this.options.enableQueryExpansion === false) {
+      return { hits: baseHits, expansionQueries: [] };
+    }
+
+    const expansionPrompt = buildQueryExpansionPrompt(question);
+    const expansionRaw = await this.options.llm.complete(expansionPrompt, {
+      temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+    });
+    const expansionQueries = parseQueryExpansion(expansionRaw);
+    if (expansionQueries.length === 0) {
+      return { hits: baseHits, expansionQueries: [] };
+    }
+
+    const perQueryK = this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K;
+    const expandedHits = await retrieveByQueries(
+      this.options.embedding,
+      expansionQueries,
+      sessions,
+      perQueryK,
     );
+
+    // Merge base and expanded hits, keeping the highest score per session.
+    const merged = new Map<string, SessionHit>();
+    for (const hit of [...baseHits, ...expandedHits]) {
+      const existing = merged.get(hit.id);
+      if (!existing || hit.score > existing.score) {
+        merged.set(hit.id, hit);
+      }
+    }
+    return {
+      hits: [...merged.values()].sort((a, b) => b.score - a.score),
+      expansionQueries,
+    };
   }
 
   private async respondWith(
@@ -116,11 +171,16 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     top1Score: number,
     retrieved: string,
     promptBuilder: PromptBuilder,
+    expansionQueries: string[] = [],
   ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (retrieved === '') {
       const answer = abstentionEnabled ? null : 'unknown';
-      this.emitTrace(question, 0, answer === null, 'empty', { retrieved, answer });
+      this.emitTrace(question, 0, answer === null, 'empty', {
+        retrieved,
+        answer,
+        expansionQueries,
+      });
       return answer;
     }
     if (
@@ -128,7 +188,11 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       this.options.abstainThreshold != null &&
       top1Score < this.options.abstainThreshold
     ) {
-      this.emitTrace(question, top1Score, true, 'threshold', { retrieved, answer: null });
+      this.emitTrace(question, top1Score, true, 'threshold', {
+        retrieved,
+        answer: null,
+        expansionQueries,
+      });
       return null;
     }
 
@@ -143,16 +207,23 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
           retrieved,
           llmRaw: raw,
           answer: 'unknown',
+          expansionQueries,
         });
         return 'unknown';
       }
-      this.emitTrace(question, top1Score, true, 'llm', { retrieved, llmRaw: raw, answer: null });
+      this.emitTrace(question, top1Score, true, 'llm', {
+        retrieved,
+        llmRaw: raw,
+        answer: null,
+        expansionQueries,
+      });
       return null;
     }
     this.emitTrace(question, top1Score, false, 'answered', {
       retrieved,
       llmRaw: raw,
       answer: parsed,
+      expansionQueries,
     });
     return parsed;
   }
@@ -162,7 +233,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     top1Score: number,
     abstained: boolean,
     reason: AbstainReason,
-    extra: { retrieved?: string; llmRaw?: string; answer?: Answer },
+    extra: {
+      retrieved?: string;
+      llmRaw?: string;
+      answer?: Answer;
+      expansionQueries?: string[];
+    },
   ): void {
     this.options.onDecision?.({ question, top1Score, abstained, reason, ...extra });
   }
@@ -222,6 +298,31 @@ export function truncateText(text: string, maxChars: number): string {
     return text;
   }
   return `${text.slice(0, maxChars)}\n[truncated]`;
+}
+
+/**
+ * Build a query-expansion prompt that asks the LLM to turn an abstract question
+ * into the concrete phrases whose mention would be evidence for the answer. The
+ * expanded phrases are used for targeted recall of dispersed evidence sessions.
+ */
+export function buildQueryExpansionPrompt(question: string): string {
+  return [
+    'You are helping retrieve evidence from a conversation memory.',
+    'Given a question, list the concrete phrases or entities whose mention would be evidence for the answer.',
+    'Output ONLY a comma-separated list of short phrases, with no explanation and no numbering.',
+    '',
+    `Question: ${question}`,
+    '',
+    'Phrases:',
+  ].join('\n');
+}
+
+/** Parse a comma/newline/semicolon-separated list of phrases into a clean list. */
+export function parseQueryExpansion(raw: string): string[] {
+  return raw
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 /** Parse the LLM response; returns null when it abstains or returns empty. */

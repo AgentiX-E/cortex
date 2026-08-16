@@ -4,6 +4,8 @@ import {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
   buildAggregationQaPrompt,
+  buildQueryExpansionPrompt,
+  parseQueryExpansion,
   truncateText,
   parseQaAnswer,
   clearEmbeddingCache,
@@ -54,6 +56,24 @@ describe('truncateText', () => {
 
   it('truncates and marks oversized text', () => {
     expect(truncateText('abcdef', 3)).toBe('abc\n[truncated]');
+  });
+});
+
+describe('buildQueryExpansionPrompt', () => {
+  it('asks for concrete evidence phrases', () => {
+    const prompt = buildQueryExpansionPrompt('How many items of clothing?');
+    expect(prompt).toContain('How many items of clothing?');
+    expect(prompt).toContain('Phrases:');
+  });
+});
+
+describe('parseQueryExpansion', () => {
+  it('splits comma, newline, and semicolon separated phrases', () => {
+    expect(parseQueryExpansion('a, b\n c; d')).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('drops empty entries', () => {
+    expect(parseQueryExpansion(' a, , b ')).toEqual(['a', 'b']);
   });
 });
 
@@ -344,12 +364,15 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(answer).toBe('blue');
     });
 
-    it('abstains before calling the LLM when session retrieval is below threshold', async () => {
-      let called = false;
-      const llm = scriptedLlm(() => {
-        called = true;
-        return 'blue';
-      });
+    it('abstains before the aggregation LLM call when retrieval is below threshold', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return 'blue';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
       const system = new NaturalLanguageMemorySystem('s', {
         embedding,
         llm,
@@ -359,7 +382,10 @@ describe('NaturalLanguageMemorySystem', () => {
         ['My favorite color is blue.'],
       ]);
       expect(answer).toBeNull();
-      expect(called).toBe(false);
+      // Query expansion calls the LLM once; the aggregation prompt is never
+      // reached because the threshold abstains before it.
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain('Phrases:');
     });
 
     it('returns null for empty sessions when abstention is enabled', async () => {
@@ -368,11 +394,56 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(await system.answerSessions('What is X?', [[], []])).toBeNull();
     });
 
+    it('skips query expansion when disabled', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableQueryExpansion: false,
+      });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue.'],
+      ]);
+      expect(answer).toBe('blue');
+      // Only the aggregation LLM call happens; no query-expansion prompt.
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).not.toContain('Phrases:');
+    });
+
+    it('falls back to base recall when query expansion returns empty', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Phrases:')) {
+            return '';
+          }
+          return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue.'],
+      ]);
+      expect(answer).toBe('blue');
+    });
+
     it('injects whole sessions and aggregates evidence for multi-session answers', async () => {
       const prompts: string[] = [];
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
+          if (prompt.includes('Phrases:')) {
+            return 'color';
+          }
           return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
         },
         completeStructured: async <T>() => ({}) as T,
@@ -387,11 +458,11 @@ describe('NaturalLanguageMemorySystem', () => {
         ['another unrelated session'],
       ]);
       expect(answer).toBe('blue');
-      // Whole-session injection means the answer turn is present alongside its
-      // surrounding turns, and the aggregation prompt guides the LLM to combine
-      // evidence across sessions.
-      expect(prompts[0]).toContain('favorite color is blue');
-      expect(prompts[0]).toContain('remove duplicates');
+      // The final prompt is the aggregation prompt, which receives the injected
+      // whole-session evidence and the deduplication instruction.
+      const aggregationPrompt = prompts[prompts.length - 1]!;
+      expect(aggregationPrompt).toContain('favorite color is blue');
+      expect(aggregationPrompt).toContain('remove duplicates');
     });
 
     it('never abstains on empty sessions when abstention is disabled', async () => {
