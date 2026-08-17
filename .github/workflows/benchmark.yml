@@ -77,6 +77,7 @@ jobs:
             packages/cortex-eval/benchmark-report.json
             packages/cortex-eval/benchmark-diagnostics.json
             packages/cortex-eval/benchmark-mr-diagnostics.json
+            packages/cortex-eval/benchmark-single-session-diagnostics.json
             packages/cortex-eval/benchmark-mr-ablation-report.md
             packages/cortex-eval/benchmark-mr-ablation-report.json
             packages/cortex-eval/benchmark-error.log

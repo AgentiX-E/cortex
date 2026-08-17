@@ -135,6 +135,31 @@ async function main(): Promise<void> {
   console.log('=== MR diagnostics ===');
   console.log(JSON.stringify(mrDiagnostics, null, 2));
 
+  // Dump per-question diagnostics for the single-session capabilities (IE/KU/TR)
+  // so the exact failure mode — retrieval miss vs LLM over-abstention — is
+  // visible in the uploaded artifact instead of guessed from aggregate scores.
+  const singleSessionDiagnostics = (sampled as LongMemEvalInstance[])
+    .filter((inst) => {
+      const cap = toCapability(inst.question_id, inst.question_type);
+      return cap === 'IE' || cap === 'KU' || cap === 'TR';
+    })
+    .map((inst) => {
+      const trace = [...decisions].reverse().find((d) => d.question === inst.question);
+      return {
+        question_id: inst.question_id,
+        capability: toCapability(inst.question_id, inst.question_type),
+        question: inst.question,
+        ground_truth: inst.answer,
+        decision: trace ?? null,
+      };
+    });
+  writeFileSync(
+    'benchmark-single-session-diagnostics.json',
+    JSON.stringify(singleSessionDiagnostics, null, 2),
+  );
+  console.log('=== Single-session diagnostics ===');
+  console.log(JSON.stringify(singleSessionDiagnostics, null, 2));
+
   writeFileSync('benchmark-report.md', markdown);
   writeFileSync(
     'benchmark-report.json',
