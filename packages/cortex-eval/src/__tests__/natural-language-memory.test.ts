@@ -192,6 +192,12 @@ describe('parseAggregationAnswer', () => {
     expect(parseAggregationAnswer('unanswerable')).toBeNull();
   });
 
+  it('returns null when the labelled answer is the abstention token', () => {
+    // The model can follow the "Answer:" format even while abstaining.
+    expect(parseAggregationAnswer('...\nAnswer: UNANSWERABLE')).toBeNull();
+    expect(parseAggregationAnswer('Final answer: "UNANSWERABLE"')).toBeNull();
+  });
+
   it('returns null for empty input', () => {
     expect(parseAggregationAnswer('   ')).toBeNull();
   });

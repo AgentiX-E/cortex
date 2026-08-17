@@ -454,22 +454,30 @@ export function parseAggregationAnswer(
   abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
 ): Answer {
   const trimmed = raw.trim();
-  if (trimmed === '' || trimmed.toUpperCase() === abstainToken.toUpperCase()) {
+  if (trimmed === '' || isAbstentionValue(trimmed, abstainToken)) {
     return null;
   }
   const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|final answer)\s*:\s*(.+?)\s*$/im);
-  if (labelled) {
-    return stripWrappingQuotes(labelled[1]!.trim());
+  const candidate = labelled ? labelled[1]!.trim() : lastNonEmptyLine(trimmed);
+  if (candidate === '' || isAbstentionValue(candidate, abstainToken)) {
+    return null;
   }
-  const lines = trimmed
+  return stripWrappingQuotes(candidate);
+}
+
+/** True when a value is the abstention marker, with or without wrapping quotes. */
+function isAbstentionValue(s: string, abstainToken: string): boolean {
+  return stripWrappingQuotes(s).toUpperCase() === abstainToken.toUpperCase();
+}
+
+/** Return the last non-empty line, or '' when it looks like an evidence bullet. */
+function lastNonEmptyLine(text: string): string {
+  const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   const last = lines[lines.length - 1];
-  if (last && !/^[-*•]/.test(last)) {
-    return stripWrappingQuotes(last);
-  }
-  return null;
+  return last && !/^[-*•]/.test(last) ? last : '';
 }
 
 /** Remove one layer of surrounding single/double quotes. */

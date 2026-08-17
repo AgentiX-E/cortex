@@ -153,6 +153,18 @@ describe('numeric answer helpers', () => {
     expect(extractLeadingNumber('two')).toBeUndefined();
   });
 
+  it('tolerates a leading currency sign and comma grouping', () => {
+    expect(extractLeadingNumber('$185')).toBe(185);
+    expect(extractLeadingNumber('$2,500')).toBe(2500);
+  });
+
+  it('returns undefined for verbose answers without a leading number', () => {
+    // A digit embedded later (e.g. the "15" in "F-15") must not be mistaken for
+    // the answer's leading number.
+    expect(extractLeadingNumber('I have worked on F-15 and five kits')).toBeUndefined();
+    expect(extractLeadingNumber('I viewed four properties, one a 1-bedroom condo')).toBeUndefined();
+  });
+
   it('accepts a numeric answer stored as a JSON number', () => {
     // Some datasets store counting answers as JSON numbers, not strings.
     expect(extractLeadingNumber(3)).toBe(3);

@@ -134,19 +134,23 @@ export function exactMatchScorer(question: Question, answer: Answer): boolean {
 }
 
 /**
- * Extract the first integer or decimal number from an answer value. Accepts
- * strings and numbers because a dataset may store a numeric answer as a JSON
- * number rather than a string; any other type yields `undefined` so the caller
- * can fall back to the LLM judge.
+ * Extract the number that LEADS an answer value. Accepts strings and numbers
+ * because a dataset may store a numeric answer as a JSON number rather than a
+ * string. The match is anchored to the start (after an optional currency sign)
+ * so a verbose answer that happens to embed a digit later — e.g. "I viewed four
+ * properties ... a 1-bedroom condo" — is not mistaken for a numeric answer.
+ * Comma grouping ("$2,500") is tolerated. Returns `undefined` when there is no
+ * leading number, signalling the caller to fall back to the LLM judge.
  */
 export function extractLeadingNumber(value: unknown): number | undefined {
-  if (typeof value !== 'string' && typeof value !== 'number') {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value !== 'string') {
     return undefined;
   }
-  const match = String(value)
-    .trim()
-    .match(/-?\d+(?:\.\d+)?/);
-  return match ? Number(match[0]) : undefined;
+  const match = value.trim().match(/^\$?\s*(-?\d[\d,]*(?:\.\d+)?)/);
+  return match ? Number(match[1]!.replace(/,/g, '')) : undefined;
 }
 
 /** True when the question asks for a count or quantity. */
