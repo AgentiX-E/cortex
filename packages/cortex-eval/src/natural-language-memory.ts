@@ -54,6 +54,15 @@ export type NaturalLanguageMemorySystemOptions = {
   queryExpansionTopKPerQuery?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
   abstainThreshold?: number;
+  /**
+   * Similarity threshold for the multi-session (MR) path only. Defaults to
+   * undefined, which disables threshold abstention on the session path: a
+   * multi-session answer aggregates evidence across sessions, so the top-1
+   * session similarity is a poor abstention signal and would discard answerable
+   * questions. The LLM's own `abstainToken` response remains the session path's
+   * abstention mechanism.
+   */
+  sessionAbstainThreshold?: number;
   /** The LLM's abstention marker (default UNANSWERABLE). */
   abstainToken?: string;
   /** When false, the system never abstains (baseline behavior); default true. */
@@ -102,7 +111,15 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
             hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return this.respondWith(question, hits[0]?.score ?? 0, retrieved, buildQaPrompt, parseQaAnswer);
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildQaPrompt,
+      parseQaAnswer,
+      [],
+      this.options.abstainThreshold,
+    );
   }
 
   /**
@@ -115,8 +132,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(question, sessions);
     const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
     const retrieved = hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n');
-    // Threshold on the top-1 session score keeps abstention consistent across
-    // the turn-level and session-level paths.
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -124,6 +139,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       this.options.aggregationPrompt ?? buildAggregationQaPrompt,
       parseAggregationAnswer,
       expansionQueries,
+      this.options.sessionAbstainThreshold,
     );
   }
 
@@ -181,6 +197,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     promptBuilder: PromptBuilder,
     parser: AnswerParser,
     expansionQueries: string[] = [],
+    abstainThreshold?: number,
   ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (retrieved === '') {
@@ -192,11 +209,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       });
       return answer;
     }
-    if (
-      abstentionEnabled &&
-      this.options.abstainThreshold != null &&
-      top1Score < this.options.abstainThreshold
-    ) {
+    if (abstentionEnabled && abstainThreshold != null && top1Score < abstainThreshold) {
       this.emitTrace(question, top1Score, true, 'threshold', {
         retrieved,
         answer: null,

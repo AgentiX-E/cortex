@@ -486,7 +486,32 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(answer).toBe('3');
     });
 
-    it('abstains before the aggregation LLM call when retrieval is below threshold', async () => {
+    it('does not threshold-abstain the session path with only abstainThreshold set', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return prompt.includes('Specific items:') ? 'color' : 'blue';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        // This threshold governs the single-session path only; the session path
+        // needs sessionAbstainThreshold to abstain on similarity.
+        abstainThreshold: 0.99,
+      });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue.'],
+      ]);
+      // The aggregation prompt is still reached and answers, because top-1
+      // session similarity is a poor abstention signal for multi-session answers.
+      expect(answer).toBe('blue');
+      expect(prompts).toHaveLength(2);
+    });
+
+    it('threshold-abstains the session path when sessionAbstainThreshold is set', async () => {
       const prompts: string[] = [];
       const llm: LLM = {
         complete: async (prompt) => {
@@ -498,14 +523,14 @@ describe('NaturalLanguageMemorySystem', () => {
       const system = new NaturalLanguageMemorySystem('s', {
         embedding,
         llm,
-        abstainThreshold: 0.99,
+        sessionAbstainThreshold: 0.99,
       });
       const answer = await system.answerSessions('What is the favorite color?', [
         ['My favorite color is blue.'],
       ]);
       expect(answer).toBeNull();
       // Query expansion calls the LLM once; the aggregation prompt is never
-      // reached because the threshold abstains before it.
+      // reached because the session threshold abstains before it.
       expect(prompts).toHaveLength(1);
       expect(prompts[0]).toContain('Specific items:');
     });
