@@ -13,7 +13,7 @@ import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
   expandContextWindow,
   retrieveByQueries,
-  retrieveTopK,
+  retrieveTopKByQueries,
   retrieveTopKSessions,
   type SessionHit,
 } from './retrieval.js';
@@ -99,10 +99,21 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     this.options = options;
   }
 
-  /** Turn-level answering for the flattened `MemorySystem.answer` contract. */
+  /**
+   * Turn-level answering for the flattened `MemorySystem.answer` contract. The
+   * question is expanded into concrete phrases first so dispersed evidence turns
+   * (a specific object or event named only once in a large haystack) are recalled
+   * even when the abstract question alone ranks them below unrelated distractors.
+   */
   async answer(question: string, context: string[]): Promise<Answer> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
-    const hits = await retrieveTopK(this.options.embedding, question, context, topK);
+    const expansionQueries = await this.expandQuestion(question);
+    const hits = await retrieveTopKByQueries(
+      this.options.embedding,
+      [question, ...expansionQueries],
+      context,
+      topK,
+    );
     const retrieved =
       hits.length === 0
         ? ''
@@ -155,15 +166,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessionTopK,
     );
 
-    if (this.options.enableQueryExpansion === false) {
-      return { hits: baseHits, expansionQueries: [] };
-    }
-
-    const expansionPrompt = buildQueryExpansionPrompt(question);
-    const expansionRaw = await this.options.llm.complete(expansionPrompt, {
-      temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
-    });
-    const expansionQueries = parseQueryExpansion(expansionRaw);
+    const expansionQueries = await this.expandQuestion(question);
     if (expansionQueries.length === 0) {
       return { hits: baseHits, expansionQueries: [] };
     }
@@ -188,6 +191,22 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       hits: [...merged.values()].sort((a, b) => b.score - a.score),
       expansionQueries,
     };
+  }
+
+  /**
+   * Expand an abstract question into concrete object/event phrases for targeted
+   * recall. Shared by the single-session and multi-session paths so both benefit
+   * from the same dispersed-evidence recovery; returns [] when expansion is
+   * disabled or the LLM produces no phrases.
+   */
+  private async expandQuestion(question: string): Promise<string[]> {
+    if (this.options.enableQueryExpansion === false) {
+      return [];
+    }
+    const expansionRaw = await this.options.llm.complete(buildQueryExpansionPrompt(question), {
+      temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+    });
+    return parseQueryExpansion(expansionRaw);
   }
 
   private async respondWith(

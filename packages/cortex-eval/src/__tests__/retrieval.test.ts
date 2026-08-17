@@ -4,6 +4,7 @@ import {
   retrieveTopK,
   retrieveTopKSessions,
   retrieveByQueries,
+  retrieveTopKByQueries,
   expandContextWindow,
   meanPool,
   embedManyCached,
@@ -185,6 +186,30 @@ describe('retrieveByQueries', () => {
       embed: async () => [],
     };
     const hits = await retrieveByQueries(embedding, ['q1', 'q2'], [['turn a']], 2);
+    expect(hits).toEqual([]);
+  });
+});
+
+describe('retrieveTopKByQueries', () => {
+  it('merges turns across queries, keeping one entry per turn', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], ['turn a', 'turn b'], 2);
+    const ids = new Set(hits.map((h) => h.id));
+    expect(ids.size).toBe(hits.length);
+    expect(hits.length).toBeLessThanOrEqual(2);
+  });
+
+  it('returns an empty list when all queries match no turn', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async () => [],
+    };
+    const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], [], 2);
     expect(hits).toEqual([]);
   });
 });

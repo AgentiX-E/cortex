@@ -231,6 +231,9 @@ describe('NaturalLanguageMemorySystem', () => {
       embedding,
       llm,
       abstainThreshold: 0.99,
+      // Disable expansion so this test exercises the threshold path without an
+      // expansion LLM call.
+      enableQueryExpansion: false,
     });
     const answer = await system.answer('What is the favorite color?', [
       'My favorite color is blue.',
@@ -288,8 +291,16 @@ describe('NaturalLanguageMemorySystem', () => {
       },
     };
     const llm = scriptedLlm(() => 'blue');
-    const s1 = new NaturalLanguageMemorySystem('s1', { embedding: counting, llm });
-    const s2 = new NaturalLanguageMemorySystem('s2', { embedding: counting, llm });
+    const s1 = new NaturalLanguageMemorySystem('s1', {
+      embedding: counting,
+      llm,
+      enableQueryExpansion: false,
+    });
+    const s2 = new NaturalLanguageMemorySystem('s2', {
+      embedding: counting,
+      llm,
+      enableQueryExpansion: false,
+    });
     await s1.answer('What is X?', ['turn A']);
     await s2.answer('What is X?', ['turn A']);
     // 'What is X?' and 'turn A' are each embedded once despite two instances.
@@ -307,7 +318,11 @@ describe('NaturalLanguageMemorySystem', () => {
       },
     };
     const llm = scriptedLlm(() => 'blue');
-    const system = new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: counting,
+      llm,
+      enableQueryExpansion: false,
+    });
     await system.answer('What is X?', ['turn A']);
     await system.answer('What is X?', ['turn A']);
     // The shared embedding cache serves the second call, so the turn and query
@@ -326,7 +341,11 @@ describe('NaturalLanguageMemorySystem', () => {
       },
     };
     const llm = scriptedLlm(() => 'blue');
-    const system = new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: counting,
+      llm,
+      enableQueryExpansion: false,
+    });
     await system.answer('What is X?', ['turn A', 'turn B', 'turn C']);
     // One batched ingest for the three turns plus one query embedding.
     expect(embedCallCount).toBe(2);
@@ -342,12 +361,39 @@ describe('NaturalLanguageMemorySystem', () => {
       },
       completeStructured: async <T>() => ({}) as T,
     };
-    const system = new NaturalLanguageMemorySystem('s', { embedding, llm, topK: 1 });
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      topK: 1,
+      enableQueryExpansion: false,
+    });
     await system.answer('What is zzzalpha?', ['zzzalpha fact']);
     await system.answer('What is zzzbeta?', ['zzzbeta fact']);
     // The second question's retrieved context must not contain the first question's turn.
     expect(prompts[1]).toContain('zzzbeta fact');
     expect(prompts[1]).not.toContain('zzzalpha fact');
+  });
+
+  it('expands the question before single-session retrieval by default', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'crystal chandelier';
+        }
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    await system.answer('How many weeks ago did I receive the chandelier?', [
+      'I received a crystal chandelier from my aunt.',
+    ]);
+    // Query expansion runs first, then the QA answer prompt.
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain('Specific items:');
+    expect(prompts[1]).toContain('Question: How many weeks ago');
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {
@@ -362,7 +408,11 @@ describe('NaturalLanguageMemorySystem', () => {
     };
     const llm = scriptedLlm(() => 'blue');
     const makeSystem = (): NaturalLanguageMemorySystem =>
-      new NaturalLanguageMemorySystem('s', { embedding: counting, llm });
+      new NaturalLanguageMemorySystem('s', {
+        embedding: counting,
+        llm,
+        enableQueryExpansion: false,
+      });
     await makeSystem().answer('What is X?', ['turn A']);
     clearEmbeddingCache();
     // A fresh instance has an empty turn index, so both the query and the turn

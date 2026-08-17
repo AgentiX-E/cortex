@@ -248,3 +248,31 @@ export async function retrieveByQueries(
   }
   return [...bestById.values()].sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Turn-level analogue of `retrieveByQueries`: retrieve the top-k turns for each
+ * query independently and merge them by turn id, keeping the highest score. The
+ * single-session path suffers the same dispersed-evidence problem as MR — a
+ * temporal question ("How many weeks ago did I receive the crystal chandelier?")
+ * ranks the specific chandelier turn below unrelated but semantically similar
+ * distractors — so expanding into concrete phrases and searching each phrase
+ * recovers the answer turn that the abstract question alone misses.
+ */
+export async function retrieveTopKByQueries(
+  embedding: EmbeddingModel,
+  queries: string[],
+  context: string[],
+  topKPerQuery: number,
+): Promise<RetrievalHit[]> {
+  const bestById = new Map<string, RetrievalHit>();
+  for (const query of queries) {
+    const hits = await retrieveTopK(embedding, query, context, topKPerQuery);
+    for (const hit of hits) {
+      const existing = bestById.get(hit.id);
+      if (!existing || hit.score > existing.score) {
+        bestById.set(hit.id, hit);
+      }
+    }
+  }
+  return [...bestById.values()].sort((a, b) => b.score - a.score);
+}

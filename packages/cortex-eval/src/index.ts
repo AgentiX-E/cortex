@@ -85,6 +85,7 @@ export {
   retrieveTopK,
   retrieveTopKSessions,
   retrieveByQueries,
+  retrieveTopKByQueries,
   expandContextWindow,
   meanPool,
   embedManyCached,
