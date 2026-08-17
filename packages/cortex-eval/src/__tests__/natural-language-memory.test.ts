@@ -4,6 +4,7 @@ import {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
   buildAggregationQaPrompt,
+  buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
@@ -60,6 +61,23 @@ describe('buildAggregationQaPrompt', () => {
 
   it('accepts a custom abstention token', () => {
     const prompt = buildAggregationQaPrompt('Q?', 'ctx', 'NONE');
+    expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildLegacyAggregationQaPrompt', () => {
+  it('keeps the pre-CoT inline counting rules without enumeration', () => {
+    const prompt = buildLegacyAggregationQaPrompt('How many X?', 'session evidence');
+    expect(prompt).toContain('MULTIPLE conversation sessions');
+    expect(prompt).toContain('Counting rules:');
+    expect(prompt).toContain('TWO items total');
+    expect(prompt).toContain('Question: How many X?');
+    expect(prompt).toContain('session evidence');
+    expect(prompt).not.toContain('Step 1 — Enumerate');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildLegacyAggregationQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
   });
 });
@@ -571,6 +589,32 @@ describe('NaturalLanguageMemorySystem', () => {
         enableAbstention: false,
       });
       expect(await system.answerSessions('What is X?', [[], []])).toBe('unknown');
+    });
+
+    it('routes the MR path through a custom aggregation prompt when configured', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific items:')) {
+            return 'color';
+          }
+          return prompt.includes('CUSTOM AGGREGATION MARKER') ? 'blue' : 'UNANSWERABLE';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        aggregationPrompt: (q, ctx) => `CUSTOM AGGREGATION MARKER\nQuestion: ${q}\n${ctx}`,
+      });
+      const answer = await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue.'],
+      ]);
+      expect(answer).toBe('blue');
+      const aggregationPrompt = prompts[prompts.length - 1]!;
+      expect(aggregationPrompt).toContain('CUSTOM AGGREGATION MARKER');
+      expect(aggregationPrompt).not.toContain('Step 1 — Enumerate');
     });
   });
 });

@@ -14,6 +14,7 @@ import {
   computeSessionRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
+  runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   sampleInstances,
   toCapability,
@@ -58,12 +59,15 @@ async function main(): Promise<void> {
   const threshold = Number(process.env['ABSTAIN_THRESHOLD'] ?? 0.5);
   // Default to a single deterministic run: with temperature 0 the systems are
   // deterministic, so repeated runs add cost without variance. Set RUNS>1 only
-  // when sampling variance is deliberately introduced.
+  // when sampling variance is deliberately introduced via TEMPERATURE>0.
   const runs = Number(process.env['RUNS'] ?? 1);
+  // Sampling temperature for both systems (default 0, deterministic). A positive
+  // value introduces real sampling variance so the over-run t-test is defined.
+  const temperature = Number(process.env['TEMPERATURE'] ?? 0);
 
   console.log(
     `Running benchmark on ${sampled.length} instance(s) ` +
-      `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, abstainThreshold=${threshold})...`,
+      `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, temperature=${temperature}, abstainThreshold=${threshold})...`,
   );
 
   // Verify the embedding provider is deterministic before trusting retrieval
@@ -100,6 +104,7 @@ async function main(): Promise<void> {
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
     runs,
+    temperature,
     onDecision: (trace) => decisions.push(trace),
   });
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
@@ -136,6 +141,18 @@ async function main(): Promise<void> {
     JSON.stringify({ ...report, decisionReasons: reasonCounts }, null, 2),
   );
   console.log(markdown);
+
+  // Isolate the MR aggregation prompt contribution: legacy inline-counting vs
+  // CoT enumerate-then-count, with abstention held constant so the paired McNemar
+  // test measures the prompt effect on MR questions directly.
+  const mrAblation = await runMrAggregationAblation(sampled as never, embedding, llm, {
+    runs,
+    temperature,
+  });
+  writeFileSync('benchmark-mr-ablation-report.md', mrAblation.markdown);
+  writeFileSync('benchmark-mr-ablation-report.json', JSON.stringify(mrAblation.report, null, 2));
+  console.log('=== MR aggregation ablation ===');
+  console.log(mrAblation.markdown);
 }
 
 main().catch((err) => {

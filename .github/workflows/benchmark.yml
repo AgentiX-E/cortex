@@ -56,8 +56,14 @@ jobs:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           ABSTAIN_THRESHOLD: '0.5'
+          # Deterministic primary run: McNemar + Wilson CI are paired over
+          # questions and remain valid at temperature 0. Set TEMPERATURE>0 and
+          # RUNS>1 to additionally measure sampling variance via a t-test.
+          TEMPERATURE: '0'
           RUNS: '1'
-          LIMIT: '10'
+          # Stratified sample large enough for meaningful per-capability
+          # significance (~30 MR questions) while staying inside the job timeout.
+          LIMIT: '150'
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Upload benchmark report
@@ -70,5 +76,7 @@ jobs:
             packages/cortex-eval/benchmark-report.json
             packages/cortex-eval/benchmark-diagnostics.json
             packages/cortex-eval/benchmark-mr-diagnostics.json
+            packages/cortex-eval/benchmark-mr-ablation-report.md
+            packages/cortex-eval/benchmark-mr-ablation-report.json
             packages/cortex-eval/benchmark-error.log
           retention-days: 30

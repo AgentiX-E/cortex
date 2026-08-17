@@ -10,6 +10,7 @@ export type {
   Metrics,
   AggregateStats,
   AblationResult,
+  PerCapabilityPairedStats,
 } from './types.js';
 export {
   normalizeAnswer,
@@ -52,6 +53,7 @@ export {
 export {
   runEmbeddingBenchmark,
   runNaturalLanguageBenchmark,
+  runMrAggregationAblation,
   type BenchmarkRunnerOptions,
 } from './runner.js';
 export { createLongMemEvalMini } from './datasets/longmemeval-mini.js';
@@ -98,6 +100,7 @@ export {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
   buildAggregationQaPrompt,
+  buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,

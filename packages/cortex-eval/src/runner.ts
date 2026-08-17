@@ -6,7 +6,11 @@
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import { loadLongMemEval, type LongMemEvalInstance } from './datasets/longmemeval-loader.js';
 import { EmbeddingMemorySystem } from './embedding-memory.js';
-import { NaturalLanguageMemorySystem } from './natural-language-memory.js';
+import {
+  buildAggregationQaPrompt,
+  buildLegacyAggregationQaPrompt,
+  NaturalLanguageMemorySystem,
+} from './natural-language-memory.js';
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
 import type { DecisionTrace } from './natural-language-memory.js';
@@ -17,6 +21,12 @@ export type BenchmarkRunnerOptions = {
   abstainThreshold?: number;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
+  /**
+   * LLM sampling temperature for both systems. Defaults to the system default
+   * (0, deterministic). Set > 0 together with runs > 1 to measure sampling
+   * variance; at 0 repeated runs are identical and the over-run t-test is NaN.
+   */
+  temperature?: number;
   /** Optional answer judge; defaults to an LLM judge over the same LLM. */
   judge?: AnswerJudge;
   /** Optional callback for per-question decision tracing (diagnostic). */
@@ -57,17 +67,60 @@ export async function runNaturalLanguageBenchmark(
     embedding,
     llm,
     enableAbstention: false,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const feature = new NaturalLanguageMemorySystem('nl-abstain-feature', {
     embedding,
     llm,
     abstainThreshold: threshold,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.onDecision ? { onDecision: options.onDecision } : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);
   const report = await runAblationReport(dataset, baseline, feature, {
     runs: options.runs ?? 3,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
+}
+
+/**
+ * Multi-session aggregation ablation. The main natural-language ablation varies
+ * abstention, so it cannot attribute an MR accuracy change to the aggregation
+ * prompt (both systems share it). This isolates the prompt: both systems disable
+ * abstention and differ ONLY in the aggregation prompt — legacy inline-counting
+ * vs the CoT enumerate-then-count prompt — so the paired McNemar test on MR
+ * questions measures the prompt's contribution directly.
+ */
+export async function runMrAggregationAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const mrQuestions = dataset.questions.filter((q) => q.capability === 'MR');
+  const mrDataset = { name: 'longmemeval-mr', questions: mrQuestions };
+
+  const legacy = new NaturalLanguageMemorySystem('mr-legacy-aggregation', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    aggregationPrompt: buildLegacyAggregationQaPrompt,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const cot = new NaturalLanguageMemorySystem('mr-cot-aggregation', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    aggregationPrompt: buildAggregationQaPrompt,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(mrDataset, legacy, cot, {
+    runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });
   return { report, markdown: formatAblationReport(report) };

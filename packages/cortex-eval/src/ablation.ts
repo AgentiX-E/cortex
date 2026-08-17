@@ -10,7 +10,13 @@
  *   identical deterministic repeats is undefined.
  */
 import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
-import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
+import type {
+  AblationResult,
+  BenchmarkDataset,
+  Capability,
+  MemorySystem,
+  PerCapabilityPairedStats,
+} from './types.js';
 import { evaluateWithScorer, evaluateWithScorerDetailed } from './benchmark.js';
 import {
   aggregate,
@@ -20,6 +26,22 @@ import {
   tTestPValue,
   type AnswerScorer,
 } from './metrics.js';
+
+const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
+
+function emptyPairedStats(): PerCapabilityPairedStats {
+  return {
+    total: 0,
+    baselineCorrect: 0,
+    featureCorrect: 0,
+    baselineCorrectFeatureIncorrect: 0,
+    baselineIncorrectFeatureCorrect: 0,
+    mcnemarPValue: 1,
+    mcnemarSignificant: false,
+    baselineConfidence: { lower: 0, upper: 1 },
+    featureConfidence: { lower: 0, upper: 1 },
+  };
+}
 
 export type AblationOptions = {
   /** Number of independent runs per system (default 3). */
@@ -55,14 +77,39 @@ export async function runAblation(
 
   let baselineCorrectFeatureIncorrect = 0;
   let baselineIncorrectFeatureCorrect = 0;
+  const perCapability = Object.fromEntries(
+    ALL_CAPABILITIES.map((c) => [c, emptyPairedStats()]),
+  ) as Record<Capability, PerCapabilityPairedStats>;
   for (let i = 0; i < baseFirst.correct.length; i++) {
     const baseCorrect = baseFirst.correct[i]!;
     const featCorrect = featFirst.correct[i]!;
+    const capability = dataset.questions[i]!.capability;
+    const bucket = perCapability[capability]!;
+    bucket.total++;
+    if (baseCorrect) {
+      bucket.baselineCorrect++;
+    }
+    if (featCorrect) {
+      bucket.featureCorrect++;
+    }
     if (baseCorrect && !featCorrect) {
       baselineCorrectFeatureIncorrect++;
+      bucket.baselineCorrectFeatureIncorrect++;
     } else if (!baseCorrect && featCorrect) {
       baselineIncorrectFeatureCorrect++;
+      bucket.baselineIncorrectFeatureCorrect++;
     }
+  }
+
+  for (const capability of ALL_CAPABILITIES) {
+    const bucket = perCapability[capability]!;
+    bucket.mcnemarPValue = mcnemarPValue(
+      bucket.baselineCorrectFeatureIncorrect,
+      bucket.baselineIncorrectFeatureCorrect,
+    );
+    bucket.mcnemarSignificant = bucket.mcnemarPValue < alpha;
+    bucket.baselineConfidence = wilsonScoreInterval(bucket.baselineCorrect, bucket.total);
+    bucket.featureConfidence = wilsonScoreInterval(bucket.featureCorrect, bucket.total);
   }
 
   const baselineConfidence = wilsonScoreInterval(
@@ -121,5 +168,6 @@ export async function runAblation(
     },
     baselineMetrics: baseFirst.metrics,
     featureMetrics: featFirst.metrics,
+    perCapability,
   };
 }

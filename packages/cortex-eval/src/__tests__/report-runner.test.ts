@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { LLM } from '@agentix-e/cortex-core';
 import { runAblationReport, formatAblationReport } from '../report.js';
-import { runEmbeddingBenchmark, runNaturalLanguageBenchmark } from '../runner.js';
+import {
+  runEmbeddingBenchmark,
+  runMrAggregationAblation,
+  runNaturalLanguageBenchmark,
+} from '../runner.js';
+import type { AnswerJudge } from '../judge.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
 import { createLlmFromEnv } from '../llm-factory.js';
 import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
@@ -141,6 +146,29 @@ describe('formatAblationReport', () => {
     expect(md).toContain('3.125e-2');
     expect(md).toContain('baseline-wrong/feature-correct = 6');
   });
+
+  it('renders the per-capability significance yes/no label', async () => {
+    const base = await runAblationReport(
+      createLongMemEvalMini(),
+      new FactMemorySystem('naive', { fallback: 'unknown' }),
+      new FactMemorySystem('abstain', { abstainThreshold: 0.3 }),
+      { runs: 1 },
+    );
+    const mr = base.ablation.perCapability['MR']!;
+    const md = formatAblationReport({
+      ...base,
+      ablation: {
+        ...base.ablation,
+        perCapability: {
+          ...base.ablation.perCapability,
+          MR: { ...mr, mcnemarSignificant: true },
+        },
+      },
+    });
+    expect(md).toContain('## Per-capability paired significance');
+    expect(md).toContain('| MR |');
+    expect(md).toContain('| yes |');
+  });
 });
 
 describe('runEmbeddingBenchmark', () => {
@@ -239,5 +267,93 @@ describe('runNaturalLanguageBenchmark', () => {
     const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm);
     expect(report.questionCount).toBe(2);
     expect(report.ablation.featureAggregate.avg).toBeGreaterThanOrEqual(0);
+  });
+
+  it('passes the configured temperature through to the LLM', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    await runNaturalLanguageBenchmark(instances, embedding, capturingLlm, {
+      temperature: 0.7,
+      runs: 1,
+    });
+    expect(temperatures.length).toBeGreaterThan(0);
+    expect(temperatures.every((t) => t === 0.7)).toBe(true);
+  });
+
+  it('forwards the onDecision callback for per-question tracing', async () => {
+    const questions: string[] = [];
+    await runNaturalLanguageBenchmark(instances, embedding, llm, {
+      runs: 1,
+      onDecision: (trace) => questions.push(trace.question),
+    });
+    expect(questions.length).toBeGreaterThan(0);
+  });
+});
+
+describe('runMrAggregationAblation', () => {
+  const embedding = new HashEmbedding(64);
+  const llm: LLM = {
+    complete: async (prompt) => (prompt.includes('favorite color') ? 'blue' : 'UNANSWERABLE'),
+    completeStructured: async <T>() => ({}) as T,
+  };
+
+  const mrInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'mr-1',
+      question_type: 'multi-session',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [
+        [{ role: 'user', content: 'My favorite color is blue.' }],
+        [{ role: 'user', content: 'unrelated' }],
+      ],
+      answer_session_ids: [],
+    },
+    {
+      question_id: 'ie-1',
+      question_type: 'single-session-user',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'favorite color=blue' }]],
+    },
+  ];
+
+  it('isolates MR questions only and labels the prompt variants', async () => {
+    // Omit runs so the single-deterministic-run default is exercised.
+    const { report, markdown } = await runMrAggregationAblation(mrInstances, embedding, llm);
+    expect(report.questionCount).toBe(1);
+    expect(report.baseline.name).toBe('mr-legacy-aggregation');
+    expect(report.feature.name).toBe('mr-cot-aggregation');
+    expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('forwards temperature and a custom judge through the MR ablation', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const judgeQuestions: string[] = [];
+    const judge: AnswerJudge = async (question, predicted, expected) => {
+      judgeQuestions.push(question);
+      return predicted === expected;
+    };
+    const { report } = await runMrAggregationAblation(mrInstances, embedding, capturingLlm, {
+      runs: 2,
+      temperature: 0.6,
+      judge,
+    });
+    expect(report.questionCount).toBe(1);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
+    expect(judgeQuestions.length).toBeGreaterThan(0);
   });
 });

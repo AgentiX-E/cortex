@@ -90,6 +90,19 @@ export function formatAblationReport(report: AblationReport): string {
   lines.push('', `- Overall accuracy: ${pct(report.feature.metrics.accuracy)}`);
   lines.push(`- Abstention rate: ${pct(report.feature.metrics.abstentionRate)}`);
   lines.push(`- Abstention correct rate: ${pct(report.feature.metrics.abstentionCorrectRate)}`);
+  lines.push('', '## Per-capability paired significance (McNemar + Wilson CI)', '');
+  lines.push(
+    '| Capability | Total | Baseline acc | Feature acc | b✓f✗ | b✗f✓ | McNemar p | Significant |',
+  );
+  lines.push('|---|---|---|---|---|---|---|---|');
+  for (const [capability, stats] of Object.entries(ab.perCapability)) {
+    if (stats.total === 0) {
+      continue;
+    }
+    lines.push(
+      `| ${capability} | ${stats.total} | ${pct(stats.baselineCorrect / stats.total)} | ${pct(stats.featureCorrect / stats.total)} | ${stats.baselineCorrectFeatureIncorrect} | ${stats.baselineIncorrectFeatureCorrect} | ${stats.mcnemarPValue.toExponential(3)} | ${stats.mcnemarSignificant ? 'yes' : 'no'} |`,
+    );
+  }
   lines.push('');
   return lines.join('\n');
 }

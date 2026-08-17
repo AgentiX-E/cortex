@@ -58,6 +58,12 @@ export type NaturalLanguageMemorySystemOptions = {
   abstainToken?: string;
   /** When false, the system never abstains (baseline behavior); default true. */
   enableAbstention?: boolean;
+  /**
+   * Prompt builder for multi-session aggregation (default buildAggregationQaPrompt).
+   * Overridable so an ablation can hold abstention constant while swapping only
+   * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
+   */
+  aggregationPrompt?: PromptBuilder;
   /** LLM sampling temperature; default 0 for deterministic evaluation. */
   temperature?: number;
   /** Optional callback for per-question decision tracing (diagnostic). */
@@ -115,7 +121,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       question,
       hits[0]?.score ?? 0,
       retrieved,
-      buildAggregationQaPrompt,
+      this.options.aggregationPrompt ?? buildAggregationQaPrompt,
       parseAggregationAnswer,
       expansionQueries,
     );
@@ -300,6 +306,43 @@ export function buildAggregationQaPrompt(
     'End your response with a single line in the exact form:',
     '  Answer: <final count or short answer>',
     '',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ].join('\n');
+}
+
+/**
+ * Legacy multi-session aggregation prompt: the pre-CoT inline-counting rules.
+ * Unlike `buildAggregationQaPrompt`, it does not force step-by-step enumeration,
+ * so the model collapses an "exchange" (return + pick-up) into one item and can
+ * over-infer a related verb ("participated" as "led"). It is kept only as the
+ * baseline for the MR aggregation ablation so the CoT prompt's contribution can
+ * be measured against the exact behavior it replaced.
+ */
+export function buildLegacyAggregationQaPrompt(
+  question: string,
+  context: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  return [
+    'You are answering a question based on MULTIPLE conversation sessions.',
+    'The answer may require combining information spread across several sessions.',
+    'Read ALL context carefully.',
+    '',
+    'Counting rules:',
+    '- Identify the EXACT action the question asks about (e.g. "led" vs "participated"; "pick up" vs "return").',
+    '- Count ONLY items matching that exact action.',
+    '- "exchange" means returning the old item AND picking up a replacement: count BOTH the return and the pick-up (TWO items total).',
+    '- The same event mentioned multiple times counts only once.',
+    '',
+    'Identify EVERY relevant item, deduplicate, and compute the final answer.',
+    'Answer with ONLY the final answer (a number, name, or short list), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context:',

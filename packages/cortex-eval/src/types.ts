@@ -74,6 +74,25 @@ export type AggregateStats = {
   median: number;
 };
 
+/** Paired significance statistics for a single capability. */
+export type PerCapabilityPairedStats = {
+  total: number;
+  baselineCorrect: number;
+  featureCorrect: number;
+  /** Questions the baseline got right and the feature got wrong. */
+  baselineCorrectFeatureIncorrect: number;
+  /** Questions the baseline got wrong and the feature got right. */
+  baselineIncorrectFeatureCorrect: number;
+  /** Exact paired McNemar two-tailed p-value within this capability. */
+  mcnemarPValue: number;
+  /** True when the per-capability McNemar test is significant at alpha. */
+  mcnemarSignificant: boolean;
+  /** Wilson 95% confidence interval for baseline accuracy within this capability. */
+  baselineConfidence: ConfidenceInterval;
+  /** Wilson 95% confidence interval for feature accuracy within this capability. */
+  featureConfidence: ConfidenceInterval;
+};
+
 export type AblationResult = {
   feature: string;
   baselineAggregate: AggregateStats;
@@ -105,4 +124,6 @@ export type AblationResult = {
   baselineMetrics: Metrics;
   /** Metrics from the first evaluation of the feature system. */
   featureMetrics: Metrics;
+  /** Paired significance statistics broken down per capability. */
+  perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

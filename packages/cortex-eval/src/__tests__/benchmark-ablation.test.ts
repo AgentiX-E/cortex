@@ -101,6 +101,24 @@ describe('runAblation', () => {
     expect(result.mcnemarSignificant).toBe(false);
   });
 
+  it('reports per-capability paired significance', async () => {
+    const ds = makeDataset();
+    const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.perCapability['IE'].total).toBe(1);
+    expect(result.perCapability['KU'].total).toBe(1);
+    expect(result.perCapability['ABS'].total).toBe(1);
+    expect(result.perCapability['MR'].total).toBe(0);
+    expect(result.perCapability['TR'].total).toBe(0);
+    // The ABS question is the sole discordant pair: baseline fails to abstain
+    // while the feature abstains correctly.
+    expect(result.perCapability['ABS'].baselineIncorrectFeatureCorrect).toBe(1);
+    expect(result.perCapability['ABS'].baselineCorrectFeatureIncorrect).toBe(0);
+    expect(result.perCapability['ABS'].mcnemarPValue).toBe(1);
+    expect(result.perCapability['ABS'].mcnemarSignificant).toBe(false);
+  });
+
   it('uses default options when none are provided', async () => {
     const ds = makeDataset();
     const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
