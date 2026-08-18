@@ -251,22 +251,25 @@ export async function retrieveByQueries(
 
 /**
  * Turn-level analogue of `retrieveByQueries`: retrieve the top-k turns for each
- * query independently and merge them by turn id, keeping the highest score. The
- * single-session path suffers the same dispersed-evidence problem as MR — a
- * temporal question ("How many weeks ago did I receive the crystal chandelier?")
- * ranks the specific chandelier turn below unrelated but semantically similar
- * distractors — so expanding into concrete phrases and searching each phrase
- * recovers the answer turn that the abstract question alone misses.
+ * query independently, merge them by turn id keeping the highest score, then cap
+ * the merged result to `topK` total. The single-session path suffers the same
+ * dispersed-evidence problem as MR — a temporal question ("How many weeks ago
+ * did I receive the crystal chandelier?") ranks the specific chandelier turn
+ * below unrelated but semantically similar distractors — so expanding into
+ * concrete phrases and searching each phrase recovers the answer turn that the
+ * abstract question alone misses. The total cap keeps the injected context at
+ * the same size as a single-query `retrieveTopK` instead of letting N queries
+ * multiply the context and dilute the answer signal.
  */
 export async function retrieveTopKByQueries(
   embedding: EmbeddingModel,
   queries: string[],
   context: string[],
-  topKPerQuery: number,
+  topK: number,
 ): Promise<RetrievalHit[]> {
   const bestById = new Map<string, RetrievalHit>();
   for (const query of queries) {
-    const hits = await retrieveTopK(embedding, query, context, topKPerQuery);
+    const hits = await retrieveTopK(embedding, query, context, topK);
     for (const hit of hits) {
       const existing = bestById.get(hit.id);
       if (!existing || hit.score > existing.score) {
@@ -274,5 +277,5 @@ export async function retrieveTopKByQueries(
       }
     }
   }
-  return [...bestById.values()].sort((a, b) => b.score - a.score);
+  return [...bestById.values()].sort((a, b) => b.score - a.score).slice(0, topK);
 }

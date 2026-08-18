@@ -203,6 +203,22 @@ describe('retrieveTopKByQueries', () => {
     expect(hits.length).toBeLessThanOrEqual(2);
   });
 
+  it('caps the merged result to topK total turns', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const hits = await retrieveTopKByQueries(
+      embedding,
+      ['q1', 'q2', 'q3'],
+      ['a', 'b', 'c', 'd', 'e'],
+      2,
+    );
+    // Even with three queries over five turns, the merged result is capped.
+    expect(hits.length).toBe(2);
+  });
+
   it('returns an empty list when all queries match no turn', async () => {
     clearEmbeddingCache();
     const embedding: EmbeddingModel = {
