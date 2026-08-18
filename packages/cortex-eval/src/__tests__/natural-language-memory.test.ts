@@ -11,6 +11,7 @@ import {
   truncateSession,
   parseQaAnswer,
   parseAggregationAnswer,
+  isUserTurn,
   clearEmbeddingCache,
   type DecisionTrace,
 } from '../natural-language-memory.js';
@@ -207,6 +208,26 @@ describe('parseAggregationAnswer', () => {
   });
 });
 
+describe('isUserTurn', () => {
+  it('recognises a date-prefixed user turn', () => {
+    expect(isUserTurn('[2023/01/08] user: I visited MoMA')).toBe(true);
+    expect(isUserTurn('[2023/01/08 (Thu) 03:50] user: hello')).toBe(true);
+  });
+
+  it('rejects assistant turns', () => {
+    expect(isUserTurn('[2023/01/08] assistant: verbose response')).toBe(false);
+    expect(isUserTurn('assistant: no date')).toBe(false);
+  });
+
+  it('recognises an unprefixed user turn', () => {
+    expect(isUserTurn('user: My favorite color is blue.')).toBe(true);
+  });
+
+  it('returns false for plain text without a role prefix', () => {
+    expect(isUserTurn('My favorite color is blue.')).toBe(false);
+  });
+});
+
 describe('NaturalLanguageMemorySystem', () => {
   const embedding = new HashEmbedding(64);
 
@@ -394,6 +415,41 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(prompts).toHaveLength(2);
     expect(prompts[0]).toContain('Specific items:');
     expect(prompts[1]).toContain('Question: How many weeks ago');
+  });
+
+  it('indexes only user turns so assistant chatter never reaches the LLM', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'color';
+        }
+        return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm, topK: 2 });
+    const answer = await system.answer('What is the favorite color?', [
+      '[2023/01/08] assistant: verbose chatter that must not be injected',
+      '[2023/01/09] user: My favorite color is blue.',
+    ]);
+    expect(answer).toBe('blue');
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('favorite color is blue');
+    expect(qaPrompt).not.toContain('verbose chatter');
+  });
+
+  it('falls back to all turns when no user turn is present', async () => {
+    const llm = scriptedLlm((prompt) =>
+      prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE',
+    );
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answer('What is the favorite color?', [
+      '[2023/01/08] assistant: My favorite color is blue.',
+    ]);
+    // No user turn exists, so the system falls back to the assistant-only turn.
+    expect(answer).toBe('blue');
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {

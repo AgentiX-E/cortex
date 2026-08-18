@@ -104,21 +104,26 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * question is expanded into concrete phrases first so dispersed evidence turns
    * (a specific object or event named only once in a large haystack) are recalled
    * even when the abstract question alone ranks them below unrelated distractors.
+   * Retrieval is restricted to user turns because the facts live in the user's
+   * statements; assistant turns are verbose generated chatter that dilutes the
+   * answer signal (and for temporal questions, drown the date-bearing turns).
    */
   async answer(question: string, context: string[]): Promise<Answer> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
+    const factTurns = context.filter(isUserTurn);
+    const searchable = factTurns.length > 0 ? factTurns : context;
     const expansionQueries = await this.expandQuestion(question);
     const hits = await retrieveTopKByQueries(
       this.options.embedding,
       [question, ...expansionQueries],
-      context,
+      searchable,
       topK,
     );
     const retrieved =
       hits.length === 0
         ? ''
         : expandContextWindow(
-            context,
+            searchable,
             hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
@@ -515,4 +520,14 @@ function lastNonEmptyLine(text: string): string {
 /** Remove one layer of surrounding single/double quotes. */
 function stripWrappingQuotes(s: string): string {
   return s.replace(/^["']+|["']+$/g, '');
+}
+
+/**
+ * True when a `turnText`-rendered turn is a user statement. Facts live in user
+ * turns (the user narrates their life events); assistant turns are verbose
+ * generated responses that dilute retrieval, so the single-session path indexes
+ * only user turns. The role follows an optional `[date]` prefix.
+ */
+export function isUserTurn(turn: string): boolean {
+  return /(?:^|\]\s*)user:/.test(turn);
 }

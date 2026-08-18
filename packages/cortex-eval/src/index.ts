@@ -108,6 +108,7 @@ export {
   truncateSession,
   parseQaAnswer,
   parseAggregationAnswer,
+  isUserTurn,
   type NaturalLanguageMemorySystemOptions,
   type AbstainReason,
   type DecisionTrace,
