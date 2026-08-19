@@ -159,43 +159,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     );
   }
 
-  /**
-   * Session-first single-session answering for non-MR questions. The turn-level
-   * `answer` path ranks turns globally, so cross-session distractors crowd out
-   * the answer turn. Retrieving sessions first (mean-pooled session centroids,
-   * which recall the answer session far more reliably) and then injecting only
-   * the user turns from those sessions keeps the answer in view while excluding
-   * the verbose assistant chatter and cross-session noise.
-   */
-  async answerFromSessions(question: string, sessions: string[][]): Promise<Answer> {
-    const { hits } = await this.retrieveSessionsForQuestion(question, sessions);
-    const cap = (this.options.topK ?? DEFAULT_TOP_K) * 2;
-    const userTurns: string[] = [];
-    for (const hit of hits) {
-      for (const line of hit.text.split('\n')) {
-        if (isUserTurn(line)) {
-          userTurns.push(line);
-          if (userTurns.length >= cap) {
-            break;
-          }
-        }
-      }
-      if (userTurns.length >= cap) {
-        break;
-      }
-    }
-    const retrieved = userTurns.join('\n');
-    return this.respondWith(
-      question,
-      hits[0]?.score ?? 0,
-      retrieved,
-      buildQaPrompt,
-      parseQaAnswer,
-      [],
-      this.options.sessionAbstainThreshold,
-    );
-  }
-
   private async retrieveSessionsForQuestion(
     question: string,
     sessions: string[][],

@@ -39,15 +39,11 @@ export type MemorySystem = {
 
 /**
  * A memory system that can exploit session boundaries. The benchmark routes
- * session-grouped questions to `answerSessions` (multi-session aggregation) or
- * `answerFromSessions` (single-session questions that still benefit from
- * session-first retrieval) and falls back to `answer` with the flattened context
- * otherwise.
+ * session-grouped questions to `answerSessions` and falls back to `answer` with
+ * the flattened context otherwise.
  */
 export type SessionAwareMemorySystem = MemorySystem & {
   answerSessions: (question: string, sessions: string[][]) => Answer | Promise<Answer>;
-  /** Session-first single-session answering; optional for simpler systems. */
-  answerFromSessions?: (question: string, sessions: string[][]) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {
