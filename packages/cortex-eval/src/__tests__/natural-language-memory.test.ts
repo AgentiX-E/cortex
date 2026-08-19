@@ -452,6 +452,54 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(answer).toBe('blue');
   });
 
+  it('answerFromSessions retrieves sessions first and injects only user turns', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'color';
+        }
+        return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerFromSessions('What is the favorite color?', [
+      ['[2023/01/08] user: My favorite color is blue.', '[2023/01/08] assistant: verbose'],
+    ]);
+    expect(answer).toBe('blue');
+    // The single-session QA prompt receives the user fact, never the assistant noise.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('favorite color is blue');
+    expect(qaPrompt).not.toContain('verbose');
+  });
+
+  it('caps the number of user turns injected from sessions', async () => {
+    let injectedUserTurns = 0;
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (!prompt.includes('Specific items:')) {
+          const contextSection = prompt.split('Context:')[1] ?? '';
+          injectedUserTurns = contextSection.split('\n').filter((l) => isUserTurn(l.trim())).length;
+        }
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      topK: 2,
+      enableQueryExpansion: false,
+    });
+    await system.answerFromSessions('What is X?', [
+      Array.from({ length: 6 }, (_, i) => `[2023/01/0${i + 1}] user: fact ${i}`),
+    ]);
+    // cap = topK * 2 = 4.
+    expect(injectedUserTurns).toBe(4);
+  });
+
   it('clearEmbeddingCache invalidates the shared cache', async () => {
     clearEmbeddingCache();
     let embedCalls = 0;

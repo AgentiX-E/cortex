@@ -48,8 +48,32 @@ describe('runBenchmark session routing', () => {
     const answers = await runBenchmark(routingDataset, system);
     expect(answers).toEqual(['y', 'x', 'x']);
     // q1 (MR) uses answerSessions; q2 (IE, no sessions) and q3 (IE with
-    // sessions) both use the flattened answer path.
+    // sessions but no answerFromSessions) both use the flattened answer path.
     expect(calls).toEqual(['sessions:1', 'answer', 'answer']);
+  });
+
+  it('routes single-session questions with sessions to answerFromSessions', async () => {
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async (_q, sessions) => {
+        calls.push(`sessions:${sessions.length}`);
+        return 'y';
+      },
+      answerFromSessions: async (_q, sessions) => {
+        calls.push(`from-sessions:${sessions.length}`);
+        return 'z';
+      },
+    };
+    const answers = await runBenchmark(routingDataset, system);
+    expect(answers).toEqual(['y', 'x', 'z']);
+    // q1 (MR) → answerSessions; q2 (no sessions) → answer; q3 (IE with
+    // sessions) → answerFromSessions.
+    expect(calls).toEqual(['sessions:1', 'answer', 'from-sessions:1']);
   });
 
   it('uses flat context for non-session-aware systems', async () => {
