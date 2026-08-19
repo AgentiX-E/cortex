@@ -7,6 +7,7 @@ import {
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
+  buildTemporalQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
   truncateSession,
@@ -147,6 +148,18 @@ describe('buildQueryExpansionPrompt', () => {
     const prompt = buildQueryExpansionPrompt('How many items of clothing?');
     expect(prompt).toContain('How many items of clothing?');
     expect(prompt).toContain('Specific items:');
+  });
+});
+
+describe('buildTemporalQueryExpansionPrompt', () => {
+  it('asks for event descriptions with a verb, not bare nouns', () => {
+    const prompt = buildTemporalQueryExpansionPrompt(
+      'How many weeks ago did I receive the chandelier?',
+    );
+    expect(prompt).toContain('How many weeks ago did I receive the chandelier?');
+    expect(prompt).toContain('Specific events:');
+    expect(prompt).toContain('action verb');
+    expect(prompt).toContain('bare object nouns');
   });
 });
 
@@ -467,13 +480,13 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(answer).toBe('blue');
   });
 
-  it('answerTemporal uses the temporal prompt with the question date', async () => {
+  it('answerTemporal uses the temporal event expansion and the question date', async () => {
     const prompts: string[] = [];
     const llm: LLM = {
       complete: async (prompt) => {
         prompts.push(prompt);
-        if (prompt.includes('Specific items:')) {
-          return 'chandelier';
+        if (prompt.includes('Specific events:')) {
+          return 'receive crystal chandelier from aunt';
         }
         return '4 weeks';
       },
@@ -485,7 +498,9 @@ describe('NaturalLanguageMemorySystem', () => {
       ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
       '2023/04/01',
     );
-    // The final prompt is the temporal QA prompt carrying the reference date.
+    // The temporal path first runs event-level query expansion, then the
+    // temporal QA prompt carrying the reference date.
+    expect(prompts[0]).toContain('Specific events:');
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('2023/04/01');
     expect(qaPrompt).toContain('YYYY/MM/DD');
@@ -588,6 +603,27 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(traces[0]!.retrieved).toContain('favorite color is blue');
     expect(traces[0]!.llmRaw).toBe('blue');
     expect(traces[0]!.answer).toBe('blue');
+  });
+
+  it('surfaces the expansion phrases in the single-session decision trace', async () => {
+    clearEmbeddingCache();
+    const traces: DecisionTrace[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (prompt.includes('Specific items:')) {
+          return 'crystal chandelier';
+        }
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      onDecision: (t) => traces.push(t),
+    });
+    await system.answer('What is X?', ['turn A']);
+    expect(traces[0]!.expansionQueries).toEqual(['crystal chandelier']);
   });
 
   it('leaves raw LLM output undefined when the LLM is not called', async () => {

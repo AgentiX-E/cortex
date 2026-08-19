@@ -149,6 +149,7 @@ async function main(): Promise<void> {
         question_id: inst.question_id,
         capability: toCapability(inst.question_id, inst.question_type),
         question: inst.question,
+        question_date: inst.question_date ?? null,
         ground_truth: inst.answer,
         decision: trace ?? null,
       };

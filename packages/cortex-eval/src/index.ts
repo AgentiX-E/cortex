@@ -104,6 +104,7 @@ export {
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
+  buildTemporalQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
   truncateSession,

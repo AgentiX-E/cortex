@@ -34,7 +34,7 @@ export type DecisionTrace = {
   llmRaw?: string;
   /** Final answer returned to the benchmark. */
   answer?: Answer;
-  /** Query-expansion phrases used for targeted session recall (MR only). */
+  /** Query-expansion phrases used for targeted recall (single-session and MR). */
   expansionQueries?: string[];
 };
 
@@ -110,14 +110,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * answer signal (and for temporal questions, drown the date-bearing turns).
    */
   async answer(question: string, context: string[]): Promise<Answer> {
-    const { hits, retrieved } = await this.retrieveTurns(question, context);
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context);
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
       retrieved,
       buildQaPrompt,
       parseQaAnswer,
-      [],
+      expansionQueries,
       this.options.abstainThreshold,
     );
   }
@@ -133,7 +133,11 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     context: string[],
     questionDate?: string,
   ): Promise<Answer> {
-    const { hits, retrieved } = await this.retrieveTurns(question, context);
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+      question,
+      context,
+      buildTemporalQueryExpansionPrompt,
+    );
     const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
@@ -141,20 +145,26 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       retrieved,
       temporalPrompt,
       parseQaAnswer,
-      [],
+      expansionQueries,
       this.options.abstainThreshold,
     );
   }
 
-  /** User-turn retrieval shared by `answer` and `answerTemporal`. */
+  /**
+   * User-turn retrieval shared by `answer` and `answerTemporal`. The temporal
+   * path passes an event-level expansion builder because temporal questions ask
+   * WHEN an event happened, so the answer turn is recalled by matching the event
+   * (verb + object), not a bare object noun that also occurs in unrelated turns.
+   */
   private async retrieveTurns(
     question: string,
     context: string[],
-  ): Promise<{ hits: RetrievalHit[]; retrieved: string }> {
+    expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
+  ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = context.filter(isUserTurn);
     const searchable = factTurns.length > 0 ? factTurns : context;
-    const expansionQueries = await this.expandQuestion(question);
+    const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const hits = await retrieveTopKByQueries(
       this.options.embedding,
       [question, ...expansionQueries],
@@ -169,7 +179,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
             hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return { hits, retrieved };
+    return { hits, retrieved, expansionQueries };
   }
 
   /**
@@ -233,16 +243,20 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Expand an abstract question into concrete object/event phrases for targeted
-   * recall. Shared by the single-session and multi-session paths so both benefit
-   * from the same dispersed-evidence recovery; returns [] when expansion is
-   * disabled or the LLM produces no phrases.
+   * Expand an abstract question into concrete phrases for targeted recall. The
+   * single-session, temporal, and multi-session paths all use it, but each may
+   * pass a different prompt builder: object phrases for general/MR recall and
+   * event phrases (verb + object) for temporal recall. Returns [] when expansion
+   * is disabled or the LLM produces no phrases.
    */
-  private async expandQuestion(question: string): Promise<string[]> {
+  private async expandQuestion(
+    question: string,
+    promptBuilder: (question: string) => string = buildQueryExpansionPrompt,
+  ): Promise<string[]> {
     if (this.options.enableQueryExpansion === false) {
       return [];
     }
-    const expansionRaw = await this.options.llm.complete(buildQueryExpansionPrompt(question), {
+    const expansionRaw = await this.options.llm.complete(promptBuilder(question), {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
     return parseQueryExpansion(expansionRaw);
@@ -522,6 +536,27 @@ export function buildQueryExpansionPrompt(question: string): string {
     `Question: ${question}`,
     '',
     'Specific items:',
+  ].join('\n');
+}
+
+/**
+ * Temporal questions ask WHEN an event happened, so the answer turn must be
+ * matched by the event itself (action verb + object + distinguishing detail),
+ * not by a bare object noun that also occurs in unrelated turns about the same
+ * object. Event-level phrases recover the specific "receive the chandelier from
+ * my aunt" turn instead of the "research the chandelier's history" distractor.
+ */
+export function buildTemporalQueryExpansionPrompt(question: string): string {
+  return [
+    'You are helping retrieve the evidence event for a temporal question.',
+    'Given a question about WHEN something happened, list the SPECIFIC EVENT descriptions whose wording would appear in the evidence turn.',
+    'Each event is a short phrase combining the action verb and the object (and any distinguishing detail).',
+    'Do NOT list bare object nouns; include the verb so the correct event is matched instead of another mention of the same object.',
+    'Output ONLY a comma-separated list of short event phrases, with no explanation and no numbering.',
+    '',
+    `Question: ${question}`,
+    '',
+    'Specific events:',
   ].join('\n');
 }
 
