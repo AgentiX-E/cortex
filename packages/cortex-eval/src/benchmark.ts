@@ -28,12 +28,13 @@ export async function runBenchmark(
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
   for (const q of dataset.questions) {
-    // Only multi-session questions benefit from session-boundary-aware answering:
-    // their answer is aggregated across sessions. Single-session capabilities
-    // (IE/KU/TR/ABS) keep the turn-level path because coarse session filtering
-    // can drop the answer session and regress those questions.
     if (isSessionAware(system) && q.capability === 'MR' && q.sessions && q.sessions.length > 0) {
+      // Multi-session questions aggregate evidence across sessions.
       answers.push(await system.answerSessions(q.question, q.sessions));
+    } else if (isSessionAware(system) && q.capability === 'TR' && system.answerTemporal) {
+      // Temporal questions need the question date as the reference point for
+      // "how long ago" reasoning, plus a dedicated date-reading prompt.
+      answers.push(await system.answerTemporal(q.question, q.context, q.questionDate));
     } else {
       answers.push(await system.answer(q.question, q.context));
     }

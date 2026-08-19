@@ -100,6 +100,7 @@ export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embe
 export {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
+  buildTemporalQaPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
@@ -113,6 +114,7 @@ export {
   type AbstainReason,
   type DecisionTrace,
 } from './natural-language-memory.js';
+export { isTemporalQuestion, extractDate, daysBetween } from './temporal.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,

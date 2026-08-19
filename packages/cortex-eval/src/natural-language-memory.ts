@@ -15,6 +15,7 @@ import {
   retrieveByQueries,
   retrieveTopKByQueries,
   retrieveTopKSessions,
+  type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
 
@@ -109,6 +110,47 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * answer signal (and for temporal questions, drown the date-bearing turns).
    */
   async answer(question: string, context: string[]): Promise<Answer> {
+    const { hits, retrieved } = await this.retrieveTurns(question, context);
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildQaPrompt,
+      parseQaAnswer,
+      [],
+      this.options.abstainThreshold,
+    );
+  }
+
+  /**
+   * Temporal-reasoning answering for single-session questions. It shares the
+   * user-turn retrieval of `answer` but uses a temporal prompt that supplies the
+   * question date (the reference point for "how many weeks ago") and instructs
+   * the model to read turn dates and compute the elapsed time or ordering.
+   */
+  async answerTemporal(
+    question: string,
+    context: string[],
+    questionDate?: string,
+  ): Promise<Answer> {
+    const { hits, retrieved } = await this.retrieveTurns(question, context);
+    const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      temporalPrompt,
+      parseQaAnswer,
+      [],
+      this.options.abstainThreshold,
+    );
+  }
+
+  /** User-turn retrieval shared by `answer` and `answerTemporal`. */
+  private async retrieveTurns(
+    question: string,
+    context: string[],
+  ): Promise<{ hits: RetrievalHit[]; retrieved: string }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = context.filter(isUserTurn);
     const searchable = factTurns.length > 0 ? factTurns : context;
@@ -127,15 +169,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
             hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return this.respondWith(
-      question,
-      hits[0]?.score ?? 0,
-      retrieved,
-      buildQaPrompt,
-      parseQaAnswer,
-      [],
-      this.options.abstainThreshold,
-    );
+    return { hits, retrieved };
   }
 
   /**
@@ -309,6 +343,38 @@ export function buildQaPrompt(
     '',
     'Answer:',
   ].join('\n');
+}
+
+/**
+ * Build a temporal-reasoning QA prompt. It makes the turn date prefixes and the
+ * question date explicit so the model can answer "how many days/weeks/months ago
+ * or between" and "which happened first" by reading dates instead of guessing.
+ */
+export function buildTemporalQaPrompt(
+  question: string,
+  context: string,
+  questionDate?: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  const lines = [
+    'You are answering a temporal-reasoning question based on a conversation memory.',
+    'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
+    ...(questionDate
+      ? [
+          `The question was asked on ${questionDate}; use it as "today" for "how long ago" questions.`,
+        ]
+      : []),
+    'To answer: identify the relevant event turn(s), read their dates, compute the elapsed days/weeks/months or the event ordering, then answer with ONLY the final answer (a number, date, or short phrase).',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ];
+  return lines.join('\n');
 }
 
 /**

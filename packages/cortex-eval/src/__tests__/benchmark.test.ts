@@ -28,6 +28,14 @@ const routingDataset: BenchmarkDataset = {
       context: ['flat c'],
       sessions: [['session c']],
     },
+    {
+      id: 'q4',
+      capability: 'TR',
+      question: 'Q4',
+      expected: 'd',
+      context: ['flat d'],
+      questionDate: '2023/04/01',
+    },
   ],
 };
 
@@ -46,10 +54,32 @@ describe('runBenchmark session routing', () => {
       },
     };
     const answers = await runBenchmark(routingDataset, system);
-    expect(answers).toEqual(['y', 'x', 'x']);
-    // q1 (MR) uses answerSessions; q2 (IE, no sessions) and q3 (IE with
-    // sessions) both use the flattened answer path.
-    expect(calls).toEqual(['sessions:1', 'answer', 'answer']);
+    expect(answers).toEqual(['y', 'x', 'x', 'x']);
+    // q1 (MR) uses answerSessions; q2 (IE), q3 (IE with sessions), and q4 (TR
+    // without answerTemporal) use the flattened answer path.
+    expect(calls).toEqual(['sessions:1', 'answer', 'answer', 'answer']);
+  });
+
+  it('routes temporal questions to answerTemporal with the question date', async () => {
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => {
+        calls.push('sessions');
+        return 'y';
+      },
+      answerTemporal: async (_q, _ctx, date) => {
+        calls.push(`temporal:${date}`);
+        return 'z';
+      },
+    };
+    const answers = await runBenchmark(routingDataset, system);
+    expect(answers).toEqual(['y', 'x', 'x', 'z']);
+    expect(calls).toEqual(['sessions', 'answer', 'answer', 'temporal:2023/04/01']);
   });
 
   it('uses flat context for non-session-aware systems', async () => {
@@ -62,7 +92,7 @@ describe('runBenchmark session routing', () => {
       },
     };
     const answers = await runBenchmark(routingDataset, system);
-    expect(answers).toEqual(['x', 'x', 'x']);
-    expect(calls).toEqual(['context:1', 'context:1', 'context:1']);
+    expect(answers).toEqual(['x', 'x', 'x', 'x']);
+    expect(calls).toEqual(['context:1', 'context:1', 'context:1', 'context:1']);
   });
 });

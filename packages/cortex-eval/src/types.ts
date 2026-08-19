@@ -21,6 +21,8 @@ export type Question = {
    * session-aware system receives this instead of the flattened `context`.
    */
   sessions?: string[][];
+  /** The date the question was asked; needed for relative-time (TR) answers. */
+  questionDate?: string;
 };
 
 export type BenchmarkDataset = {
@@ -44,6 +46,15 @@ export type MemorySystem = {
  */
 export type SessionAwareMemorySystem = MemorySystem & {
   answerSessions: (question: string, sessions: string[][]) => Answer | Promise<Answer>;
+  /**
+   * Temporal-reasoning answering with the question date; optional for simpler
+   * systems. Falls back to `answer` when absent.
+   */
+  answerTemporal?: (
+    question: string,
+    context: string[],
+    questionDate?: string,
+  ) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {

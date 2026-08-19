@@ -3,6 +3,7 @@ import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
+  buildTemporalQaPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
@@ -35,6 +36,20 @@ describe('buildQaPrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildTemporalQaPrompt', () => {
+  it('supplies the question date and date-reading instructions', () => {
+    const prompt = buildTemporalQaPrompt('How many weeks ago?', 'ctx', '2023/03/15');
+    expect(prompt).toContain('2023/03/15');
+    expect(prompt).toContain('YYYY/MM/DD');
+    expect(prompt).toContain('Question: How many weeks ago?');
+  });
+
+  it('omits the reference line when no question date is given', () => {
+    const prompt = buildTemporalQaPrompt('Which happened first?', 'ctx');
+    expect(prompt).not.toContain('use it as "today"');
   });
 });
 
@@ -450,6 +465,30 @@ describe('NaturalLanguageMemorySystem', () => {
     ]);
     // No user turn exists, so the system falls back to the assistant-only turn.
     expect(answer).toBe('blue');
+  });
+
+  it('answerTemporal uses the temporal prompt with the question date', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'chandelier';
+        }
+        return '4 weeks';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    await system.answerTemporal(
+      'How many weeks ago did I receive the chandelier?',
+      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
+      '2023/04/01',
+    );
+    // The final prompt is the temporal QA prompt carrying the reference date.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('2023/04/01');
+    expect(qaPrompt).toContain('YYYY/MM/DD');
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {

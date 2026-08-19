@@ -92,6 +92,7 @@ export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): Benc
       expected: inst.question_id.endsWith('_abs') ? null : inst.answer,
       context: sessions.flat(),
       sessions,
+      ...(inst.question_date !== undefined ? { questionDate: inst.question_date } : {}),
     };
   });
   return { name: 'longmemeval', questions };

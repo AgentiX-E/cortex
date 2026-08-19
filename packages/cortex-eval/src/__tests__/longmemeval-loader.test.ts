@@ -141,4 +141,20 @@ describe('loadLongMemEval', () => {
     const ds = loadLongMemEval(dated);
     expect(ds.questions[0]!.context).toEqual(['[2023-05-02] user: X happened']);
   });
+
+  it('forwards the question date for temporal reasoning', () => {
+    const dated: LongMemEvalInstance[] = [
+      {
+        question_id: 'q1',
+        question_type: 'temporal-reasoning',
+        question: 'How many weeks ago did X happen?',
+        answer: '2',
+        question_date: '2023/05/15',
+        haystack_sessions: [[{ role: 'user', content: 'X happened' }]],
+        haystack_dates: ['2023/05/02'],
+      },
+    ];
+    const ds = loadLongMemEval(dated);
+    expect(ds.questions[0]!.questionDate).toBe('2023/05/15');
+  });
 });
