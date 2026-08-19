@@ -123,21 +123,31 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Temporal-reasoning answering for single-session questions. It shares the
-   * user-turn retrieval of `answer` but uses a temporal prompt that supplies the
-   * question date (the reference point for "how many weeks ago") and instructs
-   * the model to read turn dates and compute the elapsed time or ordering.
+   * Temporal-reasoning answering. Session-level recall (≈94%) far exceeds
+   * turn-level recall (≈61%) because the answer turn's wording often differs from
+   * the question while the answer session is still retrievable by its centroid.
+   * A temporal answer requires reading the dates of possibly several turns, so
+   * this path retrieves whole sessions with event-level expansion and injects
+   * their (date-prefixed) user turns, then uses a temporal prompt that supplies
+   * the question date and instructs date reading and elapsed-time arithmetic.
    */
   async answerTemporal(
     question: string,
-    context: string[],
+    sessions: string[][],
     questionDate?: string,
   ): Promise<Answer> {
-    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+    const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(
       question,
-      context,
+      sessions,
       buildTemporalQueryExpansionPrompt,
     );
+    const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
+    const retrieved = hits
+      .map((h) => {
+        const userTurns = h.text.split('\n').filter(isUserTurn);
+        return truncateSession(userTurns.join('\n'), maxChars);
+      })
+      .join('\n\n');
     const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
@@ -146,7 +156,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       temporalPrompt,
       parseQaAnswer,
       expansionQueries,
-      this.options.abstainThreshold,
+      this.options.sessionAbstainThreshold,
     );
   }
 
@@ -206,6 +216,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   private async retrieveSessionsForQuestion(
     question: string,
     sessions: string[][],
+    expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
   ): Promise<{ hits: SessionHit[]; expansionQueries: string[] }> {
     const sessionTopK = this.options.sessionTopK ?? DEFAULT_SESSION_TOP_K;
     const baseHits = await retrieveTopKSessions(
@@ -215,7 +226,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessionTopK,
     );
 
-    const expansionQueries = await this.expandQuestion(question);
+    const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     if (expansionQueries.length === 0) {
       return { hits: baseHits, expansionQueries: [] };
     }

@@ -34,6 +34,7 @@ const routingDataset: BenchmarkDataset = {
       question: 'Q4',
       expected: 'd',
       context: ['flat d'],
+      sessions: [['session d']],
       questionDate: '2023/04/01',
     },
   ],
@@ -60,7 +61,7 @@ describe('runBenchmark session routing', () => {
     expect(calls).toEqual(['sessions:1', 'answer', 'answer', 'answer']);
   });
 
-  it('routes temporal questions to answerTemporal with the question date', async () => {
+  it('routes temporal questions to answerTemporal with sessions and the question date', async () => {
     const calls: string[] = [];
     const system: SessionAwareMemorySystem = {
       name: 's',
@@ -72,14 +73,46 @@ describe('runBenchmark session routing', () => {
         calls.push('sessions');
         return 'y';
       },
-      answerTemporal: async (_q, _ctx, date) => {
-        calls.push(`temporal:${date}`);
+      answerTemporal: async (_q, sessions, date) => {
+        calls.push(`temporal:${sessions.length}:${date}`);
         return 'z';
       },
     };
     const answers = await runBenchmark(routingDataset, system);
     expect(answers).toEqual(['y', 'x', 'x', 'z']);
-    expect(calls).toEqual(['sessions', 'answer', 'answer', 'temporal:2023/04/01']);
+    // q4 (TR) has no sessions, so the flattened context is wrapped as one
+    // session and passed with the question date.
+    expect(calls).toEqual(['sessions', 'answer', 'answer', 'temporal:1:2023/04/01']);
+  });
+
+  it('wraps the flattened context as one session when a temporal question has no sessions', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'TR',
+          question: 'Q1',
+          expected: 'a',
+          context: ['flat a', 'flat b'],
+          questionDate: '2023/04/01',
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => 'x',
+      answerSessions: async () => 'y',
+      answerTemporal: async (_q, sessions, date) => {
+        calls.push(`temporal:${sessions.length}:${sessions[0]!.length}:${date}`);
+        return 'z';
+      },
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['z']);
+    // The flattened context is wrapped as a single session of two turns.
+    expect(calls).toEqual(['temporal:1:2:2023/04/01']);
   });
 
   it('uses flat context for non-session-aware systems', async () => {

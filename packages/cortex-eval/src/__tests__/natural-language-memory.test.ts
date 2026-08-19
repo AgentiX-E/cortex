@@ -495,7 +495,7 @@ describe('NaturalLanguageMemorySystem', () => {
     const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
     await system.answerTemporal(
       'How many weeks ago did I receive the chandelier?',
-      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
+      [['[2023/03/04] user: I received a crystal chandelier from my aunt.']],
       '2023/04/01',
     );
     // The temporal path first runs event-level query expansion, then the
@@ -504,6 +504,26 @@ describe('NaturalLanguageMemorySystem', () => {
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('2023/04/01');
     expect(qaPrompt).toContain('YYYY/MM/DD');
+  });
+
+  it('answerTemporal abstains on empty sessions instead of crashing', async () => {
+    clearEmbeddingCache();
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific events:')) {
+          return 'receive chandelier';
+        }
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerTemporal('How many weeks ago?', [[], []], '2023/04/01');
+    // No retrievable session exists, so the empty path abstains before the QA
+    // prompt is built.
+    expect(answer).toBeNull();
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {
