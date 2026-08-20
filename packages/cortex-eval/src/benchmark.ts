@@ -33,10 +33,8 @@ export async function runBenchmark(
       answers.push(await system.answerSessions(q.question, q.sessions));
     } else if (isSessionAware(system) && q.capability === 'TR' && system.answerTemporal) {
       // Temporal questions need the question date as the reference point for
-      // "how long ago" reasoning, plus session-first retrieval so the answer
-      // turn stays in view when its wording differs from the question.
-      const sessions = q.sessions && q.sessions.length > 0 ? q.sessions : [q.context];
-      answers.push(await system.answerTemporal(q.question, sessions, q.questionDate));
+      // "how long ago" reasoning, plus a dedicated date-reading prompt.
+      answers.push(await system.answerTemporal(q.question, q.context, q.questionDate));
     } else {
       answers.push(await system.answer(q.question, q.context));
     }

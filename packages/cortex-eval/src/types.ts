@@ -47,14 +47,12 @@ export type MemorySystem = {
 export type SessionAwareMemorySystem = MemorySystem & {
   answerSessions: (question: string, sessions: string[][]) => Answer | Promise<Answer>;
   /**
-   * Temporal-reasoning answering with session boundaries and the question date;
-   * optional for simpler systems. Session-first recall keeps the answer turn in
-   * view when its wording differs from the question. Falls back to `answer` when
-   * absent.
+   * Temporal-reasoning answering with the question date; optional for simpler
+   * systems. Falls back to `answer` when absent.
    */
   answerTemporal?: (
     question: string,
-    sessions: string[][],
+    context: string[],
     questionDate?: string,
   ) => Answer | Promise<Answer>;
 };
