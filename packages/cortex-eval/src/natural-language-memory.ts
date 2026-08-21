@@ -18,6 +18,7 @@ import {
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
+import { buildTemporalEvidence, extractDatedTurns } from './temporal.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -49,6 +50,8 @@ export type NaturalLanguageMemorySystemOptions = {
   contextRadius?: number;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
+  /** Character budget for the full dated evidence list in temporal reasoning (default 16000). */
+  maxTemporalChars?: number;
   /** When true, expand the question into concrete phrases before MR recall (default true). */
   enableQueryExpansion?: boolean;
   /** Top sessions recalled per expansion phrase (default 3). */
@@ -87,6 +90,7 @@ const DEFAULT_SESSION_TOP_K = 10;
 const DEFAULT_CONTEXT_RADIUS = 1;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
+const DEFAULT_MAX_TEMPORAL_CHARS = 16_000;
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
 type AnswerParser = (raw: string, abstainToken?: string) => Answer;
@@ -123,48 +127,47 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Temporal-reasoning answering for single-session questions. It shares the
-   * user-turn retrieval of `answer` but uses a temporal prompt that supplies the
-   * question date (the reference point for "how many weeks ago") and instructs
-   * the model to read turn dates and compute the elapsed time or ordering.
+   * Temporal-reasoning answering. Temporal questions are solved by reading the
+   * dates of the relevant event turns, so retrieval that keeps only a top-K
+   * slice can drop the answer turn (its wording often differs from the question)
+   * and make the question unsolvable. Instead, this path enumerates EVERY dated
+   * user turn into a bounded chronological evidence list and lets the temporal
+   * prompt (with the question date) scan the full list, so the answer turn is
+   * always in view and the elapsed time is computed from its date.
    */
   async answerTemporal(
     question: string,
     context: string[],
     questionDate?: string,
   ): Promise<Answer> {
-    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
-      question,
-      context,
-      buildTemporalQueryExpansionPrompt,
+    const factTurns = context.filter(isUserTurn);
+    const searchable = factTurns.length > 0 ? factTurns : context;
+    const dated = extractDatedTurns(searchable);
+    const evidence = buildTemporalEvidence(
+      dated,
+      this.options.maxTemporalChars ?? DEFAULT_MAX_TEMPORAL_CHARS,
     );
     const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
-      hits[0]?.score ?? 0,
-      retrieved,
+      1,
+      evidence,
       temporalPrompt,
       parseQaAnswer,
-      expansionQueries,
+      [],
       this.options.abstainThreshold,
     );
   }
 
-  /**
-   * User-turn retrieval shared by `answer` and `answerTemporal`. The temporal
-   * path passes an event-level expansion builder because temporal questions ask
-   * WHEN an event happened, so the answer turn is recalled by matching the event
-   * (verb + object), not a bare object noun that also occurs in unrelated turns.
-   */
+  /** User-turn retrieval for the single-session `answer` path. */
   private async retrieveTurns(
     question: string,
     context: string[],
-    expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = context.filter(isUserTurn);
     const searchable = factTurns.length > 0 ? factTurns : context;
-    const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
+    const expansionQueries = await this.expandQuestion(question);
     const hits = await retrieveTopKByQueries(
       this.options.embedding,
       [question, ...expansionQueries],
@@ -243,20 +246,15 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Expand an abstract question into concrete phrases for targeted recall. The
-   * single-session, temporal, and multi-session paths all use it, but each may
-   * pass a different prompt builder: object phrases for general/MR recall and
-   * event phrases (verb + object) for temporal recall. Returns [] when expansion
-   * is disabled or the LLM produces no phrases.
+   * Expand an abstract question into concrete object phrases for targeted recall.
+   * Shared by the single-session and multi-session paths. Returns [] when
+   * expansion is disabled or the LLM produces no phrases.
    */
-  private async expandQuestion(
-    question: string,
-    promptBuilder: (question: string) => string = buildQueryExpansionPrompt,
-  ): Promise<string[]> {
+  private async expandQuestion(question: string): Promise<string[]> {
     if (this.options.enableQueryExpansion === false) {
       return [];
     }
-    const expansionRaw = await this.options.llm.complete(promptBuilder(question), {
+    const expansionRaw = await this.options.llm.complete(buildQueryExpansionPrompt(question), {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
     return parseQueryExpansion(expansionRaw);
@@ -536,27 +534,6 @@ export function buildQueryExpansionPrompt(question: string): string {
     `Question: ${question}`,
     '',
     'Specific items:',
-  ].join('\n');
-}
-
-/**
- * Temporal questions ask WHEN an event happened, so the answer turn must be
- * matched by the event itself (action verb + object + distinguishing detail),
- * not by a bare object noun that also occurs in unrelated turns about the same
- * object. Event-level phrases recover the specific "receive the chandelier from
- * my aunt" turn instead of the "research the chandelier's history" distractor.
- */
-export function buildTemporalQueryExpansionPrompt(question: string): string {
-  return [
-    'You are helping retrieve the evidence event for a temporal question.',
-    'Given a question about WHEN something happened, list the SPECIFIC EVENT descriptions whose wording would appear in the evidence turn.',
-    'Each event is a short phrase combining the action verb and the object (and any distinguishing detail).',
-    'Do NOT list bare object nouns; include the verb so the correct event is matched instead of another mention of the same object.',
-    'Output ONLY a comma-separated list of short event phrases, with no explanation and no numbering.',
-    '',
-    `Question: ${question}`,
-    '',
-    'Specific events:',
   ].join('\n');
 }
 

@@ -22,6 +22,55 @@ export function extractDate(turn: string): string | undefined {
   return match?.[1];
 }
 
+/** A turn paired with the `YYYY/MM/DD` date extracted from its prefix. */
+export type DatedTurn = {
+  date: string;
+  /** The full turn text, including its `[YYYY/MM/DD ...]` prefix. */
+  text: string;
+};
+
+/**
+ * Extract the dated turns from a flattened context list. Turns without a date
+ * prefix are dropped because a temporal answer is only computable from turns
+ * whose date is known.
+ */
+export function extractDatedTurns(turns: readonly string[]): DatedTurn[] {
+  const out: DatedTurn[] = [];
+  for (const turn of turns) {
+    const date = extractDate(turn);
+    if (date !== undefined) {
+      out.push({ date, text: turn });
+    }
+  }
+  return out;
+}
+
+/**
+ * Build a compact chronological evidence list from dated turns, bounded to
+ * `maxChars`. When the list exceeds the budget the OLDEST turns are dropped
+ * first, because "how long ago" temporal questions reference recent events and
+ * "between"/"first" questions still keep both ends as long as the budget allows.
+ * The kept turns are returned in chronological order (oldest first).
+ */
+export function buildTemporalEvidence(turns: readonly DatedTurn[], maxChars: number): string {
+  const sorted = [...turns].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const kept: DatedTurn[] = [];
+  let used = 0;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const turn = sorted[i]!;
+    const cost = turn.text.length + 1;
+    if (used + cost > maxChars && kept.length > 0) {
+      break;
+    }
+    kept.push(turn);
+    used += cost;
+  }
+  return kept
+    .reverse()
+    .map((turn) => turn.text)
+    .join('\n');
+}
+
 const MS_PER_DAY = 86_400_000;
 
 /**
