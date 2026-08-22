@@ -56,15 +56,14 @@ jobs:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           ABSTAIN_THRESHOLD: '0.5'
-          # DeepSeek is not bit-deterministic even at temperature 0, so a single
-          # run is a noisy snapshot. RUNS=3 yields min/avg/max plus a real Welch
-          # t-test / Cohen's d over the observed run-to-run variance. The paired
-          # McNemar + Wilson CI are still computed on run 1.
+          # Full-dataset run for a statistically robust final measurement: the
+          # paired McNemar + Wilson CI are computed on the whole sample, so the
+          # per-capability confidence intervals become tight enough to trust.
+          # A single run fits the job timeout; the LIMIT=60 x RUNS=3 variant
+          # above remains the recipe for measuring run-to-run variance.
           TEMPERATURE: '0'
-          RUNS: '3'
-          # Smaller stratified sample keeps three full evaluations inside the
-          # job timeout; the per-run sample is still capability-balanced.
-          LIMIT: '60'
+          RUNS: '1'
+          LIMIT: '0'
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Upload benchmark report
