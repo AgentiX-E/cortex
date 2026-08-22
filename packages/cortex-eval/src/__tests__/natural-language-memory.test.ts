@@ -69,6 +69,13 @@ describe('buildAggregationQaPrompt', () => {
     expect(prompt).toContain('do NOT re-filter or exclude any of them');
   });
 
+  it('instructs the model to compute the answer type the question asks for', () => {
+    const prompt = buildAggregationQaPrompt('How many hours in total?', 'ctx');
+    expect(prompt).toContain('sum the durations, NOT the item count');
+    expect(prompt).toContain('sum the amounts');
+    expect(prompt).toContain('report that value or event, NOT a count');
+  });
+
   it('forbids substituting a related verb for the exact action', () => {
     const prompt = buildAggregationQaPrompt('How many projects have I led?', 'ctx');
     expect(prompt).toContain('Do NOT substitute or infer a different verb');
