@@ -104,6 +104,7 @@ export {
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
+  buildTemporalQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
   truncateSession,
@@ -114,14 +115,7 @@ export {
   type AbstainReason,
   type DecisionTrace,
 } from './natural-language-memory.js';
-export {
-  isTemporalQuestion,
-  extractDate,
-  daysBetween,
-  extractDatedTurns,
-  buildTemporalEvidence,
-  type DatedTurn,
-} from './temporal.js';
+export { isTemporalQuestion, extractDate, daysBetween } from './temporal.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,
