@@ -49,6 +49,10 @@ export type NaturalLanguageMemorySystemOptions = {
   contextRadius?: number;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
+  /** Per-turn character budget for the single-session path (default 2000). */
+  maxTurnChars?: number;
+  /** Total character budget for the injected multi-session evidence (default 20000). */
+  maxAggregationChars?: number;
   /** When true, expand the question into concrete phrases before MR recall (default true). */
   enableQueryExpansion?: boolean;
   /** Top sessions recalled per expansion phrase (default 3). */
@@ -87,6 +91,8 @@ const DEFAULT_SESSION_TOP_K = 10;
 const DEFAULT_CONTEXT_RADIUS = 1;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
+const DEFAULT_MAX_TURN_CHARS = 2000;
+const DEFAULT_MAX_AGGREGATION_CHARS = 20_000;
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
 type AnswerParser = (raw: string, abstainToken?: string) => Answer;
@@ -163,7 +169,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = context.filter(isUserTurn);
-    const searchable = factTurns.length > 0 ? factTurns : context;
+    const searchable = (factTurns.length > 0 ? factTurns : context).map((turn) =>
+      truncateText(turn, this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS),
+    );
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const hits = await retrieveTopKByQueries(
       this.options.embedding,
@@ -191,7 +199,10 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
     const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(question, sessions);
     const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
-    const retrieved = hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n');
+    const retrieved = truncateText(
+      hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n'),
+      this.options.maxAggregationChars ?? DEFAULT_MAX_AGGREGATION_CHARS,
+    );
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,

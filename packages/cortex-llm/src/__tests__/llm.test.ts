@@ -114,6 +114,7 @@ describe('OpenAICompatibleLLM (real local server)', () => {
   it('throws when the LLM server returns an error', async () => {
     const llm = new OpenAICompatibleLLM({ baseUrl, apiKey: 'test', model: 'm' });
     await expect(llm.complete('fail')).rejects.toThrow(/LLM request failed/);
+    await expect(llm.complete('fail')).rejects.toThrow(/internal/);
   });
 
   it('embeds text via a real HTTP server', async () => {

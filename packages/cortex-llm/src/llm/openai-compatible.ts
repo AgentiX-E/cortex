@@ -47,7 +47,9 @@ export class OpenAICompatibleLLM implements LLM {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      throw new Error(`LLM request failed: ${res.status} ${res.statusText}`);
+      const bodyText = await res.text().catch(() => '');
+      const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
+      throw new Error(`LLM request failed: ${res.status} ${res.statusText}${detail}`);
     }
     return res;
   }

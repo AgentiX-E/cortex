@@ -487,6 +487,31 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(answer).toBe('blue');
   });
 
+  it('caps an oversized turn before injecting it into the single-session prompt', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'color';
+        }
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      maxTurnChars: 20,
+      enableQueryExpansion: false,
+    });
+    await system.answer('What is the favorite color?', ['[2023/01/09] user: ' + 'x'.repeat(500)]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // The oversized turn is truncated to the per-turn budget, not injected verbatim.
+    expect(qaPrompt).not.toContain('x'.repeat(500));
+    expect(qaPrompt).toContain('[truncated]');
+  });
+
   it('answerTemporal uses the temporal event expansion and the question date', async () => {
     const prompts: string[] = [];
     const llm: LLM = {
@@ -660,6 +685,34 @@ describe('NaturalLanguageMemorySystem', () => {
         ['unrelated session'],
       ]);
       expect(answer).toBe('blue');
+    });
+
+    it('caps the total injected aggregation evidence to a budget', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific items:')) {
+            return 'color';
+          }
+          return 'blue';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        maxAggregationChars: 50,
+        enableQueryExpansion: false,
+      });
+      await system.answerSessions('What is the favorite color?', [
+        ['My favorite color is blue and I have many other facts to share.'],
+        ['Another session with more unrelated content here.'],
+      ]);
+      const aggregationPrompt = prompts[prompts.length - 1]!;
+      // The joined evidence is capped to the total budget, so it cannot grow
+      // unbounded with the number of retrieved sessions.
+      expect(aggregationPrompt).toContain('[truncated]');
     });
 
     it('parses the enumerated final answer from the aggregation response', async () => {
