@@ -3,6 +3,7 @@ export {
   OpenAICompatibleLLM,
   buildChatBody,
   parseJson,
+  sanitizePrompt,
   type OpenAICompatibleLLMOptions,
 } from './llm/openai-compatible.js';
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';

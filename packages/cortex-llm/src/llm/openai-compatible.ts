@@ -73,7 +73,7 @@ export function buildChatBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user', content: sanitizePrompt(prompt) }],
   };
   if (opts.temperature != null) {
     body['temperature'] = opts.temperature;
@@ -85,6 +85,18 @@ export function buildChatBody(
     body['response_format'] = { type: 'json_object' };
   }
   return body;
+}
+
+/**
+ * Sanitize a prompt before it becomes the user message. A literal backslash
+ * before a letter (e.g. `\x`) can be misread as a hex escape by a lenient
+ * provider parser and reject the body as invalid JSON, and raw control
+ * characters (other than newline/tab/carriage-return) can also break parsing.
+ * Doubling backslashes keeps the decoded content visually equivalent while
+ * making it unambiguous.
+ */
+export function sanitizePrompt(prompt: string): string {
+  return prompt.replace(/\\/g, '\\\\').replace(/(?![\n\r\t])[\p{Cc}]/gu, '');
 }
 
 /** Extract the first JSON object from a possibly-fenced LLM response. */

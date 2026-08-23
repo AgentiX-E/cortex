@@ -1,6 +1,11 @@
 import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { buildChatBody, parseJson, OpenAICompatibleLLM } from '../llm/openai-compatible.js';
+import {
+  buildChatBody,
+  parseJson,
+  sanitizePrompt,
+  OpenAICompatibleLLM,
+} from '../llm/openai-compatible.js';
 import { OpenAIEmbedding } from '../embedding/openai.js';
 import { TransformersEmbedding } from '../embedding/transformers.js';
 import * as cortexLlm from '../index.js';
@@ -10,6 +15,21 @@ describe('package exports', () => {
     expect(typeof cortexLlm.OpenAICompatibleLLM).toBe('function');
     expect(typeof cortexLlm.OpenAIEmbedding).toBe('function');
     expect(typeof cortexLlm.TransformersEmbedding).toBe('function');
+  });
+});
+
+describe('sanitizePrompt', () => {
+  it('doubles backslashes so a provider cannot misread them as hex escapes', () => {
+    expect(sanitizePrompt('a\\xb')).toBe('a\\\\xb');
+    expect(sanitizePrompt('C:\\Users')).toBe('C:\\\\Users');
+  });
+
+  it('strips control characters but keeps newlines and tabs', () => {
+    expect(sanitizePrompt('a\u0000b\nc\td')).toBe('ab\nc\td');
+  });
+
+  it('leaves ordinary text unchanged', () => {
+    expect(sanitizePrompt('hello world')).toBe('hello world');
   });
 });
 
