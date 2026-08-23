@@ -3,6 +3,7 @@
  * Float64Array so downstream Cortex math retains full precision.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import { retryableFetch } from '../retry.js';
 
 export type OpenAIEmbeddingOptions = {
   baseUrl: string;
@@ -10,6 +11,10 @@ export type OpenAIEmbeddingOptions = {
   model: string;
   dimensions: number;
   fetchFn?: typeof fetch;
+  /** Retries for transient (429/5xx) failures; default 5. */
+  maxRetries?: number;
+  /** Initial backoff in milliseconds; doubles each retry. */
+  retryBaseDelayMs?: number;
 };
 
 export class OpenAIEmbedding implements EmbeddingModel {
@@ -31,16 +36,24 @@ export class OpenAIEmbedding implements EmbeddingModel {
     if (this.options.dimensions > 0) {
       body['dimensions'] = this.options.dimensions;
     }
-    const res = await fetchFn(`${this.options.baseUrl}/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.options.apiKey}`,
+    const res = await retryableFetch(
+      fetchFn,
+      `${this.options.baseUrl}/embeddings`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.options.apiKey}`,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      this.options.maxRetries,
+      this.options.retryBaseDelayMs,
+    );
     if (!res.ok) {
-      throw new Error(`Embedding request failed: ${res.status} ${res.statusText}`);
+      const bodyText = await res.text().catch(() => '');
+      const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
+      throw new Error(`Embedding request failed: ${res.status} ${res.statusText}${detail}`);
     }
     const json = (await res.json()) as { data?: { embedding?: number[] }[] };
     const data = json.data ?? [];

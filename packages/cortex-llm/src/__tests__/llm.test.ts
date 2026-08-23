@@ -55,8 +55,13 @@ describe('OpenAICompatibleLLM (real local server)', () => {
       req.on('data', (c) => (body += c));
       req.on('end', () => {
         res.setHeader('Content-Type', 'application/json');
+        if (body.includes('emptyfail')) {
+          res.statusCode = 400;
+          res.end('');
+          return;
+        }
         if (body.includes('fail')) {
-          res.statusCode = 500;
+          res.statusCode = 400;
           res.end(JSON.stringify({ error: 'internal' }));
           return;
         }
@@ -129,6 +134,11 @@ describe('OpenAICompatibleLLM (real local server)', () => {
   it('throws when the embedding server returns an error', async () => {
     const emb = new OpenAIEmbedding({ baseUrl, apiKey: 'test', model: 'm', dimensions: 3 });
     await expect(emb.embed(['fail'])).rejects.toThrow(/Embedding request failed/);
+  });
+
+  it('reports the embedding error without a body detail when the response is empty', async () => {
+    const emb = new OpenAIEmbedding({ baseUrl, apiKey: 'test', model: 'm', dimensions: 3 });
+    await expect(emb.embed(['emptyfail'])).rejects.toThrow(/Embedding request failed/);
   });
 
   it('returns an empty list when the response has no data field', async () => {

@@ -3,6 +3,7 @@
  * endpoint via fetch. Structured output uses JSON mode + schema-guided prompt.
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
+import { retryableFetch } from '../retry.js';
 
 export type OpenAICompatibleLLMOptions = {
   baseUrl: string;
@@ -10,6 +11,10 @@ export type OpenAICompatibleLLMOptions = {
   model: string;
   /** Injectable fetch for testability and environments without global fetch. */
   fetchFn?: typeof fetch;
+  /** Retries for transient (429/5xx) failures; default 5. */
+  maxRetries?: number;
+  /** Initial backoff in milliseconds; doubles each retry. */
+  retryBaseDelayMs?: number;
 };
 
 export class OpenAICompatibleLLM implements LLM {
@@ -38,14 +43,20 @@ export class OpenAICompatibleLLM implements LLM {
 
   private async post(path: string, body: unknown): Promise<Response> {
     const fetchFn = this.options.fetchFn ?? fetch;
-    const res = await fetchFn(`${this.options.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.options.apiKey}`,
+    const res = await retryableFetch(
+      fetchFn,
+      `${this.options.baseUrl}${path}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.options.apiKey}`,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      this.options.maxRetries,
+      this.options.retryBaseDelayMs,
+    );
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';

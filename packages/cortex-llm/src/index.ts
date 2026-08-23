@@ -12,3 +12,10 @@ export {
   type FeatureExtractor,
 } from './embedding/transformers.js';
 export { createTransformersPipeline } from './embedding/transformers-pipeline.js';
+export {
+  retryableFetch,
+  isRetryableStatus,
+  sleep,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_RETRY_BASE_DELAY_MS,
+} from './retry.js';
