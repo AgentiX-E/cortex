@@ -512,6 +512,27 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(qaPrompt).toContain('[truncated]');
   });
 
+  it('answerAssistant retrieves from assistant turns instead of filtering them out', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'color';
+        }
+        return prompt.includes('assistant said blue') ? 'blue' : 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm, topK: 2 });
+    const answer = await system.answerAssistant('What did I say my favorite color was?', [
+      '[2023/01/08] assistant: The assistant said blue.',
+    ]);
+    expect(answer).toBe('blue');
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('assistant said blue');
+  });
+
   it('answerTemporal uses the temporal event expansion and the question date', async () => {
     const prompts: string[] = [];
     const llm: LLM = {

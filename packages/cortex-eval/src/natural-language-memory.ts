@@ -142,6 +142,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
+      false,
       buildTemporalQueryExpansionPrompt,
     );
     const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
@@ -157,18 +158,39 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * User-turn retrieval shared by `answer` and `answerTemporal`. The temporal
-   * path passes an event-level expansion builder because temporal questions ask
-   * WHEN an event happened, so the answer turn is recalled by matching the event
-   * (verb + object), not a bare object noun that also occurs in unrelated turns.
+   * Single-session answering for `single-session-assistant` questions. The
+   * evidence for these questions lives in an assistant turn, so retrieval runs
+   * over ALL turns instead of the user-turn-only filter used by `answer`.
+   */
+  async answerAssistant(question: string, context: string[]): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildQaPrompt,
+      parseQaAnswer,
+      expansionQueries,
+      this.options.abstainThreshold,
+    );
+  }
+
+  /**
+   * User-turn retrieval shared by `answer`, `answerAssistant`, and
+   * `answerTemporal`. The temporal path passes an event-level expansion builder
+   * because temporal questions ask WHEN an event happened, so the answer turn is
+   * recalled by matching the event (verb + object), not a bare object noun that
+   * also occurs in unrelated turns. `includeAssistant` selects all turns for the
+   * `single-session-assistant` sub-type whose evidence is an assistant turn.
    */
   private async retrieveTurns(
     question: string,
     context: string[],
+    includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
-    const factTurns = context.filter(isUserTurn);
+    const factTurns = includeAssistant ? context : context.filter(isUserTurn);
     const searchable = (factTurns.length > 0 ? factTurns : context).map((turn) =>
       truncateText(turn, this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS),
     );

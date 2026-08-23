@@ -10,6 +10,8 @@ export type Capability = 'IE' | 'MR' | 'KU' | 'TR' | 'ABS';
 export type Question = {
   id: string;
   capability: Capability;
+  /** The raw LongMemEval `question_type` (e.g. `single-session-assistant`). */
+  questionType?: string;
   question: string;
   /** Expected answer; `null` means the correct response is to abstain. */
   expected: string | null;
@@ -55,6 +57,13 @@ export type SessionAwareMemorySystem = MemorySystem & {
     context: string[],
     questionDate?: string,
   ) => Answer | Promise<Answer>;
+  /**
+   * Single-session answering that includes assistant turns. The evidence for a
+   * `single-session-assistant` question lives in an assistant turn, so the
+   * user-turn-only `answer` path would drop it. Falls back to `answer` when
+   * absent.
+   */
+  answerAssistant?: (question: string, context: string[]) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {

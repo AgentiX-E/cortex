@@ -17,10 +17,10 @@ export function sampleInstances(
   }
   const buckets = new Map<string, LongMemEvalInstance[]>();
   for (const inst of instances) {
-    const capability = toCapability(inst.question_id, inst.question_type);
-    const bucket = buckets.get(capability) ?? [];
+    const key = sampleBucketKey(inst);
+    const bucket = buckets.get(key) ?? [];
     bucket.push(inst);
-    buckets.set(capability, bucket);
+    buckets.set(key, bucket);
   }
   const keys = [...buckets.keys()];
   const result: LongMemEvalInstance[] = [];
@@ -36,4 +36,19 @@ export function sampleInstances(
     cursor++;
   }
   return result;
+}
+
+/**
+ * A sampling bucket key that separates the `single-session-*` sub-types. The
+ * plain capability key ("IE") lumps `single-session-user`, `-assistant`, and
+ * `-preference` together, so a small round-robin sample takes the first
+ * sub-type in file order and biases the estimate. Splitting IE by question type
+ * keeps every sub-type represented.
+ */
+function sampleBucketKey(inst: LongMemEvalInstance): string {
+  const capability = toCapability(inst.question_id, inst.question_type);
+  if (capability === 'IE') {
+    return `IE:${inst.question_type}`;
+  }
+  return capability;
 }

@@ -157,4 +157,19 @@ describe('loadLongMemEval', () => {
     const ds = loadLongMemEval(dated);
     expect(ds.questions[0]!.questionDate).toBe('2023/05/15');
   });
+
+  it('preserves the raw question type for sub-type-aware routing', () => {
+    const assistant: LongMemEvalInstance[] = [
+      {
+        question_id: 'q1',
+        question_type: 'single-session-assistant',
+        question: 'What did I say?',
+        answer: 'blue',
+        haystack_sessions: [[{ role: 'assistant', content: 'blue' }]],
+      },
+    ];
+    const ds = loadLongMemEval(assistant);
+    expect(ds.questions[0]!.questionType).toBe('single-session-assistant');
+    expect(ds.questions[0]!.capability).toBe('IE');
+  });
 });

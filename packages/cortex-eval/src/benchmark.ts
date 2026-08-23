@@ -35,6 +35,14 @@ export async function runBenchmark(
       // Temporal questions need the question date as the reference point for
       // "how long ago" reasoning, plus a dedicated date-reading prompt.
       answers.push(await system.answerTemporal(q.question, q.context, q.questionDate));
+    } else if (
+      isSessionAware(system) &&
+      q.questionType === 'single-session-assistant' &&
+      system.answerAssistant
+    ) {
+      // The evidence for single-session-assistant questions lives in an
+      // assistant turn, so route to a path that includes assistant turns.
+      answers.push(await system.answerAssistant(q.question, q.context));
     } else {
       answers.push(await system.answer(q.question, q.context));
     }

@@ -82,6 +82,77 @@ describe('runBenchmark session routing', () => {
     expect(calls).toEqual(['sessions', 'answer', 'answer', 'temporal:2023/04/01']);
   });
 
+  it('routes single-session-assistant questions to answerAssistant', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-assistant',
+          question: 'Q1',
+          expected: 'a',
+          context: ['assistant fact'],
+        },
+        {
+          id: 'q2',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Q2',
+          expected: 'b',
+          context: ['user fact'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => {
+        calls.push('sessions');
+        return 'y';
+      },
+      answerAssistant: async () => {
+        calls.push('assistant');
+        return 'z';
+      },
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['z', 'x']);
+    expect(calls).toEqual(['assistant', 'answer']);
+  });
+
+  it('falls back to answer for assistant questions without answerAssistant', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-assistant',
+          question: 'Q1',
+          expected: 'a',
+          context: ['assistant fact'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => 'y',
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['x']);
+    expect(calls).toEqual(['answer']);
+  });
+
   it('uses flat context for non-session-aware systems', async () => {
     const calls: string[] = [];
     const system: MemorySystem = {

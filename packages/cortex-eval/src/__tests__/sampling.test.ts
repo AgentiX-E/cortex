@@ -44,4 +44,19 @@ describe('sampleInstances', () => {
     expect(new Set(types.slice(0, 3)).size).toBe(3);
     expect(sampled).toHaveLength(4);
   });
+
+  it('separates single-session sub-types so a small sample is representative', () => {
+    const list = [
+      inst('u1', 'single-session-user'),
+      inst('u2', 'single-session-user'),
+      inst('u3', 'single-session-user'),
+      inst('a1', 'single-session-assistant'),
+      inst('p1', 'single-session-preference'),
+    ];
+    const sampled = sampleInstances(list, 3);
+    const types = sampled.map((s) => s.question_type);
+    // The three sub-types are bucketed separately, so the sample contains one
+    // of each instead of three single-session-user instances.
+    expect(new Set(types).size).toBe(3);
+  });
 });

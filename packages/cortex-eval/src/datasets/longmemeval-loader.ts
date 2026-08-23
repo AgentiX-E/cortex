@@ -88,6 +88,7 @@ export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): Benc
     return {
       id: inst.question_id,
       capability: toCapability(inst.question_id, inst.question_type),
+      questionType: inst.question_type,
       question: inst.question,
       expected: inst.question_id.endsWith('_abs') ? null : inst.answer,
       context: sessions.flat(),
