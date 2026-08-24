@@ -34,6 +34,13 @@ describe('buildQaPrompt', () => {
     expect(prompt).toContain('UNANSWERABLE');
   });
 
+  it('tells the model to choose among candidates instead of abstaining', () => {
+    const prompt = buildQaPrompt('What is my current city?', 'context');
+    expect(prompt).toContain('more than one possible answer');
+    expect(prompt).toContain('NOT a reason to abstain');
+    expect(prompt).toContain('offers no answer to the question at all');
+  });
+
   it('accepts a custom abstention token', () => {
     const prompt = buildQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
