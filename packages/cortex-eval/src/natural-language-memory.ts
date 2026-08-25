@@ -176,6 +176,27 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
+   * Single-session answering for abstention questions. Their expected answer is
+   * to abstain because the context offers no answer at all, which is the
+   * opposite of knowledge-update/extraction questions where the answer is
+   * present and must be selected among candidates. It therefore uses the
+   * conservative prompt (looser abstention wording) and retrieves over ALL turns
+   * so no evidence is missed before the model decides whether to abstain.
+   */
+  async answerAbstention(question: string, context: string[]): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildConservativeQaPrompt,
+      parseQaAnswer,
+      expansionQueries,
+      this.options.abstainThreshold,
+    );
+  }
+
+  /**
    * User-turn retrieval shared by `answer`, `answerAssistant`, and
    * `answerTemporal`. The temporal path passes an event-level expansion builder
    * because temporal questions ask WHEN an event happened, so the answer turn is
@@ -383,6 +404,35 @@ export function buildQaPrompt(
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     'If the context offers more than one possible answer, choose the one that best matches the question (the most recent, the most specific, or the one matching any qualifier in the question). Choosing between candidates or combining several turns is NOT a reason to abstain.',
     `Respond with exactly "${abstainToken}" ONLY when the context offers no answer to the question at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ].join('\n');
+}
+
+/**
+ * Build a conservative QA prompt for abstention questions. Unlike the standard
+ * `buildQaPrompt`, which tells the model to choose among candidates (the right
+ * move for knowledge-update/extraction questions where the answer IS present but
+ * requires selecting the latest/most-specific value), an abstention question's
+ * correct answer is to recognize that no candidate exists. The looser wording
+ * here preserves that recognition instead of pushing the model to invent an
+ * answer from merely topically-related turns.
+ */
+export function buildConservativeQaPrompt(
+  question: string,
+  context: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  return [
+    'You are answering questions based on a conversation memory.',
+    'Read the context carefully and extract the answer to the question.',
+    'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context:',
     context,

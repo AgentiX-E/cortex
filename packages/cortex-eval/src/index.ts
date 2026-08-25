@@ -100,6 +100,7 @@ export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embe
 export {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
+  buildConservativeQaPrompt,
   buildTemporalQaPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,

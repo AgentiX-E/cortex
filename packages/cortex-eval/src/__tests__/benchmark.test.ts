@@ -125,6 +125,80 @@ describe('runBenchmark session routing', () => {
     expect(calls).toEqual(['assistant', 'answer']);
   });
 
+  it('routes abstention questions to answerAbstention before the assistant path', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1_abs',
+          capability: 'ABS',
+          questionType: 'single-session-assistant',
+          question: 'Q1',
+          expected: null,
+          context: ['assistant noise'],
+        },
+        {
+          id: 'q2_abs',
+          capability: 'ABS',
+          questionType: 'single-session-user',
+          question: 'Q2',
+          expected: null,
+          context: ['user noise'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => 'y',
+      answerAssistant: async () => {
+        calls.push('assistant');
+        return 'z';
+      },
+      answerAbstention: async () => {
+        calls.push('abstention');
+        return null;
+      },
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual([null, null]);
+    // Both ABS questions (including the assistant-typed one) route through
+    // answerAbstention, not answerAssistant or answer.
+    expect(calls).toEqual(['abstention', 'abstention']);
+  });
+
+  it('falls back to answer for abstention questions without answerAbstention', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1_abs',
+          capability: 'ABS',
+          questionType: 'single-session-user',
+          question: 'Q1',
+          expected: null,
+          context: ['user noise'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => 'y',
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['x']);
+    expect(calls).toEqual(['answer']);
+  });
+
   it('falls back to answer for assistant questions without answerAssistant', async () => {
     const dataset: BenchmarkDataset = {
       name: 'routing',

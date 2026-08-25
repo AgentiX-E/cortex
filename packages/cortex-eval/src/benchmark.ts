@@ -35,6 +35,12 @@ export async function runBenchmark(
       // Temporal questions need the question date as the reference point for
       // "how long ago" reasoning, plus a dedicated date-reading prompt.
       answers.push(await system.answerTemporal(q.question, q.context, q.questionDate));
+    } else if (isSessionAware(system) && q.capability === 'ABS' && system.answerAbstention) {
+      // Abstention questions are answered with a conservative prompt so the
+      // model recognizes the absence of an answer instead of being pushed to
+      // choose a candidate. Routed before the assistant check because an ABS
+      // question may carry a single-session-assistant type.
+      answers.push(await system.answerAbstention(q.question, q.context));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'single-session-assistant' &&

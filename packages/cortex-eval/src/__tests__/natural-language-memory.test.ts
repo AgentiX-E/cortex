@@ -3,6 +3,7 @@ import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import {
   NaturalLanguageMemorySystem,
   buildQaPrompt,
+  buildConservativeQaPrompt,
   buildTemporalQaPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
@@ -43,6 +44,23 @@ describe('buildQaPrompt', () => {
 
   it('accepts a custom abstention token', () => {
     const prompt = buildQaPrompt('Q?', 'ctx', 'NONE');
+    expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildConservativeQaPrompt', () => {
+  it('keeps the loose abstention wording and omits the candidate-choosing instruction', () => {
+    const prompt = buildConservativeQaPrompt('What is X?', 'context line');
+    expect(prompt).toContain('Question: What is X?');
+    expect(prompt).toContain('context line');
+    expect(prompt).toContain('UNANSWERABLE');
+    expect(prompt).toContain('no relevant information at all');
+    expect(prompt).not.toContain('more than one possible answer');
+    expect(prompt).not.toContain('NOT a reason to abstain');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildConservativeQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
   });
 });
@@ -538,6 +556,29 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(answer).toBe('blue');
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('assistant said blue');
+  });
+
+  it('answerAbstention uses the conservative prompt with the loose wording', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'color';
+        }
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerAbstention('What is the meaning of life?', [
+      '[2023/01/08] user: I like the color blue.',
+    ]);
+    expect(answer).toBeNull();
+    // The final QA prompt must use the conservative (loose) abstention wording.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('no relevant information at all');
+    expect(qaPrompt).not.toContain('NOT a reason to abstain');
   });
 
   it('answerTemporal uses the temporal event expansion and the question date', async () => {

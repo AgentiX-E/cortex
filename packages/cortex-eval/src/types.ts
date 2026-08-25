@@ -64,6 +64,13 @@ export type SessionAwareMemorySystem = MemorySystem & {
    * absent.
    */
   answerAssistant?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  /**
+   * Single-session answering for abstention questions (the correct answer is to
+   * abstain because no answer exists). Uses a conservative abstention wording
+   * that does not push the model to choose among candidates. Falls back to
+   * `answer` when absent.
+   */
+  answerAbstention?: (question: string, context: string[]) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {
