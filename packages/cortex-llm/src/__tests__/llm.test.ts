@@ -19,9 +19,10 @@ describe('package exports', () => {
 });
 
 describe('sanitizePrompt', () => {
-  it('doubles backslashes so a provider cannot misread them as hex escapes', () => {
-    expect(sanitizePrompt('a\\xb')).toBe('a\\\\xb');
-    expect(sanitizePrompt('C:\\Users')).toBe('C:\\\\Users');
+  it('replaces backslashes with forward slashes to remove hex-escape ambiguity', () => {
+    expect(sanitizePrompt('a\\xb')).toBe('a/xb');
+    expect(sanitizePrompt('a\\u12')).toBe('a/u12');
+    expect(sanitizePrompt('C:\\Users')).toBe('C:/Users');
   });
 
   it('strips control characters but keeps newlines and tabs', () => {
