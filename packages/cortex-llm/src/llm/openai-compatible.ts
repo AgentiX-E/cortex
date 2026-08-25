@@ -91,15 +91,20 @@ export function buildChatBody(
  * Sanitize a prompt before it becomes the user message. A literal backslash can
  * be misread as a hex escape by a lenient provider parser and reject the body as
  * invalid JSON: DeepSeek reports "unexpected end of hex escape" for a `\u`
- * sequence whose following characters are not four hex digits. Doubling the
- * backslash is not enough because the provider still treats the second backslash
- * plus the following letter as a hex escape. Replacing every backslash with a
- * forward slash removes the escape character entirely (visually harmless for a
- * language model) while raw control characters (other than newline/tab/
- * carriage-return) are stripped so they cannot break parsing either.
+ * sequence whose following characters are not four hex digits. Replacing every
+ * backslash with a forward slash removes that escape character, but JSON
+ * serialization can still emit `\u2028`/`\u2029` for line/paragraph separators,
+ * which the same lenient parser may also reject. Strip line/paragraph separators
+ * and zero-width format characters, and drop raw control characters (other than
+ * newline/tab/carriage-return), so the serialized body contains no escape that
+ * the provider can misparse.
  */
 export function sanitizePrompt(prompt: string): string {
-  return prompt.replace(/\\/g, '/').replace(/(?![\n\r\t])[\p{Cc}]/gu, '');
+  return prompt
+    .replace(/\\/g, '/')
+    .replace(/[\u2028\u2029]/g, '')
+    .replace(/(?![\n\r\t])[\p{Cc}]/gu, '')
+    .replace(/\p{Cf}/gu, '');
 }
 
 /** Extract the first JSON object from a possibly-fenced LLM response. */

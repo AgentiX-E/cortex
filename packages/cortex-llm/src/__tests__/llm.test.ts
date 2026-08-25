@@ -25,6 +25,11 @@ describe('sanitizePrompt', () => {
     expect(sanitizePrompt('C:\\Users')).toBe('C:/Users');
   });
 
+  it('strips line/paragraph separators and zero-width format characters', () => {
+    expect(sanitizePrompt('a\u2028b\u2029c')).toBe('abc');
+    expect(sanitizePrompt('a\u200B\u200D\uFEFFb')).toBe('ab');
+  });
+
   it('strips control characters but keeps newlines and tabs', () => {
     expect(sanitizePrompt('a\u0000b\nc\td')).toBe('ab\nc\td');
   });
