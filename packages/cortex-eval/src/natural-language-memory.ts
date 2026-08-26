@@ -559,12 +559,29 @@ export function buildLegacyAggregationQaPrompt(
   ].join('\n');
 }
 
-/** Bound a session's length so aggregation injects signal without overflowing. */
-export function truncateText(text: string, maxChars: number): string {
+/**
+ * Slice a string to at most `maxChars` UTF-16 code units without splitting a
+ * surrogate pair. A naive slice can leave a lone high-surrogate code unit at the
+ * boundary (when the cut lands between the two halves of an emoji or another
+ * non-BMP character); JSON.stringify then emits it as a `\uD800`-style escape
+ * that a lenient provider parser rejects as "unexpected end of hex escape".
+ */
+function sliceCodePointSafe(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text;
   }
-  return `${text.slice(0, maxChars)}\n[truncated]`;
+  let end = maxChars;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) {
+    end -= 1;
+  }
+  return text.slice(0, end);
+}
+
+/** Bound a session's length so aggregation injects signal without overflowing. */
+export function truncateText(text: string, maxChars: number): string {
+  const sliced = sliceCodePointSafe(text, maxChars);
+  return sliced.length < text.length ? `${sliced}\n[truncated]` : sliced;
 }
 
 /** Matches the start of a `[date] role:` turn prefix. */
@@ -596,7 +613,7 @@ export function truncateSession(text: string, maxChars: number): string {
       kept.push(turn);
       used += turn.length;
     } else {
-      const head = turn.slice(0, ASSISTANT_HEAD_CHARS);
+      const head = sliceCodePointSafe(turn, ASSISTANT_HEAD_CHARS);
       if (head.length < turn.length) {
         truncated = true;
       }

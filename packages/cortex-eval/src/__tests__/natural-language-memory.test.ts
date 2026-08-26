@@ -139,6 +139,14 @@ describe('truncateText', () => {
   it('truncates and marks oversized text', () => {
     expect(truncateText('abcdef', 3)).toBe('abc\n[truncated]');
   });
+
+  it('does not split a surrogate pair at the truncation boundary', () => {
+    // 'a' + '😀' (a surrogate pair) + 'b'; a cut at 2 code units lands between
+    // the two halves of the emoji and would leave a lone high surrogate.
+    const result = truncateText('a😀b', 2);
+    expect(result).toBe('a\n[truncated]');
+    expect(result).not.toContain('\uD83D');
+  });
 });
 
 describe('truncateSession', () => {
