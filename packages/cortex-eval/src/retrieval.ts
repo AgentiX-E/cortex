@@ -73,17 +73,19 @@ export type RetrievalHit = {
   index: number;
 };
 
+/** A per-call vector index over a question's turns plus the lookup tables. */
+type TurnIndex = {
+  index: BruteForceVectorIndex;
+  texts: Map<string, string>;
+  idToIndex: Map<string, number>;
+};
+
 /**
- * Build a per-question index over `context` and return the top-k turns for
- * `question`. The index is rebuilt on every call so state never leaks across
- * LongMemEval questions (which have independent haystacks).
+ * Build a per-question index over `context`. The index is rebuilt on every call
+ * so state never leaks across LongMemEval questions (which have independent
+ * haystacks); uncached turns are embedded once in bounded batches.
  */
-export async function retrieveTopK(
-  embedding: EmbeddingModel,
-  question: string,
-  context: string[],
-  topK: number,
-): Promise<RetrievalHit[]> {
+async function buildTurnIndex(embedding: EmbeddingModel, context: string[]): Promise<TurnIndex> {
   const index = new BruteForceVectorIndex();
   const texts = new Map<string, string>();
   const idToIndex = new Map<string, number>();
@@ -106,16 +108,39 @@ export async function retrieveTopK(
       texts.set(id, turn);
     }
   }
+  return { index, texts, idToIndex };
+}
 
-  const queryVec = await embedOneCached(embedding, question);
-  const hits = await index.search(queryVec, topK);
+/** Search a prebuilt turn index with a precomputed query vector (no API calls). */
+async function searchTurnIndex(
+  data: TurnIndex,
+  queryVec: Float64Array,
+  topK: number,
+): Promise<RetrievalHit[]> {
+  const hits = await data.index.search(queryVec, topK);
   // Every hit id was inserted via `texts.set`, so the lookups are always defined.
   return hits.map((h) => ({
     id: h.id,
-    text: texts.get(h.id)!,
+    text: data.texts.get(h.id)!,
     score: h.score,
-    index: idToIndex.get(h.id) ?? -1,
+    index: data.idToIndex.get(h.id) ?? -1,
   }));
+}
+
+/**
+ * Build a per-question index over `context` and return the top-k turns for
+ * `question`. The index is rebuilt on every call so state never leaks across
+ * LongMemEval questions (which have independent haystacks).
+ */
+export async function retrieveTopK(
+  embedding: EmbeddingModel,
+  question: string,
+  context: string[],
+  topK: number,
+): Promise<RetrievalHit[]> {
+  const data = await buildTurnIndex(embedding, context);
+  const queryVec = await embedOneCached(embedding, question);
+  return searchTurnIndex(data, queryVec, topK);
 }
 
 /**
@@ -168,20 +193,22 @@ export type SessionHit = {
   score: number;
 };
 
+/** A per-call vector index over session centroids plus the lookup tables. */
+type SessionIndex = {
+  index: BruteForceVectorIndex;
+  texts: Map<string, string>;
+  idToSession: Map<string, number>;
+};
+
 /**
- * Session-level retrieval: represent each session by the mean of its turn
- * embeddings, index those session centroids, and return the top-k sessions for
- * `question`. Retrieving whole sessions (rather than isolated turns) lets a
- * multi-session question aggregate evidence that is spread across sessions.
+ * Build a session-centroid index over `sessions`. Turns are flattened once so a
+ * single batched embedding pass covers every session; each session is then
+ * represented by the mean of its turn vectors.
  */
-export async function retrieveTopKSessions(
+async function buildSessionIndex(
   embedding: EmbeddingModel,
-  question: string,
   sessions: string[][],
-  topK: number,
-): Promise<SessionHit[]> {
-  // Flatten all turns once so a single batched embedding pass covers every
-  // session, and remember where each session's turns begin/end.
+): Promise<SessionIndex> {
   const flat: string[] = [];
   const bounds: number[] = [0];
   for (const session of sessions) {
@@ -208,19 +235,43 @@ export async function retrieveTopKSessions(
     texts.set(id, session.join('\n'));
     idToSession.set(id, s);
   }
+  return { index, texts, idToSession };
+}
 
-  if (texts.size === 0) {
+/** Search a prebuilt session index with a precomputed query vector (no API calls). */
+async function searchSessionIndex(
+  data: SessionIndex,
+  queryVec: Float64Array,
+  topK: number,
+): Promise<SessionHit[]> {
+  if (data.texts.size === 0) {
     return [];
   }
-  const queryVec = await embedOneCached(embedding, question);
-  const hits = await index.search(queryVec, topK);
+  const hits = await data.index.search(queryVec, topK);
   // Every hit id was inserted via `texts.set`, so the lookups are always defined.
   return hits.map((h) => ({
     id: h.id,
-    sessionIndex: idToSession.get(h.id) ?? -1,
-    text: texts.get(h.id)!,
+    sessionIndex: data.idToSession.get(h.id) ?? -1,
+    text: data.texts.get(h.id)!,
     score: h.score,
   }));
+}
+
+/**
+ * Session-level retrieval: represent each session by the mean of its turn
+ * embeddings, index those session centroids, and return the top-k sessions for
+ * `question`. Retrieving whole sessions (rather than isolated turns) lets a
+ * multi-session question aggregate evidence that is spread across sessions.
+ */
+export async function retrieveTopKSessions(
+  embedding: EmbeddingModel,
+  question: string,
+  sessions: string[][],
+  topK: number,
+): Promise<SessionHit[]> {
+  const data = await buildSessionIndex(embedding, sessions);
+  const queryVec = await embedOneCached(embedding, question);
+  return searchSessionIndex(data, queryVec, topK);
 }
 
 /**
@@ -228,7 +279,9 @@ export async function retrieveTopKSessions(
  * and merge the results by session id, keeping the highest score. Query expansion
  * turns an abstract question (e.g. "items of clothing") into concrete phrases
  * (e.g. "blazer", "dress") so dispersed evidence sessions are recalled even when
- * the abstract question alone ranks them too low.
+ * the abstract question alone ranks them too low. All queries are embedded in one
+ * batched pass instead of one request per query, so expanding to N phrases costs
+ * a single (bounded-batch) embedding request rather than N.
  */
 export async function retrieveByQueries(
   embedding: EmbeddingModel,
@@ -236,9 +289,11 @@ export async function retrieveByQueries(
   sessions: string[][],
   topKPerQuery: number,
 ): Promise<SessionHit[]> {
+  const data = await buildSessionIndex(embedding, sessions);
+  const queryVecs = await embedManyCached(embedding, queries);
   const bestById = new Map<string, SessionHit>();
-  for (const query of queries) {
-    const hits = await retrieveTopKSessions(embedding, query, sessions, topKPerQuery);
+  for (let i = 0; i < queries.length; i++) {
+    const hits = await searchSessionIndex(data, queryVecs[i]!, topKPerQuery);
     for (const hit of hits) {
       const existing = bestById.get(hit.id);
       if (!existing || hit.score > existing.score) {
@@ -259,7 +314,8 @@ export async function retrieveByQueries(
  * concrete phrases and searching each phrase recovers the answer turn that the
  * abstract question alone misses. The total cap keeps the injected context at
  * the same size as a single-query `retrieveTopK` instead of letting N queries
- * multiply the context and dilute the answer signal.
+ * multiply the context and dilute the answer signal. Queries are embedded in one
+ * batched pass for the same reason as `retrieveByQueries`.
  */
 export async function retrieveTopKByQueries(
   embedding: EmbeddingModel,
@@ -267,9 +323,11 @@ export async function retrieveTopKByQueries(
   context: string[],
   topK: number,
 ): Promise<RetrievalHit[]> {
+  const data = await buildTurnIndex(embedding, context);
+  const queryVecs = await embedManyCached(embedding, queries);
   const bestById = new Map<string, RetrievalHit>();
-  for (const query of queries) {
-    const hits = await retrieveTopK(embedding, query, context, topK);
+  for (let i = 0; i < queries.length; i++) {
+    const hits = await searchTurnIndex(data, queryVecs[i]!, topK);
     for (const hit of hits) {
       const existing = bestById.get(hit.id);
       if (!existing || hit.score > existing.score) {

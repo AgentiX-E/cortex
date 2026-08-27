@@ -188,6 +188,23 @@ describe('retrieveByQueries', () => {
     const hits = await retrieveByQueries(embedding, ['q1', 'q2'], [['turn a']], 2);
     expect(hits).toEqual([]);
   });
+
+  it('embeds all queries in one batched pass instead of one request per query', async () => {
+    clearEmbeddingCache();
+    const batches: string[][] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        batches.push([...texts]);
+        return texts.map(() => new Float64Array([1, 0, 0, 0]));
+      },
+    };
+    await retrieveByQueries(embedding, ['q1', 'q2', 'q3'], [['turn a'], ['turn b']], 2);
+    // One batch for the flattened turns, one batch for the three queries.
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).toEqual(['turn a', 'turn b']);
+    expect(batches[1]).toEqual(['q1', 'q2', 'q3']);
+  });
 });
 
 describe('retrieveTopKByQueries', () => {
@@ -227,5 +244,22 @@ describe('retrieveTopKByQueries', () => {
     };
     const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], [], 2);
     expect(hits).toEqual([]);
+  });
+
+  it('embeds all queries in one batched pass instead of one request per query', async () => {
+    clearEmbeddingCache();
+    const batches: string[][] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        batches.push([...texts]);
+        return texts.map(() => new Float64Array([1, 0, 0, 0]));
+      },
+    };
+    await retrieveTopKByQueries(embedding, ['q1', 'q2', 'q3'], ['turn a', 'turn b'], 2);
+    // One batch for the turns, one batch for the three queries.
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).toEqual(['turn a', 'turn b']);
+    expect(batches[1]).toEqual(['q1', 'q2', 'q3']);
   });
 });
