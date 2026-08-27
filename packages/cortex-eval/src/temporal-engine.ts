@@ -67,9 +67,13 @@ export function elapsedDays(from: string, to: string): number {
   return daysBetween(from, to);
 }
 
-/** Whole weeks elapsed from `from` to `to`, floored to the number of full weeks. */
+/**
+ * Whole weeks elapsed from `from` to `to`, rounded to the nearest week. The
+ * LongMemEval ground truth rounds ("13 days ago" → "2 weeks ago"), so flooring
+ * would under-count partial weeks that are closer to the next week.
+ */
 export function elapsedWeeks(from: string, to: string): number {
-  return Math.floor(daysBetween(from, to) / 7);
+  return Math.round(daysBetween(from, to) / 7);
 }
 
 /**

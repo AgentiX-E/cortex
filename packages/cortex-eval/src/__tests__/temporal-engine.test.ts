@@ -104,12 +104,17 @@ describe('elapsedDays', () => {
 });
 
 describe('elapsedWeeks', () => {
-  it('floors whole weeks', () => {
+  it('rounds to the nearest week for an exact multiple', () => {
     expect(elapsedWeeks('2023/03/04', '2023/04/01')).toBe(4); // 28 days
   });
 
-  it('floors partial weeks down', () => {
-    expect(elapsedWeeks('2023/03/04', '2023/03/10')).toBe(0); // 6 days
+  it('rounds a partial week up when it is closer to the next week', () => {
+    // 13 days is closer to two weeks than one, so it rounds to 2.
+    expect(elapsedWeeks('2023/11/18', '2023/12/01')).toBe(2);
+  });
+
+  it('rounds a short partial week to one week', () => {
+    expect(elapsedWeeks('2023/03/04', '2023/03/10')).toBe(1); // 6 days
     expect(elapsedWeeks('2023/03/01', '2023/03/08')).toBe(1); // 7 days
   });
 });
