@@ -2,6 +2,22 @@ name: Benchmark
 
 on:
   workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Sample size (0 = full 500-question dataset)'
+        required: false
+        default: '60'
+        type: string
+      runs:
+        description: 'Number of independent ablation runs'
+        required: false
+        default: '1'
+        type: string
+      temperature:
+        description: 'Sampling temperature (0 = deterministic)'
+        required: false
+        default: '0'
+        type: string
 
 permissions:
   contents: read
@@ -56,14 +72,13 @@ jobs:
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           ABSTAIN_THRESHOLD: '0.5'
-          # Full-dataset run for a statistically robust final measurement: the
-          # paired McNemar + Wilson CI are computed on the whole sample, so the
-          # per-capability confidence intervals become tight enough to trust.
-          # A single run fits the job timeout; the LIMIT=60 x RUNS=3 variant
-          # above remains the recipe for measuring run-to-run variance.
-          TEMPERATURE: '0'
-          RUNS: '1'
-          LIMIT: '0'
+          # Default to a small stratified sample so iterative debugging does not
+          # embed the whole ~115k-token haystack for every one of 500 questions
+          # on each run. Trigger with limit=0 for the statistically robust
+          # full-dataset measurement at milestone checkpoints only.
+          TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
+          RUNS: ${{ github.event.inputs.runs || '1' }}
+          LIMIT: ${{ github.event.inputs.limit || '60' }}
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Upload benchmark report
