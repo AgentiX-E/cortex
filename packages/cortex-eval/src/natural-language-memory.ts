@@ -8,7 +8,7 @@
  * Retrieval and embedding are delegated to the shared `retrieval.ts` module so
  * the system and the diagnostics harness use identical logic.
  */
-import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
+import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
   expandContextWindow,
@@ -18,6 +18,11 @@ import {
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
+import {
+  classifyTemporalQuestion,
+  computeTemporalAnswer,
+  type TemporalEvent,
+} from './temporal-engine.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -73,6 +78,14 @@ export type NaturalLanguageMemorySystemOptions = {
   /** When false, the system never abstains (baseline behavior); default true. */
   enableAbstention?: boolean;
   /**
+   * When true (default), temporal questions are answered through the
+   * deterministic temporal engine first: the LLM extracts event dates and the
+   * elapsed-time / interval / ordering arithmetic is computed exactly. When
+   * false, every temporal question falls back to the LLM date-reading prompt, so
+   * an ablation can isolate the deterministic engine's contribution.
+   */
+  enableDeterministicTemporal?: boolean;
+  /**
    * Prompt builder for multi-session aggregation (default buildAggregationQaPrompt).
    * Overridable so an ablation can hold abstention constant while swapping only
    * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
@@ -93,6 +106,25 @@ const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 const DEFAULT_MAX_TURN_CHARS = 2000;
 const DEFAULT_MAX_AGGREGATION_CHARS = 20_000;
+
+/** Structured output schema for the temporal event-extraction prompt. */
+const TEMPORAL_EVENTS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          date: { type: 'string' },
+        },
+        required: ['name', 'date'],
+      },
+    },
+  },
+  required: ['events'],
+};
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
 type AnswerParser = (raw: string, abstainToken?: string) => Answer;
@@ -129,10 +161,11 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Temporal-reasoning answering for single-session questions. It shares the
-   * user-turn retrieval of `answer` but uses a temporal prompt that supplies the
-   * question date (the reference point for "how many weeks ago") and instructs
-   * the model to read turn dates and compute the elapsed time or ordering.
+   * Temporal-reasoning answering for single-session questions. It first tries a
+   * deterministic path: the LLM extracts the event(s) and copies their turn
+   * dates, then the temporal engine computes the elapsed time, interval, or
+   * ordering exactly. Only when that path cannot produce an answer does it fall
+   * back to the LLM date-reading prompt (the previous behaviour).
    */
   async answerTemporal(
     question: string,
@@ -145,6 +178,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       false,
       buildTemporalQueryExpansionPrompt,
     );
+    if (this.options.enableDeterministicTemporal !== false && questionDate && retrieved !== '') {
+      const deterministic = await this.tryDeterministicTemporal(
+        question,
+        questionDate,
+        retrieved,
+        expansionQueries,
+      );
+      if (deterministic !== null) {
+        return deterministic;
+      }
+    }
     const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
@@ -155,6 +199,44 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       expansionQueries,
       this.options.abstainThreshold,
     );
+  }
+
+  /**
+   * Deterministic temporal answering: ask the LLM to report the question's
+   * event(s) and their evidence-turn dates, then compute the answer with exact
+   * date arithmetic. Returns `null` to signal the caller to fall back to the LLM
+   * temporal prompt (e.g. when the extraction fails or is unanswerable).
+   */
+  private async tryDeterministicTemporal(
+    question: string,
+    questionDate: string,
+    retrieved: string,
+    expansionQueries: string[],
+  ): Promise<Answer> {
+    let extracted: { events?: TemporalEvent[] };
+    try {
+      extracted = await this.options.llm.completeStructured<{ events?: TemporalEvent[] }>(
+        buildTemporalEventExtractionPrompt(question, retrieved, questionDate),
+        TEMPORAL_EVENTS_SCHEMA,
+        { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
+      );
+    } catch {
+      // Structured extraction failed (e.g. the provider returned non-JSON);
+      // fall back rather than guessing from an unparseable response.
+      return null;
+    }
+    const events = Array.isArray(extracted?.events) ? extracted.events : [];
+    const kind = classifyTemporalQuestion(question);
+    const answer = computeTemporalAnswer(question, kind, questionDate, events);
+    if (answer === null) {
+      return null;
+    }
+    this.emitTrace(question, 0, false, 'answered', {
+      retrieved,
+      answer,
+      expansionQueries,
+    });
+    return answer;
   }
 
   /**
@@ -473,6 +555,36 @@ export function buildTemporalQaPrompt(
     'Answer:',
   ];
   return lines.join('\n');
+}
+
+/**
+ * Build a temporal event-extraction prompt. Unlike `buildTemporalQaPrompt`,
+ * which asks the LLM to read dates AND compute elapsed time (the failure mode
+ * the deterministic engine removes), this prompt asks the LLM only to identify
+ * the question's event(s) and COPY their evidence-turn dates. The arithmetic is
+ * then performed deterministically by `computeTemporalAnswer`, so the LLM's
+ * arithmetic ability never affects the result.
+ */
+export function buildTemporalEventExtractionPrompt(
+  question: string,
+  context: string,
+  questionDate?: string,
+): string {
+  return [
+    'You are extracting event dates from a conversation memory to answer a temporal question.',
+    'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
+    ...(questionDate ? [`The question was asked on ${questionDate}.`] : []),
+    'Identify the event(s) the question asks about. For each event, copy the date from its evidence turn as YYYY/MM/DD.',
+    'Do NOT compute elapsed time, reorder events, or do any arithmetic. Just report each event name and its copied date.',
+    'If the question refers to multiple events, list each one as a separate item.',
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Respond with a JSON object.',
+  ].join('\n');
 }
 
 /**

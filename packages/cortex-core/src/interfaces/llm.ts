@@ -14,7 +14,7 @@ export type CompleteOptions = {
 
 /** A minimal structural JSON-schema description (subset of JSON Schema). */
 export type JsonSchema = {
-  type: 'object';
+  type: 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
   properties?: Record<string, JsonSchema>;
   required?: string[];
   items?: JsonSchema;

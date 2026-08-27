@@ -102,6 +102,7 @@ export {
   buildQaPrompt,
   buildConservativeQaPrompt,
   buildTemporalQaPrompt,
+  buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
@@ -117,6 +118,19 @@ export {
   type DecisionTrace,
 } from './natural-language-memory.js';
 export { isTemporalQuestion, extractDate, daysBetween } from './temporal.js';
+export {
+  classifyTemporalQuestion,
+  normalizeDate,
+  isValidDate,
+  elapsedDays,
+  elapsedWeeks,
+  elapsedMonths,
+  intervalDays,
+  orderByDate,
+  computeTemporalAnswer,
+  type TemporalKind,
+  type TemporalEvent,
+} from './temporal-engine.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,
