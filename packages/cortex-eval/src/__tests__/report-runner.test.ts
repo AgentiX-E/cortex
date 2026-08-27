@@ -5,6 +5,7 @@ import {
   runEmbeddingBenchmark,
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
+  runTemporalEngineAblation,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
@@ -348,6 +349,87 @@ describe('runMrAggregationAblation', () => {
       return predicted === expected;
     };
     const { report } = await runMrAggregationAblation(mrInstances, embedding, capturingLlm, {
+      runs: 2,
+      temperature: 0.6,
+      judge,
+    });
+    expect(report.questionCount).toBe(1);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
+    expect(judgeQuestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe('runTemporalEngineAblation', () => {
+  const embedding = new HashEmbedding(64);
+
+  // An ordering question reaches the LLM judge (it is not a "how many" counting
+  // question), so the judge-forwarding test below can assert the judge is used.
+  const trInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'tr-1',
+      question_type: 'temporal-reasoning',
+      question: "Which event happened first, my cousin's wedding or Michael's engagement party?",
+      answer: "Michael's engagement party",
+      question_date: '2023/10/01',
+      haystack_sessions: [
+        [
+          {
+            role: 'user',
+            content: "I attended my cousin's wedding and Michael's engagement party.",
+          },
+        ],
+      ],
+      haystack_dates: ['2023/05/15'],
+    },
+    {
+      question_id: 'ie-1',
+      question_type: 'single-session-user',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'favorite color=blue' }]],
+    },
+  ];
+
+  const eventsLlm: LLM = {
+    complete: async (prompt) => (prompt.includes('Specific events:') ? 'receive chandelier' : '4'),
+    completeStructured: async <T>() =>
+      ({
+        events: [
+          { name: "my cousin's wedding", date: '2023/05/15' },
+          { name: "Michael's engagement party", date: '2023/04/06' },
+        ],
+      }) as T,
+  };
+
+  it('isolates TR questions only and labels the engine variants', async () => {
+    const { report, markdown } = await runTemporalEngineAblation(trInstances, embedding, eventsLlm);
+    expect(report.questionCount).toBe(1);
+    expect(report.baseline.name).toBe('tr-llm-temporal');
+    expect(report.feature.name).toBe('tr-deterministic-temporal');
+    expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('forwards temperature and a custom judge through the temporal ablation', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return '4';
+      },
+      completeStructured: async <T>() =>
+        ({
+          events: [
+            { name: "my cousin's wedding", date: '2023/05/15' },
+            { name: "Michael's engagement party", date: '2023/04/06' },
+          ],
+        }) as T,
+    };
+    const judgeQuestions: string[] = [];
+    const judge: AnswerJudge = async (question, predicted, expected) => {
+      judgeQuestions.push(question);
+      return predicted === expected;
+    };
+    const { report } = await runTemporalEngineAblation(trInstances, embedding, capturingLlm, {
       runs: 2,
       temperature: 0.6,
       judge,

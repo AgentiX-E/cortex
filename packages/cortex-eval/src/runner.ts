@@ -125,3 +125,45 @@ export async function runMrAggregationAblation(
   });
   return { report, markdown: formatAblationReport(report) };
 }
+
+/**
+ * Deterministic temporal-engine ablation. The main natural-language ablation
+ * enables the deterministic engine in both systems, so it cannot attribute a TR
+ * accuracy change to the engine (both systems share it). This isolates the
+ * engine: both systems disable abstention and differ ONLY in
+ * `enableDeterministicTemporal` — LLM date-reading vs deterministic date
+ * arithmetic — so the paired McNemar test on TR questions measures the engine's
+ * contribution directly.
+ */
+export async function runTemporalEngineAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const trQuestions = dataset.questions.filter((q) => q.capability === 'TR');
+  const trDataset = { name: 'longmemeval-tr', questions: trQuestions };
+
+  const llmTemporal = new NaturalLanguageMemorySystem('tr-llm-temporal', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableDeterministicTemporal: false,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const deterministicTemporal = new NaturalLanguageMemorySystem('tr-deterministic-temporal', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableDeterministicTemporal: true,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(trDataset, llmTemporal, deterministicTemporal, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
+}

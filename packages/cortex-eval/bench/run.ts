@@ -16,6 +16,7 @@ import {
   createLlmFromEnv,
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
+  runTemporalEngineAblation,
   sampleInstances,
   toCapability,
   turnText,
@@ -179,6 +180,18 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-mr-ablation-report.json', JSON.stringify(mrAblation.report, null, 2));
   console.log('=== MR aggregation ablation ===');
   console.log(mrAblation.markdown);
+
+  // Isolate the deterministic temporal engine contribution: LLM date-reading vs
+  // deterministic date arithmetic, with abstention held constant so the paired
+  // McNemar test measures the engine effect on TR questions directly.
+  const trAblation = await runTemporalEngineAblation(sampled as never, embedding, llm, {
+    runs,
+    temperature,
+  });
+  writeFileSync('benchmark-tr-ablation-report.md', trAblation.markdown);
+  writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
+  console.log('=== TR temporal-engine ablation ===');
+  console.log(trAblation.markdown);
 }
 
 main().catch((err) => {
