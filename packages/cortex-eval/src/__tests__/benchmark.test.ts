@@ -125,6 +125,77 @@ describe('runBenchmark session routing', () => {
     expect(calls).toEqual(['assistant', 'answer']);
   });
 
+  it('routes single-session-preference questions to answerPreference', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-preference',
+          question: 'Can you recommend some video editing resources?',
+          expected: 'Adobe Premiere Pro tutorials',
+          context: ['I edit with Adobe Premiere Pro.'],
+        },
+        {
+          id: 'q2',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Q2',
+          expected: 'b',
+          context: ['user fact'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => {
+        calls.push('sessions');
+        return 'y';
+      },
+      answerPreference: async () => {
+        calls.push('preference');
+        return 'Adobe Premiere Pro tutorials';
+      },
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['Adobe Premiere Pro tutorials', 'x']);
+    expect(calls).toEqual(['preference', 'answer']);
+  });
+
+  it('falls back to answer for preference questions without answerPreference', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-preference',
+          question: 'Can you recommend a show?',
+          expected: 'stand-up specials',
+          context: ['I like stand-up comedy.'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => 'y',
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['x']);
+    expect(calls).toEqual(['answer']);
+  });
+
   it('routes abstention questions to answerAbstention before the assistant path', async () => {
     const dataset: BenchmarkDataset = {
       name: 'routing',

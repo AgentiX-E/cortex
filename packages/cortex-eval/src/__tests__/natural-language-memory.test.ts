@@ -8,6 +8,7 @@ import {
   buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
+  buildPreferencePrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   parseQueryExpansion,
@@ -171,6 +172,27 @@ describe('buildLegacyAggregationQaPrompt', () => {
 
   it('accepts a custom abstention token', () => {
     const prompt = buildLegacyAggregationQaPrompt('Q?', 'ctx', 'NONE');
+    expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildPreferencePrompt', () => {
+  it('instructs the model to generate a preference-aligned recommendation', () => {
+    const prompt = buildPreferencePrompt('Can you recommend a show?', 'I like stand-up comedy.');
+    expect(prompt).toContain('recommendation');
+    expect(prompt).toContain('preference');
+    expect(prompt).toContain('I like stand-up comedy.');
+    expect(prompt).toContain('Question: Can you recommend a show?');
+  });
+
+  it('requires the recommendation to name the user-specified options', () => {
+    const prompt = buildPreferencePrompt('Any video editing resources?', 'I use Premiere Pro.');
+    expect(prompt).toContain('specific');
+    expect(prompt).toContain('brands, products, topics');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildPreferencePrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
   });
 });
@@ -631,6 +653,50 @@ describe('NaturalLanguageMemorySystem', () => {
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('no relevant information at all');
     expect(qaPrompt).not.toContain('NOT a reason to abstain');
+  });
+
+  it('answerPreference generates a recommendation instead of abstaining', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'video editing';
+        }
+        return 'Adobe Premiere Pro advanced tutorials';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerPreference(
+      'Can you recommend some resources for video editing?',
+      ['[2023/05/20] user: I edit with Adobe Premiere Pro.'],
+    );
+    expect(answer).toBe('Adobe Premiere Pro advanced tutorials');
+    // The final prompt must be the generative preference prompt, not the
+    // extractive QA prompt that would push the model to abstain.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('recommendation');
+    expect(qaPrompt).toContain('I edit with Adobe Premiere Pro.');
+  });
+
+  it('answerPreference retrieves from all turns including assistant turns', async () => {
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (prompt.includes('Specific items:')) {
+          return 'show';
+        }
+        return prompt.includes('assistant noted Netflix')
+          ? 'a Netflix stand-up special'
+          : 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm, topK: 2 });
+    const answer = await system.answerPreference('Can you recommend a show tonight?', [
+      '[2023/05/20] assistant: The assistant noted Netflix.',
+    ]);
+    expect(answer).toBe('a Netflix stand-up special');
   });
 
   it('answerTemporal runs event expansion and computes weeks from extracted events', async () => {

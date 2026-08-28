@@ -49,6 +49,16 @@ export async function runBenchmark(
       // The evidence for single-session-assistant questions lives in an
       // assistant turn, so route to a path that includes assistant turns.
       answers.push(await system.answerAssistant(q.question, q.context));
+    } else if (
+      isSessionAware(system) &&
+      q.questionType === 'single-session-preference' &&
+      system.answerPreference
+    ) {
+      // Preference/recommendation questions ask for a suggestion that reflects
+      // the user's stated preferences, not a single extracted fact. The
+      // extractive answer path would abstain on them, so route to a generative
+      // path instead.
+      answers.push(await system.answerPreference(q.question, q.context));
     } else {
       answers.push(await system.answer(q.question, q.context));
     }

@@ -287,6 +287,29 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
+   * Single-session answering for preference/recommendation questions. Their
+   * expected answer is a suggestion that reflects the user's stated preferences
+   * (brands, products, topics, styles), NOT a single extracted fact. The
+   * extractive `answer` prompt therefore fails on them: it demands a short fact
+   * phrase and abstains when none is present, even though the evidence turn was
+   * retrieved. Retrieval runs over ALL turns (a preference can be restated in an
+   * assistant turn) and the generative prompt asks for a concrete, specific
+   * recommendation instead of a bare fact.
+   */
+  async answerPreference(question: string, context: string[]): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildPreferencePrompt,
+      parseQaAnswer,
+      expansionQueries,
+      this.options.abstainThreshold,
+    );
+  }
+
+  /**
    * User-turn retrieval shared by `answer`, `answerAssistant`, and
    * `answerTemporal`. The temporal path passes an event-level expansion builder
    * because temporal questions ask WHEN an event happened, so the answer turn is
@@ -523,6 +546,37 @@ export function buildConservativeQaPrompt(
     'Read the context carefully and extract the answer to the question.',
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ].join('\n');
+}
+
+/**
+ * Build a generative preference/recommendation prompt. Unlike the extractive QA
+ * prompts, which ask for a single short fact and abstain when none is present,
+ * preference questions ask for a suggestion that reflects the user's stated
+ * preferences. The prompt therefore asks the model to (1) read the user's
+ * stated brands/products/topics/styles, and (2) produce a concrete, specific
+ * recommendation naming those options. Specificity is what the judge grades, so
+ * a generic answer ("watch a documentary") loses to one that names the options
+ * the user already expressed interest in.
+ */
+export function buildPreferencePrompt(
+  question: string,
+  context: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  return [
+    'You are answering a recommendation question based on a conversation memory.',
+    "Read the context carefully and identify the user's stated preferences, interests, constraints, and dislikes (for example specific brands, products, models, topics, or styles they mention).",
+    'Respond with a CONCRETE, SPECIFIC recommendation or suggestion that directly reflects those preferences.',
+    'Name the exact brands, products, topics, or options the user already expressed interest in; do not give a generic answer.',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no information about the user's preferences at all.`,
     '',
     'Context:',
     context,

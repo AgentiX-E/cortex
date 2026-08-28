@@ -71,6 +71,13 @@ export type SessionAwareMemorySystem = MemorySystem & {
    * `answer` when absent.
    */
   answerAbstention?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  /**
+   * Single-session answering for preference/recommendation questions. Unlike the
+   * extractive `answer` path, which asks for a single fact and abstains when
+   * none is present, these questions ask for a suggestion that reflects the
+   * user's stated preferences. Falls back to `answer` when absent.
+   */
+  answerPreference?: (question: string, context: string[]) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {
