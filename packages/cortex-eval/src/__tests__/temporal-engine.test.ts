@@ -60,6 +60,20 @@ describe('classifyTemporalQuestion', () => {
     expect(classifyTemporalQuestion('What is my favorite color?')).toBe('other');
     expect(classifyTemporalQuestion('Where do I take yoga classes?')).toBe('other');
   });
+
+  it('classifies event-lookup questions as other, not relative', () => {
+    // These ask for the event/object, not an elapsed-time count.
+    expect(classifyTemporalQuestion('Which book did I finish a week ago?')).toBe('other');
+    expect(classifyTemporalQuestion('What charity event did I participate in a month ago?')).toBe(
+      'other',
+    );
+    expect(classifyTemporalQuestion('What did I do with Rachel two months ago?')).toBe('other');
+    expect(
+      classifyTemporalQuestion(
+        'I mentioned visiting a museum two months ago. Did I visit with a friend?',
+      ),
+    ).toBe('other');
+  });
 });
 
 describe('normalizeDate', () => {
@@ -239,6 +253,34 @@ describe('computeTemporalAnswer', () => {
         ],
       ),
     ).toBe('7');
+  });
+
+  it('returns interval weeks when the question asks for weeks between events', () => {
+    expect(
+      computeTemporalAnswer(
+        'How many weeks passed between the day I bought my tennis racket and the day I played?',
+        'interval',
+        '2023/06/01',
+        [
+          { name: 'buy tennis racket', date: '2023/05/08' },
+          { name: 'play tennis', date: '2023/05/15' },
+        ],
+      ),
+    ).toBe('1'); // 7 days = 1 week
+  });
+
+  it('returns interval months when the question asks for months between events', () => {
+    expect(
+      computeTemporalAnswer(
+        'How many months passed between the day I moved in and the day I moved out?',
+        'interval',
+        '2023/06/01',
+        [
+          { name: 'move in', date: '2023/01/15' },
+          { name: 'move out', date: '2023/04/15' },
+        ],
+      ),
+    ).toBe('3'); // January to April = 3 calendar months
   });
 
   it('returns the earlier event name for a "which first" ordering question', () => {

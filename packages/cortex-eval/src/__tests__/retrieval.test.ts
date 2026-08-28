@@ -5,6 +5,7 @@ import {
   retrieveTopKSessions,
   retrieveByQueries,
   retrieveTopKByQueries,
+  retrieveTurnsPerQuery,
   expandContextWindow,
   meanPool,
   embedManyCached,
@@ -258,6 +259,50 @@ describe('retrieveTopKByQueries', () => {
     };
     await retrieveTopKByQueries(embedding, ['q1', 'q2', 'q3'], ['turn a', 'turn b'], 2);
     // One batch for the turns, one batch for the three queries.
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).toEqual(['turn a', 'turn b']);
+    expect(batches[1]).toEqual(['q1', 'q2', 'q3']);
+  });
+});
+
+describe('retrieveTurnsPerQuery', () => {
+  it('returns one hit list per query without merging across queries', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const perQuery = await retrieveTurnsPerQuery(embedding, ['q1', 'q2'], ['a', 'b'], 1);
+    expect(perQuery).toHaveLength(2);
+    expect(perQuery[0]).toHaveLength(1);
+    expect(perQuery[1]).toHaveLength(1);
+    expect(perQuery[0]![0]!.text).toBeDefined();
+    expect(perQuery[1]![0]!.text).toBeDefined();
+  });
+
+  it('returns empty per-query lists when context is empty', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const perQuery = await retrieveTurnsPerQuery(embedding, ['q1', 'q2'], [], 1);
+    expect(perQuery).toHaveLength(2);
+    expect(perQuery[0]).toEqual([]);
+    expect(perQuery[1]).toEqual([]);
+  });
+
+  it('embeds all queries in one batched pass', async () => {
+    clearEmbeddingCache();
+    const batches: string[][] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        batches.push([...texts]);
+        return texts.map(() => new Float64Array([1, 0, 0, 0]));
+      },
+    };
+    await retrieveTurnsPerQuery(embedding, ['q1', 'q2', 'q3'], ['turn a', 'turn b'], 1);
     expect(batches).toHaveLength(2);
     expect(batches[0]).toEqual(['turn a', 'turn b']);
     expect(batches[1]).toEqual(['q1', 'q2', 'q3']);

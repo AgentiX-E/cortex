@@ -8,13 +8,14 @@
  * Retrieval and embedding are delegated to the shared `retrieval.ts` module so
  * the system and the diagnostics harness use identical logic.
  */
-import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
+import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
   expandContextWindow,
   retrieveByQueries,
   retrieveTopKByQueries,
   retrieveTopKSessions,
+  retrieveTurnsPerQuery,
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
@@ -22,7 +23,9 @@ import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
   type TemporalEvent,
+  type TemporalKind,
 } from './temporal-engine.js';
+import { extractDate } from './temporal.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -107,25 +110,6 @@ const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 const DEFAULT_MAX_TURN_CHARS = 2000;
 const DEFAULT_MAX_AGGREGATION_CHARS = 20_000;
 
-/** Structured output schema for the temporal event-extraction prompt. */
-const TEMPORAL_EVENTS_SCHEMA: JsonSchema = {
-  type: 'object',
-  properties: {
-    events: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          date: { type: 'string' },
-        },
-        required: ['name', 'date'],
-      },
-    },
-  },
-  required: ['events'],
-};
-
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
 type AnswerParser = (raw: string, abstainToken?: string) => Answer;
 
@@ -162,27 +146,35 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
 
   /**
    * Temporal-reasoning answering for single-session questions. It first tries a
-   * deterministic path: the LLM extracts the event(s) and copies their turn
-   * dates, then the temporal engine computes the elapsed time, interval, or
-   * ordering exactly. Only when that path cannot produce an answer does it fall
-   * back to the LLM date-reading prompt (the previous behaviour).
+   * deterministic path: each query-expansion event phrase is matched to its own
+   * evidence turn by embedding similarity, the turn date is extracted, and the
+   * temporal engine computes the elapsed time, interval, or ordering exactly.
+   * Only when that path cannot produce an answer does it fall back to the LLM
+   * date-reading prompt (the previous behaviour).
    */
   async answerTemporal(
     question: string,
     context: string[],
     questionDate?: string,
   ): Promise<Answer> {
+    const kind = classifyTemporalQuestion(question);
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
       false,
       buildTemporalQueryExpansionPrompt,
     );
-    if (this.options.enableDeterministicTemporal !== false && questionDate && retrieved !== '') {
+    if (
+      this.options.enableDeterministicTemporal !== false &&
+      questionDate &&
+      kind !== 'other' &&
+      retrieved !== ''
+    ) {
       const deterministic = await this.tryDeterministicTemporal(
         question,
         questionDate,
-        retrieved,
+        kind,
+        context,
         expansionQueries,
       );
       if (deterministic !== null) {
@@ -202,37 +194,52 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
-   * Deterministic temporal answering: ask the LLM to report the question's
-   * event(s) and their evidence-turn dates, then compute the answer with exact
-   * date arithmetic. Returns `null` to signal the caller to fall back to the LLM
-   * temporal prompt (e.g. when the extraction fails or is unanswerable).
+   * Deterministic temporal answering: match each event phrase to its evidence
+   * turn (by embedding similarity), extract the turn date, then compute the
+   * answer with exact date arithmetic. Returns `null` to signal the caller to
+   * fall back to the LLM temporal prompt (e.g. when no event turn carries a
+   * date or the question cannot be answered deterministically).
    */
   private async tryDeterministicTemporal(
     question: string,
     questionDate: string,
-    retrieved: string,
+    kind: TemporalKind,
+    context: string[],
     expansionQueries: string[],
   ): Promise<Answer> {
-    let extracted: { events?: TemporalEvent[] };
-    try {
-      extracted = await this.options.llm.completeStructured<{ events?: TemporalEvent[] }>(
-        buildTemporalEventExtractionPrompt(question, retrieved, questionDate),
-        TEMPORAL_EVENTS_SCHEMA,
-        { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
-      );
-    } catch {
-      // Structured extraction failed (e.g. the provider returned non-JSON);
-      // fall back rather than guessing from an unparseable response.
-      return null;
+    const factTurns = context.filter(isUserTurn);
+    const searchable = (factTurns.length > 0 ? factTurns : context).map((turn) =>
+      truncateText(turn, this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS),
+    );
+    const phrases = expansionQueries.length > 0 ? expansionQueries : [question];
+    const perPhrase = await retrieveTurnsPerQuery(this.options.embedding, phrases, searchable, 1);
+
+    const events: TemporalEvent[] = [];
+    const matchedTurns: string[] = [];
+    const seen = new Set<string>();
+    for (let i = 0; i < phrases.length; i++) {
+      const hit = perPhrase[i]?.[0];
+      if (!hit) {
+        continue;
+      }
+      const date = extractDate(hit.text);
+      if (!date) {
+        continue;
+      }
+      if (seen.has(hit.id)) {
+        continue;
+      }
+      seen.add(hit.id);
+      events.push({ name: phrases[i]!, date });
+      matchedTurns.push(hit.text);
     }
-    const events = Array.isArray(extracted?.events) ? extracted.events : [];
-    const kind = classifyTemporalQuestion(question);
+
     const answer = computeTemporalAnswer(question, kind, questionDate, events);
     if (answer === null) {
       return null;
     }
     this.emitTrace(question, 0, false, 'answered', {
-      retrieved,
+      retrieved: matchedTurns.join('\n'),
       answer,
       expansionQueries,
     });
@@ -555,36 +562,6 @@ export function buildTemporalQaPrompt(
     'Answer:',
   ];
   return lines.join('\n');
-}
-
-/**
- * Build a temporal event-extraction prompt. Unlike `buildTemporalQaPrompt`,
- * which asks the LLM to read dates AND compute elapsed time (the failure mode
- * the deterministic engine removes), this prompt asks the LLM only to identify
- * the question's event(s) and COPY their evidence-turn dates. The arithmetic is
- * then performed deterministically by `computeTemporalAnswer`, so the LLM's
- * arithmetic ability never affects the result.
- */
-export function buildTemporalEventExtractionPrompt(
-  question: string,
-  context: string,
-  questionDate?: string,
-): string {
-  return [
-    'You are extracting event dates from a conversation memory to answer a temporal question.',
-    'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
-    ...(questionDate ? [`The question was asked on ${questionDate}.`] : []),
-    'Identify the event(s) the question asks about. For each event, copy the date from its evidence turn as YYYY/MM/DD.',
-    'Do NOT compute elapsed time, reorder events, or do any arithmetic. Just report each event name and its copied date.',
-    'If the question refers to multiple events, list each one as a separate item.',
-    '',
-    'Context:',
-    context,
-    '',
-    `Question: ${question}`,
-    '',
-    'Respond with a JSON object.',
-  ].join('\n');
 }
 
 /**

@@ -41,7 +41,10 @@ export function classifyTemporalQuestion(question: string): TemporalKind {
   if (/\b(between|did I spend)\b/i.test(question)) {
     return 'interval';
   }
-  if (/\b(ago|since)\b/i.test(question)) {
+  // Only "how many X ago/since/passed" asks for an elapsed-time count. An
+  // event-lookup question ("Which book did I finish a week ago?") asks for the
+  // event itself, not a number, so it must NOT be classified as relative.
+  if (/\bhow many\b/i.test(question) && /\b(ago|since|passed)\b/i.test(question)) {
     return 'relative';
   }
   return 'other';
@@ -138,7 +141,9 @@ export function computeTemporalAnswer(
       if (normalized.length < 2) {
         return null;
       }
-      return String(intervalDays(normalized[0]!.date, normalized[1]!.date));
+      return String(
+        intervalValue(normalized[0]!.date, normalized[1]!.date, relativeUnit(question)),
+      );
     }
     case 'ordering': {
       if (normalized.length < 2) {
@@ -169,6 +174,21 @@ function elapsedValue(from: string, to: string, unit: RelativeUnit): number {
     return elapsedMonths(from, to);
   }
   return elapsedDays(from, to);
+}
+
+/**
+ * Compute an interval length in the question's unit. Unlike `elapsedValue`,
+ * this is always non-negative: the two event dates may be extracted in either
+ * order, so the length is measured as an absolute span.
+ */
+function intervalValue(from: string, to: string, unit: RelativeUnit): number {
+  if (unit === 'week') {
+    return Math.round(intervalDays(from, to) / 7);
+  }
+  if (unit === 'month') {
+    return Math.abs(elapsedMonths(from, to));
+  }
+  return intervalDays(from, to);
 }
 
 /**

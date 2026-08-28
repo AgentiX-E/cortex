@@ -337,3 +337,22 @@ export async function retrieveTopKByQueries(
   }
   return [...bestById.values()].sort((a, b) => b.score - a.score).slice(0, topK);
 }
+
+/**
+ * Per-query turn retrieval: for each query, return its own top-k turns WITHOUT
+ * merging across queries. Unlike `retrieveTopKByQueries`, this preserves which
+ * hit belongs to which query, so the deterministic temporal engine can map each
+ * event phrase to its own evidence turn (and its date) instead of collapsing all
+ * events into one merged list. The turn index and query embeddings are each
+ * built once, so the cost is a single batched pass regardless of query count.
+ */
+export async function retrieveTurnsPerQuery(
+  embedding: EmbeddingModel,
+  queries: string[],
+  context: string[],
+  topKPerQuery: number,
+): Promise<RetrievalHit[][]> {
+  const data = await buildTurnIndex(embedding, context);
+  const queryVecs = await embedManyCached(embedding, queries);
+  return Promise.all(queryVecs.map((vec) => searchTurnIndex(data, vec, topKPerQuery)));
+}

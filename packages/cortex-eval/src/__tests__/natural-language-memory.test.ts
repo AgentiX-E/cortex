@@ -5,7 +5,6 @@ import {
   buildQaPrompt,
   buildConservativeQaPrompt,
   buildTemporalQaPrompt,
-  buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildQueryExpansionPrompt,
@@ -77,26 +76,6 @@ describe('buildTemporalQaPrompt', () => {
   it('omits the reference line when no question date is given', () => {
     const prompt = buildTemporalQaPrompt('Which happened first?', 'ctx');
     expect(prompt).not.toContain('use it as "today"');
-  });
-});
-
-describe('buildTemporalEventExtractionPrompt', () => {
-  it('asks the LLM to copy event dates without computing arithmetic', () => {
-    const prompt = buildTemporalEventExtractionPrompt(
-      'How many weeks ago did I receive the chandelier?',
-      'context line',
-      '2023/04/01',
-    );
-    expect(prompt).toContain('How many weeks ago did I receive the chandelier?');
-    expect(prompt).toContain('context line');
-    expect(prompt).toContain('2023/04/01');
-    expect(prompt).toContain('Do NOT compute');
-    expect(prompt).toContain('JSON');
-  });
-
-  it('omits the reference line when no question date is given', () => {
-    const prompt = buildTemporalEventExtractionPrompt('Which happened first?', 'ctx');
-    expect(prompt).not.toContain('The question was asked on');
   });
 });
 
@@ -610,84 +589,59 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(qaPrompt).not.toContain('NOT a reason to abstain');
   });
 
-  it('answerTemporal uses the temporal event expansion and the question date', async () => {
+  it('answerTemporal runs event expansion and answers deterministically', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'receive crystal chandelier from aunt';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerTemporal(
+      'How many weeks ago did I receive the chandelier?',
+      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
+      '2023/04/01',
+    );
+    // Event-level query expansion runs, then the deterministic engine computes
+    // the elapsed weeks from the matched turn date without an LLM QA call.
+    expect(prompts[0]).toContain('Specific events:');
+    expect(answer).toBe('4');
+  });
+
+  it('answerTemporal falls back to the LLM prompt when no turn date can be matched', async () => {
     const prompts: string[] = [];
     const llm: LLM = {
       complete: async (prompt) => {
         prompts.push(prompt);
         if (prompt.includes('Specific events:')) {
-          return 'receive crystal chandelier from aunt';
+          return 'chandelier';
         }
         return '4 weeks';
       },
       completeStructured: async <T>() => ({}) as T,
     };
     const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
-    await system.answerTemporal(
-      'How many weeks ago did I receive the chandelier?',
-      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
-      '2023/04/01',
-    );
-    // The temporal path first runs event-level query expansion, then the
-    // temporal QA prompt carrying the reference date.
-    expect(prompts[0]).toContain('Specific events:');
-    const qaPrompt = prompts[prompts.length - 1]!;
-    expect(qaPrompt).toContain('2023/04/01');
-    expect(qaPrompt).toContain('YYYY/MM/DD');
-  });
-
-  it('answerTemporal computes elapsed weeks deterministically from extracted events', async () => {
-    const llm: LLM = {
-      complete: async () => 'receive crystal chandelier from aunt',
-      completeStructured: async <T>() =>
-        ({ events: [{ name: 'receive chandelier', date: '2023/03/04' }] }) as T,
-    };
-    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
     const answer = await system.answerTemporal(
       'How many weeks ago did I receive the chandelier?',
-      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
+      ['user: I received a crystal chandelier from my aunt.'],
       '2023/04/01',
     );
-    expect(answer).toBe('4');
-  });
-
-  it('answerTemporal falls back to the LLM prompt when structured extraction throws', async () => {
-    const prompts: string[] = [];
-    const llm: LLM = {
-      complete: async (prompt) => {
-        prompts.push(prompt);
-        if (prompt.includes('Specific events:')) {
-          return 'chandelier';
-        }
-        return '4 weeks';
-      },
-      completeStructured: async () => {
-        throw new Error('provider returned non-JSON');
-      },
-    };
-    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
-    const answer = await system.answerTemporal(
-      'How many weeks ago did I receive the chandelier?',
-      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
-      '2023/04/01',
-    );
-    // The extraction failure routes back to the date-reading QA prompt.
+    // The matched turn carries no date prefix, so the engine cannot compute and
+    // routes back to the date-reading QA prompt.
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('YYYY/MM/DD');
     expect(answer).toBe('4 weeks');
   });
 
-  it('answerTemporal falls back when extracted events cannot answer the question', async () => {
-    const prompts: string[] = [];
+  it('answerTemporal deduplicates expansion phrases that match the same turn', async () => {
     const llm: LLM = {
-      complete: async (prompt) => {
-        prompts.push(prompt);
-        if (prompt.includes('Specific events:')) {
-          return 'chandelier';
-        }
-        return 'UNANSWERABLE';
-      },
-      completeStructured: async <T>() => ({ events: [] }) as T,
+      complete: async (prompt) =>
+        prompt.includes('Specific events:')
+          ? 'receive chandelier, crystal chandelier from aunt'
+          : '4 weeks',
+      completeStructured: async <T>() => ({}) as T,
     };
     const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
     const answer = await system.answerTemporal(
@@ -695,47 +649,64 @@ describe('NaturalLanguageMemorySystem', () => {
       ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
       '2023/04/01',
     );
-    // No events extracted → deterministic engine returns null → LLM QA path.
-    expect(answer).toBeNull();
-    expect(prompts.some((p) => p.includes('YYYY/MM/DD'))).toBe(true);
+    // Both phrases resolve to the same evidence turn, so the event is counted
+    // once and the elapsed weeks are still computed correctly.
+    expect(answer).toBe('4');
+  });
+
+  it('answerTemporal routes event-lookup questions to the LLM prompt', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific events:')) {
+          return 'The Nightingale';
+        }
+        return 'The Nightingale by Kristin Hannah';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    await system.answerTemporal(
+      'Which book did I finish a week ago?',
+      ['[2023/03/04] user: I finished The Nightingale.'],
+      '2023/04/01',
+    );
+    // "Which book … ago" asks for an event, not a count, so it is routed to the
+    // date-reading QA prompt instead of the deterministic numeric path.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('YYYY/MM/DD');
   });
 
   it('skips the deterministic path when enableDeterministicTemporal is false', async () => {
-    let structuredCalled = false;
     const llm: LLM = {
-      complete: async () => 'chandelier',
-      completeStructured: async <T>() => {
-        structuredCalled = true;
-        return {} as T;
-      },
+      complete: async (prompt) => (prompt.includes('Specific events:') ? 'chandelier' : '4 weeks'),
+      completeStructured: async <T>() => ({}) as T,
     };
     const system = new NaturalLanguageMemorySystem('s', {
       embedding,
       llm,
       enableDeterministicTemporal: false,
     });
-    await system.answerTemporal(
+    const answer = await system.answerTemporal(
       'How many weeks ago did I receive the chandelier?',
       ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
       '2023/04/01',
     );
-    expect(structuredCalled).toBe(false);
+    // Without the deterministic path, the LLM QA prompt returns '4 weeks'.
+    expect(answer).toBe('4 weeks');
   });
 
   it('skips the deterministic path when the question date is absent', async () => {
-    let structuredCalled = false;
     const llm: LLM = {
-      complete: async () => 'chandelier',
-      completeStructured: async <T>() => {
-        structuredCalled = true;
-        return {} as T;
-      },
+      complete: async (prompt) => (prompt.includes('Specific events:') ? 'chandelier' : '4 weeks'),
+      completeStructured: async <T>() => ({}) as T,
     };
     const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
-    await system.answerTemporal('How many weeks ago did I receive the chandelier?', [
+    const answer = await system.answerTemporal('How many weeks ago did I receive the chandelier?', [
       '[2023/03/04] user: I received a crystal chandelier from my aunt.',
     ]);
-    expect(structuredCalled).toBe(false);
+    expect(answer).toBe('4 weeks');
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {
