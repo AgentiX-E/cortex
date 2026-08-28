@@ -225,7 +225,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     let extracted: { events?: TemporalEvent[] };
     try {
       extracted = await this.options.llm.completeStructured<{ events?: TemporalEvent[] }>(
-        buildTemporalEventExtractionPrompt(question, retrieved, questionDate),
+        buildTemporalEventExtractionPrompt(question, retrieved, questionDate, expansionQueries),
         TEMPORAL_EVENTS_SCHEMA,
         { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
       );
@@ -572,19 +572,43 @@ export function buildTemporalQaPrompt(
  * the question's event(s) and COPY their evidence-turn dates. The arithmetic is
  * then performed deterministically by `computeTemporalAnswer`, so the LLM's
  * arithmetic ability never affects the result.
+ *
+ * `eventHints` carries the event phrases already produced by query expansion,
+ * so the LLM does not re-derive which events the question refers to — it only
+ * has to locate each hint's evidence turn and copy that turn's date. A short
+ * worked example anchors the input→output mapping.
  */
 export function buildTemporalEventExtractionPrompt(
   question: string,
   context: string,
   questionDate?: string,
+  eventHints: readonly string[] = [],
 ): string {
+  const hintLines =
+    eventHints.length > 0
+      ? [
+          '',
+          'The question likely refers to these event(s):',
+          ...eventHints.map((hint) => `- ${hint}`),
+          "For each listed event, find its evidence turn in the Context and copy that turn's date as YYYY/MM/DD.",
+          'If a listed event cannot be found in the Context, omit it.',
+        ]
+      : [];
   return [
     'You are extracting event dates from a conversation memory to answer a temporal question.',
     'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
     ...(questionDate ? [`The question was asked on ${questionDate}.`] : []),
+    ...hintLines,
     'Identify the event(s) the question asks about. For each event, copy the date from its evidence turn as YYYY/MM/DD.',
     'Do NOT compute elapsed time, reorder events, or do any arithmetic. Just report each event name and its copied date.',
     'If the question refers to multiple events, list each one as a separate item.',
+    '',
+    'Example:',
+    'Context:',
+    '[2023/01/08] user: I visited the Museum of Modern Art.',
+    '[2023/01/15] user: I went to the Ancient Civilizations exhibit.',
+    'Question: How many days passed between my visit to MoMA and the Ancient Civilizations exhibit?',
+    '{"events": [{"name": "visit Museum of Modern Art", "date": "2023/01/08"}, {"name": "visit Ancient Civilizations exhibit", "date": "2023/01/15"}]}',
     '',
     'Context:',
     context,

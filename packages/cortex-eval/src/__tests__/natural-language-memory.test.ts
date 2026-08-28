@@ -98,6 +98,29 @@ describe('buildTemporalEventExtractionPrompt', () => {
     const prompt = buildTemporalEventExtractionPrompt('Which happened first?', 'ctx');
     expect(prompt).not.toContain('The question was asked on');
   });
+
+  it('lists the pre-identified event hints as guidance', () => {
+    const prompt = buildTemporalEventExtractionPrompt(
+      'Which happened first, A or B?',
+      'ctx',
+      '2023/10/01',
+      ['event A', 'event B'],
+    );
+    expect(prompt).toContain('The question likely refers to these event(s):');
+    expect(prompt).toContain('- event A');
+    expect(prompt).toContain('- event B');
+  });
+
+  it('omits the hints section when no event hints are provided', () => {
+    const prompt = buildTemporalEventExtractionPrompt('How many weeks ago?', 'ctx');
+    expect(prompt).not.toContain('The question likely refers to these event(s):');
+  });
+
+  it('includes a worked example that anchors the input-output mapping', () => {
+    const prompt = buildTemporalEventExtractionPrompt('How many weeks ago?', 'ctx');
+    expect(prompt).toContain('Example:');
+    expect(prompt).toContain('"events"');
+  });
 });
 
 describe('buildAggregationQaPrompt', () => {
@@ -630,6 +653,26 @@ describe('NaturalLanguageMemorySystem', () => {
     // the elapsed weeks from the extracted event date without an LLM QA call.
     expect(prompts[0]).toContain('Specific events:');
     expect(answer).toBe('4');
+  });
+
+  it('answerTemporal passes the expansion phrases as event hints to extraction', async () => {
+    const structuredPrompts: string[] = [];
+    const llm: LLM = {
+      complete: async () => 'receive crystal chandelier from aunt',
+      completeStructured: async <T>(prompt: string) => {
+        structuredPrompts.push(prompt);
+        return { events: [{ name: 'receive chandelier', date: '2023/03/04' }] } as T;
+      },
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    await system.answerTemporal(
+      'How many weeks ago did I receive the chandelier?',
+      ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
+      '2023/04/01',
+    );
+    // The extraction prompt carries the pre-identified event hint so the LLM
+    // locates that event instead of re-deriving it from scratch.
+    expect(structuredPrompts[0]).toContain('- receive crystal chandelier from aunt');
   });
 
   it('answerTemporal falls back to the LLM prompt when structured extraction throws', async () => {
