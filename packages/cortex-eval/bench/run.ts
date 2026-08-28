@@ -82,9 +82,24 @@ async function main(): Promise<void> {
   // Measure the retrieval signal before grading so the abstention threshold can
   // be set from data instead of guessed. Turn-level recall is complemented by
   // session-level recall, which is the signal multi-session aggregation uses.
-  const turnDiagnostics = await computeRetrievalDiagnostics(sampled as never, embedding, 5);
+  //
+  // Recall is a statistical estimate, so it is measured on a bounded stratified
+  // sample rather than embedding every question's haystack. A full run already
+  // embeds ~115k turns for QA retrieval; running the diagnostics over the whole
+  // dataset would double that upfront cost and exhaust the embedding quota
+  // before the actual benchmark starts. DIAGNOSTICS_LIMIT=0 disables the cap.
+  const diagnosticsLimit = Number(process.env['DIAGNOSTICS_LIMIT'] ?? 100);
+  const diagnosticsSample =
+    diagnosticsLimit > 0 && diagnosticsLimit < sampled.length
+      ? sampleInstances(sampled as never, diagnosticsLimit)
+      : sampled;
+  const turnDiagnostics = await computeRetrievalDiagnostics(
+    diagnosticsSample as never,
+    embedding,
+    5,
+  );
   const sessionDiagnostics = await computeSessionRetrievalDiagnostics(
-    sampled as never,
+    diagnosticsSample as never,
     embedding,
     5,
   );

@@ -18,6 +18,11 @@ on:
         required: false
         default: '0'
         type: string
+      diagnostics_limit:
+        description: 'Diagnostics sample size (0 = no cap)'
+        required: false
+        default: '100'
+        type: string
 
 permissions:
   contents: read
@@ -79,6 +84,7 @@ jobs:
           TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
           RUNS: ${{ github.event.inputs.runs || '1' }}
           LIMIT: ${{ github.event.inputs.limit || '60' }}
+          DIAGNOSTICS_LIMIT: ${{ github.event.inputs.diagnostics_limit || '100' }}
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Upload benchmark report
