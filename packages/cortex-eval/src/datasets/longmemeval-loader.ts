@@ -90,7 +90,10 @@ export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): Benc
       capability: toCapability(inst.question_id, inst.question_type),
       questionType: inst.question_type,
       question: inst.question,
-      expected: inst.question_id.endsWith('_abs') ? null : inst.answer,
+      // The raw dataset stores numeric answers as JSON numbers, not strings;
+      // normalize them so `expected` always matches its `string | null` type and
+      // downstream comparison never receives a non-string.
+      expected: inst.question_id.endsWith('_abs') ? null : String(inst.answer),
       context: sessions.flat(),
       sessions,
       ...(inst.question_date !== undefined ? { questionDate: inst.question_date } : {}),

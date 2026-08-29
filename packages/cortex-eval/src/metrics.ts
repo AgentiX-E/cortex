@@ -18,8 +18,10 @@ import type { AnswerJudge } from './judge.js';
 const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
 
 /** Normalize an answer for exact-match comparison. */
-export function normalizeAnswer(a: string): string {
-  return a.trim().toLowerCase().replace(/\s+/g, ' ');
+export function normalizeAnswer(a: unknown): string {
+  // A dataset may store a numeric answer as a JSON number rather than a string,
+  // so coerce it before the string operations (which would otherwise throw).
+  return String(a).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 export function exactMatch(actual: Answer, expected: string | null): boolean {

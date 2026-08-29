@@ -172,4 +172,19 @@ describe('loadLongMemEval', () => {
     expect(ds.questions[0]!.questionType).toBe('single-session-assistant');
     expect(ds.questions[0]!.capability).toBe('IE');
   });
+
+  it('normalizes a JSON numeric answer to a string', () => {
+    const numeric: LongMemEvalInstance[] = [
+      {
+        question_id: 'q1',
+        question_type: 'multi-session',
+        question: 'How many?',
+        // The raw dataset stores some answers as JSON numbers.
+        answer: 3 as unknown as string,
+        haystack_sessions: [[{ role: 'user', content: 'three' }]],
+      },
+    ];
+    const ds = loadLongMemEval(numeric);
+    expect(ds.questions[0]!.expected).toBe('3');
+  });
 });

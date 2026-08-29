@@ -31,6 +31,11 @@ describe('normalizeAnswer', () => {
     expect(normalizeAnswer('  New   York ')).toBe('new york');
     expect(normalizeAnswer('Blue')).toBe('blue');
   });
+
+  it('coerces a JSON numeric answer to a string', () => {
+    expect(normalizeAnswer(3)).toBe('3');
+    expect(normalizeAnswer(3.5)).toBe('3.5');
+  });
 });
 
 describe('exactMatch', () => {
@@ -159,6 +164,21 @@ describe('answer scorers', () => {
     // A non-matching answer still delegates to the judge.
     expect(await scorer(q('IE', 'Shanghai'), 'Beijing')).toBe(false);
     expect(judgeCalled).toBe(true);
+  });
+
+  it('judgeScorer tolerates a JSON numeric expected answer', async () => {
+    const judge: AnswerJudge = async () => true;
+    const scorer = judgeScorer(judge);
+    // A dataset may store "3" as the JSON number 3; the exact-match short-circuit
+    // must coerce it rather than crash on `.trim()`.
+    const numericQuestion: Question = {
+      id: 'n',
+      capability: 'IE',
+      question: 'q',
+      expected: 3 as unknown as string,
+      context: [],
+    };
+    expect(await scorer(numericQuestion, '3')).toBe(true);
   });
 });
 
