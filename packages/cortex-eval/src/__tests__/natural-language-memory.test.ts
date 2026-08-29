@@ -17,6 +17,7 @@ import {
   parseQaAnswer,
   parseAggregationAnswer,
   isUserTurn,
+  isAssistantTurn,
   clearEmbeddingCache,
   type DecisionTrace,
 } from '../natural-language-memory.js';
@@ -359,6 +360,22 @@ describe('isUserTurn', () => {
 
   it('returns false for plain text without a role prefix', () => {
     expect(isUserTurn('My favorite color is blue.')).toBe(false);
+  });
+});
+
+describe('isAssistantTurn', () => {
+  it('recognises a date-prefixed assistant turn', () => {
+    expect(isAssistantTurn('[2023/01/08] assistant: verbose response')).toBe(true);
+    expect(isAssistantTurn('[2023/01/08 (Thu) 03:50] assistant: hello')).toBe(true);
+  });
+
+  it('rejects user turns', () => {
+    expect(isAssistantTurn('[2023/01/08] user: I visited MoMA')).toBe(false);
+    expect(isAssistantTurn('user: no date')).toBe(false);
+  });
+
+  it('returns false for plain text without a role prefix', () => {
+    expect(isAssistantTurn('My favorite color is blue.')).toBe(false);
   });
 });
 
@@ -1103,6 +1120,31 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm = scriptedLlm(() => 'blue');
       const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
       expect(await system.answerSessions('What is X?', [[], []])).toBeNull();
+    });
+
+    it('filters assistant turns out of the aggregated evidence', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific items:')) {
+            return 'color';
+          }
+          return 'blue';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      await system.answerSessions('What is the favorite color?', [
+        [
+          '[2023/01/08] user: My favorite color is blue.',
+          '[2023/01/08] assistant: verbose noise that should be dropped',
+        ],
+      ]);
+      // The user turn survives; the assistant turn is removed before aggregation.
+      const aggregationPrompt = prompts[prompts.length - 1]!;
+      expect(aggregationPrompt).toContain('My favorite color is blue');
+      expect(aggregationPrompt).not.toContain('verbose noise');
     });
 
     it('skips query expansion when disabled', async () => {

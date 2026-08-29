@@ -115,6 +115,7 @@ export {
   parseQaAnswer,
   parseAggregationAnswer,
   isUserTurn,
+  isAssistantTurn,
   type NaturalLanguageMemorySystemOptions,
   type AbstainReason,
   type DecisionTrace,

@@ -353,7 +353,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * evidence spread across sessions.
    */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
-    const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(question, sessions);
+    // Multi-session questions ask about facts the user stated across sessions,
+    // so assistant replies are pure noise: they dilute the session centroid and
+    // the aggregation context. Filter them out before retrieval so the LLM
+    // aggregates over clean user facts only.
+    const factSessions = sessions.map((session) =>
+      session.filter((turn) => !isAssistantTurn(turn)),
+    );
+    const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(
+      question,
+      factSessions,
+    );
     const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
     const retrieved = truncateText(
       hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n'),
@@ -934,4 +944,16 @@ function stripWrappingQuotes(s: string): string {
  */
 export function isUserTurn(turn: string): boolean {
   return /(?:^|\]\s*)user:/.test(turn);
+}
+
+/**
+ * True when a `turnText`-rendered turn is an assistant reply. Assistant turns
+ * are verbose generated responses; for multi-session aggregation questions the
+ * answer facts live exclusively in user turns, so assistant turns are removed
+ * before retrieval to keep the session centroid and the injected context clean.
+ * Turns WITHOUT a role prefix are kept (they carry no assistant marker), which
+ * also preserves the plain-text turns used by unit tests and synthetic inputs.
+ */
+export function isAssistantTurn(turn: string): boolean {
+  return /(?:^|\]\s*)assistant:/.test(turn);
 }
