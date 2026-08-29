@@ -63,16 +63,22 @@ export async function runNaturalLanguageBenchmark(
 ): Promise<{ report: AblationReport; markdown: string }> {
   const dataset = loadLongMemEval(instances);
   const threshold = options.abstainThreshold ?? 0.5;
+  // Query expansion is deterministic at temperature 0, so the baseline and the
+  // feature systems can share one cache instead of re-calling the LLM for the
+  // same question + expansion builder.
+  const expansionCache = new Map<string, string[]>();
   const baseline = new NaturalLanguageMemorySystem('nl-naive-baseline', {
     embedding,
     llm,
     enableAbstention: false,
+    queryExpansionCache: expansionCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const feature = new NaturalLanguageMemorySystem('nl-abstain-feature', {
     embedding,
     llm,
     abstainThreshold: threshold,
+    queryExpansionCache: expansionCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.onDecision ? { onDecision: options.onDecision } : {}),
   });
@@ -103,11 +109,13 @@ export async function runMrAggregationAblation(
   const mrQuestions = dataset.questions.filter((q) => q.capability === 'MR');
   const mrDataset = { name: 'longmemeval-mr', questions: mrQuestions };
 
+  const expansionCache = new Map<string, string[]>();
   const legacy = new NaturalLanguageMemorySystem('mr-legacy-aggregation', {
     embedding,
     llm,
     enableAbstention: false,
     aggregationPrompt: buildLegacyAggregationQaPrompt,
+    queryExpansionCache: expansionCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const cot = new NaturalLanguageMemorySystem('mr-cot-aggregation', {
@@ -115,6 +123,7 @@ export async function runMrAggregationAblation(
     llm,
     enableAbstention: false,
     aggregationPrompt: buildAggregationQaPrompt,
+    queryExpansionCache: expansionCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -145,11 +154,13 @@ export async function runTemporalEngineAblation(
   const trQuestions = dataset.questions.filter((q) => q.capability === 'TR');
   const trDataset = { name: 'longmemeval-tr', questions: trQuestions };
 
+  const expansionCache = new Map<string, string[]>();
   const llmTemporal = new NaturalLanguageMemorySystem('tr-llm-temporal', {
     embedding,
     llm,
     enableAbstention: false,
     enableDeterministicTemporal: false,
+    queryExpansionCache: expansionCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const deterministicTemporal = new NaturalLanguageMemorySystem('tr-deterministic-temporal', {
@@ -157,6 +168,7 @@ export async function runTemporalEngineAblation(
     llm,
     enableAbstention: false,
     enableDeterministicTemporal: true,
+    queryExpansionCache: expansionCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 

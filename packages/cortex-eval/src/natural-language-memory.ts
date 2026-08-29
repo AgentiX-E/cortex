@@ -61,6 +61,14 @@ export type NaturalLanguageMemorySystemOptions = {
   maxAggregationChars?: number;
   /** When true, expand the question into concrete phrases before MR recall (default true). */
   enableQueryExpansion?: boolean;
+  /**
+   * Shared cache for query-expansion results, keyed by `<builder>:<question>`.
+   * The benchmark runs several systems (baseline vs feature, ablation variants)
+   * over the SAME questions, so expansion is deterministic at temperature 0 and
+   * can be reused across those instances instead of re-calling the LLM per
+   * system. Injected (rather than module-global) so tests stay isolated.
+   */
+  queryExpansionCache?: Map<string, string[]>;
   /** Top sessions recalled per expansion phrase (default 3). */
   queryExpansionTopKPerQuery?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
@@ -459,10 +467,21 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     if (this.options.enableQueryExpansion === false) {
       return [];
     }
+    const cache = this.options.queryExpansionCache;
+    // The builder name distinguishes object-level expansion (general/MR) from
+    // event-level expansion (temporal), which produce different phrases for the
+    // same question.
+    const cacheKey = `${promptBuilder.name}:${question}`;
+    const cached = cache?.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
     const expansionRaw = await this.options.llm.complete(promptBuilder(question), {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
-    return parseQueryExpansion(expansionRaw);
+    const parsed = parseQueryExpansion(expansionRaw);
+    cache?.set(cacheKey, parsed);
+    return parsed;
   }
 
   private async respondWith(

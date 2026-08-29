@@ -192,6 +192,12 @@ export function judgeScorer(judge: AnswerJudge): AnswerScorer {
     if (answer === null) {
       return false;
     }
+    // Normalized string equality is the strongest equivalence signal and needs
+    // no LLM: an exact answer is always correct. This short-circuit also cuts
+    // the dominant LLM cost of the benchmark, since exact matches are frequent.
+    if (normalizeAnswer(answer) === normalizeAnswer(question.expected)) {
+      return true;
+    }
     // Counting questions are graded numerically first, so a verbose answer
     // cannot trick the LLM judge into accepting "5" for "2".
     const numeric = numericAnswerVerdict(question.question, answer, question.expected);

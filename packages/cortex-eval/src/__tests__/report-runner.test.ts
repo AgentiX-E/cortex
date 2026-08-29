@@ -339,7 +339,9 @@ describe('runMrAggregationAblation', () => {
     const capturingLlm: LLM = {
       complete: async (_prompt, opts) => {
         temperatures.push(opts?.temperature ?? Number.NaN);
-        return 'blue';
+        // A non-exact answer forces the judge path (exact matches are now
+        // short-circuited without consulting the judge).
+        return 'green';
       },
       completeStructured: async <T>() => ({}) as T,
     };

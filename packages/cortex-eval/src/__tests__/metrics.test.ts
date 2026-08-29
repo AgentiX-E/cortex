@@ -144,6 +144,22 @@ describe('answer scorers', () => {
     expect(await scorer(counting('2'), '5')).toBe(false);
     expect(judgeCalled).toBe(false);
   });
+
+  it('judgeScorer short-circuits exact string matches without the judge', async () => {
+    let judgeCalled = false;
+    const judge: AnswerJudge = async (_q, predicted, expected) => {
+      judgeCalled = true;
+      return predicted === expected;
+    };
+    const scorer = judgeScorer(judge);
+    // Normalized equality is the strongest equivalence signal: no judge needed.
+    expect(await scorer(q('IE', 'Paris'), 'Paris')).toBe(true);
+    expect(await scorer(q('IE', 'Golden Retriever'), 'golden retriever')).toBe(true);
+    expect(judgeCalled).toBe(false);
+    // A non-matching answer still delegates to the judge.
+    expect(await scorer(q('IE', 'Shanghai'), 'Beijing')).toBe(false);
+    expect(judgeCalled).toBe(true);
+  });
 });
 
 describe('numeric answer helpers', () => {

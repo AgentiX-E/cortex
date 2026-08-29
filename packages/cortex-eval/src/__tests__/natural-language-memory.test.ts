@@ -1061,6 +1061,29 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(traces[0]!.answer).toBeNull();
   });
 
+  it('reuses query expansion from a shared cache across system instances', async () => {
+    clearEmbeddingCache();
+    let expansionCalls = 0;
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (prompt.includes('Specific items:')) {
+          expansionCalls += 1;
+          return 'color';
+        }
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const cache = new Map<string, string[]>();
+    const makeSystem = (name: string) =>
+      new NaturalLanguageMemorySystem(name, { embedding, llm, queryExpansionCache: cache });
+    await makeSystem('a').answer('What is the color?', ['[2023/01/08] user: color is blue.']);
+    await makeSystem('b').answer('What is the color?', ['[2023/01/08] user: color is blue.']);
+    // The second system reuses the first system's expansion instead of re-calling
+    // the LLM for the same question + expansion builder.
+    expect(expansionCalls).toBe(1);
+  });
+
   describe('answerSessions', () => {
     it('retrieves whole sessions and answers from the aggregated evidence', async () => {
       const llm = scriptedLlm((prompt) =>
