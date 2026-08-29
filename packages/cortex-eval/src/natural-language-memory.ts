@@ -310,6 +310,32 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 
   /**
+   * Single-session answering for knowledge-update questions. These ask which
+   * value a time qualifier selects: "previous/before" selects the earlier value,
+   * "currently/now/most recent" selects the later value, and Yes/No comparison
+   * questions compare turns. The generic extractive prompt only says "choose the
+   * most recent", which the model applies unreliably when both old and new values
+   * are present. The dedicated prompt makes the mapping explicit so the model
+   * picks the version the qualifier asks for instead of abstaining.
+   */
+  async answerKnowledgeUpdate(question: string, context: string[]): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+      question,
+      context,
+      false,
+    );
+    return this.respondWith(
+      question,
+      hits[0]?.score ?? 0,
+      retrieved,
+      buildKnowledgeUpdatePrompt,
+      parseQaAnswer,
+      expansionQueries,
+      this.options.abstainThreshold,
+    );
+  }
+
+  /**
    * User-turn retrieval shared by `answer`, `answerAssistant`, and
    * `answerTemporal`. The temporal path passes an event-level expansion builder
    * because temporal questions ask WHEN an event happened, so the answer turn is
@@ -587,6 +613,40 @@ export function buildPreferencePrompt(
     'Respond with a CONCRETE, SPECIFIC recommendation or suggestion that directly reflects those preferences.',
     'Name the exact brands, products, topics, or options the user already expressed interest in; do not give a generic answer.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no information about the user's preferences at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ].join('\n');
+}
+
+/**
+ * Build a knowledge-update QA prompt. Knowledge-update questions are the one
+ * case where the generic "choose the most recent" instruction is not enough: the
+ * model must select the value a time qualifier points to, and it abstains when
+ * both an old and a new value are present and the mapping is left implicit. This
+ * prompt names the mapping ("previous/before" → earlier value, "currently/now/
+ * most recent" → later value) so the model answers the right version instead of
+ * guessing or giving up.
+ */
+export function buildKnowledgeUpdatePrompt(
+  question: string,
+  context: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  return [
+    'You are answering a knowledge-update question based on a conversation memory.',
+    'Each turn is prefixed with its date in [YYYY/MM/DD] form; read them in chronological order.',
+    'The user may have mentioned a fact and later updated it. Select the value the question asks for:',
+    '- "previous", "before", "originally", "used to" → answer the EARLIER (older) value.',
+    '- "currently", "now", "most recent", "latest", "after updating" → answer the LATER (newer) value.',
+    '- "still", "same", or a Yes/No question → compare the turns and answer Yes or No.',
+    'When several turns mention different values for the same subject, pick the value matching the time qualifier above.',
+    'Answer with ONLY the answer phrase (a word, name, number, Yes, or No), with no explanation.',
+    `Respond with exactly "${abstainToken}" ONLY if the context offers no answer to the question at all.`,
     '',
     'Context:',
     context,

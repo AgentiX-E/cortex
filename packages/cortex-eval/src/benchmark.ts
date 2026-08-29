@@ -59,6 +59,15 @@ export async function runBenchmark(
       // extractive answer path would abstain on them, so route to a generative
       // path instead.
       answers.push(await system.answerPreference(q.question, q.context));
+    } else if (
+      isSessionAware(system) &&
+      q.questionType === 'knowledge-update' &&
+      system.answerKnowledgeUpdate
+    ) {
+      // Knowledge-update questions ask which value a time qualifier selects
+      // (previous vs currently), which the generic extractive prompt does not
+      // make explicit. Route to the time-qualifier-aware prompt instead.
+      answers.push(await system.answerKnowledgeUpdate(q.question, q.context));
     } else {
       answers.push(await system.answer(q.question, q.context));
     }

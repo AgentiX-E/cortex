@@ -9,6 +9,7 @@ import {
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
+  buildKnowledgeUpdatePrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   parseQueryExpansion,
@@ -194,6 +195,27 @@ describe('buildPreferencePrompt', () => {
 
   it('accepts a custom abstention token', () => {
     const prompt = buildPreferencePrompt('Q?', 'ctx', 'NONE');
+    expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildKnowledgeUpdatePrompt', () => {
+  it('instructs the model to map time qualifiers to the matching value', () => {
+    const prompt = buildKnowledgeUpdatePrompt('What was my previous city?', 'I moved to Shanghai.');
+    expect(prompt).toContain('previous');
+    expect(prompt).toContain('older');
+    expect(prompt).toContain('I moved to Shanghai.');
+    expect(prompt).toContain('Question: What was my previous city?');
+  });
+
+  it('covers current/latest qualifiers with the later-value rule', () => {
+    const prompt = buildKnowledgeUpdatePrompt('What is my current city?', 'ctx');
+    expect(prompt).toContain('current');
+    expect(prompt).toContain('newer');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildKnowledgeUpdatePrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
   });
 });
@@ -714,6 +736,31 @@ describe('NaturalLanguageMemorySystem', () => {
       '[2023/05/20] assistant: The assistant noted Netflix.',
     ]);
     expect(answer).toBe('a Netflix stand-up special');
+  });
+
+  it('answerKnowledgeUpdate uses the time-qualifier-aware prompt', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) {
+          return 'city';
+        }
+        return 'Shanghai';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerKnowledgeUpdate('What is my current city?', [
+      '[2023/01/08] user: I lived in Beijing.',
+      '[2023/03/04] user: I moved to Shanghai.',
+    ]);
+    expect(answer).toBe('Shanghai');
+    // The final prompt must be the knowledge-update prompt, not the generic QA
+    // prompt, so the model maps "current" to the later value.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('previous');
+    expect(qaPrompt).toContain('I moved to Shanghai');
   });
 
   it('answerTemporal runs event expansion and computes weeks from extracted events', async () => {

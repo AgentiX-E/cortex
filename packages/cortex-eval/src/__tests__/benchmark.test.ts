@@ -196,6 +196,77 @@ describe('runBenchmark session routing', () => {
     expect(calls).toEqual(['answer']);
   });
 
+  it('routes knowledge-update questions to answerKnowledgeUpdate', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'KU',
+          questionType: 'knowledge-update',
+          question: 'What is my current city?',
+          expected: 'Shanghai',
+          context: ['I moved to Shanghai.'],
+        },
+        {
+          id: 'q2',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Q2',
+          expected: 'b',
+          context: ['user fact'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => {
+        calls.push('sessions');
+        return 'y';
+      },
+      answerKnowledgeUpdate: async () => {
+        calls.push('knowledge-update');
+        return 'Shanghai';
+      },
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['Shanghai', 'x']);
+    expect(calls).toEqual(['knowledge-update', 'answer']);
+  });
+
+  it('falls back to answer for knowledge-update questions without answerKnowledgeUpdate', async () => {
+    const dataset: BenchmarkDataset = {
+      name: 'routing',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'KU',
+          questionType: 'knowledge-update',
+          question: 'What is my current city?',
+          expected: 'Shanghai',
+          context: ['I moved to Shanghai.'],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => {
+        calls.push('answer');
+        return 'x';
+      },
+      answerSessions: async () => 'y',
+    };
+    const answers = await runBenchmark(dataset, system);
+    expect(answers).toEqual(['x']);
+    expect(calls).toEqual(['answer']);
+  });
+
   it('routes abstention questions to answerAbstention before the assistant path', async () => {
     const dataset: BenchmarkDataset = {
       name: 'routing',

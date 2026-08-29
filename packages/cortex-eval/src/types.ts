@@ -78,6 +78,13 @@ export type SessionAwareMemorySystem = MemorySystem & {
    * user's stated preferences. Falls back to `answer` when absent.
    */
   answerPreference?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  /**
+   * Single-session answering for knowledge-update questions. These questions ask
+   * which value a time qualifier selects ("previous" → the earlier value,
+   * "currently/most recent" → the later value), which the generic extractive
+   * prompt does not make explicit. Falls back to `answer` when absent.
+   */
+  answerKnowledgeUpdate?: (question: string, context: string[]) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {

@@ -107,6 +107,7 @@ export {
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
+  buildKnowledgeUpdatePrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   parseQueryExpansion,
