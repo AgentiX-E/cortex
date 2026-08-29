@@ -71,11 +71,21 @@ jobs:
             -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
             "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
 
+      - name: Restore embedding cache
+        id: restore-embedding
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
+          restore-keys: |
+            longmemeval-embedding-
+
       - name: Run benchmark
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
           ABSTAIN_THRESHOLD: '0.5'
           # Default to a small stratified sample so iterative debugging does not
           # embed the whole ~115k-token haystack for every one of 500 questions
@@ -86,6 +96,13 @@ jobs:
           LIMIT: ${{ github.event.inputs.limit || '60' }}
           DIAGNOSTICS_LIMIT: ${{ github.event.inputs.diagnostics_limit || '100' }}
         run: pnpm --filter @agentix-e/cortex-eval bench
+
+      - name: Save embedding cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
 
       - name: Upload benchmark report
         if: always()

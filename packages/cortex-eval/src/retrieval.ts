@@ -19,6 +19,24 @@ export function clearEmbeddingCache(): void {
   embeddingCache.clear();
 }
 
+/** Return a snapshot of the shared embedding cache for persistence. */
+export function snapshotEmbeddingCache(): Map<string, Float64Array> {
+  return new Map(embeddingCache);
+}
+
+/**
+ * Merge persisted vectors into the shared cache. Entries already present are
+ * kept (the in-memory copy is authoritative), so loading a stale cache cannot
+ * override vectors computed in this run.
+ */
+export function mergeEmbeddingCache(entries: ReadonlyMap<string, Float64Array>): void {
+  for (const [text, vector] of entries) {
+    if (!embeddingCache.has(text)) {
+      embeddingCache.set(text, vector);
+    }
+  }
+}
+
 /** Stable 32-bit string hash used only for internal vector-index ids. */
 export function hashText(text: string): string {
   let h = 0x811c9dc5;
@@ -63,6 +81,93 @@ export async function embedOneCached(
   text: string,
 ): Promise<Float64Array> {
   return (await embedManyCached(embedding, [text]))[0]!;
+}
+
+/** Binary magic for the persisted embedding cache ("EMBC" big-endian). */
+const EMBEDDING_CACHE_MAGIC = 0x454d4243;
+/** Format version; bump when the binary layout changes. */
+const EMBEDDING_CACHE_VERSION = 1;
+
+/**
+ * Serialize a text→vector cache into a compact binary buffer. Vectors are
+ * stored as float32 (the native precision of the embedding API) rather than the
+ * float64 they are held in, halving the payload while keeping the error well
+ * below what cosine similarity can notice. The cache is deterministic at
+ * temperature 0, so persisting it lets a later benchmark run reuse the same
+ * haystack-turn embeddings instead of re-calling the embedding provider.
+ */
+export function serializeEmbeddingCache(cache: ReadonlyMap<string, Float64Array>): Uint8Array {
+  const entries: { text: Buffer; vector: Float32Array }[] = [];
+  let dim = 0;
+  let payloadBytes = 0;
+  for (const [text, vector] of cache) {
+    if (dim === 0) {
+      dim = vector.length;
+    }
+    const textBuf = Buffer.from(text, 'utf8');
+    entries.push({ text: textBuf, vector: Float32Array.from(vector) });
+    payloadBytes += 4 + textBuf.length + vector.length * 4;
+  }
+  const buf = Buffer.alloc(13 + payloadBytes); // magic(4) + version(1) + count(4) + dim(4)
+  let offset = 0;
+  buf.writeUInt32BE(EMBEDDING_CACHE_MAGIC, offset);
+  offset += 4;
+  buf.writeUInt8(EMBEDDING_CACHE_VERSION, offset);
+  offset += 1;
+  buf.writeUInt32LE(entries.length, offset);
+  offset += 4;
+  buf.writeUInt32LE(dim, offset);
+  offset += 4;
+  for (const { text, vector } of entries) {
+    buf.writeUInt32LE(text.length, offset);
+    offset += 4;
+    text.copy(buf, offset);
+    offset += text.length;
+    for (let i = 0; i < vector.length; i++) {
+      buf.writeFloatLE(vector[i]!, offset);
+      offset += 4;
+    }
+  }
+  return new Uint8Array(buf);
+}
+
+/**
+ * Deserialize a binary buffer produced by `serializeEmbeddingCache` back into a
+ * text→vector Map (vectors are widened from float32 to float64 to match the
+ * in-memory representation). Throws on a corrupt or incompatible buffer so a
+ * stale cache is never silently trusted.
+ */
+export function deserializeEmbeddingCache(data: Uint8Array): Map<string, Float64Array> {
+  const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  let offset = 0;
+  const magic = buf.readUInt32BE(offset);
+  offset += 4;
+  if (magic !== EMBEDDING_CACHE_MAGIC) {
+    throw new Error(`invalid embedding cache magic: 0x${magic.toString(16)}`);
+  }
+  const version = buf.readUInt8(offset);
+  offset += 1;
+  if (version !== EMBEDDING_CACHE_VERSION) {
+    throw new Error(`unsupported embedding cache version: ${version}`);
+  }
+  const count = buf.readUInt32LE(offset);
+  offset += 4;
+  const dim = buf.readUInt32LE(offset);
+  offset += 4;
+  const cache = new Map<string, Float64Array>();
+  for (let i = 0; i < count; i++) {
+    const textLen = buf.readUInt32LE(offset);
+    offset += 4;
+    const text = buf.toString('utf8', offset, offset + textLen);
+    offset += textLen;
+    const vector = new Float64Array(dim);
+    for (let j = 0; j < dim; j++) {
+      vector[j] = buf.readFloatLE(offset);
+      offset += 4;
+    }
+    cache.set(text, vector);
+  }
+  return cache;
 }
 
 export type RetrievalHit = {

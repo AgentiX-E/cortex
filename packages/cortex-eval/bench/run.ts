@@ -7,17 +7,21 @@
  * stack before exiting non-zero. The workflow uploads this file as an artifact
  * so failures can be diagnosed even when the runner log stream is unavailable.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import {
   checkEmbeddingDeterminism,
   computeRetrievalDiagnostics,
   computeSessionRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
+  deserializeEmbeddingCache,
+  mergeEmbeddingCache,
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
   sampleInstances,
+  serializeEmbeddingCache,
+  snapshotEmbeddingCache,
   toCapability,
   turnText,
   type DecisionTrace,
@@ -58,6 +62,23 @@ async function main(): Promise<void> {
   const embedding = createEmbeddingFromEnv(process.env);
   const llm = createLlmFromEnv(process.env);
   const threshold = Number(process.env['ABSTAIN_THRESHOLD'] ?? 0.5);
+
+  // Restore a persisted embedding cache when present. The haystack turns are the
+  // SAME across repeated full runs and embedding is deterministic, so reusing a
+  // previous run's vectors avoids re-embedding (and re-billing) ~115k turns per
+  // run. The workflow supplies this file via GitHub Actions cache.
+  const embeddingCachePath = process.env['EMBEDDING_CACHE_PATH'];
+  if (embeddingCachePath && existsSync(embeddingCachePath)) {
+    try {
+      const persisted = deserializeEmbeddingCache(readFileSync(embeddingCachePath));
+      mergeEmbeddingCache(persisted);
+      console.log(`Restored ${persisted.size} embedding vectors from ${embeddingCachePath}`);
+    } catch (err) {
+      console.warn(
+        `Could not restore embedding cache: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
   // Default to a single deterministic run: with temperature 0 the systems are
   // deterministic, so repeated runs add cost without variance. Set RUNS>1 only
   // when sampling variance is deliberately introduced via TEMPERATURE>0.
@@ -207,6 +228,15 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
   console.log('=== TR temporal-engine ablation ===');
   console.log(trAblation.markdown);
+
+  // Persist the embedding cache so a later run (which uses the same haystack
+  // turns) can restore it and skip the embedding provider. Done after every
+  // report so a partial run still saves whatever it has already embedded.
+  if (embeddingCachePath) {
+    const snapshot = snapshotEmbeddingCache();
+    writeFileSync(embeddingCachePath, serializeEmbeddingCache(snapshot));
+    console.log(`Persisted ${snapshot.size} embedding vectors to ${embeddingCachePath}`);
+  }
 }
 
 main().catch((err) => {
@@ -222,6 +252,16 @@ main().catch((err) => {
     writeFileSync('benchmark-error.log', full);
   } catch {
     // Ignore write errors; the console output is the primary diagnostic.
+  }
+  // Preserve whatever embeddings were computed before the failure so the next
+  // run can resume without re-billing for them.
+  try {
+    const cachePath = process.env['EMBEDDING_CACHE_PATH'];
+    if (cachePath) {
+      writeFileSync(cachePath, serializeEmbeddingCache(snapshotEmbeddingCache()));
+    }
+  } catch {
+    // Persisting the cache is best-effort; never mask the original error.
   }
   process.exit(1);
 });
