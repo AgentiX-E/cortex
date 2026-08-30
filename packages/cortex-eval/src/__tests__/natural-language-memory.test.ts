@@ -214,6 +214,14 @@ describe('buildKnowledgeUpdatePrompt', () => {
     expect(prompt).toContain('newer');
   });
 
+  it('enumerates distinct values before selecting the time-qualified one', () => {
+    const prompt = buildKnowledgeUpdatePrompt('What is my current city?', 'ctx');
+    expect(prompt).toContain('Step 1');
+    expect(prompt).toContain('Step 2');
+    expect(prompt).toContain('Enumerate');
+    expect(prompt).toContain('BOTH the old and the new value');
+  });
+
   it('accepts a custom abstention token', () => {
     const prompt = buildKnowledgeUpdatePrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');

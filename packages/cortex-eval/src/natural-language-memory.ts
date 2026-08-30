@@ -645,11 +645,13 @@ export function buildPreferencePrompt(
 /**
  * Build a knowledge-update QA prompt. Knowledge-update questions are the one
  * case where the generic "choose the most recent" instruction is not enough: the
- * model must select the value a time qualifier points to, and it abstains when
- * both an old and a new value are present and the mapping is left implicit. This
- * prompt names the mapping ("previous/before" → earlier value, "currently/now/
- * most recent" → later value) so the model answers the right version instead of
- * guessing or giving up.
+ * model must select the value a time qualifier points to, and it abstains or
+ * picks the wrong version when both an old and a new value are present and the
+ * mapping is left implicit. It therefore forces a two-step enumeration (list
+ * every distinct value with its date, then pick the one matching the qualifier)
+ * before answering, mirroring the multi-session CoT prompt's enumerate-then-act
+ * pattern. Listing the old and new values side by side makes "previous" vs
+ * "currently" unambiguous.
  */
 export function buildKnowledgeUpdatePrompt(
   question: string,
@@ -659,11 +661,17 @@ export function buildKnowledgeUpdatePrompt(
   return [
     'You are answering a knowledge-update question based on a conversation memory.',
     'Each turn is prefixed with its date in [YYYY/MM/DD] form; read them in chronological order.',
-    'The user may have mentioned a fact and later updated it. Select the value the question asks for:',
-    '- "previous", "before", "originally", "used to" → answer the EARLIER (older) value.',
-    '- "currently", "now", "most recent", "latest", "after updating" → answer the LATER (newer) value.',
-    '- "still", "same", or a Yes/No question → compare the turns and answer Yes or No.',
-    'When several turns mention different values for the same subject, pick the value matching the time qualifier above.',
+    'Work in two steps.',
+    '',
+    "Step 1 — Enumerate every DIFFERENT value the question's subject has had, one per line:",
+    '  - <value> | <date>',
+    '  - If the user updated a value, list BOTH the old and the new value with their dates.',
+    '',
+    'Step 2 — Pick the value matching the time qualifier:',
+    '  - "previous", "before", "originally", "used to" → the EARLIER (older) value.',
+    '  - "currently", "now", "most recent", "latest", "after updating" → the LATER (newer) value.',
+    '  - "still", "same", or a Yes/No question → compare the turns and answer Yes or No.',
+    '',
     'Answer with ONLY the answer phrase (a word, name, number, Yes, or No), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context offers no answer to the question at all.`,
     '',
