@@ -6,6 +6,7 @@ import {
   buildConservativeQaPrompt,
   buildTemporalQaPrompt,
   buildTemporalEventExtractionPrompt,
+  buildArithmeticExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
@@ -124,6 +125,27 @@ describe('buildTemporalEventExtractionPrompt', () => {
     const prompt = buildTemporalEventExtractionPrompt('How many weeks ago?', 'ctx');
     expect(prompt).toContain('Example:');
     expect(prompt).toContain('"events"');
+  });
+});
+
+describe('buildArithmeticExtractionPrompt', () => {
+  it('asks the LLM to list addends without summing them', () => {
+    const prompt = buildArithmeticExtractionPrompt(
+      'What was the page count of the two novels?',
+      'context line',
+    );
+    expect(prompt).toContain('What was the page count of the two novels?');
+    expect(prompt).toContain('context line');
+    expect(prompt).toContain('Do NOT add');
+    expect(prompt).toContain('JSON');
+  });
+
+  it('includes a worked example that strips units and currency', () => {
+    const prompt = buildArithmeticExtractionPrompt('What is the total?', 'ctx');
+    expect(prompt).toContain('Example:');
+    expect(prompt).toContain('"numbers"');
+    expect(prompt).toContain('1300');
+    expect(prompt).toContain('15 hours');
   });
 });
 
@@ -1362,6 +1384,98 @@ describe('NaturalLanguageMemorySystem', () => {
       const aggregationPrompt = prompts[prompts.length - 1]!;
       expect(aggregationPrompt).toContain('CUSTOM AGGREGATION MARKER');
       expect(aggregationPrompt).not.toContain('Step 1 — Enumerate');
+    });
+
+    it('sums a summation question deterministically from extracted addends', async () => {
+      let structuredCalled = false;
+      const llm: LLM = {
+        complete: async () => 'UNANSWERABLE',
+        completeStructured: async <T>() => {
+          structuredCalled = true;
+          return { numbers: [400, 456] } as T;
+        },
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions(
+        'What was the page count of the two novels I finished?',
+        [
+          ['[2023/01/08] user: The first novel was 400 pages.'],
+          ['[2023/01/20] user: The second novel was 456 pages.'],
+        ],
+      );
+      // The sum is computed exactly from the extracted addends, without the
+      // aggregation prompt being called.
+      expect(structuredCalled).toBe(true);
+      expect(answer).toBe('856');
+    });
+
+    it('falls back to the aggregation prompt when no addends are extracted', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) {
+            return 'novels';
+          }
+          return '856';
+        },
+        completeStructured: async <T>() => ({ numbers: [] }) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions(
+        'What was the page count of the two novels I finished?',
+        [
+          ['[2023/01/08] user: The first novel was 400 pages.'],
+          ['[2023/01/20] user: The second novel was 456 pages.'],
+        ],
+      );
+      // Empty addend list -> the deterministic path returns null -> the
+      // aggregation prompt answers.
+      expect(answer).toBe('856');
+      expect(prompts.some((p) => p.includes('Step 1 — Enumerate'))).toBe(true);
+    });
+
+    it('falls back when structured extraction throws', async () => {
+      const llm: LLM = {
+        complete: async () => '856',
+        completeStructured: async () => {
+          throw new Error('provider returned non-JSON');
+        },
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions(
+        'What was the page count of the two novels I finished?',
+        [
+          ['[2023/01/08] user: The first novel was 400 pages.'],
+          ['[2023/01/20] user: The second novel was 456 pages.'],
+        ],
+      );
+      expect(answer).toBe('856');
+    });
+
+    it('skips the deterministic sum when enableDeterministicArithmetic is false', async () => {
+      let structuredCalled = false;
+      const llm: LLM = {
+        complete: async (prompt) => (prompt.includes('Specific activities:') ? 'novels' : '856'),
+        completeStructured: async <T>() => {
+          structuredCalled = true;
+          return { numbers: [400, 456] } as T;
+        },
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableDeterministicArithmetic: false,
+      });
+      const answer = await system.answerSessions(
+        'What was the page count of the two novels I finished?',
+        [
+          ['[2023/01/08] user: The first novel was 400 pages.'],
+          ['[2023/01/20] user: The second novel was 456 pages.'],
+        ],
+      );
+      expect(structuredCalled).toBe(false);
+      expect(answer).toBe('856');
     });
   });
 });

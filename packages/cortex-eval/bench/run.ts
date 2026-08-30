@@ -17,6 +17,7 @@ import {
   deserializeEmbeddingCache,
   mergeEmbeddingCache,
   runMrAggregationAblation,
+  runMrArithmeticAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
   sampleInstances,
@@ -228,6 +229,22 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
   console.log('=== TR temporal-engine ablation ===');
   console.log(trAblation.markdown);
+
+  // Isolate the deterministic MR-summation engine contribution: LLM-reads-and-
+  // sums vs LLM-extracts-then-deterministic-sum, with abstention held constant so
+  // the paired McNemar test measures the arithmetic engine effect on MR
+  // summation questions directly.
+  const mrArithmeticAblation = await runMrArithmeticAblation(sampled as never, embedding, llm, {
+    runs,
+    temperature,
+  });
+  writeFileSync('benchmark-mr-arithmetic-ablation-report.md', mrArithmeticAblation.markdown);
+  writeFileSync(
+    'benchmark-mr-arithmetic-ablation-report.json',
+    JSON.stringify(mrArithmeticAblation.report, null, 2),
+  );
+  console.log('=== MR arithmetic-engine ablation ===');
+  console.log(mrArithmeticAblation.markdown);
 
   // Persist the embedding cache so a later run (which uses the same haystack
   // turns) can restore it and skip the embedding provider. Done after every
