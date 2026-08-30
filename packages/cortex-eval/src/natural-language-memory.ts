@@ -109,10 +109,10 @@ export type NaturalLanguageMemorySystemOptions = {
 const DEFAULT_ABSTAIN_TOKEN = 'UNANSWERABLE';
 const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_TOP_K = 15;
-const DEFAULT_SESSION_TOP_K = 10;
+const DEFAULT_SESSION_TOP_K = 20;
 const DEFAULT_CONTEXT_RADIUS = 1;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
-const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
+const DEFAULT_QUERY_EXPANSION_TOP_K = 5;
 const DEFAULT_MAX_TURN_CHARS = 2000;
 const DEFAULT_MAX_AGGREGATION_CHARS = 20_000;
 
@@ -426,7 +426,10 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessionTopK,
     );
 
-    const expansionQueries = await this.expandQuestion(question);
+    const expansionQueries = await this.expandQuestion(
+      question,
+      buildMultiSessionQueryExpansionPrompt,
+    );
     if (expansionQueries.length === 0) {
       return { hits: baseHits, expansionQueries: [] };
     }
@@ -957,6 +960,29 @@ export function buildTemporalQueryExpansionPrompt(question: string): string {
     `Question: ${question}`,
     '',
     'Specific events:',
+  ].join('\n');
+}
+
+/**
+ * Multi-session query expansion. A multi-session question counts or aggregates
+ * past ACTIVITIES ("how many projects did I lead", "how many workshops did I
+ * attend"), and its evidence sessions are recalled by the activity, not by a
+ * bare object noun that also appears in unrelated sessions about the same
+ * object. Activity-level phrases ("led a consumer-research project", "attended a
+ * machine-learning workshop") therefore recover the specific evidence session
+ * instead of the distractors that a bare noun ("projects", "workshops") pulls in.
+ */
+export function buildMultiSessionQueryExpansionPrompt(question: string): string {
+  return [
+    'You are helping retrieve evidence sessions for a multi-session question.',
+    'Given a question about counting or aggregating past activities, list the SPECIFIC ACTIVITIES whose descriptions would appear in the evidence sessions.',
+    'Each activity is a short phrase combining an action and its object (and any distinguishing detail).',
+    'Do NOT list bare object nouns; include the action so the correct session is matched instead of another mention of the same object.',
+    'Output ONLY a comma-separated list of short activity phrases, with no explanation and no numbering.',
+    '',
+    `Question: ${question}`,
+    '',
+    'Specific activities:',
   ].join('\n');
 }
 

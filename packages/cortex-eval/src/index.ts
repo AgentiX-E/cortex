@@ -114,6 +114,7 @@ export {
   buildKnowledgeUpdatePrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
+  buildMultiSessionQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
   truncateSession,

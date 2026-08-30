@@ -12,6 +12,7 @@ import {
   buildKnowledgeUpdatePrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
+  buildMultiSessionQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
   truncateSession,
@@ -296,6 +297,16 @@ describe('buildTemporalQueryExpansionPrompt', () => {
     expect(prompt).toContain('How many weeks ago did I receive the chandelier?');
     expect(prompt).toContain('Specific events:');
     expect(prompt).toContain('action verb');
+    expect(prompt).toContain('bare object nouns');
+  });
+});
+
+describe('buildMultiSessionQueryExpansionPrompt', () => {
+  it('asks for activity phrases with an action, not bare nouns', () => {
+    const prompt = buildMultiSessionQueryExpansionPrompt('How many projects have I led?');
+    expect(prompt).toContain('How many projects have I led?');
+    expect(prompt).toContain('Specific activities:');
+    expect(prompt).toContain('action');
     expect(prompt).toContain('bare object nouns');
   });
 });
@@ -1105,12 +1116,33 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(answer).toBe('blue');
     });
 
+    it('expands multi-session questions with activity-level phrases', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) {
+            return 'led project';
+          }
+          return '2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      await system.answerSessions('How many projects have I led?', [
+        ['I led a consumer research project.'],
+      ]);
+      // The multi-session path uses activity-level (action + object) expansion,
+      // not the bare-object expansion used by single-session questions.
+      expect(prompts.some((p) => p.includes('Specific activities:'))).toBe(true);
+    });
+
     it('caps the total injected aggregation evidence to a budget', async () => {
       const prompts: string[] = [];
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific items:')) {
+          if (prompt.includes('Specific activities:')) {
             return 'color';
           }
           return 'blue';
@@ -1150,7 +1182,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          return prompt.includes('Specific items:') ? 'color' : 'blue';
+          return prompt.includes('Specific activities:') ? 'color' : 'blue';
         },
         completeStructured: async <T>() => ({}) as T,
       };
@@ -1191,7 +1223,7 @@ describe('NaturalLanguageMemorySystem', () => {
       // Query expansion calls the LLM once; the aggregation prompt is never
       // reached because the session threshold abstains before it.
       expect(prompts).toHaveLength(1);
-      expect(prompts[0]).toContain('Specific items:');
+      expect(prompts[0]).toContain('Specific activities:');
     });
 
     it('returns null for empty sessions when abstention is enabled', async () => {
@@ -1205,7 +1237,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific items:')) {
+          if (prompt.includes('Specific activities:')) {
             return 'color';
           }
           return 'blue';
@@ -1245,7 +1277,7 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(answer).toBe('blue');
       // Only the aggregation LLM call happens; no query-expansion prompt.
       expect(prompts).toHaveLength(1);
-      expect(prompts[0]).not.toContain('Specific items:');
+      expect(prompts[0]).not.toContain('Specific activities:');
     });
 
     it('falls back to base recall when query expansion returns empty', async () => {
@@ -1253,7 +1285,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific items:')) {
+          if (prompt.includes('Specific activities:')) {
             return '';
           }
           return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
@@ -1272,7 +1304,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific items:')) {
+          if (prompt.includes('Specific activities:')) {
             return 'color';
           }
           return prompt.includes('favorite color is blue') ? 'blue' : 'UNANSWERABLE';
@@ -1311,7 +1343,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific items:')) {
+          if (prompt.includes('Specific activities:')) {
             return 'color';
           }
           return prompt.includes('CUSTOM AGGREGATION MARKER') ? 'blue' : 'UNANSWERABLE';
