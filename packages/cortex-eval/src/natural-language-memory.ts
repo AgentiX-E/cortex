@@ -233,7 +233,13 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     let extracted: { events?: TemporalEvent[] };
     try {
       extracted = await this.options.llm.completeStructured<{ events?: TemporalEvent[] }>(
-        buildTemporalEventExtractionPrompt(question, retrieved, questionDate, expansionQueries),
+        buildTemporalEventExtractionPrompt(
+          question,
+          retrieved,
+          questionDate,
+          expansionQueries,
+          kind,
+        ),
         TEMPORAL_EVENTS_SCHEMA,
         { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
       );
@@ -737,9 +743,16 @@ export function buildTemporalEventExtractionPrompt(
   context: string,
   questionDate?: string,
   eventHints: readonly string[] = [],
+  kind?: TemporalKind,
 ): string {
+  // For ordering questions the expansion phrases are generic verbs ("took trip",
+  // "flew with airline") repeated once per event; passing them as hints makes the
+  // model copy that generic wording instead of the specific event names (Muir
+  // Woods day hike, JetBlue) that only appear in the context. Suppress the hints
+  // and instead ask the model to name each event from its evidence turn.
+  const isOrdering = kind === 'ordering';
   const hintLines =
-    eventHints.length > 0
+    !isOrdering && eventHints.length > 0
       ? [
           '',
           'The question likely refers to these event(s):',
@@ -748,21 +761,43 @@ export function buildTemporalEventExtractionPrompt(
           'If a listed event cannot be found in the Context, omit it.',
         ]
       : [];
+  const orderingLines = isOrdering
+    ? [
+        '',
+        'This is an ORDERING question: identify EVERY event the question asks to order.',
+        'Use each event\'s SPECIFIC name exactly as it appears in the Context (e.g. "Muir Woods day hike", "JetBlue flight"), never a generic phrase like "took trip" or "flew with airline".',
+        "Copy each event's date from its evidence turn as YYYY/MM/DD.",
+      ]
+    : [];
+  const example = isOrdering
+    ? [
+        'Example:',
+        'Context:',
+        '[2023/03/05] user: I went on a day hike to Muir Woods National Monument.',
+        '[2023/04/10] user: I went on a road trip to Big Sur.',
+        '[2023/05/20] user: I started a solo camping trip to Yosemite.',
+        'Question: What is the order of the three trips I took?',
+        '{"events": [{"name": "Muir Woods day hike", "date": "2023/03/05"}, {"name": "Big Sur road trip", "date": "2023/04/10"}, {"name": "Yosemite camping trip", "date": "2023/05/20"}]}',
+      ]
+    : [
+        'Example:',
+        'Context:',
+        '[2023/01/08] user: I visited the Museum of Modern Art.',
+        '[2023/01/15] user: I went to the Ancient Civilizations exhibit.',
+        'Question: How many days passed between my visit to MoMA and the Ancient Civilizations exhibit?',
+        '{"events": [{"name": "visit Museum of Modern Art", "date": "2023/01/08"}, {"name": "visit Ancient Civilizations exhibit", "date": "2023/01/15"}]}',
+      ];
   return [
     'You are extracting event dates from a conversation memory to answer a temporal question.',
     'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
     ...(questionDate ? [`The question was asked on ${questionDate}.`] : []),
     ...hintLines,
+    ...orderingLines,
     'Identify the event(s) the question asks about. For each event, copy the date from its evidence turn as YYYY/MM/DD.',
     'Do NOT compute elapsed time, reorder events, or do any arithmetic. Just report each event name and its copied date.',
     'If the question refers to multiple events, list each one as a separate item.',
     '',
-    'Example:',
-    'Context:',
-    '[2023/01/08] user: I visited the Museum of Modern Art.',
-    '[2023/01/15] user: I went to the Ancient Civilizations exhibit.',
-    'Question: How many days passed between my visit to MoMA and the Ancient Civilizations exhibit?',
-    '{"events": [{"name": "visit Museum of Modern Art", "date": "2023/01/08"}, {"name": "visit Ancient Civilizations exhibit", "date": "2023/01/15"}]}',
+    ...example,
     '',
     'Context:',
     context,

@@ -125,6 +125,43 @@ describe('buildTemporalEventExtractionPrompt', () => {
     expect(prompt).toContain('Example:');
     expect(prompt).toContain('"events"');
   });
+
+  it('suppresses generic event hints for ordering questions', () => {
+    const prompt = buildTemporalEventExtractionPrompt(
+      'What is the order of the three trips I took?',
+      'ctx',
+      '2023/10/01',
+      ['took trip', 'took trip', 'took trip'],
+      'ordering',
+    );
+    expect(prompt).not.toContain('The question likely refers to these event(s):');
+    expect(prompt).not.toContain('- took trip');
+  });
+
+  it('instructs ordering questions to name each event specifically', () => {
+    const prompt = buildTemporalEventExtractionPrompt(
+      'What is the order of the three trips I took?',
+      'ctx',
+      '2023/10/01',
+      [],
+      'ordering',
+    );
+    expect(prompt).toContain('SPECIFIC name');
+    expect(prompt).toContain('generic phrase');
+    expect(prompt).toContain('order');
+  });
+
+  it('still lists event hints for non-ordering questions', () => {
+    const prompt = buildTemporalEventExtractionPrompt(
+      'How many weeks ago did I receive the chandelier?',
+      'ctx',
+      '2023/10/01',
+      ['receive chandelier'],
+      'relative',
+    );
+    expect(prompt).toContain('The question likely refers to these event(s):');
+    expect(prompt).toContain('- receive chandelier');
+  });
 });
 
 describe('buildAggregationQaPrompt', () => {
