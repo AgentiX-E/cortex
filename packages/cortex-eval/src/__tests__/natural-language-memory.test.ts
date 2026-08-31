@@ -287,6 +287,23 @@ describe('buildQueryExpansionPrompt', () => {
     expect(prompt).toContain('How many items of clothing?');
     expect(prompt).toContain('Specific items:');
   });
+
+  it('instructs pairing an entity with its property instead of a bare noun', () => {
+    const prompt = buildQueryExpansionPrompt('What is the name of my cat?');
+    expect(prompt).toContain('property');
+    expect(prompt).toContain('Do NOT list a bare category noun');
+  });
+
+  it('instructs against inventing names not stated in the question', () => {
+    const prompt = buildQueryExpansionPrompt('What game did I finally beat?');
+    expect(prompt).toContain('Do NOT invent');
+  });
+
+  it('includes a worked example anchoring the entity+property mapping', () => {
+    const prompt = buildQueryExpansionPrompt('What is the name of my cat?');
+    expect(prompt).toContain('Example:');
+    expect(prompt).toContain('name of the cat');
+  });
 });
 
 describe('buildTemporalQueryExpansionPrompt', () => {

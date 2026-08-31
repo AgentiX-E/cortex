@@ -932,9 +932,15 @@ export function truncateSession(text: string, maxChars: number): string {
 export function buildQueryExpansionPrompt(question: string): string {
   return [
     'You are helping retrieve evidence from a conversation memory.',
-    'Given a question, list the SPECIFIC CONCRETE OBJECTS or ITEMS whose names would appear in the evidence for the answer.',
-    'List only specific named things (not verbs, not abstract categories).',
-    'Output ONLY a comma-separated list of short noun phrases, with no explanation and no numbering.',
+    'Given a question, list the SPECIFIC CONCRETE PHRASES whose wording would appear in the evidence for the answer.',
+    'For a question about a property of an entity (name, breed, speed, brand, occupation, time, place, amount), phrase the entity TOGETHER with that property.',
+    'Do NOT list a bare category noun ("cat", "dog", "game", "shampoo") without its property; the bare noun also matches unrelated turns about the same entity.',
+    'Do NOT invent names, titles, or terms that are not stated in the question; the evidence names the specific thing, not you.',
+    'Output ONLY a comma-separated list of short phrases, with no explanation and no numbering.',
+    '',
+    'Example:',
+    'Question: What is the name of my cat?',
+    "name of the cat, my cat's name",
     '',
     `Question: ${question}`,
     '',
