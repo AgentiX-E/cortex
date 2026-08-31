@@ -24,12 +24,6 @@ import {
   type TemporalEvent,
   type TemporalKind,
 } from './temporal-engine.js';
-import {
-  classifyArithmeticQuestion,
-  computeSum,
-  formatArithmeticAnswer,
-  type ArithmeticKind,
-} from './mr-arithmetic.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -101,14 +95,6 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   enableDeterministicTemporal?: boolean;
   /**
-   * When true (default), multi-session summation questions are answered through
-   * a deterministic arithmetic path first: the LLM extracts every addend and the
-   * sum is computed exactly. When false, every such question falls back to the
-   * LLM aggregation prompt, so an ablation can isolate the deterministic sum's
-   * contribution.
-   */
-  enableDeterministicArithmetic?: boolean;
-  /**
    * Prompt builder for multi-session aggregation (default buildAggregationQaPrompt).
    * Overridable so an ablation can hold abstention constant while swapping only
    * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
@@ -147,19 +133,6 @@ const TEMPORAL_EVENTS_SCHEMA: JsonSchema = {
     },
   },
   required: ['events'],
-};
-
-/** Structured output schema for the MR summation extraction prompt. */
-const MR_ARITHMETIC_SCHEMA: JsonSchema = {
-  type: 'object',
-  properties: {
-    numbers: {
-      type: 'array',
-      items: { type: 'number' },
-      description: 'Every numeric addend the question asks to total',
-    },
-  },
-  required: ['numbers'],
 };
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
@@ -430,24 +403,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n'),
       this.options.maxAggregationChars ?? DEFAULT_MAX_AGGREGATION_CHARS,
     );
-
-    // Plain summation questions get a deterministic answer first: the LLM only
-    // extracts the addends, then exact addition computes the total. This removes
-    // the dominant sum error mode (the LLM summing while reading and dropping an
-    // addend) without changing non-arithmetic aggregation.
-    const kind = classifyArithmeticQuestion(question);
-    if (this.options.enableDeterministicArithmetic !== false && kind !== null && retrieved !== '') {
-      const deterministic = await this.tryDeterministicArithmetic(
-        question,
-        kind,
-        retrieved,
-        expansionQueries,
-      );
-      if (deterministic !== null) {
-        return deterministic;
-      }
-    }
-
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -457,49 +412,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       expansionQueries,
       this.options.sessionAbstainThreshold,
     );
-  }
-
-  /**
-   * Deterministic arithmetic answering for multi-session summation questions:
-   * ask the LLM to report every numeric addend the question totals, then compute
-   * the sum exactly. Returns `null` to fall back to the aggregation prompt when
-   * the extraction fails or yields no numbers.
-   */
-  private async tryDeterministicArithmetic(
-    question: string,
-    kind: ArithmeticKind,
-    retrieved: string,
-    expansionQueries: string[],
-  ): Promise<Answer> {
-    let extracted: { numbers?: number[] };
-    try {
-      extracted = await this.options.llm.completeStructured<{ numbers?: number[] }>(
-        buildArithmeticExtractionPrompt(question, retrieved),
-        MR_ARITHMETIC_SCHEMA,
-        { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
-      );
-    } catch {
-      // Structured extraction failed (e.g. the provider returned non-JSON);
-      // fall back rather than guessing from an unparseable response.
-      return null;
-    }
-    const numbers = Array.isArray(extracted?.numbers)
-      ? extracted.numbers.filter((n) => typeof n === 'number' && Number.isFinite(n))
-      : [];
-    let answer: Answer = null;
-    if (kind === 'sum') {
-      const sum = computeSum(numbers);
-      answer = sum === null ? null : formatArithmeticAnswer(sum);
-    }
-    if (answer === null) {
-      return null;
-    }
-    this.emitTrace(question, 0, false, 'answered', {
-      retrieved,
-      answer,
-      expansionQueries,
-    });
-    return answer;
   }
 
   private async retrieveSessionsForQuestion(
@@ -851,39 +763,6 @@ export function buildTemporalEventExtractionPrompt(
     '[2023/01/15] user: I went to the Ancient Civilizations exhibit.',
     'Question: How many days passed between my visit to MoMA and the Ancient Civilizations exhibit?',
     '{"events": [{"name": "visit Museum of Modern Art", "date": "2023/01/08"}, {"name": "visit Ancient Civilizations exhibit", "date": "2023/01/15"}]}',
-    '',
-    'Context:',
-    context,
-    '',
-    `Question: ${question}`,
-    '',
-    'Respond with a JSON object.',
-  ].join('\n');
-}
-
-/**
- * Build an arithmetic extraction prompt for a multi-session summation question.
- * It asks the LLM only to REPORT every numeric addend the question totals (in
- * their raw numeric form, without units or currency symbols); the addition is
- * then performed deterministically by `computeSum`. Reading the numbers while
- * summing is exactly the failure mode this removes — the model silently drops an
- * addend when it computes and reads in one pass.
- */
-export function buildArithmeticExtractionPrompt(question: string, context: string): string {
-  return [
-    'You are extracting numbers from a conversation memory to answer a summation question.',
-    'The context spans multiple sessions. Find every numeric amount the question asks to add together.',
-    'Report each amount as a plain number (strip currency symbols, commas, and unit words; e.g. "$1,300" -> 1300, "15 hours" -> 15).',
-    'Do NOT add, average, round, or combine the numbers. Just list each addend you find.',
-    'If the same value is stated once per session, list it once per session it belongs to.',
-    'If the context contains no relevant numbers, return an empty list.',
-    '',
-    'Example:',
-    'Context:',
-    '[2023/01/08] user: The first novel was 400 pages.',
-    '[2023/01/20] user: The second novel was 456 pages.',
-    'Question: What was the page count of the two novels I finished in January and March?',
-    '{"numbers": [400, 456]}',
     '',
     'Context:',
     context,

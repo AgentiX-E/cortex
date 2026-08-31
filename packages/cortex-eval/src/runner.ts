@@ -14,7 +14,6 @@ import {
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
 import type { DecisionTrace } from './natural-language-memory.js';
-import { classifyArithmeticQuestion } from './mr-arithmetic.js';
 import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
 
 export type BenchmarkRunnerOptions = {
@@ -175,53 +174,6 @@ export async function runTemporalEngineAblation(
 
   const judge = options.judge ?? createLlmJudge(llm);
   const report = await runAblationReport(trDataset, llmTemporal, deterministicTemporal, {
-    runs: options.runs ?? 1,
-    scorer: judgeScorer(judge),
-  });
-  return { report, markdown: formatAblationReport(report) };
-}
-
-/**
- * Deterministic MR-summation ablation. The main natural-language ablation enables
- * the deterministic sum in both systems, so it cannot attribute an MR accuracy
- * change to the arithmetic engine (both systems share it). This isolates the
- * engine: both systems disable abstention and differ ONLY in
- * `enableDeterministicArithmetic` — LLM-reads-and-sums vs LLM-extracts-then-
- * deterministic-sum — so the paired McNemar test on MR summation questions
- * measures the engine's contribution directly.
- */
-export async function runMrArithmeticAblation(
-  instances: readonly LongMemEvalInstance[],
-  embedding: EmbeddingModel,
-  llm: LLM,
-  options: BenchmarkRunnerOptions = {},
-): Promise<{ report: AblationReport; markdown: string }> {
-  const dataset = loadLongMemEval(instances);
-  const mrSumQuestions = dataset.questions.filter(
-    (q) => q.capability === 'MR' && classifyArithmeticQuestion(q.question) === 'sum',
-  );
-  const mrSumDataset = { name: 'longmemeval-mr-sum', questions: mrSumQuestions };
-
-  const expansionCache = new Map<string, string[]>();
-  const llmAggregation = new NaturalLanguageMemorySystem('mr-llm-aggregation', {
-    embedding,
-    llm,
-    enableAbstention: false,
-    enableDeterministicArithmetic: false,
-    queryExpansionCache: expansionCache,
-    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-  });
-  const deterministicArithmetic = new NaturalLanguageMemorySystem('mr-deterministic-arithmetic', {
-    embedding,
-    llm,
-    enableAbstention: false,
-    enableDeterministicArithmetic: true,
-    queryExpansionCache: expansionCache,
-    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-  });
-
-  const judge = options.judge ?? createLlmJudge(llm);
-  const report = await runAblationReport(mrSumDataset, llmAggregation, deterministicArithmetic, {
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });

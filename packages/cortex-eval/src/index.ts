@@ -55,7 +55,6 @@ export {
   runNaturalLanguageBenchmark,
   runMrAggregationAblation,
   runTemporalEngineAblation,
-  runMrArithmeticAblation,
   type BenchmarkRunnerOptions,
 } from './runner.js';
 export { createLongMemEvalMini } from './datasets/longmemeval-mini.js';
@@ -109,7 +108,6 @@ export {
   buildConservativeQaPrompt,
   buildTemporalQaPrompt,
   buildTemporalEventExtractionPrompt,
-  buildArithmeticExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
@@ -142,12 +140,6 @@ export {
   type TemporalKind,
   type TemporalEvent,
 } from './temporal-engine.js';
-export {
-  classifyArithmeticQuestion,
-  computeSum,
-  formatArithmeticAnswer,
-  type ArithmeticKind,
-} from './mr-arithmetic.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,

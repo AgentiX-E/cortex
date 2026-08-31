@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
+import type { LLM } from '@agentix-e/cortex-core';
 import { runAblationReport, formatAblationReport } from '../report.js';
 import {
   runEmbeddingBenchmark,
   runMrAggregationAblation,
-  runMrArithmeticAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
 } from '../runner.js';
@@ -440,70 +439,5 @@ describe('runTemporalEngineAblation', () => {
     expect(report.questionCount).toBe(1);
     expect(temperatures.every((t) => t === 0.6)).toBe(true);
     expect(judgeQuestions.length).toBeGreaterThan(0);
-  });
-});
-
-describe('runMrArithmeticAblation', () => {
-  const embedding = new HashEmbedding(64);
-
-  const mrInstances: LongMemEvalInstance[] = [
-    {
-      question_id: 'mr-1',
-      question_type: 'multi-session',
-      question: 'What was the page count of the two novels I finished?',
-      answer: '856',
-      haystack_sessions: [
-        [{ role: 'user', content: 'The first novel was 400 pages.' }],
-        [{ role: 'user', content: 'The second novel was 456 pages.' }],
-      ],
-    },
-    {
-      question_id: 'mr-2',
-      question_type: 'multi-session',
-      question: 'How many projects have I led?',
-      answer: '2',
-      haystack_sessions: [[{ role: 'user', content: 'I led a research project.' }]],
-    },
-  ];
-
-  const sumLlm: LLM = {
-    complete: async (prompt) => (prompt.includes('Specific activities:') ? 'novels' : '856'),
-    completeStructured: async <T>() => ({ numbers: [400, 456] }) as T,
-  };
-
-  it('isolates MR summation questions only and labels the variants', async () => {
-    const { report, markdown } = await runMrArithmeticAblation(mrInstances, embedding, sumLlm);
-    // Only the sum question ("page count ... total") is included; the "how many
-    // projects" count question is excluded by the sum classifier.
-    expect(report.questionCount).toBe(1);
-    expect(report.baseline.name).toBe('mr-llm-aggregation');
-    expect(report.feature.name).toBe('mr-deterministic-arithmetic');
-    expect(markdown).toContain('Cortex Benchmark Report');
-  });
-
-  it('forwards temperature through the arithmetic ablation', async () => {
-    const temperatures: number[] = [];
-    const capturingLlm: LLM = {
-      complete: async (_prompt, opts) => {
-        temperatures.push(opts?.temperature ?? Number.NaN);
-        return '856';
-      },
-      completeStructured: async <T>(
-        _prompt: string,
-        _schema: JsonSchema,
-        opts?: CompleteOptions,
-      ) => {
-        temperatures.push(opts?.temperature ?? Number.NaN);
-        return { numbers: [400, 456] } as T;
-      },
-    };
-    const { report } = await runMrArithmeticAblation(mrInstances, embedding, capturingLlm, {
-      runs: 2,
-      temperature: 0.6,
-    });
-    expect(report.questionCount).toBe(1);
-    // Every LLM call (query expansion, extraction, aggregation) forwards the
-    // configured temperature.
-    expect(temperatures.every((t) => t === 0.6)).toBe(true);
   });
 });
