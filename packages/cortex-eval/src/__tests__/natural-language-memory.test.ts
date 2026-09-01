@@ -10,6 +10,7 @@ import {
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
   buildKnowledgeUpdatePrompt,
+  buildFactExtractionPrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
@@ -263,6 +264,24 @@ describe('buildKnowledgeUpdatePrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildKnowledgeUpdatePrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+});
+
+describe('buildFactExtractionPrompt', () => {
+  it('asks the LLM to extract subject/object/date triples without selecting', () => {
+    const prompt = buildFactExtractionPrompt('What is my current city?', 'context line');
+    expect(prompt).toContain('What is my current city?');
+    expect(prompt).toContain('context line');
+    expect(prompt).toContain('subject');
+    expect(prompt).toContain('JSON');
+    expect(prompt).toContain('Do NOT');
+  });
+
+  it('includes a worked example anchoring the triple format', () => {
+    const prompt = buildFactExtractionPrompt('What is my current city?', 'ctx');
+    expect(prompt).toContain('Example:');
+    expect(prompt).toContain('"facts"');
+    expect(prompt).toContain('date');
   });
 });
 
@@ -834,6 +853,83 @@ describe('NaturalLanguageMemorySystem', () => {
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('previous');
     expect(qaPrompt).toContain('I moved to Shanghai');
+  });
+
+  it('answerKnowledgeUpdate selects the current value bitemporally from extracted facts', async () => {
+    const llm: LLM = {
+      complete: async () => 'city',
+      completeStructured: async <T>() =>
+        ({
+          facts: [
+            { subject: 'city', predicate: 'resides_in', object: 'Beijing', date: '2023/01/08' },
+            { subject: 'city', predicate: 'resides_in', object: 'Shanghai', date: '2023/03/04' },
+          ],
+        }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerKnowledgeUpdate('What is my current city?', [
+      '[2023/01/08] user: I lived in Beijing.',
+      '[2023/03/04] user: I moved to Shanghai.',
+    ]);
+    expect(answer).toBe('Shanghai');
+  });
+
+  it('answerKnowledgeUpdate selects the previous value bitemporally', async () => {
+    const llm: LLM = {
+      complete: async () => 'city',
+      completeStructured: async <T>() =>
+        ({
+          facts: [
+            { subject: 'city', predicate: 'resides_in', object: 'Beijing', date: '2023/01/08' },
+            { subject: 'city', predicate: 'resides_in', object: 'Shanghai', date: '2023/03/04' },
+          ],
+        }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerKnowledgeUpdate('What was my previous city?', [
+      '[2023/01/08] user: I lived in Beijing.',
+      '[2023/03/04] user: I moved to Shanghai.',
+    ]);
+    expect(answer).toBe('Beijing');
+  });
+
+  it('answerKnowledgeUpdate falls back when fact extraction returns empty', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) return 'city';
+        return 'Shanghai';
+      },
+      completeStructured: async <T>() => ({ facts: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerKnowledgeUpdate('What is my current city?', [
+      '[2023/03/04] user: I moved to Shanghai.',
+    ]);
+    expect(answer).toBe('Shanghai');
+    expect(prompts.some((p) => p.includes('previous'))).toBe(true);
+  });
+
+  it('answerKnowledgeUpdate skips the bitemporal path when disabled', async () => {
+    let structuredCalled = false;
+    const llm: LLM = {
+      complete: async (prompt) => (prompt.includes('Specific items:') ? 'city' : 'Shanghai'),
+      completeStructured: async <T>() => {
+        structuredCalled = true;
+        return { facts: [] } as T;
+      },
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableBitemporalKnowledgeUpdate: false,
+    });
+    const answer = await system.answerKnowledgeUpdate('What is my current city?', [
+      '[2023/03/04] user: I moved to Shanghai.',
+    ]);
+    expect(structuredCalled).toBe(false);
+    expect(answer).toBe('Shanghai');
   });
 
   it('answerTemporal runs event expansion and computes weeks from extracted events', async () => {

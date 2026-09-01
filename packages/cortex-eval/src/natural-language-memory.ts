@@ -24,6 +24,12 @@ import {
   type TemporalEvent,
   type TemporalKind,
 } from './temporal-engine.js';
+import {
+  classifyKnowledgeUpdateQualifier,
+  currentObject,
+  previousObject,
+  type ExtractedFact,
+} from './fact-store.js';
 
 export { clearEmbeddingCache } from './retrieval.js';
 
@@ -95,6 +101,14 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   enableDeterministicTemporal?: boolean;
   /**
+   * When true (default), knowledge-update questions with a previous/current time
+   * qualifier are answered through a bitemporal path first: the LLM extracts the
+   * subject's (object, date) history and exact date order picks the current vs
+   * previous value. When false, every such question falls back to the CoT prompt,
+   * so an ablation can isolate the bitemporal selection's contribution.
+   */
+  enableBitemporalKnowledgeUpdate?: boolean;
+  /**
    * Prompt builder for multi-session aggregation (default buildAggregationQaPrompt).
    * Overridable so an ablation can hold abstention constant while swapping only
    * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
@@ -133,6 +147,27 @@ const TEMPORAL_EVENTS_SCHEMA: JsonSchema = {
     },
   },
   required: ['events'],
+};
+
+/** Structured output schema for the bitemporal fact-extraction prompt. */
+const FACTS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    facts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          subject: { type: 'string' },
+          predicate: { type: 'string' },
+          object: { type: 'string' },
+          date: { type: 'string' },
+        },
+        required: ['subject', 'object', 'date'],
+      },
+    },
+  },
+  required: ['facts'],
 };
 
 type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
@@ -338,6 +373,22 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       context,
       false,
     );
+    const qualifier = classifyKnowledgeUpdateQualifier(question);
+    if (
+      this.options.enableBitemporalKnowledgeUpdate !== false &&
+      qualifier !== 'other' &&
+      retrieved !== ''
+    ) {
+      const bitemporal = await this.tryBitemporalKnowledgeUpdate(
+        question,
+        retrieved,
+        qualifier,
+        expansionQueries,
+      );
+      if (bitemporal !== null) {
+        return bitemporal;
+      }
+    }
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -347,6 +398,46 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       expansionQueries,
       this.options.abstainThreshold,
     );
+  }
+
+  /**
+   * Bitemporal knowledge-update answering: ask the LLM to report the subject's
+   * (object, date) history, then select the current or previous value by exact
+   * date order. Returns `null` to fall back to the CoT prompt when the extraction
+   * fails or yields too few facts for the requested qualifier.
+   */
+  private async tryBitemporalKnowledgeUpdate(
+    question: string,
+    retrieved: string,
+    qualifier: 'previous' | 'current',
+    expansionQueries: string[],
+  ): Promise<Answer> {
+    let extracted: { facts?: ExtractedFact[] };
+    try {
+      extracted = await this.options.llm.completeStructured<{ facts?: ExtractedFact[] }>(
+        buildFactExtractionPrompt(question, retrieved),
+        FACTS_SCHEMA,
+        { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
+      );
+    } catch {
+      return null;
+    }
+    const facts = Array.isArray(extracted?.facts) ? extracted.facts : [];
+    const subject = facts[0]?.subject;
+    if (!subject) {
+      return null;
+    }
+    const answer =
+      qualifier === 'previous' ? previousObject(facts, subject) : currentObject(facts, subject);
+    if (answer === null) {
+      return null;
+    }
+    this.emitTrace(question, 0, false, 'answered', {
+      retrieved,
+      answer,
+      expansionQueries,
+    });
+    return answer;
   }
 
   /**
@@ -690,6 +781,39 @@ export function buildKnowledgeUpdatePrompt(
     `Question: ${question}`,
     '',
     'Answer:',
+  ].join('\n');
+}
+
+/**
+ * Build a bitemporal fact-extraction prompt. It asks the LLM only to REPORT the
+ * question subject's (object, date) history as triples; the previous-vs-current
+ * selection is then done deterministically by date order. Leaving that selection
+ * to the LLM (as the CoT prompt does) is the exact failure mode this removes —
+ * the model mis-maps "previous"/"currently" when both values are present.
+ */
+export function buildFactExtractionPrompt(question: string, context: string): string {
+  return [
+    'You are extracting the history of a knowledge-update fact from a conversation memory.',
+    'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
+    'Identify the ONE subject the question asks about. Normalize its name to a short noun (e.g. "city", "occupation", "shampoo brand").',
+    'For every DIFFERENT value that subject has had, report one fact with its date.',
+    'Use the SAME normalized subject for every fact, even when the turns phrase it differently.',
+    'Do NOT select, compare, or answer the question. Just list the (subject, object, date) triples in any order.',
+    'If the subject has only one value, list that single fact.',
+    '',
+    'Example:',
+    'Context:',
+    '[2022/01/10] user: I live in Beijing.',
+    '[2023/06/20] user: I moved to Shanghai.',
+    'Question: What is my current city?',
+    '{"facts": [{"subject": "city", "predicate": "resides_in", "object": "Beijing", "date": "2022/01/10"}, {"subject": "city", "predicate": "resides_in", "object": "Shanghai", "date": "2023/06/20"}]}',
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Respond with a JSON object.',
   ].join('\n');
 }
 

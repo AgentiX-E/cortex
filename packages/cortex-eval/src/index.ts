@@ -112,6 +112,7 @@ export {
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
   buildKnowledgeUpdatePrompt,
+  buildFactExtractionPrompt,
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
@@ -140,6 +141,13 @@ export {
   type TemporalKind,
   type TemporalEvent,
 } from './temporal-engine.js';
+export {
+  timelineFor,
+  currentObject,
+  previousObject,
+  classifyKnowledgeUpdateQualifier,
+  type ExtractedFact,
+} from './fact-store.js';
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,
