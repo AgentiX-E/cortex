@@ -453,6 +453,16 @@ export async function retrieveTopKByQueries(
 const MAX_LEXICAL_HITS = 5;
 
 /**
+ * Maximum number of turns a keyword may appear in to still count as a lexical
+ * recall signal. A keyword present in more turns than this (a common word like
+ * "friend", "sports", or "cooking") is not discriminative: guaranteeing turns
+ * that merely contain it would crowd out the semantic evidence turn and cause a
+ * previously-correct answer to abstain. Rare keywords (a proper noun like
+ * "Nordstrom" appearing in one turn) are what precisely identify evidence.
+ */
+const MAX_KEYWORD_DOC_FREQUENCY = 5;
+
+/**
  * Function words, question words, auxiliaries, prepositions, conjunctions, time
  * markers, ordinals, and small number words. These appear in nearly every
  * temporal question and therefore carry no discriminating power for recall; they
@@ -661,8 +671,11 @@ export function extractLexicalKeywords(queries: readonly string[]): string[] {
 
 /**
  * Count how many lexical keywords each context turn contains (case-insensitive
- * substring match, so "tomato" matches "tomatoes" and "tomato saplings"). The
- * result maps a turn index to its match count, omitting turns with zero matches.
+ * substring match, so "tomato" matches "tomatoes" and "tomato saplings"). Only
+ * RARE keywords participate: a keyword that appears in more than
+ * `MAX_KEYWORD_DOC_FREQUENCY` turns is too common to discriminate evidence, so
+ * it is dropped before matching. The result maps a turn index to its match
+ * count, omitting turns with zero matches.
  */
 export function countLexicalMatches(
   context: readonly string[],
@@ -673,10 +686,31 @@ export function countLexicalMatches(
     return matchesByIndex;
   }
   const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
-  for (let i = 0; i < context.length; i++) {
-    const lower = context[i]!.toLowerCase();
+  const lowerTurns = context.map((turn) => turn.toLowerCase());
+
+  // Keep only keywords whose document frequency (number of turns containing
+  // them) is at most the threshold. This filters common words whose matches are
+  // noise rather than evidence.
+  const rareKeywords: string[] = [];
+  for (const keyword of lowerKeywords) {
+    let frequency = 0;
+    for (const turn of lowerTurns) {
+      if (turn.includes(keyword)) {
+        frequency++;
+      }
+    }
+    if (frequency >= 1 && frequency <= MAX_KEYWORD_DOC_FREQUENCY) {
+      rareKeywords.push(keyword);
+    }
+  }
+  if (rareKeywords.length === 0) {
+    return matchesByIndex;
+  }
+
+  for (let i = 0; i < lowerTurns.length; i++) {
+    const lower = lowerTurns[i]!;
     let matches = 0;
-    for (const keyword of lowerKeywords) {
+    for (const keyword of rareKeywords) {
       if (lower.includes(keyword)) {
         matches++;
       }

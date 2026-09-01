@@ -325,6 +325,23 @@ describe('countLexicalMatches', () => {
   it('returns an empty map when no keyword is provided', () => {
     expect(countLexicalMatches(['any turn'], [])).toEqual(new Map());
   });
+
+  it('drops keywords that appear in too many turns (common words)', () => {
+    const context = [
+      'a friend one',
+      'a friend two',
+      'a friend three',
+      'a friend four',
+      'a friend five',
+      'a friend six',
+      'the Nordstrom sale',
+    ];
+    const matches = countLexicalMatches(context, ['friend', 'nordstrom']);
+    // "friend" appears in 6 turns (> MAX_KEYWORD_DOC_FREQUENCY), so it is
+    // dropped and only "nordstrom" (one turn) drives the match.
+    expect(matches.get(6)).toBe(1);
+    expect(matches.get(0)).toBeUndefined();
+  });
 });
 
 describe('retrieveTopKByQueriesHybrid', () => {
@@ -410,13 +427,13 @@ describe('retrieveTopKByQueriesHybrid', () => {
       dimension: () => 4,
       embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
     };
+    // Five turns all contain the rare keyword, but the result is capped to topK.
     const context = [
       'nordstrom one',
       'nordstrom two',
       'nordstrom three',
       'nordstrom four',
       'nordstrom five',
-      'nordstrom six',
     ];
     const hits = await retrieveTopKByQueriesHybrid(embedding, ['nordstrom'], context, 2);
     expect(hits).toHaveLength(2);
