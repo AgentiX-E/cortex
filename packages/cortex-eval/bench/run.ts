@@ -19,6 +19,7 @@ import {
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
+  runBitemporalKnowledgeUpdateAblation,
   sampleInstances,
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
@@ -228,6 +229,24 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
   console.log('=== TR temporal-engine ablation ===');
   console.log(trAblation.markdown);
+
+  // Isolate the bitemporal knowledge-update contribution: CoT time-qualifier
+  // mapping vs LLM fact-extraction + exact date-order selection, with abstention
+  // held constant so the paired McNemar test measures the bitemporal path on KU
+  // previous/current questions directly.
+  const kuBitemporalAblation = await runBitemporalKnowledgeUpdateAblation(
+    sampled as never,
+    embedding,
+    llm,
+    { runs, temperature },
+  );
+  writeFileSync('benchmark-ku-bitemporal-ablation-report.md', kuBitemporalAblation.markdown);
+  writeFileSync(
+    'benchmark-ku-bitemporal-ablation-report.json',
+    JSON.stringify(kuBitemporalAblation.report, null, 2),
+  );
+  console.log('=== KU bitemporal ablation ===');
+  console.log(kuBitemporalAblation.markdown);
 
   // Persist the embedding cache so a later run (which uses the same haystack
   // turns) can restore it and skip the embedding provider. Done after every

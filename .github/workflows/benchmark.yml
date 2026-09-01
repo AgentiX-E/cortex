@@ -119,5 +119,7 @@ jobs:
             packages/cortex-eval/benchmark-mr-ablation-report.json
             packages/cortex-eval/benchmark-tr-ablation-report.md
             packages/cortex-eval/benchmark-tr-ablation-report.json
+            packages/cortex-eval/benchmark-ku-bitemporal-ablation-report.md
+            packages/cortex-eval/benchmark-ku-bitemporal-ablation-report.json
             packages/cortex-eval/benchmark-error.log
           retention-days: 30

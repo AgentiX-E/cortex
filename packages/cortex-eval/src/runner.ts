@@ -14,6 +14,7 @@ import {
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
 import type { DecisionTrace } from './natural-language-memory.js';
+import { classifyKnowledgeUpdateQualifier } from './fact-store.js';
 import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
 
 export type BenchmarkRunnerOptions = {
@@ -174,6 +175,53 @@ export async function runTemporalEngineAblation(
 
   const judge = options.judge ?? createLlmJudge(llm);
   const report = await runAblationReport(trDataset, llmTemporal, deterministicTemporal, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
+}
+
+/**
+ * Bitemporal knowledge-update ablation. The main natural-language ablation
+ * enables the bitemporal path in both systems, so it cannot attribute a KU
+ * accuracy change to it (both systems share it). This isolates the path: both
+ * systems disable abstention and differ ONLY in
+ * `enableBitemporalKnowledgeUpdate` — CoT time-qualifier mapping vs LLM
+ * fact-extraction + exact date-order selection — so the paired McNemar test on
+ * KU previous/current questions measures the bitemporal selection's contribution.
+ */
+export async function runBitemporalKnowledgeUpdateAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const kuTemporalQuestions = dataset.questions.filter(
+    (q) => q.capability === 'KU' && classifyKnowledgeUpdateQualifier(q.question) !== 'other',
+  );
+  const kuTemporalDataset = { name: 'longmemeval-ku-temporal', questions: kuTemporalQuestions };
+
+  const expansionCache = new Map<string, string[]>();
+  const cot = new NaturalLanguageMemorySystem('ku-cot-knowledge-update', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableBitemporalKnowledgeUpdate: false,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const bitemporal = new NaturalLanguageMemorySystem('ku-bitemporal-knowledge-update', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableBitemporalKnowledgeUpdate: true,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(kuTemporalDataset, cot, bitemporal, {
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });

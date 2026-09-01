@@ -6,6 +6,7 @@ import {
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
+  runBitemporalKnowledgeUpdateAblation,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
@@ -439,5 +440,84 @@ describe('runTemporalEngineAblation', () => {
     expect(report.questionCount).toBe(1);
     expect(temperatures.every((t) => t === 0.6)).toBe(true);
     expect(judgeQuestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe('runBitemporalKnowledgeUpdateAblation', () => {
+  const embedding = new HashEmbedding(64);
+
+  const kuInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'ku-1',
+      question_type: 'knowledge-update',
+      question: 'What is my current city?',
+      answer: 'Shanghai',
+      haystack_sessions: [
+        [{ role: 'user', content: 'I lived in Beijing.' }],
+        [{ role: 'user', content: 'I moved to Shanghai.' }],
+      ],
+    },
+    {
+      question_id: 'ku-2',
+      question_type: 'knowledge-update',
+      question: 'What is my favorite color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'My favorite color is blue.' }]],
+    },
+  ];
+
+  const factsLlm: LLM = {
+    complete: async (prompt) => (prompt.includes('Specific items:') ? 'city' : 'Shanghai'),
+    completeStructured: async <T>() =>
+      ({
+        facts: [
+          { subject: 'city', predicate: 'resides_in', object: 'Beijing', date: '2023/01/08' },
+          { subject: 'city', predicate: 'resides_in', object: 'Shanghai', date: '2023/03/04' },
+        ],
+      }) as T,
+  };
+
+  it('isolates KU temporal questions only and labels the variants', async () => {
+    const { report, markdown } = await runBitemporalKnowledgeUpdateAblation(
+      kuInstances,
+      embedding,
+      factsLlm,
+    );
+    // Only the "current city" question carries a previous/current qualifier; the
+    // "favorite color" question is excluded.
+    expect(report.questionCount).toBe(1);
+    expect(report.baseline.name).toBe('ku-cot-knowledge-update');
+    expect(report.feature.name).toBe('ku-bitemporal-knowledge-update');
+    expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('forwards temperature through the bitemporal ablation', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return 'Shanghai';
+      },
+      completeStructured: async <T>(
+        _prompt: string,
+        _schema: unknown,
+        opts?: { temperature?: number },
+      ) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return {
+          facts: [
+            { subject: 'city', predicate: 'resides_in', object: 'Shanghai', date: '2023/03/04' },
+          ],
+        } as T;
+      },
+    };
+    const { report } = await runBitemporalKnowledgeUpdateAblation(
+      kuInstances,
+      embedding,
+      capturingLlm,
+      { runs: 2, temperature: 0.6 },
+    );
+    expect(report.questionCount).toBe(1);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
   });
 });

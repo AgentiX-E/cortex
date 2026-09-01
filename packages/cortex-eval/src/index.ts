@@ -55,6 +55,7 @@ export {
   runNaturalLanguageBenchmark,
   runMrAggregationAblation,
   runTemporalEngineAblation,
+  runBitemporalKnowledgeUpdateAblation,
   type BenchmarkRunnerOptions,
 } from './runner.js';
 export { createLongMemEvalMini } from './datasets/longmemeval-mini.js';
