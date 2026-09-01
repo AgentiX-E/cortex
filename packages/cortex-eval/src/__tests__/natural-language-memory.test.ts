@@ -5,6 +5,7 @@ import {
   buildQaPrompt,
   buildConservativeQaPrompt,
   buildTemporalQaPrompt,
+  buildTemporalEventLookupPrompt,
   buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
@@ -82,6 +83,37 @@ describe('buildTemporalQaPrompt', () => {
   it('omits the reference line when no question date is given', () => {
     const prompt = buildTemporalQaPrompt('Which happened first?', 'ctx');
     expect(prompt).not.toContain('use it as "today"');
+  });
+});
+
+describe('buildTemporalEventLookupPrompt', () => {
+  it('directs the model to extract the entity instead of computing elapsed time', () => {
+    const prompt = buildTemporalEventLookupPrompt(
+      'What was the event two weeks ago?',
+      'ctx',
+      '2023/07/01',
+    );
+    expect(prompt).toContain('What was the event two weeks ago?');
+    expect(prompt).toContain('2023/07/01');
+    expect(prompt).toContain('Do NOT count, compute elapsed time');
+    expect(prompt).toContain('extract the event, person, object, place, or value');
+    expect(prompt).not.toContain('compute the elapsed days/weeks/months');
+  });
+
+  it('supplies the question date as the "today" reference', () => {
+    const prompt = buildTemporalEventLookupPrompt('Q?', 'ctx', '2023/04/01');
+    expect(prompt).toContain('The question was asked on 2023/04/01');
+    expect(prompt).toContain('use it as "today"');
+  });
+
+  it('omits the reference line when no question date is given', () => {
+    const prompt = buildTemporalEventLookupPrompt('Q?', 'ctx');
+    expect(prompt).not.toContain('use it as "today"');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildTemporalEventLookupPrompt('Q?', 'ctx', '2023/04/01', 'NONE');
+    expect(prompt).toContain('NONE');
   });
 });
 
@@ -1023,7 +1055,7 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(prompts.some((p) => p.includes('YYYY/MM/DD'))).toBe(true);
   });
 
-  it('answerTemporal routes event-lookup questions to the LLM prompt', async () => {
+  it('answerTemporal routes event-lookup questions to the lookup prompt', async () => {
     const prompts: string[] = [];
     let structuredCalled = false;
     const llm: LLM = {
@@ -1049,7 +1081,10 @@ describe('NaturalLanguageMemorySystem', () => {
     // path (and its structured extraction) is skipped entirely.
     expect(structuredCalled).toBe(false);
     const qaPrompt = prompts[prompts.length - 1]!;
-    expect(qaPrompt).toContain('YYYY/MM/DD');
+    // The lookup prompt asks the model to extract the entity at the time anchor
+    // instead of computing an elapsed time the question never asked for.
+    expect(qaPrompt).toContain('Do NOT count, compute elapsed time');
+    expect(qaPrompt).not.toContain('compute the elapsed days/weeks/months');
   });
 
   it('skips the deterministic path when enableDeterministicTemporal is false', async () => {

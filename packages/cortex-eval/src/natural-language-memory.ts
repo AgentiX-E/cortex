@@ -223,10 +223,11 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       false,
       buildTemporalQueryExpansionPrompt,
     );
+    const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
       this.options.enableDeterministicTemporal !== false &&
       questionDate &&
-      kind !== 'other' &&
+      supportsDeterministic &&
       retrieved !== ''
     ) {
       const deterministic = await this.tryDeterministicTemporal(
@@ -240,7 +241,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         return deterministic;
       }
     }
-    const temporalPrompt: PromptBuilder = (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
+    // Event-lookup questions ("What was the event two weeks ago?") ask for the
+    // entity at a time anchor, not for a date computation, so they use a lookup
+    // prompt instead of the date-arithmetic prompt (which would make the model
+    // try to compute an elapsed time that the question never asked for).
+    const temporalPrompt: PromptBuilder =
+      kind === 'eventLookup'
+        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t)
+        : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -837,6 +845,44 @@ export function buildTemporalQaPrompt(
         ]
       : []),
     'To answer: identify the relevant event turn(s), read their dates, compute the elapsed days/weeks/months or the event ordering, then answer with ONLY the final answer (a number, date, or short phrase).',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * Build a temporal event-lookup prompt for questions whose answer is the entity
+ * (event, person, object, place, or time) at a time anchor, not a computed
+ * number. `buildTemporalQaPrompt` tells the model to "compute elapsed time or
+ * event ordering", which is wrong for "What was the event two weeks ago?": the
+ * model tries to compute a duration the question never asked for and abstains.
+ * This prompt instead directs the model to locate the time-anchored turn(s) and
+ * extract the entity, leaving any counting/arithmetic out of scope.
+ */
+export function buildTemporalEventLookupPrompt(
+  question: string,
+  context: string,
+  questionDate?: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  const lines = [
+    'You are answering a temporal question based on a conversation memory.',
+    'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
+    ...(questionDate
+      ? [
+          `The question was asked on ${questionDate}; use it as "today" for "ago", "last", and "recently" references.`,
+        ]
+      : []),
+    "To answer: locate the turn(s) the question's time qualifier points to, then extract the event, person, object, place, or value the question asks about from those turns.",
+    'Do NOT count, compute elapsed time, or reorder events. Just report the entity the question asks for.',
+    'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context:',

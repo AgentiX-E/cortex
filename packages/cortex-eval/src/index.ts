@@ -108,6 +108,7 @@ export {
   buildQaPrompt,
   buildConservativeQaPrompt,
   buildTemporalQaPrompt,
+  buildTemporalEventLookupPrompt,
   buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,

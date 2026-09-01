@@ -15,7 +15,7 @@
  */
 import { daysBetween } from './temporal.js';
 
-export type TemporalKind = 'relative' | 'interval' | 'ordering' | 'other';
+export type TemporalKind = 'relative' | 'interval' | 'ordering' | 'eventLookup' | 'other';
 
 /** A question event paired with the date copied from its evidence turn. */
 export type TemporalEvent = {
@@ -26,19 +26,22 @@ export type TemporalEvent = {
 /**
  * Classify a question by the temporal computation it requires:
  *  - `relative`: "how many days/weeks/months ago/since …"
- *  - `interval`: "how many days between X and Y" / "how many days did I spend …"
- *  - `ordering`: "which … first" / "before or after" / "order from first to last"
- *  - `other`: anything that needs no date arithmetic.
+ *  - `interval`: "how many days between X and Y" / "did I spend …" / "how long …"
+ *  - `ordering`: "which/who … first" / "before or after" / "most recently"
+ *  - `eventLookup`: a who/what/which/where question anchored to a time qualifier
+ *    ("… ago", "last …", "recently", "on …") whose answer is the entity itself,
+ *    not a computed number.
+ *  - `other`: anything that needs no date arithmetic and no time-anchored lookup.
  */
 export function classifyTemporalQuestion(question: string): TemporalKind {
   if (
-    /\b(before or after|happened first|which .*? first|order from first to last|what is the order)\b/i.test(
+    /\b(before or after|happened first|which .*? first|order from first to last|what is the order|who .*? first|most recently|became .*? first|graduated .*? first)\b/i.test(
       question,
     )
   ) {
     return 'ordering';
   }
-  if (/\b(between|did I spend)\b/i.test(question)) {
+  if (/\b(between|did I spend|how long)\b/i.test(question)) {
     return 'interval';
   }
   // Only "how many X ago/since/passed" asks for an elapsed-time count. An
@@ -46,6 +49,15 @@ export function classifyTemporalQuestion(question: string): TemporalKind {
   // event itself, not a number, so it must NOT be classified as relative.
   if (/\bhow many\b/i.test(question) && /\b(ago|since|passed)\b/i.test(question)) {
     return 'relative';
+  }
+  // A who/what/which/where question anchored to a time qualifier asks for the
+  // event/entity at that time, not for a date computation, so it is routed to a
+  // dedicated lookup prompt rather than the date-arithmetic engine.
+  if (
+    /\b(who|what|which|where|whom)\b/i.test(question) &&
+    /\b(ago|last|recently|on)\b/i.test(question)
+  ) {
+    return 'eventLookup';
   }
   return 'other';
 }
@@ -118,7 +130,7 @@ export function computeTemporalAnswer(
   questionDate: string,
   events: readonly TemporalEvent[],
 ): string | null {
-  if (kind === 'other') {
+  if (kind === 'other' || kind === 'eventLookup') {
     return null;
   }
   const normalized = events
@@ -204,7 +216,13 @@ function formatOrdering(question: string, events: readonly TemporalEvent[]): str
     return firstEarlier ? 'before' : 'after';
   }
   const ordered = orderByDate(events);
-  if (/\border from first to last\b|\bwhat is the order\b/i.test(question)) {
+  // "most recently" asks for the latest event, the opposite of "first".
+  if (/\bmost recently\b|\blatest\b|\bnewest\b/i.test(question)) {
+    return ordered[ordered.length - 1]!.name;
+  }
+  // A full ranking ("first, second and third", "order from first to last",
+  // "what is the order") reports the whole sequence, not just the earliest.
+  if (/\border from first to last\b|\bwhat is the order\b|\bfirst, second\b/i.test(question)) {
     const names = ordered.map((e) => e.name);
     if (names.length === 2) {
       return `First, ${names[0]}, then ${names[1]}.`;
@@ -216,7 +234,7 @@ function formatOrdering(question: string, events: readonly TemporalEvent[]): str
       .join(', ');
     return `First, ${names[0]}, ${middle}, and lastly ${last}.`;
   }
-  // "which … first" → the earliest event's name.
+  // "which/who … first" → the earliest event's name.
   return ordered[0]!.name;
 }
 

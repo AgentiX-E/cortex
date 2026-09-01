@@ -41,6 +41,19 @@ describe('classifyTemporalQuestion', () => {
     ).toBe('interval');
   });
 
+  it('classifies "how long" duration questions as interval', () => {
+    expect(
+      classifyTemporalQuestion(
+        'How long had I been bird watching when I attended the bird watching workshop?',
+      ),
+    ).toBe('interval');
+    expect(
+      classifyTemporalQuestion(
+        'How long did I use my new binoculars before I saw the goldfinches returning?',
+      ),
+    ).toBe('interval');
+  });
+
   it('classifies ordering questions', () => {
     expect(classifyTemporalQuestion("Which event happened first, my cousin's wedding or X?")).toBe(
       'ordering',
@@ -56,18 +69,47 @@ describe('classifyTemporalQuestion', () => {
     );
   });
 
+  it('classifies "who … first" and "most recently" questions as ordering', () => {
+    expect(classifyTemporalQuestion('Who did I meet first, Mark and Sarah or Tom?')).toBe(
+      'ordering',
+    );
+    expect(
+      classifyTemporalQuestion(
+        'Who graduated first, second and third among Emma, Rachel and Alex?',
+      ),
+    ).toBe('ordering');
+    expect(
+      classifyTemporalQuestion('Which streaming service did I start using most recently?'),
+    ).toBe('ordering');
+    expect(classifyTemporalQuestion('Who became a parent first, Rachel or Alex?')).toBe('ordering');
+  });
+
   it('classifies non-temporal questions as other', () => {
     expect(classifyTemporalQuestion('What is my favorite color?')).toBe('other');
     expect(classifyTemporalQuestion('Where do I take yoga classes?')).toBe('other');
   });
 
-  it('classifies event-lookup questions as other, not relative', () => {
-    // These ask for the event/object, not an elapsed-time count.
-    expect(classifyTemporalQuestion('Which book did I finish a week ago?')).toBe('other');
+  it('classifies time-anchored entity questions as eventLookup, not relative', () => {
+    // These ask for the event/object/person at a time anchor, not an elapsed-time
+    // count, so they route to the lookup prompt instead of the arithmetic engine.
+    expect(classifyTemporalQuestion('Which book did I finish a week ago?')).toBe('eventLookup');
     expect(classifyTemporalQuestion('What charity event did I participate in a month ago?')).toBe(
-      'other',
+      'eventLookup',
     );
-    expect(classifyTemporalQuestion('What did I do with Rachel two months ago?')).toBe('other');
+    expect(classifyTemporalQuestion('What did I do with Rachel two months ago?')).toBe(
+      'eventLookup',
+    );
+    expect(classifyTemporalQuestion('I received a piece of jewelry last Saturday from whom?')).toBe(
+      'eventLookup',
+    );
+    expect(classifyTemporalQuestion('What time do I wake up on Tuesdays and Thursdays?')).toBe(
+      'eventLookup',
+    );
+  });
+
+  it('keeps a yes/no time-anchored question as other', () => {
+    // A yes/no question ("Did I visit with a friend?") asks for a boolean, not an
+    // entity name, so it is not an event lookup.
     expect(
       classifyTemporalQuestion(
         'I mentioned visiting a museum two months ago. Did I visit with a friend?',
@@ -353,10 +395,50 @@ describe('computeTemporalAnswer', () => {
     ).toBe('First, trip X, then trip Y.');
   });
 
+  it('returns the latest event for a "most recently" ordering question', () => {
+    expect(
+      computeTemporalAnswer(
+        'Which streaming service did I start using most recently?',
+        'ordering',
+        '2023/06/01',
+        [
+          { name: 'Netflix', date: '2023/02/10' },
+          { name: 'Disney+', date: '2023/04/20' },
+          { name: 'Hulu', date: '2023/01/05' },
+        ],
+      ),
+    ).toBe('Disney+');
+  });
+
+  it('formats a full first-second-third ranking', () => {
+    expect(
+      computeTemporalAnswer(
+        'Who graduated first, second and third among Emma, Rachel and Alex?',
+        'ordering',
+        '2023/08/20',
+        [
+          { name: 'Rachel', date: '2023/06/10' },
+          { name: 'Emma', date: '2023/05/15' },
+          { name: 'Alex', date: '2023/07/01' },
+        ],
+      ),
+    ).toBe('First, Emma, then Rachel, and lastly Alex.');
+  });
+
   it('returns null for an unclassifiable question', () => {
     expect(
       computeTemporalAnswer('What is my favorite color?', 'other', '2023/01/01', [
         { name: 'color', date: '2023/01/01' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('returns null for an event-lookup question', () => {
+    // Event-lookup questions are answered by the LLM lookup prompt, never by the
+    // deterministic engine, even when events are present.
+    expect(
+      computeTemporalAnswer('Which book did I finish a week ago?', 'eventLookup', '2023/01/01', [
+        { name: 'finish book', date: '2023/01/01' },
       ]),
     ).toBeNull();
   });
@@ -411,7 +493,7 @@ describe('computeTemporalAnswer', () => {
   });
 
   it('covers every TemporalKind branch exhaustively', () => {
-    const kinds: TemporalKind[] = ['relative', 'interval', 'ordering', 'other'];
+    const kinds: TemporalKind[] = ['relative', 'interval', 'ordering', 'eventLookup', 'other'];
     for (const kind of kinds) {
       const result = computeTemporalAnswer('Q?', kind, '2023/04/01', [
         { name: 'a', date: '2023/01/01' },
