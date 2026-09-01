@@ -14,6 +14,7 @@ import {
   expandContextWindow,
   retrieveByQueries,
   retrieveTopKByQueries,
+  retrieveTopKByQueriesHybrid,
   retrieveTopKSessions,
   type RetrievalHit,
   type SessionHit,
@@ -222,6 +223,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       context,
       false,
       buildTemporalQueryExpansionPrompt,
+      true,
     );
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
@@ -455,12 +457,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * recalled by matching the event (verb + object), not a bare object noun that
    * also occurs in unrelated turns. `includeAssistant` selects all turns for the
    * `single-session-assistant` sub-type whose evidence is an assistant turn.
+   * `enableLexicalRecall` additionally guarantees keyword-bearing turns a place
+   * in the result; the temporal path enables it because its evidence turns are
+   * concrete events that the question names, while embedding similarity alone
+   * ranks them below semantically-close distractors.
    */
   private async retrieveTurns(
     question: string,
     context: string[],
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
+    enableLexicalRecall: boolean = false,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
@@ -468,12 +475,10 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       truncateText(turn, this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS),
     );
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
-    const hits = await retrieveTopKByQueries(
-      this.options.embedding,
-      [question, ...expansionQueries],
-      searchable,
-      topK,
-    );
+    const queries = [question, ...expansionQueries];
+    const hits = enableLexicalRecall
+      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, topK)
+      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, topK);
     const retrieved =
       hits.length === 0
         ? ''

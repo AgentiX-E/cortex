@@ -442,3 +442,308 @@ export async function retrieveTopKByQueries(
   }
   return [...bestById.values()].sort((a, b) => b.score - a.score).slice(0, topK);
 }
+
+/**
+ * Cap on how many lexical matches are guaranteed a place in the hybrid result.
+ * Lexical recall (a concrete keyword from the question appearing verbatim in a
+ * turn) is strong but can be noisy for common words, so it is guaranteed a
+ * bounded slice instead of the whole window; the rest is filled by semantic
+ * search so a frequent keyword cannot crowd out a semantically-relevant turn.
+ */
+const MAX_LEXICAL_HITS = 5;
+
+/**
+ * Function words, question words, auxiliaries, prepositions, conjunctions, time
+ * markers, ordinals, and small number words. These appear in nearly every
+ * temporal question and therefore carry no discriminating power for recall; they
+ * are dropped before extracting lexical keywords.
+ */
+const LEXICAL_STOPWORDS = new Set([
+  // articles & demonstratives
+  'the',
+  'a',
+  'an',
+  'this',
+  'that',
+  'these',
+  'those',
+  // pronouns
+  'i',
+  'you',
+  'he',
+  'she',
+  'it',
+  'we',
+  'they',
+  'me',
+  'him',
+  'her',
+  'us',
+  'them',
+  'my',
+  'your',
+  'his',
+  'its',
+  'our',
+  'their',
+  'mine',
+  'yours',
+  'hers',
+  'ours',
+  'theirs',
+  'myself',
+  'yourself',
+  'himself',
+  'herself',
+  'itself',
+  'ourselves',
+  'themselves',
+  // question words
+  'what',
+  'which',
+  'who',
+  'whom',
+  'whose',
+  'when',
+  'where',
+  'why',
+  'how',
+  // auxiliaries & modals
+  'do',
+  'does',
+  'did',
+  'have',
+  'has',
+  'had',
+  'was',
+  'were',
+  'am',
+  'is',
+  'are',
+  'been',
+  'being',
+  'be',
+  'will',
+  'would',
+  'shall',
+  'should',
+  'can',
+  'could',
+  'may',
+  'might',
+  'must',
+  // prepositions
+  'in',
+  'on',
+  'at',
+  'to',
+  'for',
+  'with',
+  'from',
+  'by',
+  'of',
+  'about',
+  'as',
+  'into',
+  'like',
+  'through',
+  'after',
+  'over',
+  'between',
+  'out',
+  'against',
+  'during',
+  'without',
+  'before',
+  'under',
+  'around',
+  'among',
+  'within',
+  'upon',
+  'onto',
+  'since',
+  'until',
+  'till',
+  // conjunctions
+  'and',
+  'or',
+  'but',
+  'nor',
+  'so',
+  'yet',
+  'if',
+  'then',
+  'than',
+  'while',
+  'because',
+  'although',
+  'though',
+  // time markers (generic across every temporal question)
+  'ago',
+  'last',
+  'recently',
+  'today',
+  'yesterday',
+  'tomorrow',
+  'now',
+  'week',
+  'weeks',
+  'day',
+  'days',
+  'month',
+  'months',
+  'year',
+  'years',
+  'time',
+  'times',
+  // ordinals & small numbers
+  'first',
+  'second',
+  'third',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  // fillers
+  'there',
+  'here',
+  'not',
+  'no',
+  'yes',
+  'also',
+  'very',
+  'more',
+  'most',
+  'some',
+  'any',
+  'many',
+  'much',
+  'all',
+  'both',
+  'each',
+  'few',
+  'other',
+  'another',
+  'such',
+  'only',
+  'own',
+  'same',
+  'different',
+]);
+
+/**
+ * Extract discriminating keywords from a set of queries (the raw question plus
+ * its expansion phrases). Tokens shorter than three letters and tokens in
+ * `LEXICAL_STOPWORDS` are dropped; the remainder are lower-cased and
+ * de-duplicated while preserving first-seen order. These keywords drive the
+ * lexical half of hybrid retrieval.
+ */
+export function extractLexicalKeywords(queries: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const query of queries) {
+    for (const token of query.toLowerCase().match(/[a-z][a-z0-9']*/g) ?? []) {
+      if (token.length < 3 || LEXICAL_STOPWORDS.has(token) || seen.has(token)) {
+        continue;
+      }
+      seen.add(token);
+      keywords.push(token);
+    }
+  }
+  return keywords;
+}
+
+/**
+ * Count how many lexical keywords each context turn contains (case-insensitive
+ * substring match, so "tomato" matches "tomatoes" and "tomato saplings"). The
+ * result maps a turn index to its match count, omitting turns with zero matches.
+ */
+export function countLexicalMatches(
+  context: readonly string[],
+  keywords: readonly string[],
+): Map<number, number> {
+  const matchesByIndex = new Map<number, number>();
+  if (keywords.length === 0) {
+    return matchesByIndex;
+  }
+  const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
+  for (let i = 0; i < context.length; i++) {
+    const lower = context[i]!.toLowerCase();
+    let matches = 0;
+    for (const keyword of lowerKeywords) {
+      if (lower.includes(keyword)) {
+        matches++;
+      }
+    }
+    if (matches > 0) {
+      matchesByIndex.set(i, matches);
+    }
+  }
+  return matchesByIndex;
+}
+
+/**
+ * Hybrid retrieval: semantic embedding search plus lexical keyword recall. The
+ * embedding-only score distributions for evidence turns and distractors overlap
+ * (measured ~0.667 vs ~0.634 on the benchmark), so a concrete-noun evidence turn
+ * is routinely ranked below a semantically-close but irrelevant distractor. A
+ * turn that additionally contains the question's concrete keywords is independent
+ * evidence of relevance, so the highest-matching keyword turns are guaranteed a
+ * bounded slice of the result (up to `MAX_LEXICAL_HITS`), and the remaining
+ * slots are filled by semantic search. Guaranteeing inclusion (rather than a
+ * fractional score boost) is what recovers an evidence turn whose cosine score
+ * fell outside the semantic top-K entirely.
+ */
+export async function retrieveTopKByQueriesHybrid(
+  embedding: EmbeddingModel,
+  queries: string[],
+  context: string[],
+  topK: number,
+): Promise<RetrievalHit[]> {
+  const semanticPool = await retrieveTopKByQueries(embedding, queries, context, topK);
+  const keywords = extractLexicalKeywords(queries);
+  if (keywords.length === 0) {
+    return semanticPool;
+  }
+
+  const matchesByIndex = countLexicalMatches(context, keywords);
+  if (matchesByIndex.size === 0) {
+    return semanticPool;
+  }
+
+  // Highest-match keyword turns first, capped so lexical recall cannot crowd out
+  // every semantic slot when a keyword is common.
+  const lexicalOrdered = [...matchesByIndex.entries()].sort((a, b) => b[1] - a[1]);
+  const lexicalCap = Math.min(MAX_LEXICAL_HITS, topK);
+  const result: RetrievalHit[] = [];
+  const seen = new Set<string>();
+  for (const [index, matches] of lexicalOrdered) {
+    if (result.length >= lexicalCap) {
+      break;
+    }
+    const id = `t-${hashText(context[index]!)}`;
+    result.push({ id, text: context[index]!, score: matches, index });
+    seen.add(id);
+  }
+
+  // Fill the remaining slots from the semantic pool, de-duplicating any turn
+  // already guaranteed a place by lexical recall.
+  for (const hit of semanticPool) {
+    if (result.length >= topK) {
+      break;
+    }
+    if (seen.has(hit.id)) {
+      continue;
+    }
+    result.push(hit);
+    seen.add(hit.id);
+  }
+
+  return result;
+}

@@ -5,6 +5,9 @@ import {
   retrieveTopKSessions,
   retrieveByQueries,
   retrieveTopKByQueries,
+  retrieveTopKByQueriesHybrid,
+  extractLexicalKeywords,
+  countLexicalMatches,
   expandContextWindow,
   meanPool,
   embedManyCached,
@@ -265,6 +268,158 @@ describe('retrieveTopKByQueries', () => {
     expect(batches).toHaveLength(2);
     expect(batches[0]).toEqual(['turn a', 'turn b']);
     expect(batches[1]).toEqual(['q1', 'q2', 'q3']);
+  });
+});
+
+describe('extractLexicalKeywords', () => {
+  it('drops stopwords and keeps discriminating tokens', () => {
+    const keywords = extractLexicalKeywords(['What book did I read about gardening?']);
+    expect(keywords).toContain('book');
+    expect(keywords).toContain('read');
+    expect(keywords).toContain('gardening');
+    expect(keywords).not.toContain('what');
+    expect(keywords).not.toContain('did');
+    expect(keywords).not.toContain('about');
+  });
+
+  it('drops time markers and small number words', () => {
+    const keywords = extractLexicalKeywords(['How many weeks ago did I attend the sale?']);
+    expect(keywords).not.toContain('weeks');
+    expect(keywords).not.toContain('ago');
+    expect(keywords).not.toContain('many');
+    expect(keywords).toContain('attend');
+    expect(keywords).toContain('sale');
+  });
+
+  it('de-duplicates tokens across queries and preserves first-seen order', () => {
+    const keywords = extractLexicalKeywords(['book the flight', 'book hotel']);
+    expect(keywords).toEqual(['book', 'flight', 'hotel']);
+  });
+
+  it('skips tokens shorter than three letters', () => {
+    const keywords = extractLexicalKeywords(['go to the zoo']);
+    // "go" and "to" are dropped (stopword / short), "zoo" is kept.
+    expect(keywords).toEqual(['zoo']);
+  });
+});
+
+describe('countLexicalMatches', () => {
+  it('counts case-insensitive substring matches per turn', () => {
+    const matches = countLexicalMatches(
+      ['I planted the tomatoes.', 'I visited a museum.', 'The tomato saplings grew.'],
+      ['tomato'],
+    );
+    expect(matches.get(0)).toBe(1);
+    expect(matches.get(1)).toBeUndefined();
+    expect(matches.get(2)).toBe(1);
+  });
+
+  it('counts multiple keyword matches in one turn', () => {
+    const matches = countLexicalMatches(
+      ['I attended the Nordstrom friends and family sale.'],
+      ['nordstrom', 'sale', 'family'],
+    );
+    expect(matches.get(0)).toBe(3);
+  });
+
+  it('returns an empty map when no keyword is provided', () => {
+    expect(countLexicalMatches(['any turn'], [])).toEqual(new Map());
+  });
+});
+
+describe('retrieveTopKByQueriesHybrid', () => {
+  it('guarantees a keyword-bearing turn a place over semantic distractors', async () => {
+    clearEmbeddingCache();
+    // Every turn gets the same vector, so the semantic pool is uninformative and
+    // returns the first `topK` turns by insertion order. The evidence turn sits
+    // at the tail, outside the semantic top-K, and must be recovered lexically.
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const context = [
+      'unrelated first turn',
+      'unrelated second turn',
+      'unrelated third turn',
+      'unrelated fourth turn',
+      'unrelated fifth turn',
+      'I bought a Nordstrom smoker for the kitchen.',
+    ];
+    const hits = await retrieveTopKByQueriesHybrid(embedding, ['Nordstrom smoker'], context, 3);
+    expect(hits.some((h) => h.text.includes('Nordstrom'))).toBe(true);
+  });
+
+  it('keeps the highest-match keyword turns first, then fills semantically', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const context = [
+      'irrelevant a',
+      'The Nordstrom sale was great.',
+      'The Nordstrom family sale ended.',
+      'irrelevant b',
+    ];
+    const hits = await retrieveTopKByQueriesHybrid(
+      embedding,
+      ['Nordstrom family sale'],
+      context,
+      3,
+    );
+    // Both Nordstrom turns are keyword-bearing; the higher-match one leads.
+    expect(hits[0]!.text).toContain('Nordstrom');
+    expect(hits[0]!.text).toContain('family');
+  });
+
+  it('falls back to semantic results when no keyword matches', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const hits = await retrieveTopKByQueriesHybrid(
+      embedding,
+      ['totally unmatched query'],
+      ['turn one', 'turn two'],
+      2,
+    );
+    expect(hits).toHaveLength(2);
+  });
+
+  it('falls back to semantic results when every query token is a stopword', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    // "how many weeks ago" extracts to no keywords, so hybrid returns the
+    // semantic pool unchanged.
+    const hits = await retrieveTopKByQueriesHybrid(
+      embedding,
+      ['how many weeks ago'],
+      ['turn one', 'turn two'],
+      2,
+    );
+    expect(hits).toHaveLength(2);
+  });
+
+  it('caps the result to topK even when many turns match', async () => {
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const context = [
+      'nordstrom one',
+      'nordstrom two',
+      'nordstrom three',
+      'nordstrom four',
+      'nordstrom five',
+      'nordstrom six',
+    ];
+    const hits = await retrieveTopKByQueriesHybrid(embedding, ['nordstrom'], context, 2);
+    expect(hits).toHaveLength(2);
   });
 });
 
