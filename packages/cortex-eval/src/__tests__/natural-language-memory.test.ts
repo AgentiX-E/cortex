@@ -136,6 +136,26 @@ describe('buildTemporalEventExtractionPrompt', () => {
     expect(prompt).not.toContain('The question was asked on');
   });
 
+  it('instructs the model to convert relative dates to absolute dates', () => {
+    const prompt = buildTemporalEventExtractionPrompt(
+      'How long had I been bird watching when I attended the workshop?',
+      'ctx',
+      '2023/05/21',
+    );
+    expect(prompt).toContain('relative to the question date');
+    expect(prompt).toContain('a month ago');
+    expect(prompt).toContain('2023/04/21');
+    expect(prompt).toContain('omit that event entirely');
+  });
+
+  it('omits the relative-date conversion example when no question date is given', () => {
+    const prompt = buildTemporalEventExtractionPrompt('Which happened first?', 'ctx');
+    // Without a question date there is no "today" to convert against, so the
+    // conversion example (which names a concrete date) is omitted.
+    expect(prompt).not.toContain('2023/04/21');
+    expect(prompt).not.toContain('treat the question date as "today"');
+  });
+
   it('lists the pre-identified event hints as guidance', () => {
     const prompt = buildTemporalEventExtractionPrompt(
       'Which happened first, A or B?',

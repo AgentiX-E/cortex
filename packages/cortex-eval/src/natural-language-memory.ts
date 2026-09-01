@@ -968,8 +968,15 @@ export function buildTemporalEventExtractionPrompt(
     ...(questionDate ? [`The question was asked on ${questionDate}.`] : []),
     ...hintLines,
     ...orderingLines,
-    'Identify the event(s) the question asks about. For each event, copy the date from its evidence turn as YYYY/MM/DD.',
-    'Do NOT compute elapsed time, reorder events, or do any arithmetic. Just report each event name and its copied date.',
+    'Identify the event(s) the question asks about. For each event, report its date as an absolute YYYY/MM/DD.',
+    'An event date may be stated absolutely (the [YYYY/MM/DD] turn prefix) or relative to the question date ("a month ago", "two weeks before", "last Friday").',
+    ...(questionDate
+      ? [
+          'When a turn states an event relative to the question date, convert it to an absolute YYYY/MM/DD: treat the question date as "today" and apply the stated offset. For example, on 2023/05/21, "a month ago" is 2023/04/21.',
+        ]
+      : []),
+    "If you cannot determine an event's absolute date, omit that event entirely rather than guessing.",
+    'Do NOT compute elapsed time, reorder events, or do any arithmetic beyond that date conversion. Just report each event name and its absolute date.',
     'If the question refers to multiple events, list each one as a separate item.',
     '',
     ...example,
