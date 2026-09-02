@@ -77,6 +77,96 @@ export function isValidDate(date: string): boolean {
   return /^\d{4}\/\d{2}\/\d{2}$/.test(date);
 }
 
+/** Small number words the LLM may use when reporting a relative date. */
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
+
+/**
+ * Parse a relative date like "a month ago" / "two weeks before" / "3 days ago"
+ * into a numeric offset. Returns `null` when the string is not a recognised
+ * relative-time expression, so callers fall back to treating it as unparseable.
+ */
+export function parseRelativeOffset(raw: string): { amount: number; unit: RelativeUnit } | null {
+  const match = raw
+    .toLowerCase()
+    .match(
+      /\b(a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(day|week|month)s?\s+(ago|before)\b/,
+    );
+  if (!match) {
+    return null;
+  }
+  const amount = NUMBER_WORDS[match[1]!] ?? Number(match[1]);
+  return { amount, unit: match[2] as RelativeUnit };
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/** Add a signed number of days to a `YYYY/MM/DD` date, in UTC. */
+function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split('/').map(Number);
+  const shifted = new Date(Date.UTC(y!, m! - 1, d!) + days * 86_400_000);
+  return `${String(shifted.getUTCFullYear()).padStart(4, '0')}/${pad2(shifted.getUTCMonth() + 1)}/${pad2(shifted.getUTCDate())}`;
+}
+
+/** Days in a calendar month (1-based month), accounting for leap years. */
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Add a signed number of calendar months, clamping to the last valid day. */
+function addMonths(date: string, months: number): string {
+  const [y, m, d] = date.split('/').map(Number);
+  const totalMonths = y! * 12 + (m! - 1) + months;
+  const newYear = Math.floor(totalMonths / 12);
+  const newMonth = totalMonths - newYear * 12; // 0-based, always in [0, 11]
+  const newDay = Math.min(d!, daysInMonth(newYear, newMonth + 1));
+  return `${String(newYear).padStart(4, '0')}/${pad2(newMonth + 1)}/${pad2(newDay)}`;
+}
+
+/**
+ * Resolve an event date to an absolute `YYYY/MM/DD`. The LLM reports either an
+ * absolute turn date (returned unchanged) or a relative time copied verbatim
+ * ("a month ago"); this function converts the latter against `questionDate`.
+ * Returns `''` when the date is neither absolute nor a recognised relative time.
+ * Performing the conversion HERE (exact date arithmetic) instead of in the LLM
+ * removes the model's arithmetic error, which is the whole point of the
+ * deterministic engine.
+ */
+export function resolveTemporalDate(raw: string, questionDate: string): string {
+  const absolute = normalizeDate(raw);
+  if (isValidDate(absolute)) {
+    return absolute;
+  }
+  const offset = parseRelativeOffset(raw);
+  if (offset === null) {
+    return '';
+  }
+  const reference = normalizeDate(questionDate);
+  if (!isValidDate(reference)) {
+    return '';
+  }
+  if (offset.unit === 'month') {
+    return addMonths(reference, -offset.amount);
+  }
+  const days = offset.unit === 'week' ? offset.amount * 7 : offset.amount;
+  return addDays(reference, -days);
+}
+
 /** Signed whole days from `from` to `to` (positive when `to` is later). */
 export function elapsedDays(from: string, to: string): number {
   return daysBetween(from, to);
@@ -133,8 +223,11 @@ export function computeTemporalAnswer(
   if (kind === 'other' || kind === 'eventLookup') {
     return null;
   }
+  // Resolve each event date to an absolute date: the LLM reports either the
+  // turn's [YYYY/MM/DD] prefix or a verbatim relative time ("a month ago"),
+  // which is converted here against the question date.
   const normalized = events
-    .map((e) => ({ name: e.name.trim(), date: normalizeDate(e.date) }))
+    .map((e) => ({ name: e.name.trim(), date: resolveTemporalDate(e.date, questionDate) }))
     .filter((e) => e.name !== '' && isValidDate(e.date));
   if (normalized.length === 0) {
     return null;

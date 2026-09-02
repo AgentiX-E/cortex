@@ -137,6 +137,8 @@ export {
   classifyTemporalQuestion,
   normalizeDate,
   isValidDate,
+  parseRelativeOffset,
+  resolveTemporalDate,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,

@@ -9,6 +9,8 @@ import {
   intervalDays,
   orderByDate,
   computeTemporalAnswer,
+  parseRelativeOffset,
+  resolveTemporalDate,
   type TemporalKind,
 } from '../temporal-engine.js';
 
@@ -146,6 +148,49 @@ describe('isValidDate', () => {
     expect(isValidDate('02/01/2023')).toBe(false);
     expect(isValidDate('yesterday')).toBe(false);
     expect(isValidDate('')).toBe(false);
+  });
+});
+
+describe('parseRelativeOffset', () => {
+  it('parses number-word relative times', () => {
+    expect(parseRelativeOffset('a month ago')).toEqual({ amount: 1, unit: 'month' });
+    expect(parseRelativeOffset('two weeks before')).toEqual({ amount: 2, unit: 'week' });
+    expect(parseRelativeOffset('three days ago')).toEqual({ amount: 3, unit: 'day' });
+  });
+
+  it('parses digit relative times', () => {
+    expect(parseRelativeOffset('3 months ago')).toEqual({ amount: 3, unit: 'month' });
+  });
+
+  it('returns null for non-relative strings', () => {
+    expect(parseRelativeOffset('2023/04/21')).toBeNull();
+    expect(parseRelativeOffset('last Friday')).toBeNull();
+    expect(parseRelativeOffset('sometime recently')).toBeNull();
+  });
+});
+
+describe('resolveTemporalDate', () => {
+  it('returns an absolute date unchanged', () => {
+    expect(resolveTemporalDate('2023/04/21', '2023/05/21')).toBe('2023/04/21');
+    expect(resolveTemporalDate('[2023/04/21 (Fri) 10:00]', '2023/05/21')).toBe('2023/04/21');
+  });
+
+  it('converts a relative time against the question date', () => {
+    expect(resolveTemporalDate('a month ago', '2023/05/21')).toBe('2023/04/21');
+    expect(resolveTemporalDate('two weeks ago', '2023/05/21')).toBe('2023/05/07');
+    expect(resolveTemporalDate('3 days ago', '2023/05/21')).toBe('2023/05/18');
+  });
+
+  it('clamps a month subtraction to the last valid day', () => {
+    // March 31 minus one month is February 28 (29 in a leap year).
+    expect(resolveTemporalDate('a month ago', '2023/03/31')).toBe('2023/02/28');
+    expect(resolveTemporalDate('a month ago', '2024/03/31')).toBe('2024/02/29');
+  });
+
+  it('returns an empty string for an unrecognized or unresolvable date', () => {
+    expect(resolveTemporalDate('last Friday', '2023/05/21')).toBe('');
+    expect(resolveTemporalDate('a month ago', '')).toBe('');
+    expect(resolveTemporalDate('', '2023/05/21')).toBe('');
   });
 });
 
