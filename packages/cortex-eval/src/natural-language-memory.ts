@@ -22,11 +22,8 @@ import {
 import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
-  parseTimeRange,
-  turnDateInRange,
   type TemporalEvent,
   type TemporalKind,
-  type TimeRange,
 } from './temporal-engine.js';
 import {
   classifyKnowledgeUpdateQualifier,
@@ -221,17 +218,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     questionDate?: string,
   ): Promise<Answer> {
     const kind = classifyTemporalQuestion(question);
-    // Time-aware retrieval (LongMemEval CP3): infer the date window the question
-    // refers to and narrow the candidate set to it before retrieval, so a
-    // time-anchored event turn is not drowned by semantically-close distractors.
-    const timeRange = await this.inferTimeRange(question, questionDate);
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
       false,
       buildTemporalQueryExpansionPrompt,
       true,
-      timeRange ?? undefined,
     );
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
@@ -268,21 +260,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       expansionQueries,
       this.options.abstainThreshold,
     );
-  }
-
-  /**
-   * Infer the date window a time-sensitive question refers to (LongMemEval CP3).
-   * Returns `null` for computation/current-state questions (and on any parse
-   * failure), which leaves retrieval unfiltered. The caller narrows the
-   * candidate set to this window before retrieval, but keeps the full set when
-   * the window yields nothing, so a wrong window cannot discard the evidence.
-   */
-  private async inferTimeRange(question: string, questionDate?: string): Promise<TimeRange | null> {
-    const raw = await this.options.llm.complete(
-      buildTimeRangeExtractionPrompt(question, questionDate),
-      { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
-    );
-    return parseTimeRange(raw);
   }
 
   /**
@@ -483,11 +460,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * `enableLexicalRecall` additionally guarantees keyword-bearing turns a place
    * in the result; the temporal path enables it because its evidence turns are
    * concrete events that the question names, while embedding similarity alone
-   * ranks them below semantically-close distractors. `timeRange`, when present,
-   * NARROWS the candidate set before retrieval: turns whose timestamps fall
-   * outside it are dropped, so a time-anchored evidence turn cannot be drowned by
-   * out-of-window distractors. When the range is empty after filtering (a wrong
-   * inference), the full set is kept so evidence is never discarded.
+   * ranks them below semantically-close distractors.
    */
   private async retrieveTurns(
     question: string,
@@ -495,19 +468,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
     enableLexicalRecall: boolean = false,
-    timeRange?: TimeRange,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
-    let searchable = (factTurns.length > 0 ? factTurns : context).map((turn) =>
+    const searchable = (factTurns.length > 0 ? factTurns : context).map((turn) =>
       truncateText(turn, this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS),
     );
-    if (timeRange) {
-      const inRange = searchable.filter((turn) => turnDateInRange(turn, timeRange));
-      if (inRange.length > 0) {
-        searchable = inRange;
-      }
-    }
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
     const hits = enableLexicalRecall
@@ -1017,99 +983,6 @@ export function buildTemporalEventExtractionPrompt(
     `Question: ${question}`,
     '',
     'Respond with a JSON object.',
-  ].join('\n');
-}
-
-/**
- * In-context examples for the time-range extraction prompt. The first five pair
- * a time-sensitive question with the inferred window; the last five show that
- * "how many ago", "how long", and "currently" questions ask for a computation or
- * current state, not a time-anchored event, so they must return N/A.
- */
-const TIME_RANGE_EXAMPLES: ReadonlyArray<{
-  date: string;
-  question: string;
-  output: string;
-}> = [
-  {
-    date: '2023/07/01 (Sat) 23:13',
-    question: 'What was the date on which I attended the first BBQ event in June?',
-    output: '{"start": "2023/06/01", "end": "2023/06/30"}',
-  },
-  {
-    date: '2023/04/10 (Mon) 08:05',
-    question: 'Where did I attend the religious activity last week?',
-    output: '{"start": "2023/04/03", "end": "2023/04/09"}',
-  },
-  {
-    date: '2023/04/01 (Sat) 20:22',
-    question: 'What did I do with Rachel on the Wednesday two months ago?',
-    output: '{"start": "2023/01/25", "end": "2023/02/05"}',
-  },
-  {
-    date: '2023/05/30 (Tue) 01:50',
-    question: 'Which pair of shoes did I clean last month?',
-    output: '{"start": "2023/04/01", "end": "2023/04/30"}',
-  },
-  {
-    date: '2023/04/18 (Tue) 02:06',
-    question: 'Who did I meet with during the lunch last Tuesday?',
-    output: '{"start": "2023/04/10", "end": "2023/04/12"}',
-  },
-  {
-    date: '2023/05/27 (Sat) 01:55',
-    question: 'How many months ago did I book the Airbnb in San Francisco?',
-    output: 'N/A',
-  },
-  {
-    date: '2023/09/04 (Mon) 17:07',
-    question: 'How long have I been using my Fitbit Charge 3?',
-    output: 'N/A',
-  },
-  {
-    date: '2023/10/27 (Fri) 13:00',
-    question: 'How many bikes do I currently own?',
-    output: 'N/A',
-  },
-  {
-    date: '2023/12/18 (Mon) 04:17',
-    question: 'What was the amount I was pre-approved for when I got my mortgage from Wells Fargo?',
-    output: 'N/A',
-  },
-  {
-    date: '2023/11/10 (Fri) 04:20',
-    question:
-      'How many engineers do I lead when I just started my new role as Senior Software Engineer? How many engineers do I lead now?',
-    output: 'N/A',
-  },
-];
-
-/**
- * Build a time-range extraction prompt. The LLM infers the date window a
- * time-sensitive question refers to, so the retrieval step can demote turns
- * whose timestamps fall outside it. Computation and current-state questions
- * have no time anchor and must return "N/A" so retrieval stays unfiltered.
- */
-export function buildTimeRangeExtractionPrompt(question: string, questionDate?: string): string {
-  const exampleLines = TIME_RANGE_EXAMPLES.flatMap((example) => [
-    `Question date: ${example.date}`,
-    `Question: ${example.question}`,
-    `Range: ${example.output}`,
-    '',
-  ]);
-  return [
-    "You are given a question about a user's previous events and the time the question was asked.",
-    'Infer a time range whose events are likely to help answer the question.',
-    'Write a JSON dict with "start" and "end" fields, both in YYYY/MM/DD form.',
-    'If the question has no temporal reference, say exactly N/A.',
-    '',
-    'Examples:',
-    '',
-    ...exampleLines,
-    `Question date: ${questionDate ?? 'unknown'}`,
-    `Question: ${question}`,
-    '',
-    'Relevant date range (JSON dict or N/A, nothing else):',
   ].join('\n');
 }
 

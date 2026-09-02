@@ -167,61 +167,6 @@ export function resolveTemporalDate(raw: string, questionDate: string): string {
   return addDays(reference, -days);
 }
 
-/** An inclusive absolute-date window [start, end], both `YYYY/MM/DD`. */
-export type TimeRange = { start: string; end: string };
-
-/**
- * Parse a time range the LLM produced in response to the time-range extraction
- * prompt. Accepts a JSON object `{"start": "YYYY/MM/DD", "end": "YYYY/MM/DD"}`
- * (optionally wrapped in markdown code fences); returns `null` for "N/A" and for
- * any unparseable or invalid-date output, signalling the caller to skip time
- * filtering.
- */
-export function parseTimeRange(raw: string): TimeRange | null {
-  const trimmed = raw.trim();
-  if (/^(n\/a|none|null|no)$/i.test(trimmed)) {
-    return null;
-  }
-  const json = trimmed.match(/\{[\s\S]*\}/)?.[0];
-  if (!json) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(json) as { start?: unknown; end?: unknown };
-    if (typeof parsed.start !== 'string' || typeof parsed.end !== 'string') {
-      return null;
-    }
-    const start = normalizeDate(parsed.start);
-    const end = normalizeDate(parsed.end);
-    if (!isValidDate(start) || !isValidDate(end)) {
-      return null;
-    }
-    return { start, end };
-  } catch {
-    return null;
-  }
-}
-
-/** Days of slack added to each side of an inferred time range. */
-const TIME_RANGE_TOLERANCE_DAYS = 2;
-
-/**
- * True when a turn's `[YYYY/MM/DD]` timestamp falls inside `timeRange`, widened
- * by `TIME_RANGE_TOLERANCE_DAYS` on each side. The tolerance absorbs the LLM's
- * time-range inference error without letting a wrong range discard the evidence
- * turn entirely (the caller demotes, never deletes, out-of-range turns).
- */
-export function turnDateInRange(turn: string, timeRange: TimeRange): boolean {
-  const date = normalizeDate(turn);
-  if (!isValidDate(date)) {
-    return false;
-  }
-  const start = addDays(timeRange.start, -TIME_RANGE_TOLERANCE_DAYS);
-  const end = addDays(timeRange.end, TIME_RANGE_TOLERANCE_DAYS);
-  // YYYY/MM/DD sorts lexicographically in chronological order.
-  return date >= start && date <= end;
-}
-
 /** Signed whole days from `from` to `to` (positive when `to` is later). */
 export function elapsedDays(from: string, to: string): number {
   return daysBetween(from, to);

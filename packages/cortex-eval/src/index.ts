@@ -113,7 +113,6 @@ export {
   buildTemporalQaPrompt,
   buildTemporalEventLookupPrompt,
   buildTemporalEventExtractionPrompt,
-  buildTimeRangeExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
@@ -140,8 +139,6 @@ export {
   isValidDate,
   parseRelativeOffset,
   resolveTemporalDate,
-  parseTimeRange,
-  turnDateInRange,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,
@@ -150,7 +147,6 @@ export {
   computeTemporalAnswer,
   type TemporalKind,
   type TemporalEvent,
-  type TimeRange,
 } from './temporal-engine.js';
 export {
   timelineFor,
