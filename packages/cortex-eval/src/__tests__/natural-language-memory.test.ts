@@ -7,6 +7,7 @@ import {
   buildTemporalQaPrompt,
   buildTemporalEventLookupPrompt,
   buildTemporalEventExtractionPrompt,
+  buildTimeRangeExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
   buildPreferencePrompt,
@@ -215,6 +216,31 @@ describe('buildTemporalEventExtractionPrompt', () => {
     );
     expect(prompt).toContain('The question likely refers to these event(s):');
     expect(prompt).toContain('- receive chandelier');
+  });
+});
+
+describe('buildTimeRangeExtractionPrompt', () => {
+  it('includes the question, question date, and the requested output format', () => {
+    const prompt = buildTimeRangeExtractionPrompt(
+      'What was the event two weeks ago?',
+      '2023/07/01',
+    );
+    expect(prompt).toContain('What was the event two weeks ago?');
+    expect(prompt).toContain('2023/07/01');
+    expect(prompt).toContain('"start" and "end"');
+    expect(prompt).toContain('N/A');
+  });
+
+  it('carries in-context examples that teach time-anchored vs computation questions', () => {
+    const prompt = buildTimeRangeExtractionPrompt('Q?', '2023/07/01');
+    expect(prompt).toContain('first BBQ event in June');
+    expect(prompt).toContain('2023/06/01');
+    expect(prompt).toContain('How many months ago did I book the Airbnb');
+  });
+
+  it('falls back to an unknown question date when none is given', () => {
+    const prompt = buildTimeRangeExtractionPrompt('Q?');
+    expect(prompt).toContain('unknown');
   });
 });
 
@@ -990,6 +1016,10 @@ describe('NaturalLanguageMemorySystem', () => {
     const llm: LLM = {
       complete: async (prompt) => {
         prompts.push(prompt);
+        // The time-range probe returns N/A, so time filtering is skipped.
+        if (prompt.includes('Relevant date range')) {
+          return 'N/A';
+        }
         return 'receive crystal chandelier from aunt';
       },
       completeStructured: async <T>() =>
@@ -1001,10 +1031,53 @@ describe('NaturalLanguageMemorySystem', () => {
       ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
       '2023/04/01',
     );
-    // Event-level query expansion runs, then the deterministic engine computes
-    // the elapsed weeks from the extracted event date without an LLM QA call.
-    expect(prompts[0]).toContain('Specific events:');
+    // The time-range probe runs first, then event-level query expansion, then the
+    // deterministic engine computes the elapsed weeks without an LLM QA call.
+    expect(prompts[0]).toContain('Relevant date range');
+    expect(prompts[1]).toContain('Specific events:');
     expect(answer).toBe('4');
+  });
+
+  it('answerTemporal narrows retrieval to the inferred time range', async () => {
+    const traces: DecisionTrace[] = [];
+    // A flat embedding makes the semantic pool uninformative (every turn ties),
+    // so retrieval returns turns in insertion order and only the time filter can
+    // drop the out-of-range distractors before retrieval.
+    const flatEmbedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (prompt.includes('Relevant date range')) {
+          return '{"start": "2023/04/01", "end": "2023/04/30"}';
+        }
+        if (prompt.includes('Specific events:')) {
+          return 'Nordstrom sale';
+        }
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: flatEmbedding,
+      llm,
+      onDecision: (trace) => traces.push(trace),
+    });
+    await system.answerTemporal(
+      'What did I do two weeks ago?',
+      [
+        '[2023/01/01] user: I bought a new car.',
+        '[2023/04/15] user: I attended the Nordstrom sale.',
+        '[2023/12/01] user: I moved to a new city.',
+      ],
+      '2023/04/18',
+    );
+    const retrieved = traces[0]?.retrieved ?? '';
+    // Only the in-range turn survives; both out-of-range distractors are dropped.
+    expect(retrieved).toContain('Nordstrom');
+    expect(retrieved).not.toContain('bought a new car');
+    expect(retrieved).not.toContain('moved to a new city');
   });
 
   it('answerTemporal passes the expansion phrases as event hints to extraction', async () => {

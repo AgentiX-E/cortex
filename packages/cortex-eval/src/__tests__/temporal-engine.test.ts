@@ -11,6 +11,8 @@ import {
   computeTemporalAnswer,
   parseRelativeOffset,
   resolveTemporalDate,
+  parseTimeRange,
+  turnDateInRange,
   type TemporalKind,
 } from '../temporal-engine.js';
 
@@ -191,6 +193,79 @@ describe('resolveTemporalDate', () => {
     expect(resolveTemporalDate('last Friday', '2023/05/21')).toBe('');
     expect(resolveTemporalDate('a month ago', '')).toBe('');
     expect(resolveTemporalDate('', '2023/05/21')).toBe('');
+  });
+});
+
+describe('parseTimeRange', () => {
+  it('parses a JSON start/end range', () => {
+    expect(parseTimeRange('{"start": "2023/06/01", "end": "2023/06/30"}')).toEqual({
+      start: '2023/06/01',
+      end: '2023/06/30',
+    });
+  });
+
+  it('tolerates markdown code fences around the JSON', () => {
+    expect(parseTimeRange('```json\n{"start": "2023/06/01", "end": "2023/06/30"}\n```')).toEqual({
+      start: '2023/06/01',
+      end: '2023/06/30',
+    });
+  });
+
+  it('returns null for N/A and other non-range outputs', () => {
+    expect(parseTimeRange('N/A')).toBeNull();
+    expect(parseTimeRange('n/a')).toBeNull();
+    expect(parseTimeRange('No temporal reference')).toBeNull();
+    expect(parseTimeRange('not json')).toBeNull();
+  });
+
+  it('returns null for a range with invalid dates', () => {
+    expect(parseTimeRange('{"start": "yesterday", "end": "2023/06/30"}')).toBeNull();
+    expect(parseTimeRange('{"start": "2023/06/01"}')).toBeNull();
+  });
+
+  it('returns null for malformed JSON that throws on parse', () => {
+    expect(parseTimeRange('{start: 2023/06/01, end: 2023/06/30}')).toBeNull();
+  });
+});
+
+describe('turnDateInRange', () => {
+  it('accepts a turn whose timestamp is inside the range', () => {
+    expect(
+      turnDateInRange('[2023/06/15 (Thu) 10:00] user: hi', {
+        start: '2023/06/01',
+        end: '2023/06/30',
+      }),
+    ).toBe(true);
+  });
+
+  it('accepts a turn within the two-day tolerance on either side', () => {
+    expect(
+      turnDateInRange('[2023/05/30 (Tue) 10:00] user: hi', {
+        start: '2023/06/01',
+        end: '2023/06/30',
+      }),
+    ).toBe(true);
+    expect(
+      turnDateInRange('[2023/07/02 (Sun) 10:00] user: hi', {
+        start: '2023/06/01',
+        end: '2023/06/30',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a turn far outside the range', () => {
+    expect(
+      turnDateInRange('[2023/01/01 (Sun) 10:00] user: hi', {
+        start: '2023/06/01',
+        end: '2023/06/30',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects a turn with no parseable timestamp', () => {
+    expect(turnDateInRange('user: no date here', { start: '2023/06/01', end: '2023/06/30' })).toBe(
+      false,
+    );
   });
 });
 
