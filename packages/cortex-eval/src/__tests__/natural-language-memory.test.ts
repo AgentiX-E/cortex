@@ -42,6 +42,13 @@ describe('buildQaPrompt', () => {
     expect(prompt).toContain('UNANSWERABLE');
   });
 
+  it('decomposes reading into note-extraction then reasoning (CoN)', () => {
+    const prompt = buildQaPrompt('What is X?', 'context line');
+    expect(prompt).toContain('Work in two steps.');
+    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
+  });
+
   it('tells the model to choose among candidates instead of abstaining', () => {
     const prompt = buildQaPrompt('What is my current city?', 'context');
     expect(prompt).toContain('more than one possible answer');
@@ -80,6 +87,13 @@ describe('buildTemporalQaPrompt', () => {
     expect(prompt).toContain('Question: How many weeks ago?');
   });
 
+  it('decomposes reading into note-extraction then reasoning (CoN)', () => {
+    const prompt = buildTemporalQaPrompt('How many weeks ago?', 'ctx', '2023/03/15');
+    expect(prompt).toContain('Work in two steps.');
+    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
+  });
+
   it('omits the reference line when no question date is given', () => {
     const prompt = buildTemporalQaPrompt('Which happened first?', 'ctx');
     expect(prompt).not.toContain('use it as "today"');
@@ -98,6 +112,13 @@ describe('buildTemporalEventLookupPrompt', () => {
     expect(prompt).toContain('Do NOT count, compute elapsed time');
     expect(prompt).toContain('extract the event, person, object, place, or value');
     expect(prompt).not.toContain('compute the elapsed days/weeks/months');
+  });
+
+  it('decomposes reading into note-extraction then reasoning (CoN)', () => {
+    const prompt = buildTemporalEventLookupPrompt('What was the event?', 'ctx', '2023/07/01');
+    expect(prompt).toContain('Work in two steps.');
+    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
   });
 
   it('supplies the question date as the "today" reference', () => {
@@ -277,6 +298,13 @@ describe('buildPreferencePrompt', () => {
     expect(prompt).toContain('preference');
     expect(prompt).toContain('I like stand-up comedy.');
     expect(prompt).toContain('Question: Can you recommend a show?');
+  });
+
+  it('decomposes reading into note-extraction then reasoning (CoN)', () => {
+    const prompt = buildPreferencePrompt('Can you recommend a show?', 'I like stand-up comedy.');
+    expect(prompt).toContain('Work in two steps.');
+    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
   });
 
   it('requires the recommendation to name the user-specified options', () => {

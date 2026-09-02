@@ -673,6 +673,28 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   }
 }
 
+/**
+ * Chain-of-Note (CoN) instruction shared by the single-session reading prompts.
+ * LongMemEval's CP4 control point decomposes long-context reading into two
+ * simpler subtasks — first pick out the relevant user details, then reason over
+ * them — which the paper reports as up to +10 absolute points over a direct
+ * read-and-answer prompt. The wording deliberately asks the model to IDENTIFY
+ * the relevant details in its head rather than to write them out: the
+ * single-session parser reads the whole response as the answer, so an explicit
+ * note-taking step would leak narration into the extracted answer. Identifying
+ * first still forces the model to re-read each turn for the question's signal
+ * before committing, which is what keeps an evidence turn from being buried by
+ * semantically-close distractors.
+ */
+function conInstruction(): string[] {
+  return [
+    'Work in two steps.',
+    '',
+    "Step 1 — Read each turn and identify the user's facts, events, values, or preferences relevant to the question.",
+    'Step 2 — Answer the question using ONLY those identified facts.',
+  ];
+}
+
 /** Build a grounded QA prompt with an explicit abstention instruction. */
 export function buildQaPrompt(
   question: string,
@@ -681,7 +703,8 @@ export function buildQaPrompt(
 ): string {
   return [
     'You are answering questions based on a conversation memory.',
-    'Read the context carefully and extract the answer to the question.',
+    ...conInstruction(),
+    '',
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     'If the context offers more than one possible answer, choose the one that best matches the question (the most recent, the most specific, or the one matching any qualifier in the question). Choosing between candidates or combining several turns is NOT a reason to abstain.',
     `Respond with exactly "${abstainToken}" ONLY when the context offers no answer to the question at all.`,
@@ -741,8 +764,10 @@ export function buildPreferencePrompt(
 ): string {
   return [
     'You are answering a recommendation question based on a conversation memory.',
-    "Read the context carefully and identify the user's stated preferences, interests, constraints, and dislikes (for example specific brands, products, models, topics, or styles they mention).",
-    'Respond with a CONCRETE, SPECIFIC recommendation or suggestion that directly reflects those preferences.',
+    ...conInstruction(),
+    '',
+    "In Step 1, note the user's stated preferences, interests, constraints, and dislikes (for example specific brands, products, models, topics, or styles they mention).",
+    'In Step 2, produce a CONCRETE, SPECIFIC recommendation or suggestion that directly reflects those preferences.',
     'Name the exact brands, products, topics, or options the user already expressed interest in; do not give a generic answer.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no information about the user's preferences at all.`,
     '',
@@ -849,7 +874,10 @@ export function buildTemporalQaPrompt(
           `The question was asked on ${questionDate}; use it as "today" for "how long ago" questions.`,
         ]
       : []),
-    'To answer: identify the relevant event turn(s), read their dates, compute the elapsed days/weeks/months or the event ordering, then answer with ONLY the final answer (a number, date, or short phrase).',
+    ...conInstruction(),
+    '',
+    'In Step 1, note the relevant event turn(s) and their dates.',
+    'In Step 2, compute the elapsed days/weeks/months or the event ordering from those dates, then answer with ONLY the final answer (a number, date, or short phrase).',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context:',
@@ -885,7 +913,10 @@ export function buildTemporalEventLookupPrompt(
           `The question was asked on ${questionDate}; use it as "today" for "ago", "last", and "recently" references.`,
         ]
       : []),
-    "To answer: locate the turn(s) the question's time qualifier points to, then extract the event, person, object, place, or value the question asks about from those turns.",
+    ...conInstruction(),
+    '',
+    "In Step 1, note the turn(s) the question's time qualifier points to and the entity each states.",
+    'In Step 2, extract the event, person, object, place, or value the question asks about.',
     'Do NOT count, compute elapsed time, or reorder events. Just report the entity the question asks for.',
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
