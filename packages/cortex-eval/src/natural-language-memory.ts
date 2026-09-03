@@ -1244,13 +1244,26 @@ export function parseQueryExpansion(raw: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-/** Parse the LLM response; returns null when it abstains or returns empty. */
+/**
+ * Parse the LLM response; returns null when it abstains or returns empty.
+ *
+ * The single-session prompts now carry a chain-of-note instruction, so the model
+ * may narrate its two steps and finish with an `Answer:` line. Prefer that
+ * labelled line (the canonical final answer) and fall back to the whole response
+ * only when no label is present, which keeps the pre-CoN "bare phrase" answers
+ * working unchanged.
+ */
 export function parseQaAnswer(raw: string, abstainToken: string = DEFAULT_ABSTAIN_TOKEN): Answer {
   const trimmed = raw.trim();
-  if (trimmed === '' || trimmed.toUpperCase() === abstainToken.toUpperCase()) {
+  if (trimmed === '' || isAbstentionValue(trimmed, abstainToken)) {
     return null;
   }
-  return stripWrappingQuotes(trimmed);
+  const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|final answer)\s*:\s*(.+?)\s*$/im);
+  const candidate = labelled ? labelled[1]!.trim() : trimmed;
+  if (candidate === '' || isAbstentionValue(candidate, abstainToken)) {
+    return null;
+  }
+  return stripWrappingQuotes(candidate);
 }
 
 /**

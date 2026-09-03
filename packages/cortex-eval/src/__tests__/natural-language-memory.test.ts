@@ -493,6 +493,18 @@ describe('parseQaAnswer', () => {
     expect(parseQaAnswer('"blue"')).toBe('blue');
     expect(parseQaAnswer("'blue'")).toBe('blue');
   });
+
+  it('extracts the labelled answer from a chain-of-note narration', () => {
+    const raw =
+      'Step 1 — relevant facts: the user attended a bird watching workshop.\n' +
+      'Step 2 — from 2023/04/01 to 2023/05/01 is 30 days.\n\n' +
+      'Answer: 4';
+    expect(parseQaAnswer(raw)).toBe('4');
+  });
+
+  it('keeps a plain answer without an answer label unchanged', () => {
+    expect(parseQaAnswer('blue')).toBe('blue');
+  });
 });
 
 describe('parseAggregationAnswer', () => {
