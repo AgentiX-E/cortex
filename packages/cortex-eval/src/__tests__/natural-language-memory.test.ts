@@ -15,6 +15,7 @@ import {
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
+  formatStructuredContext,
   parseQueryExpansion,
   truncateText,
   truncateSession,
@@ -59,6 +60,55 @@ describe('buildQaPrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+
+  it('renders the context as a JSON array', () => {
+    const prompt = buildQaPrompt('What is X?', '[2023/03/04] user: I finished a book.');
+    expect(prompt).toContain('Context (a JSON array of turns');
+    expect(prompt).toContain('"date":"2023/03/04"');
+    expect(prompt).toContain('"role":"user"');
+  });
+});
+
+describe('formatStructuredContext', () => {
+  it('returns an empty JSON array for empty input', () => {
+    expect(formatStructuredContext('')).toBe('[]');
+  });
+
+  it('parses a dated turn into date, role, and content fields', () => {
+    const json = formatStructuredContext('[2023/03/04 (Sat) 00:06] user: I finished a book.');
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual([{ date: '2023/03/04', role: 'user', content: 'I finished a book.' }]);
+  });
+
+  it('parses an undated turn into role and content fields', () => {
+    const json = formatStructuredContext('user: I like coffee.');
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual([{ role: 'user', content: 'I like coffee.' }]);
+  });
+
+  it('preserves a turn without a role prefix as a bare content object', () => {
+    const json = formatStructuredContext('plain text turn');
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual([{ content: 'plain text turn' }]);
+  });
+
+  it('parses multiple turns into an ordered JSON array', () => {
+    const json = formatStructuredContext(
+      '[2023/03/04] user: first turn\n[2023/03/05] assistant: second turn',
+    );
+    const parsed = JSON.parse(json);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toEqual({ date: '2023/03/04', role: 'user', content: 'first turn' });
+    expect(parsed[1]).toEqual({ date: '2023/03/05', role: 'assistant', content: 'second turn' });
+  });
+
+  it("keeps a truncated turn's marker attached to its own turn", () => {
+    const json = formatStructuredContext('[2023/03/04] user: a long turn\n[truncated]');
+    const parsed = JSON.parse(json);
+    expect(parsed).toEqual([
+      { date: '2023/03/04', role: 'user', content: 'a long turn\n[truncated]' },
+    ]);
   });
 });
 

@@ -695,6 +695,37 @@ function conInstruction(): string[] {
   ];
 }
 
+/**
+ * Render a flat retrieved-context string (one "[date] role: content" turn per
+ * line, as produced by `expandContextWindow`) as a JSON array of turn objects.
+ * LongMemEval's CP4 reports that, combined with chain-of-note, a structured JSON
+ * format helps the reader tell an evidence turn apart from semantically-close
+ * distractors: each turn's date/role/content boundaries become explicit data
+ * fields instead of prose. Turns that do not match the "[date] role:" shape are
+ * preserved as a bare `content` object so no turn disappears.
+ */
+export function formatStructuredContext(context: string): string {
+  if (context === '') {
+    return '[]';
+  }
+  // Split on the start of a dated turn so a truncated turn's trailing
+  // "[truncated]" line stays attached to its own turn instead of becoming a
+  // separate item.
+  const turns = context.split(/(?=\[\d{4}\/\d{2}\/\d{2})/).filter((t) => t.trim() !== '');
+  const items = turns.map((turn) => {
+    const dated = turn.match(/^\[(\d{4}\/\d{2}\/\d{2})[^\]]*\]\s*(user|assistant):\s*([\s\S]*)$/);
+    if (dated) {
+      return JSON.stringify({ date: dated[1]!, role: dated[2]!, content: dated[3]!.trim() });
+    }
+    const undated = turn.match(/^(user|assistant):\s*([\s\S]*)$/);
+    if (undated) {
+      return JSON.stringify({ role: undated[1]!, content: undated[2]!.trim() });
+    }
+    return JSON.stringify({ content: turn.trim() });
+  });
+  return `[${items.join(', ')}]`;
+}
+
 /** Build a grounded QA prompt with an explicit abstention instruction. */
 export function buildQaPrompt(
   question: string,
@@ -709,8 +740,8 @@ export function buildQaPrompt(
     'If the context offers more than one possible answer, choose the one that best matches the question (the most recent, the most specific, or the one matching any qualifier in the question). Choosing between candidates or combining several turns is NOT a reason to abstain.',
     `Respond with exactly "${abstainToken}" ONLY when the context offers no answer to the question at all.`,
     '',
-    'Context:',
-    context,
+    'Context (a JSON array of turns, each with date, role, and content):',
+    formatStructuredContext(context),
     '',
     `Question: ${question}`,
     '',
@@ -771,8 +802,8 @@ export function buildPreferencePrompt(
     'Name the exact brands, products, topics, or options the user already expressed interest in; do not give a generic answer.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no information about the user's preferences at all.`,
     '',
-    'Context:',
-    context,
+    'Context (a JSON array of turns, each with date, role, and content):',
+    formatStructuredContext(context),
     '',
     `Question: ${question}`,
     '',
@@ -880,8 +911,8 @@ export function buildTemporalQaPrompt(
     'In Step 2, compute the elapsed days/weeks/months or the event ordering from those dates, then answer with ONLY the final answer (a number, date, or short phrase).',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
-    'Context:',
-    context,
+    'Context (a JSON array of turns, each with date, role, and content):',
+    formatStructuredContext(context),
     '',
     `Question: ${question}`,
     '',
@@ -921,8 +952,8 @@ export function buildTemporalEventLookupPrompt(
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
-    'Context:',
-    context,
+    'Context (a JSON array of turns, each with date, role, and content):',
+    formatStructuredContext(context),
     '',
     `Question: ${question}`,
     '',
