@@ -94,6 +94,11 @@ export async function computeRetrievalDiagnostics(
     for (let i = 0; i < sessions.length; i++) {
       const date = dates?.[i];
       for (const turn of sessions[i]!) {
+        // The single-session path filters assistant turns before retrieval, so
+        // an assistant turn is never a candidate and embedding it is pure cost.
+        if (turn.role === 'assistant') {
+          continue;
+        }
         const text = turnText(turn, date);
         context.push(text);
         if (turn.has_answer === true) {
@@ -168,11 +173,16 @@ export async function computeSessionRetrievalDiagnostics(
   let recallAtK = 0;
 
   for (const inst of instances) {
-    const sessions = sessionsToContext(inst.haystack_sessions, inst.haystack_dates);
-    const rawSessions = inst.haystack_sessions ?? [];
+    // The multi-session path filters assistant turns before building the session
+    // index, so the diagnostics must mirror that: an assistant turn is never a
+    // retrieval candidate and its embedding is pure cost.
+    const factSessions = (inst.haystack_sessions ?? []).map((session) =>
+      session.filter((turn) => turn.role !== 'assistant'),
+    );
+    const sessions = sessionsToContext(factSessions, inst.haystack_dates);
     const answerSessionIndices = new Set<number>();
-    for (let i = 0; i < rawSessions.length; i++) {
-      if (rawSessions[i]!.some((turn) => turn.has_answer === true)) {
+    for (let i = 0; i < factSessions.length; i++) {
+      if (factSessions[i]!.some((turn) => turn.has_answer === true)) {
         answerSessionIndices.add(i);
       }
     }

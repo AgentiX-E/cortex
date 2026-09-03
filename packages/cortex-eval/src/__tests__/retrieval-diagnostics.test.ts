@@ -8,6 +8,7 @@ import {
   percentile,
 } from '../retrieval-diagnostics.js';
 import { HashEmbedding } from '../embedding.js';
+import { clearEmbeddingCache } from '../retrieval.js';
 import type { LongMemEvalInstance, LongMemEvalTurn } from '../datasets/longmemeval-loader.js';
 
 describe('flattenTurns', () => {
@@ -117,6 +118,36 @@ describe('computeRetrievalDiagnostics', () => {
     expect(diag.recommendedThreshold).toBeGreaterThanOrEqual(0);
     expect(diag.recommendedThreshold).toBeLessThanOrEqual(1);
   });
+
+  it('never embeds assistant turns', async () => {
+    // The single-session path filters assistant turns before retrieval; the
+    // diagnostics must do the same, or it bills for vectors the system never
+    // uses and measures recall on a retrieval the system does not perform.
+    const embedded: string[] = [];
+    const recording: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        embedded.push(...texts);
+        return texts.map(() => new Float64Array([0, 0, 0, 0]));
+      },
+    };
+    clearEmbeddingCache();
+    const instance: LongMemEvalInstance = {
+      question_id: 'q1',
+      question_type: 'single-session-user',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [
+        [
+          { role: 'user', content: 'My favorite color is blue.', has_answer: true },
+          { role: 'assistant', content: 'A long generated reply that must not be embedded.' },
+        ],
+      ],
+    };
+    await computeRetrievalDiagnostics([instance], recording, 5);
+    expect(embedded.some((t) => t.includes('assistant:'))).toBe(false);
+    expect(embedded.some((t) => t.includes('My favorite color is blue'))).toBe(true);
+  });
 });
 
 describe('computeSessionRetrievalDiagnostics', () => {
@@ -198,5 +229,35 @@ describe('computeSessionRetrievalDiagnostics', () => {
     expect(diag.recallAt1).toBe(0);
     expect(diag.hitScores).toEqual([]);
     expect(diag.missScores).toHaveLength(1);
+  });
+
+  it('never embeds assistant turns', async () => {
+    // The multi-session path filters assistant turns before retrieval; the
+    // session diagnostics must match, or it bills for vectors the system never
+    // uses and measures recall on a session index the system never builds.
+    const embedded: string[] = [];
+    const recording: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        embedded.push(...texts);
+        return texts.map(() => new Float64Array([0, 0, 0, 0]));
+      },
+    };
+    clearEmbeddingCache();
+    const instance: LongMemEvalInstance = {
+      question_id: 'q1',
+      question_type: 'multi-session',
+      question: 'What did I mention?',
+      answer: 'x',
+      haystack_sessions: [
+        [
+          { role: 'user', content: 'I mentioned the trip.', has_answer: true },
+          { role: 'assistant', content: 'A long generated reply that must not be embedded.' },
+        ],
+      ],
+    };
+    await computeSessionRetrievalDiagnostics([instance], recording, 5);
+    expect(embedded.some((t) => t.includes('assistant:'))).toBe(false);
+    expect(embedded.some((t) => t.includes('I mentioned the trip'))).toBe(true);
   });
 });
