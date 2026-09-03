@@ -45,8 +45,8 @@ describe('buildQaPrompt', () => {
 
   it('decomposes reading into note-extraction then reasoning (CoN)', () => {
     const prompt = buildQaPrompt('What is X?', 'context line');
-    expect(prompt).toContain('Work in two steps.');
-    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Work in two steps');
+    expect(prompt).toContain('Step 1 — Silently read each turn');
     expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
   });
 
@@ -67,6 +67,38 @@ describe('buildQaPrompt', () => {
     expect(prompt).toContain('Context (a JSON array of turns');
     expect(prompt).toContain('"date":"2023/03/04"');
     expect(prompt).toContain('"role":"user"');
+  });
+});
+
+describe('chain-of-note output contract', () => {
+  // Every prompt that spreads `conInstruction()` must carry the same output
+  // contract, or the model writes out its Step 1 notes and never answers.
+  const builders: Array<[string, (question: string, context: string) => string]> = [
+    ['buildQaPrompt', (q, c) => buildQaPrompt(q, c)],
+    ['buildPreferencePrompt', (q, c) => buildPreferencePrompt(q, c)],
+    ['buildTemporalQaPrompt', (q, c) => buildTemporalQaPrompt(q, c)],
+    ['buildTemporalEventLookupPrompt', (q, c) => buildTemporalEventLookupPrompt(q, c)],
+  ];
+
+  it.each(builders)('%s forbids writing the step-1 notes out', (_name, build) => {
+    expect(build('Q?', 'ctx')).toContain('do NOT write them out');
+  });
+
+  it.each(builders)('%s fixes the reply to a single labelled answer line', (_name, build) => {
+    const prompt = build('Q?', 'ctx');
+    expect(prompt).toContain('exactly this form');
+    expect(prompt).toContain('Answer: <');
+  });
+
+  it.each(builders)('%s never asks the model to write notes down', (_name, build) => {
+    expect(build('Q?', 'ctx')).not.toMatch(/In Step 1, note\b/);
+  });
+
+  it('leaves the deterministic extraction prompt free of the contract', () => {
+    // The event-extraction prompt only copies dates, so CoN narration there
+    // would add cost without improving the deterministic arithmetic.
+    const prompt = buildTemporalEventExtractionPrompt('Q?', 'ctx', undefined, ['hint']);
+    expect(prompt).not.toContain('Work in two steps');
   });
 });
 
@@ -139,8 +171,8 @@ describe('buildTemporalQaPrompt', () => {
 
   it('decomposes reading into note-extraction then reasoning (CoN)', () => {
     const prompt = buildTemporalQaPrompt('How many weeks ago?', 'ctx', '2023/03/15');
-    expect(prompt).toContain('Work in two steps.');
-    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Work in two steps');
+    expect(prompt).toContain('Step 1 — Silently read each turn');
     expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
   });
 
@@ -166,8 +198,8 @@ describe('buildTemporalEventLookupPrompt', () => {
 
   it('decomposes reading into note-extraction then reasoning (CoN)', () => {
     const prompt = buildTemporalEventLookupPrompt('What was the event?', 'ctx', '2023/07/01');
-    expect(prompt).toContain('Work in two steps.');
-    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Work in two steps');
+    expect(prompt).toContain('Step 1 — Silently read each turn');
     expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
   });
 
@@ -352,8 +384,8 @@ describe('buildPreferencePrompt', () => {
 
   it('decomposes reading into note-extraction then reasoning (CoN)', () => {
     const prompt = buildPreferencePrompt('Can you recommend a show?', 'I like stand-up comedy.');
-    expect(prompt).toContain('Work in two steps.');
-    expect(prompt).toContain('Step 1 — Read each turn');
+    expect(prompt).toContain('Work in two steps');
+    expect(prompt).toContain('Step 1 — Silently read each turn');
     expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
   });
 
@@ -554,6 +586,82 @@ describe('parseQaAnswer', () => {
 
   it('keeps a plain answer without an answer label unchanged', () => {
     expect(parseQaAnswer('blue')).toBe('blue');
+  });
+
+  it('drops step headers and bullets when the model ignored the output contract', () => {
+    // Regression: on `7a349da` the model wrote out its Step 1 notes and never
+    // reached Step 2 on 7.5% of questions, leaking the whole narration into the
+    // extracted answer.
+    const raw =
+      '**Step 1 — Relevant user facts:**\n' +
+      '- The user is interested in video editing.\n' +
+      '- The user uses Adobe Premiere Pro.\n' +
+      '\n' +
+      'These resources directly build on your Lumetri Color Panel knowledge.';
+    expect(parseQaAnswer(raw)).toBe(
+      'These resources directly build on your Lumetri Color Panel knowledge.',
+    );
+  });
+
+  it('drops an ordered-list narration and keeps the concluding line', () => {
+    const raw =
+      '1. The user flew United in March.\n2. The user flew American in April.\nUnited Airlines';
+    expect(parseQaAnswer(raw)).toBe('United Airlines');
+  });
+
+  it('drops markdown headings from a narration', () => {
+    const raw = '## Relevant turns\nThe user moved to Seattle in March.\n';
+    expect(parseQaAnswer(raw)).toBe('The user moved to Seattle in March.');
+  });
+
+  it('caps a runaway narration at its first sentence boundary', () => {
+    // Regression: one temporal answer ran to 33,504 characters of self-talk.
+    const runaway = 'Given the data, the most flights are with United. '.repeat(500);
+    const parsed = parseQaAnswer(runaway);
+    expect(parsed).toBe('Given the data, the most flights are with United.');
+  });
+
+  it('hard-caps a narration that offers no sentence boundary', () => {
+    expect(parseQaAnswer('x'.repeat(5000))).toBe('x'.repeat(200));
+  });
+
+  it('falls back to the capped original when every line is scaffolding', () => {
+    // Deliberate, not an oversight: of the 33 leaked `7a349da` responses only 4
+    // contain the ground truth verbatim, and one of those carries it inside a
+    // bullet. Returning the capped original keeps that answer reachable while
+    // still bounding a runaway generation.
+    expect(parseQaAnswer('- bullet one\n- bullet two')).toBe('- bullet one\n- bullet two');
+  });
+
+  it('preserves a ground truth that only appears inside a note bullet', () => {
+    // Regression for the temporal answer "United Airlines", whose only mention
+    // sits in the model's Step 1 bullet list rather than in a conclusion.
+    const raw =
+      'Step 1 — Relevant turns and dates:\n' +
+      '- 2023/04/27: User mentions a March business trip to Chicago with United Airlines.\n' +
+      '- 2023/04/27: User mentions a direct flight with Southwest Airlines to Las Vegas.';
+    expect(parseQaAnswer(raw)).toContain('United Airlines');
+  });
+
+  it('caps the scaffolding fallback so a runaway cannot reach the judge', () => {
+    const raw = '- the user flew United in March. - the user flew American in April. '.repeat(200);
+    const parsed = parseQaAnswer(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.length).toBeLessThanOrEqual(200);
+  });
+
+  it('keeps a short unlabelled answer untouched', () => {
+    expect(parseQaAnswer('United Airlines.')).toBe('United Airlines.');
+  });
+
+  it('prefers the labelled answer over the surrounding narration', () => {
+    const raw =
+      'Step 1 — notes that should never have been written.\n- bullet\n\nAnswer: United Airlines';
+    expect(parseQaAnswer(raw)).toBe('United Airlines');
+  });
+
+  it('recognises an abstention that follows the answer label', () => {
+    expect(parseQaAnswer('Step 1 — nothing relevant.\nAnswer: UNANSWERABLE')).toBeNull();
   });
 });
 

@@ -678,20 +678,33 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
  * LongMemEval's CP4 control point decomposes long-context reading into two
  * simpler subtasks — first pick out the relevant user details, then reason over
  * them — which the paper reports as up to +10 absolute points over a direct
- * read-and-answer prompt. The wording deliberately asks the model to IDENTIFY
- * the relevant details in its head rather than to write them out: the
- * single-session parser reads the whole response as the answer, so an explicit
- * note-taking step would leak narration into the extracted answer. Identifying
- * first still forces the model to re-read each turn for the question's signal
- * before committing, which is what keeps an evidence turn from being buried by
- * semantically-close distractors.
+ * read-and-answer prompt.
+ *
+ * Two halves of the wording are load-bearing, both added after the `7a349da`
+ * benchmark showed the model writing out its Step 1 notes and never reaching
+ * Step 2 on 7.5% of the diagnosed questions (up from 5.2% on `da4fe96`), which
+ * leaked the entire narration — in one case 33 KB of self-talk — into the parsed
+ * answer:
+ *
+ * 1. Step 1 must be SILENT. Asking the model to "identify" without saying so
+ *    reads as an invitation to produce the notes, and a structured JSON context
+ *    makes excerpting them nearly free, so the model stops there.
+ * 2. The reply's shape is fixed to one `Answer:` line. Without an explicit
+ *    terminal contract the model treats the notes themselves as the answer.
+ *
+ * Identifying first still forces the model to re-read each turn for the
+ * question's signal before committing, which is what keeps an evidence turn from
+ * being buried by semantically-close distractors.
  */
 function conInstruction(): string[] {
   return [
-    'Work in two steps.',
+    'Work in two steps, but write ONLY the final answer.',
     '',
-    "Step 1 — Read each turn and identify the user's facts, events, values, or preferences relevant to the question.",
+    "Step 1 — Silently read each turn and identify the user's facts, events, values, or preferences relevant to the question. Keep those notes to yourself; do NOT write them out.",
     'Step 2 — Answer the question using ONLY those identified facts.',
+    '',
+    'Your entire reply is one line in exactly this form, with nothing before or after it:',
+    'Answer: <a word, name, number, or short phrase>',
   ];
 }
 
@@ -797,7 +810,7 @@ export function buildPreferencePrompt(
     'You are answering a recommendation question based on a conversation memory.',
     ...conInstruction(),
     '',
-    "In Step 1, note the user's stated preferences, interests, constraints, and dislikes (for example specific brands, products, models, topics, or styles they mention).",
+    "In Step 1, identify the user's stated preferences, interests, constraints, and dislikes (for example specific brands, products, models, topics, or styles they mention).",
     'In Step 2, produce a CONCRETE, SPECIFIC recommendation or suggestion that directly reflects those preferences.',
     'Name the exact brands, products, topics, or options the user already expressed interest in; do not give a generic answer.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no information about the user's preferences at all.`,
@@ -907,7 +920,7 @@ export function buildTemporalQaPrompt(
       : []),
     ...conInstruction(),
     '',
-    'In Step 1, note the relevant event turn(s) and their dates.',
+    'In Step 1, identify the relevant event turn(s) and their dates.',
     'In Step 2, compute the elapsed days/weeks/months or the event ordering from those dates, then answer with ONLY the final answer (a number, date, or short phrase).',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
@@ -946,7 +959,7 @@ export function buildTemporalEventLookupPrompt(
       : []),
     ...conInstruction(),
     '',
-    "In Step 1, note the turn(s) the question's time qualifier points to and the entity each states.",
+    "In Step 1, identify the turn(s) the question's time qualifier points to and the entity each states.",
     'In Step 2, extract the event, person, object, place, or value the question asks about.',
     'Do NOT count, compute elapsed time, or reorder events. Just report the entity the question asks for.',
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
@@ -1290,11 +1303,78 @@ export function parseQaAnswer(raw: string, abstainToken: string = DEFAULT_ABSTAI
     return null;
   }
   const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|final answer)\s*:\s*(.+?)\s*$/im);
-  const candidate = labelled ? labelled[1]!.trim() : trimmed;
+  const candidate = labelled ? labelled[1]!.trim() : trimNarration(trimmed);
   if (candidate === '' || isAbstentionValue(candidate, abstainToken)) {
     return null;
   }
   return stripWrappingQuotes(candidate);
+}
+
+/**
+ * Longest answer admitted when the model ignored the `Answer:` label. Anything
+ * longer is narration, not an answer: the ground truth of a LongMemEval answer
+ * is a word, a name, a number, or a short phrase.
+ */
+const MAX_UNLABELLED_ANSWER_CHARS = 200;
+
+/**
+ * Safety net for a reply that ignored the CoN output contract and wrote its
+ * Step 1 notes out. The scaffolding lines — step headers, markdown headings,
+ * bullets, ordered items — are dropped so the model's concluding sentence becomes
+ * the answer, and a runaway generation is capped at a sentence boundary.
+ *
+ * The prompt-side contract in `conInstruction` is the actual fix; this only limits
+ * the damage when the model ignores it. Measured on the `7a349da` run it recovers
+ * little: of the 33 leaked responses only 4 contain the ground truth verbatim, and
+ * 3 of those 4 carry it in prose (recoverable here) rather than in the notes.
+ *
+ * When stripping leaves nothing but scaffolding the ORIGINAL (capped) text is
+ * returned rather than abstaining, because the one remaining ground truth does
+ * live inside a bullet. A 200-character cap bounds the cost of that fallback: the
+ * production leak it replaces ran to 33,504 characters of self-talk, which the
+ * judge cannot grade and the diagnostics artifact cannot usefully store.
+ */
+function trimNarration(text: string): string {
+  const prose = text
+    .split(/\r?\n/)
+    .filter((line) => !isNoteLine(line))
+    .join('\n')
+    .trim();
+  // When every line is scaffolding there is no prose to rescue, so fall back to
+  // the capped original rather than answering with nothing.
+  return capNarrationLength(prose === '' ? text : prose);
+}
+
+/** True for a scaffolding line of a chain-of-note narration. */
+function isNoteLine(line: string): boolean {
+  const l = line.trim();
+  return (
+    l !== '' &&
+    (/^\*{0,2}step\s*\d/i.test(l) ||
+      /^#{1,6}\s/.test(l) ||
+      /^[-*•]\s/.test(l) ||
+      /^\d+[.)]\s/.test(l))
+  );
+}
+
+/**
+ * Cut an over-long answer back to its FIRST sentence.
+ *
+ * The first sentence, not the last: a runaway generation restates and then
+ * second-guesses itself (`... the answer is a tie. Alternatively ...`), so the
+ * earliest sentence is the closest thing to an answer the model produced before
+ * it started talking to itself.
+ */
+function capNarrationLength(text: string): string {
+  if (text.length <= MAX_UNLABELLED_ANSWER_CHARS) {
+    return text;
+  }
+  const head = text.slice(0, MAX_UNLABELLED_ANSWER_CHARS);
+  const boundaries = ['. ', '.\n', '? ', '! ']
+    .map((marker) => head.indexOf(marker))
+    .filter((index) => index > 0);
+  const cut = boundaries.length > 0 ? Math.min(...boundaries) : -1;
+  return cut > 0 ? head.slice(0, cut + 1).trim() : head.trim();
 }
 
 /**
