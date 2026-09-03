@@ -20,6 +20,7 @@ import {
   truncateText,
   truncateSession,
   parseQaAnswer,
+  parseRecommendationAnswer,
   parseAggregationAnswer,
   isUserTurn,
   isAssistantTurn,
@@ -386,7 +387,7 @@ describe('buildPreferencePrompt', () => {
     const prompt = buildPreferencePrompt('Can you recommend a show?', 'I like stand-up comedy.');
     expect(prompt).toContain('Work in two steps');
     expect(prompt).toContain('Step 1 — Silently read each turn');
-    expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
+    expect(prompt).toContain('Step 2 — Recommend something concrete');
   });
 
   it('requires the recommendation to name the user-specified options', () => {
@@ -398,6 +399,38 @@ describe('buildPreferencePrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildPreferencePrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+});
+
+describe('recommendation vs extractive answer contract', () => {
+  // Preference questions compose a suggestion from the identified preferences,
+  // so they must NOT inherit the extractive "restate only, in a short phrase"
+  // contract. Measured on LongMemEval-S, that contract pushed abstention on the
+  // 29 single-session-preference questions from 3.45% to 21.84%: the model read
+  // "add nothing" as "there is nothing to say" and abstained.
+  it('frees the preference prompt from the extractive Step 2', () => {
+    const prompt = buildPreferencePrompt('Any tips?', 'ctx');
+    expect(prompt).not.toContain('using ONLY those identified facts');
+    expect(prompt).toContain('builds on those identified preferences');
+  });
+
+  it('frees the preference prompt from the short-phrase reply shape', () => {
+    const prompt = buildPreferencePrompt('Any tips?', 'ctx');
+    expect(prompt).not.toContain('a word, name, number, or short phrase');
+    expect(prompt).toContain('one to three sentences');
+  });
+
+  it.each([
+    ['buildQaPrompt', (q: string, c: string) => buildQaPrompt(q, c)],
+    ['buildTemporalQaPrompt', (q: string, c: string) => buildTemporalQaPrompt(q, c)],
+    [
+      'buildTemporalEventLookupPrompt',
+      (q: string, c: string) => buildTemporalEventLookupPrompt(q, c),
+    ],
+  ])('%s keeps the extractive Step 2 and reply shape untouched', (_name, build) => {
+    const prompt = build('Q?', 'ctx');
+    expect(prompt).toContain('Step 2 — Answer the question using ONLY those identified facts');
+    expect(prompt).toContain('Answer: <a word, name, number, or short phrase>');
   });
 });
 
@@ -662,6 +695,69 @@ describe('parseQaAnswer', () => {
 
   it('recognises an abstention that follows the answer label', () => {
     expect(parseQaAnswer('Step 1 — nothing relevant.\nAnswer: UNANSWERABLE')).toBeNull();
+  });
+});
+
+describe('parseRecommendationAnswer', () => {
+  // A 3-sentence recommendation legitimately exceeds the 200-char extractive cap
+  // but must survive the recommendation parser, whose cap is wide enough for a
+  // short paragraph yet still tight enough to stop a runaway generation.
+  const rec = [
+    'Start with a Sony-compatible flash such as the Godox V1 for your A7R IV.',
+    'Add a Gitzo GT3543LS tripod that carries your 24-70mm f/2.8 lens.',
+    'Finish with an Anker PowerCore 20000 PD battery pack for on-location power.',
+  ].join(' ');
+
+  it('returns the trimmed answer', () => {
+    expect(parseRecommendationAnswer('  Godox V1.  ')).toBe('Godox V1.');
+  });
+
+  it('returns null for the abstention token', () => {
+    expect(parseRecommendationAnswer('UNANSWERABLE')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseRecommendationAnswer('   ')).toBeNull();
+  });
+
+  it('honours a custom abstention token', () => {
+    expect(parseRecommendationAnswer('NONE', 'NONE')).toBeNull();
+  });
+
+  it('strips surrounding quotes', () => {
+    expect(parseRecommendationAnswer('"Godox V1."')).toBe('Godox V1.');
+  });
+
+  it('keeps a multi-sentence recommendation the extractive cap would truncate', () => {
+    expect(rec.length).toBeGreaterThan(200);
+    expect(rec.length).toBeLessThan(400);
+    expect(parseRecommendationAnswer(rec)).toBe(rec);
+    // The extractive parser still truncates the same input at 200 chars, proving
+    // the recommendation parser is the one that widened the cap.
+    expect(parseQaAnswer(rec)).toBe(rec.split('. ')[0] + '.');
+  });
+
+  it('drops step scaffolding before applying the wider cap', () => {
+    const raw = '**Step 1 — preferences:**\n- Sony A7R IV\n- 24-70mm f/2.8 lens\n\n' + rec;
+    expect(parseRecommendationAnswer(raw)).toBe(rec);
+  });
+
+  it('caps a runaway recommendation at its first sentence', () => {
+    const runaway = 'A Sony-compatible flash like the Godox V1 is ideal. '.repeat(100);
+    expect(parseRecommendationAnswer(runaway)).toBe(
+      'A Sony-compatible flash like the Godox V1 is ideal.',
+    );
+  });
+
+  it('hard-caps a boundary-free recommendation at 400 chars', () => {
+    expect(parseRecommendationAnswer('x'.repeat(5000))).toBe('x'.repeat(400));
+  });
+
+  it('prefers the labelled answer over narration', () => {
+    const raw =
+      'Step 1 — notes that should never have been written.\n- bullet\n\n' +
+      'Answer: Godox V1 flash and a Gitzo tripod.';
+    expect(parseRecommendationAnswer(raw)).toBe('Godox V1 flash and a Gitzo tripod.');
   });
 });
 

@@ -362,7 +362,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       hits[0]?.score ?? 0,
       retrieved,
       buildPreferencePrompt,
-      parseQaAnswer,
+      parseRecommendationAnswer,
       expansionQueries,
       this.options.abstainThreshold,
     );
@@ -674,6 +674,53 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
 }
 
 /**
+ * The Step 2 directive, reply shape, and length bound a chain-of-note prompt
+ * commits the model to. The extractive reading prompts (QA and temporal) and the
+ * generative preference prompt share the same two-step skeleton but need
+ * DIFFERENT terminal contracts: an extracted answer is a fact already present in
+ * the context, so the model must restate only what it identified, in a short
+ * phrase; a recommendation is COMPOSED from those facts, so the model must be
+ * allowed to build on them and to answer in a few sentences instead of a single
+ * short phrase.
+ */
+interface AnswerContract {
+  /** The Step 2 directive, placed after the shared silent Step 1. */
+  step2: string;
+  /** The lines pinning the exact shape of the reply. */
+  reply: readonly string[];
+  /** Longest unlabelled answer admitted before the runaway safety net fires. */
+  maxUnlabelledChars: number;
+}
+
+/** Restate an identified fact as a single short phrase. */
+const EXTRACTIVE_CONTRACT: AnswerContract = {
+  step2: 'Step 2 — Answer the question using ONLY those identified facts.',
+  reply: [
+    'Your entire reply is one line in exactly this form, with nothing before or after it:',
+    'Answer: <a word, name, number, or short phrase>',
+  ],
+  maxUnlabelledChars: 200,
+};
+
+/**
+ * Compose a concrete recommendation from the identified preferences. The
+ * extractive contract is wrong for preference questions: their ground truth
+ * reads "the user would prefer responses that build upon ...", so "answer using
+ * ONLY those identified facts" and "a word, name, number, or short phrase" both
+ * tell the model to add nothing, which it reads as having nothing to say and
+ * abstains. Measured on LongMemEval-S, the extractive contract pushed abstention
+ * on the 29 single-session-preference questions from 3.45% to 21.84%.
+ */
+const RECOMMENDATION_CONTRACT: AnswerContract = {
+  step2: 'Step 2 — Recommend something concrete that builds on those identified preferences.',
+  reply: [
+    'Your entire reply is one line in exactly this form, with nothing before or after it:',
+    'Answer: <a specific recommendation, one to three sentences, naming the exact options>',
+  ],
+  maxUnlabelledChars: 400,
+};
+
+/**
  * Chain-of-Note (CoN) instruction shared by the single-session reading prompts.
  * LongMemEval's CP4 control point decomposes long-context reading into two
  * simpler subtasks — first pick out the relevant user details, then reason over
@@ -694,17 +741,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
  *
  * Identifying first still forces the model to re-read each turn for the
  * question's signal before committing, which is what keeps an evidence turn from
- * being buried by semantically-close distractors.
+ * being buried by semantically-close distractors. The extractive contract is the
+ * default; `buildPreferencePrompt` passes the recommendation contract instead.
  */
-function conInstruction(): string[] {
+function conInstruction(contract: AnswerContract = EXTRACTIVE_CONTRACT): string[] {
   return [
     'Work in two steps, but write ONLY the final answer.',
     '',
     "Step 1 — Silently read each turn and identify the user's facts, events, values, or preferences relevant to the question. Keep those notes to yourself; do NOT write them out.",
-    'Step 2 — Answer the question using ONLY those identified facts.',
+    contract.step2,
     '',
-    'Your entire reply is one line in exactly this form, with nothing before or after it:',
-    'Answer: <a word, name, number, or short phrase>',
+    ...contract.reply,
   ];
 }
 
@@ -808,7 +855,7 @@ export function buildPreferencePrompt(
 ): string {
   return [
     'You are answering a recommendation question based on a conversation memory.',
-    ...conInstruction(),
+    ...conInstruction(RECOMMENDATION_CONTRACT),
     '',
     "In Step 1, identify the user's stated preferences, interests, constraints, and dislikes (for example specific brands, products, models, topics, or styles they mention).",
     'In Step 2, produce a CONCRETE, SPECIFIC recommendation or suggestion that directly reflects those preferences.',
@@ -1296,14 +1343,23 @@ export function parseQueryExpansion(raw: string): string[] {
  * labelled line (the canonical final answer) and fall back to the whole response
  * only when no label is present, which keeps the pre-CoN "bare phrase" answers
  * working unchanged.
+ *
+ * `maxUnlabelledChars` bounds the narration safety net. Extractive answers are a
+ * word, a name, a number, or a short phrase, so they get the tight default; a
+ * generative recommendation may run a few sentences and passes a wider bound via
+ * `parseRecommendationAnswer`.
  */
-export function parseQaAnswer(raw: string, abstainToken: string = DEFAULT_ABSTAIN_TOKEN): Answer {
+export function parseQaAnswer(
+  raw: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+  maxUnlabelledChars: number = EXTRACTIVE_CONTRACT.maxUnlabelledChars,
+): Answer {
   const trimmed = raw.trim();
   if (trimmed === '' || isAbstentionValue(trimmed, abstainToken)) {
     return null;
   }
   const labelled = trimmed.match(/(?:^|\n)\s*(?:answer|final answer)\s*:\s*(.+?)\s*$/im);
-  const candidate = labelled ? labelled[1]!.trim() : trimNarration(trimmed);
+  const candidate = labelled ? labelled[1]!.trim() : trimNarration(trimmed, maxUnlabelledChars);
   if (candidate === '' || isAbstentionValue(candidate, abstainToken)) {
     return null;
   }
@@ -1311,11 +1367,18 @@ export function parseQaAnswer(raw: string, abstainToken: string = DEFAULT_ABSTAI
 }
 
 /**
- * Longest answer admitted when the model ignored the `Answer:` label. Anything
- * longer is narration, not an answer: the ground truth of a LongMemEval answer
- * is a word, a name, a number, or a short phrase.
+ * Parse a generative recommendation response. Identical to `parseQaAnswer` except
+ * that the narration safety net admits up to `RECOMMENDATION_CONTRACT`'s wider
+ * bound: a 1–3 sentence recommendation legitimately exceeds the extractive
+ * 200-character cap, and the net exists to stop a runaway generation, not to
+ * truncate a good answer.
  */
-const MAX_UNLABELLED_ANSWER_CHARS = 200;
+export function parseRecommendationAnswer(
+  raw: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): Answer {
+  return parseQaAnswer(raw, abstainToken, RECOMMENDATION_CONTRACT.maxUnlabelledChars);
+}
 
 /**
  * Safety net for a reply that ignored the CoN output contract and wrote its
@@ -1330,11 +1393,11 @@ const MAX_UNLABELLED_ANSWER_CHARS = 200;
  *
  * When stripping leaves nothing but scaffolding the ORIGINAL (capped) text is
  * returned rather than abstaining, because the one remaining ground truth does
- * live inside a bullet. A 200-character cap bounds the cost of that fallback: the
- * production leak it replaces ran to 33,504 characters of self-talk, which the
- * judge cannot grade and the diagnostics artifact cannot usefully store.
+ * live inside a bullet. The cap bounds the cost of that fallback: the production
+ * leak it replaces ran to 33,504 characters of self-talk, which the judge cannot
+ * grade and the diagnostics artifact cannot usefully store.
  */
-function trimNarration(text: string): string {
+function trimNarration(text: string, maxUnlabelledChars: number): string {
   const prose = text
     .split(/\r?\n/)
     .filter((line) => !isNoteLine(line))
@@ -1342,7 +1405,7 @@ function trimNarration(text: string): string {
     .trim();
   // When every line is scaffolding there is no prose to rescue, so fall back to
   // the capped original rather than answering with nothing.
-  return capNarrationLength(prose === '' ? text : prose);
+  return capNarrationLength(prose === '' ? text : prose, maxUnlabelledChars);
 }
 
 /** True for a scaffolding line of a chain-of-note narration. */
@@ -1365,11 +1428,11 @@ function isNoteLine(line: string): boolean {
  * earliest sentence is the closest thing to an answer the model produced before
  * it started talking to itself.
  */
-function capNarrationLength(text: string): string {
-  if (text.length <= MAX_UNLABELLED_ANSWER_CHARS) {
+function capNarrationLength(text: string, maxUnlabelledChars: number): string {
+  if (text.length <= maxUnlabelledChars) {
     return text;
   }
-  const head = text.slice(0, MAX_UNLABELLED_ANSWER_CHARS);
+  const head = text.slice(0, maxUnlabelledChars);
   const boundaries = ['. ', '.\n', '? ', '! ']
     .map((marker) => head.indexOf(marker))
     .filter((index) => index > 0);

@@ -125,6 +125,7 @@ export {
   truncateText,
   truncateSession,
   parseQaAnswer,
+  parseRecommendationAnswer,
   parseAggregationAnswer,
   isUserTurn,
   isAssistantTurn,
