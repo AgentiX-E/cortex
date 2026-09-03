@@ -357,6 +357,59 @@ describe('buildAggregationQaPrompt', () => {
   });
 });
 
+describe('MR aggregation abstention boundary', () => {
+  // Root-caused on LongMemEval-S: 53% of wrong MR answers are LLM abstentions,
+  // and 15 of those 20 have every evidence session already retrieved. The model
+  // sees the facts but abstains on questions whose answer must be DERIVED
+  // (average, percentage, sum, difference, elapsed time) or combined across
+  // sessions. The aggregation prompt must say so explicitly.
+  it('forbids abstaining merely because facts must be combined across sessions', () => {
+    const prompt = buildAggregationQaPrompt('How many X in total?', 'ctx');
+    expect(prompt).toContain('Combining facts across several sessions is NOT a reason to abstain');
+  });
+
+  it('forbids abstaining when the answer must be computed', () => {
+    const prompt = buildAggregationQaPrompt('How much in total?', 'ctx');
+    expect(prompt).toContain('Needing to derive the answer is NOT a reason to abstain');
+  });
+
+  it('names the derivation forms that must be computed, not abstained', () => {
+    const prompt = buildAggregationQaPrompt('What is the average?', 'ctx');
+    expect(prompt).toContain('a sum, a difference, an average, a percentage, an elapsed time');
+    expect(prompt).toContain('a date read from the context');
+    expect(prompt).toContain('compute it');
+  });
+
+  it('keeps the original abstention-token line intact', () => {
+    const prompt = buildAggregationQaPrompt('Q?', 'ctx');
+    expect(prompt).toContain(
+      'Respond with exactly "UNANSWERABLE" ONLY if the context contains no relevant information at all.',
+    );
+  });
+
+  it('keeps the boundary scoped to the aggregation prompt', () => {
+    // The other CoN prompts carry their own, tighter abstention wording; the
+    // multi-session boundary must not leak into them.
+    expect(buildQaPrompt('Q?', 'ctx')).not.toContain(
+      'across several sessions is NOT a reason to abstain',
+    );
+    expect(buildTemporalQaPrompt('Q?', 'ctx')).not.toContain(
+      'across several sessions is NOT a reason to abstain',
+    );
+    expect(buildPreferencePrompt('Q?', 'ctx')).not.toContain(
+      'across several sessions is NOT a reason to abstain',
+    );
+  });
+
+  it('leaves the legacy aggregation baseline untouched', () => {
+    // The legacy prompt is the MR ablation control; changing it would confound
+    // the ablation that measures the CoT prompt's contribution.
+    expect(buildLegacyAggregationQaPrompt('How many X?', 'ctx')).not.toContain(
+      'Needing to derive the answer is NOT a reason to abstain',
+    );
+  });
+});
+
 describe('buildLegacyAggregationQaPrompt', () => {
   it('keeps the pre-CoT inline counting rules without enumeration', () => {
     const prompt = buildLegacyAggregationQaPrompt('How many X?', 'session evidence');

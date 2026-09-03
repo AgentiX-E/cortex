@@ -1117,6 +1117,13 @@ export function buildTemporalEventExtractionPrompt(
  * model does not substitute a related-but-different action (e.g. "participated"
  * for "led"). The enumeration is parsed back into a final answer by
  * `parseAggregationAnswer`.
+ *
+ * The abstention boundary is load-bearing: measured on LongMemEval-S, 53% of the
+ * wrong multi-session answers are LLM abstentions, and 15 of those 20 have every
+ * evidence session already retrieved. The model reads the facts but abstains on
+ * questions whose answer must be DERIVED (an average, percentage, sum,
+ * difference, or elapsed time) or combined across sessions, so the prompt names
+ * those cases and forbids treating them as an abstention.
  */
 export function buildAggregationQaPrompt(
   question: string,
@@ -1145,6 +1152,8 @@ export function buildAggregationQaPrompt(
     '  Answer: <final answer>',
     '',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    'Combining facts across several sessions is NOT a reason to abstain.',
+    'If the answer can be computed from facts already in the context — a sum, a difference, an average, a percentage, an elapsed time, or a date read from the context — compute it. Needing to derive the answer is NOT a reason to abstain.',
     '',
     'Context:',
     context,
