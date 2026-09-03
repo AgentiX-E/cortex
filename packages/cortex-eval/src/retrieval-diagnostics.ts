@@ -7,14 +7,24 @@
  * decision. A separate determinism probe verifies the embedding provider returns
  * stable vectors across repeated calls.
  */
-import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import {
   sessionsToContext,
   turnText,
   type LongMemEvalInstance,
   type LongMemEvalTurn,
 } from './datasets/longmemeval-loader.js';
-import { retrieveTopK, retrieveTopKSessions } from './retrieval.js';
+import {
+  retrieveTopKByQueries,
+  retrieveTopKSessions,
+  retrieveByQueries,
+  type SessionHit,
+} from './retrieval.js';
+import {
+  buildQueryExpansionPrompt,
+  buildMultiSessionQueryExpansionPrompt,
+  parseQueryExpansion,
+} from './natural-language-memory.js';
 
 export type RetrievalDiagnostic = {
   totalQuestions: number;
@@ -74,11 +84,36 @@ export async function checkEmbeddingDeterminism(
   return maxDiff;
 }
 
+/** Options controlling how the recall diagnostics perform retrieval. */
+export type RetrievalDiagnosticOptions = {
+  /**
+   * LLM used to expand the question into concrete retrieval phrases. When
+   * present, the diagnostics mirror the production expanded-query retrieval
+   * (recall over dispersed evidence is the recall the system actually achieves);
+   * when absent, only the bare question is searched.
+   */
+  llm?: LLM;
+};
+
+/** Expand a question into retrieval phrases via the LLM, or [] without one. */
+async function expandDiagnosticQueries(
+  llm: LLM | undefined,
+  question: string,
+  promptBuilder: (question: string) => string,
+): Promise<string[]> {
+  if (!llm) {
+    return [];
+  }
+  const raw = await llm.complete(promptBuilder(question), { temperature: 0 });
+  return parseQueryExpansion(raw);
+}
+
 /** Compute retrieval recall and score distributions over answerable questions. */
 export async function computeRetrievalDiagnostics(
   instances: readonly LongMemEvalInstance[],
   embedding: EmbeddingModel,
   topK = 5,
+  options: RetrievalDiagnosticOptions = {},
 ): Promise<RetrievalDiagnostic> {
   const hitScores: number[] = [];
   const missScores: number[] = [];
@@ -112,7 +147,11 @@ export async function computeRetrievalDiagnostics(
     }
     answerable++;
 
-    const hits = await retrieveTopK(embedding, inst.question, context, topK);
+    const queries = [
+      inst.question,
+      ...(await expandDiagnosticQueries(options.llm, inst.question, buildQueryExpansionPrompt)),
+    ];
+    const hits = await retrieveTopKByQueries(embedding, queries, context, topK);
     const top1 = hits[0];
     const hitAt1 = top1 !== undefined && answerTexts.has(top1.text);
     const hitAtK = hits.some((h) => answerTexts.has(h.text));
@@ -165,6 +204,7 @@ export async function computeSessionRetrievalDiagnostics(
   instances: readonly LongMemEvalInstance[],
   embedding: EmbeddingModel,
   topK = 5,
+  options: RetrievalDiagnosticOptions = {},
 ): Promise<SessionRetrievalDiagnostic> {
   const hitScores: number[] = [];
   const missScores: number[] = [];
@@ -192,7 +232,26 @@ export async function computeSessionRetrievalDiagnostics(
     }
     answerable++;
 
-    const hits = await retrieveTopKSessions(embedding, inst.question, sessions, topK);
+    const baseHits = await retrieveTopKSessions(embedding, inst.question, sessions, topK);
+    const expansionQueries = await expandDiagnosticQueries(
+      options.llm,
+      inst.question,
+      buildMultiSessionQueryExpansionPrompt,
+    );
+    const expandedHits =
+      expansionQueries.length > 0
+        ? await retrieveByQueries(embedding, expansionQueries, sessions, topK)
+        : [];
+    // Merge base and expanded hits by session id, keeping the highest score —
+    // the same merge the production multi-session path performs.
+    const merged = new Map<string, SessionHit>();
+    for (const hit of [...baseHits, ...expandedHits]) {
+      const existing = merged.get(hit.id);
+      if (!existing || hit.score > existing.score) {
+        merged.set(hit.id, hit);
+      }
+    }
+    const hits = [...merged.values()].sort((a, b) => b.score - a.score);
     const top1 = hits[0];
     const hitAt1 = top1 !== undefined && answerSessionIndices.has(top1.sessionIndex);
     const hitAtK = hits.some((h) => answerSessionIndices.has(h.sessionIndex));

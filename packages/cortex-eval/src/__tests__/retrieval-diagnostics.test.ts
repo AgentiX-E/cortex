@@ -148,6 +148,35 @@ describe('computeRetrievalDiagnostics', () => {
     expect(embedded.some((t) => t.includes('assistant:'))).toBe(false);
     expect(embedded.some((t) => t.includes('My favorite color is blue'))).toBe(true);
   });
+
+  it('expands the question and searches the expansion phrases when an LLM is provided', async () => {
+    const embedded: string[] = [];
+    const recording: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        embedded.push(...texts);
+        return texts.map(() => new Float64Array([0, 0, 0, 0]));
+      },
+    };
+    const llm = {
+      complete: async () => 'blue paint\nfavorite color',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    clearEmbeddingCache();
+    const instance: LongMemEvalInstance = {
+      question_id: 'q1',
+      question_type: 'single-session-user',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [
+        [{ role: 'user', content: 'My favorite color is blue.', has_answer: true }],
+      ],
+    };
+    await computeRetrievalDiagnostics([instance], recording, 5, { llm });
+    // The expansion phrases must be embedded as retrieval queries.
+    expect(embedded.some((t) => t === 'blue paint')).toBe(true);
+    expect(embedded.some((t) => t === 'favorite color')).toBe(true);
+  });
 });
 
 describe('computeSessionRetrievalDiagnostics', () => {
@@ -259,5 +288,32 @@ describe('computeSessionRetrievalDiagnostics', () => {
     await computeSessionRetrievalDiagnostics([instance], recording, 5);
     expect(embedded.some((t) => t.includes('assistant:'))).toBe(false);
     expect(embedded.some((t) => t.includes('I mentioned the trip'))).toBe(true);
+  });
+
+  it('expands the question and searches the expansion phrases when an LLM is provided', async () => {
+    const embedded: string[] = [];
+    const recording: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        embedded.push(...texts);
+        return texts.map(() => new Float64Array([0, 0, 0, 0]));
+      },
+    };
+    const llm = {
+      complete: async () => 'the trip\nvacation',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    clearEmbeddingCache();
+    const instance: LongMemEvalInstance = {
+      question_id: 'q1',
+      question_type: 'multi-session',
+      question: 'What did I mention?',
+      answer: 'x',
+      haystack_sessions: [[{ role: 'user', content: 'I mentioned the trip.', has_answer: true }]],
+    };
+    await computeSessionRetrievalDiagnostics([instance], recording, 5, { llm });
+    // The expansion phrases must be embedded as retrieval queries.
+    expect(embedded.some((t) => t === 'the trip')).toBe(true);
+    expect(embedded.some((t) => t === 'vacation')).toBe(true);
   });
 });

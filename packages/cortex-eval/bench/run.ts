@@ -119,11 +119,13 @@ async function main(): Promise<void> {
     diagnosticsSample as never,
     embedding,
     5,
+    { llm },
   );
   const sessionDiagnostics = await computeSessionRetrievalDiagnostics(
     diagnosticsSample as never,
     embedding,
     5,
+    { llm },
   );
   const diagnosticsWithDeterminism = {
     ...turnDiagnostics,
