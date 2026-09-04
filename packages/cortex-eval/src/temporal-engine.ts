@@ -63,6 +63,30 @@ export function classifyTemporalQuestion(question: string): TemporalKind {
 }
 
 /**
+ * True when a relative-time question names a SECOND event to measure to.
+ *
+ * "How many days had passed since I started ukulele lessons when I took my
+ * guitar to the tech?" asks for the span between the two events; the question
+ * date is not a term of that question at all. `computeTemporalAnswer` measured
+ * every relative question from the first event to the question date, so it
+ * answered 59 where the gold is 24 — identically on all four benchmark runs,
+ * because the computation is deterministic rather than sampled.
+ *
+ * Measured over the 25 relative questions of LongMemEval-S: 18 of 19
+ * single-event questions answered correctly, and 0 of 6 two-event ones.
+ *
+ * The match requires the `when` clause to introduce a subject ("when I …",
+ * "when the …"). A bare "when it was on sale" describes the one event rather
+ * than naming another, and a false positive would move a WORKING question off
+ * the question-date path, so the predicate errs toward false negatives: a false
+ * negative leaves an already-failing question as it is, a false positive breaks
+ * one that works.
+ */
+export function hasSecondEventReference(question: string): boolean {
+  return /\bwhen\s+(?:I|we|you|he|she|they|the|my|our|his|her|their|a|an)\b/i.test(question);
+}
+
+/**
  * Extract the leading `YYYY/MM/DD` from a date string that may carry a
  * weekday/time suffix (e.g. `2023/02/01 (Wed) 10:20`) or a turn prefix
  * (e.g. `[2023/03/04 (Sat) 22:43]`). Returns `''` when no date is present.
@@ -235,6 +259,18 @@ export function computeTemporalAnswer(
 
   switch (kind) {
     case 'relative': {
+      // A relative question that names a second event measures BETWEEN the two
+      // events, not from the first event to the question date. Measuring to the
+      // question date answered 0 of those 6 questions in LongMemEval-S, while
+      // answering 18 of the 19 that name only one event.
+      if (hasSecondEventReference(question)) {
+        if (normalized.length < 2) {
+          return null;
+        }
+        return String(
+          intervalValue(normalized[0]!.date, normalized[1]!.date, relativeUnit(question)),
+        );
+      }
       const reference = normalizeDate(questionDate);
       if (!isValidDate(reference)) {
         return null;

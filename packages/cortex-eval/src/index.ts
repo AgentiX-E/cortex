@@ -139,6 +139,7 @@ export {
 export { isTemporalQuestion, extractDate, daysBetween } from './temporal.js';
 export {
   classifyTemporalQuestion,
+  hasSecondEventReference,
   normalizeDate,
   isValidDate,
   parseRelativeOffset,

@@ -9,6 +9,7 @@ import {
   intervalDays,
   orderByDate,
   computeTemporalAnswer,
+  hasSecondEventReference,
   parseRelativeOffset,
   resolveTemporalDate,
   type TemporalKind,
@@ -545,6 +546,339 @@ describe('computeTemporalAnswer', () => {
         { name: 'b', date: '2023/02/01' },
       ]);
       expect(result === null || typeof result === 'string').toBe(true);
+    }
+  });
+});
+
+/**
+ * A `relative` question can name TWO events:
+ * "How many days had passed since I started ukulele lessons WHEN I took my
+ * guitar to the tech?". That question asks for the span between the two events,
+ * not from the first event to the question date — but `computeTemporalAnswer`
+ * measured every relative question against the question date, so it answered 59
+ * where the gold is 24.
+ *
+ * Measured on LongMemEval-S (4 runs, 127 TR questions) the split is stark:
+ * 18 of 19 single-event relative questions are answered correctly, and 0 of 6
+ * two-event ones, with all four runs identical because the computation is
+ * deterministic rather than sampled.
+ *
+ * The fixtures below replay those production runs exactly. They were
+ * reconstructed from the observed answer and the gold —
+ *   answer = elapsed(A -> questionDate)  =>  A = questionDate - answer
+ *   gold   = elapsed(A -> B)             =>  B = A + gold
+ * — and every date was verified against the shipped engine before being written
+ * here, so each test is a real failure and not an invented one.
+ */
+describe('hasSecondEventReference', () => {
+  it.each([
+    "How many days ago did I attend a baking class at a local culinary school when I made my friend's birthday cake?",
+    "How many days had passed since I finished reading 'The Seven Husbands of Evelyn Hugo' when I attended the book reading event at the local library, where the author of 'The Silent Patient' is discussing her latest thriller novel?",
+    'How many days had passed since I started taking ukulele lessons when I decided to take my acoustic guitar to the guitar tech for servicing?',
+    'How many weeks had passed since I recovered from the flu when I went on my 10th jog outdoors?',
+    'How many days ago did I launch my website when I signed a contract with my first client?',
+    'How many days had passed since I bought my Adidas running shoes when I realized one of the shoelaces on my old Converse sneakers had broken?',
+  ])('detects the second event of a two-event relative question: %s', (question) => {
+    // All six of these scored 0/4 in production: they are the population the
+    // fix targets, and every one of them must be detected.
+    expect(hasSecondEventReference(question)).toBe(true);
+  });
+
+  it.each([
+    'How many weeks ago did I meet up with my aunt and receive the crystal chandelier?',
+    'How many months have passed since I participated in two charity events in a row, on consecutive days?',
+    'How many months have passed since I last visited a museum with a friend?',
+    'How many weeks ago did I attend the friends and family sale at Nordstrom?',
+    'How many days ago did I attend the Maundy Thursday service at the Episcopal Church?',
+    "How many weeks ago did I start using the cashback app 'Ibotta'?",
+    'How many months ago did I attend the Seattle International Film Festival?',
+    'How many days ago did I buy a smoker?',
+    'How many days ago did I meet Emma?',
+    'How many days ago did I attend a networking event?',
+    'How many weeks ago did I attend a bird watching workshop at the local Audubon society?',
+    'How many months ago did I attend the photography workshop?',
+    'How many days ago did I watch the Super Bowl?',
+    'How many days ago did I go on a whitewater rafting trip in the Oregon mountains?',
+    'How many days ago did I harvest my first batch of fresh herbs from the herb garden kit?',
+    "How many weeks ago did I attend the 'Summer Nights' festival at Universal Studios Hollywood?",
+    'How many days ago did I participate in the 5K charity run?',
+    'How many days ago did I read the March 15th issue of The New Yorker?',
+    'How many months ago did I book the Airbnb in San Francisco?',
+  ])('leaves a single-event relative question alone: %s', (question) => {
+    // These 19 are answered correctly (18 of 19 in production), so a false
+    // positive here would move them OFF a path that already works.
+    expect(hasSecondEventReference(question)).toBe(false);
+  });
+
+  it('ignores a leading "when" that opens the question instead of joining two events', () => {
+    // "When did I submit the paper?" names one event; the `when` is the
+    // question word, not a clause introducing a second event.
+    expect(hasSecondEventReference('When did I submit my research paper?')).toBe(false);
+  });
+
+  it('ignores a "when it …" clause, where "it" is pleonastic rather than an event', () => {
+    // "when it was on sale" describes the sale, it does not name a second event
+    // to measure to. Missing such a clause keeps the question on the
+    // question-date path, which is right 94.7% of the time, so the predicate
+    // errs toward false NEGATIVES: a false positive would break a working path,
+    // a false negative only leaves an already-failing one as it is.
+    expect(
+      hasSecondEventReference('How many days ago did I buy the sofa when it was on sale?'),
+    ).toBe(false);
+  });
+
+  it('matches regardless of case', () => {
+    expect(
+      hasSecondEventReference('How many days ago did I launch my website WHEN I signed it?'),
+    ).toBe(true);
+  });
+
+  it('does not fire on a question with no "when" clause at all', () => {
+    expect(hasSecondEventReference('How many days ago did I buy a smoker?')).toBe(false);
+    expect(hasSecondEventReference('Which came first, X or Y?')).toBe(false);
+  });
+});
+
+describe('computeTemporalAnswer — relative questions that name a second event', () => {
+  /** The five production failures whose reconstruction is self-consistent. */
+  const CASES = [
+    {
+      label: 'finished reading a novel',
+      question:
+        "How many days had passed since I finished reading 'The Seven Husbands of Evelyn Hugo' when I attended the book reading event at the local library, where the author of 'The Silent Patient' is discussing her latest thriller novel?",
+      questionDate: '2023/02/10 (Fri) 18:44',
+      events: [
+        { name: "finished reading 'The Seven Husbands of Evelyn Hugo'", date: '2022/12/28' },
+        { name: 'attended the book reading event at the local library', date: '2023/01/15' },
+      ],
+      wrong: '44',
+      gold: '18',
+    },
+    {
+      label: 'started ukulele lessons',
+      question:
+        'How many days had passed since I started taking ukulele lessons when I decided to take my acoustic guitar to the guitar tech for servicing?',
+      questionDate: '2023/04/01 (Sat) 00:42',
+      events: [
+        { name: 'started taking ukulele lessons', date: '2023/02/01' },
+        { name: 'took my acoustic guitar to the guitar tech', date: '2023/02/25' },
+      ],
+      wrong: '59',
+      gold: '24',
+    },
+    {
+      label: 'recovered from the flu',
+      question:
+        'How many weeks had passed since I recovered from the flu when I went on my 10th jog outdoors?',
+      questionDate: '2023/10/15 (Sun) 17:53',
+      events: [
+        { name: 'recovered from the flu', date: '2023/01/22' },
+        { name: 'went on my 10th jog outdoors', date: '2023/05/07' },
+      ],
+      wrong: '38',
+      gold: '15',
+    },
+    {
+      label: 'launched my website',
+      question:
+        'How many days ago did I launch my website when I signed a contract with my first client?',
+      questionDate: '2023/03/25 (Sat) 19:57',
+      events: [
+        { name: 'launched my website', date: '2023/03/01' },
+        { name: 'signed a contract with my first client', date: '2023/03/20' },
+      ],
+      wrong: '24',
+      gold: '19',
+    },
+    {
+      label: 'bought running shoes',
+      question:
+        'How many days had passed since I bought my Adidas running shoes when I realized one of the shoelaces on my old Converse sneakers had broken?',
+      questionDate: '2023/02/03 (Fri) 17:43',
+      events: [
+        { name: 'bought my Adidas running shoes', date: '2023/01/10' },
+        { name: 'realized a shoelace on my Converse had broken', date: '2023/01/24' },
+      ],
+      wrong: '24',
+      gold: '14',
+    },
+  ];
+
+  it.each(CASES)('measures between the two events, not to the question date: $label', (c) => {
+    expect(computeTemporalAnswer(c.question, 'relative', c.questionDate, c.events)).toBe(c.gold);
+  });
+
+  it.each(CASES)('is independent of the order the events were extracted in: $label', (c) => {
+    // The extraction lists events in whatever order the model produced them, so
+    // the answer must not depend on that order.
+    const reversed = [c.events[1]!, c.events[0]!];
+    expect(computeTemporalAnswer(c.question, 'relative', c.questionDate, reversed)).toBe(c.gold);
+  });
+
+  it.each(CASES)('ignores the question date entirely: $label', (c) => {
+    // The bug was that the question date was the reference; moving it far away
+    // must not change a two-event answer at all.
+    const moved = computeTemporalAnswer(c.question, 'relative', '2019/01/01', c.events);
+    expect(moved).toBe(c.gold);
+  });
+
+  it('returns null when only one event was extracted', () => {
+    // A two-event question with one event cannot be computed. Falling back to
+    // the LLM prompt is better than emitting a number that measures to the
+    // wrong reference by construction.
+    expect(
+      computeTemporalAnswer(
+        'How many days had passed since I started ukulele lessons when I took my guitar in?',
+        'relative',
+        '2023/04/01',
+        [{ name: 'started taking ukulele lessons', date: '2023/02/01' }],
+      ),
+    ).toBeNull();
+  });
+
+  it('returns null when the second event has an unusable date', () => {
+    expect(
+      computeTemporalAnswer(
+        'How many days had passed since I started ukulele lessons when I took my guitar in?',
+        'relative',
+        '2023/04/01',
+        [
+          { name: 'started taking ukulele lessons', date: '2023/02/01' },
+          { name: 'took my guitar in', date: 'sometime in March' },
+        ],
+      ),
+    ).toBeNull();
+  });
+
+  it('measures two-event spans in months when the question asks for months', () => {
+    expect(
+      computeTemporalAnswer(
+        'How many months had passed since I joined the gym when I ran my first marathon?',
+        'relative',
+        '2023/12/31',
+        [
+          { name: 'joined the gym', date: '2023/01/15' },
+          { name: 'ran my first marathon', date: '2023/04/15' },
+        ],
+      ),
+    ).toBe('3');
+  });
+
+  it('keeps measuring single-event relative questions to the question date', () => {
+    // The regression guard proper: the 19 questions below are answered
+    // correctly today and must keep the exact same value after the fix.
+    const cases: [question: string, questionDate: string, eventDate: string, gold: string][] = [
+      [
+        'How many weeks ago did I meet up with my aunt and receive the crystal chandelier?',
+        '2023/04/01 (Sat) 08:09',
+        '2023/03/04',
+        '4',
+      ],
+      [
+        'How many months have passed since I participated in two charity events in a row, on consecutive days?',
+        '2023/04/18 (Tue) 03:31',
+        '2023/02/18',
+        '2',
+      ],
+      [
+        'How many months have passed since I last visited a museum with a friend?',
+        '2023/03/25 (Sat) 17:18',
+        '2022/10/25',
+        '5',
+      ],
+      [
+        'How many weeks ago did I attend the friends and family sale at Nordstrom?',
+        '2022/12/01 (Thu) 21:26',
+        '2022/11/17',
+        '2',
+      ],
+      [
+        'How many days ago did I attend the Maundy Thursday service at the Episcopal Church?',
+        '2023/04/10 (Mon) 10:28',
+        '2023/04/06',
+        '4',
+      ],
+      [
+        "How many weeks ago did I start using the cashback app 'Ibotta'?",
+        '2023/05/06 (Sat) 09:18',
+        '2023/04/15',
+        '3',
+      ],
+      [
+        'How many months ago did I attend the Seattle International Film Festival?',
+        '2021/10/02 (Sat) 03:56',
+        '2021/06/02',
+        '4',
+      ],
+      ['How many days ago did I buy a smoker?', '2023/03/25 (Sat) 02:46', '2023/03/15', '10'],
+      ['How many days ago did I meet Emma?', '2023/04/20 (Thu) 10:12', '2023/04/11', '9'],
+      [
+        'How many days ago did I attend a networking event?',
+        '2022/04/04 (Mon) 21:03',
+        '2022/03/09',
+        '26',
+      ],
+      [
+        'How many weeks ago did I attend a bird watching workshop at the local Audubon society?',
+        '2023/05/01 (Mon) 23:16',
+        '2023/04/03',
+        '4',
+      ],
+      [
+        'How many months ago did I attend the photography workshop?',
+        '2024/02/01 (Thu) 18:06',
+        '2023/11/01',
+        '3',
+      ],
+      [
+        'How many days ago did I watch the Super Bowl?',
+        '2023/03/01 (Wed) 19:28',
+        '2023/02/12',
+        '17',
+      ],
+      [
+        'How many days ago did I go on a whitewater rafting trip in the Oregon mountains?',
+        '2023/06/20 (Tue) 16:30',
+        '2023/06/17',
+        '3',
+      ],
+      [
+        'How many days ago did I harvest my first batch of fresh herbs from the herb garden kit?',
+        '2023/04/18 (Tue) 01:48',
+        '2023/04/15',
+        '3',
+      ],
+      [
+        "How many weeks ago did I attend the 'Summer Nights' festival at Universal Studios Hollywood?",
+        '2023/08/05 (Sat) 08:21',
+        '2023/07/15',
+        '3',
+      ],
+      [
+        'How many days ago did I participate in the 5K charity run?',
+        '2023/03/26 (Sun) 04:13',
+        '2023/03/19',
+        '7',
+      ],
+      [
+        'How many days ago did I read the March 15th issue of The New Yorker?',
+        '2023/04/01 (Sat) 08:36',
+        '2023/03/20',
+        '12',
+      ],
+      [
+        'How many months ago did I book the Airbnb in San Francisco?',
+        '2023/05/21 (Sun) 10:30',
+        '2022/12/21',
+        '5',
+      ],
+    ];
+    for (const [question, questionDate, eventDate, gold] of cases) {
+      expect(
+        computeTemporalAnswer(question, 'relative', questionDate, [
+          { name: 'the event', date: eventDate },
+        ]),
+      ).toBe(gold);
     }
   });
 });
