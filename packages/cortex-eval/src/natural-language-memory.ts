@@ -513,11 +513,21 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n'),
       this.options.maxAggregationChars ?? DEFAULT_MAX_AGGREGATION_CHARS,
     );
+    // A derivation question (percentage/average/difference/min-max) needs a
+    // prompt that identifies operands, not one that enumerates items; the
+    // enumeration framing makes the model look for items to list, find none,
+    // and abstain. Only the default path routes this way — a custom
+    // `aggregationPrompt` (the MR ablation) must be used verbatim.
+    const promptBuilder =
+      this.options.aggregationPrompt === undefined &&
+      classifyAggregationKind(question) === 'derivation'
+        ? buildDerivationQaPrompt
+        : (this.options.aggregationPrompt ?? buildAggregationQaPrompt);
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
       retrieved,
-      this.options.aggregationPrompt ?? buildAggregationQaPrompt,
+      promptBuilder,
       parseAggregationAnswer,
       expansionQueries,
       this.options.sessionAbstainThreshold,
@@ -1154,6 +1164,75 @@ export function buildAggregationQaPrompt(
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     'Combining facts across several sessions is NOT a reason to abstain.',
     'If the answer can be computed from facts already in the context — a sum, a difference, an average, a percentage, an elapsed time, or a date read from the context — compute it. Needing to derive the answer is NOT a reason to abstain.',
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+    '',
+    'Answer:',
+  ].join('\n');
+}
+
+/**
+ * How a multi-session question should be answered. Enumeration questions ask
+ * the model to list every matching item and count/sum them; derivation questions
+ * ask it to compute a value (a percentage, average, difference, min/max) from a
+ * few specific numbers. They need different prompts: "enumerate every item" is
+ * wrong for a derivation question, where the model then looks for items to list,
+ * finds none, and abstains.
+ */
+export type AggregationKind = 'derivation' | 'enumeration';
+
+/** Decide which aggregation prompt a multi-session question should use. */
+export function classifyAggregationKind(question: string): AggregationKind {
+  if (
+    /\b(percentage|percent|average|mean|difference (?:in|between)|how much (?:more|less|faster|earlier|older)|increase in|decrease in|discount|cashback|minimum|maximum|how old was)\b/i.test(
+      question,
+    )
+  ) {
+    return 'derivation';
+  }
+  return 'enumeration';
+}
+
+/**
+ * Build a multi-session derivation prompt for questions whose answer is a value
+ * computed from specific numbers (a percentage, average, difference, or
+ * min/max) rather than an enumeration. It mirrors the aggregation prompt's
+ * two-step CoN skeleton and abstention boundary, but Step 1 asks the model to
+ * identify the OPERANDS (the few numbers the question compares or combines)
+ * instead of enumerating items, and Step 2 spells out the arithmetic the
+ * question implies.
+ */
+export function buildDerivationQaPrompt(
+  question: string,
+  context: string,
+  abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+): string {
+  return [
+    'You are answering a question based on MULTIPLE conversation sessions.',
+    'The answer is a value COMPUTED from specific numbers in the context.',
+    'Read ALL context carefully.',
+    '',
+    'Work in two steps.',
+    '',
+    'Step 1 — Identify the specific numbers the question needs, one per line:',
+    '  - <what the number means> | <the number>',
+    '  - Identify ONLY the numbers this question compares or combines; ignore unrelated amounts, dates, and counts.',
+    '',
+    'Step 2 — Compute the final answer from those identified numbers:',
+    '  - "what percentage" → part ÷ whole × 100.',
+    '  - "average" → sum of the values ÷ number of values.',
+    '  - "how much more/older/faster/earlier" → larger − smaller.',
+    '  - "minimum/maximum" → the smallest/largest identified value.',
+    '  - "discount/cashback" → the percentage or amount the context states.',
+    'End your response with a single line in the exact form:',
+    '  Answer: <final answer>',
+    '',
+    `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
+    'Combining facts across several sessions is NOT a reason to abstain.',
+    'If the answer can be computed from numbers already in the context, compute it. Needing to derive the answer is NOT a reason to abstain.',
     '',
     'Context:',
     context,

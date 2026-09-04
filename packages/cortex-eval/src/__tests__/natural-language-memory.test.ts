@@ -9,6 +9,8 @@ import {
   buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
+  buildDerivationQaPrompt,
+  classifyAggregationKind,
   buildPreferencePrompt,
   buildKnowledgeUpdatePrompt,
   buildFactExtractionPrompt,
@@ -424,6 +426,57 @@ describe('buildLegacyAggregationQaPrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildLegacyAggregationQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+});
+
+describe('classifyAggregationKind', () => {
+  it('routes derivation questions (compute a value from specific numbers)', () => {
+    expect(classifyAggregationKind('What percentage of packed shoes did I wear?')).toBe(
+      'derivation',
+    );
+    expect(classifyAggregationKind('What is the average age of my family?')).toBe('derivation');
+    expect(classifyAggregationKind('How much older am I than the average?')).toBe('derivation');
+    expect(classifyAggregationKind('What is the difference in price between the two?')).toBe(
+      'derivation',
+    );
+    expect(classifyAggregationKind('What is the minimum amount I could get?')).toBe('derivation');
+    expect(classifyAggregationKind('How old was I when Alex was born?')).toBe('derivation');
+  });
+
+  it('keeps enumeration questions (count / sum / temporal) on the aggregation prompt', () => {
+    expect(classifyAggregationKind('How many items of clothing do I need?')).toBe('enumeration');
+    expect(classifyAggregationKind('How much money in total did I spend?')).toBe('enumeration');
+    expect(classifyAggregationKind('What time did I go to bed?')).toBe('enumeration');
+  });
+});
+
+describe('buildDerivationQaPrompt', () => {
+  it('identifies specific numbers instead of enumerating items', () => {
+    const prompt = buildDerivationQaPrompt('What percentage did I wear?', 'ctx');
+    expect(prompt).toContain('Identify the specific numbers');
+    expect(prompt).not.toContain('Enumerate every item');
+  });
+
+  it('names the derivation formulas', () => {
+    const prompt = buildDerivationQaPrompt('What is the average?', 'ctx');
+    expect(prompt).toContain('part ÷ whole × 100');
+    expect(prompt).toContain('sum of the values ÷ number of values');
+    expect(prompt).toContain('larger − smaller');
+  });
+
+  it('carries the multi-session abstention boundary', () => {
+    const prompt = buildDerivationQaPrompt('Q?', 'ctx');
+    expect(prompt).toContain('Combining facts across several sessions is NOT a reason to abstain');
+    expect(prompt).toContain('Needing to derive the answer is NOT a reason to abstain');
+  });
+
+  it('accepts a custom abstention token', () => {
+    const prompt = buildDerivationQaPrompt('Q?', 'ctx', 'NONE');
+    expect(prompt).toContain('NONE');
+  });
+
+  it('leaves the enumeration aggregation prompt untouched', () => {
+    expect(buildAggregationQaPrompt('Q?', 'ctx')).not.toContain('Identify the specific numbers');
   });
 });
 
@@ -1915,6 +1968,54 @@ describe('NaturalLanguageMemorySystem', () => {
       const aggregationPrompt = prompts[prompts.length - 1]!;
       expect(aggregationPrompt).toContain('CUSTOM AGGREGATION MARKER');
       expect(aggregationPrompt).not.toContain('Step 1 — Enumerate');
+    });
+
+    it('routes derivation questions to the derivation prompt', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) {
+            return 'packed shoes';
+          }
+          return '40%';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions('What percentage of packed shoes did I wear?', [
+        ['I packed 5 pairs of shoes and wore 2.'],
+      ]);
+      expect(answer).toBe('40%');
+      const finalPrompt = prompts[prompts.length - 1]!;
+      expect(finalPrompt).toContain('Identify the specific numbers');
+      expect(finalPrompt).not.toContain('Step 1 — Enumerate');
+    });
+
+    it('never overrides a custom aggregation prompt for derivation questions', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) {
+            return 'packed shoes';
+          }
+          return prompt.includes('CUSTOM AGGREGATION MARKER') ? '40%' : 'UNANSWERABLE';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        aggregationPrompt: (q, ctx) => `CUSTOM AGGREGATION MARKER\nQuestion: ${q}\n${ctx}`,
+      });
+      const answer = await system.answerSessions('What percentage of packed shoes did I wear?', [
+        ['I packed 5 pairs of shoes and wore 2.'],
+      ]);
+      expect(answer).toBe('40%');
+      const finalPrompt = prompts[prompts.length - 1]!;
+      expect(finalPrompt).toContain('CUSTOM AGGREGATION MARKER');
+      expect(finalPrompt).not.toContain('Identify the specific numbers');
     });
   });
 });

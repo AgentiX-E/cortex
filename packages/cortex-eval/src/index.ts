@@ -115,6 +115,8 @@ export {
   buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
+  buildDerivationQaPrompt,
+  classifyAggregationKind,
   buildPreferencePrompt,
   buildKnowledgeUpdatePrompt,
   buildFactExtractionPrompt,
