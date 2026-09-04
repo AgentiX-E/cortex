@@ -13,6 +13,7 @@ import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
   expandContextWindow,
   retrieveByQueries,
+  retrieveSessionsByTurns,
   retrieveTopKByQueries,
   retrieveTopKByQueriesHybrid,
   retrieveTopKSessions,
@@ -78,6 +79,26 @@ export type NaturalLanguageMemorySystemOptions = {
   queryExpansionCache?: Map<string, string[]>;
   /** Top sessions recalled per expansion phrase (default 3). */
   queryExpansionTopKPerQuery?: number;
+  /**
+   * Extra sessions the turn-level recall channel may ADD to the multi-session
+   * (MR) result; 0 disables the channel (default 3).
+   *
+   * A session is normally represented by the mean of its turn vectors, so a
+   * short evidence turn buried in a long session is diluted out of the top-k.
+   * The turn channel scores turns individually and admits the best sessions it
+   * found that the centroid channel did not. See `retrieveSessionsByTurns`.
+   */
+  turnRecallSessions?: number;
+  /**
+   * Turns retrieved per query by the turn-level recall channel (default 50).
+   *
+   * A search scores every indexed turn regardless of this number — it only caps
+   * how many are returned — so a deeper search is free. Depth matters because
+   * the already-retrieved sessions' turns occupy the very top of the ranking; a
+   * shallow search would return only sessions already in hand, leaving the
+   * channel nothing to add.
+   */
+  turnRecallTurnsPerQuery?: number;
   /** Abstain before calling the LLM when the best similarity is below this value. */
   abstainThreshold?: number;
   /**
@@ -130,6 +151,8 @@ const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 const DEFAULT_MAX_TURN_CHARS = 2000;
 const DEFAULT_MAX_AGGREGATION_CHARS = 20_000;
+const DEFAULT_TURN_RECALL_SESSIONS = 3;
+const DEFAULT_TURN_RECALL_TURNS_PER_QUERY = 50;
 
 /** Structured output schema for the temporal event-extraction prompt. */
 const TEMPORAL_EVENTS_SCHEMA: JsonSchema = {
@@ -545,35 +568,56 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessions,
       sessionTopK,
     );
+    const merged = new Map<string, SessionHit>();
+    for (const hit of baseHits) {
+      merged.set(hit.id, hit);
+    }
 
     const expansionQueries = await this.expandQuestion(
       question,
       buildMultiSessionQueryExpansionPrompt,
     );
-    if (expansionQueries.length === 0) {
-      return { hits: baseHits, expansionQueries: [] };
-    }
-
-    const perQueryK = this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K;
-    const expandedHits = await retrieveByQueries(
-      this.options.embedding,
-      expansionQueries,
-      sessions,
-      perQueryK,
-    );
-
-    // Merge base and expanded hits, keeping the highest score per session.
-    const merged = new Map<string, SessionHit>();
-    for (const hit of [...baseHits, ...expandedHits]) {
-      const existing = merged.get(hit.id);
-      if (!existing || hit.score > existing.score) {
-        merged.set(hit.id, hit);
+    if (expansionQueries.length > 0) {
+      const perQueryK = this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K;
+      const expandedHits = await retrieveByQueries(
+        this.options.embedding,
+        expansionQueries,
+        sessions,
+        perQueryK,
+      );
+      // Merge base and expanded hits, keeping the highest score per session.
+      for (const hit of expandedHits) {
+        const existing = merged.get(hit.id);
+        if (!existing || hit.score > existing.score) {
+          merged.set(hit.id, hit);
+        }
       }
     }
-    return {
-      hits: [...merged.values()].sort((a, b) => b.score - a.score),
-      expansionQueries,
-    };
+    const hits = [...merged.values()].sort((a, b) => b.score - a.score);
+
+    // Turn-level recall runs last and only ADDS sessions. Two properties make
+    // this a clean, low-risk channel:
+    //   1. Sessions already in hand are excluded before the cap, so the few
+    //      slots this channel owns are never spent on duplicates.
+    //   2. New sessions are APPENDED rather than merged by score. Turn cosines
+    //      are systematically higher than centroid cosines, so re-sorting would
+    //      promote an added session to hits[0] and silently move the abstention
+    //      signal. Appending keeps hits[0] — and therefore abstention — exactly
+    //      as the centroid channel produced it, so an A/B isolates the effect of
+    //      the extra evidence instead of conflating it with a threshold shift.
+    const turnRecall = this.options.turnRecallSessions ?? DEFAULT_TURN_RECALL_SESSIONS;
+    if (turnRecall > 0) {
+      const turnHits = await retrieveSessionsByTurns(
+        this.options.embedding,
+        [question, ...expansionQueries],
+        sessions,
+        this.options.turnRecallTurnsPerQuery ?? DEFAULT_TURN_RECALL_TURNS_PER_QUERY,
+        turnRecall,
+        new Set(merged.keys()),
+      );
+      hits.push(...turnHits);
+    }
+    return { hits, expansionQueries };
   }
 
   /**

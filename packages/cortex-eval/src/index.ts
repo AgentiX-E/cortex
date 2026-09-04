@@ -87,6 +87,7 @@ export {
   retrieveTopK,
   retrieveTopKSessions,
   retrieveByQueries,
+  retrieveSessionsByTurns,
   retrieveTopKByQueries,
   retrieveTopKByQueriesHybrid,
   extractLexicalKeywords,

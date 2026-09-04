@@ -409,6 +409,125 @@ export async function retrieveByQueries(
   return [...bestById.values()].sort((a, b) => b.score - a.score);
 }
 
+/** A per-call index over individual turns, annotated with the owning session. */
+type SessionTurnIndex = {
+  index: BruteForceVectorIndex;
+  idToSession: Map<string, number>;
+};
+
+/**
+ * Build a turn index that remembers which session each turn came from, so a turn
+ * hit can be attributed back to the session that owns it.
+ *
+ * Turn vectors are the very same vectors `buildSessionIndex` computes before it
+ * mean-pools them, so this index costs no extra embedding calls — both paths hit
+ * the same shared cache.
+ */
+async function buildSessionTurnIndex(
+  embedding: EmbeddingModel,
+  sessions: string[][],
+): Promise<SessionTurnIndex> {
+  const index = new BruteForceVectorIndex();
+  const idToSession = new Map<string, number>();
+  const pending: string[] = [];
+  const ids: string[] = [];
+
+  for (let s = 0; s < sessions.length; s++) {
+    for (const turn of sessions[s]!) {
+      if (turn.trim() === '') {
+        continue;
+      }
+      // The owning session is part of the id: the same wording can appear in
+      // several sessions, and each occurrence must stay attributable to its own
+      // session instead of collapsing into whichever was seen first.
+      const id = `st-${s}-${hashText(turn)}`;
+      if (idToSession.has(id)) {
+        continue;
+      }
+      idToSession.set(id, s);
+      pending.push(turn);
+      ids.push(id);
+    }
+  }
+
+  if (pending.length > 0) {
+    const vectors = await embedManyCached(embedding, pending);
+    for (let i = 0; i < pending.length; i++) {
+      await index.add(ids[i]!, vectors[i]!);
+    }
+  }
+  return { index, idToSession };
+}
+
+/**
+ * Turn-granularity session scoring: retrieve the top turns for each query, map
+ * every turn back to the session that owns it, and score each session by its
+ * best-matching turn.
+ *
+ * Why this exists. `retrieveTopKSessions` represents a session by the MEAN of its
+ * turn vectors, so every unrelated turn in the session drags the centroid away
+ * from the query: with `n` turns that are orthogonal to the question the
+ * centroid's cosine collapses by roughly `sqrt(n)`. LongMemEval sessions hold
+ * ~11 turns, so a ~90-token evidence turn buried in a ~1,580-token session loses
+ * about 3.3x of its similarity and can fall outside the top-k even though one of
+ * its turns is the best match in the whole haystack. Scoring turns individually
+ * removes that dilution: the session is then judged by the turn that actually
+ * answers the question.
+ *
+ * `exclude` drops sessions the caller already holds BEFORE the top-k cap is
+ * applied, so an already-retrieved session cannot consume one of the few slots
+ * this channel is allowed to add.
+ *
+ * Note the returned scores are turn cosines and are NOT comparable to the
+ * centroid cosines from `retrieveTopKSessions`. Callers must therefore merge by
+ * rank (or keep the channels' orderings separate) rather than sorting on the raw
+ * number, which is why the session ids and texts are kept identical between the
+ * two channels.
+ */
+export async function retrieveSessionsByTurns(
+  embedding: EmbeddingModel,
+  queries: string[],
+  sessions: string[][],
+  turnsPerQuery: number,
+  sessionTopK: number,
+  exclude?: ReadonlySet<string>,
+): Promise<SessionHit[]> {
+  if (sessions.length === 0 || queries.length === 0 || sessionTopK <= 0 || turnsPerQuery <= 0) {
+    return [];
+  }
+  const data = await buildSessionTurnIndex(embedding, sessions);
+  if (data.idToSession.size === 0) {
+    return [];
+  }
+
+  const queryVecs = await embedManyCached(embedding, queries);
+  const bestBySession = new Map<number, number>();
+  for (const queryVec of queryVecs) {
+    const hits = await data.index.search(queryVec, turnsPerQuery);
+    for (const hit of hits) {
+      // Every hit id was inserted via `idToSession.set`, so the lookup is
+      // always defined.
+      const sessionIndex = data.idToSession.get(hit.id)!;
+      const previous = bestBySession.get(sessionIndex);
+      if (previous === undefined || hit.score > previous) {
+        bestBySession.set(sessionIndex, hit.score);
+      }
+    }
+  }
+
+  const results: SessionHit[] = [];
+  for (const [sessionIndex, score] of bestBySession) {
+    const session = sessions[sessionIndex]!;
+    // The id formula matches buildSessionIndex so the two channels dedupe.
+    const id = `s-${hashText(session.join('\n'))}`;
+    if (exclude?.has(id)) {
+      continue;
+    }
+    results.push({ id, sessionIndex, text: session.join('\n'), score });
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, sessionTopK);
+}
+
 /**
  * Turn-level analogue of `retrieveByQueries`: retrieve the top-k turns for each
  * query independently, merge them by turn id keeping the highest score, then cap

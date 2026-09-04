@@ -28,8 +28,11 @@ import {
   isAssistantTurn,
   clearEmbeddingCache,
   type DecisionTrace,
+  type NaturalLanguageMemorySystemOptions,
 } from '../natural-language-memory.js';
 import { HashEmbedding } from '../embedding.js';
+import type { Answer } from '../types.js';
+import { tableEmbedding } from './test-embedding.js';
 
 function scriptedLlm(fn: (prompt: string) => string): LLM {
   return {
@@ -2016,6 +2019,154 @@ describe('NaturalLanguageMemorySystem', () => {
       const finalPrompt = prompts[prompts.length - 1]!;
       expect(finalPrompt).toContain('CUSTOM AGGREGATION MARKER');
       expect(finalPrompt).not.toContain('Identify the specific numbers');
+    });
+
+    describe('turn-level recall', () => {
+      const QUESTION = 'How many model kits have I built?';
+      const EVIDENCE = 'I assembled a vintage model kit';
+      const FILLER = 'the weather was pleasant that day';
+      const DIM = 3;
+      /** Place a unit vector at an exact cosine of `x` against [1, 0, 0]. */
+      const at = (x: number): number[] => [x, Math.sqrt(1 - x * x), 0];
+      const TABLE: Record<string, readonly number[]> = {
+        [QUESTION]: [1, 0, 0],
+        [EVIDENCE]: at(0.9),
+        [FILLER]: [0, 1, 0],
+        d0: at(0.5),
+        d1: at(0.5),
+        d2: at(0.5),
+        d3: at(0.5),
+      };
+
+      /**
+       * One long session whose single on-topic turn is surrounded by turns that
+       * are orthogonal to the question, plus four uniformly related distractors.
+       * The diluted session's centroid lands at cosine ~0.106 against the
+       * question, far below the distractors' 0.5, so session-granularity
+       * retrieval drops the evidence session altogether.
+       */
+      const dilutedSessions = (): string[][] => [
+        [FILLER, FILLER, FILLER, FILLER, EVIDENCE, FILLER, FILLER, FILLER],
+        ['d0'],
+        ['d1'],
+        ['d2'],
+        ['d3'],
+      ];
+
+      /** Answer the fixtures and return the final aggregation prompt. */
+      async function finalPrompt(
+        overrides: Partial<NaturalLanguageMemorySystemOptions>,
+        sessions: string[][],
+        table: Record<string, readonly number[]> = TABLE,
+        question: string = QUESTION,
+      ): Promise<string> {
+        const prompts: string[] = [];
+        const llm: LLM = {
+          complete: async (prompt) => {
+            prompts.push(prompt);
+            return 'Answer: 2';
+          },
+          completeStructured: async <T>() => ({}) as T,
+        };
+        const system = new NaturalLanguageMemorySystem('s', {
+          embedding: tableEmbedding(table, DIM),
+          llm,
+          // Expansion is off so the comparison isolates a single channel.
+          enableQueryExpansion: false,
+          sessionTopK: 1,
+          ...overrides,
+        });
+        await system.answerSessions(question, sessions);
+        return prompts[prompts.length - 1]!;
+      }
+
+      it('recovers a session whose evidence turn is diluted by unrelated turns', async () => {
+        const off = await finalPrompt({ turnRecallSessions: 0 }, dilutedSessions());
+        const on = await finalPrompt({ turnRecallSessions: 3 }, dilutedSessions());
+        // Session-granularity retrieval never reaches the evidence session...
+        expect(off).not.toContain(EVIDENCE);
+        // ...turn-granularity scoring does.
+        expect(on).toContain(EVIDENCE);
+      });
+
+      it('only ever adds sessions, never drops a retrieved one', async () => {
+        const off = await finalPrompt({ turnRecallSessions: 0 }, dilutedSessions());
+        const on = await finalPrompt({ turnRecallSessions: 3 }, dilutedSessions());
+        // Whatever the centroid path injected stays injected.
+        for (const d of ['d0', 'd1', 'd2', 'd3']) {
+          if (off.includes(d)) {
+            expect(on).toContain(d);
+          }
+        }
+        expect(off).toContain('d0');
+        expect(on!.length).toBeGreaterThan(off.length);
+      });
+
+      it('leaves the top-1 score (and therefore abstention) untouched', async () => {
+        // The diluted session's turn cosine (0.9) beats the best centroid cosine
+        // (0.5). Were the two channels merged by score, the added session would
+        // become hits[0] and lift the score across this threshold.
+        const answer = async (turnRecallSessions: number): Promise<Answer> =>
+          new NaturalLanguageMemorySystem('s', {
+            embedding: tableEmbedding(TABLE, DIM),
+            llm: scriptedLlm(() => 'Answer: 2'),
+            enableQueryExpansion: false,
+            sessionTopK: 1,
+            sessionAbstainThreshold: 0.7,
+            turnRecallSessions,
+          }).answerSessions(QUESTION, dilutedSessions());
+        // Both arms abstain on the same centroid score: the turn channel changes
+        // the evidence, never the abstention signal.
+        expect(await answer(0)).toBeNull();
+        expect(await answer(3)).toBeNull();
+      });
+
+      it('admits at most turnRecallSessions extra sessions', async () => {
+        const q = 'How many items are there?';
+        const texts = ['QX0', 'QX1', 'QX2', 'QX3', 'QX4', 'QX5'];
+        const table: Record<string, readonly number[]> = { [q]: [1, 0, 0] };
+        texts.forEach((t, i) => {
+          table[t] = at(0.9 - i * 0.1);
+        });
+        const sessions = texts.map((t) => [t]);
+        const on = await finalPrompt({ turnRecallSessions: 2 }, sessions, table, q);
+        // The centroid channel contributes QX0; the turn channel fills exactly
+        // two more slots with the next-best sessions.
+        expect(on).toContain('QX0');
+        expect(on).toContain('QX1');
+        expect(on).toContain('QX2');
+        expect(on).not.toContain('QX3');
+        expect(on).not.toContain('QX4');
+        expect(on).not.toContain('QX5');
+      });
+
+      it('adds no embedding traffic once the haystack is cached', async () => {
+        const base = tableEmbedding(TABLE, DIM);
+        let embedded = 0;
+        const counting: EmbeddingModel = {
+          dimension: () => DIM,
+          embed: async (texts) => {
+            embedded += texts.length;
+            return base.embed(texts);
+          },
+        };
+        const sessions = dilutedSessions();
+        const run = async (turnRecallSessions: number): Promise<void> => {
+          await new NaturalLanguageMemorySystem('s', {
+            embedding: counting,
+            llm: scriptedLlm(() => 'Answer: 2'),
+            enableQueryExpansion: false,
+            sessionTopK: 1,
+            turnRecallSessions,
+          }).answerSessions(QUESTION, sessions);
+        };
+        await run(0);
+        const after = embedded;
+        // Turn vectors are the same vectors the centroid path already computed,
+        // so scoring at turn granularity costs no additional provider traffic.
+        await run(3);
+        expect(embedded).toBe(after);
+      });
     });
   });
 });

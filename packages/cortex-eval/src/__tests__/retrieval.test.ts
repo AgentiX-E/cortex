@@ -4,6 +4,7 @@ import {
   retrieveTopK,
   retrieveTopKSessions,
   retrieveByQueries,
+  retrieveSessionsByTurns,
   retrieveTopKByQueries,
   retrieveTopKByQueriesHybrid,
   extractLexicalKeywords,
@@ -19,6 +20,7 @@ import {
   deserializeEmbeddingCache,
   hashText,
 } from '../retrieval.js';
+import { tableEmbedding } from './test-embedding.js';
 
 describe('hashText', () => {
   it('is deterministic and stable', () => {
@@ -529,5 +531,199 @@ describe('embedding cache deserialize error handling', () => {
     expect(() => deserializeEmbeddingCache(tampered)).toThrow(
       /unsupported embedding cache version/,
     );
+  });
+});
+
+describe('retrieveSessionsByTurns', () => {
+  it('recovers a session whose evidence turn is diluted by unrelated turns', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      {
+        question: [1, 0, 0],
+        EVIDENCE: [0.9, Math.sqrt(0.19), 0],
+        filler: [0, 1, 0],
+        // Five distractor sessions, each uniformly related to the question.
+        d0: [0.5, Math.sqrt(0.75), 0],
+        d1: [0.5, Math.sqrt(0.75), 0],
+        d2: [0.5, Math.sqrt(0.75), 0],
+        d3: [0.5, Math.sqrt(0.75), 0],
+        d4: [0.5, Math.sqrt(0.75), 0],
+      },
+      3,
+    );
+    // One long session: a single on-topic turn surrounded by eight turns that
+    // are orthogonal to the question.
+    const diluted = [
+      'filler',
+      'filler',
+      'filler',
+      'filler',
+      'EVIDENCE',
+      'filler',
+      'filler',
+      'filler',
+      'filler',
+    ];
+    const sessions = [diluted, ['d0'], ['d1'], ['d2'], ['d3'], ['d4']];
+
+    const bySession = await retrieveTopKSessions(embedding, 'question', sessions, 3);
+    const byTurn = await retrieveSessionsByTurns(embedding, ['question'], sessions, 10, 3);
+
+    // The mean-pooled centroid (cos ~0.106) sits below every distractor (0.5),
+    // so session 0 is NOT retrieved at session granularity.
+    expect(bySession.map((h) => h.sessionIndex)).not.toContain(0);
+    // Scoring turns individually restores the evidence turn's full similarity
+    // (0.9) and lifts the session to the top.
+    expect(byTurn[0]!.sessionIndex).toBe(0);
+    expect(byTurn[0]!.score).toBeCloseTo(0.9, 6);
+  });
+
+  it('attributes a repeated turn text to every session that contains it', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      { question: [1, 0, 0], shared: [0.8, 0.6, 0], filler: [-1, 0, 0] },
+      3,
+    );
+    const sessions = [
+      ['shared', 'filler'],
+      ['filler', 'shared'],
+      ['filler', 'filler'],
+    ];
+    // Only the two turns that actually match are retrieved, so the session made
+    // up entirely of filler turns is never attributed a score.
+    const hits = await retrieveSessionsByTurns(embedding, ['question'], sessions, 2, 10);
+    // The turn index is keyed per owning session, so the shared text is not
+    // collapsed into a single session the way a global turn id would.
+    expect(hits.map((h) => h.sessionIndex).sort((a, b) => a - b)).toEqual([0, 1]);
+    expect(hits[0]!.score).toBeCloseTo(0.8, 6);
+    // A session with no matching turn is never returned.
+    expect(hits).toHaveLength(2);
+  });
+
+  it('emits session ids identical to session-centroid retrieval', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      { question: [1, 0, 0], a: [0.9, 0.436, 0], b: [0.7, 0.714, 0] },
+      3,
+    );
+    const sessions = [['a'], ['b'], ['a', 'b']];
+    const bySession = await retrieveTopKSessions(embedding, 'question', sessions, 10);
+    const byTurn = await retrieveSessionsByTurns(embedding, ['question'], sessions, 10, 10);
+    const expected = new Map(bySession.map((h) => [h.sessionIndex, h.id]));
+    // Identity matters: the caller merges the two channels by session id.
+    for (const hit of byTurn) {
+      expect(hit.id).toBe(expected.get(hit.sessionIndex));
+    }
+    for (const hit of byTurn) {
+      expect(hit.text).toBe(sessions[hit.sessionIndex]!.join('\n'));
+    }
+  });
+
+  it('keeps the highest score across queries', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding({ q1: [1, 0, 0], q2: [0, 1, 0], turn: [0.6, 0.8, 0] }, 3);
+    const hits = await retrieveSessionsByTurns(embedding, ['q1', 'q2'], [['turn']], 10, 10);
+    expect(hits).toHaveLength(1);
+    // cos(q1, turn) = 0.6, cos(q2, turn) = 0.8 -> the maximum wins.
+    expect(hits[0]!.score).toBeCloseTo(0.8, 6);
+  });
+
+  it('caps the number of returned sessions', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      {
+        question: [1, 0, 0],
+        t0: [0.9, 0.436, 0],
+        t1: [0.8, 0.6, 0],
+        t2: [0.7, 0.714, 0],
+        t3: [0.6, 0.8, 0],
+      },
+      3,
+    );
+    const sessions = [['t0'], ['t1'], ['t2'], ['t3']];
+    const hits = await retrieveSessionsByTurns(embedding, ['question'], sessions, 10, 2);
+    expect(hits).toHaveLength(2);
+    expect(hits[0]!.sessionIndex).toBe(0);
+    expect(hits[1]!.sessionIndex).toBe(1);
+  });
+
+  it('skips excluded sessions before applying the cap', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      { question: [1, 0, 0], t0: [0.9, 0.436, 0], t1: [0.8, 0.6, 0], t2: [0.7, 0.714, 0] },
+      3,
+    );
+    const sessions = [['t0'], ['t1'], ['t2']];
+    const alreadyRetrieved = await retrieveTopKSessions(embedding, 'question', sessions, 1);
+    const excluded = new Set(alreadyRetrieved.map((h) => h.id));
+    expect(excluded.size).toBe(1);
+    // Exclusion happens before the cap, so the runner-up fills the freed slot
+    // instead of the cap being consumed by a session already in hand.
+    const hits = await retrieveSessionsByTurns(embedding, ['question'], sessions, 10, 2, excluded);
+    expect(hits).toHaveLength(2);
+    expect(hits.map((h) => h.id)).not.toContain([...excluded][0]);
+  });
+
+  it('reaches new sessions past the turns of already-retrieved ones', async () => {
+    clearEmbeddingCache();
+    // The already-retrieved session's turns occupy the very top of the turn
+    // ranking, which is exactly why search depth decides whether this channel
+    // adds anything at all.
+    const at = (x: number): number[] => [x, Math.sqrt(1 - x * x), 0];
+    const embedding = tableEmbedding(
+      {
+        question: [1, 0, 0],
+        s0a: at(0.9),
+        s0b: at(0.89),
+        s0c: at(0.88),
+        s0d: at(0.87),
+        s0e: at(0.86),
+        target: at(0.5),
+        filler: [0, 1, 0],
+      },
+      3,
+    );
+    const sessions = [['s0a', 's0b', 's0c', 's0d', 's0e'], ['filler', 'target'], ['filler']];
+    const held = await retrieveTopKSessions(embedding, 'question', sessions, 1);
+    // Session 0 is the centroid winner, so the channel must look past its turns.
+    expect(held[0]!.sessionIndex).toBe(0);
+
+    const ids = new Set(held.map((h) => h.id));
+    // Shallow: the five best turns all belong to the session already in hand.
+    const shallow = await retrieveSessionsByTurns(embedding, ['question'], sessions, 5, 3, ids);
+    expect(shallow).toEqual([]);
+    // Deeper: one more turn is enough to reach the target session.
+    const deep = await retrieveSessionsByTurns(embedding, ['question'], sessions, 6, 3, ids);
+    expect(deep.map((h) => h.sessionIndex)).toEqual([1]);
+  });
+
+  it('returns no hits for empty inputs', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding({ question: [1, 0, 0], a: [1, 0, 0] }, 3);
+    expect(await retrieveSessionsByTurns(embedding, ['question'], [], 5, 3)).toEqual([]);
+    expect(await retrieveSessionsByTurns(embedding, [], [['a']], 5, 3)).toEqual([]);
+    expect(await retrieveSessionsByTurns(embedding, ['question'], [[], []], 5, 3)).toEqual([]);
+    expect(await retrieveSessionsByTurns(embedding, ['question'], [['   ']], 5, 3)).toEqual([]);
+  });
+
+  it('adds no embedding calls once the turns and queries are cached', async () => {
+    clearEmbeddingCache();
+    let embedded = 0;
+    const base = tableEmbedding({ question: [1, 0, 0], turn: [0.9, 0.436, 0] }, 3);
+    const counting: EmbeddingModel = {
+      dimension: () => 3,
+      embed: async (texts) => {
+        embedded += texts.length;
+        return base.embed(texts);
+      },
+    };
+    const sessions = [['turn'], ['turn'], ['turn']];
+    // The centroid path already embeds every turn and the question.
+    await retrieveTopKSessions(counting, 'question', sessions, 2);
+    const after = embedded;
+    // Turn vectors are the same vectors the centroid path computed, so scoring
+    // at turn granularity is free: no additional provider traffic.
+    await retrieveSessionsByTurns(counting, ['question'], sessions, 10, 2);
+    expect(embedded).toBe(after);
   });
 });
