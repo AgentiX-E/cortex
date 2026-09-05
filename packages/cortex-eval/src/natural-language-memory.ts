@@ -1246,8 +1246,17 @@ export type AggregationKind = 'derivation' | 'enumeration';
 
 /** Decide which aggregation prompt a multi-session question should use. */
 export function classifyAggregationKind(question: string): AggregationKind {
+  // The derivation set is the load-bearing complement of the enumeration
+  // prompt: every pattern here is a question whose answer is a COMPUTED value
+  // (a difference, ratio, average, elapsed time, or future age) that the
+  // enumeration prompt's "sum / count" Step 2 cannot express. Routing such a
+  // question to enumeration makes the model look for items to list, find none
+  // equal to the answer, and abstain even when every operand is in the context.
+  // Each addition below corresponds to a measured LongMemEval-S abstention
+  // (see the MR aggregation audit): a duration difference, an age difference,
+  // a future age, and a difference-by-margin.
   if (
-    /\b(percentage|percent|average|mean|difference (?:in|between)|how much (?:more|less|faster|earlier|older)|increase in|decrease in|discount|cashback|minimum|maximum|how old was)\b/i.test(
+    /\b(percentage|percent|average|mean|difference (?:in|between)|how much (?:more|less|faster|earlier|older)|increase in|decrease in|discount|cashback|minimum|maximum|how old was|how long (?:have|has) [a-z]+ been|how many (?:years|months|weeks|days) older|how many (?:years|months) (?:old )?will [a-z]+ be when|exceed [\w ]+? by)\b/i.test(
       question,
     )
   ) {
@@ -1284,7 +1293,10 @@ export function buildDerivationQaPrompt(
     'Step 2 — Compute the final answer from those identified numbers:',
     '  - "what percentage" → part ÷ whole × 100.',
     '  - "average" → sum of the values ÷ number of values.',
-    '  - "how much more/older/faster/earlier" → larger − smaller.',
+    '  - "how much more/older/faster/earlier" or "how many years older/younger" → larger − smaller.',
+    '  - "how long have I been [in/at/working] X" → total tenure − time spent before X.',
+    '  - "how many years will I be when X happens" → current age + years until X.',
+    '  - "how many … did I exceed … by" → actual − target.',
     '  - "minimum/maximum" → the smallest/largest identified value.',
     '  - "discount/cashback" → the percentage or amount the context states.',
     'End your response with a single line in the exact form:',

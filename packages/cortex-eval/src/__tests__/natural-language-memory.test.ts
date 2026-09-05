@@ -445,12 +445,37 @@ describe('classifyAggregationKind', () => {
     );
     expect(classifyAggregationKind('What is the minimum amount I could get?')).toBe('derivation');
     expect(classifyAggregationKind('How old was I when Alex was born?')).toBe('derivation');
+    // Duration/elapsed, age-difference, future-age, and difference-by-margin are
+    // all computations the enumeration prompt cannot express (see the audit), so
+    // they must route to derivation.
+    expect(classifyAggregationKind('How long have I been working in my current role?')).toBe(
+      'derivation',
+    );
+    expect(classifyAggregationKind('How many years older is my grandma than me?')).toBe(
+      'derivation',
+    );
+    expect(
+      classifyAggregationKind('How many years will I be when my friend Rachel gets married?'),
+    ).toBe('derivation');
+    expect(
+      classifyAggregationKind('How many minutes did I exceed my target time by in the marathon?'),
+    ).toBe('derivation');
   });
 
   it('keeps enumeration questions (count / sum / temporal) on the aggregation prompt', () => {
     expect(classifyAggregationKind('How many items of clothing do I need?')).toBe('enumeration');
     expect(classifyAggregationKind('How much money in total did I spend?')).toBe('enumeration');
     expect(classifyAggregationKind('What time did I go to bed?')).toBe('enumeration');
+    // Near-miss negative controls: these share lexical surface with the new
+    // derivation phrasings but ask for a count / a stated value, not a computed
+    // difference, so they must NOT be re-routed.
+    expect(classifyAggregationKind('How many years of experience do I have in total?')).toBe(
+      'enumeration',
+    );
+    expect(classifyAggregationKind('How many minutes did I run in the marathon?')).toBe(
+      'enumeration',
+    );
+    expect(classifyAggregationKind('How long is the warranty on my laptop?')).toBe('enumeration');
   });
 });
 
@@ -466,6 +491,34 @@ describe('buildDerivationQaPrompt', () => {
     expect(prompt).toContain('part ÷ whole × 100');
     expect(prompt).toContain('sum of the values ÷ number of values');
     expect(prompt).toContain('larger − smaller');
+  });
+
+  it('names the duration, age-difference, future-age, and margin formulas', () => {
+    const prompt = buildDerivationQaPrompt('Q?', 'ctx');
+    expect(prompt).toContain('how many years older/younger');
+    expect(prompt).toContain('total tenure − time spent before X');
+    expect(prompt).toContain('current age + years until X');
+    expect(prompt).toContain('actual − target');
+  });
+
+  // Completeness invariant: every newly supported derivation phrasing must
+  // route to the derivation prompt AND find a matching Step-2 instruction there.
+  // Removing either the classifier branch or the formula breaks this test, so a
+  // question can never again be routed to a prompt that cannot answer it.
+  it('pairs every new derivation phrasing with a matching formula (completeness invariant)', () => {
+    const fixtures: Array<[string, string]> = [
+      ['How long have I been working in my current role?', 'total tenure − time spent before X'],
+      ['How many years older is my grandma than me?', 'how many years older/younger'],
+      [
+        'How many years will I be when my friend Rachel gets married?',
+        'current age + years until X',
+      ],
+      ['How many minutes did I exceed my target time by in the marathon?', 'actual − target'],
+    ];
+    for (const [question, formula] of fixtures) {
+      expect(classifyAggregationKind(question)).toBe('derivation');
+      expect(buildDerivationQaPrompt(question, 'ctx')).toContain(formula);
+    }
   });
 
   it('carries the multi-session abstention boundary', () => {
