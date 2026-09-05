@@ -165,6 +165,8 @@ export type AblationResult = {
   baselineMetrics: Metrics;
   /** Metrics from the first evaluation of the feature system. */
   featureMetrics: Metrics;
+  /** Per-question correctness of the feature system, in dataset question order. */
+  featureCorrect: boolean[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

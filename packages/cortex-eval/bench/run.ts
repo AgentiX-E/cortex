@@ -154,6 +154,17 @@ async function main(): Promise<void> {
   console.log('=== Decision reasons (feature system) ===');
   console.log(JSON.stringify(reasonCounts));
 
+  // Per-question correctness of the feature system, keyed by question text so the
+  // diagnostics below can annotate each failure with its verdict instead of
+  // leaving it to be inferred from aggregate scores. `featureCorrect` is aligned
+  // with `sampled` because `loadLongMemEval` maps instances in order.
+  const correctByQuestion = new Map<string, boolean>(
+    (sampled as LongMemEvalInstance[]).map((inst, i) => [
+      inst.question,
+      report.ablation.featureCorrect[i] ?? false,
+    ]),
+  );
+
   // Dump per-question diagnostics for multi-session (MR) questions so the exact
   // LLM failure mode (missing evidence / wrong format / multi-hop) is visible in
   // the uploaded artifact rather than guessed from aggregate scores.
@@ -165,6 +176,7 @@ async function main(): Promise<void> {
         question_id: inst.question_id,
         question: inst.question,
         ground_truth: inst.answer,
+        correct: correctByQuestion.get(inst.question) ?? false,
         answer_session_ids: inst.answer_session_ids ?? [],
         haystack_dates: inst.haystack_dates ?? [],
         answer_sessions_content: answerSessionsContent(inst),
@@ -191,6 +203,7 @@ async function main(): Promise<void> {
         question: inst.question,
         question_date: inst.question_date ?? null,
         ground_truth: inst.answer,
+        correct: correctByQuestion.get(inst.question) ?? false,
         decision: trace ?? null,
       };
     });

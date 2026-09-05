@@ -51,6 +51,21 @@ describe('runAblation', () => {
     await expect(runAblation(ds, base, feat, { runs: 0 })).rejects.toThrow();
   });
 
+  it('exposes per-question feature correctness aligned with the dataset', async () => {
+    const ds = makeDataset();
+    const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    // One verdict per question, in dataset order.
+    expect(result.featureCorrect).toHaveLength(3);
+    // The count agrees with the feature metrics so the two data sources cannot
+    // drift apart.
+    const correctCount = result.featureCorrect.filter(Boolean).length;
+    expect(correctCount).toBe(result.featureMetrics.correct);
+    // IE/KU answer correctly; the ABS question abstains correctly (null==null).
+    expect(result.featureCorrect).toEqual([true, true, true]);
+  });
+
   it('supports a single deterministic run with no statistical test', async () => {
     const ds = makeDataset();
     const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
