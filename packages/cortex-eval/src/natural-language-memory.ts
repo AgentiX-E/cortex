@@ -527,9 +527,15 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const factSessions = sessions.map((session) =>
       session.filter((turn) => !isAssistantTurn(turn)),
     );
+    // Derivation questions differ from enumeration questions at TWO layers: the
+    // answer prompt (operand identification vs item enumeration) and the query
+    // expansion (operands vs activities). Classify once and route both layers
+    // from the same decision so they cannot drift apart.
+    const kind = classifyAggregationKind(question);
     const { hits, expansionQueries } = await this.retrieveSessionsForQuestion(
       question,
       factSessions,
+      kind,
     );
     const maxChars = this.options.maxSessionChars ?? DEFAULT_MAX_SESSION_CHARS;
     const retrieved = truncateText(
@@ -542,8 +548,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // and abstain. Only the default path routes this way — a custom
     // `aggregationPrompt` (the MR ablation) must be used verbatim.
     const promptBuilder =
-      this.options.aggregationPrompt === undefined &&
-      classifyAggregationKind(question) === 'derivation'
+      this.options.aggregationPrompt === undefined && kind === 'derivation'
         ? buildDerivationQaPrompt
         : (this.options.aggregationPrompt ?? buildAggregationQaPrompt);
     return this.respondWith(
@@ -560,6 +565,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   private async retrieveSessionsForQuestion(
     question: string,
     sessions: string[][],
+    kind: AggregationKind,
   ): Promise<{ hits: SessionHit[]; expansionQueries: string[] }> {
     const sessionTopK = this.options.sessionTopK ?? DEFAULT_SESSION_TOP_K;
     const baseHits = await retrieveTopKSessions(
@@ -573,10 +579,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       merged.set(hit.id, hit);
     }
 
-    const expansionQueries = await this.expandQuestion(
-      question,
-      buildMultiSessionQueryExpansionPrompt,
-    );
+    // Derivation questions expand into their operands (e.g. "my age", "my
+    // birthday"), not activities, so the evidence session stating the operand
+    // is recalled even when its main topic is unrelated to the question.
+    const expansionPrompt =
+      kind === 'derivation'
+        ? buildDerivationQueryExpansionPrompt
+        : buildMultiSessionQueryExpansionPrompt;
+    const expansionQueries = await this.expandQuestion(question, expansionPrompt);
     if (expansionQueries.length > 0) {
       const perQueryK = this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K;
       const expandedHits = await retrieveByQueries(
@@ -1484,6 +1494,31 @@ export function buildMultiSessionQueryExpansionPrompt(question: string): string 
     `Question: ${question}`,
     '',
     'Specific activities:',
+  ].join('\n');
+}
+
+/**
+ * Query-expansion prompt for derivation questions (percentage/average/
+ * difference/min-max/elapsed/age). The activity-oriented expansion is wrong for
+ * these: a question like "how old was I when Alex was born?" asks for a value
+ * COMPUTED from operands (my age, Alex's age), and expanding it into events
+ * ("Alex's birth") recalls the event session but never the session that states
+ * the user's own age, which is usually a by-the-way aside in a topically
+ * unrelated session. Listing the operands instead — and, for age-at-event
+ * questions, the user's own age/birthday explicitly — makes the existing
+ * retrieval surface the fact that the computation needs.
+ */
+export function buildDerivationQueryExpansionPrompt(question: string): string {
+  return [
+    'You are helping retrieve evidence sessions for a multi-session question whose answer is a COMPUTED value.',
+    'Given the question, list the SPECIFIC FACTS the computation needs: the numbers, ages, dates, or durations the question compares or combines.',
+    'Each fact is a short phrase that would appear in the evidence session (e.g. "my age", "my birthday", "Alex\'s age", "Alex\'s birth year").',
+    'For a question about the user\'s age at an event ("how old was I when…", "how many years will I be when…", "how many years older…"), ALWAYS include a phrase for the user\'s OWN age or birthday.',
+    'Output ONLY a comma-separated list of short phrases, with no explanation and no numbering.',
+    '',
+    `Question: ${question}`,
+    '',
+    'Specific facts to retrieve:',
   ].join('\n');
 }
 

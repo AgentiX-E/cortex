@@ -17,6 +17,7 @@ import {
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
+  buildDerivationQueryExpansionPrompt,
   formatStructuredContext,
   parseQueryExpansion,
   truncateText,
@@ -805,6 +806,46 @@ describe('buildMultiSessionQueryExpansionPrompt', () => {
     expect(prompt).toContain('Specific activities:');
     expect(prompt).toContain('action');
     expect(prompt).toContain('bare object nouns');
+  });
+});
+
+describe('buildDerivationQueryExpansionPrompt', () => {
+  it('asks for the operands/facts to retrieve, not activities', () => {
+    const prompt = buildDerivationQueryExpansionPrompt('How old was I when Alex was born?');
+    expect(prompt).toContain('How old was I when Alex was born?');
+    expect(prompt).toContain('Specific facts to retrieve:');
+    expect(prompt).not.toContain('Specific activities:');
+  });
+
+  it('names the user own age/birthday as a required operand for age-at-event questions', () => {
+    const prompt = buildDerivationQueryExpansionPrompt('How old was I when Alex was born?');
+    expect(prompt).toContain('my age');
+    expect(prompt).toContain('my birthday');
+  });
+
+  // Completeness invariant mirroring the answer-prompt one: every aggregation
+  // kind has a matching expansion prompt, so a derivation question can never
+  // fall through to the activity expansion whose output omits its operands.
+  it('pairs each aggregation kind with its expansion prompt (completeness invariant)', () => {
+    const expansionMarker: Record<ReturnType<typeof classifyAggregationKind>, string> = {
+      derivation: 'Specific facts to retrieve:',
+      enumeration: 'Specific activities:',
+    };
+    const fixtures: Array<[ReturnType<typeof classifyAggregationKind>, string]> = [
+      ['derivation', 'How old was I when Alex was born?'],
+      ['enumeration', 'How many projects have I led?'],
+    ];
+    for (const [kind, question] of fixtures) {
+      expect(classifyAggregationKind(question)).toBe(kind);
+      const derivationPrompt = buildDerivationQueryExpansionPrompt(question);
+      const enumerationPrompt = buildMultiSessionQueryExpansionPrompt(question);
+      const prompt = kind === 'derivation' ? derivationPrompt : enumerationPrompt;
+      expect(prompt).toContain(expansionMarker[kind]);
+      expect(prompt).not.toContain(
+        expansionMarker[kind === 'derivation' ? 'enumeration' : 'derivation'],
+      );
+    }
+    expect(Object.keys(expansionMarker).sort()).toEqual(['derivation', 'enumeration']);
   });
 });
 
@@ -2114,13 +2155,13 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(aggregationPrompt).not.toContain('Step 1 — Enumerate');
     });
 
-    it('routes derivation questions to the derivation prompt', async () => {
+    it('routes derivation questions to the derivation prompt and operand expansion', async () => {
       const prompts: string[] = [];
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific activities:')) {
-            return 'packed shoes';
+          if (prompt.includes('Specific facts to retrieve:')) {
+            return 'my age, my birthday, packed shoes';
           }
           return '40%';
         },
@@ -2131,9 +2172,34 @@ describe('NaturalLanguageMemorySystem', () => {
         ['I packed 5 pairs of shoes and wore 2.'],
       ]);
       expect(answer).toBe('40%');
+      // The first LLM call is the operand expansion, not the activity expansion.
+      expect(prompts[0]).toContain('Specific facts to retrieve:');
+      expect(prompts[0]).not.toContain('Specific activities:');
+      // The final call is the derivation answer prompt.
       const finalPrompt = prompts[prompts.length - 1]!;
       expect(finalPrompt).toContain('Identify the specific numbers');
       expect(finalPrompt).not.toContain('Step 1 — Enumerate');
+    });
+
+    it('keeps enumeration questions on the activity expansion prompt', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) {
+            return 'led project';
+          }
+          return '2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerSessions('How many projects have I led?', [
+        ['I led one project.'],
+      ]);
+      expect(answer).toBe('2');
+      expect(prompts[0]).toContain('Specific activities:');
+      expect(prompts[0]).not.toContain('Specific facts to retrieve:');
     });
 
     it('never overrides a custom aggregation prompt for derivation questions', async () => {
@@ -2141,7 +2207,7 @@ describe('NaturalLanguageMemorySystem', () => {
       const llm: LLM = {
         complete: async (prompt) => {
           prompts.push(prompt);
-          if (prompt.includes('Specific activities:')) {
+          if (prompt.includes('Specific facts to retrieve:')) {
             return 'packed shoes';
           }
           return prompt.includes('CUSTOM AGGREGATION MARKER') ? '40%' : 'UNANSWERABLE';

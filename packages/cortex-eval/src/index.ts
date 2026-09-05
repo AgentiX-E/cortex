@@ -124,6 +124,7 @@ export {
   buildQueryExpansionPrompt,
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
+  buildDerivationQueryExpansionPrompt,
   parseQueryExpansion,
   truncateText,
   truncateSession,
