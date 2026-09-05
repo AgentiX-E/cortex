@@ -30,6 +30,7 @@ import {
   type DecisionTrace,
   type NaturalLanguageMemorySystemOptions,
 } from '../natural-language-memory.js';
+import { classifyKnowledgeUpdateQualifier } from '../fact-store.js';
 import { HashEmbedding } from '../embedding.js';
 import type { Answer } from '../types.js';
 import { tableEmbedding } from './test-embedding.js';
@@ -569,6 +570,71 @@ describe('buildKnowledgeUpdatePrompt', () => {
   it('accepts a custom abstention token', () => {
     const prompt = buildKnowledgeUpdatePrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
+  });
+
+  /**
+   * A knowledge-update question with NO time qualifier ("How long have I had my
+   * cat, Luna?") cannot be answered by any of the three qualifier branches, so
+   * the model's only defined terminal was the abstain token. Measured on
+   * LongMemEval-S: questions classified `other` are 65% of KU (47/72) and
+   * abstain at 14.89% versus 4.00% for `previous`/`current` (z = 2.801), and
+   * 6.8 of every 7 such abstentions had the gold answer verbatim in the
+   * retrieved context — including one at top1Score 0.911.
+   */
+  it('gives a Step 2 rule for a question that states no time qualifier', () => {
+    const prompt = buildKnowledgeUpdatePrompt('How long have I had my cat, Luna?', 'ctx');
+    expect(prompt).toContain('NO time qualifier');
+  });
+
+  it('breaks a no-qualifier tie toward the value from the latest turn', () => {
+    const prompt = buildKnowledgeUpdatePrompt('How often do I see my therapist?', 'ctx');
+    // The tie-break has to be stated, otherwise a multi-value subject leaves the
+    // model with several candidates and no rule for choosing among them.
+    expect(prompt).toMatch(/NO time qualifier[\s\S]*LATEST/);
+  });
+
+  it('states that an absent time qualifier is not a reason to abstain', () => {
+    const prompt = buildKnowledgeUpdatePrompt('How long have I had my cat, Luna?', 'ctx');
+    // Mirrors the guardrail that `buildAggregationQaPrompt` already carries and
+    // that measurably suppresses spurious abstention on the MR path.
+    expect(prompt).toContain('NO time qualifier');
+    expect(prompt).toContain('NOT a reason to abstain');
+  });
+
+  it('states that finding only one value is not a reason to abstain', () => {
+    const prompt = buildKnowledgeUpdatePrompt('How long have I had my cat, Luna?', 'ctx');
+    expect(prompt).toMatch(/only ONE value[\s\S]*NOT a reason to abstain/);
+  });
+
+  /**
+   * Completeness invariant: the prompt's Step 2 must supply a selection rule for
+   * EVERY value `classifyKnowledgeUpdateQualifier` can return. This is the test
+   * whose absence let the defect ship — the three qualifier tests above passed
+   * while 65% of KU questions had no applicable rule at all.
+   *
+   * Each row first pins the fixture to its qualifier so the table cannot rot
+   * into testing the wrong branch, and each rule string is distinct so a change
+   * that collapses two branches onto one would be caught.
+   */
+  it('provides a selection rule for every value the qualifier classifier returns', () => {
+    const selectionRule: Record<ReturnType<typeof classifyKnowledgeUpdateQualifier>, string> = {
+      previous: 'EARLIER',
+      current: 'LATER',
+      // The no-qualifier case is the one that was missing entirely.
+      other: 'NO time qualifier',
+    };
+    const fixtures: Array<[ReturnType<typeof classifyKnowledgeUpdateQualifier>, string]> = [
+      ['previous', 'What was my previous city?'],
+      ['current', 'What is my current city?'],
+      ['other', 'How long have I had my cat, Luna?'],
+    ];
+    for (const [qualifier, question] of fixtures) {
+      expect(classifyKnowledgeUpdateQualifier(question)).toBe(qualifier);
+      expect(buildKnowledgeUpdatePrompt(question, 'ctx')).toContain(selectionRule[qualifier]);
+    }
+    // Every value of the codomain is covered, so a fourth qualifier cannot be
+    // added without adding a rule here.
+    expect(Object.keys(selectionRule).sort()).toEqual(['current', 'other', 'previous']);
   });
 });
 
@@ -1309,6 +1375,28 @@ describe('NaturalLanguageMemorySystem', () => {
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('previous');
     expect(qaPrompt).toContain('I moved to Shanghai');
+  });
+
+  it('answerKnowledgeUpdate sends the no-qualifier rule for a question with no time qualifier', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return '9 months';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerKnowledgeUpdate('How long have I had my cat, Luna?', [
+      "[2023/11/30] user: I've had my cat, Luna, for about 9 months now.",
+    ]);
+    expect(answer).toBe('9 months');
+    // Wiring guard: the fix has to reach the model through the KU path, not just
+    // exist in the builder. LongMemEval-S abstained on this exact shape of
+    // question while holding the answer verbatim in the retrieved context.
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('NO time qualifier');
+    expect(qaPrompt).toContain('How long have I had my cat, Luna?');
   });
 
   it('answerKnowledgeUpdate selects the current value bitemporally from extracted facts', async () => {

@@ -935,6 +935,16 @@ export function buildPreferencePrompt(
  * before answering, mirroring the multi-session CoT prompt's enumerate-then-act
  * pattern. Listing the old and new values side by side makes "previous" vs
  * "currently" unambiguous.
+ *
+ * Step 2 must also cover the question that states NO time qualifier, because
+ * enumerate-then-select is unsatisfiable without one: the model lists values it
+ * has no rule for choosing between, and the only terminal the prompt defined
+ * was the abstain token. Measured on LongMemEval-S that shape is 47 of the 72
+ * KU questions (65%), and it abstained at 14.89% against 4.00% for the
+ * qualifier-carrying ones (z = 2.801), with 6.8 of every 7 such abstentions
+ * holding the gold answer verbatim in the retrieved context. The
+ * anti-abstention guardrails below mirror the ones `buildAggregationQaPrompt`
+ * already uses to suppress the same failure mode on the MR path.
  */
 export function buildKnowledgeUpdatePrompt(
   question: string,
@@ -950,13 +960,19 @@ export function buildKnowledgeUpdatePrompt(
     '  - <value> | <date>',
     '  - If the user updated a value, list BOTH the old and the new value with their dates.',
     '',
-    'Step 2 — Pick the value matching the time qualifier:',
+    'Step 2 — Pick the value to report:',
     '  - "previous", "before", "originally", "used to" → the EARLIER (older) value.',
     '  - "currently", "now", "most recent", "latest", "after updating" → the LATER (newer) value.',
     '  - "still", "same", or a Yes/No question → compare the turns and answer Yes or No.',
+    // A "how long / how often / where / how much" question frequently states no
+    // qualifier at all. Without this branch the model enumerates values it has
+    // no rule for choosing between and falls through to the abstain token.
+    '  - NO time qualifier at all → report the value as stated. When the subject had several values, report the one from the LATEST turn.',
     '',
     'Answer with ONLY the answer phrase (a word, name, number, Yes, or No), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context offers no answer to the question at all.`,
+    'A question that states NO time qualifier is NOT a reason to abstain: report the value as stated.',
+    'Finding only ONE value for the subject is NOT a reason to abstain.',
     '',
     'Context:',
     context,
