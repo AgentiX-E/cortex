@@ -15,6 +15,8 @@ export type OpenAIEmbeddingOptions = {
   maxRetries?: number;
   /** Initial backoff in milliseconds; doubles each retry. */
   retryBaseDelayMs?: number;
+  /** Per-attempt request deadline in milliseconds; default 60000. */
+  timeoutMs?: number;
 };
 
 export class OpenAIEmbedding implements EmbeddingModel {
@@ -47,8 +49,11 @@ export class OpenAIEmbedding implements EmbeddingModel {
         },
         body: JSON.stringify(body),
       },
-      this.options.maxRetries,
-      this.options.retryBaseDelayMs,
+      {
+        maxRetries: this.options.maxRetries,
+        baseDelayMs: this.options.retryBaseDelayMs,
+        timeoutMs: this.options.timeoutMs,
+      },
     );
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '');

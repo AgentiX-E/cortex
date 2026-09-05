@@ -19,4 +19,6 @@ export {
   sleep,
   DEFAULT_MAX_RETRIES,
   DEFAULT_RETRY_BASE_DELAY_MS,
+  DEFAULT_RETRY_TIMEOUT_MS,
+  type RetryOptions,
 } from './retry.js';
