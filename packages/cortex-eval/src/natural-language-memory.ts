@@ -24,8 +24,6 @@ import {
 import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
-  reorderByDateProximity,
-  resolveTimeAnchor,
   type TemporalEvent,
   type TemporalKind,
 } from './temporal-engine.js';
@@ -244,19 +242,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     questionDate?: string,
   ): Promise<Answer> {
     const kind = classifyTemporalQuestion(question);
-    // Time-anchored questions ("two weeks ago", "a month ago") name the date they
-    // ask about, so the evidence turn is recalled by date proximity rather than
-    // semantic similarity alone (which can pick a same-topic turn at the wrong
-    // date). `resolveTimeAnchor` returns null for non-anchored questions, in
-    // which case retrieval is the ordinary semantic/lexical path.
-    const anchorDate = resolveTimeAnchor(question, questionDate ?? '');
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
       false,
       buildTemporalQueryExpansionPrompt,
       true,
-      anchorDate ?? undefined,
     );
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
@@ -286,7 +277,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
-      this.maxHitScore(hits),
+      hits[0]?.score ?? 0,
       retrieved,
       temporalPrompt,
       parseQaAnswer,
@@ -501,7 +492,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
     enableLexicalRecall: boolean = false,
-    dateAnchorDate?: string,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
@@ -510,19 +500,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     );
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
-    // A time-anchored question asks about a specific date, so recall is widened
-    // first and the candidate pool is then re-ordered by date proximity: this
-    // lets the turn AT the anchor date enter the top-k even when embedding
-    // similarity alone ranks a semantically-close turn at a different date above
-    // it. The widened pool is only a candidate set — the final context still
-    // holds `topK` turns.
-    const recallTopK = dateAnchorDate ? Math.min(topK * 2, searchable.length) : topK;
-    let hits = enableLexicalRecall
-      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, recallTopK)
-      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, recallTopK);
-    if (dateAnchorDate) {
-      hits = reorderByDateProximity(hits, dateAnchorDate).slice(0, topK);
-    }
+    const hits = enableLexicalRecall
+      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, topK)
+      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, topK);
     const retrieved =
       hits.length === 0
         ? ''

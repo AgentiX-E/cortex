@@ -103,8 +103,6 @@ export function isValidDate(date: string): boolean {
 
 /** Small number words the LLM may use when reporting a relative date. */
 const NUMBER_WORDS: Record<string, number> = {
-  'a couple of': 2,
-  'a few': 3,
   a: 1,
   one: 1,
   two: 2,
@@ -122,15 +120,14 @@ const NUMBER_WORDS: Record<string, number> = {
 
 /**
  * Parse a relative date like "a month ago" / "two weeks before" / "3 days ago"
- * / "a couple of days ago" into a numeric offset. Returns `null` when the string
- * is not a recognised relative-time expression, so callers fall back to treating
- * it as unparseable.
+ * into a numeric offset. Returns `null` when the string is not a recognised
+ * relative-time expression, so callers fall back to treating it as unparseable.
  */
 export function parseRelativeOffset(raw: string): { amount: number; unit: RelativeUnit } | null {
   const match = raw
     .toLowerCase()
     .match(
-      /\b(a couple of|a few|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(day|week|month)s?\s+(ago|before)\b/,
+      /\b(a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(day|week|month)s?\s+(ago|before)\b/,
     );
   if (!match) {
     return null;
@@ -192,44 +189,6 @@ export function resolveTemporalDate(raw: string, questionDate: string): string {
   }
   const days = offset.unit === 'week' ? offset.amount * 7 : offset.amount;
   return addDays(reference, -days);
-}
-
-/**
- * Resolve the question's own time anchor ("two weeks ago", "a month ago",
- * "a couple of days ago") to an absolute date. Returns `null` when the question
- * carries no relative-time anchor or the question date is missing. This is the
- * date the question is asking about, used to re-rank retrieval so the turn at
- * that date beats a semantically-close turn at a different date.
- */
-export function resolveTimeAnchor(question: string, questionDate: string): string | null {
-  if (parseRelativeOffset(question) === null) {
-    return null;
-  }
-  const resolved = resolveTemporalDate(question, questionDate);
-  return isValidDate(resolved) ? resolved : null;
-}
-
-/**
- * Re-order retrieved hits by their date proximity to an anchor date, so the turn
- * at (or nearest to) the anchor outranks a semantically-close turn at a different
- * date. Hits whose text carries no `[YYYY/MM/DD]` date are left at the tail in
- * their original relative order. The input is not mutated.
- */
-export function reorderByDateProximity<T extends { text: string }>(
-  hits: readonly T[],
-  anchorDate: string,
-): T[] {
-  return [...hits].sort((a, b) => {
-    const da = normalizeDate(a.text);
-    const db = normalizeDate(b.text);
-    const distA = isValidDate(da)
-      ? Math.abs(daysBetween(anchorDate, da))
-      : Number.POSITIVE_INFINITY;
-    const distB = isValidDate(db)
-      ? Math.abs(daysBetween(anchorDate, db))
-      : Number.POSITIVE_INFINITY;
-    return distA - distB;
-  });
 }
 
 /** Signed whole days from `from` to `to` (positive when `to` is later). */

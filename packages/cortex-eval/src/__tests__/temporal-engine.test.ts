@@ -12,8 +12,6 @@ import {
   hasSecondEventReference,
   parseRelativeOffset,
   resolveTemporalDate,
-  resolveTimeAnchor,
-  reorderByDateProximity,
   type TemporalKind,
 } from '../temporal-engine.js';
 
@@ -161,12 +159,6 @@ describe('parseRelativeOffset', () => {
     expect(parseRelativeOffset('three days ago')).toEqual({ amount: 3, unit: 'day' });
   });
 
-  it('parses "a couple of" and "a few" relative times', () => {
-    expect(parseRelativeOffset('a couple of days ago')).toEqual({ amount: 2, unit: 'day' });
-    expect(parseRelativeOffset('a few weeks ago')).toEqual({ amount: 3, unit: 'week' });
-    expect(parseRelativeOffset('a couple of months ago')).toEqual({ amount: 2, unit: 'month' });
-  });
-
   it('parses digit relative times', () => {
     expect(parseRelativeOffset('3 months ago')).toEqual({ amount: 3, unit: 'month' });
   });
@@ -200,44 +192,6 @@ describe('resolveTemporalDate', () => {
     expect(resolveTemporalDate('last Friday', '2023/05/21')).toBe('');
     expect(resolveTemporalDate('a month ago', '')).toBe('');
     expect(resolveTemporalDate('', '2023/05/21')).toBe('');
-  });
-});
-
-describe('resolveTimeAnchor', () => {
-  it('resolves a relative-time anchor in the question to an absolute date', () => {
-    expect(resolveTimeAnchor('What did I do two weeks ago?', '2023/05/05')).toBe('2023/04/21');
-    expect(
-      resolveTimeAnchor('What charity event did I participate in a month ago?', '2023/05/05'),
-    ).toBe('2023/04/05');
-    expect(
-      resolveTimeAnchor('I mentioned cooking something a couple of days ago.', '2023/05/05'),
-    ).toBe('2023/05/03');
-  });
-
-  it('returns null when the question has no relative-time anchor', () => {
-    expect(resolveTimeAnchor('What is the order of my trips?', '2023/05/05')).toBeNull();
-    expect(resolveTimeAnchor('What is my favorite color?', '2023/05/05')).toBeNull();
-    expect(resolveTimeAnchor('two weeks ago', '')).toBeNull();
-  });
-});
-
-describe('reorderByDateProximity', () => {
-  it('orders hits by distance from the anchor date, undated hits last', () => {
-    const hits = [
-      { text: '[2023/03/10 (Fri) 10:00] user: far earlier' },
-      { text: 'no date here' },
-      { text: '[2023/04/20 (Thu) 10:00] user: near anchor' },
-      { text: '[2023/05/01 (Mon) 10:00] user: slightly after' },
-    ];
-    const ordered = reorderByDateProximity(hits, '2023/04/21');
-    expect(ordered[0]!.text).toContain('near anchor');
-    expect(ordered[1]!.text).toContain('slightly after');
-    expect(ordered[ordered.length - 1]!.text).toBe('no date here');
-  });
-
-  it('preserves the input when every hit is undated', () => {
-    const hits = [{ text: 'a' }, { text: 'b' }];
-    expect(reorderByDateProximity(hits, '2023/04/21')).toEqual(hits);
   });
 });
 
