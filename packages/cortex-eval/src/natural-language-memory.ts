@@ -220,7 +220,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context);
     return this.respondWith(
       question,
-      hits[0]?.score ?? 0,
+      this.maxHitScore(hits),
       retrieved,
       buildQaPrompt,
       parseQaAnswer,
@@ -339,7 +339,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
     return this.respondWith(
       question,
-      hits[0]?.score ?? 0,
+      this.maxHitScore(hits),
       retrieved,
       buildQaPrompt,
       parseQaAnswer,
@@ -360,7 +360,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
     return this.respondWith(
       question,
-      hits[0]?.score ?? 0,
+      this.maxHitScore(hits),
       retrieved,
       buildConservativeQaPrompt,
       parseQaAnswer,
@@ -383,7 +383,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
     return this.respondWith(
       question,
-      hits[0]?.score ?? 0,
+      this.maxHitScore(hits),
       retrieved,
       buildPreferencePrompt,
       parseRecommendationAnswer,
@@ -425,7 +425,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     }
     return this.respondWith(
       question,
-      hits[0]?.score ?? 0,
+      this.maxHitScore(hits),
       retrieved,
       buildKnowledgeUpdatePrompt,
       parseQaAnswer,
@@ -655,6 +655,24 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const parsed = parseQueryExpansion(expansionRaw);
     cache?.set(cacheKey, parsed);
     return parsed;
+  }
+
+  /**
+   * Strongest cosine among the retrieved hits. The abstention signal must be the
+   * most relevant evidence turn's similarity, NOT the similarity of whichever
+   * turn a fusion ordering happened to place first: reciprocal rank fusion
+   * re-orders hits by multi-query agreement, so `hits[0]` can be a turn with a
+   * weaker cosine than another hit, and reading its score as confidence would
+   * trigger a spurious threshold abstention.
+   */
+  private maxHitScore(hits: readonly { score: number }[]): number {
+    let max = 0;
+    for (const hit of hits) {
+      if (hit.score > max) {
+        max = hit.score;
+      }
+    }
+    return max;
   }
 
   private async respondWith(

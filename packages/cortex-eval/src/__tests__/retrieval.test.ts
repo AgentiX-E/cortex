@@ -346,19 +346,45 @@ describe('retrieveTopKByQueries', () => {
     clearEmbeddingCache();
     const embedding = tableEmbedding(
       {
-        q1: [1, 0],
-        q2: [0, 1],
-        a: [0.6, 0.6],
-        b: [0.9, 0],
-        c: [0, 0.9],
+        q1: [1, 0, 0],
+        q2: [0, 1, 0],
+        // a: cos(q1)=0.6, cos(q2)=0.6 (normalized).
+        a: [0.6, 0.6, Math.sqrt(0.28)],
+        // b: cos(q1)=0.9, cos(q2)=0 (normalized).
+        b: [0.9, 0, Math.sqrt(0.19)],
+        // c: cos(q2)=0.9, cos(q1)=0 (normalized).
+        c: [0, 0.9, Math.sqrt(0.19)],
       },
-      2,
+      3,
     );
     const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], ['a', 'b', 'c'], 2);
     // 'a' is rank 2 under both queries; 'b'/'c' are rank 1 under one only. The
     // reciprocal-rank sum promotes the cross-query agreement to the front.
     expect(hits[0]!.text).toBe('a');
     expect(hits).toHaveLength(2);
+  });
+
+  it('keeps each hit score as its max cosine, independent of the fusion order', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      {
+        q1: [1, 0, 0],
+        q2: [0, 1, 0],
+        a: [0.6, 0.6, Math.sqrt(0.28)],
+        b: [0.9, 0, Math.sqrt(0.19)],
+        c: [0, 0.9, Math.sqrt(0.19)],
+      },
+      3,
+    );
+    const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], ['a', 'b', 'c'], 2);
+    // RRF orders 'a' first (multi-query agreement), but its score stays 'a's own
+    // max cosine (0.6), NOT the fusion score. The strongest cosine across all
+    // hits remains 0.9 ('b'), which is the abstention signal — it must not read
+    // the weaker cosine of the fusion-first turn and trigger a spurious abstain.
+    expect(hits[0]!.text).toBe('a');
+    expect(hits[0]!.score).toBeCloseTo(0.6, 6);
+    const maxCosine = Math.max(...hits.map((h) => h.score));
+    expect(maxCosine).toBeCloseTo(0.9, 6);
   });
 });
 

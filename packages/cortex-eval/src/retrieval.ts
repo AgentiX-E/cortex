@@ -548,13 +548,27 @@ export async function retrieveTopKByQueries(
   const data = await buildTurnIndex(embedding, context);
   const queryVecs = await embedManyCached(embedding, queries);
   const rankedLists: RetrievalHit[][] = [];
+  const maxCosineById = new Map<string, number>();
   for (const queryVec of queryVecs) {
     // searchTurnIndex returns best-first, so each list is already ranked.
-    rankedLists.push(await searchTurnIndex(data, queryVec, topK));
+    const hits = await searchTurnIndex(data, queryVec, topK);
+    rankedLists.push(hits);
+    for (const hit of hits) {
+      const previous = maxCosineById.get(hit.id);
+      if (previous === undefined || hit.score > previous) {
+        maxCosineById.set(hit.id, hit.score);
+      }
+    }
   }
   // Fuse per-query rankings by reciprocal rank so a turn recalled by several
   // phrases outranks a turn that is the single best match for only one phrase.
-  return reciprocalRankFusion(rankedLists, (hit) => hit.id).slice(0, topK);
+  const fused = reciprocalRankFusion(rankedLists, (hit) => hit.id).slice(0, topK);
+  // RRF decides the ORDER only; the score field is re-written to the turn's max
+  // cosine so the caller's abstention signal (the strongest evidence cosine)
+  // stays independent of the fusion order — otherwise a turn ranked first by
+  // multi-query agreement but with a weaker cosine would read as a low-confidence
+  // hit and trigger a spurious threshold abstention.
+  return fused.map((hit) => ({ ...hit, score: maxCosineById.get(hit.id) ?? hit.score }));
 }
 
 /**
