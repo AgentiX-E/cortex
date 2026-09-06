@@ -102,6 +102,7 @@ export {
   serializeEmbeddingCache,
   deserializeEmbeddingCache,
   hashText,
+  reciprocalRankFusion,
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';

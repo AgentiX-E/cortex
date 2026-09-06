@@ -19,6 +19,7 @@ import {
   serializeEmbeddingCache,
   deserializeEmbeddingCache,
   hashText,
+  reciprocalRankFusion,
 } from '../retrieval.js';
 import { tableEmbedding } from './test-embedding.js';
 
@@ -26,6 +27,54 @@ describe('hashText', () => {
   it('is deterministic and stable', () => {
     expect(hashText('hello')).toBe(hashText('hello'));
     expect(hashText('hello')).not.toBe(hashText('world'));
+  });
+});
+
+describe('reciprocalRankFusion', () => {
+  it('returns an empty list when given no ranked lists', () => {
+    expect(reciprocalRankFusion<string>([], (x) => x)).toEqual([]);
+  });
+
+  it('preserves the order of a single ranked list', () => {
+    const fused = reciprocalRankFusion([['a', 'b', 'c']], (x) => x);
+    expect(fused).toEqual(['a', 'b', 'c']);
+  });
+
+  it('de-duplicates an item that appears in multiple lists', () => {
+    const fused = reciprocalRankFusion(
+      [
+        ['a', 'b'],
+        ['b', 'c'],
+      ],
+      (x) => x,
+    );
+    expect(fused).toHaveLength(3);
+    expect(fused.sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('ranks a multi-channel agreement above a single-channel win', () => {
+    // 'a' is rank 2 in BOTH lists; 'b' is rank 1 in the first list only. The
+    // reciprocal-rank sum 2/(k+2) exceeds 1/(k+1) for the standard k=60, so the
+    // item agreed upon by two channels outranks the single-channel winner.
+    const fused = reciprocalRankFusion(
+      [
+        ['b', 'a'],
+        ['a', 'c'],
+      ],
+      (x) => x,
+    );
+    expect(fused[0]).toBe('a');
+    expect(fused).toContain('b');
+    expect(fused).toContain('c');
+  });
+
+  it('is deterministic', () => {
+    const lists = [
+      ['a', 'b', 'c'],
+      ['c', 'a'],
+      ['b', 'a', 'd'],
+    ];
+    expect(reciprocalRankFusion(lists, (x) => x)).toEqual(reciprocalRankFusion(lists, (x) => x));
   });
 });
 
@@ -214,6 +263,27 @@ describe('retrieveByQueries', () => {
     expect(batches[0]).toEqual(['turn a', 'turn b']);
     expect(batches[1]).toEqual(['q1', 'q2', 'q3']);
   });
+
+  it('fuses query ranks so a multi-query session outranks a single-query winner', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      {
+        q1: [1, 0],
+        q2: [0, 1],
+        // 'a' is rank 2 under q1 AND rank 2 under q2 (cos 0.6 both).
+        a: [0.6, 0.6],
+        // 'b' is rank 1 under q1 but orthogonal to q2 (not in q2's top-2).
+        b: [0.9, 0],
+        // 'c' is rank 1 under q2 but orthogonal to q1 (not in q1's top-2).
+        c: [0, 0.9],
+      },
+      2,
+    );
+    const hits = await retrieveByQueries(embedding, ['q1', 'q2'], [['a'], ['b'], ['c']], 2);
+    // RRF: a = 2/(60+2) > b = 1/(60+1) = c, so the cross-query agreement leads.
+    expect(hits[0]!.sessionIndex).toBe(0);
+    expect(hits.map((h) => h.sessionIndex).sort((x, y) => x - y)).toEqual([0, 1, 2]);
+  });
 });
 
 describe('retrieveTopKByQueries', () => {
@@ -270,6 +340,25 @@ describe('retrieveTopKByQueries', () => {
     expect(batches).toHaveLength(2);
     expect(batches[0]).toEqual(['turn a', 'turn b']);
     expect(batches[1]).toEqual(['q1', 'q2', 'q3']);
+  });
+
+  it('fuses query ranks so a multi-query turn outranks a single-query winner', async () => {
+    clearEmbeddingCache();
+    const embedding = tableEmbedding(
+      {
+        q1: [1, 0],
+        q2: [0, 1],
+        a: [0.6, 0.6],
+        b: [0.9, 0],
+        c: [0, 0.9],
+      },
+      2,
+    );
+    const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], ['a', 'b', 'c'], 2);
+    // 'a' is rank 2 under both queries; 'b'/'c' are rank 1 under one only. The
+    // reciprocal-rank sum promotes the cross-query agreement to the front.
+    expect(hits[0]!.text).toBe('a');
+    expect(hits).toHaveLength(2);
   });
 });
 

@@ -396,17 +396,15 @@ export async function retrieveByQueries(
 ): Promise<SessionHit[]> {
   const data = await buildSessionIndex(embedding, sessions);
   const queryVecs = await embedManyCached(embedding, queries);
-  const bestById = new Map<string, SessionHit>();
-  for (let i = 0; i < queries.length; i++) {
-    const hits = await searchSessionIndex(data, queryVecs[i]!, topKPerQuery);
-    for (const hit of hits) {
-      const existing = bestById.get(hit.id);
-      if (!existing || hit.score > existing.score) {
-        bestById.set(hit.id, hit);
-      }
-    }
+  const rankedLists: SessionHit[][] = [];
+  for (const queryVec of queryVecs) {
+    // searchSessionIndex returns best-first, so each list is already ranked.
+    rankedLists.push(await searchSessionIndex(data, queryVec, topKPerQuery));
   }
-  return [...bestById.values()].sort((a, b) => b.score - a.score);
+  // Fuse the per-query rankings by reciprocal rank so a session recalled by
+  // several expansion phrases (cross-query agreement) outranks a session that
+  // is the single best match for just one phrase.
+  return reciprocalRankFusion(rankedLists, (hit) => hit.id);
 }
 
 /** A per-call index over individual turns, annotated with the owning session. */
@@ -549,32 +547,20 @@ export async function retrieveTopKByQueries(
 ): Promise<RetrievalHit[]> {
   const data = await buildTurnIndex(embedding, context);
   const queryVecs = await embedManyCached(embedding, queries);
-  const bestById = new Map<string, RetrievalHit>();
-  for (let i = 0; i < queries.length; i++) {
-    const hits = await searchTurnIndex(data, queryVecs[i]!, topK);
-    for (const hit of hits) {
-      const existing = bestById.get(hit.id);
-      if (!existing || hit.score > existing.score) {
-        bestById.set(hit.id, hit);
-      }
-    }
+  const rankedLists: RetrievalHit[][] = [];
+  for (const queryVec of queryVecs) {
+    // searchTurnIndex returns best-first, so each list is already ranked.
+    rankedLists.push(await searchTurnIndex(data, queryVec, topK));
   }
-  return [...bestById.values()].sort((a, b) => b.score - a.score).slice(0, topK);
+  // Fuse per-query rankings by reciprocal rank so a turn recalled by several
+  // phrases outranks a turn that is the single best match for only one phrase.
+  return reciprocalRankFusion(rankedLists, (hit) => hit.id).slice(0, topK);
 }
-
-/**
- * Cap on how many lexical matches are guaranteed a place in the hybrid result.
- * Lexical recall (a concrete keyword from the question appearing verbatim in a
- * turn) is strong but can be noisy for common words, so it is guaranteed a
- * bounded slice instead of the whole window; the rest is filled by semantic
- * search so a frequent keyword cannot crowd out a semantically-relevant turn.
- */
-const MAX_LEXICAL_HITS = 5;
 
 /**
  * Maximum number of turns a keyword may appear in to still count as a lexical
  * recall signal. A keyword present in more turns than this (a common word like
- * "friend", "sports", or "cooking") is not discriminative: guaranteeing turns
+ * "friend", "sports", or "cooking") is not discriminative: voting for turns
  * that merely contain it would crowd out the semantic evidence turn and cause a
  * previously-correct answer to abstain. Rare keywords (a proper noun like
  * "Nordstrom" appearing in one turn) are what precisely identify evidence.
@@ -847,11 +833,10 @@ export function countLexicalMatches(
  * (measured ~0.667 vs ~0.634 on the benchmark), so a concrete-noun evidence turn
  * is routinely ranked below a semantically-close but irrelevant distractor. A
  * turn that additionally contains the question's concrete keywords is independent
- * evidence of relevance, so the highest-matching keyword turns are guaranteed a
- * bounded slice of the result (up to `MAX_LEXICAL_HITS`), and the remaining
- * slots are filled by semantic search. Guaranteeing inclusion (rather than a
- * fractional score boost) is what recovers an evidence turn whose cosine score
- * fell outside the semantic top-K entirely.
+ * evidence of relevance, so the lexical and semantic rankings are fused by
+ * reciprocal rank: a turn that is BOTH a rare-keyword match AND semantically
+ * close outranks a turn with only one signal, and an evidence turn whose cosine
+ * fell outside the semantic top-K is still recovered by its keyword rank.
  */
 export async function retrieveTopKByQueriesHybrid(
   embedding: EmbeddingModel,
@@ -870,33 +855,56 @@ export async function retrieveTopKByQueriesHybrid(
     return semanticPool;
   }
 
-  // Highest-match keyword turns first, capped so lexical recall cannot crowd out
-  // every semantic slot when a keyword is common.
+  // Lexical channel: turns ordered by match count (best-first). The id formula
+  // matches `buildTurnIndex`, so the same turn is fused (not duplicated) with its
+  // semantic-pool entry below.
   const lexicalOrdered = [...matchesByIndex.entries()].sort((a, b) => b[1] - a[1]);
-  const lexicalCap = Math.min(MAX_LEXICAL_HITS, topK);
-  const result: RetrievalHit[] = [];
-  const seen = new Set<string>();
-  for (const [index, matches] of lexicalOrdered) {
-    if (result.length >= lexicalCap) {
-      break;
-    }
-    const id = `t-${hashText(context[index]!)}`;
-    result.push({ id, text: context[index]!, score: matches, index });
-    seen.add(id);
-  }
+  const lexicalHits: RetrievalHit[] = lexicalOrdered.map(([index, matches]) => ({
+    id: `t-${hashText(context[index]!)}`,
+    text: context[index]!,
+    score: matches,
+    index,
+  }));
 
-  // Fill the remaining slots from the semantic pool, de-duplicating any turn
-  // already guaranteed a place by lexical recall.
-  for (const hit of semanticPool) {
-    if (result.length >= topK) {
-      break;
-    }
-    if (seen.has(hit.id)) {
-      continue;
-    }
-    result.push(hit);
-    seen.add(hit.id);
-  }
+  // Fuse the lexical and semantic rankings by reciprocal rank so a turn that
+  // BOTH carries a rare keyword AND is semantically close outranks a turn with
+  // only one signal, instead of the lexical-first cascade that gave keyword
+  // turns a fixed slice and demoted everything semantic behind them.
+  return reciprocalRankFusion([lexicalHits, semanticPool], (hit) => hit.id).slice(0, topK);
+}
 
-  return result;
+/**
+ * Reciprocal rank fusion (RRF): merge several independently-ranked lists into a
+ * single ordering. Each input list is best-first; an item's fused score is the
+ * sum of `1/(k + rank)` across every list that contains it (rank is 1-based), so
+ * an item ranked highly by several channels outranks one ranked highly by a
+ * single channel. This is the fusion the frontier memory systems (Hindsight /
+ * AgentOS / HydraDB / AutoMem) use to combine vector, BM25, graph, and temporal
+ * channels whose raw scores live on incompatible scales — max- or score-merge
+ * would throw away the cross-channel agreement that is the whole point of the
+ * extra channel.
+ *
+ * `keyOf` yields a stable identity per item so the same session/turn appearing
+ * in several channels is fused into one entry instead of duplicated. Ties keep
+ * the first-seen order (the earliest channel's ranking wins), so the result is
+ * deterministic.
+ */
+export function reciprocalRankFusion<T>(
+  rankedLists: readonly (readonly T[])[],
+  keyOf: (item: T) => string,
+  k = 60,
+): T[] {
+  const best = new Map<string, T>();
+  const score = new Map<string, number>();
+  for (const list of rankedLists) {
+    for (let rank = 0; rank < list.length; rank++) {
+      const item = list[rank]!;
+      const key = keyOf(item);
+      if (!best.has(key)) {
+        best.set(key, item);
+      }
+      score.set(key, (score.get(key) ?? 0) + 1 / (k + rank + 1));
+    }
+  }
+  return [...score.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => best.get(key)!);
 }

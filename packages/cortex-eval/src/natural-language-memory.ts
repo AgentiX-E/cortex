@@ -12,6 +12,7 @@ import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
   expandContextWindow,
+  reciprocalRankFusion,
   retrieveByQueries,
   retrieveSessionsByTurns,
   retrieveTopKByQueries,
@@ -574,10 +575,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessions,
       sessionTopK,
     );
-    const merged = new Map<string, SessionHit>();
-    for (const hit of baseHits) {
-      merged.set(hit.id, hit);
-    }
 
     // Derivation questions expand into their operands (e.g. "my age", "my
     // birthday"), not activities, so the evidence session stating the operand
@@ -587,23 +584,22 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         ? buildDerivationQueryExpansionPrompt
         : buildMultiSessionQueryExpansionPrompt;
     const expansionQueries = await this.expandQuestion(question, expansionPrompt);
-    if (expansionQueries.length > 0) {
-      const perQueryK = this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K;
-      const expandedHits = await retrieveByQueries(
-        this.options.embedding,
-        expansionQueries,
-        sessions,
-        perQueryK,
-      );
-      // Merge base and expanded hits, keeping the highest score per session.
-      for (const hit of expandedHits) {
-        const existing = merged.get(hit.id);
-        if (!existing || hit.score > existing.score) {
-          merged.set(hit.id, hit);
-        }
-      }
-    }
-    const hits = [...merged.values()].sort((a, b) => b.score - a.score);
+    const expandedHits =
+      expansionQueries.length > 0
+        ? await retrieveByQueries(
+            this.options.embedding,
+            expansionQueries,
+            sessions,
+            this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K,
+          )
+        : [];
+    // Fuse the bare-question centroid channel with the expansion-phrase channel
+    // by reciprocal rank: a session recalled by BOTH the question and one of its
+    // expansion phrases outranks a session that wins only one channel, which the
+    // previous max-score merge could not express. The centroid channel is listed
+    // first so its ranking breaks ties, keeping `hits[0]` (and therefore the
+    // abstention signal) stable for the common single-channel case.
+    const hits = reciprocalRankFusion([baseHits, expandedHits], (hit) => hit.id);
 
     // Turn-level recall runs last and only ADDS sessions. Two properties make
     // this a clean, low-risk channel:
@@ -623,7 +619,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         sessions,
         this.options.turnRecallTurnsPerQuery ?? DEFAULT_TURN_RECALL_TURNS_PER_QUERY,
         turnRecall,
-        new Set(merged.keys()),
+        new Set(hits.map((hit) => hit.id)),
       );
       hits.push(...turnHits);
     }
