@@ -461,8 +461,8 @@ async function buildSessionTurnIndex(
 
 /**
  * Turn-granularity session scoring: retrieve the top turns for each query, map
- * every turn back to the session that owns it, and score each session by the
- * rank-discounted SUM of its matching turns (DCG), not its single best turn.
+ * every turn back to the session that owns it, and score each session by its
+ * best-matching turn.
  *
  * Why this exists. `retrieveTopKSessions` represents a session by the MEAN of its
  * turn vectors, so every unrelated turn in the session drags the centroid away
@@ -471,20 +471,14 @@ async function buildSessionTurnIndex(
  * ~11 turns, so a ~90-token evidence turn buried in a ~1,580-token session loses
  * about 3.3x of its similarity and can fall outside the top-k even though one of
  * its turns is the best match in the whole haystack. Scoring turns individually
- * removes that dilution.
- *
- * Why DCG instead of max. A session that contributes SEVERAL evidence turns is
- * more relevant than one that contributes a single slightly-stronger turn, but a
- * max reduction collapses the former to its best turn and discards the rest. The
- * rank-discounted sum keeps every matching turn's contribution (weighted by
- * 1/log2(rank + 2)) so multi-evidence sessions outrank single-turn sessions —
- * the same session scoring the EmergenceMem / AgentOS frontier methods use.
+ * removes that dilution: the session is then judged by the turn that actually
+ * answers the question.
  *
  * `exclude` drops sessions the caller already holds BEFORE the top-k cap is
  * applied, so an already-retrieved session cannot consume one of the few slots
  * this channel is allowed to add.
  *
- * Note the returned scores are turn-DCG values and are NOT comparable to the
+ * Note the returned scores are turn cosines and are NOT comparable to the
  * centroid cosines from `retrieveTopKSessions`. Callers must therefore merge by
  * rank (or keep the channels' orderings separate) rather than sorting on the raw
  * number, which is why the session ids and texts are kept identical between the
@@ -507,28 +501,22 @@ export async function retrieveSessionsByTurns(
   }
 
   const queryVecs = await embedManyCached(embedding, queries);
-  const dcgBySession = new Map<number, number>();
+  const bestBySession = new Map<number, number>();
   for (const queryVec of queryVecs) {
     const hits = await data.index.search(queryVec, turnsPerQuery);
-    for (let rank = 0; rank < hits.length; rank++) {
-      const hit = hits[rank]!;
+    for (const hit of hits) {
       // Every hit id was inserted via `idToSession.set`, so the lookup is
       // always defined.
       const sessionIndex = data.idToSession.get(hit.id)!;
-      // Rank-discounted gain (DCG): a session is scored by the discounted SUM of
-      // its matching turns, not its single best turn. This rewards a session that
-      // contributes several evidence turns over one that contributes a single
-      // slightly-stronger turn, matching the session-scoring used by the
-      // EmergenceMem / AgentOS frontier methods (1/log2(1) + 1/log2(3) + ...).
-      // `rank` is 0-indexed, so the leading hit gets weight 1/log2(2)=1 and each
-      // subsequent hit is discounted by log2(rank + 2).
-      const discount = 1 / Math.log2(rank + 2);
-      dcgBySession.set(sessionIndex, (dcgBySession.get(sessionIndex) ?? 0) + hit.score * discount);
+      const previous = bestBySession.get(sessionIndex);
+      if (previous === undefined || hit.score > previous) {
+        bestBySession.set(sessionIndex, hit.score);
+      }
     }
   }
 
   const results: SessionHit[] = [];
-  for (const [sessionIndex, score] of dcgBySession) {
+  for (const [sessionIndex, score] of bestBySession) {
     const session = sessions[sessionIndex]!;
     // The id formula matches buildSessionIndex so the two channels dedupe.
     const id = `s-${hashText(session.join('\n'))}`;

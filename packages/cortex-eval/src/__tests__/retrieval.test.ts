@@ -619,33 +619,13 @@ describe('retrieveSessionsByTurns', () => {
     }
   });
 
-  it('accumulates rank-discounted score across queries', async () => {
+  it('keeps the highest score across queries', async () => {
     clearEmbeddingCache();
     const embedding = tableEmbedding({ q1: [1, 0, 0], q2: [0, 1, 0], turn: [0.6, 0.8, 0] }, 3);
     const hits = await retrieveSessionsByTurns(embedding, ['q1', 'q2'], [['turn']], 10, 10);
     expect(hits).toHaveLength(1);
-    // The same turn is the leading hit for both queries, so its discounted
-    // contributions sum: 0.6/1 + 0.8/1 = 1.4.
-    expect(hits[0]!.score).toBeCloseTo(1.4, 6);
-  });
-
-  it('scores a session by the rank-discounted sum of its turns, not its single best turn', async () => {
-    clearEmbeddingCache();
-    const embedding = tableEmbedding(
-      {
-        question: [1, 0, 0],
-        a: [0.75, Math.sqrt(0.4375), 0], // one strong turn
-        b1: [0.7, Math.sqrt(0.51), 0], // two moderate turns
-        b2: [0.7, Math.sqrt(0.51), 0],
-      },
-      3,
-    );
-    const sessions = [['a'], ['b1', 'b2']];
-    const hits = await retrieveSessionsByTurns(embedding, ['question'], sessions, 10, 2);
-    // Session 0 has the single best turn (0.75), but session 1 has two turns that
-    // both match, so its rank-discounted sum (0.7*1 + 0.7/1.58 ≈ 1.14) outranks
-    // session 0's 0.75.
-    expect(hits[0]!.sessionIndex).toBe(1);
+    // cos(q1, turn) = 0.6, cos(q2, turn) = 0.8 -> the maximum wins.
+    expect(hits[0]!.score).toBeCloseTo(0.8, 6);
   });
 
   it('caps the number of returned sessions', async () => {
