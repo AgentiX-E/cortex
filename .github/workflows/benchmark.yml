@@ -23,6 +23,11 @@ on:
         required: false
         default: '100'
         type: string
+      model:
+        description: 'DeepSeek model id (deepseek-chat, deepseek-v4-pro, ...)'
+        required: false
+        default: 'deepseek-chat'
+        type: string
 
 permissions:
   contents: read
@@ -87,6 +92,7 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
           ABSTAIN_THRESHOLD: '0.5'
+          DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
           # Default to a small stratified sample so iterative debugging does not
           # embed the whole ~115k-token haystack for every one of 500 questions
           # on each run. Trigger with limit=0 for the statistically robust
