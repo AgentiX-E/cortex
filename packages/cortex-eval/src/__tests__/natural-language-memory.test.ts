@@ -1661,6 +1661,48 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(prompts.some((p) => p.includes('YYYY/MM/DD'))).toBe(true);
   });
 
+  it('answerTemporal recalls the anchor-date turn over a semantically-stronger wrong-date turn', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific events:')) {
+          return 'gardening activity';
+        }
+        return 'planting tomato saplings';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    // The wrong-date turn is semantically stronger (cosine 0.9) than the
+    // anchor-date turn (cosine 0.3). Without the date re-rank, topK=1 keeps only
+    // the wrong-date turn; with it, the anchor-date turn is recalled first.
+    const embedding = tableEmbedding(
+      {
+        'What gardening activity did I do two weeks ago?': [1, 0, 0],
+        '[2023/03/10] user: I attended a gardening workshop.': [0.9, 0, Math.sqrt(0.19)],
+        '[2023/04/21] user: I planted 12 tomato saplings.': [0.3, 0, Math.sqrt(0.91)],
+      },
+      3,
+    );
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      topK: 1,
+      contextRadius: 0,
+    });
+    await system.answerTemporal(
+      'What gardening activity did I do two weeks ago?',
+      [
+        '[2023/03/10] user: I attended a gardening workshop.',
+        '[2023/04/21] user: I planted 12 tomato saplings.',
+      ],
+      '2023/05/05',
+    );
+    const qaPrompt = prompts[prompts.length - 1]!;
+    expect(qaPrompt).toContain('tomato saplings');
+    expect(qaPrompt).not.toContain('gardening workshop');
+  });
+
   it('answerTemporal routes event-lookup questions to the lookup prompt', async () => {
     const prompts: string[] = [];
     let structuredCalled = false;

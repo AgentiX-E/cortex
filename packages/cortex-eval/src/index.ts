@@ -146,6 +146,8 @@ export {
   isValidDate,
   parseRelativeOffset,
   resolveTemporalDate,
+  resolveTimeAnchor,
+  reorderByDateProximity,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,
