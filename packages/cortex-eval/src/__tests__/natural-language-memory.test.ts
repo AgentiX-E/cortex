@@ -1162,6 +1162,61 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(answer).toBe('unknown');
   });
 
+  it('reuses a cached LLM answer across systems sharing the answer cache', async () => {
+    let qaCalls = 0;
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (!prompt.includes('Specific items:')) qaCalls++;
+        return 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const answerCache = new Map<string, string>();
+    const make = (name: string) =>
+      new NaturalLanguageMemorySystem(name, {
+        embedding,
+        llm,
+        answerCache,
+        enableQueryExpansion: false,
+        topK: 1,
+      });
+    const a = make('a');
+    const b = make('b');
+    expect(await a.answer('What is the favorite color?', ['My favorite color is blue.'])).toBe(
+      'blue',
+    );
+    expect(await b.answer('What is the favorite color?', ['My favorite color is blue.'])).toBe(
+      'blue',
+    );
+    // The QA prompt is byte-identical for the two systems (same prompt builder,
+    // same abstain token, same retrieved context), so the second system must hit
+    // the shared cache instead of re-billing the LLM.
+    expect(qaCalls).toBe(1);
+  });
+
+  it('does not reuse a cached answer for a different prompt', async () => {
+    let qaCalls = 0;
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (!prompt.includes('Specific items:')) qaCalls++;
+        return prompt.includes('green') ? 'green' : 'blue';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const answerCache = new Map<string, string>();
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      answerCache,
+      enableQueryExpansion: false,
+      topK: 1,
+    });
+    expect(await system.answer('What color?', ['My favorite color is blue.'])).toBe('blue');
+    expect(await system.answer('What color?', ['My favorite color is green.'])).toBe('green');
+    // Different retrieved context -> different prompt -> cache miss on the second.
+    expect(qaCalls).toBe(2);
+  });
+
   it('returns null when no context is ingested and abstention is enabled', async () => {
     const llm = scriptedLlm(() => 'blue');
     const system = new NaturalLanguageMemorySystem('s', { embedding, llm });

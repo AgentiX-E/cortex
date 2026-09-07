@@ -68,11 +68,17 @@ export async function runNaturalLanguageBenchmark(
   // feature systems can share one cache instead of re-calling the LLM for the
   // same question + expansion builder.
   const expansionCache = new Map<string, string[]>();
+  // The baseline and feature systems share one answer cache as well: abstention
+  // does not change the QA prompt, so every question the feature system answers
+  // reuses the baseline's byte-identical, temperature-0 LLM call instead of
+  // re-billing it (≈447 of the 500 feature calls per run).
+  const answerCache = new Map<string, string>();
   const baseline = new NaturalLanguageMemorySystem('nl-naive-baseline', {
     embedding,
     llm,
     enableAbstention: false,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const feature = new NaturalLanguageMemorySystem('nl-abstain-feature', {
@@ -80,6 +86,7 @@ export async function runNaturalLanguageBenchmark(
     llm,
     abstainThreshold: threshold,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.onDecision ? { onDecision: options.onDecision } : {}),
   });

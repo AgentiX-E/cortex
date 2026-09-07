@@ -78,6 +78,17 @@ export type NaturalLanguageMemorySystemOptions = {
    * system. Injected (rather than module-global) so tests stay isolated.
    */
   queryExpansionCache?: Map<string, string[]>;
+  /**
+   * Shared cache for raw QA answers, keyed by the full prompt. The benchmark
+   * runs a baseline and a feature system over the SAME questions with the SAME
+   * prompt builder, abstain token, and retrieved context (abstention does not
+   * change the prompt), so every question the feature system actually answers
+   * produces a byte-identical LLM call to the baseline's. At temperature 0 that
+   * call is deterministic, so the feature system can reuse the baseline's raw
+   * answer instead of re-billing the LLM. Injected (not module-global) so tests
+   * stay isolated and the cache lifetime stays under caller control.
+   */
+  answerCache?: Map<string, string>;
   /** Top sessions recalled per expansion phrase (default 3). */
   queryExpansionTopKPerQuery?: number;
   /**
@@ -704,9 +715,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     }
 
     const prompt = promptBuilder(question, retrieved, this.options.abstainToken);
-    const raw = await this.options.llm.complete(prompt, {
-      temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
-    });
+    const cache = this.options.answerCache;
+    let raw = cache?.get(prompt);
+    if (raw === undefined) {
+      raw = await this.options.llm.complete(prompt, {
+        temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+      });
+      cache?.set(prompt, raw);
+    }
     const parsed = parser(raw, this.options.abstainToken);
     if (parsed === null) {
       if (!abstentionEnabled) {
