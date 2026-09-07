@@ -14,6 +14,7 @@ import {
   resolveTemporalDate,
   resolveTimeRange,
   type TemporalKind,
+  type TemporalEvent,
 } from '../temporal-engine.js';
 
 describe('classifyTemporalQuestion', () => {
@@ -643,6 +644,27 @@ describe('computeTemporalAnswer', () => {
       ]);
       expect(result === null || typeof result === 'string').toBe(true);
     }
+  });
+
+  it('ignores an event whose name or date field is missing instead of crashing', () => {
+    // The structured extractor types the events as TemporalEvent, but the LLM
+    // does not honour `required: ["name", "date"]` at runtime — after the
+    // turnDate prompt change it occasionally emits an event missing `date` (it
+    // moved the date into turnDate) or missing `name`. The engine must treat
+    // those as unusable rather than throw on `undefined.trim()`.
+    const malformed = [
+      { name: 'chandelier', date: '2023/03/04' },
+      { name: 'garbage' },
+      { date: '2023/02/01' },
+    ] as unknown as TemporalEvent[];
+    expect(
+      computeTemporalAnswer(
+        'How many weeks ago did I receive the chandelier?',
+        'relative',
+        '2023/04/01',
+        malformed,
+      ),
+    ).toBe('4');
   });
 });
 

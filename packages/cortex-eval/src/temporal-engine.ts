@@ -344,6 +344,15 @@ export function computeTemporalAnswer(
   // one is supplied (the turn that states "yesterday" is the day AFTER the
   // event), and to the question date only as a fallback.
   const normalized = events
+    .filter((e) => {
+      // The structured extractor types these as TemporalEvent, but the LLM does
+      // not honour `required: ["name", "date"]` at runtime — after the turnDate
+      // prompt change it can move the date into turnDate and emit an event with
+      // no `date`, or omit `name`. Drop malformed events instead of letting
+      // `undefined.trim()` throw and abort the whole benchmark run.
+      const candidate = e as unknown as { name?: unknown; date?: unknown };
+      return typeof candidate?.name === 'string' && typeof candidate?.date === 'string';
+    })
     .map((e) => ({
       name: e.name.trim(),
       date: resolveTemporalDate(e.date, e.turnDate ?? questionDate),
