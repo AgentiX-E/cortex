@@ -12,6 +12,7 @@ import {
   hasSecondEventReference,
   parseRelativeOffset,
   resolveTemporalDate,
+  resolveTimeRange,
   type TemporalKind,
 } from '../temporal-engine.js';
 
@@ -163,6 +164,15 @@ describe('parseRelativeOffset', () => {
     expect(parseRelativeOffset('3 months ago')).toEqual({ amount: 3, unit: 'month' });
   });
 
+  it('parses "yesterday" as one day ago', () => {
+    expect(parseRelativeOffset('yesterday')).toEqual({ amount: 1, unit: 'day' });
+  });
+
+  it('parses "a couple of" and "a few" as small counts', () => {
+    expect(parseRelativeOffset('a couple of days ago')).toEqual({ amount: 2, unit: 'day' });
+    expect(parseRelativeOffset('a few weeks ago')).toEqual({ amount: 3, unit: 'week' });
+  });
+
   it('returns null for non-relative strings', () => {
     expect(parseRelativeOffset('2023/04/21')).toBeNull();
     expect(parseRelativeOffset('last Friday')).toBeNull();
@@ -192,6 +202,67 @@ describe('resolveTemporalDate', () => {
     expect(resolveTemporalDate('last Friday', '2023/05/21')).toBe('');
     expect(resolveTemporalDate('a month ago', '')).toBe('');
     expect(resolveTemporalDate('', '2023/05/21')).toBe('');
+  });
+});
+
+describe('resolveTimeRange', () => {
+  it('resolves a relative point time to a margin-bounded range', () => {
+    // "two weeks ago" = 2023/03/27, widened by ±7 days so a turn whose mention
+    // date is a day or two off the event date still falls inside.
+    expect(resolveTimeRange('What did I do two weeks ago?', '2023/04/10')).toEqual({
+      start: '2023/03/20',
+      end: '2023/04/03',
+    });
+  });
+
+  it('resolves "yesterday" to a single day', () => {
+    expect(resolveTimeRange('What did I do yesterday?', '2023/04/10')).toEqual({
+      start: '2023/04/09',
+      end: '2023/04/09',
+    });
+  });
+
+  it('resolves "last week" to the previous seven-day window', () => {
+    expect(resolveTimeRange('What did I do last week?', '2023/04/10')).toEqual({
+      start: '2023/03/28',
+      end: '2023/04/03',
+    });
+  });
+
+  it('resolves "next month" to the next calendar month', () => {
+    expect(resolveTimeRange('What will I do next month?', '2023/04/10')).toEqual({
+      start: '2023/05/01',
+      end: '2023/05/31',
+    });
+  });
+
+  it('resolves "last month" to the previous calendar month', () => {
+    expect(resolveTimeRange('What did I do last month?', '2023/04/10')).toEqual({
+      start: '2023/03/01',
+      end: '2023/03/31',
+    });
+  });
+
+  it('resolves "next year" to the next calendar year', () => {
+    expect(resolveTimeRange('What will I do next year?', '2023/04/10')).toEqual({
+      start: '2024/01/01',
+      end: '2024/12/31',
+    });
+  });
+
+  it('resolves "N months ago" to a margin-bounded range', () => {
+    expect(resolveTimeRange('What did I do three months ago?', '2023/04/10')).toEqual({
+      start: '2023/01/03',
+      end: '2023/01/17',
+    });
+  });
+
+  it('returns null when the question has no time qualifier', () => {
+    expect(resolveTimeRange('What is my favorite color?', '2023/04/10')).toBeNull();
+  });
+
+  it('returns null when the question date is invalid', () => {
+    expect(resolveTimeRange('What did I do yesterday?', '')).toBeNull();
   });
 });
 

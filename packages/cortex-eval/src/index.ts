@@ -146,6 +146,7 @@ export {
   isValidDate,
   parseRelativeOffset,
   resolveTemporalDate,
+  resolveTimeRange,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,
@@ -154,6 +155,7 @@ export {
   computeTemporalAnswer,
   type TemporalKind,
   type TemporalEvent,
+  type TimeRange,
 } from './temporal-engine.js';
 export {
   timelineFor,

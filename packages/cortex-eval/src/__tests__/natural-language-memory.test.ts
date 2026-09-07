@@ -226,6 +226,15 @@ describe('buildTemporalEventLookupPrompt', () => {
     const prompt = buildTemporalEventLookupPrompt('Q?', 'ctx', '2023/04/01', 'NONE');
     expect(prompt).toContain('NONE');
   });
+
+  it('supplies the resolved date window when a time range is given', () => {
+    const prompt = buildTemporalEventLookupPrompt('Q?', 'ctx', '2023/04/10', 'UNANSWERABLE', {
+      start: '2023/03/20',
+      end: '2023/04/03',
+    });
+    expect(prompt).toContain('resolves to 2023/03/20 through 2023/04/03');
+    expect(prompt).toContain('locate the turn(s) dated in or nearest to this window');
+  });
 });
 
 describe('buildTemporalEventExtractionPrompt', () => {

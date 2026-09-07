@@ -24,8 +24,10 @@ import {
 import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
+  resolveTimeRange,
   type TemporalEvent,
   type TemporalKind,
+  type TimeRange,
 } from './temporal-engine.js';
 import {
   classifyKnowledgeUpdateQualifier,
@@ -282,9 +284,16 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // entity at a time anchor, not for a date computation, so they use a lookup
     // prompt instead of the date-arithmetic prompt (which would make the model
     // try to compute an elapsed time that the question never asked for).
+    // Resolve the time qualifier deterministically and hand the model a concrete
+    // date window, so it locates the anchor turn by date instead of converting
+    // "ago"/"last"/"next" itself (its arithmetic is the error this removes).
+    const timeRange =
+      kind === 'eventLookup' && questionDate
+        ? (resolveTimeRange(question, questionDate) ?? undefined)
+        : undefined;
     const temporalPrompt: PromptBuilder =
       kind === 'eventLookup'
-        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t)
+        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t, timeRange)
         : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
@@ -1105,6 +1114,7 @@ export function buildTemporalEventLookupPrompt(
   context: string,
   questionDate?: string,
   abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+  timeRange?: TimeRange,
 ): string {
   const lines = [
     'You are answering a temporal question based on a conversation memory.',
@@ -1112,6 +1122,11 @@ export function buildTemporalEventLookupPrompt(
     ...(questionDate
       ? [
           `The question was asked on ${questionDate}; use it as "today" for "ago", "last", and "recently" references.`,
+        ]
+      : []),
+    ...(timeRange
+      ? [
+          `The question's time qualifier resolves to ${timeRange.start} through ${timeRange.end}; locate the turn(s) dated in or nearest to this window.`,
         ]
       : []),
     ...conInstruction(),

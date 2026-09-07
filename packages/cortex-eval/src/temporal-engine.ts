@@ -116,23 +116,32 @@ const NUMBER_WORDS: Record<string, number> = {
   ten: 10,
   eleven: 11,
   twelve: 12,
+  couple: 2,
+  few: 3,
 };
 
 /**
- * Parse a relative date like "a month ago" / "two weeks before" / "3 days ago"
- * into a numeric offset. Returns `null` when the string is not a recognised
- * relative-time expression, so callers fall back to treating it as unparseable.
+ * Parse a relative date like "a month ago" / "two weeks before" / "3 days ago" /
+ * "yesterday" / "a couple of days ago" into a numeric offset. Returns `null` when
+ * the string is not a recognised relative-time expression, so callers fall back
+ * to treating it as unparseable.
  */
 export function parseRelativeOffset(raw: string): { amount: number; unit: RelativeUnit } | null {
-  const match = raw
-    .toLowerCase()
-    .match(
-      /\b(a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(day|week|month)s?\s+(ago|before)\b/,
-    );
+  const lower = raw.toLowerCase();
+  // "yesterday" is a single day in the past and does not fit the
+  // "<number> <unit> ago" pattern below.
+  if (/\byesterday\b/.test(lower)) {
+    return { amount: 1, unit: 'day' };
+  }
+  const match = lower.match(
+    /\b(a\s+couple\s+of|a\s+few|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(day|week|month)s?\s+(ago|before)\b/,
+  );
   if (!match) {
     return null;
   }
-  const amount = NUMBER_WORDS[match[1]!] ?? Number(match[1]);
+  const token = match[1]!;
+  const amount =
+    token === 'a couple of' ? 2 : token === 'a few' ? 3 : (NUMBER_WORDS[token] ?? Number(token));
   return { amount, unit: match[2] as RelativeUnit };
 }
 
@@ -189,6 +198,80 @@ export function resolveTemporalDate(raw: string, questionDate: string): string {
   }
   const days = offset.unit === 'week' ? offset.amount * 7 : offset.amount;
   return addDays(reference, -days);
+}
+
+/** A half-open date interval [start, end], both inclusive, as `YYYY/MM/DD`. */
+export type TimeRange = { start: string; end: string };
+
+/**
+ * Widen a relative point time ("two weeks ago") into a margin around the target
+ * date, so a turn whose mention date is a day or two off the event date still
+ * falls inside the range.
+ */
+const RANGE_MARGIN_DAYS = 7;
+
+/**
+ * Resolve a question's time qualifier into an absolute date range against the
+ * question date, mirroring Hindsight's deterministic temporal parsing: "two
+ * weeks ago" / "yesterday" / "last week" / "next month" / "next year" become a
+ * concrete [start, end] that a downstream step can use to constrain event
+ * lookup — instead of asking the LLM to convert "ago"/"last"/"next" itself
+ * (its arithmetic is the error the deterministic engine exists to remove).
+ *
+ * Returns `null` when the question carries no recognised time qualifier or the
+ * question date is not a valid `YYYY/MM/DD`.
+ */
+export function resolveTimeRange(question: string, questionDate: string): TimeRange | null {
+  const reference = normalizeDate(questionDate);
+  if (!isValidDate(reference)) {
+    return null;
+  }
+  const lower = question.toLowerCase();
+
+  if (/\byesterday\b/.test(lower)) {
+    const day = addDays(reference, -1);
+    return { start: day, end: day };
+  }
+
+  if (/\blast\s+week\b/.test(lower)) {
+    // The previous seven-day window, approximated as 7 to 13 days back.
+    return { start: addDays(reference, -13), end: addDays(reference, -7) };
+  }
+
+  if (/\blast\s+month\b/.test(lower)) {
+    const prev = addMonths(reference, -1);
+    return monthRange(prev);
+  }
+
+  if (/\bnext\s+month\b/.test(lower)) {
+    const next = addMonths(reference, 1);
+    return monthRange(next);
+  }
+
+  if (/\bnext\s+year\b/.test(lower)) {
+    const year = Number(reference.slice(0, 4)) + 1;
+    return { start: `${year}/01/01`, end: `${year}/12/31` };
+  }
+
+  const offset = parseRelativeOffset(question);
+  if (offset === null) {
+    return null;
+  }
+  const target =
+    offset.unit === 'month'
+      ? addMonths(reference, -offset.amount)
+      : addDays(reference, offset.unit === 'week' ? -offset.amount * 7 : -offset.amount);
+  return { start: addDays(target, -RANGE_MARGIN_DAYS), end: addDays(target, RANGE_MARGIN_DAYS) };
+}
+
+/** First and last day of the month containing `date`, both `YYYY/MM/DD`. */
+function monthRange(date: string): TimeRange {
+  const [year, month] = date.split('/').map(Number);
+  const lastDay = daysInMonth(year!, month!);
+  return {
+    start: `${String(year).padStart(4, '0')}/${pad2(month!)}/01`,
+    end: `${String(year).padStart(4, '0')}/${pad2(month!)}/${pad2(lastDay)}`,
+  };
 }
 
 /** Signed whole days from `from` to `to` (positive when `to` is later). */
