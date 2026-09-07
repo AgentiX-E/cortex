@@ -28,6 +28,11 @@ on:
         required: false
         default: 'deepseek-chat'
         type: string
+      thinking:
+        description: 'Thinking mode: enabled or disabled (default disabled for shallow QA)'
+        required: false
+        default: 'disabled'
+        type: string
 
 permissions:
   contents: read
@@ -93,6 +98,7 @@ jobs:
           EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
           ABSTAIN_THRESHOLD: '0.5'
           DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
+          DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           # Default to a small stratified sample so iterative debugging does not
           # embed the whole ~115k-token haystack for every one of 500 questions
           # on each run. Trigger with limit=0 for the statistically robust
