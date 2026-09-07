@@ -389,6 +389,31 @@ describe('computeTemporalAnswer', () => {
     ).toBe('21');
   });
 
+  it('anchors a relative event date to its turn date, not the question date', () => {
+    // The turn on 2023/03/21 says "yesterday", so the event happened 2023/03/20;
+    // from the question date 2023/04/10 that is 21 days ago, NOT 1 day ago (the
+    // wrong answer when "yesterday" is wrongly anchored to the question date).
+    expect(
+      computeTemporalAnswer(
+        'How many days ago did I attend a baking class?',
+        'relative',
+        '2023/04/10',
+        [{ name: 'baking class', date: 'yesterday', turnDate: '2023/03/21' }],
+      ),
+    ).toBe('21');
+  });
+
+  it('falls back to the question date when a relative event has no turn date', () => {
+    expect(
+      computeTemporalAnswer(
+        'How many days ago did I attend a baking class?',
+        'relative',
+        '2023/04/10',
+        [{ name: 'baking class', date: 'two weeks ago' }],
+      ),
+    ).toBe('14');
+  });
+
   it('normalizes the question date and event dates before computing', () => {
     expect(
       computeTemporalAnswer(

@@ -20,7 +20,15 @@ export type TemporalKind = 'relative' | 'interval' | 'ordering' | 'eventLookup' 
 /** A question event paired with the date copied from its evidence turn. */
 export type TemporalEvent = {
   name: string;
+  /** Event date: absolute `YYYY/MM/DD`, or a verbatim relative time ("yesterday"). */
   date: string;
+  /**
+   * The evidence turn's `[YYYY/MM/DD]` prefix, which anchors a relative `date`.
+   * "yesterday" means the day before THIS turn, not the day before the question,
+   * so the relative-to-absolute conversion must use the turn date as its
+   * reference when one is supplied.
+   */
+  turnDate?: string;
 };
 
 /**
@@ -331,10 +339,15 @@ export function computeTemporalAnswer(
     return null;
   }
   // Resolve each event date to an absolute date: the LLM reports either the
-  // turn's [YYYY/MM/DD] prefix or a verbatim relative time ("a month ago"),
-  // which is converted here against the question date.
+  // turn's [YYYY/MM/DD] prefix or a verbatim relative time ("a month ago",
+  // "yesterday"). A relative time is anchored to the event's own turn date when
+  // one is supplied (the turn that states "yesterday" is the day AFTER the
+  // event), and to the question date only as a fallback.
   const normalized = events
-    .map((e) => ({ name: e.name.trim(), date: resolveTemporalDate(e.date, questionDate) }))
+    .map((e) => ({
+      name: e.name.trim(),
+      date: resolveTemporalDate(e.date, e.turnDate ?? questionDate),
+    }))
     .filter((e) => e.name !== '' && isValidDate(e.date));
   if (normalized.length === 0) {
     return null;

@@ -262,7 +262,7 @@ describe('buildTemporalEventExtractionPrompt', () => {
       'ctx',
       '2023/05/21',
     );
-    expect(prompt).toContain('relative to the question date');
+    expect(prompt).toContain('relative to the turn that states it');
     expect(prompt).toContain('VERBATIM');
     expect(prompt).toContain('a month ago');
     expect(prompt).toContain('omit that event entirely');
@@ -275,6 +275,16 @@ describe('buildTemporalEventExtractionPrompt', () => {
     // so the prompt must not ask the model to do that arithmetic itself.
     expect(prompt).not.toContain('2023/04/21');
     expect(prompt).not.toContain('treat the question date as "today"');
+  });
+
+  it('anchors relative event dates to the turn that states them', () => {
+    const prompt = buildTemporalEventExtractionPrompt(
+      'How many days ago did I attend a baking class?',
+      'ctx',
+      '2023/04/10',
+    );
+    expect(prompt).toContain('turnDate');
+    expect(prompt).toContain('relative to its OWN date');
   });
 
   it('lists the pre-identified event hints as guidance', () => {
