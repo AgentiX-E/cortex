@@ -55,6 +55,16 @@ describe('buildChatBody', () => {
     const body = buildChatBody('m', 'hello', { schema: { type: 'object' } });
     expect(body['response_format']).toEqual({ type: 'json_object' });
   });
+
+  it('includes the thinking toggle when provided', () => {
+    const body = buildChatBody('m', 'hello', {}, { type: 'disabled' });
+    expect(body['thinking']).toEqual({ type: 'disabled' });
+  });
+
+  it('omits the thinking toggle when not provided', () => {
+    const body = buildChatBody('m', 'hello', {});
+    expect('thinking' in body).toBe(false);
+  });
 });
 
 describe('parseJson', () => {

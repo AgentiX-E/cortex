@@ -5,6 +5,9 @@
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { retryableFetch } from '../retry.js';
 
+/** DeepSeek thinking-mode toggle (also honoured by compatible providers). */
+export type ThinkingMode = { type: 'enabled' | 'disabled' };
+
 export type OpenAICompatibleLLMOptions = {
   baseUrl: string;
   apiKey: string;
@@ -17,6 +20,13 @@ export type OpenAICompatibleLLMOptions = {
   retryBaseDelayMs?: number;
   /** Per-attempt request deadline in milliseconds; default 60000. */
   timeoutMs?: number;
+  /**
+   * DeepSeek thinking-mode toggle. `deepseek-v4-pro` enables thinking by
+   * default with effort=high, which makes even short answers reason for tens of
+   * seconds (or minutes on a large retrieved context) and can blow past
+   * `timeoutMs`. Omitted means the provider default applies.
+   */
+  thinking?: ThinkingMode | undefined;
 };
 
 export class OpenAICompatibleLLM implements LLM {
@@ -27,7 +37,7 @@ export class OpenAICompatibleLLM implements LLM {
   }
 
   async complete(prompt: string, opts: CompleteOptions = {}): Promise<string> {
-    const body = buildChatBody(this.options.model, prompt, opts);
+    const body = buildChatBody(this.options.model, prompt, opts, this.options.thinking);
     const res = await this.post('/chat/completions', body);
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     return json.choices?.[0]?.message?.content ?? '';
@@ -75,6 +85,7 @@ export function buildChatBody(
   model: string,
   prompt: string,
   opts: CompleteOptions,
+  thinking?: ThinkingMode,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model,
@@ -88,6 +99,9 @@ export function buildChatBody(
   }
   if (opts.schema != null) {
     body['response_format'] = { type: 'json_object' };
+  }
+  if (thinking) {
+    body['thinking'] = thinking;
   }
   return body;
 }

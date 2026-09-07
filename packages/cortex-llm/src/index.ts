@@ -5,6 +5,7 @@ export {
   parseJson,
   sanitizePrompt,
   type OpenAICompatibleLLMOptions,
+  type ThinkingMode,
 } from './llm/openai-compatible.js';
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';
 export {

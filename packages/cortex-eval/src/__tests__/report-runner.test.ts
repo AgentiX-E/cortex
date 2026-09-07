@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createServer } from 'node:http';
 import type { LLM } from '@agentix-e/cortex-core';
 import { runAblationReport, formatAblationReport } from '../report.js';
 import {
@@ -233,6 +234,63 @@ describe('createLlmFromEnv', () => {
     const llm = createLlmFromEnv({ DEEPSEEK_API_KEY: 'deepseek-key' });
     expect(typeof llm.complete).toBe('function');
     expect(typeof llm.completeStructured).toBe('function');
+  });
+
+  it('disables DeepSeek thinking by default so V4-Pro answers on the fast non-reasoning path', async () => {
+    let captured: Record<string, unknown> | null = null;
+    const server = createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        captured = JSON.parse(body) as Record<string, unknown>;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address() as { port: number };
+    try {
+      const llm = createLlmFromEnv({
+        DEEPSEEK_API_KEY: 'k',
+        DEEPSEEK_BASE_URL: `http://127.0.0.1:${addr.port}/v1`,
+        DEEPSEEK_MODEL: 'deepseek-v4-pro',
+      });
+      await llm.complete('hi');
+      expect(captured!['thinking']).toEqual({ type: 'disabled' });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+    }
+  });
+
+  it('opts back into thinking when DEEPSEEK_THINKING=enabled', async () => {
+    let captured: Record<string, unknown> | null = null;
+    const server = createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        captured = JSON.parse(body) as Record<string, unknown>;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const addr = server.address() as { port: number };
+    try {
+      const llm = createLlmFromEnv({
+        DEEPSEEK_API_KEY: 'k',
+        DEEPSEEK_BASE_URL: `http://127.0.0.1:${addr.port}/v1`,
+        DEEPSEEK_MODEL: 'deepseek-v4-pro',
+        DEEPSEEK_THINKING: 'enabled',
+      });
+      await llm.complete('hi');
+      expect(captured!['thinking']).toEqual({ type: 'enabled' });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+    }
   });
 });
 
