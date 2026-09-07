@@ -11,7 +11,7 @@ import {
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
-import { createLlmFromEnv } from '../llm-factory.js';
+import { createLlmFromEnv, resolveTimeoutMs } from '../llm-factory.js';
 import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
 import { HashEmbedding } from '../embedding.js';
 import { FactMemorySystem } from '../fact-memory.js';
@@ -222,6 +222,16 @@ describe('createEmbeddingFromEnv', () => {
       EMBEDDING_DIMENSIONS: 'not-a-number',
     });
     expect(embedding).toBeInstanceOf(HashEmbedding);
+  });
+});
+
+describe('resolveTimeoutMs', () => {
+  it('extends the per-attempt deadline for thinking mode', () => {
+    expect(resolveTimeoutMs({ type: 'enabled' })).toBe(300_000);
+  });
+
+  it('keeps the default deadline for non-thinking mode', () => {
+    expect(resolveTimeoutMs({ type: 'disabled' })).toBeUndefined();
   });
 });
 

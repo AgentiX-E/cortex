@@ -9,6 +9,18 @@ export type LlmEnv = Record<string, string | undefined>;
 
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
+/** Per-attempt deadline for thinking-mode calls; reasoning takes far longer. */
+export const THINKING_TIMEOUT_MS = 300_000;
+
+/**
+ * Per-attempt request deadline for the given thinking mode. Thinking mode
+ * reasons before answering, so a single call over a large retrieved context can
+ * take 30-120s and blows past the adapter's 60s non-thinking default; give it a
+ * 5-minute deadline instead. Non-thinking keeps the adapter default (undefined).
+ */
+export function resolveTimeoutMs(thinking: ThinkingMode): number | undefined {
+  return thinking.type === 'enabled' ? THINKING_TIMEOUT_MS : undefined;
+}
 
 export function createLlmFromEnv(env: LlmEnv): LLM {
   const apiKey = env['DEEPSEEK_API_KEY'];
@@ -24,5 +36,12 @@ export function createLlmFromEnv(env: LlmEnv): LLM {
   // let DEEPSEEK_THINKING=enabled opt back in for reasoning-heavy experiments.
   const thinking: ThinkingMode =
     env['DEEPSEEK_THINKING'] === 'enabled' ? { type: 'enabled' } : { type: 'disabled' };
-  return new OpenAICompatibleLLM({ baseUrl, apiKey, model, thinking });
+  const timeoutMs = resolveTimeoutMs(thinking);
+  return new OpenAICompatibleLLM({
+    baseUrl,
+    apiKey,
+    model,
+    thinking,
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+  });
 }
