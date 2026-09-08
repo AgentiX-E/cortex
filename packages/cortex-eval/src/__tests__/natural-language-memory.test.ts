@@ -1737,7 +1737,7 @@ describe('NaturalLanguageMemorySystem', () => {
 
   it('answerTemporal routes event-lookup questions to the lookup prompt', async () => {
     const prompts: string[] = [];
-    let structuredCalled = false;
+    const structuredPrompts: string[] = [];
     const llm: LLM = {
       complete: async (prompt) => {
         prompts.push(prompt);
@@ -1746,8 +1746,8 @@ describe('NaturalLanguageMemorySystem', () => {
         }
         return 'The Nightingale by Kristin Hannah';
       },
-      completeStructured: async <T>() => {
-        structuredCalled = true;
+      completeStructured: async <T>(prompt: string) => {
+        structuredPrompts.push(prompt);
         return {} as T;
       },
     };
@@ -1758,13 +1758,89 @@ describe('NaturalLanguageMemorySystem', () => {
       '2023/04/01',
     );
     // "Which book … ago" asks for an event, not a count, so the deterministic
-    // path (and its structured extraction) is skipped entirely.
-    expect(structuredCalled).toBe(false);
+    // path (and its event-extraction prompt) is skipped entirely — but the
+    // occurrence-date arm does run a structured extraction for the recall step.
+    expect(
+      structuredPrompts.every((p) => !p.includes('Identify the event(s) the question asks about')),
+    ).toBe(true);
+    expect(structuredPrompts.some((p) => p.includes('OCCURRENCE date'))).toBe(true);
     const qaPrompt = prompts[prompts.length - 1]!;
     // The lookup prompt asks the model to extract the entity at the time anchor
     // instead of computing an elapsed time the question never asked for.
     expect(qaPrompt).toContain('Do NOT count, compute elapsed time');
     expect(qaPrompt).not.toContain('compute the elapsed days/weeks/months');
+  });
+
+  it('appends turns by occurrence date, not header date', async () => {
+    const context = [
+      '[2023/02/01] user: I read a book.',
+      '[2023/02/02] user: I read a novel.',
+      '[2023/06/10] user: I finished the 5K run last month.',
+      '[2023/06/17] user: I participated in the soccer tournament today.',
+    ];
+    const emb = tableEmbedding(
+      {
+        'What did I do two weeks ago?': [1, 0],
+        '[2023/02/01] user: I read a book.': [1, 0],
+        '[2023/02/02] user: I read a novel.': [1, 0],
+        '[2023/06/10] user: I finished the 5K run last month.': [0, 1],
+        '[2023/06/17] user: I participated in the soccer tournament today.': [0, 1],
+      },
+      2,
+    );
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'soccer tournament';
+      },
+      completeStructured: async <T>() =>
+        ({
+          events: [
+            // 5K: header 06/10 is IN the [06/10, 06/24] window, but its occurrence
+            // (last month = 05/10) is OUT — so it must NOT be appended.
+            { turn_date: '2023/06/10', occurrence_date: '2023/05/10' },
+            // soccer: occurrence 06/17 is in-window — must be appended.
+            { turn_date: '2023/06/17', occurrence_date: '2023/06/17' },
+          ],
+        }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: emb,
+      llm,
+      topK: 2,
+      contextRadius: 0,
+      enableQueryExpansion: false,
+    });
+    await system.answerTemporal('What did I do two weeks ago?', context, '2023/07/01');
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // The soccer turn is appended by its occurrence date.
+    expect(qaPrompt).toContain('soccer tournament');
+    // The 5K turn is NOT appended, even though its header date is in-window.
+    expect(qaPrompt).not.toContain('5K run');
+  });
+
+  it('falls back to semantic-only recall when occurrence extraction throws', async () => {
+    const llm: LLM = {
+      complete: async (prompt) =>
+        prompt.includes('Specific events:') ? 'soccer tournament' : 'soccer tournament',
+      completeStructured: async () => {
+        throw new Error('structured extraction failed');
+      },
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableQueryExpansion: false,
+    });
+    const answer = await system.answerTemporal(
+      'What did I do two weeks ago?',
+      ['[2023/06/17] user: I participated in the soccer tournament today.'],
+      '2023/07/01',
+    );
+    // The occurrence arm throws → the system falls back to semantic-only recall
+    // and the QA still answers instead of crashing.
+    expect(answer).toBe('soccer tournament');
   });
 
   it('skips the deterministic path when enableDeterministicTemporal is false', async () => {

@@ -13,8 +13,11 @@ import {
   parseRelativeOffset,
   resolveTemporalDate,
   resolveTimeRange,
+  dateInRange,
+  turnsByOccurrenceInRange,
   type TemporalKind,
   type TemporalEvent,
+  type OccurrenceEvent,
 } from '../temporal-engine.js';
 
 describe('classifyTemporalQuestion', () => {
@@ -258,12 +261,58 @@ describe('resolveTimeRange', () => {
     });
   });
 
+  it('resolves "N days ago" to a margin-bounded range', () => {
+    // "five days ago" = 2023/04/05, widened by ±7 days.
+    expect(resolveTimeRange('What did I do five days ago?', '2023/04/10')).toEqual({
+      start: '2023/03/29',
+      end: '2023/04/12',
+    });
+  });
+
   it('returns null when the question has no time qualifier', () => {
     expect(resolveTimeRange('What is my favorite color?', '2023/04/10')).toBeNull();
   });
 
   it('returns null when the question date is invalid', () => {
     expect(resolveTimeRange('What did I do yesterday?', '')).toBeNull();
+  });
+});
+
+describe('dateInRange', () => {
+  const range = { start: '2023/03/08', end: '2023/03/22' };
+
+  it('returns true for a date inside the range', () => {
+    expect(dateInRange('2023/03/15', range)).toBe(true);
+  });
+
+  it('is inclusive of both endpoints', () => {
+    expect(dateInRange('2023/03/08', range)).toBe(true);
+    expect(dateInRange('2023/03/22', range)).toBe(true);
+  });
+
+  it('returns false for a date outside the range', () => {
+    expect(dateInRange('2023/03/07', range)).toBe(false);
+    expect(dateInRange('2023/03/23', range)).toBe(false);
+  });
+});
+
+describe('turnsByOccurrenceInRange', () => {
+  const range = { start: '2023/06/10', end: '2023/06/24' };
+
+  it('returns turn dates whose occurrence date falls inside the range', () => {
+    const events: OccurrenceEvent[] = [
+      // occurrence on the boundary (still inside)
+      { turnDate: '2023/06/10', occurrenceDate: '2023/06/10' },
+      { turnDate: '2023/06/17', occurrenceDate: '2023/06/17' },
+      // occurrence outside the window
+      { turnDate: '2023/06/03', occurrenceDate: '2023/06/03' },
+    ];
+    expect(turnsByOccurrenceInRange(events, range)).toEqual(['2023/06/10', '2023/06/17']);
+  });
+
+  it('returns an empty list when no occurrence falls inside the range', () => {
+    const events: OccurrenceEvent[] = [{ turnDate: '2023/06/03', occurrenceDate: '2023/06/03' }];
+    expect(turnsByOccurrenceInRange(events, range)).toEqual([]);
   });
 });
 

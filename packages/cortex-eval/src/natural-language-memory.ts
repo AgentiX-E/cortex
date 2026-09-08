@@ -24,10 +24,13 @@ import {
 import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
+  normalizeDate,
   resolveTimeRange,
+  turnsByOccurrenceInRange,
   type TemporalEvent,
   type TemporalKind,
   type TimeRange,
+  type OccurrenceEvent,
 } from './temporal-engine.js';
 import {
   classifyKnowledgeUpdateQualifier,
@@ -188,6 +191,25 @@ const TEMPORAL_EVENTS_SCHEMA: JsonSchema = {
   required: ['events'],
 };
 
+/** Structured output schema for the occurrence-date extraction prompt. */
+const OCCURRENCE_EVENTS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          turn_date: { type: 'string' },
+          occurrence_date: { type: 'string' },
+        },
+        required: ['turn_date', 'occurrence_date'],
+      },
+    },
+  },
+  required: ['events'],
+};
+
 /** Structured output schema for the bitemporal fact-extraction prompt. */
 const FACTS_SCHEMA: JsonSchema = {
   type: 'object',
@@ -256,12 +278,20 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     questionDate?: string,
   ): Promise<Answer> {
     const kind = classifyTemporalQuestion(question);
+    // Resolve the time qualifier once and share it between the occurrence recall
+    // arm and the event-lookup prompt. Any time-anchored TR question — not just
+    // eventLookup — benefits from widening recall to turns whose event occurred
+    // inside the window.
+    const timeRange = questionDate
+      ? (resolveTimeRange(question, questionDate) ?? undefined)
+      : undefined;
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
       false,
       buildTemporalQueryExpansionPrompt,
       true,
+      timeRange,
     );
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
@@ -284,17 +314,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // Event-lookup questions ("What was the event two weeks ago?") ask for the
     // entity at a time anchor, not for a date computation, so they use a lookup
     // prompt instead of the date-arithmetic prompt (which would make the model
-    // try to compute an elapsed time that the question never asked for).
-    // Resolve the time qualifier deterministically and hand the model a concrete
-    // date window, so it locates the anchor turn by date instead of converting
-    // "ago"/"last"/"next" itself (its arithmetic is the error this removes).
-    const timeRange =
-      kind === 'eventLookup' && questionDate
-        ? (resolveTimeRange(question, questionDate) ?? undefined)
-        : undefined;
+    // try to compute an elapsed time that the question never asked for). Hand it
+    // the resolved window so it locates the anchor turn by date instead of
+    // converting "ago"/"last"/"next" itself; the non-lookup prompt does not need
+    // the window.
+    const lookupTimeRange = kind === 'eventLookup' ? timeRange : undefined;
     const temporalPrompt: PromptBuilder =
       kind === 'eventLookup'
-        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t, timeRange)
+        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t, lookupTimeRange)
         : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
@@ -513,6 +540,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
     enableLexicalRecall: boolean = false,
+    timeRange?: TimeRange,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
@@ -521,18 +549,66 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     );
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
+    // A time-anchored question widens recall so the occurrence arm below has a
+    // candidate pool to select from. The semantic order stays untouched.
+    const recallK = timeRange ? topK * 2 : topK;
     const hits = enableLexicalRecall
-      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, topK)
-      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, topK);
+      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, recallK)
+      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, recallK);
+    const topHits = hits.slice(0, topK);
+    // Assemble the retrieved indices: the semantic top-k plus, when a time range
+    // is present, every candidate turn whose OCCURRENCE date falls inside it. The
+    // occurrence arm only APPENDS turns the semantic rank missed — it never
+    // re-ranks, so the abstention signal (hits[0]) stays the strongest semantic
+    // match, and an in-window distractor whose event happened elsewhere is left
+    // out.
+    const indices = new Set(topHits.map((h) => h.index));
+    if (timeRange) {
+      const occurrenceEvents = await this.extractOccurrenceEvents(searchable, hits);
+      const matchedTurnDates = new Set(turnsByOccurrenceInRange(occurrenceEvents, timeRange));
+      for (const hit of hits) {
+        const headerDate = normalizeDate(searchable[hit.index] ?? '');
+        if (headerDate !== '' && matchedTurnDates.has(headerDate)) {
+          indices.add(hit.index);
+        }
+      }
+    }
     const retrieved =
-      hits.length === 0
+      indices.size === 0
         ? ''
         : expandContextWindow(
             searchable,
-            hits.map((h) => h.index),
+            [...indices],
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return { hits, retrieved, expansionQueries };
+    return { hits: topHits, retrieved, expansionQueries };
+  }
+
+  /**
+   * Ask the LLM to report, for every candidate turn, the OCCURRENCE date of the
+   * event it states (normalizing relative times against the turn's own date).
+   * Returns the parsed, malformed-tolerant events; an empty list when extraction
+   * fails, so the caller falls back to the semantic-only result.
+   */
+  private async extractOccurrenceEvents(
+    searchable: readonly string[],
+    hits: readonly RetrievalHit[],
+  ): Promise<OccurrenceEvent[]> {
+    const candidateContext = hits.map((h) => searchable[h.index] ?? '').join('\n');
+    let extracted: { events?: { turn_date?: string; occurrence_date?: string }[] };
+    try {
+      extracted = await this.options.llm.completeStructured<{
+        events?: { turn_date?: string; occurrence_date?: string }[];
+      }>(buildOccurrenceExtractionPrompt(candidateContext), OCCURRENCE_EVENTS_SCHEMA, {
+        temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+      });
+    } catch {
+      return [];
+    }
+    const events = Array.isArray(extracted?.events) ? extracted.events : [];
+    return events
+      .filter((e) => typeof e?.turn_date === 'string' && typeof e?.occurrence_date === 'string')
+      .map((e) => ({ turnDate: e.turn_date!, occurrenceDate: e.occurrence_date! }));
   }
 
   /**
@@ -1230,6 +1306,42 @@ export function buildTemporalEventExtractionPrompt(
     context,
     '',
     `Question: ${question}`,
+    '',
+    'Respond with a JSON object.',
+  ].join('\n');
+}
+
+/**
+ * Build the occurrence-date extraction prompt. Unlike the event-extraction
+ * prompt (which answers one question's events), this extracts, for EVERY turn in
+ * the candidate window, the date its stated event OCCURRED — not the date the
+ * turn was written. A temporal question asks when the event happened, so a turn
+ * whose mention date is in-window but whose occurrence date is not is a
+ * distractor, and vice versa. The model reports an absolute YYYY/MM/DD occurrence
+ * date by normalizing the turn's relative time against the turn's own date.
+ */
+export function buildOccurrenceExtractionPrompt(context: string): string {
+  return [
+    'You are extracting the OCCURRENCE date of events from conversation turns.',
+    'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
+    "A turn's date is when the user SAID something; the occurrence date is when the event actually HAPPENED.",
+    "For each turn that states an event, report the event's occurrence date as an absolute YYYY/MM/DD date.",
+    "Normalize relative times against the turn's OWN date:",
+    '  - "today" / "just finished" / "just started" / "just got back" → the turn\'s date',
+    '  - "yesterday" → the day before the turn\'s date',
+    '  - "last weekend" → the most recent Saturday/Sunday before the turn\'s date',
+    '  - "last week" / "a week ago" → seven days before the turn\'s date',
+    '  - "N days/weeks/months ago" → the turn\'s date minus N',
+    '  - an explicit date ("on June 10th", "in February") → that date',
+    'If a turn states no event, omit it.',
+    '',
+    'Example:',
+    'Context:',
+    "[2023/04/15] user: I attended my niece's kindergarten graduation ceremony last week, and it was on June 10th.",
+    '{"events": [{"turn_date": "2023/04/15", "occurrence_date": "2023/06/10"}]}',
+    '',
+    'Context (a JSON array of turns, each with date, role, and content):',
+    formatStructuredContext(context),
     '',
     'Respond with a JSON object.',
   ].join('\n');

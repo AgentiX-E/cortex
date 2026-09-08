@@ -147,6 +147,8 @@ export {
   parseRelativeOffset,
   resolveTemporalDate,
   resolveTimeRange,
+  dateInRange,
+  turnsByOccurrenceInRange,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,
@@ -156,6 +158,7 @@ export {
   type TemporalKind,
   type TemporalEvent,
   type TimeRange,
+  type OccurrenceEvent,
 } from './temporal-engine.js';
 export {
   timelineFor,
