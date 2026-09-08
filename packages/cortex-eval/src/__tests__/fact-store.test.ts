@@ -46,6 +46,23 @@ describe('timelineFor', () => {
     ];
     expect(timelineFor(descending, 'city').map((f) => f.object)).toEqual(['Beijing', 'Shanghai']);
   });
+
+  it('drops a null or malformed fact instead of crashing on its fields', () => {
+    // The bitemporal extractor types these as ExtractedFact, but the LLM does
+    // not honour `required` at runtime and can emit a null element or a fact
+    // missing a field. The timeline must skip those instead of throwing on
+    // `null.subject` or leaking `undefined` out of current/previousObject.
+    const malformed = [
+      { subject: 'city', predicate: 'resides_in', object: 'Beijing', date: '2022/01/10' },
+      null,
+      { predicate: 'works_as', object: 'engineer', date: '2021/03/05' },
+      { subject: 'city', predicate: 'resides_in', date: '2021/01/01' },
+      { subject: 'city', predicate: 'resides_in', object: 'Shanghai', date: '2023/06/20' },
+    ] as unknown as ExtractedFact[];
+    expect(timelineFor(malformed, 'city').map((f) => f.object)).toEqual(['Beijing', 'Shanghai']);
+    expect(currentObject(malformed, 'city')).toBe('Shanghai');
+    expect(previousObject(malformed, 'city')).toBe('Beijing');
+  });
 });
 
 describe('currentObject', () => {

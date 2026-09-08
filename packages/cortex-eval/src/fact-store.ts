@@ -23,7 +23,23 @@ export type ExtractedFact = {
 
 /** Return the subject's facts sorted ascending by date, without mutating input. */
 export function timelineFor(facts: readonly ExtractedFact[], subject: string): ExtractedFact[] {
-  return facts.filter((f) => f.subject === subject).sort(compareFactsByDate);
+  return facts
+    .filter((f): f is ExtractedFact => {
+      // The bitemporal extractor types these as ExtractedFact, but the LLM does
+      // not honour `required` at runtime and can emit a null element or a fact
+      // missing a field. Keep only fully-formed facts: a missing `subject` would
+      // throw on `null.subject`, and a missing `object`/`date` would let
+      // currentObject/previousObject return `undefined` (and the caller treat it
+      // as a non-null answer instead of falling back).
+      const candidate = f as unknown as { subject?: unknown; object?: unknown; date?: unknown };
+      return (
+        typeof candidate?.subject === 'string' &&
+        typeof candidate?.object === 'string' &&
+        typeof candidate?.date === 'string'
+      );
+    })
+    .filter((f) => f.subject === subject)
+    .sort(compareFactsByDate);
 }
 
 /** Sort two facts by their YYYY/MM/DD date ascending. */
