@@ -147,6 +147,8 @@ export {
   parseRelativeOffset,
   resolveTemporalDate,
   resolveTimeRange,
+  dateInRange,
+  selectTurnsInDateRange,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,
