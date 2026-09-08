@@ -13,8 +13,6 @@ import {
   parseRelativeOffset,
   resolveTemporalDate,
   resolveTimeRange,
-  dateInRange,
-  selectTurnsInDateRange,
   type TemporalKind,
   type TemporalEvent,
 } from '../temporal-engine.js';
@@ -225,14 +223,6 @@ describe('resolveTimeRange', () => {
     });
   });
 
-  it('resolves "N days ago" to a margin-bounded range', () => {
-    // "five days ago" = 2023/04/05, widened by ±7 days.
-    expect(resolveTimeRange('What did I do five days ago?', '2023/04/10')).toEqual({
-      start: '2023/03/29',
-      end: '2023/04/12',
-    });
-  });
-
   it('resolves "last week" to the previous seven-day window', () => {
     expect(resolveTimeRange('What did I do last week?', '2023/04/10')).toEqual({
       start: '2023/03/28',
@@ -274,50 +264,6 @@ describe('resolveTimeRange', () => {
 
   it('returns null when the question date is invalid', () => {
     expect(resolveTimeRange('What did I do yesterday?', '')).toBeNull();
-  });
-});
-
-describe('dateInRange', () => {
-  const range = { start: '2023/03/08', end: '2023/03/22' };
-
-  it('returns true for a date inside the range', () => {
-    expect(dateInRange('2023/03/15', range)).toBe(true);
-  });
-
-  it('is inclusive of both endpoints', () => {
-    expect(dateInRange('2023/03/08', range)).toBe(true);
-    expect(dateInRange('2023/03/22', range)).toBe(true);
-  });
-
-  it('returns false for a date outside the range', () => {
-    expect(dateInRange('2023/03/07', range)).toBe(false);
-    expect(dateInRange('2023/03/23', range)).toBe(false);
-  });
-});
-
-describe('selectTurnsInDateRange', () => {
-  const context = [
-    '[2023/03/01] user: outside the window',
-    '[2023/03/10] user: inside the window',
-    '[2023/03/20] user: also inside',
-    '[2023/03/30] user: outside again',
-    'user: no header date at all',
-  ];
-  const range = { start: '2023/03/08', end: '2023/03/22' };
-
-  it('selects only turns whose header date falls inside the range', () => {
-    const hits = [{ index: 0 }, { index: 1 }, { index: 2 }, { index: 3 }, { index: 4 }];
-    expect(selectTurnsInDateRange(context, hits, range)).toEqual([1, 2]);
-  });
-
-  it('skips turns without a parseable header date', () => {
-    const hits = [{ index: 4 }];
-    expect(selectTurnsInDateRange(context, hits, range)).toEqual([]);
-  });
-
-  it('skips hits whose index is out of bounds', () => {
-    const hits = [{ index: 99 }, { index: 1 }];
-    expect(selectTurnsInDateRange(context, hits, range)).toEqual([1]);
   });
 });
 

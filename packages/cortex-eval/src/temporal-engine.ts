@@ -282,37 +282,6 @@ function monthRange(date: string): TimeRange {
   };
 }
 
-/** True when a `YYYY/MM/DD` date falls inside the inclusive range. */
-export function dateInRange(date: string, range: TimeRange): boolean {
-  return date >= range.start && date <= range.end;
-}
-
-/**
- * Select the indices of turns whose `[YYYY/MM/DD]` header date falls inside the
- * given range. Turns without a parseable header date carry no temporal signal
- * and are skipped. This is the date arm of TR recall: it ADDS in-window turns to
- * the retrieved context without re-ranking the semantic order, so the
- * abstention signal stays untouched.
- */
-export function selectTurnsInDateRange(
-  context: readonly string[],
-  hits: readonly { index: number }[],
-  range: TimeRange,
-): number[] {
-  const inWindow: number[] = [];
-  for (const hit of hits) {
-    const turn = context[hit.index];
-    if (turn === undefined) {
-      continue;
-    }
-    const date = normalizeDate(turn);
-    if (date !== '' && dateInRange(date, range)) {
-      inWindow.push(hit.index);
-    }
-  }
-  return inWindow;
-}
-
 /** Signed whole days from `from` to `to` (positive when `to` is later). */
 export function elapsedDays(from: string, to: string): number {
   return daysBetween(from, to);

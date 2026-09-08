@@ -25,7 +25,6 @@ import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
   resolveTimeRange,
-  selectTurnsInDateRange,
   type TemporalEvent,
   type TemporalKind,
   type TimeRange,
@@ -257,19 +256,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     questionDate?: string,
   ): Promise<Answer> {
     const kind = classifyTemporalQuestion(question);
-    // Resolve the time qualifier once and share it between the recall date arm
-    // and the event-lookup prompt. Any time-anchored TR question — not just
-    // eventLookup — benefits from widening recall to turns inside the window.
-    const timeRange = questionDate
-      ? (resolveTimeRange(question, questionDate) ?? undefined)
-      : undefined;
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
       false,
       buildTemporalQueryExpansionPrompt,
       true,
-      timeRange,
     );
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
@@ -292,14 +284,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // Event-lookup questions ("What was the event two weeks ago?") ask for the
     // entity at a time anchor, not for a date computation, so they use a lookup
     // prompt instead of the date-arithmetic prompt (which would make the model
-    // try to compute an elapsed time that the question never asked for). Hand it
-    // the resolved window so it locates the anchor turn by date instead of
-    // converting "ago"/"last"/"next" itself (its arithmetic is the error this
-    // removes); the non-lookup prompt does not need the window.
-    const lookupTimeRange = kind === 'eventLookup' ? timeRange : undefined;
+    // try to compute an elapsed time that the question never asked for).
+    // Resolve the time qualifier deterministically and hand the model a concrete
+    // date window, so it locates the anchor turn by date instead of converting
+    // "ago"/"last"/"next" itself (its arithmetic is the error this removes).
+    const timeRange =
+      kind === 'eventLookup' && questionDate
+        ? (resolveTimeRange(question, questionDate) ?? undefined)
+        : undefined;
     const temporalPrompt: PromptBuilder =
       kind === 'eventLookup'
-        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t, lookupTimeRange)
+        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t, timeRange)
         : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
     return this.respondWith(
       question,
@@ -518,7 +513,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
     enableLexicalRecall: boolean = false,
-    timeRange?: TimeRange,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
@@ -527,33 +521,18 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     );
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
-    // A time-anchored question widens recall so the date arm below has in-window
-    // turns to select from. The semantic order is unchanged, so the abstention
-    // signal (hits[0]) keeps measuring the strongest semantic match.
-    const recallK = timeRange ? topK * 2 : topK;
     const hits = enableLexicalRecall
-      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, recallK)
-      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, recallK);
-    const topHits = hits.slice(0, topK);
-    // Assemble the retrieved indices: the semantic top-k plus, when a time range
-    // is present, every recalled turn whose header date falls inside it. The
-    // date arm only APPENDS in-window turns the semantic rank missed — it never
-    // re-ranks, so an in-window distractor cannot displace the semantic evidence.
-    const indices = new Set(topHits.map((h) => h.index));
-    if (timeRange) {
-      for (const idx of selectTurnsInDateRange(searchable, hits, timeRange)) {
-        indices.add(idx);
-      }
-    }
+      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, topK)
+      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, topK);
     const retrieved =
-      indices.size === 0
+      hits.length === 0
         ? ''
         : expandContextWindow(
             searchable,
-            [...indices],
+            hits.map((h) => h.index),
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
           );
-    return { hits: topHits, retrieved, expansionQueries };
+    return { hits, retrieved, expansionQueries };
   }
 
   /**

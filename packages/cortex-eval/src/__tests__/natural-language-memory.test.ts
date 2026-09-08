@@ -1767,48 +1767,6 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(qaPrompt).not.toContain('compute the elapsed days/weeks/months');
   });
 
-  it('appends in-window turns to the retrieved context for time-anchored questions', async () => {
-    const context = [
-      '[2023/02/01] user: I read a cookbook.',
-      '[2023/02/02] user: I read a novel.',
-      '[2023/03/13] user: I got sculpting tools.',
-      '[2023/02/03] user: I read a textbook.',
-    ];
-    const emb = tableEmbedding(
-      {
-        'What thing did I mention a week ago?': [1, 0],
-        '[2023/02/01] user: I read a cookbook.': [1, 0],
-        '[2023/02/02] user: I read a novel.': [1, 0],
-        '[2023/03/13] user: I got sculpting tools.': [0, 1],
-        '[2023/02/03] user: I read a textbook.': [1, 0],
-      },
-      2,
-    );
-    const prompts: string[] = [];
-    const llm: LLM = {
-      complete: async (prompt) => {
-        prompts.push(prompt);
-        return 'sculpting tools';
-      },
-      completeStructured: async <T>() => ({}) as T,
-    };
-    const system = new NaturalLanguageMemorySystem('s', {
-      embedding: emb,
-      llm,
-      topK: 2,
-      contextRadius: 0,
-      enableQueryExpansion: false,
-    });
-    await system.answerTemporal('What thing did I mention a week ago?', context, '2023/03/20');
-    const qaPrompt = prompts[prompts.length - 1]!;
-    // The semantic top-2 picks two "read a book" turns (cosine 1); the sculpting
-    // turn (cosine 0, header date 03/13 inside the [03/06, 03/20] window) must
-    // still reach the retrieved context through the date arm rather than being
-    // dropped by semantic rank. contextRadius 0 removes neighbour expansion so
-    // the only way the turn appears is the date arm.
-    expect(qaPrompt).toContain('sculpting tools');
-  });
-
   it('skips the deterministic path when enableDeterministicTemporal is false', async () => {
     let structuredCalled = false;
     const llm: LLM = {
