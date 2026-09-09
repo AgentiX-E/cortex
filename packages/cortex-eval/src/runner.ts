@@ -189,6 +189,50 @@ export async function runTemporalEngineAblation(
 }
 
 /**
+ * Entity-graph recall ablation. The main natural-language ablation enables the
+ * graph recall arm in both systems, so it cannot attribute a TR accuracy change
+ * to it (both systems share it). This isolates the arm: both systems disable
+ * abstention and differ ONLY in `enableGraphRecall` — semantic+lexical recall vs
+ * semantic+lexical+entity-graph spreading activation — so the paired McNemar test
+ * on TR questions measures the graph arm's contribution directly.
+ */
+export async function runGraphRecallAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const trQuestions = dataset.questions.filter((q) => q.capability === 'TR');
+  const trDataset = { name: 'longmemeval-tr', questions: trQuestions };
+
+  const expansionCache = new Map<string, string[]>();
+  const withoutGraph = new NaturalLanguageMemorySystem('tr-no-graph-recall', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableGraphRecall: false,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const withGraph = new NaturalLanguageMemorySystem('tr-graph-recall', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableGraphRecall: true,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(trDataset, withoutGraph, withGraph, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
+}
+
+/**
  * Bitemporal knowledge-update ablation. The main natural-language ablation
  * enables the bitemporal path in both systems, so it cannot attribute a KU
  * accuracy change to it (both systems share it). This isolates the path: both

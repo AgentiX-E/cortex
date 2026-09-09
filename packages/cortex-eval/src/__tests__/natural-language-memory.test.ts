@@ -1767,6 +1767,77 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(qaPrompt).not.toContain('compute the elapsed days/weeks/months');
   });
 
+  it('appends a turn reached only by entity-graph spreading activation', async () => {
+    const context = [
+      'my aunt presented a ring', // answer turn: aunt + ring, mentions neither "gave" nor "jewelry"
+      'the ring is jewelry', // bridge turn: ring + jewelry co-occur
+      'I collect stamps', // distractor
+    ];
+    const emb = tableEmbedding(
+      {
+        'Who gave me jewelry last week?': [1, 0, 0],
+        'my aunt presented a ring': [0, 1, 0],
+        'the ring is jewelry': [0, 1, 0],
+        'I collect stamps': [1, 0, 0],
+      },
+      3,
+    );
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: emb,
+      llm,
+      topK: 1,
+      contextRadius: 0,
+      enableQueryExpansion: false,
+      enableGraphRecall: true,
+    });
+    await system.answerTemporal('Who gave me jewelry last week?', context, '2023/07/01');
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // The answer turn mentions neither "gave" nor "jewelry", so semantic and
+    // lexical both miss it; only the graph arm (jewelry → ring → aunt) surfaces it.
+    expect(qaPrompt).toContain('my aunt presented a ring');
+  });
+
+  it('leaves temporal recall unchanged when graph recall is disabled', async () => {
+    const context = ['my aunt presented a ring', 'the ring is jewelry', 'I collect stamps'];
+    const emb = tableEmbedding(
+      {
+        'Who gave me jewelry last week?': [1, 0, 0],
+        'my aunt presented a ring': [0, 1, 0],
+        'the ring is jewelry': [0, 1, 0],
+        'I collect stamps': [1, 0, 0],
+      },
+      3,
+    );
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: emb,
+      llm,
+      topK: 1,
+      contextRadius: 0,
+      enableQueryExpansion: false,
+      enableGraphRecall: false,
+    });
+    await system.answerTemporal('Who gave me jewelry last week?', context, '2023/07/01');
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // Without the graph arm the answer turn is not appended.
+    expect(qaPrompt).not.toContain('my aunt presented a ring');
+  });
+
   it('skips the deterministic path when enableDeterministicTemporal is false', async () => {
     let structuredCalled = false;
     const llm: LLM = {

@@ -19,6 +19,7 @@ import {
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
+  runGraphRecallAblation,
   runBitemporalKnowledgeUpdateAblation,
   sampleInstances,
   serializeEmbeddingCache,
@@ -244,6 +245,21 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
   console.log('=== TR temporal-engine ablation ===');
   console.log(trAblation.markdown);
+
+  // Isolate the entity-graph recall contribution: semantic+lexical recall vs
+  // semantic+lexical+entity-graph spreading activation, with abstention held
+  // constant so the paired McNemar test measures the graph arm on TR questions.
+  const graphAblation = await runGraphRecallAblation(sampled as never, embedding, llm, {
+    runs,
+    temperature,
+  });
+  writeFileSync('benchmark-tr-graph-ablation-report.md', graphAblation.markdown);
+  writeFileSync(
+    'benchmark-tr-graph-ablation-report.json',
+    JSON.stringify(graphAblation.report, null, 2),
+  );
+  console.log('=== TR entity-graph recall ablation ===');
+  console.log(graphAblation.markdown);
 
   // Isolate the bitemporal knowledge-update contribution: CoT time-qualifier
   // mapping vs LLM fact-extraction + exact date-order selection, with abstention

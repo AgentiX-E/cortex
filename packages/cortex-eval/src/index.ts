@@ -55,6 +55,7 @@ export {
   runNaturalLanguageBenchmark,
   runMrAggregationAblation,
   runTemporalEngineAblation,
+  runGraphRecallAblation,
   runBitemporalKnowledgeUpdateAblation,
   type BenchmarkRunnerOptions,
 } from './runner.js';
@@ -106,6 +107,12 @@ export {
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
+export {
+  extractEntityTokens,
+  buildEntityGraph,
+  recallTurnsByActivation,
+  type EntityGraph,
+} from './entity-graph.js';
 export { FactMemorySystem, type FactMemorySystemOptions } from './fact-memory.js';
 export { EmbeddingMemorySystem, type EmbeddingMemorySystemOptions } from './embedding-memory.js';
 export {
