@@ -282,38 +282,6 @@ function monthRange(date: string): TimeRange {
   };
 }
 
-/** True when a `YYYY/MM/DD` date falls inside the inclusive range. */
-export function dateInRange(date: string, range: TimeRange): boolean {
-  return date >= range.start && date <= range.end;
-}
-
-/**
- * An event extracted from a turn, with the date the event OCCURRED (not the date
- * the user mentioned it). The mention date is the turn header; the occurrence
- * date is what a temporal question actually asks about — "I participated … today"
- * occurred ON the header date, while "I just finished … last weekend" occurred
- * earlier than the header. Matching on occurrence instead of mention date is what
- * separates a correct answer from an in-window distractor.
- */
-export type OccurrenceEvent = {
-  /** The evidence turn's `YYYY/MM/DD` header date. */
-  turnDate: string;
-  /** The event's occurrence date, `YYYY/MM/DD`. */
-  occurrenceDate: string;
-};
-
-/**
- * Return the turn dates whose extracted occurrence date falls inside the range.
- * Only the OCCURRENCE date is tested; a turn mentioned inside the window but whose
- * event occurred earlier is excluded, and vice versa.
- */
-export function turnsByOccurrenceInRange(
-  events: readonly OccurrenceEvent[],
-  range: TimeRange,
-): string[] {
-  return events.filter((e) => dateInRange(e.occurrenceDate, range)).map((e) => e.turnDate);
-}
-
 /** Signed whole days from `from` to `to` (positive when `to` is later). */
 export function elapsedDays(from: string, to: string): number {
   return daysBetween(from, to);
