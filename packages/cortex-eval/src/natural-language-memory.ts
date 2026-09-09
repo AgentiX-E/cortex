@@ -167,6 +167,8 @@ const DEFAULT_CONTEXT_RADIUS = 1;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 const DEFAULT_MAX_TURN_CHARS = 2000;
+/** Cap per-turn chars for the occurrence extractor: it needs only the event + date. */
+const OCCURRENCE_TURN_CHARS = 500;
 const DEFAULT_MAX_AGGREGATION_CHARS = 20_000;
 const DEFAULT_TURN_RECALL_SESSIONS = 3;
 const DEFAULT_TURN_RECALL_TURNS_PER_QUERY = 50;
@@ -550,8 +552,11 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
     // A time-anchored question widens recall so the occurrence arm below has a
-    // candidate pool to select from. The semantic order stays untouched.
-    const recallK = timeRange ? topK * 2 : topK;
+    // candidate pool to select from. The semantic order stays untouched. The pool
+    // is topK+5 (not 2*topK): the occurrence extractor sends the whole pool to
+    // the LLM, and a 30-turn prompt pushed some requests past the 60s deadline,
+    // so the pool is kept small enough to stay under it.
+    const recallK = timeRange ? topK + 5 : topK;
     const hits = enableLexicalRecall
       ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, recallK)
       : await retrieveTopKByQueries(this.options.embedding, queries, searchable, recallK);
@@ -594,7 +599,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     searchable: readonly string[],
     hits: readonly RetrievalHit[],
   ): Promise<OccurrenceEvent[]> {
-    const candidateContext = hits.map((h) => searchable[h.index] ?? '').join('\n');
+    // Occurrence extraction only needs the event and its date, not the full turn,
+    // so each turn is capped at 500 chars — the 2*topK pool (up to 60K chars) had
+    // pushed some requests past the 60s deadline.
+    const candidateContext = hits
+      .map((h) => truncateText(searchable[h.index] ?? '', OCCURRENCE_TURN_CHARS))
+      .join('\n');
     let extracted: { events?: { turn_date?: string; occurrence_date?: string }[] };
     try {
       extracted = await this.options.llm.completeStructured<{
