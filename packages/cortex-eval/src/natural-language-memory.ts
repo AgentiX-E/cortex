@@ -21,7 +21,6 @@ import {
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
-import { buildEntityGraph, extractEntityTokens, recallTurnsByActivation } from './entity-graph.js';
 import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
@@ -146,13 +145,6 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   enableBitemporalKnowledgeUpdate?: boolean;
   /**
-   * When true, temporal recall appends turns reached by entity-graph spreading
-   * activation (zero-LLM co-occurrence edges) that the semantic/lexical channels
-   * missed. Default false, so an ablation can isolate the graph arm's
-   * contribution while the semantic abstention signal stays unchanged.
-   */
-  enableGraphRecall?: boolean;
-  /**
    * Prompt builder for multi-session aggregation (default buildAggregationQaPrompt).
    * Overridable so an ablation can hold abstention constant while swapping only
    * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
@@ -270,7 +262,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       false,
       buildTemporalQueryExpansionPrompt,
       true,
-      this.options.enableGraphRecall === true,
     );
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
@@ -522,7 +513,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
     enableLexicalRecall: boolean = false,
-    enableGraphRecall: boolean = false,
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
@@ -534,25 +524,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const hits = enableLexicalRecall
       ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, topK)
       : await retrieveTopKByQueries(this.options.embedding, queries, searchable, topK);
-    if (enableGraphRecall) {
-      const { graph, entityToTurns } = buildEntityGraph(searchable);
-      const graphHits = recallTurnsByActivation(
-        graph,
-        entityToTurns,
-        extractEntityTokens(question),
-        searchable,
-      );
-      // Append-only: the graph arm surfaces turns the semantic/lexical channels
-      // missed, never re-ranks them. This keeps hits[0] — the abstention signal —
-      // exactly as the semantic channel produced it, so an A/B isolates the extra
-      // evidence instead of conflating it with a threshold shift.
-      const existing = new Set(hits.map((hit) => hit.id));
-      for (const graphHit of graphHits) {
-        if (!existing.has(graphHit.id)) {
-          hits.push(graphHit);
-        }
-      }
-    }
     const retrieved =
       hits.length === 0
         ? ''

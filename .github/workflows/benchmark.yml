@@ -121,17 +121,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: longmemeval-s-report
+          # Glob the whole report set instead of enumerating filenames: an
+          # explicit list silently dropped the P3b entity-graph ablation report
+          # (it ran, but was never uploaded), which would have made an ablation
+          # result unrecoverable had the run been the only record. Any new
+          # `benchmark-*.md/json` report is now captured automatically.
           path: |
-            packages/cortex-eval/benchmark-report.md
-            packages/cortex-eval/benchmark-report.json
-            packages/cortex-eval/benchmark-diagnostics.json
-            packages/cortex-eval/benchmark-mr-diagnostics.json
-            packages/cortex-eval/benchmark-single-session-diagnostics.json
-            packages/cortex-eval/benchmark-mr-ablation-report.md
-            packages/cortex-eval/benchmark-mr-ablation-report.json
-            packages/cortex-eval/benchmark-tr-ablation-report.md
-            packages/cortex-eval/benchmark-tr-ablation-report.json
-            packages/cortex-eval/benchmark-ku-bitemporal-ablation-report.md
-            packages/cortex-eval/benchmark-ku-bitemporal-ablation-report.json
+            packages/cortex-eval/benchmark-*.md
+            packages/cortex-eval/benchmark-*.json
             packages/cortex-eval/benchmark-error.log
           retention-days: 30

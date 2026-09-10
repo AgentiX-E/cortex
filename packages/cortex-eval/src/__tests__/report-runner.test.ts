@@ -7,7 +7,6 @@ import {
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
-  runGraphRecallAblation,
   runBitemporalKnowledgeUpdateAblation,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
@@ -502,80 +501,6 @@ describe('runTemporalEngineAblation', () => {
       return predicted === expected;
     };
     const { report } = await runTemporalEngineAblation(trInstances, embedding, capturingLlm, {
-      runs: 2,
-      temperature: 0.6,
-      judge,
-    });
-    expect(report.questionCount).toBe(1);
-    expect(temperatures.every((t) => t === 0.6)).toBe(true);
-    expect(judgeQuestions.length).toBeGreaterThan(0);
-  });
-});
-
-describe('runGraphRecallAblation', () => {
-  const embedding = new HashEmbedding(64);
-
-  const trInstances: LongMemEvalInstance[] = [
-    {
-      question_id: 'tr-1',
-      question_type: 'temporal-reasoning',
-      question: 'Which event happened first, the wedding or the engagement party?',
-      answer: 'the engagement party',
-      question_date: '2023/10/01',
-      haystack_sessions: [
-        [{ role: 'user', content: 'I attended the wedding and the engagement party.' }],
-      ],
-      haystack_dates: ['2023/05/15'],
-    },
-    {
-      question_id: 'ie-1',
-      question_type: 'single-session-user',
-      question: 'What is the favorite color?',
-      answer: 'blue',
-      haystack_sessions: [[{ role: 'user', content: 'favorite color=blue' }]],
-    },
-  ];
-
-  const graphLlm: LLM = {
-    complete: async (prompt) => (prompt.includes('Specific events:') ? 'engagement party' : '4'),
-    completeStructured: async <T>() =>
-      ({
-        events: [
-          { name: 'wedding', date: '2023/05/15' },
-          { name: 'engagement party', date: '2023/04/06' },
-        ],
-      }) as T,
-  };
-
-  it('isolates TR questions only and labels the graph variants', async () => {
-    const { report, markdown } = await runGraphRecallAblation(trInstances, embedding, graphLlm);
-    expect(report.questionCount).toBe(1);
-    expect(report.baseline.name).toBe('tr-no-graph-recall');
-    expect(report.feature.name).toBe('tr-graph-recall');
-    expect(markdown).toContain('Cortex Benchmark Report');
-  });
-
-  it('forwards temperature and a custom judge through the graph ablation', async () => {
-    const temperatures: number[] = [];
-    const capturingLlm: LLM = {
-      complete: async (_prompt, opts) => {
-        temperatures.push(opts?.temperature ?? Number.NaN);
-        return '4';
-      },
-      completeStructured: async <T>() =>
-        ({
-          events: [
-            { name: 'wedding', date: '2023/05/15' },
-            { name: 'engagement party', date: '2023/04/06' },
-          ],
-        }) as T,
-    };
-    const judgeQuestions: string[] = [];
-    const judge: AnswerJudge = async (question, predicted, expected) => {
-      judgeQuestions.push(question);
-      return predicted === expected;
-    };
-    const { report } = await runGraphRecallAblation(trInstances, embedding, capturingLlm, {
       runs: 2,
       temperature: 0.6,
       judge,
