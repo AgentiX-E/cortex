@@ -17,6 +17,43 @@ import { daysBetween } from './temporal.js';
 
 export type TemporalKind = 'relative' | 'interval' | 'ordering' | 'eventLookup' | 'other';
 
+/**
+ * Which refinements of the deterministic engine are active.
+ *
+ * The engine's outputs feed the graded benchmark path, so a refinement that has
+ * not yet been measured by its own ablation must not be able to change that path
+ * silently. Each flag names one independently measured capability, and the
+ * defaults preserve the pre-refinement behaviour so an ablation can vary exactly
+ * one of them.
+ */
+export type TemporalEngineOptions = {
+  /**
+   * Resolve a named weekday ("last Saturday", "this Monday", "next Friday") to a
+   * concrete date, and scale the window margin with the offset unit. Before this
+   * refinement the engine returned `null` for every weekday-anchored question —
+   * 6 of the 20 LongMemEval-S `eventLookup` questions — and widened every offset
+   * by a flat ±7 days.
+   */
+  extendedTimeRange: boolean;
+  /**
+   * Treat "before/after <event>" as introducing a second event, so a two-event
+   * interval question reaches the deterministic interval path instead of the
+   * LLM's own arithmetic.
+   */
+  extendedSecondEventReference: boolean;
+};
+
+const DEFAULT_ENGINE_OPTIONS: TemporalEngineOptions = {
+  extendedTimeRange: false,
+  extendedSecondEventReference: false,
+};
+
+/** Every refinement enabled: the configuration an accepted ablation promotes to. */
+export const EXTENDED_ENGINE_OPTIONS: TemporalEngineOptions = {
+  extendedTimeRange: true,
+  extendedSecondEventReference: true,
+};
+
 /** A question event paired with the date copied from its evidence turn. */
 export type TemporalEvent = {
   name: string;
@@ -83,15 +120,44 @@ export function classifyTemporalQuestion(question: string): TemporalKind {
  * Measured over the 25 relative questions of LongMemEval-S: 18 of 19
  * single-event questions answered correctly, and 0 of 6 two-event ones.
  *
- * The match requires the `when` clause to introduce a subject ("when I …",
- * "when the …"). A bare "when it was on sale" describes the one event rather
- * than naming another, and a false positive would move a WORKING question off
- * the question-date path, so the predicate errs toward false negatives: a false
- * negative leaves an already-failing question as it is, a false positive breaks
- * one that works.
+ * Two shapes introduce a second event:
+ *  - a `when` clause with a subject ("when I …", "when the …"). A bare "when it
+ *    was on sale" describes the one event rather than naming another.
+ *  - a `before`/`after <event>` clause, as in "How many days BEFORE my best
+ *    friend's birthday party did I order her gift?" — that question names two
+ *    orderable events and its gold answer is their interval, but the `when`
+ *    predicate never matched it, so it never reached the deterministic interval
+ *    path and the LLM computed "5" against a gold of "7".
+ *
+ * The `before`/`after` match requires a determiner or possessive directly after
+ * the preposition AND a noun phrase that is not a bare temporal word, so
+ * "before my best friend's birthday party" (an event) matches while "before the
+ * sale ended" / "before the holidays" (a deadline or a season, with no second
+ * event to measure to) does not. The predicate errs toward false negatives by
+ * design: a false negative leaves an already-failing question as it is, a false
+ * positive breaks one that works.
  */
-export function hasSecondEventReference(question: string): boolean {
-  return /\bwhen\s+(?:I|we|you|he|she|they|the|my|our|his|her|their|a|an)\b/i.test(question);
+export function hasSecondEventReference(
+  question: string,
+  options: TemporalEngineOptions = DEFAULT_ENGINE_OPTIONS,
+): boolean {
+  if (/\bwhen\s+(?:I|we|you|he|she|they|the|my|our|his|her|their|a|an)\b/i.test(question)) {
+    return true;
+  }
+  if (!options.extendedSecondEventReference) {
+    return false;
+  }
+  const beforeAfter = question.match(
+    /\b(?:before|after)\s+(?:the|my|our|his|her|their|your|a|an)\s+([a-z][a-z'’-]*)/i,
+  );
+  if (!beforeAfter) {
+    return false;
+  }
+  // A season, deadline, or bare time word after the preposition is not a second
+  // event: "before the sale ended", "before the holidays", "after the fact".
+  return !/^(?:sale|holidays?|weekend|fact|event|end|time|day|week|month|year|moment|meanwhile)\b/i.test(
+    beforeAfter[1]!,
+  );
 }
 
 /**
@@ -212,24 +278,128 @@ export function resolveTemporalDate(raw: string, questionDate: string): string {
 export type TimeRange = { start: string; end: string };
 
 /**
- * Widen a relative point time ("two weeks ago") into a margin around the target
- * date, so a turn whose mention date is a day or two off the event date still
- * falls inside the range.
+ * Margin around a resolved point time, by the unit the offset was stated in.
+ *
+ * A single constant cannot serve every scale. The question's phrasing is the
+ * user's own approximation, so *some* tolerance is honest — but ±7 days turns
+ * "10 days ago" into a 15-day window, which inside a two-week context stops
+ * discriminating the anchor turn from its neighbours (it was the whole point of
+ * the range to discriminate). Month-scale offsets are genuinely fuzzier ("a
+ * month ago" is often 4-6 weeks in speech), so they keep the widest margin.
  */
-const RANGE_MARGIN_DAYS = 7;
+const RANGE_MARGIN_DAYS: Record<'day' | 'week' | 'month' | 'plainWeek' | 'legacy', number> = {
+  day: 2,
+  week: 3,
+  month: 7,
+  // "last week" is already a seven-day span, so it needs no extra widening
+  // beyond the day-scale tolerance on each edge.
+  plainWeek: 2,
+  // The pre-refinement flat margin, kept so an ablation can reproduce the
+  // original engine exactly rather than approximating it.
+  legacy: 7,
+};
+
+/**
+ * How many days outside the window a turn may sit and still be worth calling out
+ * in the prompt. Beyond this the turn is simply "not the window" and annotating
+ * it adds noise rather than signal.
+ */
+export const TIME_WINDOW_ANNOTATION_HORIZON_DAYS = 3;
+
+/** Weekday names in `Date.getUTCDay()` order, longest forms first for matching. */
+const WEEKDAY_NAMES = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+
+/** Recognised abbreviations, mapped to their full weekday index. */
+const WEEKDAY_ABBREVIATIONS: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  tues: 2,
+  wed: 3,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
+  fri: 5,
+  sat: 6,
+};
+
+/** The weekday index (0 = Sunday) a `YYYY/MM/DD` date falls on. */
+function weekdayIndex(date: string): number {
+  const [y, m, d] = date.split('/').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+}
+
+/**
+ * Locate a named weekday ("last Saturday", "this Monday", "next Friday" or a
+ * bare "on Tuesday") and return its resolved date, or `null` when the question
+ * names no weekday.
+ *
+ * Convention, fixed by test so both directions are pinned:
+ *  - `last <day>` / `on <day>` / bare `<day>` → the most recent occurrence
+ *    STRICTLY BEFORE the question date (a question asked on a Saturday that says
+ *    "last Saturday" means the week before, not itself).
+ *  - `this <day>` → the occurrence within the question date's own week, which
+ *    may be earlier or equal to the question date but never later.
+ *  - `next <day>` → the next occurrence strictly after the question date.
+ */
+function resolveWeekday(lower: string, reference: string): TimeRange | null {
+  const match = lower.match(
+    /\b(last|this|next|on)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues|tue|wed|thur|thurs|thu|fri|sat)\b/,
+  );
+  if (!match) {
+    return null;
+  }
+  const qualifier = match[1]!;
+  const token = match[2]!;
+  const fullIndex = (WEEKDAY_NAMES as readonly string[]).indexOf(token);
+  const target = fullIndex >= 0 ? fullIndex : WEEKDAY_ABBREVIATIONS[token]!;
+  const current = weekdayIndex(reference);
+
+  let delta: number;
+  if (qualifier === 'next') {
+    // Strictly forward: 1 to 7 days ahead.
+    delta = ((target - current + 6) % 7) + 1;
+  } else if (qualifier === 'this') {
+    // Within the current week, backwards: 0 to 6 days back.
+    delta = -((current - target + 7) % 7);
+  } else {
+    // "last" / "on" / bare: strictly backwards, 1 to 7 days.
+    delta = -((current - target + 7) % 7 || 7);
+  }
+
+  const day = addDays(reference, delta);
+  return { start: day, end: day };
+}
 
 /**
  * Resolve a question's time qualifier into an absolute date range against the
  * question date, mirroring Hindsight's deterministic temporal parsing: "two
- * weeks ago" / "yesterday" / "last week" / "next month" / "next year" become a
- * concrete [start, end] that a downstream step can use to constrain event
- * lookup — instead of asking the LLM to convert "ago"/"last"/"next" itself
- * (its arithmetic is the error the deterministic engine exists to remove).
+ * weeks ago" / "yesterday" / "last week" / "last Saturday" / "next month" /
+ * "next year" become a concrete [start, end] that a downstream step can use to
+ * constrain event lookup — instead of asking the LLM to convert
+ * "ago"/"last"/"next" itself (its arithmetic is the error the deterministic
+ * engine exists to remove).
+ *
+ * Order of preference is explicit-offset-first: a question that states both an
+ * offset and a weekday ("two weeks ago last Friday") resolves through the
+ * offset, which is the precise signal.
  *
  * Returns `null` when the question carries no recognised time qualifier or the
  * question date is not a valid `YYYY/MM/DD`.
  */
-export function resolveTimeRange(question: string, questionDate: string): TimeRange | null {
+export function resolveTimeRange(
+  question: string,
+  questionDate: string,
+  options: TemporalEngineOptions = DEFAULT_ENGINE_OPTIONS,
+): TimeRange | null {
   const reference = normalizeDate(questionDate);
   if (!isValidDate(reference)) {
     return null;
@@ -242,7 +412,13 @@ export function resolveTimeRange(question: string, questionDate: string): TimeRa
   }
 
   if (/\blast\s+week\b/.test(lower)) {
-    // The previous seven-day window, approximated as 7 to 13 days back.
+    if (options.extendedTimeRange) {
+      // "last week" is a point seven days back, widened by the day-scale margin
+      // on each edge.
+      const margin = RANGE_MARGIN_DAYS.plainWeek;
+      return { start: addDays(reference, -7 - margin), end: addDays(reference, -7 + margin) };
+    }
+    // Legacy behaviour: the seven-to-thirteen-day window with no extra widening.
     return { start: addDays(reference, -13), end: addDays(reference, -7) };
   }
 
@@ -261,15 +437,27 @@ export function resolveTimeRange(question: string, questionDate: string): TimeRa
     return { start: `${year}/01/01`, end: `${year}/12/31` };
   }
 
+  // An explicit numeric offset outranks a weekday: "two weeks ago last Friday"
+  // states the precise anchor, and the weekday is incidental.
   const offset = parseRelativeOffset(question);
-  if (offset === null) {
+  if (offset !== null) {
+    const target =
+      offset.unit === 'month'
+        ? addMonths(reference, -offset.amount)
+        : addDays(reference, offset.unit === 'week' ? -offset.amount * 7 : -offset.amount);
+    const margin = options.extendedTimeRange
+      ? RANGE_MARGIN_DAYS[offset.unit]
+      : RANGE_MARGIN_DAYS.legacy;
+    return { start: addDays(target, -margin), end: addDays(target, margin) };
+  }
+
+  // Only reached when the question states no numeric offset, so a named weekday
+  // is the sole anchor available. Before the refinement there was no weekday
+  // path at all, and these questions resolved to no window.
+  if (!options.extendedTimeRange) {
     return null;
   }
-  const target =
-    offset.unit === 'month'
-      ? addMonths(reference, -offset.amount)
-      : addDays(reference, offset.unit === 'week' ? -offset.amount * 7 : -offset.amount);
-  return { start: addDays(target, -RANGE_MARGIN_DAYS), end: addDays(target, RANGE_MARGIN_DAYS) };
+  return resolveWeekday(lower, reference);
 }
 
 /** First and last day of the month containing `date`, both `YYYY/MM/DD`. */
@@ -334,6 +522,7 @@ export function computeTemporalAnswer(
   kind: TemporalKind,
   questionDate: string,
   events: readonly TemporalEvent[],
+  options: TemporalEngineOptions = DEFAULT_ENGINE_OPTIONS,
 ): string | null {
   if (kind === 'other' || kind === 'eventLookup') {
     return null;
@@ -368,7 +557,7 @@ export function computeTemporalAnswer(
       // events, not from the first event to the question date. Measuring to the
       // question date answered 0 of those 6 questions in LongMemEval-S, while
       // answering 18 of the 19 that name only one event.
-      if (hasSecondEventReference(question)) {
+      if (hasSecondEventReference(question, options)) {
         if (normalized.length < 2) {
           return null;
         }

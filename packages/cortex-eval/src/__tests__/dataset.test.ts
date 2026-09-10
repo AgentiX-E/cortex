@@ -36,4 +36,40 @@ describe('package exports', () => {
     expect(typeof cortexEval.FactMemorySystem).toBe('function');
     expect(typeof cortexEval.createLongMemEvalMini).toBe('function');
   });
+
+  it('exposes the P4 temporal-engine surface through the package root', () => {
+    // The ablation runners and their two options live in the public surface: a
+    // consumer drives the deterministic-coverage and time-window experiments
+    // through them. Asserting the constants are NOT undefined matters more than
+    // it looks — a renamed or dropped re-export resolves to `undefined`, and a
+    // runner that reads `undefined` silently falls back to the engine's defaults
+    // while still reporting a successful run. That is exactly how the
+    // annotation arm was inert on its first TDD pass.
+    expect(typeof cortexEval.runDeterministicCoverageAblation).toBe('function');
+    expect(typeof cortexEval.runTimeWindowAnnotationAblation).toBe('function');
+    expect(cortexEval.EXTENDED_ENGINE_OPTIONS).toBeDefined();
+    expect(cortexEval.EXTENDED_ENGINE_OPTIONS).toEqual({
+      extendedTimeRange: true,
+      extendedSecondEventReference: true,
+    });
+    expect(cortexEval.TIME_WINDOW_ANNOTATION_HORIZON_DAYS).toBe(3);
+  });
+
+  it('keeps the extended engine strictly stronger than the default', () => {
+    // The default configuration must leave every refinement OFF, or the graded
+    // baseline silently inherits unmeasured behaviour and every ablation that
+    // claims to isolate a refinement is measuring the wrong contrast.
+    expect(cortexEval.EXTENDED_ENGINE_OPTIONS.extendedTimeRange).toBe(true);
+    expect(cortexEval.EXTENDED_ENGINE_OPTIONS.extendedSecondEventReference).toBe(true);
+    // A weekday-anchored question has no window without the refinement, and a
+    // resolved one with it — the observable difference the arms depend on.
+    expect(cortexEval.resolveTimeRange('What did I do last Saturday?', '2023/04/10')).toBeNull();
+    expect(
+      cortexEval.resolveTimeRange(
+        'What did I do last Saturday?',
+        '2023/04/10',
+        cortexEval.EXTENDED_ENGINE_OPTIONS,
+      ),
+    ).toEqual({ start: '2023/04/08', end: '2023/04/08' });
+  });
 });

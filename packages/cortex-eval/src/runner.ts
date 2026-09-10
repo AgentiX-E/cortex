@@ -15,6 +15,7 @@ import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
 import type { DecisionTrace } from './natural-language-memory.js';
 import { classifyKnowledgeUpdateQualifier } from './fact-store.js';
+import { EXTENDED_ENGINE_OPTIONS } from './temporal-engine.js';
 import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
 
 export type BenchmarkRunnerOptions = {
@@ -182,6 +183,115 @@ export async function runTemporalEngineAblation(
 
   const judge = options.judge ?? createLlmJudge(llm);
   const report = await runAblationReport(trDataset, llmTemporal, deterministicTemporal, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
+}
+
+/**
+ * Deterministic-coverage ablation. Isolates the two temporal-engine refinements
+ * from the retrieval stack: both systems disable abstention and keep the
+ * deterministic engine path on, and they differ ONLY in
+ * `temporalEngineOptions` — weekday/named-day window resolution plus
+ * unit-scaled margins, and the `before/after <event>` second-event predicate.
+ *
+ * The two refinements are ablated together rather than separately because they
+ * share a single causal claim: the deterministic engine can answer a question it
+ * currently falls back on the LLM for. Splitting them would produce two
+ * sub-noise arms measuring halves of one mechanism, which the P3a iteration
+ * already showed is worse than one arm measuring the mechanism.
+ */
+export async function runDeterministicCoverageAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const trQuestions = dataset.questions.filter((q) => q.capability === 'TR' && q.questionDate);
+  const trDataset = { name: 'longmemeval-tr-deterministic', questions: trQuestions };
+
+  const expansionCache = new Map<string, string[]>();
+  const baseEngine = new NaturalLanguageMemorySystem('tr-base-engine', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableTimeWindowAnnotation: false,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const extendedEngine = new NaturalLanguageMemorySystem('tr-extended-engine', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableTimeWindowAnnotation: false,
+    temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(trDataset, baseEngine, extendedEngine, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
+}
+
+/**
+ * Time-window annotation ablation. Isolates the labeling feature from the
+ * retrieval stack: both systems disable abstention, both keep the deterministic
+ * engine on, and they differ ONLY in `enableTimeWindowAnnotation`. The turn list
+ * is identical in both arms — the feature relabels turns in place rather than
+ * adding or dropping any — so a positive delta is attributable to the reader
+ * being able to tell an in-window anchor from a near miss, not to a change in
+ * what the reader was shown.
+ *
+ * This is deliberately a within-context experiment. The three preceding TR arms
+ * (date-range, occurrence-date, entity-graph) all widened recall and all lost,
+ * which established that TR's bottleneck is discrimination rather than recall
+ * depth; an arm that widens context again would re-test a settled question.
+ */
+export async function runTimeWindowAnnotationAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const trQuestions = dataset.questions.filter((q) => q.capability === 'TR' && q.questionDate);
+  const trDataset = { name: 'longmemeval-tr-annotated', questions: trQuestions };
+
+  const expansionCache = new Map<string, string[]>();
+  // Both arms run the EXTENDED engine. The annotation is inert without a
+  // resolvable window — with the default engine a weekday-anchored question
+  // yields no window at all, so an "annotation off vs on" pair would compare two
+  // identical prompts and measure nothing. Holding the engine constant across
+  // the arms is what makes the delta attributable to the label rather than to
+  // the window resolution that feeds it (that resolution is measured separately
+  // by `runDeterministicCoverageAblation`).
+  const unannotated = new NaturalLanguageMemorySystem('tr-no-time-window', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableTimeWindowAnnotation: false,
+    temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const annotated = new NaturalLanguageMemorySystem('tr-time-window', {
+    embedding,
+    llm,
+    enableAbstention: false,
+    enableTimeWindowAnnotation: true,
+    temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
+    queryExpansionCache: expansionCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(trDataset, unannotated, annotated, {
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });

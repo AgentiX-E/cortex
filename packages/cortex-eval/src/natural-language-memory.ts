@@ -24,7 +24,11 @@ import {
 import {
   classifyTemporalQuestion,
   computeTemporalAnswer,
+  elapsedDays,
+  normalizeDate,
   resolveTimeRange,
+  TIME_WINDOW_ANNOTATION_HORIZON_DAYS,
+  type TemporalEngineOptions,
   type TemporalEvent,
   type TemporalKind,
   type TimeRange,
@@ -145,6 +149,21 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   enableBitemporalKnowledgeUpdate?: boolean;
   /**
+   * When true, temporal and time-anchored questions annotate every context turn
+   * with its signed distance to the question's deterministically resolved time
+   * window. The annotation is a label, not a filter: the turn list is unchanged,
+   * so enabling it cannot lose evidence and an ablation isolates the
+   * discrimination signal. Default false: nothing new is enabled on the graded
+   * path until its own ablation is green.
+   */
+  enableTimeWindowAnnotation?: boolean;
+  /**
+   * Which deterministic temporal-engine refinements are active. Defaults to the
+   * engine's own defaults (refinements off), so the graded path only changes once
+   * an ablation has measured the refinement.
+   */
+  temporalEngineOptions?: TemporalEngineOptions;
+  /**
    * Prompt builder for multi-session aggregation (default buildAggregationQaPrompt).
    * Overridable so an ablation can hold abstention constant while swapping only
    * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
@@ -263,6 +282,22 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       buildTemporalQueryExpansionPrompt,
       true,
     );
+    // Resolve the question's time qualifier once, deterministically, and reuse it
+    // for both temporal kinds: `eventLookup` needs it to locate the anchor turn,
+    // and every other kind can use it to label how far each context turn sits
+    // from the window. `resolveTimeRange` reads only the question text and the
+    // question date, never the dataset's injected timestamps, so the signal stays
+    // dataset-agnostic.
+    const engineOptions = this.options.temporalEngineOptions;
+    const timeRange = questionDate
+      ? (resolveTimeRange(question, questionDate, engineOptions) ?? undefined)
+      : undefined;
+    // The annotation is applied when the turns are rendered into the prompt, so
+    // the retrieved turn list itself is never rewritten: the deterministic path
+    // keeps seeing the exact text it was written against, and no intermediate
+    // string format has to stay in sync with the renderer.
+    const annotationWindow =
+      this.options.enableTimeWindowAnnotation === true ? timeRange : undefined;
     const supportsDeterministic = kind !== 'other' && kind !== 'eventLookup';
     if (
       this.options.enableDeterministicTemporal !== false &&
@@ -285,17 +320,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // entity at a time anchor, not for a date computation, so they use a lookup
     // prompt instead of the date-arithmetic prompt (which would make the model
     // try to compute an elapsed time that the question never asked for).
-    // Resolve the time qualifier deterministically and hand the model a concrete
-    // date window, so it locates the anchor turn by date instead of converting
-    // "ago"/"last"/"next" itself (its arithmetic is the error this removes).
-    const timeRange =
-      kind === 'eventLookup' && questionDate
-        ? (resolveTimeRange(question, questionDate) ?? undefined)
-        : undefined;
+    // The resolved window is handed to the prompt so the model locates the anchor
+    // turn by date instead of converting "ago"/"last"/"next" itself (its
+    // arithmetic is the error this removes).
     const temporalPrompt: PromptBuilder =
       kind === 'eventLookup'
-        ? (q, c, t) => buildTemporalEventLookupPrompt(q, c, questionDate, t, timeRange)
-        : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t);
+        ? (q, c, t) =>
+            buildTemporalEventLookupPrompt(q, c, questionDate, t, timeRange, annotationWindow)
+        : (q, c, t) => buildTemporalQaPrompt(q, c, questionDate, t, annotationWindow);
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -339,7 +371,13 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       return null;
     }
     const events = Array.isArray(extracted?.events) ? extracted.events : [];
-    const answer = computeTemporalAnswer(question, kind, questionDate, events);
+    const answer = computeTemporalAnswer(
+      question,
+      kind,
+      questionDate,
+      events,
+      this.options.temporalEngineOptions,
+    );
     if (answer === null) {
       return null;
     }
@@ -867,8 +905,37 @@ function conInstruction(contract: AnswerContract = EXTRACTIVE_CONTRACT): string[
  * distractors: each turn's date/role/content boundaries become explicit data
  * fields instead of prose. Turns that do not match the "[date] role:" shape are
  * preserved as a bare `content` object so no turn disappears.
+ *
+ * When `timeWindow` is supplied, each dated turn also carries a `timeWindow`
+ * field giving its signed distance to that window. This is the deterministic
+ * half of the reader-side fix for `eventLookup` questions: the window is known
+ * exactly (it was resolved from the question text alone), yet the reader was
+ * being asked to compare a stated offset ("two weeks ago") against a dozen
+ * `[YYYY/MM/DD]` prefixes by itself — the arithmetic the deterministic engine
+ * exists to remove. The annotation is a LABEL, never a filter: the turn list and
+ * its length are identical with and without it, so a window that resolves
+ * wrongly can mislabel a turn but can never delete evidence. Turns more than
+ * `TIME_WINDOW_ANNOTATION_HORIZON_DAYS` outside the window are left unmarked,
+ * because "not the window" adds nothing and marking everything would drown the
+ * signal.
  */
-export function formatStructuredContext(context: string): string {
+/**
+ * Render a turn list as JSON, optionally labelling each turn with its distance
+ * to the question's resolved time window. The annotation is a LABEL, never a
+ * filter: it only ever adds a `timeWindow` field to a turn's object, so the turn
+ * list, its length, and its order are identical with and without it. A window
+ * that resolves wrongly can therefore mislabel a turn but can never delete
+ * evidence. Turns more than `TIME_WINDOW_ANNOTATION_HORIZON_DAYS` outside the
+ * window, and turns whose date cannot be parsed, are left unmarked — a wrong
+ * label is worse than none, and marking everything would drown the signal.
+ *
+ * The window is applied here, at render time, rather than by rewriting an
+ * intermediate string: an earlier draft inserted a `[time_window: …]` marker
+ * between a turn's date and its role, which broke the dated-turn pattern this
+ * function matches on and silently merged the marked turn into its predecessor.
+ * Taking the window as an argument keeps one representation of a turn.
+ */
+export function formatStructuredContext(context: string, timeWindow?: TimeRange): string {
   if (context === '') {
     return '[]';
   }
@@ -879,7 +946,13 @@ export function formatStructuredContext(context: string): string {
   const items = turns.map((turn) => {
     const dated = turn.match(/^\[(\d{4}\/\d{2}\/\d{2})[^\]]*\]\s*(user|assistant):\s*([\s\S]*)$/);
     if (dated) {
-      return JSON.stringify({ date: dated[1]!, role: dated[2]!, content: dated[3]!.trim() });
+      const annotation = timeWindow ? annotateTimeWindow(dated[1]!, timeWindow) : undefined;
+      return JSON.stringify({
+        date: dated[1]!,
+        role: dated[2]!,
+        content: dated[3]!.trim(),
+        ...(annotation === undefined ? {} : { timeWindow: annotation }),
+      });
     }
     const undated = turn.match(/^(user|assistant):\s*([\s\S]*)$/);
     if (undated) {
@@ -888,6 +961,29 @@ export function formatStructuredContext(context: string): string {
     return JSON.stringify({ content: turn.trim() });
   });
   return `[${items.join(', ')}]`;
+}
+
+/**
+ * Describe a dated turn's position relative to the resolved window. Returns
+ * `undefined` when the turn is too far away to be worth calling out, which
+ * leaves the JSON object exactly as it was before the feature existed.
+ *
+ * `turnDate` always arrives pre-validated: the only caller matches it against
+ * `YYYY/MM/DD` before passing it in, and `normalizeDate` is the identity on that
+ * shape. No validity re-check is needed here, and a defensive one would be
+ * unreachable code that no test could honestly cover.
+ */
+function annotateTimeWindow(turnDate: string, window: TimeRange): string | undefined {
+  const date = normalizeDate(turnDate);
+  if (date >= window.start && date <= window.end) {
+    return "in the question's time window";
+  }
+  const distance =
+    date < window.start ? elapsedDays(date, window.start) : elapsedDays(window.end, date);
+  if (distance > TIME_WINDOW_ANNOTATION_HORIZON_DAYS) {
+    return undefined;
+  }
+  return `${distance} day${distance === 1 ? '' : 's'} outside the question's time window`;
 }
 
 /** Build a grounded QA prompt with an explicit abstention instruction. */
@@ -1076,6 +1172,7 @@ export function buildTemporalQaPrompt(
   context: string,
   questionDate?: string,
   abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+  timeWindow?: TimeRange,
 ): string {
   const lines = [
     'You are answering a temporal-reasoning question based on a conversation memory.',
@@ -1092,7 +1189,7 @@ export function buildTemporalQaPrompt(
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context (a JSON array of turns, each with date, role, and content):',
-    formatStructuredContext(context),
+    formatStructuredContext(context, timeWindow),
     '',
     `Question: ${question}`,
     '',
@@ -1116,7 +1213,13 @@ export function buildTemporalEventLookupPrompt(
   questionDate?: string,
   abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
   timeRange?: TimeRange,
+  annotationWindow?: TimeRange,
 ): string {
+  // The window is rendered onto the turns whenever one is active, and the
+  // instruction that explains the resulting `timeWindow` field rides along with
+  // it: a marker the reader is not told how to use is worse than no marker.
+  const renderWindow = annotationWindow ?? timeRange;
+  const structured = formatStructuredContext(context, annotationWindow);
   const lines = [
     'You are answering a temporal question based on a conversation memory.',
     'Each turn is prefixed with its date in [YYYY/MM/DD] form.',
@@ -1130,6 +1233,11 @@ export function buildTemporalEventLookupPrompt(
           `The question's time qualifier resolves to ${timeRange.start} through ${timeRange.end}; locate the turn(s) dated in or nearest to this window.`,
         ]
       : []),
+    ...(timeWindowIsAnnotated(renderWindow, structured)
+      ? [
+          'Each turn carries a "timeWindow" field computed from its date and the window above. A turn marked "in the question\'s time window" is a candidate for the answer; a turn marked "N days outside" is a near miss. Prefer an in-window turn, and do not answer from a turn that merely mentions a similar-sounding event.',
+        ]
+      : []),
     ...conInstruction(),
     '',
     "In Step 1, identify the turn(s) the question's time qualifier points to and the entity each states.",
@@ -1139,13 +1247,23 @@ export function buildTemporalEventLookupPrompt(
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     '',
     'Context (a JSON array of turns, each with date, role, and content):',
-    formatStructuredContext(context),
+    structured,
     '',
     `Question: ${question}`,
     '',
     'Answer:',
   ];
   return lines.join('\n');
+}
+
+/**
+ * Whether the rendered context actually carries an annotation. Reading it back
+ * off the rendered string keeps the instruction and the marker from drifting
+ * apart: if no turn is near enough to be labelled, the reader is given the plain
+ * turn list rather than an instruction referring to a field that is not there.
+ */
+function timeWindowIsAnnotated(window: TimeRange | undefined, structured: string): boolean {
+  return window !== undefined && structured.includes('"timeWindow"');
 }
 
 /**

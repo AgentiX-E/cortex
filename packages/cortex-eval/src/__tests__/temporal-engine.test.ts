@@ -13,6 +13,7 @@ import {
   parseRelativeOffset,
   resolveTemporalDate,
   resolveTimeRange,
+  EXTENDED_ENGINE_OPTIONS,
   type TemporalKind,
   type TemporalEvent,
 } from '../temporal-engine.js';
@@ -208,70 +209,291 @@ describe('resolveTemporalDate', () => {
 
 describe('resolveTimeRange', () => {
   it('resolves a relative point time to a margin-bounded range', () => {
-    // "two weeks ago" = 2023/03/27, widened by ±7 days so a turn whose mention
-    // date is a day or two off the event date still falls inside.
-    expect(resolveTimeRange('What did I do two weeks ago?', '2023/04/10')).toEqual({
-      start: '2023/03/20',
-      end: '2023/04/03',
+    // "two weeks ago" = 2023/03/27, widened by ±3 days (the week-scale margin):
+    // a week-scale offset is stated fuzzily, so the window is a little wider
+    // than the day-scale one, but still far tighter than the old flat ±7 that
+    // made "two weeks ago" a 21-day span.
+    expect(
+      resolveTimeRange('What did I do two weeks ago?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/03/24',
+      end: '2023/03/30',
     });
   });
 
   it('resolves "yesterday" to a single day', () => {
-    expect(resolveTimeRange('What did I do yesterday?', '2023/04/10')).toEqual({
+    expect(
+      resolveTimeRange('What did I do yesterday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
       start: '2023/04/09',
       end: '2023/04/09',
     });
   });
 
   it('resolves "last week" to the previous seven-day window', () => {
-    expect(resolveTimeRange('What did I do last week?', '2023/04/10')).toEqual({
-      start: '2023/03/28',
-      end: '2023/04/03',
+    // "last week" is a point seven days back, widened by the day-scale margin of
+    // 2 in each direction: 9 days back (2023/04/01) to 5 days back (2023/04/05).
+    expect(
+      resolveTimeRange('What did I do last week?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/01',
+      end: '2023/04/05',
     });
   });
 
   it('resolves "next month" to the next calendar month', () => {
-    expect(resolveTimeRange('What will I do next month?', '2023/04/10')).toEqual({
+    expect(
+      resolveTimeRange('What will I do next month?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
       start: '2023/05/01',
       end: '2023/05/31',
     });
   });
 
   it('resolves "last month" to the previous calendar month', () => {
-    expect(resolveTimeRange('What did I do last month?', '2023/04/10')).toEqual({
+    expect(
+      resolveTimeRange('What did I do last month?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
       start: '2023/03/01',
       end: '2023/03/31',
     });
   });
 
   it('resolves "next year" to the next calendar year', () => {
-    expect(resolveTimeRange('What will I do next year?', '2023/04/10')).toEqual({
+    expect(
+      resolveTimeRange('What will I do next year?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
       start: '2024/01/01',
       end: '2024/12/31',
     });
   });
 
   it('resolves "N months ago" to a margin-bounded range', () => {
-    expect(resolveTimeRange('What did I do three months ago?', '2023/04/10')).toEqual({
+    expect(
+      resolveTimeRange('What did I do three months ago?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
       start: '2023/01/03',
       end: '2023/01/17',
     });
   });
 
   it('resolves "N days ago" to a margin-bounded range', () => {
-    // "five days ago" = 2023/04/05, widened by ±7 days.
-    expect(resolveTimeRange('What did I do five days ago?', '2023/04/10')).toEqual({
-      start: '2023/03/29',
+    // "five days ago" = 2023/04/05, widened by ±2 days: the question's own
+    // phrasing is the user's approximation of the utterance date, so a small
+    // tolerance is honest, but a ±7 window would span two weeks and stop
+    // discriminating the anchor turn from its neighbours.
+    expect(
+      resolveTimeRange('What did I do five days ago?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/03',
+      end: '2023/04/07',
+    });
+  });
+
+  it('scales the margin with the offset unit', () => {
+    // A day-scale offset is reported precisely, so it gets the tightest margin
+    // ("10 days ago" must not become a 15-day window).
+    expect(
+      resolveTimeRange('What did I buy 10 days ago?', '2023/03/25', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/03/13',
+      end: '2023/03/17',
+    });
+    // A week-scale offset is fuzzier, so the window is a few days wider.
+    expect(
+      resolveTimeRange('What did I do two weeks ago?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/03/24',
+      end: '2023/03/30',
+    });
+    // A month-scale offset is fuzzier still ("a month ago" is often 4-6 weeks),
+    // so it keeps the widest margin.
+    expect(
+      resolveTimeRange('What did I do three months ago?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/01/03',
+      end: '2023/01/17',
+    });
+  });
+
+  it('resolves "a couple of days ago" and "a few weeks ago"', () => {
+    expect(
+      resolveTimeRange(
+        'What did I cook a couple of days ago?',
+        '2023/04/12',
+        EXTENDED_ENGINE_OPTIONS,
+      ),
+    ).toEqual({
+      start: '2023/04/08',
+      end: '2023/04/12',
+    });
+    // "a few weeks ago" = 3 weeks = 2023/04/09, ±3 (week-scale margin).
+    expect(
+      resolveTimeRange('What did I do a few weeks ago?', '2023/04/30', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/06',
       end: '2023/04/12',
     });
   });
 
+  it('resolves a named weekday to that single day', () => {
+    // 2023/04/10 is a Monday, so "last Saturday" is 2023/04/08.
+    expect(
+      resolveTimeRange('What did I do last Saturday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/08',
+      end: '2023/04/08',
+    });
+    // Same question asked ON the Saturday resolves to the previous Saturday, not
+    // to the question date: "last Saturday" is strictly before "today".
+    expect(
+      resolveTimeRange('What did I do last Saturday?', '2023/04/08', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/01',
+      end: '2023/04/01',
+    });
+    // "this Monday" asked on a Monday is today, because "this" points at the
+    // current week rather than the previous one.
+    expect(
+      resolveTimeRange('What did I do this Monday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/10',
+      end: '2023/04/10',
+    });
+    // A later weekday in the same week is still in the past relative to the
+    // question, but "this" must not jump forward into the future.
+    expect(
+      resolveTimeRange('What did I do this Friday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/07',
+      end: '2023/04/07',
+    });
+  });
+
+  it('resolves "next <weekday>" forward and "on <weekday>" to the recent past', () => {
+    // 2023/04/10 is a Monday: "next Friday" is the coming Friday.
+    expect(
+      resolveTimeRange('What will I do next Friday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/14',
+      end: '2023/04/14',
+    });
+    // A bare weekday reference points at the most recent occurrence.
+    expect(
+      resolveTimeRange('What did I do on Tuesday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/04',
+      end: '2023/04/04',
+    });
+  });
+
+  it('resolves a full weekday name as well as its abbreviation', () => {
+    expect(
+      resolveTimeRange('What did I do last Tuesday?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/04',
+      end: '2023/04/04',
+    });
+    expect(
+      resolveTimeRange('What did I do last Sat?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/08',
+      end: '2023/04/08',
+    });
+  });
+
+  it('resolves "last <weekday>" across a month boundary', () => {
+    // 2023/05/01 is a Monday, so "last Sunday" is 2023/04/30.
+    expect(
+      resolveTimeRange('Who did I meet last Sunday?', '2023/05/01', EXTENDED_ENGINE_OPTIONS),
+    ).toEqual({
+      start: '2023/04/30',
+      end: '2023/04/30',
+    });
+  });
+
+  it('prefers the explicit relative offset over a bare weekday', () => {
+    // A question carrying both must resolve through the offset, which is the
+    // precise signal; the weekday is incidental.
+    expect(
+      resolveTimeRange(
+        'What did I do two weeks ago last Friday?',
+        '2023/04/10',
+        EXTENDED_ENGINE_OPTIONS,
+      ),
+    ).toEqual({
+      start: '2023/03/24',
+      end: '2023/03/30',
+    });
+  });
+
   it('returns null when the question has no time qualifier', () => {
-    expect(resolveTimeRange('What is my favorite color?', '2023/04/10')).toBeNull();
+    expect(
+      resolveTimeRange('What is my favorite color?', '2023/04/10', EXTENDED_ENGINE_OPTIONS),
+    ).toBeNull();
   });
 
   it('returns null when the question date is invalid', () => {
-    expect(resolveTimeRange('What did I do yesterday?', '')).toBeNull();
+    expect(resolveTimeRange('What did I do yesterday?', '', EXTENDED_ENGINE_OPTIONS)).toBeNull();
+    expect(
+      resolveTimeRange('What did I do last Saturday?', 'not-a-date', EXTENDED_ENGINE_OPTIONS),
+    ).toBeNull();
+  });
+
+  it('preserves the pre-refinement behaviour when the refinements are off', () => {
+    // The graded benchmark path runs on the defaults, so the defaults must be
+    // the legacy engine exactly: a flat ±7 margin for every offset, and no
+    // weekday resolution at all. If this ever drifts, an unmeasured refinement
+    // would silently change the graded result.
+    expect(resolveTimeRange('What did I do two weeks ago?', '2023/04/10')).toEqual({
+      start: '2023/03/20',
+      end: '2023/04/03',
+    });
+    expect(resolveTimeRange('What did I do five days ago?', '2023/04/10')).toEqual({
+      start: '2023/03/29',
+      end: '2023/04/12',
+    });
+    expect(resolveTimeRange('What did I do three months ago?', '2023/04/10')).toEqual({
+      start: '2023/01/03',
+      end: '2023/01/17',
+    });
+    expect(resolveTimeRange('What did I do last week?', '2023/04/10')).toEqual({
+      start: '2023/03/28',
+      end: '2023/04/03',
+    });
+    // A weekday-anchored question had no window before the refinement.
+    expect(
+      resolveTimeRange('I received a piece of jewelry last Saturday.', '2023/04/10'),
+    ).toBeNull();
+  });
+
+  it('enables each refinement independently', () => {
+    // A partial configuration must be honoured per-flag, so an ablation can
+    // attribute the effect to one refinement rather than to "the new engine".
+    expect(
+      resolveTimeRange('What did I do last Saturday?', '2023/04/10', {
+        extendedTimeRange: false,
+        extendedSecondEventReference: true,
+      }),
+    ).toBeNull();
+    expect(
+      resolveTimeRange('What did I do last Saturday?', '2023/04/10', {
+        extendedTimeRange: true,
+        extendedSecondEventReference: false,
+      }),
+    ).toEqual({ start: '2023/04/08', end: '2023/04/08' });
+    expect(
+      hasSecondEventReference('How many days before the party did I order it?', {
+        extendedTimeRange: false,
+        extendedSecondEventReference: true,
+      }),
+    ).toBe(true);
+    expect(
+      hasSecondEventReference('How many days before the party did I order it?', {
+        extendedTimeRange: true,
+        extendedSecondEventReference: false,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -707,7 +929,7 @@ describe('hasSecondEventReference', () => {
   ])('detects the second event of a two-event relative question: %s', (question) => {
     // All six of these scored 0/4 in production: they are the population the
     // fix targets, and every one of them must be detected.
-    expect(hasSecondEventReference(question)).toBe(true);
+    expect(hasSecondEventReference(question, EXTENDED_ENGINE_OPTIONS)).toBe(true);
   });
 
   it.each([
@@ -762,6 +984,57 @@ describe('hasSecondEventReference', () => {
   it('does not fire on a question with no "when" clause at all', () => {
     expect(hasSecondEventReference('How many days ago did I buy a smoker?')).toBe(false);
     expect(hasSecondEventReference('Which came first, X or Y?')).toBe(false);
+  });
+
+  it('detects a "before/after <event>" second reference', () => {
+    // a3045048: the question names two orderable events and the gold answer is
+    // their interval ("7 days"), but the `when I …` predicate never matched it,
+    // so it never reached the deterministic interval path and the LLM computed
+    // the wrong value ("5"). "before <event>" introduces the second event just
+    // as "when I …" does.
+    expect(
+      hasSecondEventReference(
+        "How many days before my best friend's birthday party did I order her gift?",
+        EXTENDED_ENGINE_OPTIONS,
+      ),
+    ).toBe(true);
+    expect(
+      hasSecondEventReference(
+        'How many days after the workshop did I buy the iPhone 13 Pro?',
+        EXTENDED_ENGINE_OPTIONS,
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    // "before" here is a bare preposition with no event noun after it, so there
+    // is no second event to measure to and the predicate must stay silent.
+    'How many days ago did I buy a smoker before the sale ended?',
+    'How many weeks ago did I start the class before the holidays?',
+  ])('ignores a "before" with no event noun: %s', (question) => {
+    expect(hasSecondEventReference(question, EXTENDED_ENGINE_OPTIONS)).toBe(false);
+  });
+
+  it('does not fire on "before" in the already-working single-event population', () => {
+    // Regression guard: the 19 known single-event relative questions must keep
+    // returning false, so extending the predicate cannot move a working
+    // question off the question-date path.
+    for (const question of [
+      'How many months ago did I attend the Seattle International Film Festival?',
+      'How many days ago did I watch the Super Bowl?',
+      'How many weeks ago did I attend the friends and family sale at Nordstrom?',
+    ]) {
+      expect(hasSecondEventReference(question, EXTENDED_ENGINE_OPTIONS)).toBe(false);
+    }
+  });
+
+  it('ignores the "before/after" shape entirely when the refinement is off', () => {
+    // The `when I …` shape is the original predicate and stays active on the
+    // defaults; only the prepositional shape is gated.
+    expect(hasSecondEventReference('How many days before the party did I order it?')).toBe(false);
+    expect(
+      hasSecondEventReference('How many days had passed when I took my guitar to the tech?'),
+    ).toBe(true);
   });
 });
 

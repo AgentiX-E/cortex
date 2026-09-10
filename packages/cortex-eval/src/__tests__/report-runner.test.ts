@@ -7,6 +7,8 @@ import {
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
+  runTimeWindowAnnotationAblation,
+  runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
@@ -505,6 +507,183 @@ describe('runTemporalEngineAblation', () => {
       temperature: 0.6,
       judge,
     });
+    expect(report.questionCount).toBe(1);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
+    expect(judgeQuestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe('runTimeWindowAnnotationAblation', () => {
+  const embedding = new HashEmbedding(64);
+
+  // A weekday-anchored lookup question: "last Saturday" resolves through the
+  // extended engine, so the annotation has a window to measure against.
+  const trInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'tr-window-1',
+      question_type: 'temporal-reasoning',
+      question: 'Who did I receive the jewelry from last Saturday?',
+      answer: 'my aunt',
+      question_date: '2023/04/10',
+      haystack_sessions: [
+        [
+          { role: 'user', content: 'I received a crystal chandelier from my aunt.' },
+          { role: 'user', content: 'I bought wire-wrapped jewelry-making tools.' },
+        ],
+      ],
+      haystack_dates: ['2023/04/08', '2023/03/04'],
+    },
+    {
+      question_id: 'ie-1',
+      question_type: 'single-session-user',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'favorite color=blue' }]],
+    },
+  ];
+
+  const llm: LLM = {
+    complete: async () => 'my aunt',
+    completeStructured: async <T>() => ({ events: [] }) as T,
+  };
+
+  it('isolates dated TR questions only and labels the annotation variants', async () => {
+    const { report, markdown } = await runTimeWindowAnnotationAblation(trInstances, embedding, llm);
+    // The IE question has no question_date, so it is excluded from the arm.
+    expect(report.questionCount).toBe(1);
+    expect(report.baseline.name).toBe('tr-no-time-window');
+    expect(report.feature.name).toBe('tr-time-window');
+    expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('shows the annotation in the prompt but not in the control arm', async () => {
+    const prompts: string[] = [];
+    const capturingLlm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    await runTimeWindowAnnotationAblation(trInstances, embedding, capturingLlm);
+    // Both arms are evaluated, so the rendered field appears in exactly the
+    // annotated arm's prompt — this is what makes the delta attributable to the
+    // label rather than to the retrieval stack, which both arms share.
+    expect(prompts.some((p) => p.includes('"timeWindow":'))).toBe(true);
+    expect(prompts.some((p) => !p.includes('"timeWindow":'))).toBe(true);
+  });
+
+  it('forwards a custom judge and temperature through the ablation', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        // Deliberately NOT the expected answer: an exact match short-circuits
+        // the scorer before the judge, so the answer must be a paraphrase for
+        // this test to observe the judge being consulted at all.
+        return 'my beloved aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const judgeQuestions: string[] = [];
+    const judge: AnswerJudge = async (question, predicted, expected) => {
+      judgeQuestions.push(question);
+      return predicted.includes(expected) || expected.includes(predicted);
+    };
+    const { report } = await runTimeWindowAnnotationAblation(trInstances, embedding, capturingLlm, {
+      runs: 2,
+      temperature: 0.6,
+      judge,
+    });
+    expect(report.questionCount).toBe(1);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
+    expect(judgeQuestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe('runDeterministicCoverageAblation', () => {
+  const embedding = new HashEmbedding(64);
+
+  const trInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'tr-cover-1',
+      question_type: 'temporal-reasoning',
+      // An eventLookup question: `computeTemporalAnswer` returns null for this
+      // kind by construction, so the LLM (and therefore the judge) is always
+      // reached. A counting question would be graded numerically and an
+      // ordering/interval question with two extractable events would be answered
+      // by the engine; neither can observe judge forwarding.
+      question: 'Where did I attend the wedding two weeks ago?',
+      answer: 'the botanical garden',
+      question_date: '2023/10/01',
+      haystack_sessions: [
+        [
+          { role: 'user', content: "I attended my cousin's wedding." },
+          { role: 'user', content: "I attended Michael's engagement party." },
+        ],
+      ],
+      haystack_dates: ['2023/05/15', '2023/04/06'],
+    },
+    {
+      question_id: 'ie-1',
+      question_type: 'single-session-user',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'favorite color=blue' }]],
+    },
+  ];
+
+  const llm: LLM = {
+    complete: async () => '39',
+    completeStructured: async <T>() =>
+      ({
+        events: [
+          { name: "my cousin's wedding", date: '2023/05/15' },
+          { name: "Michael's engagement party", date: '2023/04/06' },
+        ],
+      }) as T,
+  };
+
+  it('isolates dated TR questions and labels the engine variants', async () => {
+    const { report, markdown } = await runDeterministicCoverageAblation(
+      trInstances,
+      embedding,
+      llm,
+    );
+    expect(report.questionCount).toBe(1);
+    expect(report.baseline.name).toBe('tr-base-engine');
+    expect(report.feature.name).toBe('tr-extended-engine');
+    expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('forwards a custom judge and temperature through the ablation', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return 'the rose garden';
+      },
+      completeStructured: async <T>() =>
+        ({
+          events: [
+            { name: "my cousin's wedding", date: '2023/05/15' },
+            { name: "Michael's engagement party", date: '2023/04/06' },
+          ],
+        }) as T,
+    };
+    const judgeQuestions: string[] = [];
+    const judge: AnswerJudge = async (question, predicted, expected) => {
+      judgeQuestions.push(question);
+      // The two answers share only the noun "garden", so an exact-match
+      // short-circuit cannot fire and the judge must be consulted.
+      return predicted.includes('garden') && expected.includes('garden');
+    };
+    const { report } = await runDeterministicCoverageAblation(
+      trInstances,
+      embedding,
+      capturingLlm,
+      { runs: 2, temperature: 0.6, judge },
+    );
     expect(report.questionCount).toBe(1);
     expect(temperatures.every((t) => t === 0.6)).toBe(true);
     expect(judgeQuestions.length).toBeGreaterThan(0);

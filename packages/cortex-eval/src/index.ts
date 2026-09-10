@@ -55,6 +55,8 @@ export {
   runNaturalLanguageBenchmark,
   runMrAggregationAblation,
   runTemporalEngineAblation,
+  runTimeWindowAnnotationAblation,
+  runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
   type BenchmarkRunnerOptions,
 } from './runner.js';
@@ -147,6 +149,9 @@ export {
   parseRelativeOffset,
   resolveTemporalDate,
   resolveTimeRange,
+  TIME_WINDOW_ANNOTATION_HORIZON_DAYS,
+  EXTENDED_ENGINE_OPTIONS,
+  type TemporalEngineOptions,
   elapsedDays,
   elapsedWeeks,
   elapsedMonths,

@@ -19,6 +19,8 @@ import {
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
+  runTimeWindowAnnotationAblation,
+  runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
   sampleInstances,
   serializeEmbeddingCache,
@@ -244,6 +246,40 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
   console.log('=== TR temporal-engine ablation ===');
   console.log(trAblation.markdown);
+
+  // Isolate the time-window annotation: retrieval is identical in both arms and
+  // the feature only relabels turns with their distance to the resolved window,
+  // so a positive delta is attributable to the reader discriminating an anchor
+  // turn from a near miss rather than to any change in what it was shown.
+  const trWindowAblation = await runTimeWindowAnnotationAblation(sampled as never, embedding, llm, {
+    runs,
+    temperature,
+  });
+  writeFileSync('benchmark-tr-window-ablation-report.md', trWindowAblation.markdown);
+  writeFileSync(
+    'benchmark-tr-window-ablation-report.json',
+    JSON.stringify(trWindowAblation.report, null, 2),
+  );
+  console.log('=== TR time-window annotation ablation ===');
+  console.log(trWindowAblation.markdown);
+
+  // Isolate the deterministic-engine refinements: weekday/named-day window
+  // resolution with unit-scaled margins, and the "before/after <event>"
+  // second-event predicate. Both arms run the deterministic path and differ only
+  // in whether the refinements are enabled.
+  const trCoverageAblation = await runDeterministicCoverageAblation(
+    sampled as never,
+    embedding,
+    llm,
+    { runs, temperature },
+  );
+  writeFileSync('benchmark-tr-coverage-ablation-report.md', trCoverageAblation.markdown);
+  writeFileSync(
+    'benchmark-tr-coverage-ablation-report.json',
+    JSON.stringify(trCoverageAblation.report, null, 2),
+  );
+  console.log('=== TR deterministic-coverage ablation ===');
+  console.log(trCoverageAblation.markdown);
 
   // Isolate the bitemporal knowledge-update contribution: CoT time-qualifier
   // mapping vs LLM fact-extraction + exact date-order selection, with abstention

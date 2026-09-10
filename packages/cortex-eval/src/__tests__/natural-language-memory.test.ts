@@ -32,6 +32,11 @@ import {
   type NaturalLanguageMemorySystemOptions,
 } from '../natural-language-memory.js';
 import { classifyKnowledgeUpdateQualifier } from '../fact-store.js';
+// Imported from the module that declares it, not re-exported through the memory
+// system: a missing re-export resolves to `undefined` at runtime and would
+// silently downgrade the engine to its defaults, turning an isolation test into
+// a no-op that still passes.
+import { EXTENDED_ENGINE_OPTIONS } from '../temporal-engine.js';
 import { HashEmbedding } from '../embedding.js';
 import type { Answer } from '../types.js';
 import { tableEmbedding } from './test-embedding.js';
@@ -149,6 +154,101 @@ describe('formatStructuredContext', () => {
     expect(parsed).toEqual([
       { date: '2023/03/04', role: 'user', content: 'a long turn\n[truncated]' },
     ]);
+  });
+});
+
+describe('formatStructuredContext — time-window annotation', () => {
+  const window = { start: '2023/03/13', end: '2023/03/17' };
+  const context = [
+    '[2023/03/01] user: far before the window',
+    '[2023/03/10] user: three days before the window',
+    '[2023/03/13] user: the first day of the window',
+    '[2023/03/16] user: inside the window',
+    '[2023/03/18] user: one day after the window',
+  ].join('\n');
+
+  it('marks in-window turns and dates every out-of-window turn by its distance', () => {
+    const parsed = JSON.parse(formatStructuredContext(context, window));
+    expect(parsed).toEqual([
+      { date: '2023/03/01', role: 'user', content: 'far before the window' },
+      {
+        date: '2023/03/10',
+        role: 'user',
+        content: 'three days before the window',
+        timeWindow: "3 days outside the question's time window",
+      },
+      {
+        date: '2023/03/13',
+        role: 'user',
+        content: 'the first day of the window',
+        timeWindow: "in the question's time window",
+      },
+      {
+        date: '2023/03/16',
+        role: 'user',
+        content: 'inside the window',
+        timeWindow: "in the question's time window",
+      },
+      {
+        date: '2023/03/18',
+        role: 'user',
+        content: 'one day after the window',
+        timeWindow: "1 day outside the question's time window",
+      },
+    ]);
+  });
+
+  it('leaves turns beyond the annotation horizon unmarked', () => {
+    // A turn four days outside carries no signal beyond "not the window", and
+    // annotating every distant turn would flood the prompt with noise; the
+    // absence of the field is the default/irrelevant state.
+    const parsed = JSON.parse(
+      formatStructuredContext(
+        '[2023/03/01] user: far before\n[2023/03/21] user: far after',
+        window,
+      ),
+    );
+    expect(parsed).toEqual([
+      { date: '2023/03/01', role: 'user', content: 'far before' },
+      { date: '2023/03/21', role: 'user', content: 'far after' },
+    ]);
+  });
+
+  it('annotates the exact boundary of the horizon as still meaningful', () => {
+    const parsed = JSON.parse(
+      formatStructuredContext('[2023/03/10] user: exactly three days out', window),
+    );
+    expect(parsed[0]).toEqual({
+      date: '2023/03/10',
+      role: 'user',
+      content: 'exactly three days out',
+      timeWindow: "3 days outside the question's time window",
+    });
+  });
+
+  it('omits the field entirely when no window is supplied', () => {
+    // The disabled path must be byte-identical to the pre-feature output, so an
+    // ablation isolates the annotation rather than any incidental re-formatting.
+    const withWindow = formatStructuredContext(context, window);
+    const withoutWindow = formatStructuredContext(context);
+    expect(withoutWindow).not.toBe(withWindow);
+    expect(
+      JSON.parse(withoutWindow).every((turn: Record<string, unknown>) => !('timeWindow' in turn)),
+    ).toBe(true);
+  });
+
+  it('does not annotate turns without a date', () => {
+    const parsed = JSON.parse(formatStructuredContext('user: undated turn', window));
+    expect(parsed).toEqual([{ role: 'user', content: 'undated turn' }]);
+  });
+
+  it('annotates a single-day window boundary correctly', () => {
+    const single = { start: '2023/04/08', end: '2023/04/08' };
+    const parsed = JSON.parse(
+      formatStructuredContext('[2023/04/07] user: yesterday\n[2023/04/08] user: today', single),
+    );
+    expect(parsed[0]!.timeWindow).toBe("1 day outside the question's time window");
+    expect(parsed[1]!.timeWindow).toBe("in the question's time window");
   });
 });
 
@@ -1644,6 +1744,86 @@ describe('NaturalLanguageMemorySystem', () => {
     expect(answer).toBe('Shanghai');
   });
 
+  it('answerKnowledgeUpdate selects the current and previous values bitemporally', async () => {
+    // The bitemporal path reads the subject's (object, date) history and picks
+    // by exact date order, so the model never has to reason about which value a
+    // qualifier selects. Both qualifiers are exercised because they traverse
+    // opposite ends of the extracted history.
+    const history = [
+      { subject: 'city', object: 'Shanghai', date: '2023/03/04' },
+      { subject: 'city', object: 'Beijing', date: '2023/06/01' },
+    ];
+    for (const [question, expected] of [
+      ['What is my current city?', 'Beijing'],
+      ['What was my previous city?', 'Shanghai'],
+    ] as const) {
+      const llm: LLM = {
+        complete: async () => 'should not be used',
+        completeStructured: async <T>() => ({ facts: history }) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      // The date-bearing turns are what retrieval recalls; the assertion below
+      // pins that the bitemporal path, not the CoT prompt, produced the answer.
+      const answer = await system.answerKnowledgeUpdate(question, [
+        '[2023/03/04] user: I moved to Shanghai.',
+        '[2023/06/01] user: I moved to Beijing.',
+      ]);
+      expect(answer).toBe(expected);
+    }
+  });
+
+  it('answerKnowledgeUpdate falls back when extraction fails or yields no usable subject', async () => {
+    // A provider error, an empty history, and a malformed history must all defer
+    // to the CoT prompt rather than surfacing an error or guessing from partial
+    // data.
+    for (const extraction of [
+      async () => {
+        throw new Error('provider returned non-JSON');
+      },
+      async <T>() => ({ facts: [] }) as T,
+      async <T>() => ({ facts: 'not-an-array' }) as unknown as T,
+    ]) {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return 'Beijing';
+        },
+        completeStructured: extraction,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerKnowledgeUpdate('What is my current city?', [
+        '[2023/03/04] user: I moved to Shanghai.',
+      ]);
+      expect(answer).toBe('Beijing');
+      // The CoT prompt maps the qualifier explicitly; it is what the fallback
+      // must reach.
+      expect(prompts.some((p) => p.includes('previous'))).toBe(true);
+    }
+  });
+
+  it('answerKnowledgeUpdate falls back when no fact matches the requested qualifier', async () => {
+    // The extraction succeeded and names a subject, but that subject has only
+    // one dated value, so there is no "previous" one to select. The path must
+    // defer to the CoT prompt instead of reporting the current value as if it
+    // were the earlier one.
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'Beijing';
+      },
+      completeStructured: async <T>() =>
+        ({ facts: [{ subject: 'city', object: 'Beijing', date: '2023/06/01' }] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    const answer = await system.answerKnowledgeUpdate('What was my previous city?', [
+      '[2023/06/01] user: I moved to Beijing.',
+    ]);
+    expect(answer).toBe('Beijing');
+    expect(prompts.some((p) => p.includes('previous'))).toBe(true);
+  });
+
   it('answerTemporal runs event expansion and computes weeks from extracted events', async () => {
     const prompts: string[] = [];
     const llm: LLM = {
@@ -1807,6 +1987,247 @@ describe('NaturalLanguageMemorySystem', () => {
     ]);
     expect(structuredCalled).toBe(false);
     expect(answer).toBe('4 weeks');
+  });
+
+  it('annotates in-window and near-miss turns when enableTimeWindowAnnotation is on', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableTimeWindowAnnotation: true,
+      // Weekday resolution is a measured refinement, off by default; the
+      // annotation needs a window, so the test enables it explicitly. This
+      // mirrors the ablation, which holds the engine constant across both arms.
+      temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
+    });
+    // 2023/04/10 is a Monday, so "last Saturday" resolves to a single day,
+    // 2023/04/08 — the deterministic weekday path feeding the annotation.
+    // The wording is pinned to "what did I do", whose `other` kind skips the
+    // deterministic answer path: that keeps this test an isolation test of the
+    // annotation itself. A kind like `eventLookup` would be answered by the LLM
+    // via the lookup prompt, which renders its own structured context and never
+    // consults the annotated turn list — the annotation would then be
+    // unreachable, and the test would pass or fail for reasons unrelated to it.
+    await system.answerTemporal(
+      'What did I do last Saturday?',
+      [
+        '[2023/03/04] user: I bought some wire-wrapped jewelry-making tools.',
+        '[2023/04/07] user: I visited my aunt for tea.',
+        '[2023/04/08] user: I received a crystal chandelier from my aunt as a gift.',
+        '[2023/04/30] user: I received a necklace from my sister.',
+      ],
+      '2023/04/10',
+    );
+    const prompt = prompts[prompts.length - 1]!;
+    // The in-window turn is labelled as the anchor, as a field on its own JSON
+    // object so the turn list itself is never rewritten...
+    expect(prompt).toContain(
+      '{"date":"2023/04/08","role":"user","content":"I received a crystal chandelier from my aunt as a gift.","timeWindow":"in the question\'s time window"}',
+    );
+    // ...the adjacent near miss is labelled with its distance...
+    expect(prompt).toContain('"timeWindow":"1 day outside the question\'s time window"');
+    // ...and the prompt explains what the field means, or the reader cannot use
+    // it. The field's presence doubles as the instruction trigger.
+    expect(prompt).toContain('"timeWindow"');
+    expect(prompt).toContain('Prefer an in-window turn');
+    // A turn far outside the window and an undateable turn carry no field at
+    // all: a wrong or universal label would drown the signal.
+    expect(prompt).toContain(
+      '{"date":"2023/03/04","role":"user","content":"I bought some wire-wrapped jewelry-making tools."}',
+    );
+    expect(prompt).toContain(
+      '{"date":"2023/04/30","role":"user","content":"I received a necklace from my sister."}',
+    );
+    // The label is never a filter: every turn is still present, unmodified and
+    // in order, so a mislabelled window can mislead the reader but can never
+    // delete evidence.
+    for (const content of [
+      'I bought some wire-wrapped jewelry-making tools.',
+      'I visited my aunt for tea.',
+      'I received a crystal chandelier from my aunt as a gift.',
+      'I received a necklace from my sister.',
+    ]) {
+      expect(prompt).toContain(content);
+    }
+  });
+
+  it('leaves the context unannotated when the feature is off', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+    await system.answerTemporal(
+      'What did I do last Saturday?',
+      ['[2023/04/08] user: I received a crystal chandelier from my aunt as a gift.'],
+      '2023/04/10',
+    );
+    const prompt = prompts[prompts.length - 1]!;
+    // Default-off: the graded path is byte-identical to the pre-feature state.
+    expect(prompt).not.toContain('"timeWindow"');
+  });
+
+  it('does not annotate when the question has no resolvable window', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableTimeWindowAnnotation: true,
+    });
+    await system.answerTemporal(
+      'What did I do last Saturday?',
+      ['[2023/04/08] user: I received a crystal chandelier from my aunt.'],
+      'not-a-date',
+    );
+    expect(prompts[prompts.length - 1]!).not.toContain('"timeWindow"');
+  });
+
+  it('does not annotate when the retrieved context is empty', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableTimeWindowAnnotation: true,
+    });
+    const answer = await system.answerTemporal('What did I do last Saturday?', [], '2023/04/10');
+    // No context → no turn is ever rendered, so no annotation can be produced
+    // and the answer short-circuits to abstention.
+    expect(answer).toBeNull();
+    expect(prompts.some((p) => p.includes('"timeWindow"'))).toBe(false);
+  });
+
+  it('annotates only the turns within the horizon of the resolved window', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'my aunt';
+      },
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableTimeWindowAnnotation: true,
+      temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
+    });
+    await system.answerTemporal(
+      'What did I do last Saturday?',
+      // 2023/02/30 matches the dated-turn shape but is not a real calendar date,
+      // and 2023/05/20 sits beyond the annotation horizon. Neither may be
+      // labelled: a wrong label is worse than none, and marking everything would
+      // drown the signal. All four turns must still be present and in order.
+      [
+        '[2023/02/30] user: I filed the report.',
+        '[2023/04/08] user: I received a crystal chandelier from my aunt.',
+        '[2023/05/20] user: I repotted the ferns.',
+        '[2023/06/01] user: I took the train to Brighton.',
+      ],
+      '2023/04/10',
+    );
+    const prompt = prompts[prompts.length - 1]!;
+    expect(prompt).toContain(
+      '{"date":"2023/04/08","role":"user","content":"I received a crystal chandelier from my aunt.","timeWindow":"in the question\'s time window"}',
+    );
+    // An unparseable date is never labelled.
+    expect(prompt).toContain('{"date":"2023/02/30","role":"user","content":"I filed the report."}');
+    // Beyond the horizon the field is omitted.
+    expect(prompt).toContain(
+      '{"date":"2023/05/20","role":"user","content":"I repotted the ferns."}',
+    );
+    expect(prompt).toContain(
+      '{"date":"2023/06/01","role":"user","content":"I took the train to Brighton."}',
+    );
+    // Exactly one turn carries the field, and the turn list is complete. The
+    // count is anchored on the JSON key form so the instruction sentence that
+    // explains the field is not mistaken for a labelled turn.
+    expect(prompt.match(/"timeWindow":/g)).toHaveLength(1);
+    expect(prompt.match(/"role":"user"/g)).toHaveLength(4);
+  });
+
+  it('never labels a turn whose date cannot be parsed', async () => {
+    // Two shapes reach the renderer with a date that is not a real calendar
+    // date. Neither may be labelled: a wrong label is worse than none, because
+    // the reader trusts it over its own reading of the date.
+    //
+    // A zero-padded but senseless date (month 00) sorts far from the window, so
+    // it falls outside the horizon and is left unmarked. Only the genuinely
+    // in-window turn is labelled, and both turns survive in order.
+    const senseless = formatStructuredContext(
+      '[2023/00/00] user: I filed the report.\n[2023/04/08] user: I saw my aunt.',
+      { start: '2023/04/08', end: '2023/04/08' },
+    );
+    expect(senseless).toContain(
+      '{"date":"2023/00/00","role":"user","content":"I filed the report."}',
+    );
+    expect(senseless).toContain('"timeWindow":"in the question\'s time window"');
+    expect(senseless.match(/"timeWindow":/g)).toHaveLength(1);
+    expect(senseless.match(/"role":"user"/g)).toHaveLength(2);
+
+    // A non-zero-padded date does not match the dated-turn shape at all, so it
+    // is rendered as a content-only turn rather than being mislabelled.
+    const unpadded = formatStructuredContext('[2023/1/5] user: I filed the report.', {
+      start: '2023/04/08',
+      end: '2023/04/08',
+    });
+    expect(unpadded).toBe('[{"content":"[2023/1/5] user: I filed the report."}]');
+  });
+
+  it('falls back when structured extraction throws or returns no events', async () => {
+    // Both failure modes must reach the LLM fallback rather than surfacing an
+    // error or an empty answer: a provider returning non-JSON, and a well-formed
+    // response that simply carries no events.
+    for (const extraction of [
+      async () => {
+        throw new Error('provider returned non-JSON');
+      },
+      async <T>() => ({ events: [] }) as T,
+      async <T>() => ({ events: 'not-an-array' }) as unknown as T,
+    ]) {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return 'my aunt';
+        },
+        completeStructured: extraction,
+      };
+      const system = new NaturalLanguageMemorySystem('s', { embedding, llm });
+      const answer = await system.answerTemporal(
+        'How many weeks ago did I receive the chandelier?',
+        ['[2023/03/04] user: I received a crystal chandelier from my aunt.'],
+        '2023/04/01',
+      );
+      expect(answer).toBe('my aunt');
+      // The fallback prompt carries the question date so the model can compute
+      // the elapsed time the deterministic path could not.
+      expect(prompts[prompts.length - 1]!).toContain('The question was asked on 2023/04/01');
+    }
   });
 
   it('clearEmbeddingCache invalidates the shared cache', async () => {
