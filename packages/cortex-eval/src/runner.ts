@@ -76,8 +76,8 @@ export async function runNaturalLanguageBenchmark(
   const answerCache = new Map<string, string>();
   // Structured calls (temporal-event extraction, KU fact extraction) are a
   // separate LLM entry point from `complete`, so they need a separate cache to
-  // be shared across the arms. Without it the KU and TR capabilities still
-  // carried a re-query term after the answer cache was shared.
+  // be shared across the arms. Without it the KU capability still carried a
+  // re-query term after the answer cache was shared.
   const structuredCache = new Map<string, unknown>();
   const baseline = new NaturalLanguageMemorySystem('nl-naive-baseline', {
     embedding,
@@ -140,8 +140,8 @@ export async function runMrAggregationAblation(
   const answerCache = new Map<string, string>();
   // Structured calls (temporal-event extraction, KU fact extraction) are a
   // separate LLM entry point from `complete`, so they need a separate cache to
-  // be shared across the arms. Without it the KU and TR capabilities still
-  // carried a re-query term after the answer cache was shared.
+  // be shared across the arms. Without it the KU capability still carried a
+  // re-query term after the answer cache was shared.
   const structuredCache = new Map<string, unknown>();
   const legacy = new NaturalLanguageMemorySystem('mr-legacy-aggregation', {
     embedding,
@@ -198,8 +198,8 @@ export async function runTemporalEngineAblation(
   const answerCache = new Map<string, string>();
   // Structured calls (temporal-event extraction, KU fact extraction) are a
   // separate LLM entry point from `complete`, so they need a separate cache to
-  // be shared across the arms. Without it the KU and TR capabilities still
-  // carried a re-query term after the answer cache was shared.
+  // be shared across the arms. Without it the KU capability still carried a
+  // re-query term after the answer cache was shared.
   const structuredCache = new Map<string, unknown>();
   const llmTemporal = new NaturalLanguageMemorySystem('tr-llm-temporal', {
     embedding,
@@ -260,8 +260,8 @@ export async function runDeterministicCoverageAblation(
   const answerCache = new Map<string, string>();
   // Structured calls (temporal-event extraction, KU fact extraction) are a
   // separate LLM entry point from `complete`, so they need a separate cache to
-  // be shared across the arms. Without it the KU and TR capabilities still
-  // carried a re-query term after the answer cache was shared.
+  // be shared across the arms. Without it the KU capability still carried a
+  // re-query term after the answer cache was shared.
   const structuredCache = new Map<string, unknown>();
   const baseEngine = new NaturalLanguageMemorySystem('tr-base-engine', {
     embedding,
@@ -324,8 +324,8 @@ export async function runTimeWindowAnnotationAblation(
   const answerCache = new Map<string, string>();
   // Structured calls (temporal-event extraction, KU fact extraction) are a
   // separate LLM entry point from `complete`, so they need a separate cache to
-  // be shared across the arms. Without it the KU and TR capabilities still
-  // carried a re-query term after the answer cache was shared.
+  // be shared across the arms. Without it the KU capability still carried a
+  // re-query term after the answer cache was shared.
   const structuredCache = new Map<string, unknown>();
   // Both arms run the EXTENDED engine. The annotation is inert without a
   // resolvable window — with the default engine a weekday-anchored question
@@ -393,8 +393,8 @@ export async function runBitemporalKnowledgeUpdateAblation(
   const answerCache = new Map<string, string>();
   // Structured calls (temporal-event extraction, KU fact extraction) are a
   // separate LLM entry point from `complete`, so they need a separate cache to
-  // be shared across the arms. Without it the KU and TR capabilities still
-  // carried a re-query term after the answer cache was shared.
+  // be shared across the arms. Without it the KU capability still carried a
+  // re-query term after the answer cache was shared.
   const structuredCache = new Map<string, unknown>();
   const cot = new NaturalLanguageMemorySystem('ku-cot-knowledge-update', {
     embedding,
