@@ -15,6 +15,7 @@ import {
   createEmbeddingFromEnv,
   createLlmFromEnv,
   deserializeEmbeddingCache,
+  hasDiagnosticRecord,
   mergeEmbeddingCache,
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,

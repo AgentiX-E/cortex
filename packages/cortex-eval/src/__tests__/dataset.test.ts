@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';
 import * as cortexEval from '../index.js';
 
@@ -81,5 +82,50 @@ describe('package exports', () => {
         cortexEval.EXTENDED_ENGINE_OPTIONS,
       ),
     ).toEqual({ start: '2023/04/08', end: '2023/04/08' });
+  });
+});
+
+describe('typecheck coverage', () => {
+  // `bench/run.ts` is an entry point, not a library module: it is executed by
+  // `node --import tsx` and never imported, so neither the test suite nor the
+  // build touches it. Its only guard is the compiler, and the compiler only
+  // sees a file that some tsconfig `include`s.
+  //
+  // For a long time no tsconfig did. `tsconfig.json` includes `src` only, so an
+  // undefined identifier in `bench/run.ts` — `hasDiagnosticRecord`, used but
+  // never imported — survived `pnpm check` and reached a live paid benchmark
+  // run, which failed 50 minutes in on `ReferenceError: hasDiagnosticRecord is
+  // not defined`. ESLint did not catch it either: `no-undef` is off for
+  // TypeScript, because the compiler owns that check. The two gates each assumed
+  // the other covered the file.
+  //
+  // These assertions are the guard on the guard. They do not typecheck anything
+  // themselves; they fail if the second tsconfig is removed, if `bench` stops
+  // being the directory it includes, or if the `typecheck` script stops running
+  // it — any of which reopens exactly this hole.
+  const packageRoot = new URL('../../', import.meta.url);
+  const readJson = (relative: string) =>
+    JSON.parse(readFileSync(new URL(relative, packageRoot), 'utf8')) as {
+      include?: string[];
+      compilerOptions?: Record<string, unknown>;
+      scripts?: Record<string, string>;
+    };
+
+  it('typechecks the bench entry point, which no other gate covers', () => {
+    const benchTsconfig = readJson('tsconfig.bench.json');
+    expect(benchTsconfig.include).toEqual(['bench']);
+    // `noEmit` must be set: this project exists purely to check bench/, and
+    // letting it emit would drop a second copy of the sources into dist/.
+    expect(benchTsconfig.compilerOptions?.noEmit).toBe(true);
+  });
+
+  it('runs the bench typecheck as part of the package typecheck script', () => {
+    const { scripts } = readJson('package.json');
+    expect(scripts?.typecheck).toContain('tsconfig.bench.json');
+  });
+
+  it('keeps the build tsconfig scoped to src so bench is not published', () => {
+    const buildTsconfig = readJson('tsconfig.json');
+    expect(buildTsconfig.include).toEqual(['src']);
   });
 });

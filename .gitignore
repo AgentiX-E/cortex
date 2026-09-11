@@ -6,3 +6,4 @@ coverage/
 .DS_Store
 benchmark-report.md
 benchmark-report.json
+benchmark-error.log
