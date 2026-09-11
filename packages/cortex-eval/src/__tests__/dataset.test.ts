@@ -55,6 +55,16 @@ describe('package exports', () => {
     expect(cortexEval.TIME_WINDOW_ANNOTATION_HORIZON_DAYS).toBe(3);
   });
 
+  it('exposes the between-run variance surface through the package root', () => {
+    // Same guard as the temporal surface above, for the same reason: a dropped or
+    // renamed re-export resolves to `undefined` at runtime, so an analysis script
+    // would fail obscurely — or, worse, a caller would skip the floor check and
+    // report an unguarded comparison as a result.
+    expect(typeof cortexEval.summarizeVariance).toBe('function');
+    expect(typeof cortexEval.compareQuestionVectors).toBe('function');
+    expect(typeof cortexEval.requiredEffectSize).toBe('function');
+  });
+
   it('keeps the extended engine strictly stronger than the default', () => {
     // The default configuration must leave every refinement OFF, or the graded
     // baseline silently inherits unmeasured behaviour and every ablation that

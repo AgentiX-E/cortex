@@ -184,3 +184,15 @@ export {
   DEFAULT_DEEPSEEK_MODEL,
   type LlmEnv,
 } from './llm-factory.js';
+export {
+  compareQuestionVectors,
+  requiredEffectSize,
+  summarizeVariance,
+  type CapabilityRequirement,
+  type QuestionFlip,
+  type QuestionVectorComparison,
+  type RequiredEffectSize,
+  type RunObservation,
+  type VarianceStats,
+  type VarianceSummary,
+} from './variance.js';
