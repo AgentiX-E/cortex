@@ -189,14 +189,19 @@ async function main(): Promise<void> {
   console.log('=== MR diagnostics ===');
   console.log(JSON.stringify(mrDiagnostics, null, 2));
 
-  // Dump per-question diagnostics for the single-session capabilities (IE/KU/TR)
-  // so the exact failure mode — retrieval miss vs LLM over-abstention — is
-  // visible in the uploaded artifact instead of guessed from aggregate scores.
+  // Dump per-question diagnostics for every capability that carries one (IE/KU/TR
+  // and ABS) so the exact failure mode — retrieval miss vs LLM over-abstention —
+  // is visible in the uploaded artifact instead of guessed from aggregate scores.
+  //
+  // ABS is included. It was previously excluded on the grounds that it is not a
+  // single-session question type, and the cost was that ABS — the capability with
+  // both the smallest sample (30) and the largest percentage spread — was the only
+  // one with no per-question record, so no cross-run flip analysis could cover it
+  // and a re-sampled ABS block would have been invisible. The file name is kept
+  // for artifact compatibility; the covered set is now the graded sample minus MR,
+  // which has its own file above.
   const singleSessionDiagnostics = (sampled as LongMemEvalInstance[])
-    .filter((inst) => {
-      const cap = toCapability(inst.question_id, inst.question_type);
-      return cap === 'IE' || cap === 'KU' || cap === 'TR';
-    })
+    .filter((inst) => hasDiagnosticRecord(inst.question_id, inst.question_type))
     .map((inst) => {
       const trace = [...decisions].reverse().find((d) => d.question === inst.question);
       return {

@@ -49,6 +49,27 @@ export function toCapability(questionId: string, questionType: string): Capabili
   return TYPE_TO_CAPABILITY[questionType] ?? 'IE';
 }
 
+/**
+ * Capabilities that carry a per-question diagnostic record.
+ *
+ * `MR` has its own diagnostics file — it needs the retrieved sessions and
+ * multi-hop evidence, which the single-session record has no room for — so it is
+ * excluded from this set rather than from both.
+ *
+ * Every other capability, `ABS` included, must have a record. `ABS` was once
+ * excluded on the grounds that it is not a "single-session" question type, and
+ * the cost was that the capability with both the smallest sample and the largest
+ * percentage spread was the only one invisible to a cross-run comparison. The
+ * membership rule is therefore expressed as capabilities that *can* be recorded,
+ * not as a list of names someone has to remember to extend.
+ */
+export const DIAGNOSED_CAPABILITIES: readonly Capability[] = ['IE', 'KU', 'TR', 'ABS'];
+
+/** Whether an instance's capability carries a per-question diagnostic record. */
+export function hasDiagnosticRecord(questionId: string, questionType: string): boolean {
+  return DIAGNOSED_CAPABILITIES.includes(toCapability(questionId, questionType));
+}
+
 /** Render a turn as a context string, optionally prefixing its session date. */
 export function turnText(turn: LongMemEvalTurn, date?: string): string {
   const prefix = date ? `[${date}] ` : '';

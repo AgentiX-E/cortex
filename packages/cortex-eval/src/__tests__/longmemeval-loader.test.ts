@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   loadLongMemEval,
   toCapability,
+  DIAGNOSED_CAPABILITIES,
+  hasDiagnosticRecord,
   flattenSessions,
   sessionsToContext,
   turnText,
@@ -33,6 +35,40 @@ describe('toCapability', () => {
 
   it('falls back to IE for unknown types', () => {
     expect(toCapability('q7', 'unknown-type')).toBe('IE');
+  });
+});
+
+describe('hasDiagnosticRecord', () => {
+  it('covers every capability except MR, which has its own diagnostics file', () => {
+    // The regression this pins: ABS was excluded by a name-list filter, so the
+    // capability with the smallest sample and the largest percentage spread had no
+    // per-question record at all, and no cross-run analysis could see it move.
+    expect(hasDiagnosticRecord('q1', 'single-session-user')).toBe(true);
+    expect(hasDiagnosticRecord('q2', 'knowledge-update')).toBe(true);
+    expect(hasDiagnosticRecord('q3', 'temporal-reasoning')).toBe(true);
+    expect(hasDiagnosticRecord('q1_abs', 'single-session-user')).toBe(true);
+    expect(hasDiagnosticRecord('q4', 'multi-session')).toBe(false);
+  });
+
+  it('agrees with the capability it derives from, for every diagnosed capability', () => {
+    const instances: Array<[string, string]> = [
+      ['q1', 'single-session-user'],
+      ['q2', 'single-session-assistant'],
+      ['q3', 'single-session-preference'],
+      ['q4', 'temporal-reasoning'],
+      ['q5', 'knowledge-update'],
+      ['q6_abs', 'knowledge-update'],
+    ];
+    for (const [id, type] of instances) {
+      expect(hasDiagnosticRecord(id, type)).toBe(
+        DIAGNOSED_CAPABILITIES.includes(toCapability(id, type)),
+      );
+    }
+  });
+
+  it('lists ABS among the diagnosed capabilities', () => {
+    expect(DIAGNOSED_CAPABILITIES).toContain('ABS');
+    expect(DIAGNOSED_CAPABILITIES).not.toContain('MR');
   });
 });
 

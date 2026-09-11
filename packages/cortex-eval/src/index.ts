@@ -69,6 +69,8 @@ export {
 export {
   loadLongMemEval,
   toCapability,
+  DIAGNOSED_CAPABILITIES,
+  hasDiagnosticRecord,
   flattenSessions,
   sessionsToContext,
   turnText,
