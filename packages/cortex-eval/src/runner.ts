@@ -119,12 +119,25 @@ export async function runMrAggregationAblation(
   const mrDataset = { name: 'longmemeval-mr', questions: mrQuestions };
 
   const expansionCache = new Map<string, string[]>();
+  // Both arms share one answer cache. The cache is keyed by the fully rendered
+  // prompt, so arms whose prompts differ cannot collide — sharing is safe by
+  // construction, not by convention. Where the prompts are byte-identical, the
+  // second arm reuses the first arm's raw LLM output instead of re-querying.
+  //
+  // This is not only a cost saving. The hosted endpoint is not reproducible
+  // across calls even at `temperature=0`, so re-querying a byte-identical prompt
+  // injects a difference between two arms that have no configuration difference.
+  // Measured in `34389565513`: arms sharing a cache disagreed on 0 of 470
+  // questions, while two identically-configured arms with separate caches
+  // disagreed on 2 of 127 (see `analysis/verdicts/p5-pairing-verdict.md`).
+  const answerCache = new Map<string, string>();
   const legacy = new NaturalLanguageMemorySystem('mr-legacy-aggregation', {
     embedding,
     llm,
     enableAbstention: false,
     aggregationPrompt: buildLegacyAggregationQaPrompt,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const cot = new NaturalLanguageMemorySystem('mr-cot-aggregation', {
@@ -133,6 +146,7 @@ export async function runMrAggregationAblation(
     enableAbstention: false,
     aggregationPrompt: buildAggregationQaPrompt,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -164,12 +178,17 @@ export async function runTemporalEngineAblation(
   const trDataset = { name: 'longmemeval-tr', questions: trQuestions };
 
   const expansionCache = new Map<string, string[]>();
+  // Shared across both arms: keyed by the fully rendered prompt, so arms with
+  // different prompts cannot collide, and a byte-identical prompt is never
+  // re-queried (the endpoint is not reproducible across calls at temperature 0).
+  const answerCache = new Map<string, string>();
   const llmTemporal = new NaturalLanguageMemorySystem('tr-llm-temporal', {
     embedding,
     llm,
     enableAbstention: false,
     enableDeterministicTemporal: false,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const deterministicTemporal = new NaturalLanguageMemorySystem('tr-deterministic-temporal', {
@@ -178,6 +197,7 @@ export async function runTemporalEngineAblation(
     enableAbstention: false,
     enableDeterministicTemporal: true,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -213,12 +233,17 @@ export async function runDeterministicCoverageAblation(
   const trDataset = { name: 'longmemeval-tr-deterministic', questions: trQuestions };
 
   const expansionCache = new Map<string, string[]>();
+  // Shared across both arms: keyed by the fully rendered prompt, so arms with
+  // different prompts cannot collide, and a byte-identical prompt is never
+  // re-queried (the endpoint is not reproducible across calls at temperature 0).
+  const answerCache = new Map<string, string>();
   const baseEngine = new NaturalLanguageMemorySystem('tr-base-engine', {
     embedding,
     llm,
     enableAbstention: false,
     enableTimeWindowAnnotation: false,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const extendedEngine = new NaturalLanguageMemorySystem('tr-extended-engine', {
@@ -228,6 +253,7 @@ export async function runDeterministicCoverageAblation(
     enableTimeWindowAnnotation: false,
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -264,6 +290,10 @@ export async function runTimeWindowAnnotationAblation(
   const trDataset = { name: 'longmemeval-tr-annotated', questions: trQuestions };
 
   const expansionCache = new Map<string, string[]>();
+  // Shared across both arms: keyed by the fully rendered prompt, so arms with
+  // different prompts cannot collide, and a byte-identical prompt is never
+  // re-queried (the endpoint is not reproducible across calls at temperature 0).
+  const answerCache = new Map<string, string>();
   // Both arms run the EXTENDED engine. The annotation is inert without a
   // resolvable window — with the default engine a weekday-anchored question
   // yields no window at all, so an "annotation off vs on" pair would compare two
@@ -278,6 +308,7 @@ export async function runTimeWindowAnnotationAblation(
     enableTimeWindowAnnotation: false,
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const annotated = new NaturalLanguageMemorySystem('tr-time-window', {
@@ -287,6 +318,7 @@ export async function runTimeWindowAnnotationAblation(
     enableTimeWindowAnnotation: true,
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -320,12 +352,17 @@ export async function runBitemporalKnowledgeUpdateAblation(
   const kuTemporalDataset = { name: 'longmemeval-ku-temporal', questions: kuTemporalQuestions };
 
   const expansionCache = new Map<string, string[]>();
+  // Shared across both arms: keyed by the fully rendered prompt, so arms with
+  // different prompts cannot collide, and a byte-identical prompt is never
+  // re-queried (the endpoint is not reproducible across calls at temperature 0).
+  const answerCache = new Map<string, string>();
   const cot = new NaturalLanguageMemorySystem('ku-cot-knowledge-update', {
     embedding,
     llm,
     enableAbstention: false,
     enableBitemporalKnowledgeUpdate: false,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const bitemporal = new NaturalLanguageMemorySystem('ku-bitemporal-knowledge-update', {
@@ -334,6 +371,7 @@ export async function runBitemporalKnowledgeUpdateAblation(
     enableAbstention: false,
     enableBitemporalKnowledgeUpdate: true,
     queryExpansionCache: expansionCache,
+    answerCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 

@@ -768,3 +768,154 @@ describe('runBitemporalKnowledgeUpdateAblation', () => {
     expect(temperatures.every((t) => t === 0.6)).toBe(true);
   });
 });
+
+/**
+ * Cache-sharing contract across every ablation.
+ *
+ * Background: the P5 measurement found that two arms resolving to the *same*
+ * configuration disagreed on 2 of 127 TR questions in run `34389565513`, while the
+ * main benchmark's two arms — which share a query-expansion cache and an answer
+ * cache — disagreed on 0 of 470 questions. The difference was not noise: the arms
+ * with separate caches re-query the hosted endpoint, which is not reproducible
+ * across calls even at `temperature=0`, so an arm comparison silently included an
+ * LLM-non-reproducibility term.
+ *
+ * These tests pin the contract directly. A counting LLM returns different text
+ * for the same prompt on each call, simulating exactly that endpoint. Any arm
+ * pair that shares an answer cache must then still agree question-for-question,
+ * because the second arm must reuse the first arm's raw output rather than call
+ * the model again.
+ */
+describe('ablation arms share the answer cache', () => {
+  const embedding = new HashEmbedding(64);
+
+  type CountingLlm = LLM & {
+    /** Calls whose prompt was not served from the answer cache. */
+    uncachedCalls: () => number;
+    /** Distinct prompts seen, to confirm the arms really issue identical prompts. */
+    prompts: Map<string, number>;
+  };
+
+  /**
+   * An LLM that answers a repeated prompt differently every time. Deterministic
+   * by prompt would make a cache-sharing bug invisible, which is the whole point:
+   * the real endpoint is not deterministic, so the test's model must not be either.
+   */
+  function nonReproducibleLlm(): CountingLlm {
+    const prompts = new Map<string, number>();
+    let calls = 0;
+    return {
+      prompts,
+      uncachedCalls: () => calls,
+      complete: async (prompt: string) => {
+        const seen = (prompts.get(prompt) ?? 0) + 1;
+        prompts.set(prompt, seen);
+        calls++;
+        // Same prompt, different answer each time it is actually sent.
+        return seen === 1 ? 'blue' : `blue-variant-${seen}`;
+      },
+      completeStructured: async <T>() => ({}) as T,
+    } as CountingLlm;
+  }
+
+  const mrInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'mr-1',
+      question_type: 'multi-session',
+      question: 'What is the favorite color?',
+      answer: 'blue',
+      haystack_sessions: [[{ role: 'user', content: 'My favorite color is blue.' }]],
+      answer_session_ids: [],
+    },
+  ];
+
+  const trInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'tr-1',
+      question_type: 'temporal-reasoning',
+      question: 'How many days ago did I buy the lamp?',
+      answer: '3',
+      question_date: '2023/05/10',
+      haystack_sessions: [[{ role: 'user', content: 'I bought a lamp.' }]],
+      haystack_dates: ['2023/05/07'],
+    },
+  ];
+
+  const kuInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'ku-1',
+      question_type: 'knowledge-update',
+      question: 'Where do I live now?',
+      answer: 'Shanghai',
+      question_date: '2023/05/10',
+      haystack_sessions: [[{ role: 'user', content: 'I moved to Shanghai.' }]],
+      haystack_dates: ['2023/05/01'],
+    },
+  ];
+
+  it('never lets the MR arms share a prompt, so the cache cannot mask the treatment', async () => {
+    // The MR arms differ in `aggregationPrompt`, so every aggregation prompt is
+    // distinct between them and no answer-cache entry is shared. That is a weaker
+    // guarantee than the TR arms enjoy — for MR the cache buys a saving on any
+    // prompt both arms happen to issue, not a correctness guarantee — but it must
+    // hold, or sharing would collapse the two arms into one call and the ablation
+    // would measure nothing.
+    const llm = nonReproducibleLlm();
+    await runMrAggregationAblation(mrInstances, embedding, llm);
+    for (const [prompt, seen] of llm.prompts) {
+      expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+
+  it('exercises both MR prompt templates so the ablation is a real comparison', async () => {
+    const llm = nonReproducibleLlm();
+    const { report } = await runMrAggregationAblation(mrInstances, embedding, llm, {
+      judge: async (_question, predicted, expected) => predicted === expected,
+    });
+    expect(report.ablation.perCapability.MR!.total).toBe(1);
+    // Two distinct aggregation prompts on the same question means the contrast is
+    // real; one would mean the cache merged the arms.
+    const aggregationPrompts = [...llm.prompts.keys()].filter((p) => p.includes('favorite color'));
+    expect(aggregationPrompts.length).toBeGreaterThan(1);
+  });
+
+  it('keeps both TR-engine arms in agreement when the model is not reproducible', async () => {
+    const llm = nonReproducibleLlm();
+    await runTemporalEngineAblation(trInstances, embedding, llm, {
+      judge: async (_question, predicted, expected) => predicted === expected,
+    });
+    for (const [prompt, seen] of llm.prompts) {
+      expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+
+  it('keeps both TR-window arms in agreement when the model is not reproducible', async () => {
+    const llm = nonReproducibleLlm();
+    await runTimeWindowAnnotationAblation(trInstances, embedding, llm, {
+      judge: async (_question, predicted, expected) => predicted === expected,
+    });
+    for (const [prompt, seen] of llm.prompts) {
+      expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+
+  it('keeps both TR-coverage arms in agreement when the model is not reproducible', async () => {
+    const llm = nonReproducibleLlm();
+    await runDeterministicCoverageAblation(trInstances, embedding, llm, {
+      judge: async (_question, predicted, expected) => predicted === expected,
+    });
+    for (const [prompt, seen] of llm.prompts) {
+      expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+
+  it('keeps both KU-bitemporal arms in agreement when the model is not reproducible', async () => {
+    const llm = nonReproducibleLlm();
+    await runBitemporalKnowledgeUpdateAblation(kuInstances, embedding, llm, {
+      judge: async (_question, predicted, expected) => predicted === expected,
+    });
+    for (const [prompt, seen] of llm.prompts) {
+      expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+});
