@@ -1610,31 +1610,77 @@ const ASSISTANT_HEAD_CHARS = 200;
  * Bound a session's length while preserving user turns, which carry the facts.
  * Simple character truncation can drop later user turns (where dispersed evidence
  * such as an exchanged item lives) because a long assistant reply consumes the
- * budget first. This keeps every user turn complete and caps assistant turns.
+ * budget first. This keeps every user turn that fits complete and caps assistant
+ * turns.
+ *
+ * Two invariants make the budget actually usable, and both were violated by an
+ * earlier version that stopped at the first user turn too large to fit:
+ *
+ *  1. An oversized user turn is SKIPPED, never fatal. Later turns are frequently
+ *     shorter and still carry evidence. Stopping returned with most of the
+ *     allowance unspent: measured over 316 LongMemEval-S gold sessions, a median
+ *     of 325 of 2000 characters survived.
+ *  2. Capped assistant heads are admitted only when every user turn still to
+ *     come is guaranteed to fit. A reply otherwise consumes the budget it exists
+ *     only to contextualise, which is the exact failure this function was
+ *     written to prevent.
  */
 export function truncateSession(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text;
   }
   const turns = text.split(TURN_BOUNDARY).filter((s) => s.length > 0);
+  const userChars = turns.map((t) => (/\] user:/.test(t) ? t.length : 0));
+
+  // Pass 1 — decide which user turns survive. Facts live in user turns, so the
+  // budget exists to hold as many COMPLETE ones as it can.
+  const keep = turns.map(() => false);
+  let reserved = 0;
+  for (let i = 0; i < turns.length; i++) {
+    const len = userChars[i]!;
+    if (len > 0 && reserved + len <= maxChars) {
+      keep[i] = true;
+      reserved += len;
+    }
+  }
+
+  // A session whose smallest user turn still exceeds the budget would retain no
+  // facts at all; fall back to plain truncation so the head of the session,
+  // which normally names its topic, is not lost.
+  if (!keep.some(Boolean)) {
+    return truncateText(text, maxChars);
+  }
+
+  // Pass 2 — emit in order, spending only what is left on capped assistant
+  // heads. `suffix[i]` is the character total of the kept user turns after
+  // position `i`, so admitting a head can never displace a fact.
+  const suffix: number[] = new Array(turns.length + 1).fill(0);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    suffix[i] = suffix[i + 1]! + (keep[i] ? userChars[i]! : 0);
+  }
   const kept: string[] = [];
   let used = 0;
   let truncated = false;
-  for (const turn of turns) {
-    if (/\] user:/.test(turn)) {
-      if (used + turn.length > maxChars) {
-        truncated = true;
-        break;
-      }
-      kept.push(turn);
-      used += turn.length;
-    } else {
-      const head = sliceCodePointSafe(turn, ASSISTANT_HEAD_CHARS);
-      if (head.length < turn.length) {
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i]!;
+    if (userChars[i]! > 0) {
+      if (keep[i]) {
+        kept.push(turn);
+        used += turn.length;
+      } else {
         truncated = true;
       }
+      continue;
+    }
+    const head = sliceCodePointSafe(turn, ASSISTANT_HEAD_CHARS);
+    if (head.length < turn.length) {
+      truncated = true;
+    }
+    if (used + head.length + suffix[i + 1]! <= maxChars) {
       kept.push(head);
       used += head.length;
+    } else {
+      truncated = true;
     }
   }
   return truncated ? `${kept.join('')}\n[truncated]` : kept.join('');

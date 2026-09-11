@@ -879,6 +879,54 @@ describe('truncateSession', () => {
     expect(result).not.toContain('second fact');
     expect(result).toContain('[truncated]');
   });
+
+  /**
+   * LongMemEval-S sessions interleave long user narrations (which carry every
+   * fact) with verbose assistant replies (which carry none). The default
+   * per-session budget is 2000 characters, so a correct implementation has to
+   * hold several complete user turns, not just the first one that fits.
+   */
+  function longMemEvalShapedSession(userTurns: number): string {
+    const turns: string[] = [];
+    for (let i = 0; i < userTurns; i++) {
+      turns.push(`[2023/02/15 (Wed) 0${i % 10}:00] user: fact ${i} ` + 'u'.repeat(880));
+      turns.push(`[2023/02/15 (Wed) 0${i % 10}:30] assistant: ` + 'a'.repeat(1400));
+    }
+    return turns.join('');
+  }
+
+  it('keeps every user turn that fits, not only the first', () => {
+    const result = truncateSession(longMemEvalShapedSession(6), 2000);
+    expect((result.match(/\] user:/g) ?? []).length).toBeGreaterThan(1);
+  });
+
+  it('spends the budget it was given instead of abandoning it', () => {
+    // Guards the specific defect: an early `break` stopped the scan at the
+    // first oversized user turn and returned with most of the allowance unused.
+    // Measured over 316 gold sessions, that left a median of 325 of 2000 chars.
+    const result = truncateSession(longMemEvalShapedSession(6), 2000);
+    expect(result.replace('\n[truncated]', '').length).toBeGreaterThan(0.8 * 2000);
+  });
+
+  it('lets a later short user turn survive an oversized earlier one', () => {
+    const text = `[2023/02/15] user: ${'a'.repeat(2500)}` + '[2023/02/15] user: SHORT_FACT';
+    expect(truncateSession(text, 2000)).toContain('SHORT_FACT');
+  });
+
+  it('does not let assistant heads crowd out a later user turn', () => {
+    // Five heads at 200 chars each would consume a 1000-char budget outright if
+    // they were admitted ahead of the user turn that follows them.
+    const text = ['a', 'b', 'c', 'd', 'e']
+      .map((c) => `[2023/02/15] assistant: ${c.repeat(5000)}`)
+      .join('');
+    expect(truncateSession(text + '[2023/02/15] user: LATER_FACT', 1000)).toContain('LATER_FACT');
+  });
+
+  it('keeps the head of a session whose every user turn exceeds the budget', () => {
+    const result = truncateSession(`[2023/02/15] user: ${'a'.repeat(500)}`, 100);
+    expect(result).toContain('[2023/02/15] user:');
+    expect(result).toContain('[truncated]');
+  });
 });
 
 describe('buildQueryExpansionPrompt', () => {
