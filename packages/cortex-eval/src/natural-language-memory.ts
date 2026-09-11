@@ -95,6 +95,29 @@ export type NaturalLanguageMemorySystemOptions = {
    * stay isolated and the cache lifetime stays under caller control.
    */
   answerCache?: Map<string, string>;
+  /**
+   * Shared cache for raw STRUCTURED LLM results, keyed by the full prompt and
+   * the schema.
+   *
+   * This is a separate cache from `answerCache` because `completeStructured` is
+   * a separate LLM entry point, and caching it by the same map would be a type
+   * error — but the reason it needs its own cache is the same reason
+   * `answerCache` exists at all. The endpoint is not reproducible across calls
+   * even at `temperature=0`, so two arms that issue a byte-identical structured
+   * prompt must not each send it.
+   *
+   * The structured path was missed when `answerCache` was introduced. Measured on
+   * the main benchmark in `34586809021`: with the answer cache shared and no
+   * structured cache, a single KU extraction prompt was sent **6 times** across
+   * the run's arms, and each re-send could return different JSON because the
+   * endpoint is not reproducible. Capabilities that answer only via `complete`
+   * were exactly paired (IE 0/0 and MR 0/0 over 271 questions), which is what
+   * isolated this entry point as the remaining source.
+   *
+   * Keyed by prompt AND schema, because the provider is handed the schema inline
+   * and two different schemas over the same prompt are different requests.
+   */
+  structuredCache?: Map<string, unknown>;
   /** Top sessions recalled per expansion phrase (default 3). */
   queryExpansionTopKPerQuery?: number;
   /**
@@ -354,7 +377,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   ): Promise<Answer> {
     let extracted: { events?: TemporalEvent[] };
     try {
-      extracted = await this.options.llm.completeStructured<{ events?: TemporalEvent[] }>(
+      extracted = await this.completeStructuredCached<{ events?: TemporalEvent[] }>(
         buildTemporalEventExtractionPrompt(
           question,
           retrieved,
@@ -363,7 +386,6 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
           kind,
         ),
         TEMPORAL_EVENTS_SCHEMA,
-        { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
       );
     } catch {
       // Structured extraction failed (e.g. the provider returned non-JSON);
@@ -507,10 +529,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   ): Promise<Answer> {
     let extracted: { facts?: ExtractedFact[] };
     try {
-      extracted = await this.options.llm.completeStructured<{ facts?: ExtractedFact[] }>(
+      extracted = await this.completeStructuredCached<{ facts?: ExtractedFact[] }>(
         buildFactExtractionPrompt(question, retrieved),
         FACTS_SCHEMA,
-        { temperature: this.options.temperature ?? DEFAULT_TEMPERATURE },
       );
     } catch {
       return null;
@@ -714,6 +735,33 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const parsed = parseQueryExpansion(expansionRaw);
     cache?.set(cacheKey, parsed);
     return parsed;
+  }
+
+  /**
+   * Structured LLM call routed through the shared structured cache.
+   *
+   * Every structured call in this class goes through here rather than calling
+   * `llm.completeStructured` directly, so that two arms sharing a cache cannot
+   * each send a byte-identical structured prompt. The key is the prompt plus the
+   * serialized schema: the provider receives the schema inline, so the same
+   * prompt under a different schema is a different request.
+   *
+   * Errors are NOT cached. A failed extraction falls back to another path in the
+   * caller, and caching the failure would make the fallback depend on which arm
+   * happened to run first.
+   */
+  private async completeStructuredCached<T>(prompt: string, schema: JsonSchema): Promise<T> {
+    const cache = this.options.structuredCache;
+    const cacheKey = `${prompt}\u0000${JSON.stringify(schema)}`;
+    const cached = cache?.get(cacheKey);
+    if (cached !== undefined) {
+      return cached as T;
+    }
+    const result = await this.options.llm.completeStructured<T>(prompt, schema, {
+      temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+    });
+    cache?.set(cacheKey, result);
+    return result;
   }
 
   /**

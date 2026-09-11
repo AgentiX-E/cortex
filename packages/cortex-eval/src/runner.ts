@@ -74,12 +74,18 @@ export async function runNaturalLanguageBenchmark(
   // reuses the baseline's byte-identical, temperature-0 LLM call instead of
   // re-billing it (≈447 of the 500 feature calls per run).
   const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms. Without it the KU and TR capabilities still
+  // carried a re-query term after the answer cache was shared.
+  const structuredCache = new Map<string, unknown>();
   const baseline = new NaturalLanguageMemorySystem('nl-naive-baseline', {
     embedding,
     llm,
     enableAbstention: false,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const feature = new NaturalLanguageMemorySystem('nl-abstain-feature', {
@@ -88,6 +94,7 @@ export async function runNaturalLanguageBenchmark(
     abstainThreshold: threshold,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.onDecision ? { onDecision: options.onDecision } : {}),
   });
@@ -131,6 +138,11 @@ export async function runMrAggregationAblation(
   // questions, while two identically-configured arms with separate caches
   // disagreed on 2 of 127 (see `analysis/verdicts/p5-pairing-verdict.md`).
   const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms. Without it the KU and TR capabilities still
+  // carried a re-query term after the answer cache was shared.
+  const structuredCache = new Map<string, unknown>();
   const legacy = new NaturalLanguageMemorySystem('mr-legacy-aggregation', {
     embedding,
     llm,
@@ -138,6 +150,7 @@ export async function runMrAggregationAblation(
     aggregationPrompt: buildLegacyAggregationQaPrompt,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const cot = new NaturalLanguageMemorySystem('mr-cot-aggregation', {
@@ -147,6 +160,7 @@ export async function runMrAggregationAblation(
     aggregationPrompt: buildAggregationQaPrompt,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -182,6 +196,11 @@ export async function runTemporalEngineAblation(
   // different prompts cannot collide, and a byte-identical prompt is never
   // re-queried (the endpoint is not reproducible across calls at temperature 0).
   const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms. Without it the KU and TR capabilities still
+  // carried a re-query term after the answer cache was shared.
+  const structuredCache = new Map<string, unknown>();
   const llmTemporal = new NaturalLanguageMemorySystem('tr-llm-temporal', {
     embedding,
     llm,
@@ -189,6 +208,7 @@ export async function runTemporalEngineAblation(
     enableDeterministicTemporal: false,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const deterministicTemporal = new NaturalLanguageMemorySystem('tr-deterministic-temporal', {
@@ -198,6 +218,7 @@ export async function runTemporalEngineAblation(
     enableDeterministicTemporal: true,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -237,6 +258,11 @@ export async function runDeterministicCoverageAblation(
   // different prompts cannot collide, and a byte-identical prompt is never
   // re-queried (the endpoint is not reproducible across calls at temperature 0).
   const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms. Without it the KU and TR capabilities still
+  // carried a re-query term after the answer cache was shared.
+  const structuredCache = new Map<string, unknown>();
   const baseEngine = new NaturalLanguageMemorySystem('tr-base-engine', {
     embedding,
     llm,
@@ -244,6 +270,7 @@ export async function runDeterministicCoverageAblation(
     enableTimeWindowAnnotation: false,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const extendedEngine = new NaturalLanguageMemorySystem('tr-extended-engine', {
@@ -254,6 +281,7 @@ export async function runDeterministicCoverageAblation(
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -294,6 +322,11 @@ export async function runTimeWindowAnnotationAblation(
   // different prompts cannot collide, and a byte-identical prompt is never
   // re-queried (the endpoint is not reproducible across calls at temperature 0).
   const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms. Without it the KU and TR capabilities still
+  // carried a re-query term after the answer cache was shared.
+  const structuredCache = new Map<string, unknown>();
   // Both arms run the EXTENDED engine. The annotation is inert without a
   // resolvable window — with the default engine a weekday-anchored question
   // yields no window at all, so an "annotation off vs on" pair would compare two
@@ -309,6 +342,7 @@ export async function runTimeWindowAnnotationAblation(
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const annotated = new NaturalLanguageMemorySystem('tr-time-window', {
@@ -319,6 +353,7 @@ export async function runTimeWindowAnnotationAblation(
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 
@@ -356,6 +391,11 @@ export async function runBitemporalKnowledgeUpdateAblation(
   // different prompts cannot collide, and a byte-identical prompt is never
   // re-queried (the endpoint is not reproducible across calls at temperature 0).
   const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms. Without it the KU and TR capabilities still
+  // carried a re-query term after the answer cache was shared.
+  const structuredCache = new Map<string, unknown>();
   const cot = new NaturalLanguageMemorySystem('ku-cot-knowledge-update', {
     embedding,
     llm,
@@ -363,6 +403,7 @@ export async function runBitemporalKnowledgeUpdateAblation(
     enableBitemporalKnowledgeUpdate: false,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
   const bitemporal = new NaturalLanguageMemorySystem('ku-bitemporal-knowledge-update', {
@@ -372,6 +413,7 @@ export async function runBitemporalKnowledgeUpdateAblation(
     enableBitemporalKnowledgeUpdate: true,
     queryExpansionCache: expansionCache,
     answerCache,
+    structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
 

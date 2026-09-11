@@ -12,6 +12,7 @@ import {
   runBitemporalKnowledgeUpdateAblation,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
+import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
 import { createLlmFromEnv, resolveTimeoutMs } from '../llm-factory.js';
 import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
@@ -794,6 +795,14 @@ describe('ablation arms share the answer cache', () => {
     uncachedCalls: () => number;
     /** Distinct prompts seen, to confirm the arms really issue identical prompts. */
     prompts: Map<string, number>;
+    /**
+     * The same count for `completeStructured`. Tracked separately because the two
+     * are different LLM entry points with different caches: an earlier version of
+     * this helper recorded only `complete`, the structured path was left
+     * uncached, and every test in this block passed while the KU and TR
+     * capabilities still carried a re-query term.
+     */
+    structuredPrompts: Map<string, number>;
   };
 
   /**
@@ -803,9 +812,11 @@ describe('ablation arms share the answer cache', () => {
    */
   function nonReproducibleLlm(): CountingLlm {
     const prompts = new Map<string, number>();
+    const structuredPrompts = new Map<string, number>();
     let calls = 0;
     return {
       prompts,
+      structuredPrompts,
       uncachedCalls: () => calls,
       complete: async (prompt: string) => {
         const seen = (prompts.get(prompt) ?? 0) + 1;
@@ -814,7 +825,17 @@ describe('ablation arms share the answer cache', () => {
         // Same prompt, different answer each time it is actually sent.
         return seen === 1 ? 'blue' : `blue-variant-${seen}`;
       },
-      completeStructured: async <T>() => ({}) as T,
+      completeStructured: async <T>(prompt: string) => {
+        const seen = (structuredPrompts.get(prompt) ?? 0) + 1;
+        structuredPrompts.set(prompt, seen);
+        calls++;
+        // Non-empty, so the temporal and bitemporal paths proceed past their
+        // early returns and actually exercise the structured call.
+        return {
+          events: [{ description: 'bought a lamp', turnDate: '2023/05/07' }],
+          facts: [{ subject: 'lamp', object: 'IKEA', validFrom: '2023/05/07' }],
+        } as T;
+      },
     } as CountingLlm;
   }
 
@@ -916,6 +937,115 @@ describe('ablation arms share the answer cache', () => {
     });
     for (const [prompt, seen] of llm.prompts) {
       expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+
+  // The tests below cover the structured LLM entry point, which the four above do
+  // not. `complete` and `completeStructured` are separate methods with separate
+  // caches, and the structured one was left uncached when the answer cache was
+  // introduced — so the KU capability still carried a re-query term and showed
+  // 0 broken / 1 repaired on a run whose every other capability was exactly
+  // paired. Every test in this block passed anyway, because the helper never
+  // recorded a structured call.
+  //
+  // Note the shape of the bug: the bitemporal path returns WITHOUT passing
+  // through `respondWith`, so it consults neither the abstention gate nor the
+  // answer cache. A test that only asserts on the ablation arms cannot see it —
+  // in the KU *ablation* only one arm enables the bitemporal path, so there is
+  // nothing to deduplicate. It only appears when both arms run it, which is what
+  // the main benchmark does.
+  it('never re-sends a byte-identical structured prompt across the main benchmark arms', async () => {
+    const llm = nonReproducibleLlm();
+    await runNaturalLanguageBenchmark(kuInstances, embedding, llm, {
+      judge: async (_question, predicted, expected) => predicted === expected,
+    });
+    for (const [prompt, seen] of llm.structuredPrompts) {
+      expect(seen, `structured prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+    expect(llm.structuredPrompts.size).toBeGreaterThan(0);
+  });
+
+  it('caches the structured result per prompt and schema, not per arm', async () => {
+    // Two systems sharing one structured cache must issue exactly one call for a
+    // question, regardless of how many arms ask it.
+    const structuredPrompts = new Map<string, number>();
+    let calls = 0;
+    const llm = {
+      complete: async () => 'blue',
+      completeStructured: async <T>(prompt: string) => {
+        structuredPrompts.set(prompt, (structuredPrompts.get(prompt) ?? 0) + 1);
+        calls++;
+        return {
+          events: [{ description: 'bought a lamp', turnDate: '2023/05/07' }],
+          facts: [{ subject: 'lamp', object: 'IKEA', validFrom: '2023/05/07' }],
+        } as T;
+      },
+    } as unknown as CountingLlm;
+    const shared = new Map<string, unknown>();
+    const mk = (name: string, abstain: boolean) =>
+      new NaturalLanguageMemorySystem(name, {
+        embedding,
+        llm,
+        enableAbstention: abstain,
+        queryExpansionCache: new Map<string, string[]>(),
+        answerCache: new Map<string, string>(),
+        structuredCache: shared,
+      });
+    const armA = mk('arm-a', false);
+    const armB = mk('arm-b', true);
+    const context = ['[2023/05/07] user: I bought a lamp.'];
+    for (const sys of [armA, armB]) {
+      await sys.answerTemporal('How many days ago did I buy the lamp?', context, '2023/05/10');
+    }
+    expect(calls).toBe(structuredPrompts.size);
+    expect(shared.size).toBeGreaterThan(0);
+    for (const [prompt, seen] of structuredPrompts) {
+      expect(seen, `structured prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+  });
+
+  it('routes the KU bitemporal extraction through the structured cache', async () => {
+    // The bitemporal path returns without passing through `respondWith`, so it
+    // never touches the answer cache. This drives two systems that share only the
+    // structured cache and asserts the extraction call is issued once.
+    //
+    // This is a unit-level companion to the main-benchmark test above: it covers
+    // the cache mechanism itself, while that test covers the runner wiring the
+    // cache in. Both are needed — the wiring test fails if the runner stops
+    // passing `structuredCache`, and this one fails if `completeStructuredCached`
+    // stops consulting it.
+    const structuredPrompts = new Map<string, number>();
+    const llm = {
+      complete: async () => 'blue',
+      completeStructured: async <T>(prompt: string) => {
+        structuredPrompts.set(prompt, (structuredPrompts.get(prompt) ?? 0) + 1);
+        return {
+          facts: [{ subject: 'lamp', object: 'IKEA', validFrom: '2023/05/07' }],
+        } as T;
+      },
+    } as unknown as CountingLlm;
+    const shared = new Map<string, unknown>();
+    const mk = (name: string) =>
+      new NaturalLanguageMemorySystem(name, {
+        embedding,
+        llm,
+        enableAbstention: false,
+        queryExpansionCache: new Map<string, string[]>(),
+        answerCache: new Map<string, string>(),
+        structuredCache: shared,
+      });
+    const context = [
+      '[2023/04/01] user: I used to live in Beijing.',
+      '[2023/05/01] user: I moved to Shanghai.',
+    ];
+    await mk('arm-a').answerKnowledgeUpdate('Where did I live before?', context);
+    await mk('arm-b').answerKnowledgeUpdate('Where did I live before?', context);
+    // Non-vacuity: the extraction must actually have run, or the "sent once"
+    // assertion below would hold trivially on an empty map.
+    expect(structuredPrompts.size).toBeGreaterThan(0);
+    expect(shared.size).toBe(structuredPrompts.size);
+    for (const [prompt, seen] of structuredPrompts) {
+      expect(seen, `structured prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
     }
   });
 });
