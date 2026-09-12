@@ -13,7 +13,7 @@ import type {
   PerCapabilityResult,
   Question,
 } from './types.js';
-import type { AnswerJudge } from './judge.js';
+import { toJudgeQuestionType, type AnswerJudge } from './judge.js';
 
 const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
 
@@ -177,12 +177,39 @@ export function numericAnswerVerdict(
   if (!isCountingQuestion(question)) {
     return undefined;
   }
+  // A gold that states more than one acceptable value cannot be graded by
+  // comparing a single extracted number. LongMemEval contains golds such as
+  // "11 days (or 12 days, ...)" where the dataset itself sanctions the
+  // alternative, and the leading-number gate would reject it outright without
+  // ever consulting the judge. Defer those to the LLM.
+  if (countDistinctEvaluableNumbers(expected) > 1) {
+    return undefined;
+  }
   const p = extractLeadingNumber(predicted);
   const e = extractLeadingNumber(expected);
   if (p === undefined || e === undefined) {
     return undefined;
   }
   return p === e;
+}
+
+/**
+ * Count the numbers a gold answer states, treating a decimal point as part of a
+ * value rather than a separator, and ignoring the digits of an embedded
+ * thousands separator. Used only to detect golds that offer alternatives, so it
+ * deliberately errs toward reporting more values: reporting one too many merely
+ * defers the question to the judge, while reporting one too few would let the
+ * numeric gate reject a sanctioned answer.
+ */
+function countDistinctEvaluableNumbers(value: unknown): number {
+  if (typeof value === 'number') {
+    return 1;
+  }
+  if (typeof value !== 'string') {
+    return 0;
+  }
+  const matches = value.match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+  return new Set(matches.map((m) => m.replace(/,/g, ''))).size;
 }
 
 /** LLM-judge scorer: abstentions are graded structurally, others via the judge. */
@@ -201,12 +228,20 @@ export function judgeScorer(judge: AnswerJudge): AnswerScorer {
       return true;
     }
     // Counting questions are graded numerically first, so a verbose answer
-    // cannot trick the LLM judge into accepting "5" for "2".
+    // cannot trick the LLM judge into accepting "5" for "2". The gate refuses to
+    // answer when the gold states more than one acceptable value, because
+    // `extractLeadingNumber` would read only the first and reject a prediction
+    // that matches one of the sanctioned alternatives.
     const numeric = numericAnswerVerdict(question.question, answer, question.expected);
     if (numeric !== undefined) {
       return numeric;
     }
-    return judge(question.question, answer, question.expected);
+    return judge(
+      question.question,
+      answer,
+      question.expected,
+      toJudgeQuestionType(question.questionType ?? '', question.expected === null),
+    );
   };
 }
 

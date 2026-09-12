@@ -127,6 +127,55 @@ describe('answer scorers', () => {
     expect(await scorer(q('IE', 'blue'), 'red')).toBe(false);
   });
 
+  it('judgeScorer passes the judge template selected by the question type', async () => {
+    // Without this wiring the official per-type templates are never used, and
+    // the benchmark silently keeps grading everything as a default question.
+    const seen: (string | undefined)[] = [];
+    const judge: AnswerJudge = async (_q, _predicted, _expected, type) => {
+      seen.push(type);
+      return true;
+    };
+    const scorer = judgeScorer(judge);
+    const typed = (questionType: string) => ({
+      id: 't',
+      capability: 'TR' as const,
+      questionType,
+      question: 'When did that happen?',
+      expected: 'yesterday',
+      context: [],
+    });
+    await scorer(typed('temporal-reasoning'), 'today');
+    await scorer(typed('knowledge-update'), 'today');
+    await scorer(typed('multi-session'), 'today');
+    await scorer(typed('single-session-user'), 'today');
+    expect(seen).toEqual(['temporal-reasoning', 'knowledge-update', 'default', 'default']);
+  });
+
+  it('judgeScorer routes an abstention question to the abstention template', async () => {
+    const seen: (string | undefined)[] = [];
+    const judge: AnswerJudge = async (_q, _predicted, _expected, type) => {
+      seen.push(type);
+      return true;
+    };
+    const scorer = judgeScorer(judge);
+    // An abstention question sampled from the temporal category: the id carries
+    // the `_abs` suffix but the nominal type is still temporal-reasoning.
+    await scorer(
+      {
+        id: 'x_abs',
+        capability: 'ABS' as const,
+        questionType: 'temporal-reasoning_abs',
+        question: 'How many days did I spend in Kyoto?',
+        // Not null: the dataset stores the explanation as the gold, so the
+        // scorer does not short-circuit on the structural abstention path.
+        expected: 'You did not mention this information.',
+        context: [],
+      },
+      'UNANSWERABLE',
+    );
+    expect(seen).toEqual(['abstention']);
+  });
+
   it('judgeScorer grades counting questions numerically without the judge', async () => {
     let judgeCalled = false;
     const judge: AnswerJudge = async () => {
@@ -224,6 +273,48 @@ describe('numeric answer helpers', () => {
     expect(numericAnswerVerdict('What color?', 'blue', 'blue')).toBeUndefined();
     expect(numericAnswerVerdict('How many?', 'blue', '2')).toBeUndefined();
     expect(numericAnswerVerdict('How many?', '2', 'two')).toBeUndefined();
+  });
+
+  it('defers a gold that states more than one acceptable value to the judge', () => {
+    // Observed in LongMemEval: the gold explicitly sanctions the alternative,
+    // but the leading-number gate read only "11" and rejected a prediction of
+    // "12 days" without ever consulting the judge.
+    expect(
+      numericAnswerVerdict(
+        'What is the total number of days I spent in Japan and Chicago?',
+        '12 days',
+        '11 days (or 12 days, if April 15th to 22nd is considered as 8 days)',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('still grades a gold that states a single value numerically', () => {
+    expect(numericAnswerVerdict('How many?', '3', '3 days')).toBe(true);
+    expect(numericAnswerVerdict('How many?', '5', '3 days')).toBe(false);
+  });
+
+  it('does not mistake a thousands separator or decimal point for a second value', () => {
+    expect(numericAnswerVerdict('How much money?', '$2,500', '$2,500')).toBe(true);
+    expect(numericAnswerVerdict('How many weeks?', '3.5 weeks', '3.5 weeks')).toBe(true);
+  });
+
+  it('defers a gold that offers several distinct values to the judge', () => {
+    expect(numericAnswerVerdict('How many?', '4', '3 or 4')).toBeUndefined();
+  });
+
+  it('handles a gold that carries no number at all', () => {
+    // A gold with no digits leaves the numeric comparison undefined, so the
+    // question reaches the judge instead of being rejected by the gate.
+    expect(numericAnswerVerdict('How many?', '3', 'several')).toBeUndefined();
+    expect(numericAnswerVerdict('How many?', '3', null)).toBeUndefined();
+    expect(numericAnswerVerdict('How many?', '3', undefined)).toBeUndefined();
+  });
+
+  it('counts a numeric gold as a single value', () => {
+    // A JSON-number gold is one value by construction, so the deferral rule
+    // must not send it to the judge.
+    expect(numericAnswerVerdict('How many?', 3, 3)).toBe(true);
+    expect(numericAnswerVerdict('How many?', 5, 3)).toBe(false);
   });
 });
 
