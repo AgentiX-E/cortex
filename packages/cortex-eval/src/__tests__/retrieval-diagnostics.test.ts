@@ -119,6 +119,39 @@ describe('computeRetrievalDiagnostics', () => {
     expect(diag.recommendedThreshold).toBeLessThanOrEqual(1);
   });
 
+  it('records a miss when the answer turn is not the top-1 turn', async () => {
+    // The turn-level counterpart of the session-level miss test. Without this,
+    // `missScores` was only ever appended to when an answerable instance had no
+    // top-1 at all, which cannot happen, so the miss branch went unmeasured.
+    const controlled: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) =>
+        texts.map((t) => {
+          if (t.includes('distractor') || t === 'question') {
+            return new Float64Array([1, 0]);
+          }
+          return new Float64Array([0, 1]);
+        }),
+    };
+    const instance: LongMemEvalInstance = {
+      question_id: 'q1',
+      question_type: 'single-session-user',
+      question: 'question',
+      answer: 'x',
+      haystack_sessions: [
+        [
+          { role: 'user', content: 'distractor turn' },
+          { role: 'user', content: 'answer turn', has_answer: true },
+        ],
+      ],
+    };
+    const diag = await computeRetrievalDiagnostics([instance], controlled, 5);
+    expect(diag.answerableQuestions).toBe(1);
+    expect(diag.recallAt1).toBe(0);
+    expect(diag.hitScores).toEqual([]);
+    expect(diag.missScores).toHaveLength(1);
+  });
+
   it('never embeds assistant turns', async () => {
     // The single-session path filters assistant turns before retrieval; the
     // diagnostics must do the same, or it bills for vectors the system never

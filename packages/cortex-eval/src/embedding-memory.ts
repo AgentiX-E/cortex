@@ -47,7 +47,10 @@ export class EmbeddingMemorySystem implements MemorySystem {
     if (this.options.abstainThreshold != null && best.score < this.options.abstainThreshold) {
       return null;
     }
-    return this.facts.get(best.id)?.value ?? this.options.fallback ?? null;
+    // `ingest` adds an entry to the index and to the fact map in the same
+    // iteration, and both are private, so a returned hit always has a payload
+    // (`BruteForceVectorIndex.remove` exists but has no caller here).
+    return this.facts.get(best.id)!.value;
   }
 
   private async ingest(context: string[]): Promise<void> {

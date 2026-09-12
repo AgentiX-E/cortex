@@ -42,4 +42,26 @@ describe('EmbeddingMemorySystem', () => {
     ]);
     expect(answer).toBe('blue');
   });
+
+  it('honors the fallback when topK is zero and no neighbour is returned', async () => {
+    // `search` slices to k, so topK: 0 yields no hits even though facts were
+    // ingested. The fallback on the empty-hit path is therefore reachable and
+    // load-bearing: without it the caller would get a silent null instead of
+    // the documented baseline answer.
+    const s = new EmbeddingMemorySystem('s', { embedding, topK: 0, fallback: 'unknown' });
+    expect(await s.answer('What is the favorite color?', ['favorite color=blue'])).toBe('unknown');
+  });
+
+  it('returns null when topK is zero, no neighbour is returned and there is no fallback', async () => {
+    const s = new EmbeddingMemorySystem('s', { embedding, topK: 0 });
+    expect(await s.answer('What is the favorite color?', ['favorite color=blue'])).toBeNull();
+  });
+
+  it('answers from the fact map when the question embeds to no neighbour', async () => {
+    // With topK: 0 the retrieval path is bypassed entirely, so this pins the
+    // fact map as an independent store rather than a side effect of search.
+    const s = new EmbeddingMemorySystem('s', { embedding, topK: 0, fallback: 'unknown' });
+    await s.answer('prime', ['favorite color=blue']);
+    expect(await s.answer('What is the favorite color?', ['favorite color=blue'])).toBe('unknown');
+  });
 });
