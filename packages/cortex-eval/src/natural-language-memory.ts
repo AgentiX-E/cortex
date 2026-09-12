@@ -192,6 +192,25 @@ export type NaturalLanguageMemorySystemOptions = {
    * the aggregation prompt (e.g. legacy inline-counting vs CoT enumeration).
    */
   aggregationPrompt?: PromptBuilder;
+  /**
+   * When true, an enumeration-type multi-session question gets a second pass:
+   * the LLM re-examines the FIRST pass's own ledger against the same context and
+   * is asked only to critique membership (items missed, an exchange collapsed
+   * into one item, items that should have been excluded), then the original
+   * prompt is re-asked with that critique folded in.
+   *
+   * The measured MR error is dominated by set membership rather than arithmetic:
+   * the model already emits a numbered ledger, already folds duplicate mentions
+   * correctly at Step 2, and its stated count follows its own list. What it gets
+   * wrong is which items enter the list. A revision that restates the rules
+   * cannot repair that, so this pass attacks the decision instead of the
+   * instructions. The critique is never shown the first pass's number, because a
+   * critique that is shown the answer it is meant to check agrees with it.
+   *
+   * Default false: it costs one extra LLM call per question and nothing is
+   * enabled on the graded path until its own ablation is green.
+   */
+  enableAggregationCritique?: boolean;
   /** LLM sampling temperature; default 0 for deterministic evaluation. */
   temperature?: number;
   /** Optional callback for per-question decision tracing (diagnostic). */
@@ -632,6 +651,15 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       this.options.aggregationPrompt === undefined && kind === 'derivation'
         ? buildDerivationQaPrompt
         : (this.options.aggregationPrompt ?? buildAggregationQaPrompt);
+    // The critique pass re-examines the first ledger's membership. It applies to
+    // enumeration questions only: a derivation question has no item list whose
+    // membership could be audited, and a custom `aggregationPrompt` (the MR
+    // ablation) must keep using its own prompt verbatim so the ablation still
+    // isolates the prompt swap it was built to measure.
+    const critiqueEligible =
+      this.options.enableAggregationCritique === true &&
+      kind === 'enumeration' &&
+      this.options.aggregationPrompt === undefined;
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -640,7 +668,39 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       parseAggregationAnswer,
       expansionQueries,
       this.options.sessionAbstainThreshold,
+      critiqueEligible
+        ? {
+            critique: (raw) => this.critiqueAggregationLedger(question, retrieved, raw),
+            revise: buildRevisedAggregationPrompt,
+          }
+        : undefined,
     );
+  }
+
+  /**
+   * Ask the LLM to audit a first-pass ledger's membership, and return the
+   * critique text. Returns '' when the model reports no issue, which makes the
+   * revision a no-op rather than a second guess.
+   */
+  private async critiqueAggregationLedger(
+    question: string,
+    context: string,
+    raw: string,
+  ): Promise<string> {
+    const ledger = extractAggregationLedger(raw);
+    if (ledger === '') {
+      return '';
+    }
+    const prompt = buildAggregationCritiquePrompt(question, context, ledger);
+    const cache = this.options.answerCache;
+    let critique = cache?.get(prompt);
+    if (critique === undefined) {
+      critique = await this.options.llm.complete(prompt, {
+        temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+      });
+      cache?.set(prompt, critique);
+    }
+    return /no issue found/i.test(critique) ? '' : critique;
   }
 
   private async retrieveSessionsForQuestion(
@@ -790,6 +850,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     parser: AnswerParser,
     expansionQueries: string[] = [],
     abstainThreshold?: number,
+    critiquePass?: {
+      /** Produce the critique for a first-pass response; '' means "no issue". */
+      critique: (raw: string) => Promise<string>;
+      /** Fold a critique back into the original prompt for the revision pass. */
+      revise: (prompt: string, critique: string) => string;
+    },
   ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (retrieved === '') {
@@ -819,6 +885,34 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       });
       cache?.set(prompt, raw);
     }
+
+    // Second pass (enumeration questions only): audit the ledger's membership
+    // and re-ask the SAME prompt with the audit folded in. The first pass's
+    // parsed answer stands whenever the audit finds nothing, the revision
+    // abstains, or the revision cannot be parsed, so the pass can only change
+    // the result when it actually produces a usable alternative — a revision
+    // that degrades the answer cannot silently replace a good one with garbage.
+    if (critiquePass && !isAbstentionValue(raw, this.options.abstainToken)) {
+      const critique = await critiquePass.critique(raw);
+      if (critique !== '') {
+        const revisionPrompt = critiquePass.revise(prompt, critique);
+        let revised = cache?.get(revisionPrompt);
+        if (revised === undefined) {
+          revised = await this.options.llm.complete(revisionPrompt, {
+            temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+          });
+          cache?.set(revisionPrompt, revised);
+        }
+        if (
+          revised !== undefined &&
+          !isAbstentionValue(revised, this.options.abstainToken) &&
+          parser(revised, this.options.abstainToken) !== null
+        ) {
+          raw = revised;
+        }
+      }
+    }
+
     const parsed = parser(raw, this.options.abstainToken);
     if (parsed === null) {
       if (!abstentionEnabled) {
@@ -1458,6 +1552,100 @@ export function buildAggregationQaPrompt(
 }
 
 /**
+ * Build the critique prompt for a first-pass aggregation ledger.
+ *
+ * The measured MR failure is set membership, not arithmetic: the model emits a
+ * numbered ledger and its stated count follows that ledger, but the ledger
+ * itself sometimes merges two countable items into one (treating an exchange as
+ * a single item) or admits an item the question excludes. An audit by the same
+ * model, shown its own ledger and the evidence, targets that decision.
+ *
+ * Two properties are deliberate:
+ *
+ *  - The first pass's ANSWER is withheld. A critique shown the number it is
+ *    meant to check agrees with it, which makes the pass decorative.
+ *  - The critique is advisory. It returns observations, and the revision is the
+ *    original prompt re-asked with those observations appended, so the output
+ *    contract (`Step 1` ledger + `Answer:`) is unchanged and a critique that
+ *    finds nothing costs nothing.
+ */
+export function buildAggregationCritiquePrompt(
+  question: string,
+  context: string,
+  ledger: string,
+): string {
+  return [
+    'You are auditing a draft answer for a question about multiple conversation sessions.',
+    'A first attempt produced the item list below. Audit ONLY the membership of that list.',
+    'You are NOT told the draft answer, and you must not try to guess it.',
+    '',
+    'Report each problem you find, one per line, in one of these forms:',
+    '  MISSED: <the item that should be listed but is not>',
+    '  MERGED: <two items collapsed into one entry>',
+    '  WRONG: <an entry the question does not actually count>',
+    '',
+    'Check these specifically:',
+    '  - An "exchange" is TWO items: returning the old item AND picking up the replacement. If the list has one entry for it, that is MERGED.',
+    '  - Two mentions of the same event are ONE item. If the list has two entries for it, that is WRONG.',
+    "  - The question's exact action verb matters. An entry whose action does not match the question's verb is WRONG.",
+    "  - An item stated in the context that matches the question's action but is absent from the list is MISSED.",
+    '',
+    'If the list is complete and correct, reply exactly: No issue found.',
+    'Do not restate the list and do not answer the question.',
+    '',
+    'Draft item list:',
+    ledger,
+    '',
+    'Context:',
+    context,
+    '',
+    `Question: ${question}`,
+  ].join('\n');
+}
+
+/**
+ * Fold a critique back into the original aggregation prompt.
+ *
+ * The revision is the same task with the audit appended, not a new question, so
+ * the ledger format and the `Answer:` contract carry over unchanged and the
+ * second pass cannot drift into a different output shape.
+ */
+export function buildRevisedAggregationPrompt(prompt: string, critique: string): string {
+  return [
+    prompt,
+    '',
+    'An audit of your previous attempt raised the following points about the ITEM LIST:',
+    critique,
+    '',
+    'Re-do the task from the beginning, taking the audit into account:',
+    '  - If a point is correct, fix the list accordingly.',
+    '  - If you disagree with a point, keep your answer as it was.',
+    'End with the same single line:',
+    '  Answer: <final answer>',
+  ].join('\n');
+}
+
+/**
+ * Extract the `Step 1` ledger from a first-pass response, so the critique can
+ * inspect the items without being shown the answer. Falls back to the whole
+ * response when no Step 1 heading is present, which is what the legacy
+ * aggregation prompt produces.
+ */
+export function extractAggregationLedger(raw: string): string {
+  const start = raw.search(/step\s*1/i);
+  const body = start === -1 ? raw : raw.slice(start);
+  const end = body.search(/step\s*2/i);
+  const ledger = end === -1 ? body : body.slice(0, end);
+  // Drop any stray `Answer:` line: the ledger passed to the critique must not
+  // carry the first pass's number through a formatting accident.
+  return ledger
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:final\s+)?answer\s*:/i.test(line))
+    .join('\n')
+    .trim();
+}
+
+/**
  * How a multi-session question should be answered. Enumeration questions ask
  * the model to list every matching item and count/sum them; derivation questions
  * ask it to compute a value (a percentage, average, difference, min/max) from a
@@ -1921,7 +2109,10 @@ export function parseAggregationAnswer(
 }
 
 /** True when a value is the abstention marker, with or without wrapping quotes. */
-function isAbstentionValue(s: string, abstainToken: string): boolean {
+function isAbstentionValue(s: string, abstainToken: string | undefined): boolean {
+  if (abstainToken === undefined) {
+    return false;
+  }
   return stripWrappingQuotes(s).toUpperCase() === abstainToken.toUpperCase();
 }
 

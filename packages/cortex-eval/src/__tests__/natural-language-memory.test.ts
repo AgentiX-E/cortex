@@ -2919,4 +2919,225 @@ describe('NaturalLanguageMemorySystem', () => {
       });
     });
   });
+
+  /**
+   * The dominant MR error is set membership: the model merges two items that the
+   * question counts separately (an exchange counted as one item) or admits an
+   * item that should have been excluded. The arithmetic is sound and a ledger
+   * self-consistency check would regress correct answers, so the repair has to
+   * revisit membership rather than restate the rules.
+   */
+  describe('aggregation critique', () => {
+    const EVIDENCE = [
+      ['I need to pick up my dry cleaning for the navy blue blazer.'],
+      [
+        'I need to return some boots to Zara. I exchanged them for a larger size.',
+        "I just haven't had a chance to pick them up yet.",
+      ],
+    ];
+
+    function system(
+      overrides: Partial<ConstructorParameters<typeof NaturalLanguageMemorySystem>[1]> = {},
+    ) {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) {
+            return 'pick up, return';
+          }
+          // The revision prompt contains the critique verbatim, so it must be
+          // matched FIRST: testing for the critique marker alone would classify
+          // the revision as the critique and never exercise the second pass.
+          if (prompt.includes('Re-do the task')) {
+            return 'Answer: 3';
+          }
+          if (prompt.includes('Check these specifically')) {
+            return 'MISSED: the exchange is two items (return the old boots, pick up the new pair)';
+          }
+          return '- navy blue blazer | pick up\n- boots from Zara | pick up\nAnswer: 2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      return {
+        prompts,
+        system: new NaturalLanguageMemorySystem('s', { embedding, llm, ...overrides }),
+      };
+    }
+
+    /** The first-pass and revision markers, in the order the prompt builders emit. */
+    const CRITIQUE_MARKER = 'Check these specifically';
+    const REVISION_MARKER = 'Re-do the task';
+
+    it('does not run a critique pass by default', async () => {
+      const { prompts, system: s } = system();
+      await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+      expect(prompts.some((p) => p.includes(CRITIQUE_MARKER))).toBe(false);
+    });
+
+    it('runs a critique pass when enabled, and only for enumeration questions', async () => {
+      const { prompts, system: s } = system({ enableAggregationCritique: true });
+      await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+      expect(prompts.some((p) => p.includes(CRITIQUE_MARKER) && !p.includes(REVISION_MARKER))).toBe(
+        true,
+      );
+    });
+
+    it('asks the critique to revisit membership without being given the answer', async () => {
+      const { prompts, system: s } = system({ enableAggregationCritique: true });
+      await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+      const critique = prompts.find(
+        (p) => p.includes(CRITIQUE_MARKER) && !p.includes(REVISION_MARKER),
+      )!;
+      // The critique must see the first pass's ledger so it can inspect
+      // membership, and the evidence so it can verify against the source.
+      expect(critique).toContain('navy blue blazer');
+      expect(critique).toContain('boots from Zara');
+      // It must not be handed the first pass's number: a critique shown the
+      // answer it is meant to check agrees with it.
+      expect(critique).not.toContain('Answer: 2');
+    });
+
+    it('re-asks the original prompt with the critique folded in, not a new question', async () => {
+      const { prompts, system: s } = system({ enableAggregationCritique: true });
+      await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+      const last = prompts[prompts.length - 1]!;
+      // The revision call is the SAME task with the critique appended, so the
+      // ledger format and the Answer: contract are unchanged.
+      expect(last).toContain('How many items of clothing do I need to pick up or return?');
+      expect(last).toContain(REVISION_MARKER);
+      expect(last).toContain("Step 1 — Enumerate every item matching the question's EXACT action");
+    });
+
+    it('returns the revised answer from the second pass', async () => {
+      const { system: s } = system({ enableAggregationCritique: true });
+      const answer = await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+      expect(answer).toBe('3');
+    });
+
+    it('keeps the first pass when the critique reports no issue', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) return 'pick up';
+          if (prompt.includes(CRITIQUE_MARKER)) return 'No issue found.';
+          return 'Answer: 2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const s = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableAggregationCritique: true,
+      });
+      expect(
+        await s.answerSessions(
+          'How many items of clothing do I need to pick up or return?',
+          EVIDENCE,
+        ),
+      ).toBe('2');
+      // With no issue reported there is no revision call at all, so a clean
+      // audit costs exactly one extra LLM call and never a second answer.
+      expect(prompts.some((p) => p.includes(REVISION_MARKER))).toBe(false);
+    });
+
+    it('does not critique a derivation question', async () => {
+      const { prompts, system: s } = system({ enableAggregationCritique: true });
+      await s.answerSessions('What percentage of my shoes did I wear?', EVIDENCE);
+      expect(prompts.some((p) => p.includes(CRITIQUE_MARKER))).toBe(false);
+    });
+
+    it('caches the critique result so a repeated prompt is not re-sent', async () => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) return 'pick up, return';
+          if (prompt.includes(REVISION_MARKER)) return 'Answer: 3';
+          if (prompt.includes(CRITIQUE_MARKER)) return 'MISSED: the exchange is two items';
+          return '- navy blue blazer | pick up\nAnswer: 2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const s = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        answerCache: new Map<string, string>(),
+        enableAggregationCritique: true,
+      });
+      const question = 'How many items of clothing do I need to pick up or return?';
+      await s.answerSessions(question, EVIDENCE);
+      const afterFirst = prompts.filter((p) => p.includes(CRITIQUE_MARKER)).length;
+      await s.answerSessions(question, EVIDENCE);
+      const afterSecond = prompts.filter((p) => p.includes(CRITIQUE_MARKER)).length;
+      expect(afterFirst).toBe(1);
+      expect(afterSecond).toBe(1);
+    });
+
+    it('falls back to the first pass when the revision abstains', async () => {
+      let calls = 0;
+      const llm: LLM = {
+        complete: async (prompt) => {
+          calls++;
+          if (prompt.includes('Specific activities:')) return 'pick up';
+          if (prompt.includes(REVISION_MARKER)) return 'UNANSWERABLE';
+          if (prompt.includes(CRITIQUE_MARKER)) return 'MISSED: something';
+          return '- blazer | pick up\nAnswer: 2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const s = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableAggregationCritique: true,
+      });
+      const answer = await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+      // The revision ran (so the pass is not a no-op) but its abstention did not
+      // replace a usable first-pass answer.
+      expect(calls).toBeGreaterThan(2);
+      expect(answer).toBe('2');
+    });
+
+    it('falls back to the first pass when the revision is unparseable', async () => {
+      const llm: LLM = {
+        complete: async (prompt) => {
+          if (prompt.includes('Specific activities:')) return 'pick up';
+          if (prompt.includes(REVISION_MARKER)) return '- blazer | pick up';
+          if (prompt.includes(CRITIQUE_MARKER)) return 'MISSED: something';
+          return '- blazer | pick up\nAnswer: 2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const s = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableAggregationCritique: true,
+      });
+      expect(
+        await s.answerSessions(
+          'How many items of clothing do I need to pick up or return?',
+          EVIDENCE,
+        ),
+      ).toBe('2');
+    });
+  });
 });
