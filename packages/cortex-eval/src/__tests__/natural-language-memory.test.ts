@@ -3537,6 +3537,40 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(aggregationPrompts[0]).toBe(aggregationPrompts[1]);
     });
 
+    it('still re-queries when an answer cache is configured', async () => {
+      // The retry calls `complete(prompt)` with the HOSTILE key it just cached
+      // the abstention under. A cache-first `complete` therefore returns that
+      // same abstention and the retry becomes a no-op -- silently, with no
+      // error, and only in configurations that set `answerCache`.
+      //
+      // Every other test in this block omits `answerCache`, so none of them can
+      // see this. The ablation harness, however, always sets one (it shares a
+      // cache across paired arms to hold the model constant), which means the
+      // untested configuration is the one that actually runs in production.
+      const { calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2'], {
+        answerCache: new Map<string, string>(),
+      });
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBe('2');
+      // Two DISTINCT model calls: the first pass and one re-ask. A cache-first
+      // retry would consume one.
+      expect(calls()).toBe(2);
+    });
+
+    it('keeps a bare abstention cached for later callers while retrying afresh', async () => {
+      // The cache still has to do its job: a byte-identical prompt in a LATER
+      // question must not re-bill the provider. Only the retry bypasses it.
+      const cache = new Map<string, string>();
+      const { calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2'], {
+        answerCache: cache,
+      });
+      await s.answerSessions(QUESTION, EVIDENCE);
+      const after = calls();
+      await s.answerSessions(QUESTION, EVIDENCE);
+      // Second question: the first pass reads the answer the retry stored, so
+      // no new call is made at all.
+      expect(calls()).toBe(after);
+    });
+
     it('does not re-ask when the first pass already answered', async () => {
       const { calls, system: s } = queueSystem(['Answer: 2', 'Answer: 9']);
       expect(await s.answerSessions(QUESTION, EVIDENCE)).toBe('2');
@@ -3623,6 +3657,97 @@ describe('NaturalLanguageMemorySystem', () => {
       });
       expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
       expect(calls()).toBe(1);
+    });
+  });
+
+  /**
+   * The retry's fire state is the only readout that distinguishes "the feature
+   * is inert on this dataset" from "the feature was never wired in" — two
+   * situations that produce a byte-identical ablation table. These tests pin the
+   * signal at both levels: the flag is only recorded when the pass is ARMED, and
+   * it is set when the pass fires even if the re-ask itself abstains.
+   */
+  describe('retry fire instrumentation', () => {
+    const EVIDENCE = [
+      ['I need to pick up my dry cleaning for the navy blue blazer.'],
+      ['I need to return some boots to Zara.'],
+    ];
+    const QUESTION = 'How many items of clothing do I need to pick up or return?';
+
+    function traced(responses: string[], overrides: Record<string, unknown> = {}) {
+      const traces: DecisionTrace[] = [];
+      let call = 0;
+      const llm: LLM = {
+        complete: async (prompt) => {
+          if (prompt.includes('Specific activities:')) return 'pick up, return';
+          const reply = responses[Math.min(call, responses.length - 1)]!;
+          call++;
+          return reply;
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        onDecision: (trace) => traces.push(trace),
+        ...overrides,
+      } as ConstructorParameters<typeof NaturalLanguageMemorySystem>[1]);
+      return { traces, calls: () => call, system };
+    }
+
+    it('records armed-without-fire when the first pass answers', async () => {
+      const { traces, system: s } = traced(['Answer: 2']);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBe('2');
+      expect(traces).toHaveLength(1);
+      // Armed is not the same as fired: an armed pass that never sees a bare
+      // abstention has had no opportunity, and reporting it as a fire would
+      // inflate the fire rate and misattribute an inert run to a working one.
+      expect(traces[0]!.retryArmed).toBe(true);
+      expect(traces[0]!.retryFired).toBe(false);
+    });
+
+    it('records a fire even when the re-ask abstains again', async () => {
+      const { traces, system: s } = traced(['UNANSWERABLE', 'UNANSWERABLE']);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      // The re-ask happened; its outcome is a separate fact. Counting only
+      // SUCCESSFUL retries would make the fire count a restatement of the gain
+      // count and destroy the diagnostic's independence from Δaccuracy.
+      expect(traces[0]!.retryArmed).toBe(true);
+      expect(traces[0]!.retryFired).toBe(true);
+      expect(traces[0]!.abstained).toBe(true);
+    });
+
+    it('records a fire when the re-ask recovers an answer', async () => {
+      const { traces, system: s } = traced(['UNANSWERABLE', 'Answer: 2']);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBe('2');
+      expect(traces[0]!.retryArmed).toBe(true);
+      expect(traces[0]!.retryFired).toBe(true);
+      expect(traces[0]!.abstained).toBe(false);
+      expect(traces[0]!.answer).toBe('2');
+    });
+
+    it('does not report the retry as armed when the pass is disabled', async () => {
+      const { traces, system: s } = traced(['UNANSWERABLE', 'Answer: 2'], {
+        enableAbstentionRetry: false,
+      });
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      // The control arm's traces must be distinguishable from an armed arm that
+      // simply never saw a bare abstention, or a report that aggregates traces
+      // cannot assert the control disarmament held.
+      expect(traces[0]!.retryArmed).toBeUndefined();
+      expect(traces[0]!.retryFired).toBeUndefined();
+    });
+
+    it('does not report the retry as armed on a path the retry does not serve', async () => {
+      // The retry exists only on the multi-session aggregation path, which is
+      // what `answerSessions` drives. The single-session paths never pass it
+      // down, and their traces must say so: an arm-wide "armed" flag that was
+      // true for every path would make the control disarmament unverifiable.
+      const { traces, system: s } = traced(['Answer: 2']);
+      await s.answer(QUESTION, ['Q: where do I live? A: Shanghai.']);
+      expect(traces).toHaveLength(1);
+      expect(traces[0]!.retryArmed).toBeUndefined();
+      expect(traces[0]!.retryFired).toBeUndefined();
     });
   });
 });

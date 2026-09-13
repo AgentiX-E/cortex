@@ -424,3 +424,169 @@ export async function runBitemporalKnowledgeUpdateAblation(
   });
   return { report, markdown: formatAblationReport(report) };
 }
+
+export type RetryAblationReport = {
+  ablation: AblationReport;
+  /**
+   * Times the abstention retry actually re-queried a bare abstention, per arm.
+   *
+   * A paired McNemar Δaccuracy is a *risky* readout for this feature: the retry
+   * is one-directional by construction (it fires only on a bare abstention and
+   * is accepted only when the re-ask parses to a real answer), so the expected
+   * loss count is exactly zero and the test's power is driven entirely by the
+   * gain count. At R = 1 that gain expectation is ~0.5 events, far below what
+   * any pair test can resolve — measured power is 0.4 % at 1 run, 28.5 % at 3,
+   * and 97.7 % at 8 (`analysis/verdicts/p17-abstention-retry-yield.md` §5).
+   *
+   * The fire count is therefore the honest small-R diagnostic. `controlFires`
+   * MUST be 0: the control arm disables the flag, so any non-zero count means
+   * the flag is not reaching the code path and the whole comparison is void.
+   * `treatmentFires` being 0 means the feature is inert on this dataset slice —
+   * that is a finding about the data, not a failure, but it must be visible,
+   * because "0.00 pp with 0 fires" and "0.00 pp with 40 fires" are entirely
+   * different claims and the ablation table renders them identically.
+   */
+  retryFires: { controlFires: number; treatmentFires: number; questions: number };
+};
+
+/**
+ * Isolate the bare-abstention retry. Every other MR ablation holds the
+ * aggregation prompt or the retrieval stack constant and varies something else;
+ * this is the only arm that measures the retry, and it is the only arm whose
+ * two systems are configurationally IDENTICAL apart from one flag.
+ *
+ * Both arms enable abstention (the retry only exists on the abstaining path)
+ * and both use the default aggregation prompt. They differ ONLY in
+ * `enableAbstentionRetry` — control `false`, treatment `true` — so the paired
+ * McNemar test on MR questions attributes any delta to the retry itself and to
+ * nothing else.
+ *
+ * The arms SHARE all three caches, exactly as the other MR-adjacent ablations
+ * do, and this is load-bearing rather than a cost optimisation. The hosted
+ * endpoint is not reproducible across calls even at `temperature = 0`, so two
+ * arms that re-query a byte-identical prompt acquire a difference they were not
+ * built to measure: measured in run `34389565513`, arms sharing a cache
+ * disagreed on 0 of 470 questions, while two identically-configured arms with
+ * SEPARATE caches disagreed on 2 of 127 (see
+ * `analysis/verdicts/p5-pairing-verdict.md`). With separate caches this
+ * ablation would report a non-zero delta on a null treatment.
+ *
+ * Sharing is only sound because the retry bypasses the cache when it re-asks.
+ * A cache-first retry would read back the very abstention it is trying to
+ * escape and silently do nothing — which is precisely the defect the retry
+ * shipped with before it was caught, invisible to eight unit tests that all
+ * omitted `answerCache`.
+ */
+export async function runAbstentionRetryAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{
+  report: AblationReport;
+  markdown: string;
+  retryFires: RetryAblationReport['retryFires'];
+}> {
+  const dataset = loadLongMemEval(instances);
+  const mrQuestions = dataset.questions.filter((q) => q.capability === 'MR');
+  const mrDataset = { name: 'longmemeval-mr-retry', questions: mrQuestions };
+
+  const expansionCache = new Map<string, string[]>();
+  // Shared across both arms: keyed by the fully rendered prompt, so arms with
+  // different prompts cannot collide, and a byte-identical prompt is never
+  // re-queried. Without this the arms acquire spurious discordance from the
+  // endpoint's non-reproducibility — see the doc comment above.
+  const answerCache = new Map<string, string>();
+  // Structured calls (temporal-event extraction, KU fact extraction) are a
+  // separate LLM entry point from `complete`, so they need a separate cache to
+  // be shared across the arms.
+  const structuredCache = new Map<string, unknown>();
+
+  // Every decision each arm makes, so the retry can be counted. The counters are
+  // per-arm rather than global because the control's count must be provably 0.
+  const controlTraces: DecisionTrace[] = [];
+  const treatmentTraces: DecisionTrace[] = [];
+
+  const control = new NaturalLanguageMemorySystem('mr-retry-off', {
+    embedding,
+    llm,
+    enableAbstention: true,
+    enableAbstentionRetry: false,
+    queryExpansionCache: expansionCache,
+    answerCache,
+    structuredCache,
+    onDecision: (trace) => controlTraces.push(trace),
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const treatment = new NaturalLanguageMemorySystem('mr-retry-on', {
+    embedding,
+    llm,
+    enableAbstention: true,
+    enableAbstentionRetry: true,
+    queryExpansionCache: expansionCache,
+    answerCache,
+    structuredCache,
+    onDecision: (trace) => treatmentTraces.push(trace),
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(mrDataset, control, treatment, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  const retryFires = {
+    controlFires: countRetryFires(controlTraces),
+    treatmentFires: countRetryFires(treatmentTraces),
+    questions: mrQuestions.length,
+  };
+  return {
+    report,
+    markdown: `${formatAblationReport(report)}${formatRetryFireSection(retryFires)}`,
+    retryFires,
+  };
+}
+
+/** Decisions on which the retry actually re-queried. */
+function countRetryFires(traces: readonly DecisionTrace[]): number {
+  return traces.filter((trace) => trace.retryFired === true).length;
+}
+
+/**
+ * Render the retry fire count as its own section, because it is the diagnostic
+ * that makes a null result interpretable and `formatAblationReport` has no slot
+ * for a counter. A bare `Δ = 0.00 pp` is unreadable on its own: it is the
+ * predicted output of a working feature on a dataset it cannot help, and also
+ * the predicted output of a feature that was never wired in.
+ */
+export function formatRetryFireSection(fires: RetryAblationReport['retryFires']): string {
+  const rate = fires.questions === 0 ? 0 : fires.treatmentFires / fires.questions;
+  const lines = [
+    '',
+    '## Abstention-retry fires',
+    '',
+    '| Arm | Retry fires |',
+    '|---|---|',
+    `| control (\`enableAbstentionRetry: false\`) | ${fires.controlFires} |`,
+    `| treatment (\`enableAbstentionRetry: true\`) | ${fires.treatmentFires} |`,
+    '',
+    `- Treatment fire rate: **${(rate * 100).toFixed(2)}%** of ${fires.questions} MR questions`,
+  ];
+  if (fires.controlFires !== 0) {
+    lines.push(
+      '',
+      `- **INVALID EXPERIMENT**: the control arm fired ${fires.controlFires} times despite ` +
+        '`enableAbstentionRetry: false`. The flag is not reaching the retry, so the two arms ' +
+        'are not the comparison this ablation claims to make.',
+    );
+  } else if (fires.treatmentFires === 0) {
+    lines.push(
+      '',
+      '- **INERT ON THIS DATASET**: the treatment arm never fired. The retry had zero ' +
+        'opportunities, so the Δ accuracy below measures nothing and must not be read as ' +
+        'evidence the feature does not work.',
+    );
+  }
+  lines.push('');
+  return lines.join('\n');
+}

@@ -57,6 +57,18 @@ export type DecisionTrace = {
   answer?: Answer;
   /** Query-expansion phrases used for targeted recall (single-session and MR). */
   expansionQueries?: string[];
+  /**
+   * Whether the bare-abstention retry was ARMED for this call, and whether it
+   * actually FIRED. Recorded because the retry's entire effect lives in the gap
+   * between those two: a run where `retryArmed` is true and `retryFired` is
+   * false everywhere has measured nothing, and a delta of 0.00 pp from it is
+   * indistinguishable from a run where the mechanism was never wired in. The
+   * ablation report aggregates the two counts into a fire rate for exactly this
+   * reason — the fire count is a more sensitive diagnostic than Δaccuracy,
+   * because at small R the accuracy signal is dominated by model-side noise.
+   */
+  retryArmed?: boolean;
+  retryFired?: boolean;
 };
 
 export type NaturalLanguageMemorySystemOptions = {
@@ -925,6 +937,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
 
     const prompt = promptBuilder(question, retrieved, this.options.abstainToken);
     const cache = this.options.answerCache;
+    /** Cache-first call: the default path, and what makes repeats free. */
     const complete = async (p: string): Promise<string> => {
       let text = cache?.get(p);
       if (text === undefined) {
@@ -935,25 +948,54 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       }
       return text;
     };
+    /**
+     * Deliberately cache-BYPASSING call, used only by the abstention retry.
+     *
+     * The retry re-asks the byte-identical prompt, so a cache-first call would
+     * return the very abstention it is trying to escape — the retry would be a
+     * no-op with no error and no test failure, in every configuration that sets
+     * `answerCache`. That is not a corner case: the ablation harness always
+     * shares a cache across paired arms to hold the model constant, so the
+     * cache-first path is the one that runs in production and the
+     * cache-absent path is the one the unit tests exercised.
+     *
+     * Bypassing the cache here is still safe for repeat callers: a successful
+     * retry OVERWRITES the cached abstention (below), so a later byte-identical
+     * question reads the recovered answer rather than re-billing the provider.
+     * A retry that itself abstains writes nothing, so the original entry is
+     * left untouched.
+     */
+    const completeFresh = async (p: string): Promise<string> => {
+      const text = await this.options.llm.complete(p, {
+        temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+      });
+      cache?.set(p, text);
+      return text;
+    };
     let raw = await complete(prompt);
+    const abstainToken = this.options.abstainToken ?? DEFAULT_ABSTAIN_TOKEN;
+    let retryFired = false;
 
     // Contract enforcement on the abstention decision. The prompt forbids a
     // bare token, but a prompt is advisory; this is the mechanistic half of the
     // same rule. The re-ask is byte-identical, so a model that declined for a
     // transient reason gets a chance to commit, and none of the response text
     // changes what is asked.
-    if (
-      abstentionRetry &&
-      detectBareAbstention(raw, this.options.abstainToken ?? DEFAULT_ABSTAIN_TOKEN)
-    ) {
-      const retried = await complete(prompt);
-      if (
-        !isAbstentionValue(retried, this.options.abstainToken) &&
-        parser(retried, this.options.abstainToken) !== null
-      ) {
+    if (abstentionRetry && detectBareAbstention(raw, abstainToken)) {
+      const retried = await completeFresh(prompt);
+      // `retryFired` records the re-ask, not its outcome: an accepted retry and
+      // a retry that abstained again are both evidence the mechanism ran. Only
+      // whether it RAN separates "the feature is inert on this dataset" from
+      // "the feature was never wired in", and those two are indistinguishable
+      // from Δaccuracy alone.
+      retryFired = true;
+      if (!isAbstentionValue(retried, abstainToken) && parser(retried, abstainToken) !== null) {
         raw = retried;
       }
     }
+    // Threaded out of this method so the three `emitTrace` sites below can each
+    // report the same retry state without recomputing it.
+    const retryState = abstentionRetry ? { retryArmed: true, retryFired } : {};
 
     // Second pass (enumeration questions only): audit the ledger's membership
     // and re-ask the SAME prompt with the audit folded in. The first pass's
@@ -983,6 +1025,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
           llmRaw: raw,
           answer: 'unknown',
           expansionQueries,
+          ...retryState,
         });
         return 'unknown';
       }
@@ -991,6 +1034,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         llmRaw: raw,
         answer: null,
         expansionQueries,
+        ...retryState,
       });
       return null;
     }
@@ -999,6 +1043,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       llmRaw: raw,
       answer: parsed,
       expansionQueries,
+      ...retryState,
     });
     return parsed;
   }
@@ -1013,6 +1058,8 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       llmRaw?: string;
       answer?: Answer;
       expansionQueries?: string[];
+      retryArmed?: boolean;
+      retryFired?: boolean;
     },
   ): void {
     this.options.onDecision?.({ question, top1Score, abstained, reason, ...extra });

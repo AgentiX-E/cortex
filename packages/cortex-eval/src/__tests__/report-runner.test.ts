@@ -10,6 +10,8 @@ import {
   runTimeWindowAnnotationAblation,
   runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
+  runAbstentionRetryAblation,
+  formatRetryFireSection,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
@@ -787,6 +789,158 @@ describe('runBitemporalKnowledgeUpdateAblation', () => {
  * because the second arm must reuse the first arm's raw output rather than call
  * the model again.
  */
+describe('runAbstentionRetryAblation', () => {
+  const embedding = new HashEmbedding(64);
+
+  const mrInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'mr-1',
+      question_type: 'multi-session',
+      question: 'How many items of clothing do I need to pick up or return?',
+      answer: '2',
+      haystack_sessions: [
+        [{ role: 'user', content: 'I need to pick up my dry cleaning for the blazer.' }],
+        [{ role: 'user', content: 'I need to return some boots to Zara.' }],
+      ],
+      answer_session_ids: [],
+    },
+  ];
+
+  /**
+   * An LLM that emits a bare abstention on the FIRST aggregation call for a
+   * question and a real answer on the second. This is the minimal model that
+   * makes the retry fire, so the test can tell a wired-in arm from an inert one.
+   */
+  function bareThenAnswerLlm(): LLM & { aggregationCalls: () => number } {
+    let call = 0;
+    return {
+      aggregationCalls: () => call,
+      complete: async (prompt: string) => {
+        if (prompt.includes('Specific activities:')) return 'pick up, return';
+        call++;
+        return call % 2 === 1 ? 'UNANSWERABLE' : 'Answer: 2';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+  }
+
+  it('labels the two arms and isolates MR questions', async () => {
+    const { report, markdown } = await runAbstentionRetryAblation(
+      mrInstances,
+      embedding,
+      bareThenAnswerLlm(),
+    );
+    expect(report.questionCount).toBe(1);
+    expect(report.baseline.name).toBe('mr-retry-off');
+    expect(report.feature.name).toBe('mr-retry-on');
+    expect(markdown).toContain('Abstention-retry fires');
+  });
+
+  it('fires only in the treatment arm, which is what makes the pair valid', async () => {
+    // The single assertion that separates a real experiment from a void one: the
+    // control disables the flag, so its fire count MUST be 0. A non-zero control
+    // count means `enableAbstentionRetry: false` is not reaching the retry and
+    // the two arms are not the comparison the ablation claims to make.
+    const { retryFires } = await runAbstentionRetryAblation(
+      mrInstances,
+      embedding,
+      bareThenAnswerLlm(),
+    );
+    expect(retryFires.controlFires).toBe(0);
+    expect(retryFires.treatmentFires).toBeGreaterThan(0);
+    expect(retryFires.questions).toBe(1);
+  });
+
+  it('reports a zero fire count as inert rather than as a measured zero', async () => {
+    // A model that never abstains gives the retry zero opportunities. The report
+    // must say so: `Δ = 0.00 pp` and `Δ = 0.00 pp with 0 fires` are entirely
+    // different claims, and the ablation table alone renders them identically.
+    const llm: LLM = {
+      complete: async (prompt: string) =>
+        prompt.includes('Specific activities:') ? 'pick up, return' : 'Answer: 2',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { retryFires, markdown } = await runAbstentionRetryAblation(mrInstances, embedding, llm);
+    expect(retryFires.controlFires).toBe(0);
+    expect(retryFires.treatmentFires).toBe(0);
+    expect(markdown).toContain('INERT ON THIS DATASET');
+    expect(markdown).not.toContain('INVALID EXPERIMENT');
+  });
+
+  it('flags a non-zero control fire count as an invalid experiment', async () => {
+    // The report cannot detect this itself — the runner counts what it observes —
+    // so the flagging path is exercised through `formatRetryFireSection`, which
+    // is the function the report renders through.
+    const markdown = formatRetryFireSection({
+      controlFires: 3,
+      treatmentFires: 3,
+      questions: 121,
+    });
+    expect(markdown).toContain('INVALID EXPERIMENT');
+    expect(markdown).not.toContain('INERT ON THIS DATASET');
+  });
+
+  it('renders the treatment fire rate without dividing by zero on an empty dataset', async () => {
+    const markdown = formatRetryFireSection({
+      controlFires: 0,
+      treatmentFires: 0,
+      questions: 0,
+    });
+    expect(markdown).toContain('0.00%');
+  });
+
+  it('forwards temperature through both arms', async () => {
+    const temperatures: number[] = [];
+    const llm: LLM = {
+      complete: async (prompt, opts) => {
+        if (prompt.includes('Specific activities:')) return 'pick up, return';
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return 'Answer: 2';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    await runAbstentionRetryAblation(mrInstances, embedding, llm, { runs: 2, temperature: 0.6 });
+    expect(temperatures.length).toBeGreaterThan(0);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
+  });
+
+  it('shares one cache across the arms so a byte-identical prompt is never re-sent', async () => {
+    // The pairing invariant: the hosted endpoint is not reproducible across
+    // calls even at temperature 0, so arms that re-query a byte-identical prompt
+    // acquire discordance they were not built to measure. Both arms use the
+    // default aggregation prompt, so every prompt they share is byte-identical —
+    // which makes sharing mandatory here, not merely economical.
+    const prompts = new Map<string, number>();
+    const llm: LLM = {
+      complete: async (prompt: string) => {
+        prompts.set(prompt, (prompts.get(prompt) ?? 0) + 1);
+        if (prompt.includes('Specific activities:')) return 'pick up, return';
+        return 'Answer: 2';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    await runAbstentionRetryAblation(mrInstances, embedding, llm);
+    for (const [prompt, seen] of prompts) {
+      expect(seen, `prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
+    }
+    expect(prompts.size).toBeGreaterThan(0);
+  });
+
+  it('does not let the shared cache mask the treatment', async () => {
+    // Sharing is safe only because a fired retry BYPASSES the cache. If it were
+    // cache-first it would read back the abstention it just stored and the
+    // treatment arm would collapse onto the control's verdict — the ablation
+    // would report a clean 0.00 pp from a feature that never ran.
+    const llm = bareThenAnswerLlm();
+    const { retryFires, report } = await runAbstentionRetryAblation(mrInstances, embedding, llm);
+    expect(retryFires.treatmentFires).toBeGreaterThan(0);
+    // And the treatment's recovery must survive to the score: the re-ask parses
+    // to '2', which is the expected answer.
+    expect(report.feature.metrics.accuracy).toBeGreaterThan(0);
+    expect(report.baseline.metrics.accuracy).toBe(0);
+  });
+});
+
 describe('ablation arms share the answer cache', () => {
   const embedding = new HashEmbedding(64);
 

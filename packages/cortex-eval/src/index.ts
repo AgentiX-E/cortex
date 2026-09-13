@@ -58,7 +58,10 @@ export {
   runTimeWindowAnnotationAblation,
   runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
+  runAbstentionRetryAblation,
+  formatRetryFireSection,
   type BenchmarkRunnerOptions,
+  type RetryAblationReport,
 } from './runner.js';
 export { createLongMemEvalMini } from './datasets/longmemeval-mini.js';
 export {

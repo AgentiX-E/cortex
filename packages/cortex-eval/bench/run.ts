@@ -23,6 +23,7 @@ import {
   runTimeWindowAnnotationAblation,
   runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
+  runAbstentionRetryAblation,
   sampleInstances,
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
@@ -304,6 +305,23 @@ async function main(): Promise<void> {
   );
   console.log('=== KU bitemporal ablation ===');
   console.log(kuBitemporalAblation.markdown);
+
+  // Isolate the bare-abstention retry. The only arm whose two systems are
+  // configurationally identical apart from one flag, so its delta is attributable
+  // to the retry itself. Reported alongside the retry fire count, because at
+  // realistic run counts the accuracy signal is dominated by model-side noise and
+  // the fire count is what separates "inert on this data" from "never wired in".
+  const retryAblation = await runAbstentionRetryAblation(sampled as never, embedding, llm, {
+    runs,
+    temperature,
+  });
+  writeFileSync('benchmark-mr-retry-ablation-report.md', retryAblation.markdown);
+  writeFileSync(
+    'benchmark-mr-retry-ablation-report.json',
+    JSON.stringify({ ...retryAblation.report, retryFires: retryAblation.retryFires }, null, 2),
+  );
+  console.log('=== MR abstention-retry ablation ===');
+  console.log(retryAblation.markdown);
 
   // Persist the embedding cache so a later run (which uses the same haystack
   // turns) can restore it and skip the embedding provider. Done after every
