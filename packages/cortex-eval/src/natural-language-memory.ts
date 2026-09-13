@@ -211,6 +211,24 @@ export type NaturalLanguageMemorySystemOptions = {
    * enabled on the graded path until its own ablation is green.
    */
   enableAggregationCritique?: boolean;
+  /**
+   * When true (default), a multi-session answer that comes back as a BARE
+   * abstention gets exactly one re-ask of the byte-identical prompt.
+   *
+   * The defect it targets is measured, not hypothetical: of 968 multi-session
+   * decisions on LongMemEval-S, 35 returned a bare `UNANSWERABLE` with no ledger
+   * and no reasoning, and 10 of the 11 affected questions are flaky — the same
+   * prompt, run again, produces the correct answer. Re-asking cannot lose: it
+   * only fires when the first pass already abstained, and it is accepted only
+   * when the retry parses to a real answer, so an abstention (a guaranteed loss)
+   * is the sole outcome it can replace.
+   *
+   * The retry is bounded at one call. A model that declines twice has made a
+   * stable decision, and looping on it would burn budget without evidence of
+   * recovery. It fires on the bare form only: a reasoned abstention is a verdict
+   * the engine respects, so re-asking it is noise.
+   */
+  enableAbstentionRetry?: boolean;
   /** LLM sampling temperature; default 0 for deterministic evaluation. */
   temperature?: number;
   /** Optional callback for per-question decision tracing (diagnostic). */
@@ -660,6 +678,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       this.options.enableAggregationCritique === true &&
       kind === 'enumeration' &&
       this.options.aggregationPrompt === undefined;
+    // The bare-abstention retry defaults ON, unlike the critique pass: it costs
+    // a call only when the first pass already abstained, which is a guaranteed
+    // loss, so it has no downside to measure and no ablation gate to wait for.
+    // A custom `aggregationPrompt` (the MR ablation) opts out, because that
+    // prompt carries the ablation's own abstention contract and enforcing a
+    // foreign one on top of it would confound the comparison it exists to make.
+    const abstentionRetryEnabled =
+      this.options.enableAbstentionRetry !== false && this.options.aggregationPrompt === undefined;
     return this.respondWith(
       question,
       hits[0]?.score ?? 0,
@@ -674,6 +700,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
             revise: buildRevisedAggregationPrompt,
           }
         : undefined,
+      abstentionRetryEnabled,
     );
   }
 
@@ -875,6 +902,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       /** Fold a critique back into the original prompt for the revision pass. */
       revise: (prompt: string, critique: string) => string;
     },
+    abstentionRetry = false,
   ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
     if (retrieved === '') {
@@ -897,12 +925,34 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
 
     const prompt = promptBuilder(question, retrieved, this.options.abstainToken);
     const cache = this.options.answerCache;
-    let raw = cache?.get(prompt);
-    if (raw === undefined) {
-      raw = await this.options.llm.complete(prompt, {
-        temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
-      });
-      cache?.set(prompt, raw);
+    const complete = async (p: string): Promise<string> => {
+      let text = cache?.get(p);
+      if (text === undefined) {
+        text = await this.options.llm.complete(p, {
+          temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
+        });
+        cache?.set(p, text);
+      }
+      return text;
+    };
+    let raw = await complete(prompt);
+
+    // Contract enforcement on the abstention decision. The prompt forbids a
+    // bare token, but a prompt is advisory; this is the mechanistic half of the
+    // same rule. The re-ask is byte-identical, so a model that declined for a
+    // transient reason gets a chance to commit, and none of the response text
+    // changes what is asked.
+    if (
+      abstentionRetry &&
+      detectBareAbstention(raw, this.options.abstainToken ?? DEFAULT_ABSTAIN_TOKEN)
+    ) {
+      const retried = await complete(prompt);
+      if (
+        !isAbstentionValue(retried, this.options.abstainToken) &&
+        parser(retried, this.options.abstainToken) !== null
+      ) {
+        raw = retried;
+      }
     }
 
     // Second pass (enumeration questions only): audit the ledger's membership
@@ -915,15 +965,8 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       const critique = await critiquePass.critique(raw);
       if (critique !== '') {
         const revisionPrompt = critiquePass.revise(prompt, critique);
-        let revised = cache?.get(revisionPrompt);
-        if (revised === undefined) {
-          revised = await this.options.llm.complete(revisionPrompt, {
-            temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
-          });
-          cache?.set(revisionPrompt, revised);
-        }
+        const revised = await complete(revisionPrompt);
         if (
-          revised !== undefined &&
           !isAbstentionValue(revised, this.options.abstainToken) &&
           parser(revised, this.options.abstainToken) !== null
         ) {
@@ -1530,6 +1573,17 @@ export function buildTemporalEventExtractionPrompt(
  * questions whose answer must be DERIVED (an average, percentage, sum,
  * difference, or elapsed time) or combined across sessions, so the prompt names
  * those cases and forbids treating them as an abstention.
+ *
+ * A second, distinct abstention defect was measured afterwards: across 968 MR
+ * decisions the model returned a BARE `UNANSWERABLE` 35 times — the entire
+ * response, under 40 characters, with no `Step 1` list and no `Step 2`
+ * reasoning. Those are not verdicts, they are skips: the model never wrote down
+ * what it read. A prohibition phrased as a CONDITION ("only if there is no
+ * relevant information") cannot catch them, because the model believes it
+ * satisfies the condition at the moment it gives up. The clause below therefore
+ * constrains the ORDER of the work instead: no token until the list is written.
+ * `detectBareAbstention` and the bounded retry in `respondWith` enforce the same
+ * contract from the outside, since the prompt alone is advisory.
  */
 export function buildAggregationQaPrompt(
   question: string,
@@ -1560,6 +1614,8 @@ export function buildAggregationQaPrompt(
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     'Combining facts across several sessions is NOT a reason to abstain.',
     'If the answer can be computed from facts already in the context — a sum, a difference, an average, a percentage, an elapsed time, or a date read from the context — compute it. Needing to derive the answer is NOT a reason to abstain.',
+    `Do NOT write "${abstainToken}" without first writing your Step 1 list. Confirm that you completed Step 1 by listing each candidate item you considered, including the ones you decided to exclude and why.`,
+    `A bare "${abstainToken}" with no Step 1 list is not a valid response.`,
     '',
     'Context:',
     context,
@@ -2254,6 +2310,31 @@ function isAbstentionValue(s: string, abstainToken: string | undefined): boolean
     return false;
   }
   return stripWrappingQuotes(s).toUpperCase() === abstainToken.toUpperCase();
+}
+
+/**
+ * True when a response is a BARE abstention: the abstention token and nothing
+ * else, meaning the model skipped the work rather than performed it.
+ *
+ * Measured on LongMemEval-S, 35 of 968 multi-session decisions are exactly this
+ * — the token alone, 12 characters, no `Step 1` list and no `Step 2` reasoning.
+ * They are a distinct defect from a reasoned abstention: the reasoned form is a
+ * verdict the retry must respect, while the bare form is a contract violation
+ * the retry exists to repair.
+ *
+ * The membership test is exact, because `isAbstentionValue` is the pipeline's
+ * own definition of an abstention. A longer response is not an abstention at
+ * parsing time either — it fails `isAbstentionValue` and reaches the regular
+ * answer parser — so it cannot be a "bare abstention" in any meaningful sense.
+ * The census confirms the classification is total and leaves no grey zone: all
+ * 35 bare abstentions were 12 characters, and all 27 reasoned ones were at least
+ * 360 characters and opened with a `Step 1` ledger.
+ *
+ * An empty string is never bare: it does not match the token, so it is an output
+ * failure handled by the ordinary parse-failure path, not an abstention.
+ */
+export function detectBareAbstention(raw: string, abstainToken: string): boolean {
+  return isAbstentionValue(raw.trim(), abstainToken);
 }
 
 /** Return the last non-empty line, or '' when it looks like an evidence bullet. */

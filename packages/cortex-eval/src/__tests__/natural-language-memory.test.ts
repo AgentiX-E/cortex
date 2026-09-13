@@ -9,6 +9,7 @@ import {
   buildTemporalEventExtractionPrompt,
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
+  detectBareAbstention,
   buildDerivationQaPrompt,
   classifyAggregationKind,
   buildPreferencePrompt,
@@ -484,6 +485,80 @@ describe('buildAggregationQaPrompt', () => {
   });
 });
 
+describe('detectBareAbstention', () => {
+  const TOKEN = 'UNANSWERABLE';
+
+  it('flags a lone abstention token', () => {
+    expect(detectBareAbstention('UNANSWERABLE', TOKEN)).toBe(true);
+  });
+
+  it('flags a token wrapped in quotes or padded with surrounding whitespace', () => {
+    expect(detectBareAbstention('"UNANSWERABLE"', TOKEN)).toBe(true);
+    expect(detectBareAbstention('  UNANSWERABLE\n', TOKEN)).toBe(true);
+    expect(detectBareAbstention('unanswerable', TOKEN)).toBe(true);
+  });
+
+  it('clears a token wrapped in a sentence, because the parser does not treat that as an abstention', () => {
+    // The membership test is deliberately exact — it delegates to
+    // `isAbstentionValue`, the same predicate the answer parser uses. A response
+    // that merely CONTAINS the token is not an abstention anywhere in the
+    // pipeline: `parseAggregationAnswer` would return the surrounding text as an
+    // answer, so re-asking it as a "bare abstention" would be re-asking a
+    // question that was already answered.
+    expect(detectBareAbstention('The evidence is UNANSWERABLE here.', TOKEN)).toBe(false);
+    expect(detectBareAbstention('UNANSWERABLE\nActually, 3.', TOKEN)).toBe(false);
+  });
+
+  it('clears a token carrying trailing punctuation, which the parser does not match either', () => {
+    // `stripWrappingQuotes` removes quotes, not a full stop, so
+    // `isAbstentionValue('UNANSWERABLE.')` is false and the response is not an
+    // abstention anywhere in the pipeline. Classifying it as bare here would
+    // make the helper disagree with the parser that consumes its verdict.
+    expect(detectBareAbstention('UNANSWERABLE.', TOKEN)).toBe(false);
+  });
+
+  it('clears an abstention that follows a Step 1 ledger', () => {
+    // This is the distinction the retry turns on: a model that wrote its
+    // ledger did the work and reached a verdict, so re-asking it is noise.
+    const reasoned = [
+      'Step 1 — Enumerate every item matching the requested action:',
+      '  - marathon | ran | 2023/04/02',
+      'Step 2 — No item matches the exact action.',
+      'UNANSWERABLE',
+    ].join('\n');
+    expect(detectBareAbstention(reasoned, TOKEN)).toBe(false);
+  });
+
+  it('clears a long prose abstention even without a Step heading', () => {
+    // The long form is still a verdict: the model explained which candidate
+    // items it considered and why none qualifies. Only the silent skip is the
+    // defect, so length alone must be enough to clear a response.
+    const prose = [
+      'The context mentions several runs, but none of them is dated to the week',
+      'the question asks about, and the two candidate sessions disagree on the',
+      'distance, so no reliable count can be established from the evidence.',
+      'UNANSWERABLE',
+    ].join('\n');
+    expect(prose.length).toBeGreaterThan(40);
+    expect(detectBareAbstention(prose, TOKEN)).toBe(false);
+  });
+
+  it('clears a normal answer', () => {
+    expect(detectBareAbstention('Answer: 3', TOKEN)).toBe(false);
+  });
+
+  it('clears an empty response, which is not an abstention at all', () => {
+    // An empty string never matched the token, so `isAbstentionValue` is false
+    // upstream and the parse failure is handled by the existing path.
+    expect(detectBareAbstention('', TOKEN)).toBe(false);
+  });
+
+  it('honours a custom abstention token', () => {
+    expect(detectBareAbstention('NONE', 'NONE')).toBe(true);
+    expect(detectBareAbstention('UNANSWERABLE', 'NONE')).toBe(false);
+  });
+});
+
 describe('MR aggregation abstention boundary', () => {
   // Root-caused on LongMemEval-S: 53% of wrong MR answers are LLM abstentions,
   // and 15 of those 20 have every evidence session already retrieved. The model
@@ -512,6 +587,30 @@ describe('MR aggregation abstention boundary', () => {
     expect(prompt).toContain(
       'Respond with exactly "UNANSWERABLE" ONLY if the context contains no relevant information at all.',
     );
+  });
+
+  it('requires the Step 1 enumeration before an abstention is allowed', () => {
+    // Measured on LongMemEval-S: across 968 MR decisions the model returned a
+    // BARE `UNANSWERABLE` 35 times — the whole response, under 40 characters,
+    // with no Step 1 ledger and no Step 2 reasoning. In those runs it never
+    // wrote down what it had read, so the abstention is a skip, not a verdict.
+    // The prohibition has to be on the ORDER of the work, which the three soft
+    // clauses above do not express: "ONLY if there is no relevant information"
+    // is a condition the model believes it satisfies the moment it gives up.
+    const prompt = buildAggregationQaPrompt('How many X?', 'ctx');
+    expect(prompt).toContain('Do NOT write');
+    expect(prompt).toContain('Step 1');
+    expect(prompt).toContain('Confirm that you completed Step 1');
+  });
+
+  it('scopes the enumeration-first rule to the aggregation prompt', () => {
+    const rule = 'Confirm that you completed Step 1';
+    expect(buildQaPrompt('Q?', 'ctx')).not.toContain(rule);
+    expect(buildTemporalQaPrompt('Q?', 'ctx')).not.toContain(rule);
+    expect(buildPreferencePrompt('Q?', 'ctx')).not.toContain(rule);
+    // The legacy prompt is the MR ablation control: hardening it would
+    // confound the ablation that measures the CoT prompt's contribution.
+    expect(buildLegacyAggregationQaPrompt('Q?', 'ctx')).not.toContain(rule);
   });
 
   it('keeps the boundary scoped to the aggregation prompt', () => {
@@ -3376,6 +3475,154 @@ describe('NaturalLanguageMemorySystem', () => {
           EVIDENCE,
         ),
       ).toBe('2');
+    });
+  });
+
+  /**
+   * The retry is a contract-enforcement pass, not a second opinion. Measured on
+   * LongMemEval-S, the model sometimes answers a bare `UNANSWERABLE` without
+   * ever writing its Step 1 ledger — it declines to read rather than reading and
+   * failing. Re-asking the SAME prompt is what a human supervisor would do, and
+   * it is safe here because the retry can only replace an abstention (a
+   * guaranteed loss) with a parsed answer.
+   */
+  describe('bare-abstention retry', () => {
+    const EVIDENCE = [
+      ['I need to pick up my dry cleaning for the navy blue blazer.'],
+      ['I need to return some boots to Zara.'],
+    ];
+    const QUESTION = 'How many items of clothing do I need to pick up or return?';
+
+    /**
+     * Scripted LLM whose aggregation answers are drawn from a queue: the first
+     * response is returned to the first aggregation call, the second to the
+     * next, and the last entry is sticky so an unexpected extra call cannot
+     * silently change the assertion.
+     */
+    function queueSystem(responses: string[], overrides: Record<string, unknown> = {}) {
+      const prompts: string[] = [];
+      let call = 0;
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) return 'pick up, return';
+          const reply = responses[Math.min(call, responses.length - 1)]!;
+          call++;
+          return reply;
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      return {
+        prompts,
+        calls: () => call,
+        system: new NaturalLanguageMemorySystem('s', {
+          embedding,
+          llm,
+          ...overrides,
+        } as ConstructorParameters<typeof NaturalLanguageMemorySystem>[1]),
+      };
+    }
+
+    it('re-asks the same prompt once when the first pass is a bare abstention', async () => {
+      const { prompts, calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2']);
+      const answer = await s.answerSessions(QUESTION, EVIDENCE);
+      expect(answer).toBe('2');
+      // Exactly one re-ask: the token response is a bare skip, not a verdict.
+      expect(calls()).toBe(2);
+      // The re-ask is byte-identical to the first aggregation prompt. Changing
+      // its wording would make the pass a different question and reintroduce
+      // the very gap being measured.
+      const aggregationPrompts = prompts.filter((p) => p.includes('Step 1 — Enumerate'));
+      expect(aggregationPrompts).toHaveLength(2);
+      expect(aggregationPrompts[0]).toBe(aggregationPrompts[1]);
+    });
+
+    it('does not re-ask when the first pass already answered', async () => {
+      const { calls, system: s } = queueSystem(['Answer: 2', 'Answer: 9']);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBe('2');
+      expect(calls()).toBe(1);
+    });
+
+    it('does not re-ask when the model recorded a Step 1 ledger before abstaining', async () => {
+      const ledgerAbstention = [
+        'Step 1 — Enumerate every item matching the requested action:',
+        '  - navy blue blazer | pick up | 2023/04/02',
+        'Step 2 — No item matches the exact action.',
+        'UNANSWERABLE',
+      ].join('\n');
+      const { calls, system: s } = queueSystem([ledgerAbstention, 'Answer: 2']);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      // The model did the work and reached a verdict; re-asking it would cost a
+      // call without changing the outcome.
+      expect(calls()).toBe(1);
+    });
+
+    it('does not re-ask when a long prose abstention explains the decision', async () => {
+      // The measured distribution is bimodal and leaves no grey zone: every one
+      // of the 35 bare abstentions across 968 decisions was exactly 12 characters
+      // (the token alone), and every one of the 27 reasoned abstentions was at
+      // least 360 characters and opened with a Step 1 ledger. This case pins the
+      // reasoned end at its most adversarial: a response that OPENS with the
+      // token yet continues with prose must still not be re-asked, because the
+      // parser reads it as an answer, not an abstention.
+      const proseAbstention = [
+        'UNANSWERABLE — the context mentions a blazer and a pair of boots, but',
+        'neither session states that the pick-up or the return is still',
+        'outstanding, and the two candidate sessions disagree on the store, so',
+        'no count can be established from the evidence given.',
+      ].join('\n');
+      expect(proseAbstention.length).toBeGreaterThan(40);
+      expect(detectBareAbstention(proseAbstention, 'UNANSWERABLE')).toBe(false);
+      const { calls, system: s } = queueSystem([proseAbstention, 'Answer: 2']);
+      await s.answerSessions(QUESTION, EVIDENCE);
+      expect(calls()).toBe(1);
+    });
+
+    it('keeps the abstention when the retry abstains too', async () => {
+      const { calls, system: s } = queueSystem(['UNANSWERABLE', 'UNANSWERABLE']);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      // The retry is bounded at one: it must not loop on a model that keeps
+      // declining.
+      expect(calls()).toBe(2);
+    });
+
+    it('does not adopt an unparseable retry, and reports the original abstention', async () => {
+      // The retry is triggered by a bare abstention (a legitimate reason to
+      // re-ask), but the RE-ASK itself comes back unparseable — a bullet-only
+      // list, which `parseAggregationAnswer` rejects because its last line is an
+      // evidence bullet rather than an answer.
+      //
+      // Why the assertion is on the trace rather than on the return value: with
+      // an unparseable retry BOTH the guarded and the unguarded code abstain —
+      // the guarded version keeps the token, the unguarded one adopts a bullet
+      // reply the parser also rejects. The return value is blind to the guard,
+      // so asserting only on it would be vacuous. The trace's `llmRaw` is where
+      // the difference shows: only the guarded path still reports the model's
+      // original abstention verbatim.
+      const traces: { llmRaw?: string; abstained: boolean; reason: string }[] = [];
+      const { calls, system: s } = queueSystem(
+        ['UNANSWERABLE', '- blazer | pick up | 2023/04/02'],
+        {
+          onDecision: (t: { llmRaw?: string; abstained: boolean; reason: string }) =>
+            traces.push(t),
+        },
+      );
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      // Exactly one re-ask: the retry is bounded and does not recurse on a
+      // second failure.
+      expect(calls()).toBe(2);
+      expect(traces).toHaveLength(1);
+      expect(traces[0]!.llmRaw).toBe('UNANSWERABLE');
+      expect(traces[0]!.abstained).toBe(true);
+      expect(traces[0]!.reason).toBe('llm');
+    });
+
+    it('can be disabled, which restores the single-pass behaviour', async () => {
+      const { calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2'], {
+        enableAbstentionRetry: false,
+      });
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      expect(calls()).toBe(1);
     });
   });
 });
