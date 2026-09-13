@@ -724,11 +724,25 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         ? buildDerivationQueryExpansionPrompt
         : buildMultiSessionQueryExpansionPrompt;
     const expansionQueries = await this.expandQuestion(question, expansionPrompt);
+    // The LLM expansion restates the question's own vocabulary, so a question
+    // phrased with one word for a relation ("siblings") yields phrases that all
+    // reuse that word — and a corpus that says "sisters"/"brother" is then
+    // unreachable through every channel at once. Appending deterministic lexical
+    // variants widens the query set to the wording the evidence actually uses.
+    // This sits before BOTH the expansion channel and turn recall, since turn
+    // recall queries with `[question, ...expansionQueries]` and would otherwise
+    // inherit the same blind spot.
+    const lexicalVariants = expandLexicalVariants(question);
+    // The query list is the union of both sources rather than "LLM phrases plus
+    // variants only if the LLM produced some": a question whose expansion came
+    // back empty still deserves the lexical bridge, and with no variants at all
+    // the list stays empty so the pre-existing no-expansion path is unchanged.
+    const expansionQueriesAll = [...expansionQueries, ...lexicalVariants];
     const expandedHits =
-      expansionQueries.length > 0
+      expansionQueriesAll.length > 0
         ? await retrieveByQueries(
             this.options.embedding,
-            expansionQueries,
+            expansionQueriesAll,
             sessions,
             this.options.queryExpansionTopKPerQuery ?? DEFAULT_QUERY_EXPANSION_TOP_K,
           )
@@ -755,7 +769,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     if (turnRecall > 0) {
       const turnHits = await retrieveSessionsByTurns(
         this.options.embedding,
-        [question, ...expansionQueries],
+        // Turn recall gets the same widened vocabulary as the expansion channel.
+        // It queries with the question plus its expansions, so without the
+        // variants it would reproduce the exact blind spot the variants exist to
+        // close — and it is the only channel that can reach a session whose
+        // single evidence turn is diluted in its centroid.
+        [question, ...expansionQueriesAll],
         sessions,
         this.options.turnRecallTurnsPerQuery ?? DEFAULT_TURN_RECALL_TURNS_PER_QUERY,
         turnRecall,
@@ -1975,6 +1994,79 @@ export function parseQueryExpansion(raw: string): string[] {
     .split(/[,;\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+/**
+ * Lexical variants for the content nouns whose evidence wording differs from the
+ * question's wording.
+ *
+ * Why this exists. The LLM expansion restates the QUESTION's vocabulary: asked
+ * for the "total number of siblings", it returns `sibling count`, `count
+ * siblings`, `list siblings`. If the evidence never uses that word, every
+ * retrieval channel shares the same blind spot — the bare-question centroid, the
+ * expansion phrases, and turn recall (whose queries are `[question,
+ * ...expansionQueries]`). Widening the query with the terms the evidence
+ * actually uses is then the only way to reach it, since no amount of re-ranking
+ * can surface a session that scores ~0 against every query.
+ *
+ * Design constraints, each of which rules out an alternative:
+ *   - DETERMINISTIC. The embedding endpoint is not reproducible across calls, and
+ *     retrieval is the one stage that must stay stable; a second sampling LLM
+ *     call would add variance exactly where a boundary tie already decides the
+ *     outcome. A fixed table keeps this a pure function.
+ *   - OFFLINE. No API call, so it costs nothing per question and is fully
+ *     unit-testable.
+ *   - BOUNDED. It only extends the query list, which the caller already caps via
+ *     `queryExpansionTopKPerQuery`, so injected context cannot grow unboundedly.
+ */
+const LEXICAL_VARIANTS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
+  // Relational nouns: the question names the relation, the evidence names the
+  // relatives. Word-bounded so "brotherly"/"siblinghood" do not match. Each entry
+  // also matches the MEMBERS, because a question can name one relative ("how many
+  // sisters") and still need the others to complete the count — matching only the
+  // collective noun would leave that case with no variants at all.
+  [/\bsiblings?\b|\bsisters?\b|\bbrothers?\b/i, ['sister', 'brother']],
+  [
+    /\bparents?\b|\bmothers?\b|\bfathers?\b|\bmoms?\b|\bdads?\b/i,
+    ['mother', 'father', 'mom', 'dad'],
+  ],
+  [
+    /\bgrandparents?\b|\bgrandmothers?\b|\bgrandfathers?\b|\bgrandmas?\b|\bgrandpas?\b/i,
+    ['grandmother', 'grandfather', 'grandma', 'grandpa'],
+  ],
+  [/\bspouses?\b|\bhusbands?\b|\bwives\b|\bwife\b/i, ['husband', 'wife']],
+  [/\bchildren\b|\bkids?\b|\bsons?\b|\bdaughters?\b/i, ['son', 'daughter']],
+];
+
+/**
+ * Widen a question with the terms the evidence is likely to use for its content
+ * nouns. Returns a deterministic list, excluding variants already present in the
+ * question (so a question that says "sisters" is not padded with "sister"), and
+ * an empty list when nothing applies — which keeps the caller's query set
+ * byte-identical to before for the vast majority of questions.
+ */
+export function expandLexicalVariants(question: string): string[] {
+  const variants: string[] = [];
+  const seen = new Set<string>();
+  for (const [pattern, terms] of LEXICAL_VARIANTS) {
+    if (!pattern.test(question)) {
+      continue;
+    }
+    for (const term of terms) {
+      // Skip a term the question already contains, so the caller gains reach
+      // rather than a duplicate of a query it already issued. The check is
+      // anchored to the term's own singular/plural forms: matching a bare prefix
+      // would let "brother" suppress itself in questions that merely start with
+      // it, and matching loosely would let "sister" suppress "sisters".
+      const alreadyPresent = new RegExp(`\\b${term}(?:s|es)?\\b`, 'i').test(question);
+      if (alreadyPresent || seen.has(term)) {
+        continue;
+      }
+      seen.add(term);
+      variants.push(term);
+    }
+  }
+  return variants;
 }
 
 /**

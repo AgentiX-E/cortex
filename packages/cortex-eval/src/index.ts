@@ -131,6 +131,7 @@ export {
   buildMultiSessionQueryExpansionPrompt,
   buildDerivationQueryExpansionPrompt,
   parseQueryExpansion,
+  expandLexicalVariants,
   truncateText,
   truncateSession,
   parseQaAnswer,

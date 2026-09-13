@@ -18,6 +18,7 @@ import {
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
   buildDerivationQueryExpansionPrompt,
+  expandLexicalVariants,
   formatStructuredContext,
   parseQueryExpansion,
   truncateText,
@@ -973,6 +974,80 @@ describe('buildMultiSessionQueryExpansionPrompt', () => {
     expect(prompt).toContain('Specific activities:');
     expect(prompt).toContain('action');
     expect(prompt).toContain('bare object nouns');
+  });
+});
+
+// The expansion the LLM returns restates the QUESTION's vocabulary, so a
+// relational question ("number of siblings") produces phrases containing
+// "sibling" while the evidence says "sister"/"brother". Every retrieval channel
+// then shares the same blind spot and the evidence is unreachable regardless of
+// budget. These tests pin the deterministic vocabulary bridge that closes it.
+describe('expandLexicalVariants', () => {
+  it('maps a relational noun to the terms the evidence actually uses', () => {
+    const variants = expandLexicalVariants('What is the total number of siblings I have?');
+    expect(variants).toContain('sister');
+    expect(variants).toContain('brother');
+  });
+
+  it('matches the surface form regardless of case and plurality', () => {
+    const singular = expandLexicalVariants('Do I have a sibling?');
+    const plural = expandLexicalVariants('How many SIBLINGS do I have?');
+    expect(singular).toContain('sister');
+    expect(plural).toContain('sister');
+  });
+
+  it('is deterministic: repeated calls return the same list in the same order', () => {
+    const question = 'What is the total number of siblings I have?';
+    expect(expandLexicalVariants(question)).toEqual(expandLexicalVariants(question));
+  });
+
+  it('does not duplicate a variant already named in the question', () => {
+    // "sisters" is already the question's own word, so it must not be emitted as
+    // a variant; only the unseen siblings of the relation are added.
+    const variants = expandLexicalVariants('How many sisters do I have?');
+    expect(variants).not.toContain('sisters');
+    expect(variants).not.toContain('sister');
+    expect(variants).toContain('brother');
+  });
+
+  it('returns an empty list for a question with no mapped content noun', () => {
+    expect(expandLexicalVariants('What is the capital of France?')).toEqual([]);
+  });
+
+  it('does not match a term inside an unrelated longer word', () => {
+    // Guard against substring matching: "siblinghood" is not the mapped noun and
+    // "brotherly" must not trigger the "brother" relation by accident.
+    expect(expandLexicalVariants('What is brotherly love?')).toEqual([]);
+    expect(expandLexicalVariants('Discuss siblinghood as a concept.')).toEqual([]);
+  });
+
+  it('covers each mapped relation so a missing entry cannot silently disable it', () => {
+    // One fixture per table row: a relation that loses its entry stops being
+    // bridged, and the failure would otherwise only show as a recall regression
+    // on a benchmark run rather than as a test failure.
+    const fixtures: Array<[string, string[]]> = [
+      ['How many siblings do I have?', ['sister', 'brother']],
+      ['How many parents do I have?', ['mother', 'father', 'mom', 'dad']],
+      ['How many grandparents do I have?', ['grandmother', 'grandfather', 'grandma', 'grandpa']],
+      ['How many spouses have I had?', ['husband', 'wife']],
+      ['How many children do I have?', ['son', 'daughter']],
+    ];
+    for (const [question, expected] of fixtures) {
+      expect(expandLexicalVariants(question)).toEqual(expected);
+    }
+  });
+
+  it('matches a single member of a relation, not only the collective noun', () => {
+    // A question naming one relative still needs the others for a count, so the
+    // table entry must trigger on the members too.
+    expect(expandLexicalVariants('How many sisters do I have?')).toContain('brother');
+    expect(expandLexicalVariants('Do I have a wife?')).toContain('husband');
+    expect(expandLexicalVariants('How many daughters?')).toContain('son');
+  });
+
+  it('de-duplicates a variant across overlapping relations', () => {
+    const variants = expandLexicalVariants('How many parents and spouses do I have?');
+    expect(new Set(variants).size).toBe(variants.length);
   });
 });
 
@@ -2469,6 +2544,102 @@ describe('NaturalLanguageMemorySystem', () => {
       // The multi-session path uses activity-level (action + object) expansion,
       // not the bare-object expansion used by single-session questions.
       expect(prompts.some((p) => p.includes('Specific activities:'))).toBe(true);
+    });
+
+    // The retrieval bug these cover: the question says "siblings" and the LLM
+    // expansion repeats that word, but the evidence says "sisters"/"brother". No
+    // channel can reach it, because every query shares the question's vocabulary.
+    //
+    // The geometry below is what makes the test discriminating. `HashEmbedding`
+    // has no lexical meaning, and with few candidate sessions a `topK` of 10
+    // retrieves everything no matter what the query is — a hash-backed version of
+    // this test passes with the fix removed. So the vocabulary is placed at
+    // explicit angles AND enough distractors are supplied that every channel cap
+    // actually binds:
+    //   - 14 distractors aligned with the question's word fill the centroid cap
+    //     (topK=10) and, via the expansion phrases, the expansion cap too;
+    //   - the evidence sessions are aligned ONLY with the variant words.
+    // The gold is then unreachable unless the widened vocabulary really reaches
+    // the channels. Distractor count is load-bearing: with fewer than `topK` the
+    // cap does not bind and the test stops discriminating.
+    it('widens retrieval with lexical variants when the evidence uses other wording', async () => {
+      clearEmbeddingCache();
+      const traces: DecisionTrace[] = [];
+      const QUESTION = 'What is the total number of siblings I have?';
+      const DIM = 4;
+      // Axis 0 = the question's own word ("siblings"); axes 1/2 = the variants.
+      const table: Record<string, number[]> = {
+        [QUESTION]: [1, 0, 0, 0],
+        sister: [0, 1, 0, 0],
+        brother: [0, 0, 1, 0],
+      };
+      const sessions: string[][] = [];
+      for (let i = 0; i < 14; i++) {
+        const text = `distractor ${i} about siblings`;
+        table[text] = [1, 0, 0, 0];
+        sessions.push([text]);
+      }
+      const sistersSession = 'I come from a family with 3 sisters.';
+      const brotherSession = 'I should mention that I have a brother.';
+      table[sistersSession] = [0, 1, 0, 0];
+      table[brotherSession] = [0, 0, 1, 0];
+      sessions.push([sistersSession], [brotherSession]);
+
+      const llm: LLM = {
+        complete: async (prompt) => {
+          if (prompt.includes('Specific activities:')) {
+            // Reproduces the real failure: the expansion restates the question's
+            // own word and never names the variants.
+            return 'sibling count, count siblings, list siblings';
+          }
+          return 'Answer: 4';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding: tableEmbedding(table, DIM),
+        llm,
+        onDecision: (t) => traces.push(t),
+      });
+      await system.answerSessions(QUESTION, sessions);
+
+      // The retrieved context is the observable proof that the widened vocabulary
+      // reached the search: every cap is saturated by distractor sessions that are
+      // orthogonal to the evidence, so these can only appear if a variant query
+      // matched them.
+      const retrieved = traces[0]!.retrieved;
+      expect(retrieved).toContain(sistersSession);
+      expect(retrieved).toContain(brotherSession);
+    });
+
+    it('leaves retrieval unchanged when the question has no mapped relation', async () => {
+      clearEmbeddingCache();
+      const traces: DecisionTrace[] = [];
+      const queries: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          if (prompt.includes('Specific activities:')) {
+            queries.push(prompt);
+            return 'led project';
+          }
+          return 'Answer: 2';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding: new HashEmbedding(64),
+        llm,
+        onDecision: (t) => traces.push(t),
+      });
+      // "projects" has no entry in the variant table, so this question must take
+      // exactly the pre-existing path: the widening is targeted at relations the
+      // corpus words differently, not a blanket inflation of every query set.
+      expect(expandLexicalVariants('How many projects have I led?')).toEqual([]);
+      await system.answerSessions('How many projects have I led?', [
+        ['I led a consumer research project.'],
+      ]);
+      expect(traces).toHaveLength(1);
+      expect(traces[0]!.reason).toBe('answered');
     });
 
     it('caps the total injected aggregation evidence to a budget', async () => {
