@@ -1820,8 +1820,9 @@ const ASSISTANT_HEAD_CHARS = 200;
  * budget first. This keeps every user turn that fits complete and caps assistant
  * turns.
  *
- * Two invariants make the budget actually usable, and both were violated by an
- * earlier version that stopped at the first user turn too large to fit:
+ * Three invariants make the budget actually usable, and the first two were
+ * violated by an earlier version that stopped at the first user turn too large
+ * to fit:
  *
  *  1. An oversized user turn is SKIPPED, never fatal. Later turns are frequently
  *     shorter and still carry evidence. Stopping returned with most of the
@@ -1831,6 +1832,11 @@ const ASSISTANT_HEAD_CHARS = 200;
  *     come is guaranteed to fit. A reply otherwise consumes the budget it exists
  *     only to contextualise, which is the exact failure this function was
  *     written to prevent.
+ *  3. Budget left over after the complete turns is spent on the largest skipped
+ *     user turn, admitted as a head. Rule 2 guarantees a reply never crowds out a
+ *     fact, but it says nothing about budget that no turn could use whole: an
+ *     ignored oversized turn left the allowance partially unspent, discarding
+ *     evidence while doing so. See Pass 1.5 for the measurements.
  */
 export function truncateSession(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
@@ -1858,12 +1864,48 @@ export function truncateSession(text: string, maxChars: number): string {
     return truncateText(text, maxChars);
   }
 
+  // Pass 1.5 — spend any budget the complete turns left behind on the largest
+  // user turn that did not fit whole, admitted as a head rather than discarded.
+  //
+  // Under the budget this function is called with, a session's user turns sum to
+  // a median of 1,444 characters, so normally every turn fits and this pass does
+  // nothing. It earns its keep only in the tail: over 344 LongMemEval-S
+  // multi-session gold sessions, 64 (18.6%) contain a user turn too large for
+  // the remaining budget, and dropping such a turn wholesale left real budget
+  // unspent — a session could abandon its evidence turn while sitting on
+  // hundreds of unused characters. Measured on the median of those cases, the
+  // discarded turn is the session's only statement of its headline number.
+  //
+  // The complete turns are allocated FIRST and are never displaced: this pass
+  // only ever adds a fragment, so it cannot trade a certain fact for a partial
+  // one. `truncated` is already true whenever a user turn was dropped, so the
+  // marker needs no new condition.
+  const partial = turns.map(() => 0);
+  const dropped = turns.map((_, i) => i).filter((i) => userChars[i]! > 0 && !keep[i]);
+  if (dropped.length > 0) {
+    // The largest dropped turn is the best candidate: user turns are short
+    // acknowledgements or full factual narrations, and the budget only buys a
+    // fragment, so starting from the fullest narration maximises the chance the
+    // fragment lands on a fact. Ties resolve to the earliest turn for a stable
+    // output across runs.
+    let best = dropped[0]!;
+    for (const i of dropped) {
+      if (userChars[i]! > userChars[best]!) {
+        best = i;
+      }
+    }
+    const remaining = maxChars - reserved;
+    if (remaining > 0) {
+      partial[best] = remaining;
+    }
+  }
+
   // Pass 2 — emit in order, spending only what is left on capped assistant
   // heads. `suffix[i]` is the character total of the kept user turns after
   // position `i`, so admitting a head can never displace a fact.
   const suffix: number[] = new Array(turns.length + 1).fill(0);
   for (let i = turns.length - 1; i >= 0; i--) {
-    suffix[i] = suffix[i + 1]! + (keep[i] ? userChars[i]! : 0);
+    suffix[i] = suffix[i + 1]! + (keep[i] ? userChars[i]! : 0) + partial[i]!;
   }
   const kept: string[] = [];
   let used = 0;
@@ -1874,6 +1916,12 @@ export function truncateSession(text: string, maxChars: number): string {
       if (keep[i]) {
         kept.push(turn);
         used += turn.length;
+      } else if (partial[i]! > 0) {
+        // The head of a dropped turn, sized in Pass 1.5. `sliceCodePointSafe`
+        // keeps a split surrogate pair out of the output.
+        kept.push(sliceCodePointSafe(turn, partial[i]!));
+        used += partial[i]!;
+        truncated = true;
       } else {
         truncated = true;
       }

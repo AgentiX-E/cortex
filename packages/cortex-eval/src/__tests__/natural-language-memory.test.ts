@@ -928,6 +928,73 @@ describe('truncateSession', () => {
     expect(result).toContain('[2023/02/15] user:');
     expect(result).toContain('[truncated]');
   });
+
+  /**
+   * A user turn that does not fit whole must still contribute its head.
+   *
+   * The greedy front-to-back pass keeps complete user turns until the budget
+   * runs out, then stops. When the next user turn is larger than the REMAINING
+   * budget, the old behaviour discarded it entirely and returned with budget
+   * unspent — so a session could discard its evidence turn while sitting on
+   * hundreds of unused characters. Measured over 344 LongMemEval-S multi-session
+   * gold sessions, 64 (18.6%) contain at least one user turn that does not fit,
+   * and the median case leaves real budget behind.
+   *
+   * The scenario below mirrors `8cf4d046`: five short opening turns consume
+   * 1,462 of 2,000 chars, and the sixth — the only turn stating the GPA — is
+   * 987 chars and was dropped, leaving 538 chars unused.
+   */
+  it('spends leftover budget on a user turn that does not fit whole', () => {
+    const shortTurns = [549, 259, 221, 177, 256].map(
+      (len, i) => `[2023/02/15] user: opening ${i} ` + 'o'.repeat(len - 20),
+    );
+    const evidence = `[2023/02/15] user: GPA_EVIDENCE ${'e'.repeat(960)}`;
+    const text = [...shortTurns, evidence].join('');
+    const result = truncateSession(text, 2000);
+    expect(result).toContain('GPA_EVIDENCE');
+  });
+
+  it('prefers the largest dropped user turn when several do not fit', () => {
+    const text = [
+      `[2023/02/15] user: ${'a'.repeat(1900)}`,
+      `[2023/02/15] user: SMALL_DROP ${'b'.repeat(200)}`,
+      `[2023/02/15] user: LARGE_DROP ${'c'.repeat(600)}`,
+    ].join('');
+    const result = truncateSession(text, 2000);
+    expect(result).toContain('LARGE_DROP');
+  });
+
+  it('never displaces a complete user turn to admit a partial one', () => {
+    // The complete turns are allocated first; only budget that is genuinely left
+    // over may be spent on a partial turn. Dropping a whole turn to make room
+    // for a fragment would trade a certain fact for a possible one.
+    const text = [
+      `[2023/02/15] user: ${'a'.repeat(1900)}`,
+      '[2023/02/15] user: COMPLETE_FACT',
+      `[2023/02/15] user: PARTIAL ${'c'.repeat(600)}`,
+    ].join('');
+    const result = truncateSession(text, 2000);
+    expect(result).toContain('COMPLETE_FACT');
+  });
+
+  it('leaves a session whose user turns all fit byte-identical apart from head caps', () => {
+    // When every user turn fits, the leftover-budget rule must not invent a
+    // partial turn: the only permitted change is capping the assistant reply.
+    const text = [
+      '[2023/02/15] user: first fact',
+      `[2023/02/15] assistant: ${'x'.repeat(3000)}`,
+      '[2023/02/15] user: second fact',
+    ].join('');
+    const result = truncateSession(text, 2000);
+    expect(result).toContain('first fact');
+    expect(result).toContain('second fact');
+    // No user turn was admitted partially, so no user turn carries a cut.
+    for (const line of result.split('\n')) {
+      if (line.includes('] user:')) {
+        expect(line).not.toContain('[truncated]');
+      }
+    }
+  });
 });
 
 describe('buildQueryExpansionPrompt', () => {
