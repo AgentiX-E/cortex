@@ -91,10 +91,28 @@ async function main(): Promise<void> {
   // Sampling temperature for both systems (default 0, deterministic). A positive
   // value introduces real sampling variance so the over-run t-test is defined.
   const temperature = Number(process.env['TEMPERATURE'] ?? 0);
+  // Runs for the ABLATIONS, which is deliberately independent of `runs` above.
+  //
+  // Every ablation shares one answer cache across its two arms (the pairing
+  // invariant: the endpoint is not reproducible across calls, so re-querying a
+  // byte-identical prompt injects discordance the experiment never meant to
+  // measure). The consequence is that a second ablation run replays the FIRST
+  // run's cached answers, so `runs` > 1 multiplies the wall-clock and the bill
+  // while producing a byte-identical report: measured on a one-question MR arm,
+  // `runs: 8` issues the same 3 model calls (2 of them aggregation) as
+  // `runs: 1`, and the over-run Welch t-test is NaN because all eight repeats
+  // carry no independent information.
+  //
+  // Only the main benchmark benefits from `runs` > 1 — its over-run aggregate
+  // statistics are genuinely defined — so the ablations get their own knob and
+  // default to the cheapest correct value. Raise `ABLATION_RUNS` only when an
+  // ablation's arms are given SEPARATE caches, which no current ablation does.
+  const ablationRuns = Number(process.env['ABLATION_RUNS'] ?? 1);
 
   console.log(
     `Running benchmark on ${sampled.length} instance(s) ` +
-      `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, temperature=${temperature}, abstainThreshold=${threshold})...`,
+      `(limit=${limit === 0 ? 'all' : limit}, runs=${runs}, ablationRuns=${ablationRuns}, ` +
+      `temperature=${temperature}, abstainThreshold=${threshold})...`,
   );
 
   // Verify the embedding provider is deterministic before trusting retrieval
@@ -234,7 +252,7 @@ async function main(): Promise<void> {
   // CoT enumerate-then-count, with abstention held constant so the paired McNemar
   // test measures the prompt effect on MR questions directly.
   const mrAblation = await runMrAggregationAblation(sampled as never, embedding, llm, {
-    runs,
+    runs: ablationRuns,
     temperature,
   });
   writeFileSync('benchmark-mr-ablation-report.md', mrAblation.markdown);
@@ -246,7 +264,7 @@ async function main(): Promise<void> {
   // deterministic date arithmetic, with abstention held constant so the paired
   // McNemar test measures the engine effect on TR questions directly.
   const trAblation = await runTemporalEngineAblation(sampled as never, embedding, llm, {
-    runs,
+    runs: ablationRuns,
     temperature,
   });
   writeFileSync('benchmark-tr-ablation-report.md', trAblation.markdown);
@@ -259,7 +277,7 @@ async function main(): Promise<void> {
   // so a positive delta is attributable to the reader discriminating an anchor
   // turn from a near miss rather than to any change in what it was shown.
   const trWindowAblation = await runTimeWindowAnnotationAblation(sampled as never, embedding, llm, {
-    runs,
+    runs: ablationRuns,
     temperature,
   });
   writeFileSync('benchmark-tr-window-ablation-report.md', trWindowAblation.markdown);
@@ -278,7 +296,7 @@ async function main(): Promise<void> {
     sampled as never,
     embedding,
     llm,
-    { runs, temperature },
+    { runs: ablationRuns, temperature },
   );
   writeFileSync('benchmark-tr-coverage-ablation-report.md', trCoverageAblation.markdown);
   writeFileSync(
@@ -296,7 +314,7 @@ async function main(): Promise<void> {
     sampled as never,
     embedding,
     llm,
-    { runs, temperature },
+    { runs: ablationRuns, temperature },
   );
   writeFileSync('benchmark-ku-bitemporal-ablation-report.md', kuBitemporalAblation.markdown);
   writeFileSync(
@@ -312,7 +330,7 @@ async function main(): Promise<void> {
   // realistic run counts the accuracy signal is dominated by model-side noise and
   // the fire count is what separates "inert on this data" from "never wired in".
   const retryAblation = await runAbstentionRetryAblation(sampled as never, embedding, llm, {
-    runs,
+    runs: ablationRuns,
     temperature,
   });
   writeFileSync('benchmark-mr-retry-ablation-report.md', retryAblation.markdown);

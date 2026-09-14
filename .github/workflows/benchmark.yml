@@ -9,7 +9,12 @@ on:
         default: '60'
         type: string
       runs:
-        description: 'Number of independent ablation runs'
+        description: 'Number of independent runs for the MAIN benchmark'
+        required: false
+        default: '1'
+        type: string
+      ablation_runs:
+        description: 'Number of runs per ablation (keep at 1: shared answer caches make extra runs redundant)'
         required: false
         default: '1'
         type: string
@@ -105,6 +110,13 @@ jobs:
           # full-dataset measurement at milestone checkpoints only.
           TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
           RUNS: ${{ github.event.inputs.runs || '1' }}
+          # Kept separate from RUNS because every ablation shares one answer
+          # cache across its two arms, so a second ablation run replays the
+          # first run's cached answers and costs full wall-clock for a
+          # byte-identical report. Measured on a one-question MR arm: runs=8
+          # issues the same 2 uncached calls as runs=1 and its over-run
+          # t-test is NaN. Only the main benchmark needs RUNS>1.
+          ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
           LIMIT: ${{ github.event.inputs.limit || '60' }}
           DIAGNOSTICS_LIMIT: ${{ github.event.inputs.diagnostics_limit || '100' }}
         run: pnpm --filter @agentix-e/cortex-eval bench
