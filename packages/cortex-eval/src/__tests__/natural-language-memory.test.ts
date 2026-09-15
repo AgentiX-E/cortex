@@ -3894,3 +3894,126 @@ describe('NaturalLanguageMemorySystem', () => {
     });
   });
 });
+
+/**
+ * Session-coherent admission, end to end through the real system.
+ *
+ * The unit tests in retrieval.test.ts pin the primitive and the benchmark tests
+ * pin delivery. This closes the loop: with a session boundary supplied, the
+ * context actually injected into the prompt must change, and it must change by
+ * admitting the remaining turns of the hit's own session.
+ *
+ * The defect being pinned is measured, not hypothetical: on run 34915402976,
+ * correct answers admit 52.4% of their evidence session and failures admit
+ * 40.0%, with the gap holding inside fixed session-size bands. Neighbour
+ * expansion cannot express the preference -- it spends the budget on turns
+ * AROUND a hit regardless of which session those turns belong to.
+ */
+describe('session-coherent admission', () => {
+  it('injects the hit session siblings that neighbour expansion would drop', async () => {
+    // The hit is the first session, and the assertion is that this session is
+    // COMPLETED: its second turn must be admitted even though `contextRadius: 0`
+    // admits no neighbour at all. That is the behaviour measured on run
+    // 34915402976, where a session retrieval already judged relevant was read
+    // through `radius` neighbours and abandoned with its remaining turns unread.
+    const sessions = [
+      [
+        '[d] user: I got a crystal chandelier from my aunt.',
+        '[d] user: It is hanging in the hallway now.',
+      ],
+      ['[d] user: I repainted the kitchen cabinets.', '[d] user: The paint was sage green.'],
+    ];
+    const context = sessions.flat();
+
+    const captured: string[] = [];
+    const llm = scriptedLlm((prompt) => {
+      captured.push(prompt);
+      return 'my aunt';
+    });
+    // Every turn embeds identically, so ranking is insertion-ordered and the hit
+    // is deterministic. That isolates admission from retrieval quality, which is
+    // what this test is about.
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableQueryExpansion: false,
+      topK: 1,
+      contextRadius: 0,
+      admissionBudget: 4,
+    });
+
+    await system.answer('Who gave me the chandelier?', context, sessions);
+    const injected = captured[0] ?? '';
+    expect(injected).toContain('It is hanging in the hallway now.');
+    expect(injected).toContain('I got a crystal chandelier from my aunt.');
+  });
+
+  it('leaves the flat path byte-identical when no sessions are supplied', async () => {
+    const context = ['[d] user: alpha', '[d] user: beta', '[d] user: gamma'];
+    const captured: string[] = [];
+    const llm = scriptedLlm((prompt) => {
+      captured.push(prompt);
+      return 'x';
+    });
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const make = () =>
+      new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableQueryExpansion: false,
+        topK: 1,
+        contextRadius: 1,
+      });
+
+    clearEmbeddingCache();
+    await make().answer('q', context);
+    const withoutSessions = captured[0]!;
+
+    captured.length = 0;
+    clearEmbeddingCache();
+    // An empty group list is equivalent to no boundary: the session path must
+    // collapse to plain neighbour expansion, so the two prompts match exactly.
+    await make().answer('q', context, []);
+    expect(captured[0]).toBe(withoutSessions);
+  });
+
+  it('bounds the injected context by admissionBudget', async () => {
+    const sessions = Array.from({ length: 6 }, (_, s) => [
+      `[d] user: s${s} turn 0`,
+      `[d] user: s${s} turn 1`,
+      `[d] user: s${s} turn 2`,
+      `[d] user: s${s} turn 3`,
+    ]);
+    const context = sessions.flat();
+    const captured: string[] = [];
+    const llm = scriptedLlm((prompt) => {
+      captured.push(prompt);
+      return 'x';
+    });
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      enableQueryExpansion: false,
+      topK: 4,
+      contextRadius: 1,
+      admissionBudget: 6,
+    });
+    await system.answer('q', context, sessions);
+    // Six turns of the corpus may be admitted; the prompt is the only observable,
+    // so it is counted from the injected block rather than from internals.
+    const admitted = context.filter((turn) => (captured[0] ?? '').includes(turn)).length;
+    expect(admitted).toBeLessThanOrEqual(6);
+    expect(admitted).toBeGreaterThan(0);
+  });
+});

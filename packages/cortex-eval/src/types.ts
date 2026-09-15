@@ -38,7 +38,12 @@ export type Answer = string | null;
 /** A memory system under evaluation. */
 export type MemorySystem = {
   name: string;
-  answer: (question: string, context: string[]) => Answer | Promise<Answer>;
+  /**
+   * `sessions` is the session-grouped view of `context` when the caller has it.
+   * Optional and additive: a system that wants only the flat list is unaffected,
+   * and the benchmark already carries it on every question that has one.
+   */
+  answer: (question: string, context: string[], sessions?: string[][]) => Answer | Promise<Answer>;
 };
 
 /**
@@ -51,11 +56,20 @@ export type SessionAwareMemorySystem = MemorySystem & {
   /**
    * Temporal-reasoning answering with the question date; optional for simpler
    * systems. Falls back to `answer` when absent.
+   *
+   * `sessions` is the session-grouped form of the same turns as `context`, when
+   * the caller has it. It is OPTIONAL and additive: a system that wants only the
+   * flat list keeps receiving exactly that. It exists because admission is
+   * bounded by a turn budget, and a session boundary is what lets a system spend
+   * that budget on a session retrieval already judged relevant instead of on
+   * scattered neighbours. Measured on run 34915402976, correct answers admit
+   * 52.4% of their evidence session against 40.0% for failures.
    */
   answerTemporal?: (
     question: string,
     context: string[],
     questionDate?: string,
+    sessions?: string[][],
   ) => Answer | Promise<Answer>;
   /**
    * Single-session answering that includes assistant turns. The evidence for a
@@ -63,28 +77,44 @@ export type SessionAwareMemorySystem = MemorySystem & {
    * user-turn-only `answer` path would drop it. Falls back to `answer` when
    * absent.
    */
-  answerAssistant?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  answerAssistant?: (
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ) => Answer | Promise<Answer>;
   /**
    * Single-session answering for abstention questions (the correct answer is to
    * abstain because no answer exists). Uses a conservative abstention wording
    * that does not push the model to choose among candidates. Falls back to
    * `answer` when absent.
    */
-  answerAbstention?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  answerAbstention?: (
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ) => Answer | Promise<Answer>;
   /**
    * Single-session answering for preference/recommendation questions. Unlike the
    * extractive `answer` path, which asks for a single fact and abstains when
    * none is present, these questions ask for a suggestion that reflects the
    * user's stated preferences. Falls back to `answer` when absent.
    */
-  answerPreference?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  answerPreference?: (
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ) => Answer | Promise<Answer>;
   /**
    * Single-session answering for knowledge-update questions. These questions ask
    * which value a time qualifier selects ("previous" → the earlier value,
    * "currently/most recent" → the later value), which the generic extractive
    * prompt does not make explicit. Falls back to `answer` when absent.
    */
-  answerKnowledgeUpdate?: (question: string, context: string[]) => Answer | Promise<Answer>;
+  answerKnowledgeUpdate?: (
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ) => Answer | Promise<Answer>;
 };
 
 export type PerCapabilityResult = {

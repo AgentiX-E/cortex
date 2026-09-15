@@ -10,6 +10,7 @@ import {
   extractLexicalKeywords,
   countLexicalMatches,
   expandContextWindow,
+  expandContextWindowBySession,
   meanPool,
   embedManyCached,
   embedOneCached,
@@ -173,6 +174,90 @@ describe('expandContextWindow', () => {
   it('skips invalid indices', () => {
     const context = ['a', 'b'];
     expect(expandContextWindow(context, [-1, 5], 1)).toBe('');
+  });
+});
+
+/**
+ * Session-coherent admission.
+ *
+ * The defect these pin: `expandContextWindow` spends its budget on `radius`
+ * neighbours of every hit, so a session that retrieval judged relevant is read
+ * only in part. Measured on run 34915402976, correct answers admit 52.4% of their
+ * evidence session against 40.0% for failures, with the gap holding inside fixed
+ * session-size bands -- so admission completeness, not ranking, is the binding
+ * constraint. The corpus supplies session boundaries and the loader discards
+ * them (longmemeval-loader.ts flattens `sessions` into `context`), which is why
+ * the fix is to thread the boundary back to the admission step rather than to
+ * tune `radius`.
+ */
+describe('expandContextWindowBySession', () => {
+  /** Three sessions of two turns each, so a session is a visible unit. */
+  const sessions = [
+    ['s0a', 's0b'],
+    ['s1a', 's1b'],
+    ['s2a', 's2b'],
+  ];
+  const flat = sessions.flat();
+
+  it('completes a hit session before spending budget on unrelated neighbours', () => {
+    // Hit 2 is the first turn of session 1. The old radius rule admits 1, 2, 3,
+    // which reaches the sibling `s1b` only incidentally and pays for `s0b` first.
+    // Session-coherent admission must take the sibling before any unrelated
+    // neighbour, so the budget is spent on the session retrieval already judged
+    // relevant. With budget 3 the hit and its sibling take two slots and the
+    // leftover goes to a neighbour -- which is the point of the second pass.
+    const out = expandContextWindowBySession(flat, [2], sessions, 1, 3);
+    expect(out.split('\n')).toEqual(['s0b', 's1a', 's1b']);
+    // The invariant that matters: the sibling is admitted, and it is admitted
+    // ahead of the unrelated neighbour, so a tighter budget still keeps it.
+    const tight = expandContextWindowBySession(flat, [2], sessions, 1, 2);
+    expect(tight.split('\n')).toEqual(['s1a', 's1b']);
+    // Budget 1 keeps only the turn retrieval actually chose.
+    expect(expandContextWindowBySession(flat, [2], sessions, 1, 1)).toBe('s1a');
+  });
+
+  it('admits the whole hit session when the budget allows it', () => {
+    const out = expandContextWindowBySession(flat, [2], sessions, 1, 6);
+    // Output is corpus-ordered, so the assertion is about MEMBERSHIP: both turns
+    // of the hit session are present, and the budget was not spent exclusively on
+    // the hit's neighbourhood.
+    const lines = out.split('\n');
+    expect(lines).toContain('s1a');
+    expect(lines).toContain('s1b');
+  });
+
+  it('never exceeds the budget', () => {
+    const out = expandContextWindowBySession(flat, [0, 2, 4], sessions, 1, 4);
+    expect(out.split('\n').length).toBeLessThanOrEqual(4);
+  });
+
+  it('is deterministic and order-stable across sessions', () => {
+    const a = expandContextWindowBySession(flat, [0, 2, 4], sessions, 1, 6);
+    const b = expandContextWindowBySession(flat, [0, 2, 4], sessions, 1, 6);
+    expect(a).toBe(b);
+    // Output preserves corpus order, not admission order.
+    const lines = a.split('\n');
+    expect([...lines].sort((x, y) => flat.indexOf(x) - flat.indexOf(y))).toEqual(lines);
+  });
+
+  it('falls back to neighbour expansion when no session boundary is known', () => {
+    // An index with no session (a synthetic corpus flattened by the caller) must
+    // still be served, so the session path is additive rather than a replacement.
+    const out = expandContextWindowBySession(flat, [1], [], 1, 3);
+    expect(out).toBe('s0a\ns0b\ns1a');
+  });
+
+  it('handles hits in several sessions and respects the budget across them', () => {
+    const out = expandContextWindowBySession(flat, [0, 4], sessions, 0, 4);
+    expect(out.split('\n')).toEqual(['s0a', 's0b', 's2a', 's2b']);
+  });
+
+  it('ignores invalid indices', () => {
+    expect(expandContextWindowBySession(flat, [-1, 99], sessions, 1, 4)).toBe('');
+  });
+
+  it('treats a zero budget as admitting nothing', () => {
+    expect(expandContextWindowBySession(flat, [2], sessions, 1, 0)).toBe('');
   });
 });
 

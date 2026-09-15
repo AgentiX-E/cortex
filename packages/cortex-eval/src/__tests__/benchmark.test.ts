@@ -383,3 +383,100 @@ describe('runBenchmark session routing', () => {
     expect(calls).toEqual(['context:1', 'context:1', 'context:1', 'context:1']);
   });
 });
+
+/**
+ * Session boundaries must REACH the single-session paths, not just the
+ * multi-session one.
+ *
+ * The primitive that consumes the boundary is unit-tested in retrieval.test.ts.
+ * These tests cover the integration, which is where a silent no-op would live:
+ * a path can accept a `sessions` argument, typecheck, and still ignore it. Each
+ * test therefore asserts the ARGUMENT ARRIVES, not merely that a call happened.
+ */
+describe('runBenchmark session-boundary delivery', () => {
+  const dataset: BenchmarkDataset = {
+    name: 'delivery',
+    questions: [
+      {
+        id: 'tr',
+        capability: 'TR',
+        question: 'Q TR',
+        expected: 'd',
+        context: ['flat d'],
+        questionDate: '2023/04/01',
+        sessions: [['tr session a'], ['tr session b']],
+      },
+      {
+        id: 'ie',
+        capability: 'IE',
+        question: 'Q IE',
+        expected: 'b',
+        context: ['flat b'],
+        sessions: [['ie session a'], ['ie session b']],
+      },
+    ],
+  };
+
+  it('delivers sessions to answerTemporal alongside the question date', async () => {
+    // Required-with-undefined rather than optional: `exactOptionalPropertyTypes`
+    // distinguishes the two, and assigning `undefined` to an optional property is
+    // what it forbids.
+    const seen: { date: string | undefined; sessions: string[][] | undefined } = {
+      date: undefined,
+      sessions: undefined,
+    };
+    const system: SessionAwareMemorySystem = {
+      name: 's',
+      answer: async () => 'x',
+      answerSessions: async () => 'y',
+      answerTemporal: async (_q, _ctx, date, sessions) => {
+        seen.date = date;
+        seen.sessions = sessions;
+        return 'z';
+      },
+    };
+    await runBenchmark(dataset, system);
+    expect(seen.date).toBe('2023/04/01');
+    expect(seen.sessions).toEqual([['tr session a'], ['tr session b']]);
+  });
+
+  it('delivers sessions to the flat answer path', async () => {
+    const collected: (string[][] | undefined)[] = [];
+    const system: MemorySystem = {
+      name: 's',
+      answer: async (_q, _ctx, sessions) => {
+        collected.push(sessions);
+        return 'x';
+      },
+    };
+    await runBenchmark(dataset, system);
+    // The IE question carries sessions; the TR question falls through to the
+    // flat path too because this system exposes no answerTemporal.
+    expect(collected).toEqual([
+      [['tr session a'], ['tr session b']],
+      [['ie session a'], ['ie session b']],
+    ]);
+  });
+
+  it('passes undefined rather than an empty array when a question has no sessions', async () => {
+    const collected: (string[][] | undefined)[] = [];
+    const system: MemorySystem = {
+      name: 's',
+      answer: async (_q, _ctx, sessions) => {
+        collected.push(sessions);
+        return 'x';
+      },
+    };
+    await runBenchmark(
+      {
+        name: 'no-sessions',
+        questions: [{ id: 'q', capability: 'IE', question: 'Q', expected: 'a', context: ['flat'] }],
+      },
+      system,
+    );
+    // `undefined` is what disables session-coherent admission; an empty array
+    // would be a different value and the distinction is what keeps the flat
+    // fallback honest.
+    expect(collected).toEqual([undefined]);
+  });
+});

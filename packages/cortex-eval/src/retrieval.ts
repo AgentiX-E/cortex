@@ -271,6 +271,136 @@ export function expandContextWindow(context: string[], indices: number[], radius
     .join('\n');
 }
 
+/**
+ * Expand a set of retrieved turn indices into a coherent context window that
+ * respects SESSION boundaries: a hit's own session is completed before the budget
+ * is spent on `radius` neighbours of unrelated hits.
+ *
+ * Why this exists, and why it replaces nothing. Measured over run 34915402976:
+ * correct answers admit 52.4% of their evidence session and failures admit 40.0%,
+ * with the gap holding inside fixed session-size bands (46.4% vs 33.9% at 30-60
+ * turns), so admission completeness -- not ranking -- is the binding constraint
+ * on those questions. `expandContextWindow` cannot express that preference: it
+ * treats the corpus as a flat turn list, so a session that retrieval already
+ * judged relevant is read through `radius` neighbours and abandoned.
+ *
+ * The preference is dataset-agnostic. It uses only the session boundary the
+ * caller supplies; it encodes nothing about which benchmark this is. The session
+ * boundary is real information that the loader currently discards by flattening
+ * `sessions` into `context` (longmemeval-loader.ts), which is the upstream reason
+ * admission had to be improvised from neighbourhoods.
+ *
+ * Admission order, and the budget it must respect:
+ *   1. For each hit in rank order, admit every unadmitted turn of its session,
+ *      nearest-first from the hit, as long as the budget allows. The hit itself
+ *      is always admitted first, so a session whose siblings do not fit still
+ *      contributes the turn retrieval actually chose.
+ *   2. Spend any remaining budget on `±radius` neighbours, in hit rank order.
+ *
+ * `budget` is a hard cap on admitted turns and is checked before every insertion,
+ * so the result is never larger than requested. When `sessions` is empty or no
+ * hit belongs to a known session the behaviour collapses to pure neighbour
+ * expansion, so a caller that has no boundary to offer is unaffected.
+ *
+ * Output is in corpus order (not admission order) and de-duplicated, so the
+ * prompt reads chronologically regardless of how admission proceeded.
+ */
+export function expandContextWindowBySession(
+  context: string[],
+  indices: number[],
+  sessions: readonly (readonly string[])[],
+  radius: number,
+  budget: number,
+): string {
+  if (budget <= 0) {
+    return '';
+  }
+  // Map each flat position to its session and the flat positions that session
+  // owns. First occurrence wins so a turn duplicated across sessions is owned by
+  // the earlier one, which keeps the mapping deterministic.
+  const sessionOfPosition = new Map<number, number>();
+  const positionsOfSession: number[][] = [];
+  let cursor = 0;
+  for (let s = 0; s < sessions.length; s++) {
+    const positions: number[] = [];
+    for (let t = 0; t < sessions[s]!.length; t++) {
+      positions.push(cursor);
+      if (!sessionOfPosition.has(cursor)) {
+        sessionOfPosition.set(cursor, s);
+      }
+      cursor++;
+    }
+    positionsOfSession.push(positions);
+  }
+
+  const selected = new Set<number>();
+  const admit = (position: number): boolean => {
+    if (selected.size >= budget) {
+      return false;
+    }
+    if (position < 0 || position >= context.length || selected.has(position)) {
+      return false;
+    }
+    selected.add(position);
+    return true;
+  };
+
+  const validHits = indices.filter((idx) => idx >= 0 && idx < context.length);
+
+  // Pass 1 -- complete the session behind each hit, nearest turn first.
+  for (const hit of validHits) {
+    admit(hit);
+    const session = sessionOfPosition.get(hit);
+    if (session === undefined) {
+      continue;
+    }
+    const owned = positionsOfSession[session]!;
+    const at = owned.indexOf(hit);
+    if (at < 0) {
+      continue;
+    }
+    for (let distance = 1; distance < owned.length; distance++) {
+      const before = at - distance;
+      const after = at + distance;
+      if (before < 0 && after >= owned.length) {
+        break;
+      }
+      if (before >= 0) {
+        admit(owned[before]!);
+      }
+      if (after < owned.length) {
+        admit(owned[after]!);
+      }
+      if (selected.size >= budget) {
+        break;
+      }
+    }
+  }
+
+  // Pass 2 -- neighbours, for hits whose session contributed nothing extra and
+  // for budget the session pass could not use.
+  if (radius > 0) {
+    for (const hit of validHits) {
+      const start = Math.max(0, hit - radius);
+      const end = Math.min(context.length - 1, hit + radius);
+      for (let j = start; j <= end; j++) {
+        admit(j);
+        if (selected.size >= budget) {
+          break;
+        }
+      }
+      if (selected.size >= budget) {
+        break;
+      }
+    }
+  }
+
+  return [...selected]
+    .sort((a, b) => a - b)
+    .map((i) => context[i]!)
+    .join('\n');
+}
+
 /** Mean-pool a list of equal-length vectors into a single centroid vector. */
 export function meanPool(vectors: readonly Float64Array[]): Float64Array {
   if (vectors.length === 0) {

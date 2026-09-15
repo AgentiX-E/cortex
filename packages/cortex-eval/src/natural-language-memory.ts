@@ -11,7 +11,7 @@
 import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
-  expandContextWindow,
+  expandContextWindowBySession,
   reciprocalRankFusion,
   retrieveByQueries,
   retrieveSessionsByTurns,
@@ -80,6 +80,13 @@ export type NaturalLanguageMemorySystemOptions = {
   sessionTopK?: number;
   /** Number of neighbouring turns to include around each turn hit (default 1). */
   contextRadius?: number;
+  /**
+   * Hard cap on the number of turns admitted into a single-session prompt
+   * (default 45, equal to `topK * (1 + 2 * contextRadius)`). It bounds the
+   * session-coherent admission path, which completes a hit's session before
+   * spending the remainder on neighbours.
+   */
+  admissionBudget?: number;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
   /** Per-turn character budget for the single-session path (default 2000). */
@@ -259,6 +266,15 @@ const DEFAULT_TEMPERATURE = 0;
 const DEFAULT_TOP_K = 15;
 const DEFAULT_SESSION_TOP_K = 10;
 const DEFAULT_CONTEXT_RADIUS = 1;
+/**
+ * Hard cap on the number of turns admitted into a single-session prompt. Kept
+ * numerically equal to `topK * (1 + 2 * contextRadius)` = 15 * 3 = 45, which is
+ * the exact size the previous neighbour-only rule could reach, so promoting
+ * session-coherent admission does not silently resize the prompt. Admission
+ * ORDER changes; the ceiling does not. Keeping the two in step is what makes an
+ * A/B attribute the change to which turns are admitted rather than to how many.
+ */
+const DEFAULT_ADMISSION_BUDGET = 45;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
 const DEFAULT_QUERY_EXPANSION_TOP_K = 3;
 const DEFAULT_MAX_TURN_CHARS = 2000;
@@ -328,8 +344,15 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * statements; assistant turns are verbose generated chatter that dilutes the
    * answer signal (and for temporal questions, drown the date-bearing turns).
    */
-  async answer(question: string, context: string[]): Promise<Answer> {
-    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context);
+  async answer(question: string, context: string[], sessions?: string[][]): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+      question,
+      context,
+      false,
+      buildQueryExpansionPrompt,
+      false,
+      sessions,
+    );
     return this.respondWith(
       question,
       this.maxHitScore(hits),
@@ -347,11 +370,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * dates, then the temporal engine computes the elapsed time, interval, or
    * ordering exactly. Only when that path cannot produce an answer does it fall
    * back to the LLM date-reading prompt (the previous behaviour).
+   *
+   * `sessions` is the session-grouped view of `context` when the caller has it.
+   * It is optional and additive -- omitting it preserves the previous behaviour
+   * exactly -- and it exists so admission can complete a retrieved session rather
+   * than spend its budget on neighbours of unrelated hits.
    */
   async answerTemporal(
     question: string,
     context: string[],
     questionDate?: string,
+    sessions?: string[][],
   ): Promise<Answer> {
     const kind = classifyTemporalQuestion(question);
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
@@ -360,6 +389,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       false,
       buildTemporalQueryExpansionPrompt,
       true,
+      sessions,
     );
     // Resolve the question's time qualifier once, deterministically, and reuse it
     // for both temporal kinds: `eventLookup` needs it to locate the anchor turn,
@@ -472,8 +502,19 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * evidence for these questions lives in an assistant turn, so retrieval runs
    * over ALL turns instead of the user-turn-only filter used by `answer`.
    */
-  async answerAssistant(question: string, context: string[]): Promise<Answer> {
-    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
+  async answerAssistant(
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+      question,
+      context,
+      true,
+      buildQueryExpansionPrompt,
+      false,
+      sessions,
+    );
     return this.respondWith(
       question,
       this.maxHitScore(hits),
@@ -499,8 +540,19 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * declined, all of them in the bare form — so re-asking would spend a model
    * call to turn right answers into wrong ones.
    */
-  async answerAbstention(question: string, context: string[]): Promise<Answer> {
-    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
+  async answerAbstention(
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+      question,
+      context,
+      true,
+      buildQueryExpansionPrompt,
+      false,
+      sessions,
+    );
     return this.respondWith(
       question,
       this.maxHitScore(hits),
@@ -524,8 +576,19 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * assistant turn) and the generative prompt asks for a concrete, specific
    * recommendation instead of a bare fact.
    */
-  async answerPreference(question: string, context: string[]): Promise<Answer> {
-    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(question, context, true);
+  async answerPreference(
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ): Promise<Answer> {
+    const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
+      question,
+      context,
+      true,
+      buildQueryExpansionPrompt,
+      false,
+      sessions,
+    );
     return this.respondWith(
       question,
       this.maxHitScore(hits),
@@ -546,11 +609,18 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * are present. The dedicated prompt makes the mapping explicit so the model
    * picks the version the qualifier asks for instead of abstaining.
    */
-  async answerKnowledgeUpdate(question: string, context: string[]): Promise<Answer> {
+  async answerKnowledgeUpdate(
+    question: string,
+    context: string[],
+    sessions?: string[][],
+  ): Promise<Answer> {
     const { hits, retrieved, expansionQueries } = await this.retrieveTurns(
       question,
       context,
       false,
+      buildQueryExpansionPrompt,
+      false,
+      sessions,
     );
     const qualifier = classifyKnowledgeUpdateQualifier(question);
     if (
@@ -636,12 +706,22 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     includeAssistant: boolean = false,
     expansionPromptBuilder: (question: string) => string = buildQueryExpansionPrompt,
     enableLexicalRecall: boolean = false,
+    sessions?: string[][],
   ): Promise<{ hits: RetrievalHit[]; retrieved: string; expansionQueries: string[] }> {
     const topK = this.options.topK ?? DEFAULT_TOP_K;
     const factTurns = includeAssistant ? context : context.filter(isUserTurn);
     const searchable = (factTurns.length > 0 ? factTurns : context).map((turn) =>
       truncateText(turn, this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS),
     );
+    // The session boundary has to be projected through the SAME filtering and
+    // truncation applied to `searchable`, or the session indices would refer to a
+    // different array than the one admission indexes into. Both steps are needed:
+    // dropping assistant turns changes positions, and truncation changes the text
+    // the identity check compares against.
+    const searchableSessions = projectSessions(sessions, {
+      includeAssistant,
+      maxTurnChars: this.options.maxTurnChars ?? DEFAULT_MAX_TURN_CHARS,
+    });
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
     const hits = enableLexicalRecall
@@ -650,10 +730,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const retrieved =
       hits.length === 0
         ? ''
-        : expandContextWindow(
+        : expandContextWindowBySession(
             searchable,
             hits.map((h) => h.index),
+            searchableSessions,
             this.options.contextRadius ?? DEFAULT_CONTEXT_RADIUS,
+            this.options.admissionBudget ?? DEFAULT_ADMISSION_BUDGET,
           );
     return { hits, retrieved, expansionQueries };
   }
@@ -1936,6 +2018,50 @@ function sliceCodePointSafe(text: string, maxChars: number): string {
 export function truncateText(text: string, maxChars: number): string {
   const sliced = sliceCodePointSafe(text, maxChars);
   return sliced.length < text.length ? `${sliced}\n[truncated]` : sliced;
+}
+
+/**
+ * Project a session-grouped context through the same transform `retrieveTurns`
+ * applies to build `searchable`, so the projected groups index the exact array
+ * admission sees.
+ *
+ * This mapping is the part that is easy to get silently wrong, and a wrong
+ * mapping does not fail loudly -- it just concatenates a session with its
+ * neighbour and the resulting prompt looks plausible. So the two steps mirror
+ * `retrieveTurns` mechanically rather than approximating it:
+ *
+ *   1. `includeAssistant` is false, the default, drops assistant turns. A passage
+ *      that selects a session carries the same `includeAssistant` flag, so the
+ *      same turns are dropped here.
+ *   2. Every surviving turn is truncated at `maxTurnChars` with `truncateText`.
+ *
+ * The turn text is the only identity available, so a passage whose text is not
+ * present in the built `searchable` array is dropped. That can only happen if the
+ * caller passed a `sessions` that does not correspond to `context`, and dropping
+ * it degrades to the pre-existing neighbour expansion rather than mis-attributing
+ * a turn.
+ */
+export function projectSessions(
+  sessions: string[][] | undefined,
+  options: { includeAssistant: boolean; maxTurnChars: number },
+): string[][] {
+  if (sessions === undefined || sessions.length === 0) {
+    return [];
+  }
+  const projected: string[][] = [];
+  for (const session of sessions) {
+    const turns: string[] = [];
+    for (const turn of session) {
+      if (!options.includeAssistant && !isUserTurn(turn)) {
+        continue;
+      }
+      turns.push(truncateText(turn, options.maxTurnChars));
+    }
+    if (turns.length > 0) {
+      projected.push(turns);
+    }
+  }
+  return projected;
 }
 
 /** Matches the start of a `[date] role:` turn prefix. */

@@ -34,13 +34,13 @@ export async function runBenchmark(
     } else if (isSessionAware(system) && q.capability === 'TR' && system.answerTemporal) {
       // Temporal questions need the question date as the reference point for
       // "how long ago" reasoning, plus a dedicated date-reading prompt.
-      answers.push(await system.answerTemporal(q.question, q.context, q.questionDate));
+      answers.push(await system.answerTemporal(q.question, q.context, q.questionDate, q.sessions));
     } else if (isSessionAware(system) && q.capability === 'ABS' && system.answerAbstention) {
       // Abstention questions are answered with a conservative prompt so the
       // model recognizes the absence of an answer instead of being pushed to
       // choose a candidate. Routed before the assistant check because an ABS
       // question may carry a single-session-assistant type.
-      answers.push(await system.answerAbstention(q.question, q.context));
+      answers.push(await system.answerAbstention(q.question, q.context, q.sessions));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'single-session-assistant' &&
@@ -48,7 +48,7 @@ export async function runBenchmark(
     ) {
       // The evidence for single-session-assistant questions lives in an
       // assistant turn, so route to a path that includes assistant turns.
-      answers.push(await system.answerAssistant(q.question, q.context));
+      answers.push(await system.answerAssistant(q.question, q.context, q.sessions));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'single-session-preference' &&
@@ -58,7 +58,7 @@ export async function runBenchmark(
       // the user's stated preferences, not a single extracted fact. The
       // extractive answer path would abstain on them, so route to a generative
       // path instead.
-      answers.push(await system.answerPreference(q.question, q.context));
+      answers.push(await system.answerPreference(q.question, q.context, q.sessions));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'knowledge-update' &&
@@ -67,9 +67,9 @@ export async function runBenchmark(
       // Knowledge-update questions ask which value a time qualifier selects
       // (previous vs currently), which the generic extractive prompt does not
       // make explicit. Route to the time-qualifier-aware prompt instead.
-      answers.push(await system.answerKnowledgeUpdate(q.question, q.context));
+      answers.push(await system.answerKnowledgeUpdate(q.question, q.context, q.sessions));
     } else {
-      answers.push(await system.answer(q.question, q.context));
+      answers.push(await system.answer(q.question, q.context, q.sessions));
     }
   }
   return answers;
