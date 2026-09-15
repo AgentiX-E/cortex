@@ -1475,12 +1475,18 @@ export function buildConservativeQaPrompt(
     // satisfied by that near miss -- the context IS topically relevant -- so the
     // model answers with the relative's value. Measured across runs
     // 34915402976 / 35004814319, 6 of 30 questions flipped on prompt phrasing
-    // alone with byte-identical retrieval scores. The identity requirement has
+    // alone with byte-identical retrieval scores, and 23 of 30 name a
+    // distinctive word absent from the context, so the identity requirement has
     // to be stated explicitly for the abstention contract to hold.
+    //
+    // Only the wording changes here. The context is still rendered exactly as
+    // before (raw dated turns, not `formatStructuredContext`) and no other path
+    // is touched, because the admission cap in this same change is the
+    // hypothesis under test and an A/B can only attribute one edit at a time.
     `Answer ${abstainToken} when the question names a specific entity (a person, object, place, or qualifier) that does not appear in the context, even if a related or similarly-named one does: a different name is not the same as the entity asked about, and a related object is not the same as the object asked about.`,
     '',
-    'Context (a JSON array of turns, each with date, role, and content):',
-    formatStructuredContext(context),
+    'Context:',
+    context,
     '',
     `Question: ${question}`,
     '',

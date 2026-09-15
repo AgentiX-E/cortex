@@ -285,18 +285,18 @@ describe('buildConservativeQaPrompt', () => {
     expect(prompt).toContain('not the same');
   });
 
-  it('keeps the context machine-readable so structure is not lost', () => {
-    // The standard QA prompts wrap each turn as a JSON object via
-    // `formatStructuredContext`. The conservative prompt embedded the raw
-    // concatenated turns instead, so a near-miss turn was indistinguishable from
-    // an exact match and the surrounding turns ran together. The abstention
-    // judgement depends on per-turn identity, so the structure has to survive.
+  it('renders the context as raw turns, matching every other single-session prompt', () => {
+    // The abstention prompt must keep the same context rendering as its
+    // siblings. Switching it to `formatStructuredContext` was tried and reverted:
+    // it changes the per-turn character cost, so bundling it with the admission
+    // cap would make a single A/B carry two independent edits and attribute the
+    // result to neither.
     const prompt = buildConservativeQaPrompt(
       'Q?',
       '[2023/01/08] user: I like blue.\n[2023/01/09] user: I like red.',
     );
-    expect(prompt).toContain('"content"');
-    expect(prompt).toContain('"date"');
+    expect(prompt).toContain('[2023/01/08] user: I like blue.');
+    expect(prompt).not.toContain('"content"');
   });
 });
 
