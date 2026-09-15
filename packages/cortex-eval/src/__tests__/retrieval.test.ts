@@ -933,10 +933,8 @@ describe('expandContextWindowBounded', () => {
   const corpus = Array.from({ length: 20 }, (_, i) => `turn ${i}`);
 
   it('never returns more than the budget', () => {
-    // The caller that needs this is the abstention path: measured on run
-    // 35004814319, its abstention rate is 100% below 45 admitted turns and 75%
-    // between 45 and 60, so the ceiling has to be enforced rather than hoped
-    // for.
+    // A bounded expansion exists because a prompt has a size past which the model
+    // stops reading it; the ceiling has to be enforced rather than hoped for.
     const out = expandContextWindowBounded(corpus, [5], 3, 4).split('\n');
     expect(out.length).toBeLessThanOrEqual(4);
   });

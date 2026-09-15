@@ -281,9 +281,8 @@ export function expandContextWindow(context: string[], indices: number[], radius
  *
  *   1. A hard ceiling. `expandContextWindow` admits `topK * (1 + 2 * radius)`
  *      turns unconditionally, which is fine when more context is simply more
- *      context. It is not fine for the abstention path, whose answer is that no
- *      evidence exists: measured on run 35004814319, abstention holds at 100% for
- *      questions admitting under 45 turns and falls to 75% between 45 and 60.
+ *      context. It is not fine for a caller whose prompt has a size past which
+ *      the model stops reading it.
  *   2. Hit priority. With a small budget, `expandContextWindow` can spend the
  *      whole window on the first hit's neighbours and never admit the second
  *      hit. Here the hits are taken first, in rank order, so a reduced budget
@@ -292,6 +291,14 @@ export function expandContextWindow(context: string[], indices: number[], radius
  * Output is in corpus order and de-duplicated, so the prompt reads
  * chronologically regardless of admission order. A non-positive `budget`, or an
  * empty `indices`, yields the empty string.
+ *
+ * NOTE ON THE UNIT. `budget` counts TURNS, and a turn count does not bound a
+ * prompt's size: at `DEFAULT_MAX_TURN_CHARS` (2000) a 45-turn window can reach
+ * ~90k characters. The abstention block fails above roughly 32k, so a turn
+ * ceiling cannot express the constraint that actually matters there. Measured
+ * consequence: run 35019792901 showed the turn cap this was written for is inert
+ * on LongMemEval-S, the prompts coming out byte-identical. If a size bound is
+ * needed, bound characters. See analysis/verdicts/p24-cap-refuted.md.
  */
 export function expandContextWindowBounded(
   context: string[],
