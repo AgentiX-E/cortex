@@ -15,6 +15,7 @@ import {
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
+import type { DecisionTrace } from '../natural-language-memory.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
 import { createLlmFromEnv, resolveTimeoutMs } from '../llm-factory.js';
 import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
@@ -851,8 +852,56 @@ describe('runAbstentionRetryAblation', () => {
     expect(retryFires.questions).toBe(1);
   });
 
+  /**
+   * The ablation's control must stay silent on EVERY path the retry now serves,
+   * not just the multi-session one it was written for.
+   *
+   * The retry was widened from `answerSessions` to every path except abstention,
+   * so a control that only gated the multi-session call site would let the other
+   * capabilities retry anyway. The paired Δaccuracy would then credit the retry
+   * with a change the control also underwent — the arms would still differ by
+   * exactly one flag in the config while differing by two in behaviour, which no
+   * assertion on `retryFires.controlFires` can see if the counter only reads
+   * multi-session traces.
+   */
+  it('keeps the control disarmed on the single-session paths too', async () => {
+    const controlTraces: DecisionTrace[] = [];
+    const treatmentTraces: DecisionTrace[] = [];
+    // The expansion call returns a phrase; only the ANSWER calls draw from the
+    // queue. Sharing one counter between the two lets an expansion call consume a
+    // queued answer, which on this path made the control return `'2'` and hid the
+    // distinction the test exists to draw.
+    let answerCall = 0;
+    const llm: LLM = {
+      complete: async (prompt: string) => {
+        if (/^Specific \w[^\n]*:$/m.test(prompt)) return 'where I live';
+        const reply = answerCall % 2 === 0 ? 'Answer: UNANSWERABLE' : 'Answer: 2';
+        answerCall++;
+        return reply;
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const shared = { embedding, llm, enableAbstention: true } as const;
+    const control = new NaturalLanguageMemorySystem('c', {
+      ...shared,
+      enableAbstentionRetry: false,
+      onDecision: (t) => controlTraces.push(t),
+    });
+    const treatment = new NaturalLanguageMemorySystem('t', {
+      ...shared,
+      enableAbstentionRetry: true,
+      onDecision: (t) => treatmentTraces.push(t),
+    });
+    // A single-session question, which the retry only began serving in this
+    // change: the control must decline, the treatment must recover.
+    const context = ['Q: where do I live? A: Shanghai.'];
+    expect(await control.answer('Where do I live?', context)).toBeNull();
+    expect(await treatment.answer('Where do I live?', context)).toBe('2');
+    expect(controlTraces[0]!.retryArmed).toBeUndefined();
+    expect(treatmentTraces[0]!.retryArmed).toBe(true);
+  });
+
   it('reports a zero fire count as inert rather than as a measured zero', async () => {
-    // A model that never abstains gives the retry zero opportunities. The report
     // must say so: `Δ = 0.00 pp` and `Δ = 0.00 pp with 0 fires` are entirely
     // different claims, and the ablation table alone renders them identically.
     const llm: LLM = {

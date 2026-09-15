@@ -492,6 +492,43 @@ describe('detectBareAbstention', () => {
     expect(detectBareAbstention('UNANSWERABLE', TOKEN)).toBe(true);
   });
 
+  /**
+   * The prompt contract ends with "Answer: <final answer>", so the labelled form
+   * is the one a compliant model writes — and on run 34791592602 it is the form
+   * every TR and IE abstention arrived in (19 of 19, all exactly 20 characters:
+   * `Answer: UNANSWERABLE`). The parser recognises it: `parseQaAnswer` strips the
+   * label and tests `UNANSWERABLE`, returning null. This helper tested the RAW
+   * string instead, so `isAbstentionValue('Answer: UNANSWERABLE')` was false and
+   * the retry was blind to the very shape the prompt asks for. A bare abstention
+   * is a statement about the model's willingness to work, not about the spelling
+   * it chose, so the label must not decide it.
+   */
+  it('flags an abstention written in the labelled form the prompt requests', () => {
+    expect(detectBareAbstention('Answer: UNANSWERABLE', TOKEN)).toBe(true);
+    expect(detectBareAbstention('ANSWER: unanswerable', TOKEN)).toBe(true);
+  });
+
+  it('flags the "Final answer:" spelling of the same labelled form', () => {
+    expect(detectBareAbstention('Final answer: UNANSWERABLE', TOKEN)).toBe(true);
+  });
+
+  /**
+   * The guard against over-matching. A `Step 1` ledger followed by a labelled
+   * abstention is a verdict, and the label match is anchored to the whole
+   * response precisely so that it cannot reach past the reasoning: with the
+   * multiline flag the ledger case would strip down to `UNANSWERABLE` and be
+   * re-asked, which is the noise the bare/reasoned distinction exists to avoid.
+   */
+  it('clears a labelled abstention that follows reasoning', () => {
+    const reasoned = [
+      'Step 1 — Enumerate every item matching the requested action:',
+      '  - marathon | ran | 2023/04/02',
+      'Step 2 — No item matches the exact action.',
+      'Answer: UNANSWERABLE',
+    ].join('\n');
+    expect(detectBareAbstention(reasoned, TOKEN)).toBe(false);
+  });
+
   it('flags a token wrapped in quotes or padded with surrounding whitespace', () => {
     expect(detectBareAbstention('"UNANSWERABLE"', TOKEN)).toBe(true);
     expect(detectBareAbstention('  UNANSWERABLE\n', TOKEN)).toBe(true);
@@ -3738,16 +3775,122 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(traces[0]!.retryFired).toBeUndefined();
     });
 
-    it('does not report the retry as armed on a path the retry does not serve', async () => {
-      // The retry exists only on the multi-session aggregation path, which is
-      // what `answerSessions` drives. The single-session paths never pass it
-      // down, and their traces must say so: an arm-wide "armed" flag that was
-      // true for every path would make the control disarmament unverifiable.
+    it('arms the retry on the single-session path now that it serves every path but abstention', async () => {
+      // The retry used to exist only on the multi-session aggregation path. That
+      // scoping was measured as harmful: on run 34791592602 all 15 TR and all 4
+      // IE abstentions were the bare form and all 19 were wrong with the evidence
+      // already in the prompt, so a multi-session-only retry left 19 guaranteed
+      // losses unguarded. The single exception is the abstention path, below.
       const { traces, system: s } = traced(['Answer: 2']);
       await s.answer(QUESTION, ['Q: where do I live? A: Shanghai.']);
       expect(traces).toHaveLength(1);
+      expect(traces[0]!.retryArmed).toBe(true);
+      expect(traces[0]!.retryFired).toBe(false);
+    });
+  });
+
+  /**
+   * The retry's SCOPE, which is where the defect lived. Two independent faults
+   * had to be present before a bare abstention outside multi-session could
+   * survive: the pass was only armed on one path, and its membership test
+   * disagreed with the parser about what an abstention looks like. Either alone
+   * is inert, so neither is separable at the benchmark level — they are kept
+   * separable here, at the unit level, where each can be neutered on its own.
+   */
+  describe('bare-abstention retry scope', () => {
+    const TR_QUESTION = 'Who did I go with to the music event last Saturday?';
+    const TR_CONTEXT = ['[2023/04/15] user: I went to the concert with my parents.'];
+    const TR_DATE = '2023/04/22';
+
+    /**
+     * Every query-expansion prompt ends with a `Specific …:` marker, but the
+     * wording differs per path — `Specific items:` for the plain QA path,
+     * `Specific activities:` for multi-session, `Specific events:` for temporal.
+     * Matching the family rather than one spelling is what lets a single helper
+     * serve all of them; matching only `Specific events:` silently let the QA
+     * path's expansion call consume a queued answer, which is a defect in the
+     * harness that would have shown up as an unexplained extra call.
+     */
+    const isExpansionPrompt = (prompt: string): boolean => /^Specific \w[^\n]*:$/m.test(prompt);
+
+    /** A model that answers the expansion query, then walks a queue of answers. */
+    function scoped(responses: string[], overrides: Record<string, unknown> = {}) {
+      const traces: DecisionTrace[] = [];
+      const expansionPrompts: string[] = [];
+      let call = 0;
+      const llm: LLM = {
+        complete: async (prompt) => {
+          if (isExpansionPrompt(prompt)) {
+            expansionPrompts.push(prompt);
+            return 'music event, concert';
+          }
+          const reply = responses[Math.min(call, responses.length - 1)]!;
+          call++;
+          return reply;
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        onDecision: (trace) => traces.push(trace),
+        ...overrides,
+      } as ConstructorParameters<typeof NaturalLanguageMemorySystem>[1]);
+      return { traces, expansionPrompts, calls: () => call, system };
+    }
+
+    it('re-asks a temporal question that declines in the labelled form', async () => {
+      // `Answer: UNANSWERABLE` is the shape the prompt contract asks for, and it
+      // is the shape all 15 TR abstentions arrived in on run 34791592602. The
+      // detector once tested the raw string, so the labelled form escaped it.
+      const { traces, calls, system: s } = scoped(['Answer: UNANSWERABLE', 'Answer: my parents']);
+      expect(await s.answerTemporal(TR_QUESTION, TR_CONTEXT, TR_DATE)).toBe('my parents');
+      expect(calls()).toBe(2);
+      expect(traces[0]!.retryArmed).toBe(true);
+      expect(traces[0]!.retryFired).toBe(true);
+    });
+
+    it('re-asks a single-session question that declines in the labelled form', async () => {
+      const { traces, system: s } = scoped(['Answer: UNANSWERABLE', 'Answer: Shanghai']);
+      expect(await s.answer('Where do I live?', ['Q: where do I live? A: Shanghai.'])).toBe(
+        'Shanghai',
+      );
+      expect(traces[0]!.retryArmed).toBe(true);
+      expect(traces[0]!.retryFired).toBe(true);
+    });
+
+    it('leaves an abstention question alone, because there the abstention is the answer', async () => {
+      // The safety case, and the reason the switch exists at all: 26 of the 30
+      // ABS questions are correctly declined, all in the bare form. Re-asking
+      // them would spend a model call converting right answers into wrong ones.
+      const { traces, calls, system: s } = scoped(['Answer: UNANSWERABLE', 'Answer: Shanghai']);
+      expect(
+        await s.answerAbstention('Where do I live?', ['Q: where do I live? A: Shanghai.']),
+      ).toBe(null);
+      // One call, not two: the retry never armed, so it never fired.
+      expect(calls()).toBe(1);
       expect(traces[0]!.retryArmed).toBeUndefined();
       expect(traces[0]!.retryFired).toBeUndefined();
+    });
+
+    it('stays disarmed on the temporal path when the caller forbids the pass', async () => {
+      // The ablation's control arm must be distinguishable on EVERY path, or a
+      // report that aggregates traces across capabilities cannot assert the
+      // control held outside multi-session.
+      const { traces, system: s } = scoped(['Answer: UNANSWERABLE', 'Answer: my parents'], {
+        enableAbstentionRetry: false,
+      });
+      expect(await s.answerTemporal(TR_QUESTION, TR_CONTEXT, TR_DATE)).toBeNull();
+      expect(traces[0]!.retryArmed).toBeUndefined();
+      expect(traces[0]!.retryFired).toBeUndefined();
+    });
+
+    it('keeps the abstention when the re-ask declines too', async () => {
+      // Bounded at one on every path, not just the one it was written for: a
+      // model that declines twice has made a stable decision.
+      const { calls, system: s } = scoped(['Answer: UNANSWERABLE', 'Answer: UNANSWERABLE']);
+      expect(await s.answerTemporal(TR_QUESTION, TR_CONTEXT, TR_DATE)).toBeNull();
+      expect(calls()).toBe(2);
     });
   });
 });
