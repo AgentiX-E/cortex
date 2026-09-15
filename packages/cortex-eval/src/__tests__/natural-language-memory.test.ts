@@ -378,10 +378,13 @@ describe('answerAbstention admission budget', () => {
   it('enforces the abstention ceiling at the production shape of 15 hits', async () => {
     // The end-to-end version of the `expandContextWindowBounded` contract: at the
     // real topK (15) and radius (1) the unbounded window would be 45 turns, and
-    // the abstention path must stop at 30. Measured on run 35004814319, the
-    // questions that ended up in the 45-60 band abstained only 75% of the time
-    // while everything under 45 abstained every time, so the ceiling has to hold
-    // through the real retrieval flow and not just in the primitive.
+    // the abstention path must stop at 30.
+    //
+    // Scope note, so this test is not read as more than it is: it pins the
+    // primitive's ceiling through the real retrieval flow. It does NOT establish
+    // that the ceiling improves abstention accuracy -- run 35019792901 shows the
+    // cap is a no-op on LongMemEval-S, because the production abstention prompts
+    // were already below it. See analysis/verdicts/p24-cap-refuted.md.
     const corpus: string[] = [];
     for (let i = 0; i < 60; i++) {
       corpus.push(`[2023/01/01] user: distinct filler sentence number ${i} here.`);

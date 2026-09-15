@@ -102,20 +102,13 @@ export type NaturalLanguageMemorySystemOptions = {
    * evidence exists, so there is no session to complete and completion can only
    * append turns that compete with the abstention.
    *
-   * Why the cap, and why 45 is too high. Measured on runs 34915402976 /
-   * 35004814319, session completion added turns to all 30 ABS questions (985 ->
-   * 1,277 turns, mean +9.7) and the abstention rate tracks the admitted turn
-   * count sharply:
-   *
-   *   | turns admitted | n  | abstain rate |
-   *   |----------------|----|--------------|
-   *   | 0-30           |  2 | 100.0%       |
-   *   | 30-45          |  4 | 100.0%       |
-   *   | 45-60          | 24 |  75.0%       |
-   *
-   * Every question under 45 turns abstains; the entire loss sits in the 45-60
-   * band, which is exactly where `DEFAULT_ADMISSION_BUDGET` (45) stops bounding
-   * anything. The abstention path therefore gets its own, tighter ceiling.
+   * The cap it applies is currently inert: run 35019792901 reproduced the
+   * pre-change abstention prompts byte for byte, because they were already below
+   * the ceiling. The motivating measurement cited a "turn count" that was really
+   * a session count (see `DEFAULT_ABSTENTION_ADMISSION_BUDGET`), and the axis
+   * that actually separates the ABS block is the prompt's CHARACTER total. This
+   * mode is expected to be replaced by, or deleted in favour of, a character
+   * bound; do not add to it. See analysis/verdicts/p24-cap-refuted.md.
    *
    * The abstention path is the only one that overrides this, and it does so per
    * call rather than by constructing a second system, because constructing one
@@ -124,10 +117,9 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   admissionMode?: 'session' | 'hits';
   /**
-   * Turn ceiling for the `hits` admission mode (default 30). See
-   * `admissionMode` for the measurement that motivates it: no ABS question
-   * admitting fewer than 45 turns failed to abstain, while a quarter of those
-   * between 45 and 60 did.
+   * Turn ceiling for the `hits` admission mode (default 30). Inert as shipped --
+   * see `admissionMode` and `DEFAULT_ABSTENTION_ADMISSION_BUDGET` for the
+   * measurement that motivated it and for its retraction.
    */
   abstentionAdmissionBudget?: number;
   /** Per-session character budget when aggregating sessions (default 2000). */
@@ -319,17 +311,20 @@ const DEFAULT_CONTEXT_RADIUS = 1;
  */
 const DEFAULT_ADMISSION_BUDGET = 45;
 /**
- * Turn ceiling for the abstention path (`admissionMode: 'hits'`). It is
- * deliberately below `DEFAULT_ADMISSION_BUDGET`, and the gap is the point: an
- * abstention answer is a verdict about ABSENCE, so extra turns are not extra
- * evidence but extra opportunities to find a plausible near-miss to answer with.
+ * Turn ceiling for the abstention path (`admissionMode: 'hits'`).
  *
- * Measured on run 35004814319 over the 30 ABS questions, the abstention rate by
- * admitted turn count is 100% for 0-30 turns, 100% for 30-45, and 75% for 45-60
- * -- the loss is confined to the band that `DEFAULT_ADMISSION_BUDGET` allows.
- * The cap is set to 30, comfortably inside the band where the rate was perfect,
- * because 30 is also `topK * 2`: enough to keep each of the 15 hits with one
- * neighbour and no more.
+ * RETRACTED RATIONALE, kept so the mistake is not repeated. This constant was
+ * introduced on the basis that the abstention rate tracks the admitted turn
+ * count (100% below 45 turns, 75% between 45 and 60). Run 35019792901 falsified
+ * that: the cap is a no-op on LongMemEval-S because the production abstention
+ * prompts were ALREADY below it, and the "turn count" behind the claim was in
+ * fact a session count -- a turn's continuation lines are indistinguishable from
+ * fresh headers in the rendered prompt, so two separate counters both measured
+ * the wrong thing and agreed with each other.
+ *
+ * The real axis is the prompt CHARACTER total, which `DEFAULT_ADMISSION_BUDGET`
+ * bounds at ~90k (45 turns x 2000 chars) while the abstention block fails above
+ * ~32k. See analysis/verdicts/p24-cap-refuted.md.
  */
 const DEFAULT_ABSTENTION_ADMISSION_BUDGET = 30;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
@@ -611,11 +606,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessions,
       // The abstention path takes hits only, under a tighter ceiling. Its
       // expected answer is that no evidence exists, so there is no session to
-      // complete and completion can only dilute the abstention with
-      // topically-adjacent turns -- measured on run 35004814319 as 985 -> 1,277
-      // admitted turns across the 30 ABS questions (mean +9.7), with the
-      // abstention rate falling from 100% below 45 turns to 75% between 45 and
-      // 60.
+      // complete and completion can only add topically-adjacent turns.
+      //
+      // Scope note: run 35019792901 shows this ceiling is inert on
+      // LongMemEval-S -- the prompts came out byte-identical to the
+      // pre-change ones -- so it must not be credited with any accuracy
+      // effect. See analysis/verdicts/p24-cap-refuted.md.
       'hits',
     );
     return this.respondWith(
