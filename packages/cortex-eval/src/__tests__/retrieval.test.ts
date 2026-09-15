@@ -11,6 +11,7 @@ import {
   countLexicalMatches,
   expandContextWindow,
   expandContextWindowBySession,
+  expandContextWindowBounded,
   meanPool,
   embedManyCached,
   embedOneCached,
@@ -925,5 +926,97 @@ describe('retrieveSessionsByTurns', () => {
     // at turn granularity is free: no additional provider traffic.
     await retrieveSessionsByTurns(counting, ['question'], sessions, 10, 2);
     expect(embedded).toBe(after);
+  });
+});
+
+describe('expandContextWindowBounded', () => {
+  const corpus = Array.from({ length: 20 }, (_, i) => `turn ${i}`);
+
+  it('never returns more than the budget', () => {
+    // The caller that needs this is the abstention path: measured on run
+    // 35004814319, its abstention rate is 100% below 45 admitted turns and 75%
+    // between 45 and 60, so the ceiling has to be enforced rather than hoped
+    // for.
+    const out = expandContextWindowBounded(corpus, [5], 3, 4).split('\n');
+    expect(out.length).toBeLessThanOrEqual(4);
+  });
+
+  it('admits the hit itself before any neighbour', () => {
+    // With a budget of 1 the only admissible turn is the hit. This is the
+    // property `expandContextWindowBySession` also guarantees and the flat
+    // expansion does not: a budget smaller than the window must not silently
+    // drop the turn retrieval actually chose.
+    expect(expandContextWindowBounded(corpus, [7], 3, 1)).toBe('turn 7');
+  });
+
+  it('spends the remaining budget on neighbours, nearest first', () => {
+    const out = expandContextWindowBounded(corpus, [10], 3, 3).split('\n');
+    expect(out).toEqual(['turn 9', 'turn 10', 'turn 11']);
+  });
+
+  it('serves hits in rank order as the budget runs out', () => {
+    // Hit 0 is ranked first, so it and its neighbour are admitted before hit
+    // 15 gets anything.
+    const out = expandContextWindowBounded(corpus, [0, 15], 1, 3).split('\n');
+    expect(out).toContain('turn 0');
+    expect(out).toContain('turn 1');
+    expect(out).toContain('turn 15');
+    expect(out.length).toBe(3);
+  });
+
+  it('returns corpus order, not admission order, and does not duplicate', () => {
+    // Hits 10 then 9; each takes its two neighbours. The union is 8..11, so the
+    // shared turns (9 and 10) must appear once and in corpus order even though
+    // hit 10 was admitted first.
+    const out = expandContextWindowBounded(corpus, [10, 9], 1, 5).split('\n');
+    expect(out).toEqual(['turn 8', 'turn 9', 'turn 10', 'turn 11']);
+  });
+
+  it('does not charge budget for a duplicate turn', () => {
+    // Both hits and the overlap fall inside the budget, so nothing is truncated:
+    // a repeated index is already selected rather than consuming a slot.
+    const out = expandContextWindowBounded(corpus, [10, 9], 1, 4).split('\n');
+    expect(out).toEqual(['turn 8', 'turn 9', 'turn 10', 'turn 11']);
+  });
+
+  it('clamps at the corpus edges', () => {
+    expect(expandContextWindowBounded(corpus, [0], 2, 10).split('\n')).toEqual([
+      'turn 0',
+      'turn 1',
+      'turn 2',
+    ]);
+    expect(expandContextWindowBounded(corpus, [19], 2, 10).split('\n')).toEqual([
+      'turn 17',
+      'turn 18',
+      'turn 19',
+    ]);
+  });
+
+  it('returns empty for a non-positive budget or no hits', () => {
+    expect(expandContextWindowBounded(corpus, [5], 3, 0)).toBe('');
+    expect(expandContextWindowBounded(corpus, [5], 3, -1)).toBe('');
+    expect(expandContextWindowBounded(corpus, [], 3, 10)).toBe('');
+  });
+
+  it('ignores out-of-range indices instead of emitting undefined', () => {
+    const out = expandContextWindowBounded(corpus, [-4, 999, 3], 0, 10).split('\n');
+    expect(out).toEqual(['turn 3']);
+  });
+
+  it('returns empty when every index is out of range', () => {
+    // Distinct from "no hits": here the caller passed hits, but none of them
+    // point into the corpus. Nothing may be emitted, and no undefined may leak
+    // into the prompt.
+    expect(expandContextWindowBounded(corpus, [-1, 20, 50], 2, 10)).toBe('');
+  });
+
+  it('matches the unbounded expansion when the budget is not binding', () => {
+    // The bounded primitive must be a drop-in refinement, not a reimplementation
+    // with different semantics: with a generous budget it has to agree with the
+    // existing function exactly.
+    const indices = [2, 8, 15];
+    expect(expandContextWindowBounded(corpus, indices, 2, 100)).toBe(
+      expandContextWindow(corpus, indices, 2),
+    );
   });
 });

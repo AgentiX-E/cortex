@@ -269,6 +269,195 @@ describe('buildConservativeQaPrompt', () => {
     const prompt = buildConservativeQaPrompt('Q?', 'ctx', 'NONE');
     expect(prompt).toContain('NONE');
   });
+
+  it('refuses to abstain merely because a near-miss entity is present', () => {
+    // Every ABS question in LongMemEval-S is a near-miss trap: the question
+    // names an entity the conversation never mentions, while a close relative is
+    // present ("table tennis" vs "tennis", "Dr. Johnson" vs "Dr. Smith"). The
+    // pre-fix wording ("no relevant information at all") reads as satisfied by
+    // that near miss, so the model answers instead of abstaining. The prompt has
+    // to say the match must be exact.
+    const prompt = buildConservativeQaPrompt(
+      'How often do I see Dr. Johnson?',
+      '[2023/01/08] user: I see Dr. Smith every week.',
+    );
+    expect(prompt).toContain('the question names');
+    expect(prompt).toContain('not the same');
+  });
+
+  it('keeps the context machine-readable so structure is not lost', () => {
+    // The standard QA prompts wrap each turn as a JSON object via
+    // `formatStructuredContext`. The conservative prompt embedded the raw
+    // concatenated turns instead, so a near-miss turn was indistinguishable from
+    // an exact match and the surrounding turns ran together. The abstention
+    // judgement depends on per-turn identity, so the structure has to survive.
+    const prompt = buildConservativeQaPrompt(
+      'Q?',
+      '[2023/01/08] user: I like blue.\n[2023/01/09] user: I like red.',
+    );
+    expect(prompt).toContain('"content"');
+    expect(prompt).toContain('"date"');
+  });
+});
+
+describe('answerAbstention admission budget', () => {
+  /**
+   * Measured on run 35004814319 / 34915402976: session-coherent admission grew
+   * the ABS prompt by a mean of 8,232 characters and pushed 13 of the 30 ABS
+   * questions past 40,000 characters, a regime that did not contain a single ABS
+   * question in the previous run. In that regime the abstention rate fell to
+   * 61.5% against 94.1% below it, and the rank correlation between prompt length
+   * and abstention went from +0.011 (p = 0.98) to -0.395 (permutation p = 0.032).
+   *
+   * ABS has no evidence session to complete: its expected answer is that no
+   * evidence exists. Session completion can therefore only append turns that
+   * compete with the abstention, which is why this path must not spend budget on
+   * them.
+   */
+  const turns: string[] = [];
+  for (let i = 1; i <= 24; i++) {
+    const day = String((i % 28) + 1).padStart(2, '0');
+    turns.push(`[2023/01/${day}] user: filler turn number ${i} about routine topics.`);
+  }
+  // The near-miss the question is built around lives in the first turn.
+  turns[0] = '[2023/01/01] user: I see Dr. Smith every week.';
+
+  it('admits the hit turn but not its whole session', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      topK: 1,
+      contextRadius: 0,
+    });
+    // 24 turns form one session; only the first is the retrieved hit.
+    await system.answerAbstention('How often do I see Dr. Johnson?', turns, [turns]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    const admitted = (qaPrompt.match(/filler turn number/g) ?? []).length;
+    // This is the regression: session completion admits the whole 24-turn
+    // session (measured 23 filler turns). The abstention path must cap admission
+    // instead, so none of the session's non-hit turns may appear.
+    expect(admitted).toBe(0);
+    expect(qaPrompt).toContain('Dr. Smith');
+  });
+
+  it('keeps the contextRadius neighbours the pre-session-completion path had', async () => {
+    // The abstention path must return to its pre-4955d8e shape, which was hits
+    // plus `contextRadius` neighbours -- NOT hits alone. A hit taken without its
+    // neighbour loses the reply that answers it, and the neighbouring turn is
+    // also the near-miss the abstention decision has to reason about.
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      topK: 1,
+      contextRadius: 1,
+    });
+    await system.answerAbstention('How often do I see Dr. Johnson?', turns, [turns]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // The hit (turn 1) plus its one neighbour (turn 2), and nothing beyond.
+    expect(qaPrompt).toContain('filler turn number 2');
+    expect(qaPrompt).not.toContain('filler turn number 3');
+    expect(qaPrompt).not.toContain('filler turn number 24');
+  });
+
+  it('enforces the abstention ceiling at the production shape of 15 hits', async () => {
+    // The end-to-end version of the `expandContextWindowBounded` contract: at the
+    // real topK (15) and radius (1) the unbounded window would be 45 turns, and
+    // the abstention path must stop at 30. Measured on run 35004814319, the
+    // questions that ended up in the 45-60 band abstained only 75% of the time
+    // while everything under 45 abstained every time, so the ceiling has to hold
+    // through the real retrieval flow and not just in the primitive.
+    const corpus: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      corpus.push(`[2023/01/01] user: distinct filler sentence number ${i} here.`);
+    }
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      topK: 15,
+      contextRadius: 1,
+    });
+    await system.answerAbstention('How often do I see Dr. Johnson?', corpus, [corpus]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    const admitted = (qaPrompt.match(/distinct filler sentence number/g) ?? []).length;
+    expect(admitted).toBeGreaterThan(0);
+    expect(admitted).toBeLessThanOrEqual(30);
+  });
+
+  it('honours an explicit abstentionAdmissionBudget', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      topK: 15,
+      contextRadius: 1,
+      abstentionAdmissionBudget: 8,
+    });
+    const corpus = Array.from(
+      { length: 60 },
+      (_, i) => `[2023/01/01] user: distinct filler sentence number ${i} here.`,
+    );
+    await system.answerAbstention('How often do I see Dr. Johnson?', corpus, [corpus]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    const admitted = (qaPrompt.match(/distinct filler sentence number/g) ?? []).length;
+    expect(admitted).toBeLessThanOrEqual(8);
+  });
+
+  it('does not regress the other single-session paths to the capped mode', async () => {
+    // The cap is scoped to abstention. Every other path still completes the
+    // session, which is what carries the qualifier a knowledge-update or
+    // extraction answer needs.
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes('Specific items:')) return 'topic';
+        return 'the answer';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      topK: 1,
+      contextRadius: 0,
+    });
+    await system.answer('What do I do every week?', turns, [turns]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // Session completion is intact here: the far end of the hit's session is
+    // admitted even though contextRadius is 0.
+    expect(qaPrompt).toContain('filler turn number 24');
+  });
 });
 
 describe('buildTemporalQaPrompt', () => {

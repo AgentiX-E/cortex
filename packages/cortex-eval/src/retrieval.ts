@@ -272,6 +272,80 @@ export function expandContextWindow(context: string[], indices: number[], radius
 }
 
 /**
+ * Expand retrieved turn indices into a window of at most `budget` turns: the
+ * turns at `indices` plus up to `radius` neighbours on each side, de-duplicated
+ * and returned in corpus order.
+ *
+ * This is `expandContextWindow` with the two properties that function lacks and
+ * that a bounded caller needs:
+ *
+ *   1. A hard ceiling. `expandContextWindow` admits `topK * (1 + 2 * radius)`
+ *      turns unconditionally, which is fine when more context is simply more
+ *      context. It is not fine for the abstention path, whose answer is that no
+ *      evidence exists: measured on run 35004814319, abstention holds at 100% for
+ *      questions admitting under 45 turns and falls to 75% between 45 and 60.
+ *   2. Hit priority. With a small budget, `expandContextWindow` can spend the
+ *      whole window on the first hit's neighbours and never admit the second
+ *      hit. Here the hits are taken first, in rank order, so a reduced budget
+ *      narrows the neighbourhood rather than dropping the turns retrieval chose.
+ *
+ * Output is in corpus order and de-duplicated, so the prompt reads
+ * chronologically regardless of admission order. A non-positive `budget`, or an
+ * empty `indices`, yields the empty string.
+ */
+export function expandContextWindowBounded(
+  context: string[],
+  indices: number[],
+  radius: number,
+  budget: number,
+): string {
+  if (budget <= 0 || indices.length === 0) {
+    return '';
+  }
+  const inRange = indices.filter((idx) => idx >= 0 && idx < context.length);
+  if (inRange.length === 0) {
+    return '';
+  }
+  const selected = new Set<number>();
+  const admit = (i: number): boolean => {
+    if (i < 0 || i >= context.length || selected.has(i)) {
+      // A duplicate is not a new admission, so it costs no budget.
+      return true;
+    }
+    if (selected.size >= budget) {
+      return false;
+    }
+    selected.add(i);
+    return true;
+  };
+  // Pass 1: each hit itself, in rank order. This is what makes a budget smaller
+  // than the window degrade to "fewer neighbours" rather than "fewer hits".
+  for (const idx of inRange) {
+    if (!admit(idx)) {
+      break;
+    }
+  }
+  // Pass 2: neighbours, in hit rank order and nearest-first from each hit, so
+  // the turns closest to a chosen turn are preferred over distant ones.
+  outer: for (const idx of inRange) {
+    for (let d = 1; d <= radius; d++) {
+      for (const j of [idx - d, idx + d]) {
+        if (j < 0 || j >= context.length) {
+          continue;
+        }
+        if (!admit(j)) {
+          break outer;
+        }
+      }
+    }
+  }
+  return [...selected]
+    .sort((a, b) => a - b)
+    .map((i) => context[i]!)
+    .join('\n');
+}
+
+/**
  * Expand a set of retrieved turn indices into a coherent context window that
  * respects SESSION boundaries: a hit's own session is completed before the budget
  * is spent on `radius` neighbours of unrelated hits.
