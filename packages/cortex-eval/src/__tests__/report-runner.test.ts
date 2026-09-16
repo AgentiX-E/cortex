@@ -825,16 +825,87 @@ describe('runAbstentionRetryAblation', () => {
     };
   }
 
-  it('labels the two arms and isolates MR questions', async () => {
+  /**
+   * The ablation must measure the population the retry actually serves, and that
+   * population is NOT multi-session.
+   *
+   * `respondWith` arms the retry on every path that builds a QA prompt, so the
+   * single-session paths are where it fires in production: run `35097952715`
+   * recorded 12 fires, all on IE/TR/KU, and 0 on ABS. The MR-scoped ablation
+   * measured 121 multi-session questions and saw 1 fire — 92% of the retry's
+   * real traffic was outside the experiment, so its `Δ = 0.00 pp` was evidence
+   * about a population the retry barely touches.
+   *
+   * This test is the minimal witness: a dataset with ONLY single-session
+   * questions. An MR-scoped ablation sees zero questions here and reports a
+   * "measured zero"; a correctly scoped one sees the question and counts the
+   * fire.
+   */
+  it('counts single-session questions, where the retry actually fires', async () => {
+    const singleSessionInstances: LongMemEvalInstance[] = [
+      {
+        question_id: 'ss-1',
+        question_type: 'single-session-user',
+        question: 'Where do I live?',
+        answer: 'Shanghai',
+        haystack_sessions: [[{ role: 'user', content: 'I live in Shanghai.' }]],
+        answer_session_ids: [],
+      },
+    ];
+    let answerCall = 0;
+    const llm: LLM = {
+      complete: async (prompt: string) => {
+        if (/^Specific \w[^\n]*:$/m.test(prompt)) return 'where I live';
+        // First answer call abstains (arming the retry); the re-ask answers.
+        const reply = answerCall % 2 === 0 ? 'Answer: UNANSWERABLE' : 'Answer: Shanghai';
+        answerCall++;
+        return reply;
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report, retryFires } = await runAbstentionRetryAblation(
+      singleSessionInstances,
+      embedding,
+      llm,
+    );
+    expect(report.questionCount).toBe(1);
+    expect(retryFires.questions).toBe(1);
+    expect(retryFires.controlFires).toBe(0);
+    expect(retryFires.treatmentFires).toBe(1);
+  });
+
+  it('labels the two arms and measures every question by default', async () => {
     const { report, markdown } = await runAbstentionRetryAblation(
       mrInstances,
       embedding,
       bareThenAnswerLlm(),
     );
+    // The scope is the whole dataset, so a single MR instance is measured
+    // because it was supplied — not because it is MR.
     expect(report.questionCount).toBe(1);
     expect(report.baseline.name).toBe('mr-retry-off');
     expect(report.feature.name).toBe('mr-retry-on');
     expect(markdown).toContain('Abstention-retry fires');
+  });
+
+  it('restricts the scope to the requested capabilities when asked', async () => {
+    // The historical MR-only number has to stay reproducible: scoping is an
+    // option, not a rollback of the default.
+    const mixed: LongMemEvalInstance[] = [
+      ...mrInstances,
+      {
+        question_id: 'ss-scope',
+        question_type: 'single-session-user',
+        question: 'Where do I live?',
+        answer: 'Shanghai',
+        haystack_sessions: [[{ role: 'user', content: 'I live in Shanghai.' }]],
+        answer_session_ids: [],
+      },
+    ];
+    const { retryFires } = await runAbstentionRetryAblation(mixed, embedding, bareThenAnswerLlm(), {
+      retryAblationCapabilities: ['MR'],
+    });
+    expect(retryFires.questions).toBe(1);
   });
 
   it('fires only in the treatment arm, which is what makes the pair valid', async () => {

@@ -5,6 +5,7 @@
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import { loadLongMemEval, type LongMemEvalInstance } from './datasets/longmemeval-loader.js';
+import type { Capability } from './types.js';
 import { EmbeddingMemorySystem } from './embedding-memory.js';
 import {
   buildAggregationQaPrompt,
@@ -40,6 +41,16 @@ export type BenchmarkRunnerOptions = {
   temperature?: number;
   /** Optional answer judge; defaults to an LLM judge over the same LLM. */
   judge?: AnswerJudge;
+  /**
+   * Restrict the retry ablation to these capabilities (default: none, i.e. the
+   * whole dataset).
+   *
+   * The default is the whole dataset because that is the population the retry
+   * serves — it is armed inside `respondWith`, which every QA path routes
+   * through. The option exists so a scoped re-measurement (e.g. `['MR']` to
+   * reproduce the historical number) is possible without reverting the default.
+   */
+  retryAblationCapabilities?: readonly Capability[] | undefined;
   /** Optional callback for per-question decision tracing (diagnostic). */
   onDecision?: (trace: DecisionTrace) => void;
 };
@@ -470,8 +481,18 @@ export type RetryAblationReport = {
  * Both arms enable abstention (the retry only exists on the abstaining path)
  * and both use the default aggregation prompt. They differ ONLY in
  * `enableAbstentionRetry` — control `false`, treatment `true` — so the paired
- * McNemar test on MR questions attributes any delta to the retry itself and to
- * nothing else.
+ * McNemar test attributes any delta to the retry itself and to nothing else.
+ *
+ * SCOPE: the whole dataset, not the multi-session slice.
+ *
+ * The retry is armed inside `respondWith`, which every QA path routes through,
+ * so the population it can serve is every question — not the multi-session ones
+ * this ablation used to filter to. That filter was not a cost saving, it was a
+ * mis-scoped instrument, and it made the null result uninterpretable: on run
+ * `35097952715` the retry fired 12 times, all on IE/TR/KU, and the MR-only
+ * ablation saw 1 fire over 121 questions. 92% of the mechanism's real traffic
+ * sat outside the experiment, so `Δ = 0.00 pp` was a measurement of a
+ * population the retry barely touches rather than evidence about the retry.
  *
  * The arms SHARE all three caches, exactly as the other MR-adjacent ablations
  * do, and this is load-bearing rather than a cost optimisation. The hosted
@@ -500,8 +521,10 @@ export async function runAbstentionRetryAblation(
   retryFires: RetryAblationReport['retryFires'];
 }> {
   const dataset = loadLongMemEval(instances);
-  const mrQuestions = dataset.questions.filter((q) => q.capability === 'MR');
-  const mrDataset = { name: 'longmemeval-mr-retry', questions: mrQuestions };
+  const questions = options.retryAblationCapabilities
+    ? dataset.questions.filter((q) => options.retryAblationCapabilities!.includes(q.capability))
+    : dataset.questions;
+  const scoped = { name: 'longmemeval-retry', questions };
 
   const expansionCache = new Map<string, string[]>();
   // Shared across both arms: keyed by the fully rendered prompt, so arms with
@@ -543,14 +566,14 @@ export async function runAbstentionRetryAblation(
   });
 
   const judge = options.judge ?? createLlmJudge(llm);
-  const report = await runAblationReport(mrDataset, control, treatment, {
+  const report = await runAblationReport(scoped, control, treatment, {
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });
   const retryFires = {
     controlFires: countRetryFires(controlTraces),
     treatmentFires: countRetryFires(treatmentTraces),
-    questions: mrQuestions.length,
+    questions: questions.length,
   };
   return {
     report,
@@ -582,7 +605,7 @@ export function formatRetryFireSection(fires: RetryAblationReport['retryFires'])
     `| control (\`enableAbstentionRetry: false\`) | ${fires.controlFires} |`,
     `| treatment (\`enableAbstentionRetry: true\`) | ${fires.treatmentFires} |`,
     '',
-    `- Treatment fire rate: **${(rate * 100).toFixed(2)}%** of ${fires.questions} MR questions`,
+    `- Treatment fire rate: **${(rate * 100).toFixed(2)}%** of ${fires.questions} questions`,
   ];
   if (fires.controlFires !== 0) {
     lines.push(
