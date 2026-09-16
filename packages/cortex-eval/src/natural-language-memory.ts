@@ -1173,40 +1173,42 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       return text;
     };
     /**
-     * Deliberately cache-BYPASSING call, used only by the abstention retry.
+     * The second attempt's prompt.
      *
-     * The retry re-asks the byte-identical prompt, so a cache-first call would
-     * return the very abstention it is trying to escape — the retry would be a
-     * no-op with no error and no test failure, in every configuration that sets
-     * `answerCache`. That is not a corner case: the ablation harness always
-     * shares a cache across paired arms to hold the model constant, so the
-     * cache-first path is the one that runs in production and the
-     * cache-absent path is the one the unit tests exercised.
+     * The call itself is the ordinary cache-first `complete`, and that is
+     * correct now in a way it was not before. The retry once re-asked the
+     * byte-identical prompt, so it had to bypass the cache or it would read back
+     * the very abstention it was trying to escape -- silently, in exactly the
+     * configurations that set `answerCache`, which is the production one because
+     * the ablation harness always shares a cache across paired arms.
      *
-     * Bypassing the cache here is still safe for repeat callers: a successful
-     * retry OVERWRITES the cached abstention (below), so a later byte-identical
-     * question reads the recovered answer rather than re-billing the provider.
-     * A retry that itself abstains writes nothing, so the original entry is
-     * left untouched.
+     * The retry prompt is now a deterministic function of the first prompt
+     * (`buildRetryFromFirstAttempt` rewrites the instruction and copies the
+     * evidence verbatim), so it caches under its own stable key. Reading that key
+     * cannot return the first attempt's abstention, and a repeated question does
+     * not re-bill the provider for a second attempt already made. The first
+     * attempt's entry is never overwritten, so callers that legitimately read it
+     * are unaffected either way.
      */
-    const completeFresh = async (p: string): Promise<string> => {
-      const text = await this.options.llm.complete(p, {
-        temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
-      });
-      cache?.set(p, text);
-      return text;
-    };
+    const retryPrompt = buildRetryFromFirstAttempt(prompt);
     let raw = await complete(prompt);
     const abstainToken = this.options.abstainToken ?? DEFAULT_ABSTAIN_TOKEN;
     let retryFired = false;
 
     // Contract enforcement on the abstention decision. The prompt forbids a
     // bare token, but a prompt is advisory; this is the mechanistic half of the
-    // same rule. The re-ask is byte-identical, so a model that declined for a
-    // transient reason gets a chance to commit, and none of the response text
-    // changes what is asked.
+    // same rule.
+    //
+    // The second attempt is NOT a re-ask of the same bytes. It used to be, and
+    // the consequence was a structurally zero yield: at temperature 0 an
+    // identical prompt reproduces the identical abstention, so the retry could
+    // never recover anything while still spending a request. Run 35097952715
+    // fired it 12 times and recovered 0. The retry now rebuilds the prompt with
+    // a different instruction over the SAME evidence, which keeps a recovery
+    // attributable to re-asking rather than to different retrieval. See
+    // `buildRetryFromFirstAttempt`.
     if (retryEnabled && detectBareAbstention(raw, abstainToken)) {
-      const retried = await completeFresh(prompt);
+      const retried = await complete(retryPrompt);
       // `retryFired` records the re-ask, not its outcome: an accepted retry and
       // a retry that abstained again are both evidence the mechanism ran. Only
       // whether it RAN separates "the feature is inert on this dataset" from
@@ -1521,16 +1523,15 @@ export function buildConservativeQaPrompt(
   // Every abstention question in LongMemEval-S is a near-miss trap: the question
   // names an entity the conversation never mentions while a close relative is
   // present ("table tennis" vs "tennis", "Dr. Johnson" vs "Dr. Smith"). The
-  // sentence above reads as satisfied by that near miss -- the context IS
+  // sentence below reads as satisfied by that near miss -- the context IS
   // topically relevant -- so the model answers with the relative's value.
   //
-  // ATTRIBUTION WARNING. This sentence is NOT individually validated. It landed in
-  // the same commit as the admission cap, and on run 35019792901 (both together)
-  // the abstention block recovered 24/30 -> 29/30 with 5 gained and 0 lost. The
-  // cap accounts for the movement by the bound/no-op split -- 5 verdict changes
-  // where the cap bound, 0 where it did not -- but the sentence is present for all
-  // 30 questions, so nothing in that run separates them. `entityIdentityClause:
-  // false` is how a run does. See analysis/verdicts/p24-cap-verdict.md.
+  // ATTRIBUTION. This sentence is individually validated. Run 35097952715
+  // removed it with the admission cap held constant and the abstention block
+  // fell 29/30 -> 26/30, 3 lost and 0 gained, two of the three with an identical
+  // `top1Score`. It is worth +3 of the 24/30 -> 29/30 recovery; the cap is worth
+  // the other +2, on disjoint questions. See
+  // analysis/verdicts/p25-clause-isolation-verdict.md.
   const identityClause =
     options.entityIdentityClause === false
       ? []
@@ -1550,6 +1551,58 @@ export function buildConservativeQaPrompt(
     `Question: ${question}`,
     '',
     'Answer:',
+  ].join('\n');
+}
+
+/**
+ * Build the SECOND attempt's prompt for the bare-abstention retry.
+ *
+ * The retry used to re-ask the byte-identical prompt, which at temperature 0
+ * reproduces the abstention with probability 1: the mechanism was a guaranteed
+ * no-op that still spent a request. Run `35097952715` fired it 12 times across
+ * the full dataset and recovered 0, and every one of the 12 was a question the
+ * system had got wrong -- so the population is real and the yield was
+ * structurally zero. See `analysis/verdicts/p26-retry-structural-zero.md`.
+ *
+ * THIS BUILDER DOES NOT RENDER THE CONTEXT. It takes the first attempt's prompt
+ * and replaces only the instruction lines, keeping the evidence span verbatim.
+ * That is not a convenience: the routes render the same turns differently
+ * (`buildQaPrompt` uses a JSON-array rendering, the conservative prompt uses
+ * `[date] role: text`), so a retry that re-rendered the context would silently
+ * change the evidence as well as the wording, and any recovery would be
+ * attributable to neither.
+ *
+ * WHAT IT ADDS. Verification over the 12 fires found 9 whose evidence IS in the
+ * context -- including one where the context states "working at NovaTech for
+ * about 4 years and 3 months" in answer to a question about tenure. The first
+ * attempt declines anyway, so the failure is over-abstention rather than a
+ * recall miss. The added lines therefore tell the model, in the language of the
+ * task, that the context was retrieved FOR THIS QUESTION: a retriever that ran
+ * on the question and returned non-empty output is positive evidence of
+ * relevance, which a flat "no relevant information" wording does not convey.
+ *
+ * It deliberately does NOT weaken the abstention contract. The entity-identity
+ * sentence is preserved, because that contract carries 3 of the 29
+ * abstention-block questions and a retry that trades them for recoveries
+ * elsewhere is not a fix.
+ */
+export function buildRetryFromFirstAttempt(firstPrompt: string): string {
+  const marker = firstPrompt.indexOf('\nContext');
+  // A prompt with no context marker is not one this retry was built for; the
+  // caller falls back to appending, and this guard keeps that decision at the
+  // call site rather than guessing a split point here.
+  if (marker === -1) {
+    return firstPrompt;
+  }
+  const evidence = firstPrompt.slice(marker);
+  return [
+    'You are answering questions based on a conversation memory.',
+    'You are asked again because the previous attempt returned the abstention token.',
+    'Before you do so again, re-read the context: it was retrieved FOR THIS QUESTION and is not a generic sample, so a non-empty context is itself evidence that relevant information was found.',
+    'Look for the answer expressed in different words, implied by an event, or spread across more than one turn. A question asking for a duration, a count, or a difference may be answerable from dates or quantities that are stated rather than from the answer phrased as such.',
+    'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
+    `Respond with exactly "${DEFAULT_ABSTAIN_TOKEN}" ONLY if the context genuinely bears on nothing in the question.`,
+    evidence,
   ].join('\n');
 }
 

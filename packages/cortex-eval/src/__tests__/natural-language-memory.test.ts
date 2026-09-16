@@ -3773,18 +3773,29 @@ describe('NaturalLanguageMemorySystem', () => {
       };
     }
 
-    it('re-asks the same prompt once when the first pass is a bare abstention', async () => {
+    it('re-asks once with a DIFFERENT instruction over the same evidence', async () => {
       const { prompts, calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2']);
       const answer = await s.answerSessions(QUESTION, EVIDENCE);
       expect(answer).toBe('2');
       // Exactly one re-ask: the token response is a bare skip, not a verdict.
       expect(calls()).toBe(2);
-      // The re-ask is byte-identical to the first aggregation prompt. Changing
-      // its wording would make the pass a different question and reintroduce
-      // the very gap being measured.
-      const aggregationPrompts = prompts.filter((p) => p.includes('Step 1 — Enumerate'));
+      // The re-ask used to be byte-identical, which at temperature 0 reproduces
+      // the abstention with probability 1 -- a guaranteed no-op that still spent
+      // a request. Run 35097952715 fired it 12 times and recovered 0. The
+      // instruction must now differ, or the pass has no yield by construction.
+      //
+      // Identified by the CONTEXT span rather than by an instruction phrase: the
+      // retry prompt rewrites the instructions, so a filter keyed on any one of
+      // them would silently miss the second prompt and report a single call.
+      const evidenceKey = (p: string): string => p.slice(p.indexOf('\nContext'));
+      const aggregationPrompts = prompts.filter(
+        (p) => p.includes('Step 1 — Enumerate') || p.includes('previous attempt returned'),
+      );
       expect(aggregationPrompts).toHaveLength(2);
-      expect(aggregationPrompts[0]).toBe(aggregationPrompts[1]);
+      expect(aggregationPrompts[0]).not.toBe(aggregationPrompts[1]);
+      // ...but ONLY the instruction. The evidence span is copied verbatim, so a
+      // recovery is attributable to re-asking rather than to different context.
+      expect(evidenceKey(aggregationPrompts[0]!)).toBe(evidenceKey(aggregationPrompts[1]!));
     });
 
     it('still re-queries when an answer cache is configured', async () => {
@@ -3806,9 +3817,12 @@ describe('NaturalLanguageMemorySystem', () => {
       expect(calls()).toBe(2);
     });
 
-    it('keeps a bare abstention cached for later callers while retrying afresh', async () => {
-      // The cache still has to do its job: a byte-identical prompt in a LATER
-      // question must not re-bill the provider. Only the retry bypasses it.
+    it('keeps the first answer cached for later callers while retrying afresh', async () => {
+      // The cache still has to do its job: a repeated question must not re-bill
+      // the provider. Both the first attempt AND the retry are cache-first now,
+      // each under its own key -- the retry prompt is a deterministic function
+      // of the first, so the second call of the same question finds both
+      // entries and makes no new request at all.
       const cache = new Map<string, string>();
       const { calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2'], {
         answerCache: cache,
@@ -3816,8 +3830,6 @@ describe('NaturalLanguageMemorySystem', () => {
       await s.answerSessions(QUESTION, EVIDENCE);
       const after = calls();
       await s.answerSessions(QUESTION, EVIDENCE);
-      // Second question: the first pass reads the answer the retry stored, so
-      // no new call is made at all.
       expect(calls()).toBe(after);
     });
 
@@ -4126,7 +4138,12 @@ describe('bare-abstention retry determinism', () => {
   const EVIDENCE = ['[2023/01/01] user: I left the spare key in the kitchen drawer.'];
   const QUESTION = 'Where did I put the spare key?';
 
-  it('re-asks the byte-identical prompt and therefore cannot recover', async () => {
+  it('re-asks a DIFFERENT prompt, which is what gives the retry any yield', async () => {
+    // The defect this test pins: re-asking the byte-identical prompt at
+    // temperature 0 reproduces the abstention with probability 1, so the retry
+    // was a guaranteed no-op that still spent a request. Run 35097952715
+    // recorded 12 fires over the full dataset and 0 recoveries, all 12 on
+    // questions the system lost.
     const prompts: string[] = [];
     const llm: LLM = {
       complete: async (prompt) => {
@@ -4147,7 +4164,54 @@ describe('bare-abstention retry determinism', () => {
     expect(prompts).toHaveLength(3);
     const [expansion, first, second] = prompts as [string, string, string];
     expect(expansion).toContain('retrieve evidence');
-    expect(first).toBe(second);
+    expect(first).not.toBe(second);
+  });
+
+  it('keeps the evidence identical between the two attempts', async () => {
+    // Only the INSTRUCTION may differ. Changing the context too would make the
+    // retry a second experiment rather than a second attempt at the same one,
+    // and its gain could no longer be attributed to re-asking.
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'Answer: UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      enableAbstentionRetry: true,
+    });
+    await system.answer(QUESTION, EVIDENCE);
+    const [, first, second] = prompts as [string, string, string];
+    // The evidence span is everything from the context marker to the end, so
+    // this compares the rendered evidence rather than one line that happens to
+    // carry the phrase. The marker is matched the way the implementation splits
+    // on it, which is what makes "identical evidence" a real invariant here.
+    const evidenceOf = (p: string): string => p.slice(p.indexOf('\nContext'));
+    expect(evidenceOf(first)).toContain('spare key');
+    expect(evidenceOf(first)).toBe(evidenceOf(second));
+    expect(evidenceOf(first).length).toBeGreaterThan(0);
+  });
+
+  it('recovers a question when the second attempt answers', async () => {
+    // The retry's whole purpose. The first answer call declines and the re-ask
+    // commits, which the byte-identical version could never reach.
+    const llm: LLM = {
+      complete: async (prompt) => {
+        if (/^Specific \w[^\n]*:$/m.test(prompt)) return 'spare key';
+        return prompt.includes('again') ? 'Answer: the kitchen drawer' : 'Answer: UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      enableAbstentionRetry: true,
+    });
+    expect(await system.answer(QUESTION, EVIDENCE)).toBe('the kitchen drawer');
   });
 
   it('records the fire even though no recovery is possible', async () => {

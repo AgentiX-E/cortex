@@ -582,9 +582,24 @@ export async function runAbstentionRetryAblation(
   };
 }
 
-/** Decisions on which the retry actually re-queried. */
+/**
+ * Distinct QUESTIONS on which the retry actually re-queried.
+ *
+ * Deduplicated by question, because the same question is evaluated once per
+ * ablation run: a raw trace count would grow with `runs` and report that the
+ * retry fires eight times more often under `runs: 8` than under `runs: 1`. The
+ * fire count is a property of the configuration and the dataset, so it must not
+ * be a function of how many times the experiment was repeated. The rate is
+ * reported against `questions`, and both sides have to be in the same unit.
+ */
 function countRetryFires(traces: readonly DecisionTrace[]): number {
-  return traces.filter((trace) => trace.retryFired === true).length;
+  const fired = new Set<string>();
+  for (const trace of traces) {
+    if (trace.retryFired === true) {
+      fired.add(trace.question);
+    }
+  }
+  return fired.size;
 }
 
 /**
