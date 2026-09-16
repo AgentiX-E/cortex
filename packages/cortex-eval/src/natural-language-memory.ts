@@ -125,6 +125,12 @@ export type NaturalLanguageMemorySystemOptions = {
    * size only indirectly, through `maxTurnChars`.
    */
   abstentionAdmissionBudget?: number;
+  /**
+   * Include the entity-identity sentence in the abstention prompt (default true).
+   * Exists to separate that sentence from the admission cap, which shipped in the
+   * same commit; see `buildConservativeQaPrompt`. Only an experiment should set it.
+   */
+  entityIdentityClause?: boolean;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
   /** Per-turn character budget for the single-session path (default 2000). */
@@ -624,11 +630,21 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       // See analysis/verdicts/p24-cap-verdict.md.
       'hits',
     );
+    // Bind the entity-identity option so an A/B can run the admission cap without
+    // the co-shipped sentence. The signature stays `(question, context, token)`
+    // so the builder remains interchangeable with every other prompt builder;
+    // `abstainToken` and the option are both optional, so each is spread
+    // conditionally rather than passed as `undefined`.
+    const entityIdentityClause = this.options.entityIdentityClause;
+    const conservativePrompt: PromptBuilder = (q, c, token) =>
+      buildConservativeQaPrompt(q, c, token ?? DEFAULT_ABSTAIN_TOKEN, {
+        ...(entityIdentityClause === undefined ? {} : { entityIdentityClause }),
+      });
     return this.respondWith(
       question,
       this.maxHitScore(hits),
       retrieved,
-      buildConservativeQaPrompt,
+      conservativePrompt,
       parseQaAnswer,
       expansionQueries,
       this.options.abstainThreshold,
@@ -1456,6 +1472,25 @@ export function buildQaPrompt(
 }
 
 /**
+ * Options for `buildConservativeQaPrompt`.
+ */
+export type ConservativeQaPromptOptions = {
+  /**
+   * Include the entity-identity sentence (default `true`).
+   *
+   * The option exists for one purpose: the sentence and the abstention admission
+   * cap shipped in the same commit, so the run that showed the block recovering
+   * 24/30 -> 29/30 cannot attribute the movement to one or the other -- the
+   * sentence is present for all 30 questions. Setting this to `false` runs the cap
+   * without the sentence, which is what separates them.
+   *
+   * Default-on because the shipped configuration is what production runs; do not
+   * flip it in production without a run to justify it.
+   */
+  entityIdentityClause?: boolean;
+};
+
+/**
  * Build a conservative QA prompt for abstention questions. Unlike the standard
  * `buildQaPrompt`, which tells the model to choose among candidates (the right
  * move for knowledge-update/extraction questions where the answer IS present but
@@ -1468,28 +1503,33 @@ export function buildConservativeQaPrompt(
   question: string,
   context: string,
   abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+  options: ConservativeQaPromptOptions = {},
 ): string {
+  // Every abstention question in LongMemEval-S is a near-miss trap: the question
+  // names an entity the conversation never mentions while a close relative is
+  // present ("table tennis" vs "tennis", "Dr. Johnson" vs "Dr. Smith"). The
+  // sentence above reads as satisfied by that near miss -- the context IS
+  // topically relevant -- so the model answers with the relative's value.
+  //
+  // ATTRIBUTION WARNING. This sentence is NOT individually validated. It landed in
+  // the same commit as the admission cap, and on run 35019792901 (both together)
+  // the abstention block recovered 24/30 -> 29/30 with 5 gained and 0 lost. The
+  // cap accounts for the movement by the bound/no-op split -- 5 verdict changes
+  // where the cap bound, 0 where it did not -- but the sentence is present for all
+  // 30 questions, so nothing in that run separates them. `entityIdentityClause:
+  // false` is how a run does. See analysis/verdicts/p24-cap-verdict.md.
+  const identityClause =
+    options.entityIdentityClause === false
+      ? []
+      : [
+          `Answer ${abstainToken} when the question names a specific entity (a person, object, place, or qualifier) that does not appear in the context, even if a related or similarly-named one does: a different name is not the same as the entity asked about, and a related object is not the same as the object asked about.`,
+        ];
   return [
     'You are answering questions based on a conversation memory.',
     'Read the context carefully and extract the answer to the question.',
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
-    // Every abstention question in LongMemEval-S is a near-miss trap: the
-    // question names an entity the conversation never mentions while a close
-    // relative is present ("table tennis" vs "tennis", "Dr. Johnson" vs
-    // "Dr. Smith", "football" vs "baseball"). The looser wording above reads as
-    // satisfied by that near miss -- the context IS topically relevant -- so the
-    // model answers with the relative's value.
-    //
-    // ATTRIBUTION WARNING. This sentence landed in the same commit as the
-    // admission cap, so its individual contribution is NOT isolated. On run
-    // 35019792901 (cap + this sentence) the abstention block recovered 24/30 ->
-    // 29/30 with 5 gained and 0 lost, but the cap alone accounts for the whole
-    // movement by the bound/no-op split (5 verdict changes where the cap bound, 0
-    // where it did not), and every question carries this sentence regardless. A
-    // run without it, at the same budget, is what would separate the two. Do not
-    // cite this sentence as validated. See analysis/verdicts/p24-cap-verdict.md.
-    `Answer ${abstainToken} when the question names a specific entity (a person, object, place, or qualifier) that does not appear in the context, even if a related or similarly-named one does: a different name is not the same as the entity asked about, and a related object is not the same as the object asked about.`,
+    ...identityClause,
     '',
     'Context:',
     context,

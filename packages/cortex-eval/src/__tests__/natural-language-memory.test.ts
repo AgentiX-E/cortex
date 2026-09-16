@@ -298,6 +298,27 @@ describe('buildConservativeQaPrompt', () => {
     expect(prompt).toContain('[2023/01/08] user: I like blue.');
     expect(prompt).not.toContain('"content"');
   });
+
+  it('omits the entity-identity sentence only when it is explicitly disabled', () => {
+    // The sentence and the admission cap shipped in the same commit, so nothing
+    // measured so far separates them: the sentence is present for all 30 ABS
+    // questions. This option exists so an A/B can run the cap *without* it and
+    // attribute the recovery to one edit or the other. Default-on, because the
+    // shipped configuration is what production runs.
+    const context = '[2023/01/08] user: I see Dr. Smith every week.';
+    const withSentence = buildConservativeQaPrompt('How often do I see Dr. Johnson?', context);
+    const withoutSentence = buildConservativeQaPrompt(
+      'How often do I see Dr. Johnson?',
+      context,
+      undefined,
+      { entityIdentityClause: false },
+    );
+    expect(withSentence).toContain('not the same');
+    expect(withoutSentence).not.toContain('not the same');
+    // Only the clause is dropped: the abstention contract and the context stay.
+    expect(withoutSentence).toContain('no relevant information at all');
+    expect(withoutSentence).toContain(context);
+  });
 });
 
 describe('answerAbstention admission budget', () => {

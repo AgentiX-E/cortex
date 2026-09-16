@@ -38,6 +38,11 @@ on:
         required: false
         default: 'disabled'
         type: string
+      entity_identity_clause:
+        description: 'Include the abstention entity-identity sentence (1 = shipped config, 0 = remove it to isolate it from the admission cap)'
+        required: false
+        default: '1'
+        type: string
 
 permissions:
   contents: read
@@ -102,6 +107,12 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
           ABSTAIN_THRESHOLD: '0.5'
+          # The entity-identity sentence in the abstention prompt shipped in the
+          # same commit as the admission cap, so they are confounded by default.
+          # Set to 0 to remove the sentence while keeping the cap, which is the
+          # run that attributes the abstention recovery to one or the other.
+          # Unset (or any value but 0) keeps the shipped configuration.
+          ENTITY_IDENTITY_CLAUSE: ${{ github.event.inputs.entity_identity_clause || '1' }}
           DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
           DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           # Default to a small stratified sample so iterative debugging does not

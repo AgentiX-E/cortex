@@ -21,6 +21,15 @@ import { formatAblationReport, runAblationReport, type AblationReport } from './
 export type BenchmarkRunnerOptions = {
   /** Abstention threshold for the feature system (default 0.5). */
   abstainThreshold?: number;
+  /**
+   * Include the entity-identity sentence in the abstention prompt (default true).
+   *
+   * Exposed only to separate that sentence from the admission cap, which shipped
+   * in the same commit and is otherwise perfectly confounded with it. Flip it and
+   * run the benchmark to attribute the abstention recovery to one or the other;
+   * see `buildConservativeQaPrompt`.
+   */
+  entityIdentityClause?: boolean;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
   /**
@@ -97,6 +106,9 @@ export async function runNaturalLanguageBenchmark(
     structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.onDecision ? { onDecision: options.onDecision } : {}),
+    ...(options.entityIdentityClause !== undefined
+      ? { entityIdentityClause: options.entityIdentityClause }
+      : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);

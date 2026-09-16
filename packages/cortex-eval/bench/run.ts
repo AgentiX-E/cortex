@@ -163,8 +163,15 @@ async function main(): Promise<void> {
   // trace also carries the retrieved evidence and raw LLM output for MR
   // failure analysis.
   const decisions: DecisionTrace[] = [];
+  // The entity-identity sentence and the admission cap shipped in the same
+  // commit, so the run that recovered the abstention block cannot attribute the
+  // movement to either. `ENTITY_IDENTITY_CLAUSE=0` removes the sentence while
+  // leaving the cap in place, which is what separates them. Unset means the
+  // shipped configuration (sentence present).
+  const entityIdentityClause = process.env['ENTITY_IDENTITY_CLAUSE'] !== '0';
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
+    entityIdentityClause,
     runs,
     temperature,
     onDecision: (trace) => decisions.push(trace),
