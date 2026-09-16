@@ -334,14 +334,23 @@ const DEFAULT_ADMISSION_BUDGET = 45;
  *
  * What the constant does is nonetheless load-bearing, and measurably so. The
  * quantity that separates the abstention block is prompt SIZE, and this ceiling
- * bounds it: on run 35019792901 it bound on 29 of 30 questions, taking the block
- * from a 37,224-char mean (max 49,585, 23 of 30 over 32k) to a 25,410-char mean
- * (max 31,129, 0 over 32k) -- and accuracy from 24/30 to 29/30, 5 gained and 0
- * lost, with all 5 flips among the questions the ceiling bound and 0 among those
- * it did not.
+ * bounds it: on run `35019792901` it bound on 29 of 30 questions, taking the
+ * block from a 37,224-char mean (max 49,585, 23 of 30 over 32k) to a 25,410-char
+ * mean (max 31,129, 0 over 32k) -- and accuracy from 24/30 to 29/30, 5 gained
+ * and 0 lost, with all 5 flips among the questions the ceiling bound and 0 among
+ * those it did not.
+ *
+ * DO NOT READ THAT 29/30 AS THE CAP'S ALONE. Both figures come from `0b0069a`,
+ * which shipped this ceiling AND the entity-identity sentence in one commit.
+ * Run `35097952715` later removed the sentence with this ceiling unchanged and
+ * ABS fell 29/30 -> 26/30, 3 lost and 0 gained, two of the three with an
+ * identical `top1Score`. So of the 24/30 -> 29/30 recovery, +2 is this ceiling's
+ * alone and +3 is the sentence's, and they act on DISJOINT question sets -- the
+ * questions the ceiling recovered are untouched by the sentence, and vice versa.
  *
  * So: keep the value, distrust the stated reason. See
- * analysis/verdicts/p24-cap-verdict.md.
+ * `analysis/verdicts/p24-cap-verdict.md` and
+ * `analysis/verdicts/p25-clause-isolation-verdict.md`.
  */
 const DEFAULT_ABSTENTION_ADMISSION_BUDGET = 30;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
@@ -626,8 +635,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       // complete and completion can only add topically-adjacent turns -- which
       // is what 4955d8e did, growing the block's mean prompt to 37,224 chars
       // with 23 of 30 above the ~32k region where the model stops abstaining.
-      // This ceiling took it to 25,410 and 0 of 30, recovering 24/30 -> 29/30.
-      // See analysis/verdicts/p24-cap-verdict.md.
+      // This ceiling took it to 25,410 and 0 of 30. Of the resulting 24/30 ->
+      // 29/30 recovery, +2 is this ceiling's alone and +3 belongs to the
+      // entity-identity sentence shipped in the same commit, and the two act on
+      // disjoint questions: with this ceiling held and the sentence removed,
+      // run 35097952715 measured 26/30. See
+      // analysis/verdicts/p25-clause-isolation-verdict.md.
       'hits',
     );
     // Bind the entity-identity option so an A/B can run the admission cap without
