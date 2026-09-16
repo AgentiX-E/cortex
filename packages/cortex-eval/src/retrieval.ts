@@ -294,11 +294,12 @@ export function expandContextWindow(context: string[], indices: number[], radius
  *
  * NOTE ON THE UNIT. `budget` counts TURNS, and a turn count does not bound a
  * prompt's size: at `DEFAULT_MAX_TURN_CHARS` (2000) a 45-turn window can reach
- * ~90k characters. The abstention block fails above roughly 32k, so a turn
- * ceiling cannot express the constraint that actually matters there. Measured
- * consequence: run 35019792901 showed the turn cap this was written for is inert
- * on LongMemEval-S, the prompts coming out byte-identical. If a size bound is
- * needed, bound characters. See analysis/verdicts/p24-cap-refuted.md.
+ * ~90k characters. The abstention block's accuracy falls off above roughly 32k
+ * characters, so a turn ceiling can only bound that constraint indirectly. It is
+ * sufficient in practice -- run 35019792901 shows a turn ceiling of 30 taking the
+ * block's mean from 37,224 to 25,410 characters and its accuracy from 24/30 to
+ * 29/30 -- but a caller who needs a size bound should bound characters rather
+ * than infer one. See analysis/verdicts/p24-cap-verdict.md.
  */
 export function expandContextWindowBounded(
   context: string[],

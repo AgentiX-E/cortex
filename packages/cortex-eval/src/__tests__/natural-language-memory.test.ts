@@ -380,11 +380,11 @@ describe('answerAbstention admission budget', () => {
     // real topK (15) and radius (1) the unbounded window would be 45 turns, and
     // the abstention path must stop at 30.
     //
-    // Scope note, so this test is not read as more than it is: it pins the
-    // primitive's ceiling through the real retrieval flow. It does NOT establish
-    // that the ceiling improves abstention accuracy -- run 35019792901 shows the
-    // cap is a no-op on LongMemEval-S, because the production abstention prompts
-    // were already below it. See analysis/verdicts/p24-cap-refuted.md.
+    // This ceiling is load-bearing, not cosmetic: on run 35019792901 it bound on
+    // 29 of 30 abstention questions and the block went 24/30 -> 29/30, with every
+    // flip on a question it bound and none on a question it did not. What it
+    // actually controls is prompt size, which is why the assertion below counts
+    // rendered turns rather than trusting the parameter.
     const corpus: string[] = [];
     for (let i = 0; i < 60; i++) {
       corpus.push(`[2023/01/01] user: distinct filler sentence number ${i} here.`);

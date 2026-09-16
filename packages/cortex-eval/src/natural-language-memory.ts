@@ -102,13 +102,16 @@ export type NaturalLanguageMemorySystemOptions = {
    * evidence exists, so there is no session to complete and completion can only
    * append turns that compete with the abstention.
    *
-   * The cap it applies is currently inert: run 35019792901 reproduced the
-   * pre-change abstention prompts byte for byte, because they were already below
-   * the ceiling. The motivating measurement cited a "turn count" that was really
-   * a session count (see `DEFAULT_ABSTENTION_ADMISSION_BUDGET`), and the axis
-   * that actually separates the ABS block is the prompt's CHARACTER total. This
-   * mode is expected to be replaced by, or deleted in favour of, a character
-   * bound; do not add to it. See analysis/verdicts/p24-cap-refuted.md.
+   * This mode is what recovered the abstention block. Session completion
+   * (`4955d8e`) left the abstention prompts with a 37,224-char mean and 23 of 30
+   * above 32k characters, where the model answers a near-miss instead of
+   * abstaining; the ceiling took those to 25,410 and 0 of 30, and accuracy from
+   * 24/30 to 29/30 (5 gained, 0 lost, all flips on questions the ceiling bound).
+   *
+   * Note the unit: the ceiling counts TURNS, so it bounds size only indirectly,
+   * via `maxTurnChars`. It happens to be sufficient here. A character budget
+   * would be the direct expression of the same constraint -- see
+   * `expandContextWindowBounded`. See analysis/verdicts/p24-cap-verdict.md.
    *
    * The abstention path is the only one that overrides this, and it does so per
    * call rather than by constructing a second system, because constructing one
@@ -117,9 +120,9 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   admissionMode?: 'session' | 'hits';
   /**
-   * Turn ceiling for the `hits` admission mode (default 30). Inert as shipped --
-   * see `admissionMode` and `DEFAULT_ABSTENTION_ADMISSION_BUDGET` for the
-   * measurement that motivated it and for its retraction.
+   * Turn ceiling for the `hits` admission mode (default 30). Load-bearing -- see
+   * `admissionMode` for the measurement -- but note that the count bounds prompt
+   * size only indirectly, through `maxTurnChars`.
    */
   abstentionAdmissionBudget?: number;
   /** Per-session character budget when aggregating sessions (default 2000). */
@@ -311,20 +314,28 @@ const DEFAULT_CONTEXT_RADIUS = 1;
  */
 const DEFAULT_ADMISSION_BUDGET = 45;
 /**
- * Turn ceiling for the abstention path (`admissionMode: 'hits'`).
+ * Turn ceiling for the abstention path (`admissionMode: 'hits'`). Set to
+ * `topK * 2`: at the production shape (topK 15, radius 1) it keeps every hit with
+ * its nearest neighbours and stops there.
  *
- * RETRACTED RATIONALE, kept so the mistake is not repeated. This constant was
- * introduced on the basis that the abstention rate tracks the admitted turn
- * count (100% below 45 turns, 75% between 45 and 60). Run 35019792901 falsified
- * that: the cap is a no-op on LongMemEval-S because the production abstention
- * prompts were ALREADY below it, and the "turn count" behind the claim was in
- * fact a session count -- a turn's continuation lines are indistinguishable from
- * fresh headers in the rendered prompt, so two separate counters both measured
- * the wrong thing and agreed with each other.
+ * WHY 30, AND WHAT IS ACTUALLY MEASURED. The original justification was a
+ * turn-count banding ("100% abstention below 45 turns, 75% between 45 and 60")
+ * which was WRONG at the source: a rendered prompt cannot be split into turns,
+ * because a turn's continuation lines share the session timestamp and are
+ * indistinguishable from fresh headers, so two separate counters both returned
+ * the count of distinct sessions. The real per-question maximum is 45 turns and
+ * the 45-60 band was never populated.
  *
- * The real axis is the prompt CHARACTER total, which `DEFAULT_ADMISSION_BUDGET`
- * bounds at ~90k (45 turns x 2000 chars) while the abstention block fails above
- * ~32k. See analysis/verdicts/p24-cap-refuted.md.
+ * What the constant does is nonetheless load-bearing, and measurably so. The
+ * quantity that separates the abstention block is prompt SIZE, and this ceiling
+ * bounds it: on run 35019792901 it bound on 29 of 30 questions, taking the block
+ * from a 37,224-char mean (max 49,585, 23 of 30 over 32k) to a 25,410-char mean
+ * (max 31,129, 0 over 32k) -- and accuracy from 24/30 to 29/30, 5 gained and 0
+ * lost, with all 5 flips among the questions the ceiling bound and 0 among those
+ * it did not.
+ *
+ * So: keep the value, distrust the stated reason. See
+ * analysis/verdicts/p24-cap-verdict.md.
  */
 const DEFAULT_ABSTENTION_ADMISSION_BUDGET = 30;
 const DEFAULT_MAX_SESSION_CHARS = 2000;
@@ -606,12 +617,11 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       sessions,
       // The abstention path takes hits only, under a tighter ceiling. Its
       // expected answer is that no evidence exists, so there is no session to
-      // complete and completion can only add topically-adjacent turns.
-      //
-      // Scope note: run 35019792901 shows this ceiling is inert on
-      // LongMemEval-S -- the prompts came out byte-identical to the
-      // pre-change ones -- so it must not be credited with any accuracy
-      // effect. See analysis/verdicts/p24-cap-refuted.md.
+      // complete and completion can only add topically-adjacent turns -- which
+      // is what 4955d8e did, growing the block's mean prompt to 37,224 chars
+      // with 23 of 30 above the ~32k region where the model stops abstaining.
+      // This ceiling took it to 25,410 and 0 of 30, recovering 24/30 -> 29/30.
+      // See analysis/verdicts/p24-cap-verdict.md.
       'hits',
     );
     return this.respondWith(
@@ -1469,16 +1479,16 @@ export function buildConservativeQaPrompt(
     // relative is present ("table tennis" vs "tennis", "Dr. Johnson" vs
     // "Dr. Smith", "football" vs "baseball"). The looser wording above reads as
     // satisfied by that near miss -- the context IS topically relevant -- so the
-    // model answers with the relative's value. Measured across runs
-    // 34915402976 / 35004814319, 6 of 30 questions flipped on prompt phrasing
-    // alone with byte-identical retrieval scores, and 23 of 30 name a
-    // distinctive word absent from the context, so the identity requirement has
-    // to be stated explicitly for the abstention contract to hold.
+    // model answers with the relative's value.
     //
-    // Only the wording changes here. The context is still rendered exactly as
-    // before (raw dated turns, not `formatStructuredContext`) and no other path
-    // is touched, because the admission cap in this same change is the
-    // hypothesis under test and an A/B can only attribute one edit at a time.
+    // ATTRIBUTION WARNING. This sentence landed in the same commit as the
+    // admission cap, so its individual contribution is NOT isolated. On run
+    // 35019792901 (cap + this sentence) the abstention block recovered 24/30 ->
+    // 29/30 with 5 gained and 0 lost, but the cap alone accounts for the whole
+    // movement by the bound/no-op split (5 verdict changes where the cap bound, 0
+    // where it did not), and every question carries this sentence regardless. A
+    // run without it, at the same budget, is what would separate the two. Do not
+    // cite this sentence as validated. See analysis/verdicts/p24-cap-verdict.md.
     `Answer ${abstainToken} when the question names a specific entity (a person, object, place, or qualifier) that does not appear in the context, even if a related or similarly-named one does: a different name is not the same as the entity asked about, and a related object is not the same as the object asked about.`,
     '',
     'Context:',
