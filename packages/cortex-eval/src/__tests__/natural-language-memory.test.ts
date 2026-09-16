@@ -4109,6 +4109,69 @@ describe('NaturalLanguageMemorySystem', () => {
 });
 
 /**
+ * The retry's re-ask is byte-identical, so at temperature 0 it cannot recover.
+ *
+ * Measured, not asserted from theory: on two full runs (35004814319 and
+ * 35019792901) the retry fired 23 times on the single-session path and recovered
+ * 0. `respondWith` passes the same `prompt` to the cache-bypassing call, so a
+ * deterministic provider -- which is what `temperature: 0` buys and what every
+ * paired statistic in the harness depends on -- returns the same text, making
+ * P(recovered) = 0 rather than merely small.
+ *
+ * The earlier "the retry is inert" reading in P21/P23 came from the MR ablation,
+ * whose 121 questions are disjoint from the population where it fires. That is
+ * why the flag's fire state is asserted here on the path that actually reaches it.
+ */
+describe('bare-abstention retry determinism', () => {
+  const EVIDENCE = ['[2023/01/01] user: I left the spare key in the kitchen drawer.'];
+  const QUESTION = 'Where did I put the spare key?';
+
+  it('re-asks the byte-identical prompt and therefore cannot recover', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'Answer: UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      enableAbstentionRetry: true,
+    });
+    expect(await system.answer(QUESTION, EVIDENCE)).toBeNull();
+    // Call 0 is the query-expansion pass; calls 1 and 2 are the QA pass and its
+    // re-ask. Asserting on the pair rather than the total keeps this test about
+    // the retry, so adding an expansion call later does not break it.
+    expect(prompts).toHaveLength(3);
+    const [expansion, first, second] = prompts as [string, string, string];
+    expect(expansion).toContain('retrieve evidence');
+    expect(first).toBe(second);
+  });
+
+  it('records the fire even though no recovery is possible', async () => {
+    // The fire state must stay independent of the gain count, or a structural
+    // zero reads as "never ran" and the ablation's 0/0 looks like a clean null.
+    const traces: DecisionTrace[] = [];
+    const llm: LLM = {
+      complete: async () => 'Answer: UNANSWERABLE',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: new HashEmbedding(64),
+      llm,
+      enableAbstentionRetry: true,
+      onDecision: (trace) => traces.push(trace),
+    });
+    expect(await system.answer(QUESTION, EVIDENCE)).toBeNull();
+    expect(traces[0]!.retryArmed).toBe(true);
+    expect(traces[0]!.retryFired).toBe(true);
+    expect(traces[0]!.abstained).toBe(true);
+  });
+});
+
+/**
  * Session-coherent admission, end to end through the real system.
  *
  * The unit tests in retrieval.test.ts pin the primitive and the benchmark tests
