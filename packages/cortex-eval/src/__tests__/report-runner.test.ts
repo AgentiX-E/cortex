@@ -1046,18 +1046,31 @@ describe('runAbstentionRetryAblation', () => {
     expect(prompts.size).toBeGreaterThan(0);
   });
 
-  it('does not let the shared cache mask the treatment', async () => {
-    // Sharing is safe only because a fired retry BYPASSES the cache. If it were
-    // cache-first it would read back the abstention it just stored and the
-    // treatment arm would collapse onto the control's verdict — the ablation
-    // would report a clean 0.00 pp from a feature that never ran.
+  it('reports a costed null when a byte-identical re-ask cannot differ', async () => {
+    // This test used to assert the opposite, and the reversal is the P28
+    // finding. It read: "sharing is safe only because a fired retry BYPASSES
+    // the cache; a cache-first retry would read back the abstention it just
+    // stored and the treatment would collapse onto the control."
+    //
+    // That was true of a retry whose second prompt DIFFERED. The retry was
+    // rewritten to differ (f39e7f9) and the rewrite recovered nothing on its own
+    // target population -- 14 fires, 0 gains, run 35162802298. With the prompt
+    // held equal, reading back the first attempt IS the second attempt, and the
+    // treatment arm collapsing onto the control's verdict is not a masked
+    // feature: it is the honest report of a mechanism that cannot change an
+    // outcome.
+    //
+    // What the harness must never do is report 0.00 pp while hiding that the
+    // feature never ran. It does not: the fire count is reported separately and
+    // stays non-zero, which is what separates "costed null" from "unwired".
     const llm = bareThenAnswerLlm();
     const { retryFires, report } = await runAbstentionRetryAblation(mrInstances, embedding, llm);
     expect(retryFires.treatmentFires).toBeGreaterThan(0);
-    // And the treatment's recovery must survive to the score: the re-ask parses
-    // to '2', which is the expected answer.
-    expect(report.feature.metrics.accuracy).toBeGreaterThan(0);
-    expect(report.baseline.metrics.accuracy).toBe(0);
+    expect(retryFires.controlFires).toBe(0);
+    // The null is measured, and the paired statistic agrees with it.
+    expect(report.ablation.delta).toBe(0);
+    expect(report.ablation.discordant.baselineCorrectFeatureIncorrect).toBe(0);
+    expect(report.ablation.discordant.baselineIncorrectFeatureCorrect).toBe(0);
   });
 });
 

@@ -3773,48 +3773,41 @@ describe('NaturalLanguageMemorySystem', () => {
       };
     }
 
-    it('re-asks once with a DIFFERENT instruction over the same evidence', async () => {
+    it('re-asks once with an identical instruction over the same evidence', async () => {
+      // The stub here is a scripted QUEUE, so the second response is
+      // deliberately different from the first -- which is how this test pins
+      // the prompt rather than the outcome. A real endpoint at temperature 0
+      // returns the same abstention for the same bytes; the queue returns
+      // whatever it was handed, so any change to the second PROMPT shows up as
+      // a change in the prompts recorded here.
       const { prompts, calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2']);
-      const answer = await s.answerSessions(QUESTION, EVIDENCE);
-      expect(answer).toBe('2');
-      // Exactly one re-ask: the token response is a bare skip, not a verdict.
+      await s.answerSessions(QUESTION, EVIDENCE);
       expect(calls()).toBe(2);
-      // The re-ask used to be byte-identical, which at temperature 0 reproduces
-      // the abstention with probability 1 -- a guaranteed no-op that still spent
-      // a request. Run 35097952715 fired it 12 times and recovered 0. The
-      // instruction must now differ, or the pass has no yield by construction.
-      //
-      // Identified by the CONTEXT span rather than by an instruction phrase: the
-      // retry prompt rewrites the instructions, so a filter keyed on any one of
-      // them would silently miss the second prompt and report a single call.
-      const evidenceKey = (p: string): string => p.slice(p.indexOf('\nContext'));
-      const aggregationPrompts = prompts.filter(
-        (p) => p.includes('Step 1 — Enumerate') || p.includes('previous attempt returned'),
-      );
+      // The re-ask is byte-identical BY DECISION, not by oversight. Varying it
+      // was implemented and measured: run 35162802298 fired 14 times and
+      // recovered 0, on a population where 10 of the 14 had their evidence in
+      // the context and 5 had it at top1Score 1.000. A different wording is not
+      // the lever. See analysis/verdicts/p28-retry-redesign-verdict.md.
+      const aggregationPrompts = prompts.filter((p) => p.includes('Step 1 — Enumerate'));
       expect(aggregationPrompts).toHaveLength(2);
-      expect(aggregationPrompts[0]).not.toBe(aggregationPrompts[1]);
-      // ...but ONLY the instruction. The evidence span is copied verbatim, so a
-      // recovery is attributable to re-asking rather than to different context.
-      expect(evidenceKey(aggregationPrompts[0]!)).toBe(evidenceKey(aggregationPrompts[1]!));
+      expect(aggregationPrompts[0]).toBe(aggregationPrompts[1]);
     });
 
-    it('still re-queries when an answer cache is configured', async () => {
-      // The retry calls `complete(prompt)` with the HOSTILE key it just cached
-      // the abstention under. A cache-first `complete` therefore returns that
-      // same abstention and the retry becomes a no-op -- silently, with no
-      // error, and only in configurations that set `answerCache`.
+    it('resolves the re-ask from a configured answer cache instead of re-billing', async () => {
+      // This configuration IS production: the ablation harness always sets an
+      // `answerCache` (it shares one across paired arms to hold the model
+      // constant). Eight tests in this block once omitted it, which is how a
+      // retry that silently did nothing stayed invisible.
       //
-      // Every other test in this block omits `answerCache`, so none of them can
-      // see this. The ablation harness, however, always sets one (it shares a
-      // cache across paired arms to hold the model constant), which means the
-      // untested configuration is the one that actually runs in production.
+      // With the prompt held equal, the re-ask's key is the one the first
+      // attempt just wrote, so it resolves from memory. The observable
+      // consequence is that only ONE model call happens, and the answer stays
+      // null -- the re-ask asks the bytes that were already declined.
       const { calls, system: s } = queueSystem(['UNANSWERABLE', 'Answer: 2'], {
         answerCache: new Map<string, string>(),
       });
-      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBe('2');
-      // Two DISTINCT model calls: the first pass and one re-ask. A cache-first
-      // retry would consume one.
-      expect(calls()).toBe(2);
+      expect(await s.answerSessions(QUESTION, EVIDENCE)).toBeNull();
+      expect(calls()).toBe(1);
     });
 
     it('keeps the first answer cached for later callers while retrying afresh', async () => {
@@ -4138,12 +4131,25 @@ describe('bare-abstention retry determinism', () => {
   const EVIDENCE = ['[2023/01/01] user: I left the spare key in the kitchen drawer.'];
   const QUESTION = 'Where did I put the spare key?';
 
-  it('re-asks a DIFFERENT prompt, which is what gives the retry any yield', async () => {
-    // The defect this test pins: re-asking the byte-identical prompt at
-    // temperature 0 reproduces the abstention with probability 1, so the retry
-    // was a guaranteed no-op that still spent a request. Run 35097952715
-    // recorded 12 fires over the full dataset and 0 recoveries, all 12 on
-    // questions the system lost.
+  it('re-asks the SAME prompt, because a different one was measured to yield nothing', async () => {
+    // This test has been through both states and the history is the point.
+    //
+    // The retry originally re-asked the byte-identical prompt, which at
+    // temperature 0 reproduces the abstention with probability 1: a guaranteed
+    // no-op that still spent a request (run 35097952715: 12 fires, 0
+    // recoveries). That was read as a defect and rewritten to ask something
+    // else (run 35162802298: 14 fires, 0 recoveries -- see
+    // analysis/verdicts/p28-retry-redesign-verdict.md).
+    //
+    // The rewrite was falsified on its own target population. Ten of the 14
+    // fires have their evidence in the context, five of them at top1Score
+    // 1.000, and the model declined anyway even when told outright that a
+    // non-empty context is itself evidence. So the differing instruction is
+    // not the lever, and the honest configuration is the one that does not
+    // pay for a second request to learn nothing.
+    //
+    // Reverting that ONE change is not a revert of the commit that made it:
+    // the fire-count fix and the cache-first call are both correct and stay.
     const prompts: string[] = [];
     const llm: LLM = {
       complete: async (prompt) => {
@@ -4164,7 +4170,7 @@ describe('bare-abstention retry determinism', () => {
     expect(prompts).toHaveLength(3);
     const [expansion, first, second] = prompts as [string, string, string];
     expect(expansion).toContain('retrieve evidence');
-    expect(first).not.toBe(second);
+    expect(first).toBe(second);
   });
 
   it('keeps the evidence identical between the two attempts', async () => {
@@ -4196,13 +4202,28 @@ describe('bare-abstention retry determinism', () => {
     expect(evidenceOf(first).length).toBeGreaterThan(0);
   });
 
-  it('recovers a question when the second attempt answers', async () => {
-    // The retry's whole purpose. The first answer call declines and the re-ask
-    // commits, which the byte-identical version could never reach.
+  it('cannot recover a question when the second attempt is the same prompt', async () => {
+    // The mechanism's ceiling, pinned rather than argued. A retry that re-asks
+    // the identical prompt is deterministic at temperature 0, so a stub that
+    // declines the first time declines the second time and the answer stays
+    // null. This is the cost the configuration accepts: it keeps the mechanism
+    // measured and wired without paying for a second request that cannot
+    // change the outcome.
+    //
+    // The stub is built to answer whenever the prompt is NOT the QA prompt, so
+    // it would answer a reworded retry. That makes this test fail the moment
+    // the implementation starts varying the prompt again -- which is exactly
+    // the change that was falsified.
+    const prompts: string[] = [];
     const llm: LLM = {
       complete: async (prompt) => {
+        prompts.push(prompt);
         if (/^Specific \w[^\n]*:$/m.test(prompt)) return 'spare key';
-        return prompt.includes('again') ? 'Answer: the kitchen drawer' : 'Answer: UNANSWERABLE';
+        // The QA prompts are the ones carrying the abstention instruction; any
+        // other prompt is treated as a reworded retry and gets a real answer.
+        return /Respond with exactly "UNANSWERABLE"/.test(prompt)
+          ? 'Answer: UNANSWERABLE'
+          : 'Answer: the kitchen drawer';
       },
       completeStructured: async <T>() => ({}) as T,
     };
@@ -4211,7 +4232,11 @@ describe('bare-abstention retry determinism', () => {
       llm,
       enableAbstentionRetry: true,
     });
-    expect(await system.answer(QUESTION, EVIDENCE)).toBe('the kitchen drawer');
+    expect(await system.answer(QUESTION, EVIDENCE)).toBeNull();
+    // Both QA attempts are byte-identical, so the stub declined twice.
+    const qaPrompts = prompts.filter((p) => /Respond with exactly "UNANSWERABLE"/.test(p));
+    expect(qaPrompts).toHaveLength(2);
+    expect(qaPrompts[0]).toBe(qaPrompts[1]);
   });
 
   it('records the fire even though no recovery is possible', async () => {

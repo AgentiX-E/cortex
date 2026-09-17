@@ -504,11 +504,27 @@ export type RetryAblationReport = {
  * `analysis/verdicts/p5-pairing-verdict.md`). With separate caches this
  * ablation would report a non-zero delta on a null treatment.
  *
- * Sharing is only sound because the retry bypasses the cache when it re-asks.
- * A cache-first retry would read back the very abstention it is trying to
- * escape and silently do nothing — which is precisely the defect the retry
- * shipped with before it was caught, invisible to eight unit tests that all
- * omitted `answerCache`.
+ * Sharing is sound under EITHER retry design, but for a reason that changed
+ * when the retry was put back to a byte-identical re-ask, so the argument is
+ * restated rather than carried over:
+ *
+ *   - Under the rewritten-instruction design (f39e7f9) the retry had its own
+ *     cache key, so it made a genuine second request. Sharing the cache still
+ *     held the FIRST attempt constant across arms — which is the property this
+ *     doc comment is about — and the treatment's extra request was the
+ *     treatment. Sound.
+ *   - Under the byte-identical design (current) the retry's key IS the first
+ *     attempt's key, so the re-ask resolves from the shared cache. The
+ *     treatment and the control then differ in nothing observable, the ablation
+ *     reports a clean `Δ = 0.00 pp`, and that is the true answer: there is no
+ *     version of "re-ask the same bytes" that changes the outcome at
+ *     temperature 0. A cache-first retry does not silently do nothing; it does
+ *     exactly what a byte-identical re-ask can do, which is nothing.
+ *
+ * What must NOT be reintroduced is a retry that reads a DIFFERENT key yet still
+ * cannot differ — that is the shape the old comment warned about, and it is the
+ * shape that made eight unit tests blind: they all omitted `answerCache`, so
+ * none of them exercised the configuration production actually runs.
  */
 export async function runAbstentionRetryAblation(
   instances: readonly LongMemEvalInstance[],
