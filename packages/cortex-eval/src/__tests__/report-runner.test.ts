@@ -409,6 +409,22 @@ describe('runMrAggregationAblation', () => {
     expect(markdown).toContain('Cortex Benchmark Report');
   });
 
+  it('records a declined answer as an abstention in both MR arms', async () => {
+    // Pins the same defect the two TR arms had (see the ablation's docblock).
+    // The MR arms answer through a custom `aggregationPrompt`, which opts out of
+    // the bare-abstention re-ask but must NOT opt out of recording the
+    // abstention: those are two different switches, and conflating them is how
+    // the arm would report an abstention rate of 0.00% while the model declines
+    // every question.
+    const abstainingLlm: LLM = {
+      complete: async () => 'UNANSWERABLE',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report } = await runMrAggregationAblation(mrInstances, embedding, abstainingLlm);
+    expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
+    expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
+  });
+
   it('forwards temperature and a custom judge through the MR ablation', async () => {
     const temperatures: number[] = [];
     const capturingLlm: LLM = {
@@ -484,6 +500,20 @@ describe('runTemporalEngineAblation', () => {
     expect(report.baseline.name).toBe('tr-llm-temporal');
     expect(report.feature.name).toBe('tr-deterministic-temporal');
     expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('records a declined answer as an abstention in both TR-engine arms', async () => {
+    // The engine arm is the one that could hide this: if the deterministic path
+    // returned a non-null answer it would never reach the LLM, so a decline
+    // would be unreachable rather than unrecorded. Empty event extraction keeps
+    // both arms on the LLM path, so the assertion is about recording.
+    const abstainingLlm: LLM = {
+      complete: async () => 'UNANSWERABLE',
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const { report } = await runTemporalEngineAblation(trInstances, embedding, abstainingLlm);
+    expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
+    expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
   });
 
   it('forwards temperature and a custom judge through the temporal ablation', async () => {
@@ -577,7 +607,34 @@ describe('runTimeWindowAnnotationAblation', () => {
     expect(prompts.some((p) => !p.includes('"timeWindow":'))).toBe(true);
   });
 
-  it('forwards a custom judge and temperature through the ablation', async () => {
+  it('runs with abstention enabled, so the population it exists to explain is observable', async () => {
+    // P29 (analysis/verdicts/p29-retry-population-causes.md) found that the
+    // questions this ablation was built for are ABSTENTIONS: temporal kinds the
+    // deterministic engine will not serve abstain at 19.4% against 2.2% for the
+    // kinds it does serve. The annotation's whole job is to let the reader tell
+    // an in-window anchor from a near miss -- a discrimination that, when it
+    // fails, manifests as an abstention.
+    //
+    // The arms used to disable abstention, so a declined answer was coerced to
+    // the literal string `'unknown'` and recorded as `abstained: false`, pinning
+    // the reported abstention rate at 0.00% whatever the model did. The accuracy
+    // null from run 35162802298 is NOT invalidated by this -- `'unknown'` scores
+    // exactly like an abstention, so a recovery would still have moved accuracy
+    // and the discordant count -- but the run could not attribute anything, and
+    // it measured a system that is not the one being graded: the graded feature
+    // system abstains.
+    const abstainingLlm: LLM = {
+      complete: async () => 'UNANSWERABLE',
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const { report } = await runTimeWindowAnnotationAblation(trInstances, embedding, abstainingLlm);
+    // A model that declines must be recorded as declining, in BOTH arms, or the
+    // ablation cannot attribute an abstention change to the annotation.
+    expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
+    expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
+  });
+
+  it('forwards a custom judge and temperature through the annotation ablation', async () => {
     const temperatures: number[] = [];
     const capturingLlm: LLM = {
       complete: async (_prompt, opts) => {
@@ -660,7 +717,32 @@ describe('runDeterministicCoverageAblation', () => {
     expect(markdown).toContain('Cortex Benchmark Report');
   });
 
-  it('forwards a custom judge and temperature through the ablation', async () => {
+  it('runs with abstention enabled, so weekday-anchored resolution can be observed', async () => {
+    // The coverage ablation compares DEFAULT against EXTENDED engine options,
+    // and `extendedTimeRange` is what lets a weekday anchor resolve at all.
+    // Probed directly against run 35162802298: with DEFAULT options the two
+    // weekday-anchored eventLookup fires ("last Saturday", "last Friday")
+    // resolve to NO window, and with EXTENDED they resolve to a concrete date --
+    // so the option provably changes the input for exactly those questions.
+    //
+    // Both of them abstained, and the arms disabled abstention -- so the run
+    // reported +0.00pp with 0 discordant pairs AND an abstention rate of 0.00%,
+    // the last figure being pinned there by construction rather than measured.
+    // See analysis/verdicts/p29-retry-population-causes.md.
+    const abstainingLlm: LLM = {
+      complete: async () => 'UNANSWERABLE',
+      completeStructured: async <T>() => ({ events: [] }) as T,
+    };
+    const { report } = await runDeterministicCoverageAblation(
+      trInstances,
+      embedding,
+      abstainingLlm,
+    );
+    expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
+    expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
+  });
+
+  it('forwards a custom judge and temperature through the coverage ablation', async () => {
     const temperatures: number[] = [];
     const capturingLlm: LLM = {
       complete: async (_prompt, opts) => {
@@ -740,6 +822,20 @@ describe('runBitemporalKnowledgeUpdateAblation', () => {
     expect(report.baseline.name).toBe('ku-cot-knowledge-update');
     expect(report.feature.name).toBe('ku-bitemporal-knowledge-update');
     expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('records a declined answer as an abstention in both KU arms', async () => {
+    const abstainingLlm: LLM = {
+      complete: async () => 'UNANSWERABLE',
+      completeStructured: async <T>() => ({ facts: [] }) as T,
+    };
+    const { report } = await runBitemporalKnowledgeUpdateAblation(
+      kuInstances,
+      embedding,
+      abstainingLlm,
+    );
+    expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
+    expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
   });
 
   it('forwards temperature through the bitemporal ablation', async () => {

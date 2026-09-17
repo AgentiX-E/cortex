@@ -133,10 +133,19 @@ export async function runNaturalLanguageBenchmark(
 /**
  * Multi-session aggregation ablation. The main natural-language ablation varies
  * abstention, so it cannot attribute an MR accuracy change to the aggregation
- * prompt (both systems share it). This isolates the prompt: both systems disable
- * abstention and differ ONLY in the aggregation prompt — legacy inline-counting
- * vs the CoT enumerate-then-count prompt — so the paired McNemar test on MR
- * questions measures the prompt's contribution directly.
+ * prompt (both systems share it). This isolates the prompt: both systems hold
+ * abstention at the graded path's setting and differ ONLY in the aggregation
+ * prompt — legacy inline-counting vs the CoT enumerate-then-count prompt — so
+ * the paired McNemar test on MR questions measures the prompt's contribution
+ * directly.
+ *
+ * Abstention is held ON rather than off on purpose. Holding it constant is what
+ * makes the swap attributable; the VALUE it is held at is a separate decision,
+ * and `false` is the wrong one. With it off a model that declines is coerced to
+ * the literal string `'unknown'` and recorded as `abstained: false`
+ * (`respondWith`), so `abstentionRate` is 0 by construction and the run cannot
+ * distinguish "this arm answered" from "this arm gave up quietly". The graded
+ * feature system abstains, so an arm that cannot is not the system being graded.
  */
 export async function runMrAggregationAblation(
   instances: readonly LongMemEvalInstance[],
@@ -169,7 +178,7 @@ export async function runMrAggregationAblation(
   const legacy = new NaturalLanguageMemorySystem('mr-legacy-aggregation', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     aggregationPrompt: buildLegacyAggregationQaPrompt,
     queryExpansionCache: expansionCache,
     answerCache,
@@ -179,7 +188,7 @@ export async function runMrAggregationAblation(
   const cot = new NaturalLanguageMemorySystem('mr-cot-aggregation', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     aggregationPrompt: buildAggregationQaPrompt,
     queryExpansionCache: expansionCache,
     answerCache,
@@ -199,8 +208,9 @@ export async function runMrAggregationAblation(
  * Deterministic temporal-engine ablation. The main natural-language ablation
  * enables the deterministic engine in both systems, so it cannot attribute a TR
  * accuracy change to the engine (both systems share it). This isolates the
- * engine: both systems disable abstention and differ ONLY in
- * `enableDeterministicTemporal` — LLM date-reading vs deterministic date
+ * engine: both systems hold abstention at the graded path's setting (see
+ * `runMrAggregationAblation` for why the constant is ON, not off) and differ
+ * ONLY in `enableDeterministicTemporal` — LLM date-reading vs deterministic date
  * arithmetic — so the paired McNemar test on TR questions measures the engine's
  * contribution directly.
  */
@@ -227,7 +237,7 @@ export async function runTemporalEngineAblation(
   const llmTemporal = new NaturalLanguageMemorySystem('tr-llm-temporal', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableDeterministicTemporal: false,
     queryExpansionCache: expansionCache,
     answerCache,
@@ -237,7 +247,7 @@ export async function runTemporalEngineAblation(
   const deterministicTemporal = new NaturalLanguageMemorySystem('tr-deterministic-temporal', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableDeterministicTemporal: true,
     queryExpansionCache: expansionCache,
     answerCache,
@@ -255,10 +265,25 @@ export async function runTemporalEngineAblation(
 
 /**
  * Deterministic-coverage ablation. Isolates the two temporal-engine refinements
- * from the retrieval stack: both systems disable abstention and keep the
- * deterministic engine path on, and they differ ONLY in
+ * from the retrieval stack: both systems hold abstention at the graded path's
+ * setting and keep the deterministic engine path on, and they differ ONLY in
  * `temporalEngineOptions` — weekday/named-day window resolution plus
  * unit-scaled margins, and the `before/after <event>` second-event predicate.
+ *
+ * Holding abstention ON is a reporting fix, not a re-measurement, and the
+ * distinction is worth stating exactly. With it off a declined answer is coerced
+ * to the literal string `'unknown'`, which scores exactly like an abstention, so
+ * the +0.00pp and the 0 discordant pairs from run 35162802298 still stand: a
+ * recovery would have moved them. What the setting destroyed is everything the
+ * ablation could SAY about the mechanism. P29 established that this population's
+ * failure mode is abstention: the temporal kinds the engine will not serve
+ * abstain at 19.4% against 2.2% for the kinds it does serve, and the two
+ * questions that `extendedTimeRange` provably moves — the weekday anchors "last
+ * Saturday" and "last Friday" — both abstained. Yet both arms reported an
+ * abstention rate of 0.00%, a figure pinned there by construction. The run
+ * therefore could not separate "the option changed nothing" from "the option
+ * changed abstentions into different wrong answers", and it measured a system
+ * that is not the one being graded: the graded feature system abstains.
  *
  * The two refinements are ablated together rather than separately because they
  * share a single causal claim: the deterministic engine can answer a question it
@@ -289,7 +314,7 @@ export async function runDeterministicCoverageAblation(
   const baseEngine = new NaturalLanguageMemorySystem('tr-base-engine', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableTimeWindowAnnotation: false,
     queryExpansionCache: expansionCache,
     answerCache,
@@ -299,7 +324,7 @@ export async function runDeterministicCoverageAblation(
   const extendedEngine = new NaturalLanguageMemorySystem('tr-extended-engine', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableTimeWindowAnnotation: false,
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
@@ -318,12 +343,22 @@ export async function runDeterministicCoverageAblation(
 
 /**
  * Time-window annotation ablation. Isolates the labeling feature from the
- * retrieval stack: both systems disable abstention, both keep the deterministic
- * engine on, and they differ ONLY in `enableTimeWindowAnnotation`. The turn list
- * is identical in both arms — the feature relabels turns in place rather than
- * adding or dropping any — so a positive delta is attributable to the reader
- * being able to tell an in-window anchor from a near miss, not to a change in
- * what the reader was shown.
+ * retrieval stack: both systems hold abstention at the graded path's setting,
+ * both keep the deterministic engine on, and they differ ONLY in
+ * `enableTimeWindowAnnotation`. The turn list is identical in both arms — the
+ * feature relabels turns in place rather than adding or dropping any — so a
+ * positive delta is attributable to the reader being able to tell an in-window
+ * anchor from a near miss, not to a change in what the reader was shown.
+ *
+ * The annotation's entire job is a discrimination the model makes at the moment
+ * it decides whether it has enough to answer, so abstention is the natural unit
+ * of its effect and must be observable in both arms. With it off, both arms
+ * reported an abstention rate of 0.00% by construction, which is
+ * indistinguishable from "the feature was never wired in" — see
+ * `analysis/verdicts/p29-retry-population-causes.md`. The accuracy null from
+ * that run is unaffected either way: a declined answer was coerced to
+ * `'unknown'`, which scores exactly like an abstention, so a recovery would
+ * still have moved accuracy and the discordant count.
  *
  * This is deliberately a within-context experiment. The three preceding TR arms
  * (date-range, occurrence-date, entity-graph) all widened recall and all lost,
@@ -360,7 +395,7 @@ export async function runTimeWindowAnnotationAblation(
   const unannotated = new NaturalLanguageMemorySystem('tr-no-time-window', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableTimeWindowAnnotation: false,
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
@@ -371,7 +406,7 @@ export async function runTimeWindowAnnotationAblation(
   const annotated = new NaturalLanguageMemorySystem('tr-time-window', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableTimeWindowAnnotation: true,
     temporalEngineOptions: EXTENDED_ENGINE_OPTIONS,
     queryExpansionCache: expansionCache,
@@ -392,8 +427,9 @@ export async function runTimeWindowAnnotationAblation(
  * Bitemporal knowledge-update ablation. The main natural-language ablation
  * enables the bitemporal path in both systems, so it cannot attribute a KU
  * accuracy change to it (both systems share it). This isolates the path: both
- * systems disable abstention and differ ONLY in
- * `enableBitemporalKnowledgeUpdate` — CoT time-qualifier mapping vs LLM
+ * systems hold abstention at the graded path's setting (see
+ * `runMrAggregationAblation` for why the constant is ON, not off) and differ
+ * ONLY in `enableBitemporalKnowledgeUpdate` — CoT time-qualifier mapping vs LLM
  * fact-extraction + exact date-order selection — so the paired McNemar test on
  * KU previous/current questions measures the bitemporal selection's contribution.
  */
@@ -422,7 +458,7 @@ export async function runBitemporalKnowledgeUpdateAblation(
   const cot = new NaturalLanguageMemorySystem('ku-cot-knowledge-update', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableBitemporalKnowledgeUpdate: false,
     queryExpansionCache: expansionCache,
     answerCache,
@@ -432,7 +468,7 @@ export async function runBitemporalKnowledgeUpdateAblation(
   const bitemporal = new NaturalLanguageMemorySystem('ku-bitemporal-knowledge-update', {
     embedding,
     llm,
-    enableAbstention: false,
+    enableAbstention: true,
     enableBitemporalKnowledgeUpdate: true,
     queryExpansionCache: expansionCache,
     answerCache,
