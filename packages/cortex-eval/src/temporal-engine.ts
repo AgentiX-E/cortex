@@ -639,26 +639,49 @@ function formatOrdering(question: string, events: readonly TemporalEvent[]): str
     return firstEarlier ? 'before' : 'after';
   }
   const ordered = orderByDate(events);
+  // A question that asks for a SEQUENCE is never a "which one was most recent"
+  // question, even when it contains the word "latest" — "from earliest to
+  // latest" names the endpoints of the listing, not the item to return. This
+  // guard has to come before the recency branch because that branch matches the
+  // bare word: without it, "What is the order of airlines I flew with from
+  // earliest to latest?" returned only the last airline, and 4 of the 4
+  // LongMemEval-S questions phrased that way were scored wrong in run
+  // 35162802298 (gpt4_7f6b06db, gpt4_7abb270c, gpt4_e061b84f, gpt4_f420262c).
+  if (asksForSequence(question)) {
+    return formatSequence(ordered.map((e) => e.name));
+  }
   // "most recently" asks for the latest event, the opposite of "first".
   if (/\bmost recently\b|\blatest\b|\bnewest\b/i.test(question)) {
     return ordered[ordered.length - 1]!.name;
   }
-  // A full ranking ("first, second and third", "order from first to last",
-  // "what is the order") reports the whole sequence, not just the earliest.
-  if (/\border from first to last\b|\bwhat is the order\b|\bfirst, second\b/i.test(question)) {
-    const names = ordered.map((e) => e.name);
-    if (names.length === 2) {
-      return `First, ${names[0]}, then ${names[1]}.`;
-    }
-    const last = names[names.length - 1]!;
-    const middle = names
-      .slice(1, -1)
-      .map((name) => `then ${name}`)
-      .join(', ');
-    return `First, ${names[0]}, ${middle}, and lastly ${last}.`;
-  }
   // "which/who … first" → the earliest event's name.
   return ordered[0]!.name;
+}
+
+/**
+ * Whether the question asks for a ranked listing rather than a single item.
+ * `earliest to latest` is included because it is the most common way LongMemEval
+ * phrases a full-sequence request, and it is the phrasing that collided with the
+ * recency branch.
+ */
+function asksForSequence(question: string): boolean {
+  return (
+    /\border from first to last\b|\bwhat is the order\b|\bfirst, second\b/i.test(question) ||
+    /\bearliest to latest\b|\bfrom first to last\b/i.test(question)
+  );
+}
+
+/** Render a ranked listing: two items get a bare pair, three or more a chain. */
+function formatSequence(names: readonly string[]): string {
+  if (names.length === 2) {
+    return `First, ${names[0]}, then ${names[1]}.`;
+  }
+  const last = names[names.length - 1]!;
+  const middle = names
+    .slice(1, -1)
+    .map((name) => `then ${name}`)
+    .join(', ');
+  return `First, ${names[0]}, ${middle}, and lastly ${last}.`;
 }
 
 function splitDate(date: string): [number, number] {

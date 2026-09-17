@@ -783,6 +783,99 @@ describe('computeTemporalAnswer', () => {
     ).toBe('Disney+');
   });
 
+  // The four questions below are the measured population of the recency-branch
+  // bug: each asks for a SEQUENCE ("from earliest to latest") but also contains
+  // the word "latest", which used to match the "most recently" branch first and
+  // return only the last event. All four are wrong in run 35162802298, and the
+  // two tests above (`most recently`, and `a bus or a train` further down) are
+  // the no-regression set: genuine recency questions that must keep returning
+  // the single latest event.
+  it('reports the whole sequence when the question says "from earliest to latest"', () => {
+    expect(
+      computeTemporalAnswer(
+        'What is the order of airlines I flew with from earliest to latest before today?',
+        'ordering',
+        '2023/04/01',
+        [
+          { name: 'JetBlue flight', date: '2023/01/05' },
+          { name: 'Delta flight', date: '2023/02/10' },
+          { name: 'American Airlines flight', date: '2023/03/20' },
+        ],
+      ),
+    ).toBe('First, JetBlue flight, then Delta flight, and lastly American Airlines flight.');
+  });
+
+  it('reports the whole sequence for "the three trips ... from earliest to latest"', () => {
+    expect(
+      computeTemporalAnswer(
+        'What is the order of the three trips I took in the past three months, from earliest to latest?',
+        'ordering',
+        '2023/06/01',
+        [
+          { name: 'Muir Woods day hike', date: '2023/03/05' },
+          { name: 'Big Sur road trip', date: '2023/04/10' },
+          { name: 'Yosemite camping trip', date: '2023/05/20' },
+        ],
+      ),
+    ).toBe('First, Muir Woods day hike, then Big Sur road trip, and lastly Yosemite camping trip.');
+  });
+
+  it('reports the whole sequence for "the six museums I visited from earliest to latest"', () => {
+    expect(
+      computeTemporalAnswer(
+        'What is the order of the six museums I visited from earliest to latest?',
+        'ordering',
+        '2023/07/01',
+        [
+          { name: 'Science Museum', date: '2023/01/10' },
+          { name: 'Metropolitan Museum of Art', date: '2023/02/14' },
+        ],
+      ),
+    ).toBe('First, Science Museum, then Metropolitan Museum of Art.');
+  });
+
+  it('reports the whole sequence when "latest" appears only inside "earliest to latest"', () => {
+    expect(
+      computeTemporalAnswer(
+        'What is the order of the three sports events I participated in during the past month, from earliest to latest?',
+        'ordering',
+        '2023/06/01',
+        [
+          { name: 'Spring Sprint Triathlon', date: '2023/05/02' },
+          { name: 'Midsummer 5K Run', date: '2023/05/18' },
+        ],
+      ),
+    ).toBe('First, Spring Sprint Triathlon, then Midsummer 5K Run.');
+  });
+
+  it('still returns the single latest event when no sequence is asked for', () => {
+    expect(
+      computeTemporalAnswer(
+        'Which streaming service did I start using most recently?',
+        'ordering',
+        '2023/06/01',
+        [
+          { name: 'Netflix', date: '2023/02/10' },
+          { name: 'Disney+', date: '2023/04/20' },
+        ],
+      ),
+    ).toBe('Disney+');
+  });
+
+  it('still returns the single latest event for a binary "most recently, A or B" question', () => {
+    expect(
+      computeTemporalAnswer(
+        'Which mode of transport did I use most recently, a bus or a train?',
+        'ordering',
+        '2023/06/01',
+        [
+          { name: 'bus', date: '2023/04/02' },
+          { name: 'train', date: '2023/05/19' },
+        ],
+      ),
+    ).toBe('train');
+  });
+
   it('formats a full first-second-third ranking', () => {
     expect(
       computeTemporalAnswer(
