@@ -12,6 +12,7 @@ import {
   runBitemporalKnowledgeUpdateAblation,
   runAbstentionRetryAblation,
   formatRetryFireSection,
+  runQueryExpansionDecompositionAblation,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
@@ -1430,5 +1431,121 @@ describe('ablation arms share the answer cache', () => {
     for (const [prompt, seen] of structuredPrompts) {
       expect(seen, `structured prompt sent ${seen} times: ${prompt.slice(0, 60)}`).toBe(1);
     }
+  });
+});
+
+describe('runQueryExpansionDecompositionAblation', () => {
+  const embedding = new HashEmbedding(64);
+
+  // One conjunctive ABS question (the mechanism's target: the user did NOT use
+  // one of the two operands, so the honest answer is an abstention) plus one
+  // plain IE question that must be unaffected. Scoping to ABS+IE is what the
+  // runner does by default, so this fixture exercises the real scope.
+  const conjunctionInstances: LongMemEvalInstance[] = [
+    {
+      question_id: 'abs-chili_abs',
+      question_type: 'single-session-user',
+      question: 'Did I use chili or tomatoes in the recipe I made last week?',
+      answer: null as never,
+      haystack_sessions: [
+        [
+          { role: 'user', content: 'I made a big batch of tomato sauce last week.' },
+          { role: 'user', content: 'The sauce needed more salt.' },
+        ],
+      ],
+      answer_session_ids: [],
+    },
+    {
+      question_id: 'ie-shelf',
+      question_type: 'single-session-user',
+      question: 'Where did I buy the bookshelf?',
+      answer: 'the furniture store on Main St.',
+      haystack_sessions: [[{ role: 'user', content: 'bought a bookshelf at the furniture store' }]],
+    },
+  ];
+
+  it('isolates the scoped capabilities and labels the two expansion variants', async () => {
+    const llm: LLM = {
+      complete: async () => 'chili, tomatoes, chili or tomatoes',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report, markdown } = await runQueryExpansionDecompositionAblation(
+      conjunctionInstances,
+      embedding,
+      llm,
+    );
+    expect(report.baseline.name).toBe('conjunction-fused');
+    expect(report.feature.name).toBe('conjunction-decomposed');
+    expect(report.questionCount).toBe(2);
+    expect(markdown).toContain('Cortex Benchmark Report');
+  });
+
+  it('scopes to the requested capabilities', async () => {
+    const llm: LLM = {
+      complete: async () => 'x',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report } = await runQueryExpansionDecompositionAblation(
+      conjunctionInstances,
+      embedding,
+      llm,
+      { capabilities: ['IE'] },
+    );
+    // The ABS question is excluded, so only the IE question remains.
+    expect(report.questionCount).toBe(1);
+  });
+
+  it('sends a DIFFERENT expansion prompt in the treatment arm, so the cache cannot mask it', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'chili, tomatoes';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    await runQueryExpansionDecompositionAblation(conjunctionInstances, embedding, llm);
+    // Expansion happens once per arm per question, and the two arms must not
+    // share a prompt for the conjunctive question -- if they did, the shared
+    // expansion cache would serve the control's phrases to the treatment and the
+    // delta would measure nothing.
+    const expansion = prompts.filter((p) => p.includes('Specific items:'));
+    expect(expansion.length).toBeGreaterThanOrEqual(2);
+    expect(expansion.some((p) => p.includes('TWO OR MORE'))).toBe(true);
+    expect(expansion.some((p) => !p.includes('TWO OR MORE'))).toBe(true);
+  });
+
+  it('records a declined answer as an abstention in both arms', async () => {
+    const abstainingLlm: LLM = {
+      complete: async () => 'UNANSWERABLE',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report } = await runQueryExpansionDecompositionAblation(
+      conjunctionInstances,
+      embedding,
+      abstainingLlm,
+    );
+    expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
+    expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
+  });
+
+  it('forwards temperature and a custom judge through the ablation', async () => {
+    const temperatures: number[] = [];
+    const capturingLlm: LLM = {
+      complete: async (_prompt, opts) => {
+        temperatures.push(opts?.temperature ?? Number.NaN);
+        return 'tomatoes';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const judge: AnswerJudge = async () => false;
+    const { report } = await runQueryExpansionDecompositionAblation(
+      conjunctionInstances,
+      embedding,
+      capturingLlm,
+      { runs: 1, temperature: 0.6, judge },
+    );
+    expect(report.questionCount).toBe(2);
+    expect(temperatures.every((t) => t === 0.6)).toBe(true);
   });
 });

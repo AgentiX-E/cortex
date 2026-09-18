@@ -24,6 +24,7 @@ import {
   runDeterministicCoverageAblation,
   runBitemporalKnowledgeUpdateAblation,
   runAbstentionRetryAblation,
+  runQueryExpansionDecompositionAblation,
   sampleInstances,
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
@@ -347,6 +348,23 @@ async function main(): Promise<void> {
   );
   console.log('=== MR abstention-retry ablation ===');
   console.log(retryAblation.markdown);
+
+  // Isolate the query-expansion conjunction decomposition (R4). Scoped to ABS+IE
+  // inside the arm: the mechanism affects a handful of conjunctive questions, and
+  // a 500-question average would drown a real effect in model noise.
+  const conjunctionAblation = await runQueryExpansionDecompositionAblation(
+    sampled as never,
+    embedding,
+    llm,
+    { runs: ablationRuns, temperature },
+  );
+  writeFileSync('benchmark-conjunction-ablation-report.md', conjunctionAblation.markdown);
+  writeFileSync(
+    'benchmark-conjunction-ablation-report.json',
+    JSON.stringify(conjunctionAblation.report, null, 2),
+  );
+  console.log('=== query-expansion conjunction ablation ===');
+  console.log(conjunctionAblation.markdown);
 
   // Persist the embedding cache so a later run (which uses the same haystack
   // turns) can restore it and skip the embedding provider. Done after every

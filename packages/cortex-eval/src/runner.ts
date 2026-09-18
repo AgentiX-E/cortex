@@ -10,6 +10,7 @@ import { EmbeddingMemorySystem } from './embedding-memory.js';
 import {
   buildAggregationQaPrompt,
   buildLegacyAggregationQaPrompt,
+  buildQueryExpansionPromptWith,
   NaturalLanguageMemorySystem,
 } from './natural-language-memory.js';
 import { createLlmJudge, type AnswerJudge } from './judge.js';
@@ -51,6 +52,13 @@ export type BenchmarkRunnerOptions = {
    * reproduce the historical number) is possible without reverting the default.
    */
   retryAblationCapabilities?: readonly Capability[] | undefined;
+  /**
+   * Restrict an ablation to these capabilities (default per-ablation; see
+   * `runQueryExpansionDecompositionAblation`, which defaults to `['ABS','IE']`).
+   * A mechanism that affects a handful of questions is invisible in a 500-question
+   * average, so scoping is what makes its effect distinguishable from model noise.
+   */
+  capabilities?: readonly Capability[] | undefined;
   /** Optional callback for per-question decision tracing (diagnostic). */
   onDecision?: (trace: DecisionTrace) => void;
 };
@@ -691,4 +699,72 @@ export function formatRetryFireSection(fires: RetryAblationReport['retryFires'])
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Query-expansion conjunction-decomposition ablation (R4). Isolates the
+ * expansion instruction from the retrieval stack: both systems hold abstention
+ * and the deterministic engine at the graded path's setting and differ ONLY in
+ * `queryExpansionPrompt` — fused phrasing vs one phrase per operand.
+ *
+ * Scoped to the capabilities that exercise conjunction, and to ABS in
+ * particular, because that is where the mechanism was observed: `6456829e_abs`
+ * asks whether the user used chili or tomatoes, the retrieved context contains
+ * the tomatoes and not the chili, and the model answers the answerable half
+ * instead of abstaining. A run over all 500 questions would dilute a mechanism
+ * that affects a handful of questions by 30x and make a real effect
+ * indistinguishable from model noise.
+ *
+ * `capabilities` therefore defaults to `['ABS', 'IE']`: ABS is the target
+ * population and IE is the largest set of single-operand questions, which is
+ * where decomposition must do no harm. Both arms share one expansion cache per
+ * question, and the two builders produce different prompts for a conjoined
+ * question by construction, so the cache cannot mask the treatment.
+ */
+export async function runQueryExpansionDecompositionAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string }> {
+  const dataset = loadLongMemEval(instances);
+  const scoped = options.capabilities ?? ['ABS', 'IE'];
+  const questions = dataset.questions.filter((q) => scoped.includes(q.capability));
+  const scopedDataset = { name: 'longmemeval-conjunction', questions };
+
+  const expansionCache = new Map<string, string[]>();
+  // Shared across both arms. Keyed by the builder NAME plus the question, so the
+  // two expansion variants can never collide, and a question whose expansion is
+  // identical in both arms (any question the instruction does not fire on) is
+  // never re-sent to the provider.
+  const answerCache = new Map<string, string>();
+  const structuredCache = new Map<string, unknown>();
+
+  const fused = new NaturalLanguageMemorySystem('conjunction-fused', {
+    embedding,
+    llm,
+    enableAbstention: true,
+    queryExpansionCache: expansionCache,
+    answerCache,
+    structuredCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+  const decomposed = new NaturalLanguageMemorySystem('conjunction-decomposed', {
+    embedding,
+    llm,
+    enableAbstention: true,
+    queryExpansionPrompt: (question: string) =>
+      buildQueryExpansionPromptWith(question, { decomposeConjunctions: true }),
+    queryExpansionCache: expansionCache,
+    answerCache,
+    structuredCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const report = await runAblationReport(scopedDataset, fused, decomposed, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return { report, markdown: formatAblationReport(report) };
 }

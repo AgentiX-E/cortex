@@ -256,6 +256,13 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   aggregationPrompt?: PromptBuilder;
   /**
+   * Prompt builder for query expansion (default `buildQueryExpansionPrompt`).
+   * Overridable so an ablation can hold retrieval constant while swapping only
+   * the expansion instruction, which is what isolates the conjunction
+   * decomposition (R4) from everything else in the pipeline.
+   */
+  queryExpansionPrompt?: (question: string) => string;
+  /**
    * When true, an enumeration-type multi-session question gets a second pass:
    * the LLM re-examines the FIRST pass's own ledger against the same context and
    * is asked only to critique membership (items missed, an exchange collapsed
@@ -1047,16 +1054,24 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     if (this.options.enableQueryExpansion === false) {
       return [];
     }
+    // The default builder means "use whatever this system is configured with",
+    // so an ablation can swap the expansion instruction once instead of at every
+    // call site. Recognising the default by identity is what keeps the temporal
+    // paths -- which pass their own event-level builder -- unaffected.
+    const builder =
+      promptBuilder === buildQueryExpansionPrompt
+        ? (this.options.queryExpansionPrompt ?? buildQueryExpansionPrompt)
+        : promptBuilder;
     const cache = this.options.queryExpansionCache;
     // The builder name distinguishes object-level expansion (general/MR) from
     // event-level expansion (temporal), which produce different phrases for the
     // same question.
-    const cacheKey = `${promptBuilder.name}:${question}`;
+    const cacheKey = `${builder.name}:${question}`;
     const cached = cache?.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
-    const expansionRaw = await this.options.llm.complete(promptBuilder(question), {
+    const expansionRaw = await this.options.llm.complete(builder(question), {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
     const parsed = parseQueryExpansion(expansionRaw);
@@ -2361,12 +2376,61 @@ export function truncateSession(text: string, maxChars: number): string {
  * recovers sessions about e.g. "boots" from a question about "clothing".
  */
 export function buildQueryExpansionPrompt(question: string): string {
+  return buildQueryExpansionPromptWith(question, { decomposeConjunctions: false });
+}
+
+/**
+ * Whether a query-expansion prompt decomposes conjoined operands. Default off,
+ * so the graded path is unchanged until an ablation measures it. See
+ * `buildQueryExpansionPromptWith` for what the instruction does and why it is
+ * the intervention under test.
+ */
+export type QueryExpansionOptions = {
+  /**
+   * Instruct the model to emit one phrase per operand when the question conjoins
+   * two or more (`X and Y`, `X or Y`, `X vs Y`).
+   *
+   * The mechanism under test: fusion into a single phrase resolves retrieval
+   * toward whichever operand happens to be present in the corpus, producing a
+   * context that is topically saturated but factually half-complete. Fusing is
+   * the current behaviour, and one question in LongMemEval-S (`6456829e_abs`,
+   * "did I use chili or tomatoes?") fails exactly that way -- its context
+   * contains the tomatoes and not the chili, and the model answers the
+   * answerable half instead of abstaining.
+   *
+   * The fused phrase is RETAINED alongside the per-operand phrases. A corpus
+   * where both operands co-occur in one turn should not be penalised, and the
+   * offline counter-example sweep (`analysis/verdicts/p27-r4-prereg.md` §3.5)
+   * found no question in the conjunctive cohort that depends on a single turn
+   * carrying both operands -- so retention removes the only identified risk.
+   */
+  decomposeConjunctions?: boolean;
+};
+
+/**
+ * Build the query-expansion prompt. `decomposeConjunctions` adds the
+ * conjunction-decomposition instruction (R4); everything else is the shared
+ * prompt, so the two variants differ in exactly the one instruction the ablation
+ * exists to measure.
+ */
+export function buildQueryExpansionPromptWith(
+  question: string,
+  options: QueryExpansionOptions = {},
+): string {
+  const decompositionLines =
+    options.decomposeConjunctions === true
+      ? [
+          'If the question asks about TWO OR MORE things joined by "and", "or", or "vs", list a SEPARATE phrase for EACH one, plus the combined phrase.',
+          'Do NOT merge distinct operands into a single phrase; a merged phrase retrieves only the operand that happens to appear in the memory.',
+        ]
+      : [];
   return [
     'You are helping retrieve evidence from a conversation memory.',
     'Given a question, list the SPECIFIC CONCRETE PHRASES whose wording would appear in the evidence for the answer.',
     'For a question about a property of an entity (name, breed, speed, brand, occupation, time, place, amount), phrase the entity TOGETHER with that property.',
     'Do NOT list a bare category noun ("cat", "dog", "game", "shampoo") without its property; the bare noun also matches unrelated turns about the same entity.',
     'Do NOT invent names, titles, or terms that are not stated in the question; the evidence names the specific thing, not you.',
+    ...decompositionLines,
     'Output ONLY a comma-separated list of short phrases, with no explanation and no numbering.',
     '',
     'Example:',

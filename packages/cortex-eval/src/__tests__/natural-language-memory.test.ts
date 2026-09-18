@@ -16,6 +16,7 @@ import {
   buildKnowledgeUpdatePrompt,
   buildFactExtractionPrompt,
   buildQueryExpansionPrompt,
+  buildQueryExpansionPromptWith,
   buildTemporalQueryExpansionPrompt,
   buildMultiSessionQueryExpansionPrompt,
   buildDerivationQueryExpansionPrompt,
@@ -1368,6 +1369,66 @@ describe('buildQueryExpansionPrompt', () => {
     const prompt = buildQueryExpansionPrompt('What is the name of my cat?');
     expect(prompt).toContain('Example:');
     expect(prompt).toContain('name of the cat');
+  });
+
+  it('does NOT decompose conjunctions by default', () => {
+    // R4 is opt-in: the graded path stays fused until an ablation measures the
+    // decomposition, so the default prompt must not carry the instruction.
+    const prompt = buildQueryExpansionPrompt('Did I use chili or tomatoes?');
+    expect(prompt).not.toContain('TWO OR MORE');
+    expect(prompt).not.toContain('plus the combined phrase');
+  });
+});
+
+describe('buildQueryExpansionPromptWith', () => {
+  it('adds one-phrase-per-operand decomposition when enabled', () => {
+    const prompt = buildQueryExpansionPromptWith('Did I use chili or tomatoes?', {
+      decomposeConjunctions: true,
+    });
+    expect(prompt).toContain('TWO OR MORE');
+    expect(prompt).toContain('list a SEPARATE phrase for EACH one, plus the combined phrase');
+    expect(prompt).toContain('Do NOT merge distinct operands into a single phrase');
+  });
+
+  it('keeps every shared instruction when decomposition is enabled', () => {
+    // The ablation compares the two variants as the ONLY difference, so the
+    // decomposed prompt must be a strict superset of the fused one. Anything
+    // dropped here would confound the comparison with an unrelated prompt change.
+    const fused = buildQueryExpansionPrompt('Did I use chili or tomatoes?');
+    const decomposed = buildQueryExpansionPromptWith('Did I use chili or tomatoes?', {
+      decomposeConjunctions: true,
+    });
+    const shared = [
+      'You are helping retrieve evidence from a conversation memory.',
+      'phrase the entity TOGETHER with that property',
+      'Do NOT list a bare category noun',
+      'Do NOT invent names, titles, or terms',
+      'Output ONLY a comma-separated list of short phrases',
+      'name of the cat',
+      'Specific items:',
+    ];
+    for (const line of shared) {
+      expect(fused).toContain(line);
+      expect(decomposed).toContain(line);
+    }
+    // And the ONLY added lines are the decomposition instruction.
+    const added = decomposed.split('\n').filter((l) => !fused.split('\n').includes(l));
+    expect(added).toHaveLength(2);
+  });
+
+  it('retains the fused phrase so a corpus with both operands is not penalised', () => {
+    const prompt = buildQueryExpansionPromptWith('Did I use chili or tomatoes?', {
+      decomposeConjunctions: true,
+    });
+    expect(prompt).toContain('plus the combined phrase');
+  });
+
+  it('is identical to the default prompt when decomposition is not requested', () => {
+    const q = 'Where did I buy the bookshelf?';
+    expect(buildQueryExpansionPromptWith(q, {})).toBe(buildQueryExpansionPrompt(q));
+    expect(buildQueryExpansionPromptWith(q, { decomposeConjunctions: false })).toBe(
+      buildQueryExpansionPrompt(q),
+    );
   });
 });
 
