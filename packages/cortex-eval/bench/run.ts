@@ -25,6 +25,7 @@ import {
   runBitemporalKnowledgeUpdateAblation,
   runAbstentionRetryAblation,
   runQueryExpansionDecompositionAblation,
+  CONJUNCTION_ABS_COHORT,
   sampleInstances,
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
@@ -352,6 +353,12 @@ async function main(): Promise<void> {
   // Isolate the query-expansion conjunction decomposition (R4). Scoped to ABS+IE
   // inside the arm: the mechanism affects a handful of conjunctive questions, and
   // a 500-question average would drown a real effect in model noise.
+  //
+  // The cohort guard runs inside the arm and throws when the sample lost part of
+  // the seven-question conjunctive cohort, because P2/P3 are pre-registered
+  // against those exact questions. `LIMIT=60` keeps only 1 of the 6 controls, so
+  // the guard is what turns "the run silently scored a smaller cohort" into a
+  // visible failure. Coverage is written to the artifact either way.
   const conjunctionAblation = await runQueryExpansionDecompositionAblation(
     sampled as never,
     embedding,
@@ -361,9 +368,20 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-conjunction-ablation-report.md', conjunctionAblation.markdown);
   writeFileSync(
     'benchmark-conjunction-ablation-report.json',
-    JSON.stringify(conjunctionAblation.report, null, 2),
+    JSON.stringify(
+      { ...conjunctionAblation.report, cohortCoverage: conjunctionAblation.coverage },
+      null,
+      2,
+    ),
   );
   console.log('=== query-expansion conjunction ablation ===');
+  console.log(
+    `Cohort coverage: ${conjunctionAblation.coverage.present.length}/${CONJUNCTION_ABS_COHORT.length} ` +
+      `(${(conjunctionAblation.coverage.ratio * 100).toFixed(0)}%)` +
+      (conjunctionAblation.coverage.missing.length > 0
+        ? `; missing ${conjunctionAblation.coverage.missing.join(', ')}`
+        : ''),
+  );
   console.log(conjunctionAblation.markdown);
 
   // Persist the embedding cache so a later run (which uses the same haystack

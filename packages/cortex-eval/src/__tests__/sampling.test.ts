@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sampleInstances } from '../datasets/sampling.js';
+import { cohortCoverage, sampleInstances } from '../datasets/sampling.js';
 import type { LongMemEvalInstance } from '../datasets/longmemeval-loader.js';
 
 function inst(id: string, type: string): LongMemEvalInstance {
@@ -58,5 +58,58 @@ describe('sampleInstances', () => {
     // The three sub-types are bucketed separately, so the sample contains one
     // of each instead of three single-session-user instances.
     expect(new Set(types).size).toBe(3);
+  });
+});
+
+describe('cohortCoverage', () => {
+  it('reports full coverage when every required id is present', () => {
+    const sample = [inst('a', 'multi-session'), inst('b', 'multi-session')];
+    const coverage = cohortCoverage(sample, ['a', 'b']);
+    expect(coverage.present).toEqual(['a', 'b']);
+    expect(coverage.missing).toEqual([]);
+    expect(coverage.ratio).toBe(1);
+  });
+
+  it('names each missing id instead of returning only a count', () => {
+    const sample = [inst('a', 'multi-session')];
+    const coverage = cohortCoverage(sample, ['a', 'b', 'c']);
+    expect(coverage.present).toEqual(['a']);
+    expect(coverage.missing).toEqual(['b', 'c']);
+    expect(coverage.ratio).toBeCloseTo(1 / 3);
+  });
+
+  it('treats an empty requirement as fully covered rather than dividing by zero', () => {
+    const coverage = cohortCoverage([inst('a', 'multi-session')], []);
+    expect(coverage.ratio).toBe(1);
+    expect(coverage.present).toEqual([]);
+    expect(coverage.missing).toEqual([]);
+  });
+
+  it('preserves required order rather than sample order', () => {
+    // The sample lists the required ids in the opposite order. A coverage report
+    // whose `present` follows the sample would make two runs with the same
+    // cohort print different strings, which defeats diffing them.
+    const sample = [inst('b', 'multi-session'), inst('a', 'multi-session')];
+    expect(cohortCoverage(sample, ['a', 'b']).present).toEqual(['a', 'b']);
+  });
+
+  it('exposes the measured LongMemEval-S shortfall at limit=60', () => {
+    // The concrete defect the guard exists for: a proportional round-robin
+    // sample of the real dataset keeps one of the seven conjunctive ABS
+    // questions. The members are spread across the `ABS` and `TR` buckets, so a
+    // 60-item sample reaches only the first. Reproduced here rather than
+    // asserted from the dataset file so the test stays hermetic.
+    const list: LongMemEvalInstance[] = [];
+    for (let i = 0; i < 20; i++) list.push(inst(`u${i}`, 'single-session-user'));
+    for (let i = 0; i < 20; i++) list.push(inst(`s${i}`, 'multi-session'));
+    list.push(inst('80ec1f4f_abs', 'multi-session'));
+    for (let i = 0; i < 20; i++) list.push(inst(`t${i}`, 'temporal-reasoning'));
+    const covering = ['80ec1f4f_abs'];
+    const cohort = [...covering];
+    const small = sampleInstances(list, 10);
+    const large = sampleInstances(list, 0);
+
+    expect(cohortCoverage(small, cohort).present).toEqual(covering);
+    expect(cohortCoverage(large, cohort).ratio).toBe(1);
   });
 });

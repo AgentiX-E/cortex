@@ -4,7 +4,12 @@
  * a scientific ablation, and renders a Markdown report.
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
-import { loadLongMemEval, type LongMemEvalInstance } from './datasets/longmemeval-loader.js';
+import {
+  loadLongMemEval,
+  toCapability,
+  type LongMemEvalInstance,
+} from './datasets/longmemeval-loader.js';
+import { cohortCoverage, type CohortCoverage } from './datasets/sampling.js';
 import type { Capability } from './types.js';
 import { EmbeddingMemorySystem } from './embedding-memory.js';
 import {
@@ -59,6 +64,14 @@ export type BenchmarkRunnerOptions = {
    * average, so scoping is what makes its effect distinguishable from model noise.
    */
   capabilities?: readonly Capability[] | undefined;
+  /**
+   * Whether a cohort-coverage shortfall is a hard error (default true).
+   *
+   * Set false only to deliberately run an under-covered cohort — a smoke test,
+   * or a re-measurement of questions that are present. When false the shortfall
+   * is still reported, never hidden.
+   */
+  requireCohortCoverage?: boolean | undefined;
   /** Optional callback for per-question decision tracing (diagnostic). */
   onDecision?: (trace: DecisionTrace) => void;
 };
@@ -702,6 +715,35 @@ export function formatRetryFireSection(fires: RetryAblationReport['retryFires'])
 }
 
 /**
+ * The conjunctive ABS cohort that R4's pre-registered predictions name.
+ *
+ * `p27-r4-prereg.md` §3 fixes P2 against the target and P3 against all six
+ * controls, so both predictions are statements about SPECIFIC questions. That
+ * makes cohort completeness a precondition of the experiment, not a property of
+ * it: a prediction scored on a cohort that lost five of its six members is not a
+ * weaker test, it is a different test that happens to share a name.
+ *
+ * Every id here is listed with its role so a coverage shortfall names what is at
+ * stake rather than just a count.
+ */
+export const CONJUNCTION_ABS_TARGET = '6456829e_abs' as const;
+
+export const CONJUNCTION_ABS_CONTROLS: readonly string[] = [
+  'edced276_abs',
+  'e5ba910e_abs',
+  'gpt4_70e84552_abs',
+  'gpt4_c27434e8_abs',
+  'gpt4_fe651585_abs',
+  '80ec1f4f_abs',
+];
+
+/** The full cohort R4's P2 and P3 are defined over: target plus controls. */
+export const CONJUNCTION_ABS_COHORT: readonly string[] = [
+  CONJUNCTION_ABS_TARGET,
+  ...CONJUNCTION_ABS_CONTROLS,
+];
+
+/**
  * Query-expansion conjunction-decomposition ablation (R4). Isolates the
  * expansion instruction from the retrieval stack: both systems hold abstention
  * and the deterministic engine at the graded path's setting and differ ONLY in
@@ -720,17 +762,58 @@ export function formatRetryFireSection(fires: RetryAblationReport['retryFires'])
  * where decomposition must do no harm. Both arms share one expansion cache per
  * question, and the two builders produce different prompts for a conjoined
  * question by construction, so the cache cannot mask the treatment.
+ *
+ * ## Cohort coverage is asserted, not assumed
+ *
+ * The scoped instances come from the caller's sample, and the round-robin
+ * sampler is proportional rather than guarantee-preserving. Measured on
+ * LongMemEval-S, the seven-question conjunctive cohort arrives at these sizes:
+ *
+ * | `LIMIT` | conjunctive ABS present | P2 target present | P3 controls present |
+ * |---|---|---|---|
+ * | 60 | 1 | no | 1/6 |
+ * | 100 | 3 | yes | 3/6 |
+ * | 200 | 7 | yes | 6/6 |
+ *
+ * So at `LIMIT=60` P2 has no target to score and P3 reduces to a single
+ * control — a 0-of-1 bound whose one-sided 95% upper bound on the per-question
+ * collateral-damage rate is 95%, i.e. it cannot fail for any reason the
+ * experiment could detect. That is a vacuous pass that reads as a pass, which is
+ * the exact failure mode this guard exists to make impossible.
+ *
+ * The guard therefore throws when the cohort is incomplete, unless the caller
+ * sets `requireCohortCoverage: false`, and the coverage is reported in both
+ * cases so an under-covered run is visible in its own artifact.
  */
 export async function runQueryExpansionDecompositionAblation(
   instances: readonly LongMemEvalInstance[],
   embedding: EmbeddingModel,
   llm: LLM,
   options: BenchmarkRunnerOptions = {},
-): Promise<{ report: AblationReport; markdown: string }> {
+): Promise<{ report: AblationReport; markdown: string; coverage: CohortCoverage }> {
   const dataset = loadLongMemEval(instances);
   const scoped = options.capabilities ?? ['ABS', 'IE'];
   const questions = dataset.questions.filter((q) => scoped.includes(q.capability));
   const scopedDataset = { name: 'longmemeval-conjunction', questions };
+
+  // Measure coverage against the instances the caller supplied, but only count a
+  // cohort member the ablation will actually RUN: an ABS question outside the
+  // scoped capability set is present in the sample and absent from the
+  // experiment, and conflating the two would let a mis-scoped arm pass its own
+  // guard.
+  const inScope = instances.filter((inst) =>
+    scoped.includes(toCapability(inst.question_id, inst.question_type)),
+  );
+  const coverage = cohortCoverage(inScope, CONJUNCTION_ABS_COHORT);
+  if (options.requireCohortCoverage !== false && coverage.missing.length > 0) {
+    throw new Error(
+      `conjunction ablation cohort is incomplete: ${coverage.present.length}/${CONJUNCTION_ABS_COHORT.length} present, ` +
+        `missing ${coverage.missing.join(', ')}. P2/P3 are pre-registered against these exact questions, so scoring the ` +
+        `present subset would report a different experiment under the same name. Raise LIMIT until the cohort is ` +
+        `covered (200 covers all 7 on LongMemEval-S), or pass requireCohortCoverage: false to run deliberately ` +
+        `under-covered with the shortfall recorded.`,
+    );
+  }
 
   const expansionCache = new Map<string, string[]>();
   // Shared across both arms. Keyed by the builder NAME plus the question, so the
@@ -766,5 +849,5 @@ export async function runQueryExpansionDecompositionAblation(
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });
-  return { report, markdown: formatAblationReport(report) };
+  return { report, markdown: formatAblationReport(report), coverage };
 }

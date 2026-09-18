@@ -60,6 +60,9 @@ export {
   runBitemporalKnowledgeUpdateAblation,
   runAbstentionRetryAblation,
   runQueryExpansionDecompositionAblation,
+  CONJUNCTION_ABS_COHORT,
+  CONJUNCTION_ABS_CONTROLS,
+  CONJUNCTION_ABS_TARGET,
   formatRetryFireSection,
   type BenchmarkRunnerOptions,
   type RetryAblationReport,
@@ -81,7 +84,7 @@ export {
   type LongMemEvalTurn,
   type LongMemEvalInstance,
 } from './datasets/longmemeval-loader.js';
-export { sampleInstances } from './datasets/sampling.js';
+export { sampleInstances, cohortCoverage, type CohortCoverage } from './datasets/sampling.js';
 export {
   computeRetrievalDiagnostics,
   computeSessionRetrievalDiagnostics,

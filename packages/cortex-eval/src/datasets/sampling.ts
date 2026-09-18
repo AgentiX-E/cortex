@@ -52,3 +52,49 @@ function sampleBucketKey(inst: LongMemEvalInstance): string {
   }
   return capability;
 }
+
+/** How many of `requiredIds` appear in `sample`, and which are missing. */
+export type CohortCoverage = {
+  /** Present in the sample, in the order they appear in `requiredIds`. */
+  present: string[];
+  /** Absent from the sample, in the order they appear in `requiredIds`. */
+  missing: string[];
+  /** `present.length / requiredIds.length`, or 1 when nothing was required. */
+  ratio: number;
+};
+
+/**
+ * Measure how much of a named cohort a sample contains.
+ *
+ * The round-robin sampler is proportional, not guaranteed: a cohort whose
+ * members sit in buckets that the cursor reaches late can be entirely absent
+ * from a small sample even though the cohort is small. A pre-registered
+ * prediction that names specific questions therefore cannot assume it will see
+ * them, and the failure is silent — the prediction is scored against the
+ * questions that happen to be present, so a cohort of six can score a
+ * vacuous 1/1 and read as a pass.
+ *
+ * Measured on LongMemEval-S: at `limit=60` the seven conjunctive ABS questions
+ * reduce to one, at `limit=200` to all seven. The sampler was never wrong; the
+ * caller was silent about what it needed.
+ */
+export function cohortCoverage(
+  sample: readonly LongMemEvalInstance[],
+  requiredIds: readonly string[],
+): CohortCoverage {
+  const presentIds = new Set(sample.map((inst) => inst.question_id));
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const id of requiredIds) {
+    if (presentIds.has(id)) {
+      present.push(id);
+    } else {
+      missing.push(id);
+    }
+  }
+  return {
+    present,
+    missing,
+    ratio: requiredIds.length === 0 ? 1 : present.length / requiredIds.length,
+  };
+}

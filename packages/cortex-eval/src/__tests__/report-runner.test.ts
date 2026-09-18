@@ -13,6 +13,8 @@ import {
   runAbstentionRetryAblation,
   formatRetryFireSection,
   runQueryExpansionDecompositionAblation,
+  CONJUNCTION_ABS_COHORT,
+  CONJUNCTION_ABS_TARGET,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
@@ -1441,6 +1443,12 @@ describe('runQueryExpansionDecompositionAblation', () => {
   // one of the two operands, so the honest answer is an abstention) plus one
   // plain IE question that must be unaffected. Scoping to ABS+IE is what the
   // runner does by default, so this fixture exercises the real scope.
+  //
+  // The fixture is deliberately NOT the real seven-question cohort, so every
+  // test here passes `requireCohortCoverage: false`: the guard is about a
+  // dataset property, and a hermetic fixture cannot satisfy it. The guard's own
+  // behaviour is tested in the `cohort coverage guard` block below, which
+  // supplies the real ids.
   const conjunctionInstances: LongMemEvalInstance[] = [
     {
       question_id: 'abs-chili_abs',
@@ -1464,6 +1472,8 @@ describe('runQueryExpansionDecompositionAblation', () => {
     },
   ];
 
+  const unscoped = { requireCohortCoverage: false } as const;
+
   it('isolates the scoped capabilities and labels the two expansion variants', async () => {
     const llm: LLM = {
       complete: async () => 'chili, tomatoes, chili or tomatoes',
@@ -1473,6 +1483,7 @@ describe('runQueryExpansionDecompositionAblation', () => {
       conjunctionInstances,
       embedding,
       llm,
+      unscoped,
     );
     expect(report.baseline.name).toBe('conjunction-fused');
     expect(report.feature.name).toBe('conjunction-decomposed');
@@ -1489,7 +1500,7 @@ describe('runQueryExpansionDecompositionAblation', () => {
       conjunctionInstances,
       embedding,
       llm,
-      { capabilities: ['IE'] },
+      { capabilities: ['IE'], requireCohortCoverage: false },
     );
     // The ABS question is excluded, so only the IE question remains.
     expect(report.questionCount).toBe(1);
@@ -1504,7 +1515,7 @@ describe('runQueryExpansionDecompositionAblation', () => {
       },
       completeStructured: async <T>() => ({}) as T,
     };
-    await runQueryExpansionDecompositionAblation(conjunctionInstances, embedding, llm);
+    await runQueryExpansionDecompositionAblation(conjunctionInstances, embedding, llm, unscoped);
     // Expansion happens once per arm per question, and the two arms must not
     // share a prompt for the conjunctive question -- if they did, the shared
     // expansion cache would serve the control's phrases to the treatment and the
@@ -1524,6 +1535,7 @@ describe('runQueryExpansionDecompositionAblation', () => {
       conjunctionInstances,
       embedding,
       abstainingLlm,
+      unscoped,
     );
     expect(report.baseline.metrics.abstentionRate).toBeGreaterThan(0);
     expect(report.feature.metrics.abstentionRate).toBeGreaterThan(0);
@@ -1543,9 +1555,84 @@ describe('runQueryExpansionDecompositionAblation', () => {
       conjunctionInstances,
       embedding,
       capturingLlm,
-      { runs: 1, temperature: 0.6, judge },
+      { runs: 1, temperature: 0.6, judge, requireCohortCoverage: false },
     );
     expect(report.questionCount).toBe(2);
     expect(temperatures.every((t) => t === 0.6)).toBe(true);
+  });
+
+  describe('cohort coverage guard', () => {
+    const inert: LLM = {
+      complete: async () => 'x',
+      completeStructured: async <T>() => ({}) as T,
+    };
+
+    /** A conjunctive ABS instance carrying one of the real pre-registered ids. */
+    function cohortMember(id: string): LongMemEvalInstance {
+      return {
+        question_id: id,
+        question_type: id.startsWith('gpt4_') ? 'temporal-reasoning' : 'multi-session',
+        question: `question for ${id}`,
+        answer: null as never,
+        haystack_sessions: [[{ role: 'user', content: `memories relevant to ${id}` }]],
+        answer_session_ids: [],
+      };
+    }
+
+    function fullCohort(): LongMemEvalInstance[] {
+      return CONJUNCTION_ABS_COHORT.map(cohortMember);
+    }
+
+    it('throws when the sample kept only part of the pre-registered cohort', async () => {
+      // The real failure mode: LIMIT=60 keeps 1 of the 6 controls, so P3 would
+      // score 1/1 and read as a pass. Removing the guard makes this test fail by
+      // resolving instead of rejecting.
+      const partial = [cohortMember(CONJUNCTION_ABS_TARGET), cohortMember('80ec1f4f_abs')];
+      await expect(
+        runQueryExpansionDecompositionAblation(partial, embedding, inert),
+      ).rejects.toThrow(/cohort is incomplete/);
+    });
+
+    it('names the missing cohort members in the error', async () => {
+      const partial = [cohortMember(CONJUNCTION_ABS_TARGET)];
+      await expect(
+        runQueryExpansionDecompositionAblation(partial, embedding, inert),
+      ).rejects.toThrow(/edced276_abs/);
+    });
+
+    it('runs and reports full coverage when the whole cohort is present', async () => {
+      const { coverage, report } = await runQueryExpansionDecompositionAblation(
+        fullCohort(),
+        embedding,
+        inert,
+      );
+      expect(coverage.ratio).toBe(1);
+      expect(coverage.missing).toEqual([]);
+      expect(report.questionCount).toBe(CONJUNCTION_ABS_COHORT.length);
+    });
+
+    it('still reports the shortfall when the guard is deliberately disabled', async () => {
+      // The opt-out exists for smoke runs and partial re-measurements. A
+      // shortfall must remain visible in the returned coverage, never swallowed.
+      const partial = [cohortMember(CONJUNCTION_ABS_TARGET), cohortMember('80ec1f4f_abs')];
+      const { coverage } = await runQueryExpansionDecompositionAblation(partial, embedding, inert, {
+        requireCohortCoverage: false,
+      });
+      expect(coverage.present).toEqual([CONJUNCTION_ABS_TARGET, '80ec1f4f_abs']);
+      expect(coverage.missing.length).toBe(CONJUNCTION_ABS_COHORT.length - 2);
+      expect(coverage.ratio).toBeCloseTo(2 / CONJUNCTION_ABS_COHORT.length);
+    });
+
+    it('counts only cohort members the ablation actually runs', async () => {
+      // A cohort member present in the sample but outside the scoped
+      // capabilities is not scored, so counting it as covered would let a
+      // mis-scoped arm satisfy its own guard. Scoping to IE excludes every ABS
+      // question, so a full cohort becomes zero coverage.
+      await expect(
+        runQueryExpansionDecompositionAblation(fullCohort(), embedding, inert, {
+          capabilities: ['IE'],
+        }),
+      ).rejects.toThrow(/0\/7 present/);
+    });
   });
 });
