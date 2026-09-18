@@ -69,15 +69,78 @@ export function previousObject(facts: readonly ExtractedFact[], subject: string)
  * Classify the time qualifier a knowledge-update question asks for. "previous/
  * before/used to" points at the older value, "currently/now/most recent" at the
  * newer value; anything else is not a bitemporal selection.
+ *
+ * `before` and `previously` need a shape guard, because they are also ordinary
+ * English prepositions and adverbs:
+ *
+ *   - "before the holidays" / "before getting the Air Fryer" introduces a SECOND
+ *     EVENT, not the older value of a subject. A question shaped that way is an
+ *     interval or ordering question that the caller's `classifyTemporalQuestion`
+ *     already routes elsewhere; classifying it as `previous` here would send it
+ *     into the bitemporal path, where the two unrelated events are compared as
+ *     if they were one subject's timeline. Three LongMemEval-S questions hit
+ *     this (0977f2af, 89941a94, f685340e) and all three were answered wrong by
+ *     the deterministic path in run 35162802298.
+ *   - "how often ... previously?" compares a PACE across time rather than
+ *     selecting a value, so the previous/current distinction is not the one the
+ *     question is making.
+ *
+ * `previous`/`originally`/`used to`/`earlier` are unambiguous and stay as they
+ * were; only the two shapes above are excluded.
  */
 export function classifyKnowledgeUpdateQualifier(
   question: string,
 ): 'previous' | 'current' | 'other' {
-  if (/\b(previous|before|previously|originally|used to|earlier)\b/i.test(question)) {
+  if (/\b(previous|previously|originally|used to|earlier)\b/i.test(question)) {
+    // "how often/usually/frequently ... previously" measures a rate, not a value.
+    if (/\bhow\s+(?:often|frequently|usually|regularly)\b/i.test(question)) {
+      return 'other';
+    }
+    return 'previous';
+  }
+  if (/\bbefore\b/i.test(question) && !isValueQualifyingBefore(question)) {
+    return 'other';
+  }
+  if (/\bbefore\b/i.test(question)) {
     return 'previous';
   }
   if (/\b(currently|now|most recent|latest|after updating|current)\b/i.test(question)) {
     return 'current';
   }
   return 'other';
+}
+
+/**
+ * Whether a `before` in the question qualifies the SUBJECT (asks for the older
+ * value) rather than introducing a second event. `before` reads as a value
+ * qualifier only where it ends its clause or is followed by a clause that does
+ * not name an event:
+ *
+ *   - "What was my occupation before?"            → qualifier (end of question)
+ *   - "Where did I work before my current role?"  → qualifier (possessive)
+ *   - "before getting the Air Fryer"              → second event (gerund)
+ *   - "Before I purchased the gravel bike, ..."   → second event (subject + verb)
+ */
+function isValueQualifyingBefore(question: string): boolean {
+  const match = question.match(/\bbefore\b([\s\S]*)$/i);
+  if (!match) {
+    return false;
+  }
+  const rest = match[1]!.trim();
+  // "... before?" — the word closes the question.
+  if (rest === '' || /^[?.!,;:]*$/.test(rest)) {
+    return true;
+  }
+  // A possessive or determiner directly after `before` selects a value, not an
+  // event: "before my current role", "before the update".
+  if (/^(?:my|our|his|her|their|your|its|this|that|the)\b/i.test(rest)) {
+    return true;
+  }
+  // "before <subject> <verb>" — "Before I purchased the gravel bike" — is a
+  // temporal clause about another event.
+  if (/^(?:i|we|you|he|she|they|it)\b/i.test(rest)) {
+    return false;
+  }
+  // A gerund ("before getting ...") or any other trailing clause names an event.
+  return false;
 }

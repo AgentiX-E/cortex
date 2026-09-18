@@ -106,4 +106,46 @@ describe('classifyKnowledgeUpdateQualifier', () => {
   it('returns other for non-qualified questions', () => {
     expect(classifyKnowledgeUpdateQualifier('What is my favorite color?')).toBe('other');
   });
+
+  // The three questions below are the measured population of the
+  // `before`-as-preposition bug: in each one "before" introduces a second event
+  // ("before getting the Air Fryer") rather than qualifying the subject, so
+  // there is no previous/current selection to make. Classifying them as
+  // `previous` routed all three into the bitemporal path, which then compared
+  // two unrelated events as if they were the same subject's timeline. All three
+  // are wrong in run 35162802298, and all three were answered by the
+  // deterministic path (empty `llmRaw`) rather than by the model.
+  it('does not read "before <event>" as a previous-value qualifier', () => {
+    expect(
+      classifyKnowledgeUpdateQualifier(
+        'What new kitchen gadget did I invest in before getting the Air Fryer?',
+      ),
+    ).toBe('other');
+  });
+
+  it('does not read "before I purchased <thing>" as a previous-value qualifier', () => {
+    expect(
+      classifyKnowledgeUpdateQualifier(
+        'Before I purchased the gravel bike, do I have other bikes in addition to my mountain bike and my commuter bike?',
+      ),
+    ).toBe('other');
+  });
+
+  it('does not read a "How frequently ... previously?" pace comparison as a value qualifier', () => {
+    expect(
+      classifyKnowledgeUpdateQualifier(
+        'How often do I play tennis with my friends at the local park previously? How often do I play now?',
+      ),
+    ).toBe('other');
+  });
+
+  it('still reads a sentence-final "before" as a previous-value qualifier', () => {
+    // The preposition guard keys on what FOLLOWS the word, so the sentence-final
+    // form -- the one that genuinely asks for the older value -- must be
+    // unaffected. This is the no-regression pin for the fix above.
+    expect(classifyKnowledgeUpdateQualifier('What was my occupation before?')).toBe('previous');
+    expect(classifyKnowledgeUpdateQualifier('Where did I work before my current role?')).toBe(
+      'previous',
+    );
+  });
 });
