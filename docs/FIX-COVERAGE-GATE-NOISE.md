@@ -120,7 +120,6 @@ The deeper mistake was procedural, and it is the reason this section exists:
 > "unreachable" was itself perturbing the thing it measured.
 
 ## 5. Correction: all five guards are reachable
-
 The first version's probe instrumented the guard bodies with counters and
 concluded they never fired. Re-running that probe with a **different method**
 removes the ambiguity.
@@ -140,7 +139,33 @@ machinery**, so nothing about the instrument can be confused with the result.
 
 All five fire on the **existing** test suite, on ordinary valid inputs.
 
-### 5.1 Why the counter probe said otherwise
+### 5.1 …and are unreachable again, because §6.3 and §6.4 changed the arithmetic
+
+**This is the part that makes the story worth keeping.** After fixing the two
+defects in §6.3 and §6.4, the *same* sentinel experiment was re-run against the
+*same kind of* test suite, and it came back **green — all 124 tests pass with all
+five guards replaced by `throw`.**
+
+So the annotation text, `unreachable via valid inputs`, is **true now and was
+false when it was written.** Neither statement depends on the other being wrong:
+the original author asserted it, measurement contradicted it, and two unrelated
+bug fixes then made it accidentally correct.
+
+> **An annotation is a claim about a specific revision of the code.** It is not a
+> durable fact, and nothing re-checks it. A later fix can make a false annotation
+> true — and the same mechanism can make a true one false — with no signal at all.
+> This is the argument for the pinned-annotation test in
+> `packages/cortex-core/src/__tests__/coverage-annotations.test.ts`: not that the
+> reasons are verified (they are prose, and cannot be), but that the *set* cannot
+> change without a reviewer seeing it.
+
+**Method note.** The sentinel run had to be done carefully: an earlier attempt
+left the instrumented file in the working tree and a subsequent `git stash`
+cycle silently restored the *unfixed* source, so a first pass reported "no change"
+for the wrong reason. The re-run above copies the pristine source aside first and
+verifies both `diff` and the sentinel count (`0`) before and after.
+
+### 5.2 Why the counter probe said otherwise
 
 Adding a statement to a guard body changes v8's block structure, and the added
 statement is attributed to a **different line** than the one it was written on.
@@ -161,7 +186,7 @@ does.**
 > **An instrument built to measure a mis-attribution bug, which itself
 > mis-attributes, will confirm whatever you already believe.**
 
-## 6. Two real defects the correction uncovered
+## 6. Four real defects the correction uncovered
 
 ### 6.1 A genuine test gap in `math/ot.ts` (fixed)
 
@@ -209,6 +234,82 @@ the wrong answer. It would have become active the moment the
 optimal-transport distillation path in `ARCHITECTURE.md` was wired up — and it
 would have presented as a **silent** "converged" that was not convergence.
 
+### 6.3 `logGamma` returns NaN for every negative non-integer input (fixed)
+
+Chasing §5's finding — the guards are reachable, so what reaches them? — led into
+`logGamma`'s reflection branch, which read:
+
+```ts
+return Math.log(Math.PI / Math.sin(Math.PI * z)) - logGamma(1 - z);
+```
+
+The identity is `ln(pi / |sin(pi z)|)`. The **absolute value is load-bearing**, and
+it was missing. `sin(pi z)` is negative throughout `(-1, 0)`, `(-3, -2)`, …, so
+`Math.log` received a negative argument and returned `NaN`.
+
+Measured against `math.lgamma` from the C library:
+
+| `z` | Expected | Before | After |
+| --- | --- | --- | --- |
+| `-0.5` | 1.265512123484645 | **NaN** | 1.2655121234846451 |
+| `-0.25` | 1.5895753125511862 | **NaN** | 1.589575312551186 |
+| `-0.75` | 1.5757045971498589 | **NaN** | 1.5757045971498587 |
+| `-2.5` | -0.05624371649767457 | **NaN** | -0.056243716497675456 |
+| `-1.5` | 0.8600470153764812 | 0.8600470153764792 | 0.8600470153764792 |
+
+**Why this survived review, and it is not "nobody looked".** There *is* a test
+named `logGamma reflection formula handles z < 0.5`. It asserts `z = 0.3` and
+`z = 0.7` — **both positive**, so it never takes the branch its name refers to.
+And `-1.5` works, because `sin(-1.5 * pi)` happens to be `+1`. So a spot check on
+the wrong half-period, or a test whose name describes code it does not touch,
+both look healthy here.
+
+**Severity:** latent for the statistics, broken for the public API. `logGamma` is
+exported from the package index. Internally it is only ever called with positive
+arguments (`df/2`, `0.5`, `n - k >= 1`, `k + 1 >= 1`), which is why no downstream
+result was ever wrong — and also why this could sit undetected indefinitely.
+
+### 6.4 `regularizedIncompleteBeta` ran the continued fraction outside its region (fixed)
+
+The continued fraction converges only for
+
+```
+x <= (a + 1) / (a + b + 2)
+```
+
+and outside that region the correct evaluation uses the complementary identity
+`I_x(a, b) = 1 - I_{1-x}(b, a)`. **That branch was absent**, so the routine was
+asked to evaluate a divergent expansion whenever `x` was near 1.
+
+Because `binomialCdf` calls it with `x = 1 - p`, a small `p` drove it deep into
+the divergent region:
+
+| Call | Exact (binomial pmf sum) | Before | After |
+| --- | --- | --- | --- |
+| `binomialCdf(2, 40, 1e-6)` | 0.9999999999999901 | **0.9694** | 0.9999999999999901 |
+| `binomialCdf(2, 10, 1e-12)` | 1 | **6.6e-5** | 1 |
+| `binomialCdf(3, 100, 0.02)` | 0.8589615633982938 | 0.8589615633983717 | 0.8589615633982832 |
+
+Three things make this worse than a wrong number:
+
+1. **It was silent.** The result was a plausible value, not `NaN`, so nothing
+   signalled the failure.
+2. **The error was worst where the function is most certain.** Small `p` means the
+   CDF is essentially 1; that is exactly where the value collapsed.
+3. **It broke monotonicity.** `binomialCdf(k, 40, 1e-6)` gave `0.9694` at `k = 2`
+   and `0.99999` at `k = 3` — a CDF that *decreases* is self-evidently invalid.
+
+**A trap in the fix itself.** The natural repair is to recurse on the
+complementary pair. With a **non-strict** comparison (`x >= threshold`) the
+routine recurses **forever on its own fixed point**: when `a == b` the mapping
+sends `(a, a, x)` to `(a, a, 1 - x)`, so `x == 0.5` maps to itself.
+`studentTCdf(t, 1)` lands exactly there, because `a = df/2 = b = 0.5` and
+`x = 1 / (1 + t*t) = 0.5` at `t = ±1` — a stack overflow, caught by the dense-grid
+property test rather than by any point check. The comparison must be **strict**.
+
+**Severity:** active. `binomialCdf` is real statistical output, and a monotone CDF
+is the one property a caller is entitled to assume.
+
 ## 7. Corrected characterisation of the remaining instability
 
 With §6.1 and §6.2 fixed, re-measuring 12 times still shows movement, now confined
@@ -226,19 +327,26 @@ on a **narrower and better-evidenced** basis:
 | --- | --- |
 | Numerator moves, denominator constant | 12 runs: 777/779/781/783 over a constant 789 |
 | Movement is confined to annotated guard bodies | per-statement diff; no other statement varies |
-| The guards are reachable, so the annotations' stated reason is false | throwing sentinels: all 5 reached by 6 tests each |
+| The guards **were** reachable when the annotation was written | throwing sentinels: all 5 reached by 6 tests each (§5) |
+| The guards are **now** unreachable, after §6.3/§6.4 | same sentinels, suite green (§5.1) |
 | Therefore the movement is **false negatives and false positives** | a reachable body should be credited every run; it is sometimes credited, sometimes not |
 
-The important consequence: **the annotations are suppressing coverage for code
-that does execute.** Removing all six and running the real suite gives:
+The important consequence, and it has two halves that must be stated together:
 
-```
-true coverage with all tests, no ignore hints:   789 / 795 = 99.25%
-```
+1. **When measured, the annotations were suppressing coverage for code that does
+   execute.** Removing all six and running the real suite gave:
 
-So the ignore hints are not hiding unreachable code — they are hiding *reachable
-and untested* code. The four loop guards' bodies are never entered by the suite,
-yet they *can* be, and the annotation prevents that from showing up as a gap.
+   ```
+   true coverage with all tests, no ignore hints:   789 / 795 = 99.25%
+   ```
+
+2. **After §6.3 and §6.4, the five guards genuinely are dead**, so the annotation
+   text is now true — by accident, and for a reason the text does not give.
+
+So the honest summary is neither "the annotations are wrong" nor "the annotations
+are right". It is: **the annotations describe a reachability property that was
+false when asserted, became true through two unrelated bug fixes, and is asserted
+in prose that no mechanism re-evaluates.**
 
 ## 8. Fix
 
@@ -296,15 +404,27 @@ dismiss it as caching, exactly as I did twice.
   documented, not eliminated. The retained `coverage-final.json` makes any
   recurrence diagnosable by the method used here rather than by noticing a number
   moved.
-- **The six annotations carry a stated reason that is now known to be false**
-  ("unreachable via valid inputs"). They are reachable. The correct repair is to
-  test the guard bodies and then remove the hints, which changes the reported
-  figure and belongs in its own change with its own evidence.
-- **Two of the five loop guards are never entered by any test.** They are
-  reachable, and untested. The annotation currently conceals that.
+- **The six annotations' stated reason was false when written and is true now.**
+  The guards were reachable (§5); after §6.3 and §6.4 they are dead (§5.1). The
+  text is correct by accident, and nothing re-evaluates it. Deleting the hints
+  moves the reported figure and therefore belongs in its own change with its own
+  evidence.
+- **`logGamma`'s public contract was broken for all negative non-integer inputs**
+  (§6.3). Fixed and covered, but it is a reminder that "the statistics are fine"
+  is not the same as "the exported function is fine" — the two diverge whenever
+  internal callers happen to stay inside a domain the public API does not promise.
+- **`binomialCdf` was returning invalid values for small `p`** (§6.4). Fixed,
+  with exact references. Nothing in the current evaluation consumes it at those
+  parameter values, so no published number is affected — but that is a statement
+  about today's call sites, not about correctness.
+- **The sentinel experiment is easy to get wrong, and was, once.** A first attempt
+  left the instrumented file in the tree and a `git stash` cycle silently restored
+  the *pre-fix* source, producing a "no change" reading for the wrong reason. Any
+  re-run must copy the pristine source aside and assert the sentinel count is `0`
+  afterwards.
 
 **Not claimed:** that the reported figure is now stable. It is claimed that its
-instability is measured, bounded, localised to six statements, and that the two
+instability is measured, bounded, localised to six statements, and that the four
 real defects found while establishing that are fixed and covered.
 
 ## 11. Method lesson
@@ -317,3 +437,16 @@ perturbs the measurement to one that observes behaviour from outside it.
 > When a measurement is unstable, the first thing to check is whether the tool
 > used to explain it is stable. Mine was not: it added statements to the exact
 > lines under investigation and then reported their coverage.
+
+The second lesson is about how a wrong conclusion behaves after it is corrected.
+The first version ended with a disposition, and this version ends with a
+different one — but the interesting part is the third state. **The annotations
+were false, are now true, and were never derived from the code they describe.**
+Two bug fixes in unrelated functions moved them across that boundary without
+touching a line of the annotation or a test of its claim.
+
+> A comment that asserts a property of the code will drift away from that
+> property, and there is no compiler for prose. The defence is not to write
+> better comments; it is to put a mechanism where the claim is structural —
+> here, a test that pins the annotation *set*, so that the claim cannot change
+> quietly even though its truth cannot be checked automatically.
