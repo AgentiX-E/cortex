@@ -196,6 +196,12 @@ export {
   type LlmEnv,
 } from './llm-factory.js';
 export {
+  createRerankerFromEnv,
+  DEFAULT_RERANK_BASE_URL,
+  DEFAULT_RERANK_MODEL,
+  type RerankEnv,
+} from './rerank-factory.js';
+export {
   compareQuestionVectors,
   requiredEffectSize,
   summarizeVariance,

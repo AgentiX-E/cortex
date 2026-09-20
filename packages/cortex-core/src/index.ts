@@ -44,6 +44,16 @@ export {
 // vector
 export { BruteForceVectorIndex } from './vector/brute-force.js';
 
+// retrieval
+export {
+  rerankHits,
+  fuseRerank,
+  type RerankCandidate,
+  type RerankPair,
+  type RerankScoreFn,
+  type FuseRerankOptions,
+} from './retrieval/rerank.js';
+
 // graph
 export { MemoryGraph, significanceOf, type MemoryGraphOptions } from './graph/memory-graph.js';
 

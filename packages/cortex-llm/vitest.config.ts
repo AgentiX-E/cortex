@@ -2,12 +2,11 @@ import { defineConfig } from 'vitest/config';
 
 /**
  * Coverage is gated, not merely reported — see cortex-core/vitest.config.ts for
- * the rationale. The config existed but had no thresholds, so the harness that
- * decides whether a memory claim is real was itself unguarded.
+ * the rationale. This package previously had no config at all, so it inherited
+ * vitest's defaults and enforced nothing.
  *
- * Measured at the time of writing: 99.84 stmts / 98.68 branch / 100 funcs /
- * 99.84 lines. The eval harness imports the SUT from `src/**`, which stays in
- * scope; `bench/**` is a CLI entry point rather than a library surface.
+ * Measured at the time of writing: 100 stmts / 98.47 branch / 100 funcs /
+ * 100 lines.
  */
 export default defineConfig({
   test: {

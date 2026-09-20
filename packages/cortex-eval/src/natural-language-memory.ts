@@ -9,6 +9,7 @@
  * the system and the diagnostics harness use identical logic.
  */
 import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
+import { fuseRerank, type RerankScoreFn } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
 import {
   expandContextWindowBounded,
@@ -193,6 +194,49 @@ export type NaturalLanguageMemorySystemOptions = {
    * found that the centroid channel did not. See `retrieveSessionsByTurns`.
    */
   turnRecallSessions?: number;
+  /**
+   * Cross-encoder reranking stage (roadmap measure B1). When supplied, the
+   * fused recall pool is re-scored jointly against the question and reordered
+   * beneath a protected head. Left undefined, retrieval is bit-identical to the
+   * pre-reranker pipeline, which is what makes the ablation arms comparable.
+   *
+   * The head size is `rerankProtectedHead`, and it exists because the
+   * abstention signal is read from the top of the hit list. See the
+   * `rerankProtectedHead` docs for the regression that made this necessary.
+   */
+  reranker?: RerankScoreFn | undefined;
+  /**
+   * Width of the candidate pool the reranker is allowed to choose from. Defaults
+   * to `topK`, which is the honest default but the weakest possible one.
+   *
+   * This is the measure that decides whether reranking can do anything at all.
+   * `retrieveTopKByQueries` fuses by reciprocal rank and then **truncates to
+   * `topK` internally**, so by the time the reranker runs, everything outside
+   * the initial top-K has already been discarded. With `rerankCandidatePool ===
+   * topK` the reranker can only permute `topK` survivors: it cannot promote
+   * evidence that cosine ranked 20th. Every published system that reranks
+   * retrieves a WIDE pool first (typically 3-10x the final context width) and
+   * lets the cross-encoder do the narrowing, because the bi-encoder's recall@k
+   * is far better than its precision@k.
+   *
+   * Uses 2000-char truncation and the same per-query fan-out as the graded path,
+   * so widening the pool changes only the width, not the query set.
+   */
+  rerankCandidatePool?: number;
+  /**
+   * Number of leading hits pinned above the reranked region, so the reranker
+   * can reorder the tail without moving the abstention signal.
+   *
+   * This is not decoration. When RRF was integrated it re-ordered hits while
+   * the abstention confidence was still read from `hits[0].score`, and IE fell
+   * from 95.0% to 87.5% — a ~7.5pp loss with no change in evidence. Any stage
+   * that reorders the list has the same failure available, so a reranker
+   * reorders only what the abstention path does not read. Defaults to 0 (the
+   * whole list is reranked) because the abstention signal now comes from
+   * `maxHitScore`, which is order-independent; a caller may still pin a prefix
+   * to hold the first-hit evidence stable for other readers.
+   */
+  rerankProtectedHead?: number;
   /**
    * Turns retrieved per query by the turn-level recall channel (default 50).
    *
@@ -807,6 +851,33 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * concrete events that the question names, while embedding similarity alone
    * ranks them below semantically-close distractors.
    */
+  /**
+   * Apply the cross-encoder reranking stage (roadmap measure B1) to a fully
+   * fused recall pool.
+   *
+   * Shared by both retrieval paths on purpose. The first implementation wired
+   * only the session path, which left `answer()` — the path most LongMemEval
+   * questions take — unreranked: the stage was implemented, reachable from one
+   * caller, and silently absent from the graded path. That is the exact defect
+   * class the code-vs-docs audit found in the cognitive layer, so the shared
+   * helper exists to make "one path forgot to rerank" unrepresentable rather
+   * than to save lines.
+   *
+   * Returns the input untouched when no reranker is configured, or when there is
+   * nothing to reorder.
+   */
+  private async applyRerank<T extends { id: string; text: string; score: number }>(
+    question: string,
+    hits: readonly T[],
+  ): Promise<T[]> {
+    const reranker = this.options.reranker;
+    if (reranker === undefined || hits.length === 0) {
+      return [...hits];
+    }
+    const head = this.options.rerankProtectedHead ?? 0;
+    return fuseRerank(hits.slice(0, head), hits.slice(head), question, reranker);
+  }
+
   private async retrieveTurns(
     question: string,
     context: string[],
@@ -832,9 +903,28 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     });
     const expansionQueries = await this.expandQuestion(question, expansionPromptBuilder);
     const queries = [question, ...expansionQueries];
-    const hits = enableLexicalRecall
-      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, topK)
-      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, topK);
+    // Fetch a wider pool than we intend to admit when (and only when) a reranker
+    // will narrow it. `retrieveTopKByQueries` truncates internally, so passing
+    // `topK` here would leave the reranker unable to see anything outside the
+    // bi-encoder's top-K -- it could permute the survivors but never rescue a
+    // turn the embedding ranked just below the cut.
+    const poolWidth =
+      this.options.reranker === undefined
+        ? topK
+        : Math.max(topK, this.options.rerankCandidatePool ?? topK);
+    const fused = enableLexicalRecall
+      ? await retrieveTopKByQueriesHybrid(this.options.embedding, queries, searchable, poolWidth)
+      : await retrieveTopKByQueries(this.options.embedding, queries, searchable, poolWidth);
+    // Rerank before admission, not after: the admission window is bounded (by
+    // session or by budget), so which turns survive it depends on the order. A
+    // reranker applied afterwards could only shuffle turns that admission had
+    // already picked, leaving the evidence it was meant to promote unadmitted.
+    //
+    // The reranked pool is then cut back to `topK`, so widening the pool cannot
+    // widen what the answer prompt receives: the change is confined to WHICH
+    // turns are admitted, which is the whole point of the measure.
+    const reranked = await this.applyRerank(question, fused);
+    const hits = reranked.length > topK ? reranked.slice(0, topK) : reranked;
     const retrieved =
       hits.length === 0
         ? ''
@@ -1037,7 +1127,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       );
       hits.push(...turnHits);
     }
-    return { hits, expansionQueries };
+
+    // Reranking runs LAST, over the fully fused pool, because a reranker can
+    // only reorder what it is given: running it before the turn-recall channel
+    // would leave the appended sessions unranked and let a weak turn-recall hit
+    // outrank a strong reranked one. Every recall channel keeps its recall role;
+    // the reranker decides the order they are read in.
+    const ordered = await this.applyRerank(question, hits);
+    return { hits: ordered, expansionQueries };
   }
 
   /**

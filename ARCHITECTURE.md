@@ -76,6 +76,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 | TD(λ) credit assignment | **Not implemented** | No eligibility traces exist in the codebase |
 | Optimal-transport distillation | **Implemented but inert** | `sinkhorn` is exported; nothing calls it |
 | Abstention confidence calibration (Platt / temperature) | **Not implemented** | Thresholds are fixed constants |
+| Cross-encoder reranking (`rerankHits` / `fuseRerank`) | **Implemented, wired, off by default** | On both retrieval paths of the eval pipeline; enabled via `CORTEX_RERANK`. See [`docs/MEASURE-B1-RERANKING.md`](docs/MEASURE-B1-RERANKING.md) |
 
 Two consequences worth stating explicitly:
 

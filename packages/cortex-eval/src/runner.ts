@@ -4,6 +4,7 @@
  * a scientific ablation, and renders a Markdown report.
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
+import type { RerankScoreFn } from '@agentix-e/cortex-core';
 import {
   loadLongMemEval,
   toCapability,
@@ -28,6 +29,23 @@ import { formatAblationReport, runAblationReport, type AblationReport } from './
 export type BenchmarkRunnerOptions = {
   /** Abstention threshold for the feature system (default 0.5). */
   abstainThreshold?: number;
+  /**
+   * Cross-encoder reranking stage for the feature system (roadmap measure B1).
+   * Left undefined, the feature system runs exactly as before the stage existed,
+   * which is what makes the ablation arms comparable.
+   *
+   * The BASELINE deliberately never reranks. The baseline exists to be the
+   * untouched reference, so giving it the candidate stage would destroy the
+   * comparison it is there to provide.
+   */
+  reranker?: RerankScoreFn | undefined;
+  /**
+   * Candidate pool width handed to the reranker (default: the system's `topK`).
+   * See `NaturalLanguageMemorySystemOptions.rerankCandidatePool`: a pool equal
+   * to `topK` leaves the reranker unable to rescue anything the bi-encoder
+   * ranked below the cut, so a meaningful reranking arm needs this set wider.
+   */
+  rerankCandidatePool?: number | undefined;
   /**
    * Include the entity-identity sentence in the abstention prompt (default true).
    *
@@ -140,6 +158,10 @@ export async function runNaturalLanguageBenchmark(
     ...(options.onDecision ? { onDecision: options.onDecision } : {}),
     ...(options.entityIdentityClause !== undefined
       ? { entityIdentityClause: options.entityIdentityClause }
+      : {}),
+    ...(options.reranker !== undefined ? { reranker: options.reranker } : {}),
+    ...(options.rerankCandidatePool !== undefined
+      ? { rerankCandidatePool: options.rerankCandidatePool }
       : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.

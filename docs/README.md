@@ -7,6 +7,7 @@ convention, **all content here is English**; user-facing documentation lives in
 | Document | Purpose |
 | --- | --- |
 | [`AUDIT-CODE-VS-DOCS.md`](AUDIT-CODE-VS-DOCS.md) | Code-vs-documentation reconciliation: what the repository actually does, measured at a named revision, plus the wiring gap and its ordered closure plan |
+| [`MEASURE-B1-RERANKING.md`](MEASURE-B1-RERANKING.md) | Implementation record for the cross-encoder reranking stage, including the three roadmap premises the code refuted and the wiring bug it found |
 | [`../ARCHITECTURE.md`](../ARCHITECTURE.md) | Layering, invariants, key algorithms, implementation status |
 | [`../SOTA-BASELINE.md`](../SOTA-BASELINE.md) | Frozen LongMemEval-S baseline (historical anchor, with a staleness note) |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Engineering standards: ≥95% coverage per dimension, TDD, no mocks |

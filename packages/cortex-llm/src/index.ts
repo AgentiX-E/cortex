@@ -15,6 +15,15 @@ export {
 } from './embedding/transformers.js';
 export { createTransformersPipeline } from './embedding/transformers-pipeline.js';
 export {
+  OpenAICompatibleReranker,
+  CrossEncoderReranker,
+  buildRerankBody,
+  parseRerankResponse,
+  type OpenAICompatibleRerankerOptions,
+  type CrossEncoderRerankerOptions,
+  type CrossEncoderPipeline,
+} from './rerank/rerank.js';
+export {
   retryableFetch,
   isRetryableStatus,
   sleep,

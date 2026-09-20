@@ -14,6 +14,7 @@ import {
   computeSessionRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
+  createRerankerFromEnv,
   deserializeEmbeddingCache,
   hasDiagnosticRecord,
   mergeEmbeddingCache,
@@ -69,6 +70,15 @@ async function main(): Promise<void> {
   const embedding = createEmbeddingFromEnv(process.env);
   const llm = createLlmFromEnv(process.env);
   const threshold = Number(process.env['ABSTAIN_THRESHOLD'] ?? 0.5);
+  // The cross-encoder reranking stage (roadmap measure B1). Off unless
+  // CORTEX_RERANK is set, so an unset environment reproduces the pre-reranker
+  // pipeline exactly and the two configurations form a clean A/B.
+  const reranker = createRerankerFromEnv(process.env);
+  // Candidate pool width. Defaults to the system's own topK, but reranking can
+  // only promote what it is shown, so a real arm wants 3-10x the context width
+  // here -- see `rerankCandidatePool`.
+  const rerankPoolRaw = process.env['RERANK_CANDIDATE_POOL'];
+  const rerankCandidatePool = rerankPoolRaw === undefined ? undefined : Number(rerankPoolRaw);
 
   // Restore a persisted embedding cache when present. The haystack turns are the
   // SAME across repeated full runs and embedding is deterministic, so reusing a
@@ -177,6 +187,8 @@ async function main(): Promise<void> {
     runs,
     temperature,
     onDecision: (trace) => decisions.push(trace),
+    ...(reranker !== undefined ? { reranker } : {}),
+    ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
   });
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
   for (const d of decisions) {

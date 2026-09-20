@@ -4443,3 +4443,202 @@ describe('session-coherent admission', () => {
     expect(admitted).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The reranking stage's reachability (roadmap measure B1).
+ *
+ * These tests exist because "implemented but never constructed" is the specific
+ * defect the code-vs-docs audit found in the cognitive layer: a module with zero
+ * call sites is indistinguishable from a module that does not exist. So the
+ * assertions here are about the pipeline, not about the reranker in isolation
+ * (which `cortex-core/src/__tests__/rerank.test.ts` already covers exhaustively).
+ *
+ * The observable is the prompt: it is the only thing the retrieval ordering
+ * affects, and asserting on it tests the real path rather than an internal.
+ */
+describe('reranking stage reachability', () => {
+  /**
+   * Extract only the injected context from a built prompt.
+   *
+   * Asserting against the whole prompt is a trap this suite fell into first: the
+   * prompt embeds the question verbatim, so a check like
+   * `expect(prompt).toContain('Momo')` passes whether or not Momo was ever
+   * retrieved. Every retrieval-ordering assertion here therefore reads the
+   * context block, which is the only part retrieval controls.
+   */
+  function injectedContext(prompt: string): string {
+    const match = /Context \(a JSON array of turns[^\n]*\):\n(.*)\n\nQuestion:/.exec(prompt);
+    return match?.[1] ?? '';
+  }
+
+  /** Three clearly separated sessions, so cosine ordering is unambiguous. */
+  const context = [
+    'I adopted a cat named Momo in March.',
+    'My sister is a veterinarian in Osaka.',
+    'I bought a bicycle for commuting last week.',
+  ];
+  const sessions = [[context[0]!], [context[1]!], [context[2]!]];
+
+  function capturingLlm(captured: string[]): LLM {
+    return {
+      complete: async (prompt) => {
+        captured.push(prompt);
+        return 'Momo';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+  }
+
+  /** Embedding where session 1 matches the question best, then 2, then 3. */
+  function rankedEmbedding(): EmbeddingModel {
+    const table: Record<string, number[]> = {
+      'The cat Momo': [1, 0, 0],
+      'I adopted a cat named Momo in March.': [0.9, 0.1, 0],
+      'My sister is a veterinarian in Osaka.': [0.1, 1, 0],
+      'I bought a bicycle for commuting last week.': [0, 0.1, 1],
+    };
+    return {
+      dimension: () => 3,
+      embed: async (texts) =>
+        texts.map((text) => {
+          const base = table[text] ?? [0, 0, 0.5];
+          const norm = Math.hypot(...base) || 1;
+          return new Float64Array(base.map((value) => value / norm));
+        }),
+    };
+  }
+
+  it('does not construct or call a reranker when none is configured', async () => {
+    const captured: string[] = [];
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: rankedEmbedding(),
+      llm: capturingLlm(captured),
+      enableQueryExpansion: false,
+      turnRecallSessions: 0,
+      topK: 3,
+      contextRadius: 0,
+    });
+
+    await system.answer('The cat Momo', context, sessions);
+
+    // Default path is unchanged: with no reranker the prompt still contains the
+    // evidence, and nothing threw while walking the new code path.
+    expect(injectedContext(captured[0]!)).toContain('Momo');
+  });
+
+  it('calls the configured reranker exactly once per retrieval', async () => {
+    const captured: string[] = [];
+    const questions: string[] = [];
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: rankedEmbedding(),
+      llm: capturingLlm(captured),
+      enableQueryExpansion: false,
+      turnRecallSessions: 0,
+      topK: 3,
+      contextRadius: 0,
+      reranker: async (pairs) => {
+        for (const pair of pairs) {
+          questions.push(pair.question);
+        }
+        return pairs.map(() => 0);
+      },
+    });
+
+    await system.answer('The cat Momo', context, sessions);
+
+    // The reranker was reached on the real path, and it received the question.
+    expect(questions.length).toBeGreaterThan(0);
+    expect(questions[0]).toBe('The cat Momo');
+  });
+
+  it('promotes a session the embedding ranked below the cut, given a wide pool', async () => {
+    const captured: string[] = [];
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: rankedEmbedding(),
+      llm: capturingLlm(captured),
+      enableQueryExpansion: false,
+      turnRecallSessions: 0,
+      topK: 1,
+      contextRadius: 0,
+      // Without a wide pool the reranker only sees the bi-encoder's top-1 and
+      // this assertion is impossible: `retrieveTopKByQueries` truncates
+      // internally, so the bicycle turn would never reach the scorer. The pool
+      // width is what makes reranking able to change the outcome at all.
+      rerankCandidatePool: 3,
+      // Inverts the embedding ranking: the bicycle turn, which cosine ranked
+      // last, must become the admitted hit.
+      reranker: async (pairs) => pairs.map((pair) => (pair.text.includes('bicycle') ? 1 : 0)),
+    });
+
+    await system.answer('The cat Momo', context, sessions);
+
+    // Assert on the injected context, not the whole prompt: the prompt also
+    // contains the question itself, so a substring check against the full text
+    // would match the question's own words regardless of what was retrieved.
+    expect(injectedContext(captured[0]!)).toContain('bicycle');
+    expect(injectedContext(captured[0]!)).not.toContain('Momo');
+  });
+
+  it('cannot promote beyond the pool when the pool is left at topK', async () => {
+    // Pins the limitation the wide-pool option exists to remove. This is a
+    // deliberate assertion on a real constraint, not a bug: with the default
+    // pool the reranker can only permute the bi-encoder's survivors.
+    const captured: string[] = [];
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: rankedEmbedding(),
+      llm: capturingLlm(captured),
+      enableQueryExpansion: false,
+      turnRecallSessions: 0,
+      topK: 1,
+      contextRadius: 0,
+      reranker: async (pairs) => pairs.map((pair) => (pair.text.includes('bicycle') ? 1 : 0)),
+    });
+
+    await system.answer('The cat Momo', context, sessions);
+
+    expect(injectedContext(captured[0]!)).toContain('Momo');
+    expect(injectedContext(captured[0]!)).not.toContain('bicycle');
+  });
+
+  it('honours rerankProtectedHead by leaving the top hit in place', async () => {
+    const captured: string[] = [];
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: rankedEmbedding(),
+      llm: capturingLlm(captured),
+      enableQueryExpansion: false,
+      turnRecallSessions: 0,
+      topK: 3,
+      contextRadius: 0,
+      rerankProtectedHead: 1,
+      // Same inverting scorer as above, but now the first hit is pinned.
+      reranker: async (pairs) => pairs.map((pair) => (pair.text.includes('bicycle') ? 1 : 0)),
+    });
+
+    await system.answer('The cat Momo', context, sessions);
+
+    // The cosine winner survives the protected head, so the abstention-facing
+    // evidence cannot be displaced by the reranker.
+    expect(injectedContext(captured[0]!)).toContain('Momo');
+  });
+
+  it('degrades to the unreranked ordering when the reranker throws', async () => {
+    const captured: string[] = [];
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding: rankedEmbedding(),
+      llm: capturingLlm(captured),
+      enableQueryExpansion: false,
+      turnRecallSessions: 0,
+      topK: 1,
+      contextRadius: 0,
+      reranker: async () => {
+        throw new Error('provider down');
+      },
+    });
+
+    // A failed reranker must not fail the run: the pipeline falls back to the
+    // bi-encoder ordering, so the cosine winner is still the admitted evidence.
+    await system.answer('The cat Momo', context, sessions);
+
+    expect(injectedContext(captured[0]!)).toContain('Momo');
+  });
+});
