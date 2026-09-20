@@ -77,6 +77,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 | Optimal-transport distillation | **Implemented but inert** | `sinkhorn` is exported; nothing calls it |
 | Abstention confidence calibration (Platt / temperature) | **Not implemented** | Thresholds are fixed constants |
 | Cross-encoder reranking (`rerankHits` / `fuseRerank`) | **Implemented, wired, off by default** | On both retrieval paths of the eval pipeline; enabled via `CORTEX_RERANK`. See [`docs/MEASURE-B1-RERANKING.md`](docs/MEASURE-B1-RERANKING.md) |
+| Recall-curve diagnostic (`buildRecallCurve` / `computeRecallCurve`) | **Implemented, wired, measured** | Separates breadth from ordering; emits `benchmark-recall-curve.json`. First LongMemEval-S reading: ceiling 93.02%, gain 65.12%→2.33% across k=1→20. See [`docs/MEASURE-B2-RECALL-CURVE.md`](docs/MEASURE-B2-RECALL-CURVE.md) |
 
 Two consequences worth stating explicitly:
 

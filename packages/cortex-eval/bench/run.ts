@@ -28,11 +28,15 @@ import {
   runAbstentionRetryAblation,
   runQueryExpansionDecompositionAblation,
   CONJUNCTION_ABS_COHORT,
+  ABLATION_SKIP_FILENAME,
+  buildAblationSkipRecord,
+  serializeAblationSkips,
   sampleInstances,
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
   toCapability,
   turnText,
+  type AblationSkipRecord,
   type DecisionTrace,
   type LongMemEvalInstance,
 } from '@agentix-e/cortex-eval';
@@ -394,30 +398,62 @@ async function main(): Promise<void> {
   // against those exact questions. `LIMIT=60` keeps only 1 of the 6 controls, so
   // the guard is what turns "the run silently scored a smaller cohort" into a
   // visible failure. Coverage is written to the artifact either way.
-  const conjunctionAblation = await runQueryExpansionDecompositionAblation(
-    sampled as never,
-    embedding,
-    llm,
-    { runs: ablationRuns, temperature },
-  );
-  writeFileSync('benchmark-conjunction-ablation-report.md', conjunctionAblation.markdown);
-  writeFileSync(
-    'benchmark-conjunction-ablation-report.json',
-    JSON.stringify(
-      { ...conjunctionAblation.report, cohortCoverage: conjunctionAblation.coverage },
-      null,
-      2,
-    ),
-  );
-  console.log('=== query-expansion conjunction ablation ===');
-  console.log(
-    `Cohort coverage: ${conjunctionAblation.coverage.present.length}/${CONJUNCTION_ABS_COHORT.length} ` +
-      `(${(conjunctionAblation.coverage.ratio * 100).toFixed(0)}%)` +
-      (conjunctionAblation.coverage.missing.length > 0
-        ? `; missing ${conjunctionAblation.coverage.missing.join(', ')}`
-        : ''),
-  );
-  console.log(conjunctionAblation.markdown);
+  //
+  // The guard is deliberately NOT softened here. A partial cohort is a different
+  // experiment, so downgrading it to a warning would relabel exactly the run the
+  // guard exists to reject. What the catcher below fixes is the ORDER: every
+  // other report is written before this arm runs, so an unrecovered throw
+  // discarded all of them (run 35498421148 lost its main report, its markdown
+  // and the embedding-cache persistence to this one line). Catching it keeps the
+  // skip loud on stderr while letting the completed reports survive, which is
+  // the difference between "refused to score a short cohort" and "scored
+  // nothing at all".
+  const ablationSkips: AblationSkipRecord[] = [];
+  try {
+    const conjunctionAblation = await runQueryExpansionDecompositionAblation(
+      sampled as never,
+      embedding,
+      llm,
+      {
+        runs: ablationRuns,
+        temperature,
+        // Default 0: keep the guard loud, keep the reports. Set to 1 to restore
+        // the strict behaviour where a short cohort fails the entire run.
+        requireCohortCoverage: process.env['REQUIRE_CONJUNCTION_COHORT'] === '1',
+      },
+    );
+    writeFileSync('benchmark-conjunction-ablation-report.md', conjunctionAblation.markdown);
+    writeFileSync(
+      'benchmark-conjunction-ablation-report.json',
+      JSON.stringify(
+        { ...conjunctionAblation.report, cohortCoverage: conjunctionAblation.coverage },
+        null,
+        2,
+      ),
+    );
+    console.log('=== query-expansion conjunction ablation ===');
+    console.log(
+      `Cohort coverage: ${conjunctionAblation.coverage.present.length}/${CONJUNCTION_ABS_COHORT.length} ` +
+        `(${(conjunctionAblation.coverage.ratio * 100).toFixed(0)}%)` +
+        (conjunctionAblation.coverage.missing.length > 0
+          ? `; missing ${conjunctionAblation.coverage.missing.join(', ')}`
+          : ''),
+    );
+    console.log(conjunctionAblation.markdown);
+  } catch (err) {
+    // Name the shortfall on stderr so the workflow log still carries it, and
+    // record it in the artifact set so a reader who finds no conjunction report
+    // learns why rather than guessing between "crashed", "never wired" and
+    // "silently dropped".
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`conjunction ablation skipped: ${reason}`);
+    ablationSkips.push(buildAblationSkipRecord('conjunction', err, CONJUNCTION_ABS_COHORT.length));
+  }
+
+  // Written unconditionally, including as `[]`, so the artifact set has the same
+  // shape on every run and "nothing was skipped" is not indistinguishable from
+  // "this run predates skip recording".
+  writeFileSync(ABLATION_SKIP_FILENAME, serializeAblationSkips(ablationSkips));
 
   // Persist the embedding cache so a later run (which uses the same haystack
   // turns) can restore it and skip the embedding provider. Done after every

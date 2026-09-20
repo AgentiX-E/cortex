@@ -105,6 +105,13 @@ export {
   type RecallCurveMeasurementOptions,
 } from './recall-curve.js';
 export {
+  ABLATION_SKIP_FILENAME,
+  parseMissingCohortMembers,
+  buildAblationSkipRecord,
+  serializeAblationSkips,
+  type AblationSkipRecord,
+} from './ablation-skip.js';
+export {
   retrieveTopK,
   retrieveTopKSessions,
   retrieveByQueries,

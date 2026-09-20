@@ -117,6 +117,31 @@ of leaving the DeepSeek-only constraint.
 > See `cortex-docs/docs/08-reader-parity-analysis.md` for the full attribution and the
 > reproduction script. "The reader is the remaining lever" is **withdrawn**.
 
+> **Correction (2026-09-20, second pass).** §5's second bullet — "MR counting errors
+> enumerate the items correctly but misjudge *which items count*, an LLM semantic
+> judgment, not arithmetic or enumeration completeness" — is **confirmed** by a
+> per-question read of `benchmark-mr-diagnostics.json`, and the reason it was right
+> is worth recording because the first pass got the *mechanism* wrong. For
+> `0a995998` ("How many items … to pick up or return"), the model's own trace
+> enumerates all three items correctly, then reasons itself down to 2 by ruling out
+> dry cleaning and collapsing an exchange into one item. The failure is semantic
+> attribution, not counting. A deterministic numeric gate is therefore not the fix,
+> and a re-score of all 29 MR questions under `numericAnswerVerdict`'s rules
+> reproduces the stored verdict exactly (22/29 = 75.9%) — it moves nothing.
+>
+> **Retrieval is not MR's constraint either.** In `6a1eabeb` ("personal best in the
+> charity 5K run") the gold string `25:50` is present in the retrieved context at
+> offset 7839, alongside the superseded `27:12`. The reader had both and chose the
+> older one. This is a *knowledge-update* failure surfaced through a KU question,
+> not a recall failure.
+>
+> **And the breadth question is now closed by measurement.** The recall curve
+> (run `35498421148`, `docs/MEASURE-B2-RECALL-CURVE.md`) reports a pool `ceiling` of
+> **93.02%** for answerable questions with `gain` decaying 65.12% → 2.33% from
+> `k=1` to `k=20`. Only 6.98% of answerable questions are unreachable by any
+> reordering, so "add recall channels" is a proposal for a ≥6.98% prize, not for
+> the third that `recall@5` alone appeared to imply.
+
 ## 6. Methodology (standing)
 
 - Same-instant 4-vs-4 A/B only; never staggered (time-of-day drift is ~1.7–2.1pp).
