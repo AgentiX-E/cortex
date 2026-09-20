@@ -138,6 +138,10 @@ missing and the numbers it previously crashed on.
 | Real numeric values are unaffected | Test: `1.000e-3`, `0.420` |
 | The failure is reproduced through real `JSON.stringify`/`parse` | Test: asserts `null` before rendering |
 | The cohort banner survives persistence | Test: banner above `Δ accuracy` in a parsed report |
+| Every affected field shape has a named case | Test: 4 persisted-field cases + the in-memory NaN/±Infinity case |
+| A serialised infinity never becomes `0.000` | Test: asserts absence of `0.000` for an infinite effect |
+| The two p-value fallbacks stay distinguishable | Test: McNemar `1.000e+0` vs t-test `n/a (deterministic)` |
+| The whole artifact set is re-readable | Audit: 13/13 archived reports render, against 0/13 before |
 | No workspace regression | See `09-progress-and-delivery-report.md` for the current count |
 
 ## 8. Scope of the defect, and what remains unclaimed
