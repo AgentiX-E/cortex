@@ -116,6 +116,42 @@ Point 3 is why §4's workaround is a **re-dispatch** rather than a cleverer
 download. There is no URL that both carries a valid signature and points at a
 host that exists.
 
+### 2.1.2 A second host behaves differently, and it is not the same failure
+
+A later run (`35516794168`, completed **success**, all 15 steps green) was routed to
+`productionresultssa18` instead of `sa16`. Its artifact (`10609107757`,
+4,063,291 bytes, unexpired) fails to download in a **different** way, and the
+distinction matters:
+
+| Host | Public DNS resolution | Connect | Response |
+| --- | --- | --- | --- |
+| `productionresultssa3` | `57.150.27.1` (real) | succeeds, ~1.6s | `409` — real front-end reply |
+| `productionresultssa16` | `20.209.113.193` (real) | succeeds | `404 AccountNotFound` |
+| **`productionresultssa18`** | **`198.18.0.53`** (RFC 2544 synthetic) | **`000`, timeout** | none |
+
+Two things are notable:
+
+1. **The synthetic resolution is not the sandbox's DNS.** Querying `1.1.1.1` and
+   `8.8.8.8` directly returns the same `198.18.0.53`, so the hostname itself
+   resolves into the benchmarking range. Only Azure's internal routing can reach
+   it; the public internet cannot, and pinning to public IPs does not help (the
+   three known-good IPs return `404 AccountNotFound`, and unrelated Azure IPs
+   return `400`).
+2. **The control still holds.** `sa3` answered normally *during the same check*,
+   so egress, credentials and the fetch path are all fine. As in §2.1, the
+   variable is the host assignment — not anything on our side.
+
+So there are **two distinct failure modes** behind "the artifact will not
+download", and they must not be collapsed:
+
+| Mode | Host | Symptom | Recoverable by |
+| --- | --- | --- | --- |
+| Absent account | `sa16` | structured `404` + `RequestId` | re-dispatch only |
+| Non-public resolution | `sa18` | `000` / timeout | re-dispatch only |
+
+Both are unrecoverable from here, and both are silent in the place a reader looks:
+the run is green, the artifact is listed and unexpired, and the numbers are gone.
+
 ### 2.2 It is not a DNS block
 
 The earlier dead end in `FIX-REPORT-JSON-ROUNDTRIP.md` §9 was a DNS/proxy issue:
@@ -162,11 +198,21 @@ expected to route elsewhere. Applied immediately:
   had not been run locally (see `FIX-COVERAGE-GATE-NOISE.md` for the same lesson
   from the other direction: the command used to verify a change must be the
   command that judges it).
-- re-dispatched a third time as run `35516794168` on `9eb6b7ee`, which carries
-  both the format fix and the second sink from §5.1.
+- re-dispatched a third time as run `35516794168` on `9eb6b7ee`. It **completed
+  success**, but its artifact routed to `sa18` and is unrecoverable (§2.1.2).
+- re-dispatched a fourth time as run `35523328949` on `a7e846d1` — the first
+  attempt at a commit that contains **both** the format fix and the second sink,
+  so it is the first run where a routing failure cannot silently destroy the
+  numbers (§5.1).
 
 This also satisfies the standing plan item to verify the cohort banner on the
-new HEAD, so the re-run is not purely a retry.
+new HEAD, so the re-runs are not purely retries.
+
+> **Lesson, fourth instance.** Each of the first three dispatches failed for a
+> different reason that the previous one could not have revealed: an absent
+> account, a formatting gate, a non-public host. **A re-dispatch is only a fix
+> when the cause is known not to be present in the new attempt** — otherwise it
+> is a re-roll.
 
 ## 5. Not claimed, and the durable fix
 
@@ -185,9 +231,9 @@ step emit the report as a job summary, which is delivered through a different
 channel and survives artifact-routing failures — would convert "the run
 succeeded and we have nothing" into "the run succeeded and we have less detail."
 
-### 5.1 That follow-up is now implemented
+### 5.1 The second sink exists, but it did NOT protect the run above
 
-The second sink exists as of `cortex@98e4a3a`:
+The sink is implemented as of `cortex@98e4a3a`:
 
 | Item | Value |
 | --- | --- |
@@ -196,8 +242,22 @@ The second sink exists as of `cortex@98e4a3a`:
 | Wiring | `benchmark.yml`, final step, `if: always()` |
 | Tests | 13, running the real script as a subprocess |
 
-Three constraints on it are direct consequences of this document, and each is
-pinned by a test:
+**But run `35516794168` was dispatched on `9eb6b7ee`, which predates `98e4a3a`.**
+Its job has **15 steps and no "Publish results to the job summary" step** — verified
+against both the run's step list and the workflow file at that commit. So the
+claim that the sink made this run's numbers survive is **false**, and it is worth
+stating precisely why: the sink protects runs dispatched at or after `98e4a3a`,
+not runs that were already in flight when it landed.
+
+This is the same error shape as the rest of this repository's defect log — a
+remediation assumed to apply retroactively. The correct statement is a
+**precondition**, not a reassurance: *a dispatch must be at a commit containing
+the sink for the sink to exist.*
+
+A re-dispatch on current master (`a7e846d1`, which contains the sink) is the way
+to actually exercise it; see §4.
+
+### 5.2 Constraints on the sink, each a consequence of this document
 
 1. **The renderer must never raise.** It runs `if: always()`, so a crash there
    would turn "a failure that still reported numbers" into "a failure with no
@@ -210,12 +270,8 @@ pinned by a test:
    A renderer that goes quiet on unrecognised input reads as "there was no data",
    which is precisely this document's failure mode wearing different clothes.
 
-So a routing failure can no longer make the measurement set disappear; it can
-only reduce its fidelity. The remaining limitation is stated in §3 — the
-artifact is still the richer record, and the summary carries the headline
-tables, not the full report set.
-
 > **The generalisable point:** the bug was not the routing, which is not ours.
 > It was that a **green run had exactly one channel to its numbers**, and a
 > channel failure was invisible. Redundancy here is not an optimisation; it is
-> what makes the green light mean anything.
+> what makes the green light mean anything — provided the run is dispatched at a
+> commit that has it.
