@@ -109,6 +109,70 @@ describe('branch coverage', () => {
     expect(g.shortestPath('missing', 'a')).toBeNull();
   });
 
+  it('sinkhorn does not claim convergence it has not achieved', () => {
+    // Regression test for a real bug: the convergence detector was inert.
+    //
+    // `uPrev` used to hold a *reference* to `u`, and `u` is mutated in place on
+    // the next few lines. The loop therefore compared `u` against itself, so the
+    // residual `maxDiff` was exactly 0 on every iteration for every input, and
+    // `maxDiff < tol` was trivially true. The function reported
+    // `converged: true` after a single iteration whether or not the marginals
+    // had actually converged.
+    //
+    // The tell was `tol = 0`: with a genuinely computed residual that can never
+    // be satisfied, yet the old code still returned `converged: true`. That is
+    // asserted below because it fails loudly on the old implementation and is
+    // the cheapest way to state "the residual is real".
+    const impossible = sinkhorn(
+      [0.5, 0.5],
+      [0.5, 0.5],
+      [
+        [0, 1],
+        [1, 0],
+      ],
+      0.5,
+      1000,
+      0,
+    );
+    expect(impossible.converged).toBe(false);
+    expect(impossible.iterations).toBe(1000);
+
+    // Symmetrically, an achievable tolerance must still converge — and it must
+    // be reached by the iteration rather than being asserted up front.
+    const reachable = sinkhorn(
+      [0.5, 0.5],
+      [0.5, 0.5],
+      [
+        [0, 1],
+        [1, 0],
+      ],
+      1,
+      500,
+      1e-9,
+    );
+    expect(reachable.converged).toBe(true);
+    expect(reachable.iterations).toBeGreaterThan(0);
+    expect(reachable.iterations).toBeLessThan(500);
+  });
+
+  it('sinkhorn reports non-convergence when the iteration budget is exhausted', () => {
+    // With the residual actually computed, a hard problem that cannot settle in
+    // one step must exhaust the budget instead of exiting on the first pass.
+    const res = sinkhorn(
+      [0.5, 0.5],
+      [0.3, 0.3, 0.4],
+      [
+        [0, 1, 2],
+        [2, 1, 0],
+      ],
+      0.001,
+      25,
+      1e-12,
+    );
+    expect(res.converged).toBe(false);
+    expect(res.iterations).toBe(25);
+  });
+
   it('sinkhorn returns non-converged when maxIter is exhausted', () => {
     const res = sinkhorn(
       [0.5, 0.5],

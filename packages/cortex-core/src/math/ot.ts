@@ -51,7 +51,12 @@ export function sinkhorn(
   let iterations = 0;
   for (let it = 0; it < maxIter; it++) {
     iterations = it + 1;
-    const uPrev = u;
+    // Snapshot the previous scaling. This must be a COPY: `u` is mutated in
+    // place a few lines below, so holding the reference would make the
+    // convergence test compare `u` against itself, pinning the residual to
+    // exactly 0 and reporting `converged: true` on the very first iteration
+    // for every input — including inputs that have not converged at all.
+    const uPrev = Float64Array.from(u);
     // Update scaling vectors (Knopp iteration).
     for (let i = 0; i < m; i++) {
       let s = 0;

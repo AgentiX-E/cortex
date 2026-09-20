@@ -16,18 +16,35 @@ import { defineConfig } from 'vitest/config';
  *
  * ## The reported figure is not reproducible, and that is measured
  *
- * Identical runs of this package have produced **98.47, 98.73 and 98.98** in six
- * invocations with no edit between them: 779, 781 and 783 covered statements out
- * of a **constant** 789. The three values are explained in
- * `docs/FIX-COVERAGE-GATE-NOISE.md`; the short version is that the bodies of
- * guards carrying `c8 ignore` annotations are attributed to the enclosing loop
- * non-deterministically by the v8 provider, so six statements in
- * `src/math/stats.ts` flip between covered and not.
+ * Identical runs of this package have produced **98.48, 98.73, 98.99 and 99.24**
+ * across twelve consecutive invocations with no edit between them: four distinct
+ * numerators — 777, 779, 781, 783 — over a **constant** 789 statements. The
+ * denominators never moved, so the code did not change; only the attribution of
+ * executed counters to statements did. The full diagnosis is in
+ * `docs/FIX-COVERAGE-GATE-NOISE.md`; the movement is confined to the six
+ * `c8 ignore` guard bodies in `src/math/stats.ts` plus the annotated guard at
+ * its line 76.
+ *
+ * ## The annotations on those guards state a reason that is false
+ *
+ * The guards in `src/math/stats.ts` are annotated *"defensive guard, unreachable
+ * via valid inputs"*. They are **reachable**: replacing each guard body with a
+ * throwing sentinel fails six tests for every one of the five loop guards. The
+ * reachability was measured with that method rather than with counters, because a
+ * counter probe adds a statement to the line under investigation and is then
+ * credited to a different line — it reported 20,000 hits on a body that the
+ * arithmetic proves is never entered. See the document, §5 and §5.1.
+ *
+ * The consequence is that these annotations hide *reachable and untested* code,
+ * not unreachable code: with all six removed, the real suite earns 789/795 =
+ * 99.25%, and the six still-uncovered statements are genuine gaps. Repairing the
+ * annotations properly means testing those bodies first, which moves the reported
+ * figure and therefore belongs in its own change with its own evidence.
  *
  * Two consequences are recorded here rather than only in the document, because
  * this is the file someone edits when they want to change the gate:
  *
- *   1. **A spread of about ±0.5pp around the reported value is normal.** A drop
+ *   1. **A spread of about ±0.8pp around the reported value is normal.** A drop
  *      of that size is not evidence of a regression. A drop materially larger
  *      is. I twice dismissed a low figure as "a stale cached report" before
  *      measuring it, so the number is written down here to stop that.
