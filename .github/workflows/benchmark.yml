@@ -186,3 +186,30 @@ jobs:
             packages/cortex-eval/benchmark-*.json
             packages/cortex-eval/benchmark-error.log
           retention-days: 30
+
+      # A second, independent sink for the numbers.
+      #
+      # Run 35510619912 completed success with every step green, and its artifact
+      # AND logs were both unfetchable -- both 302 to productionresultssa16, a
+      # blob host that returns `404 AccountNotFound`. The routing is assigned per
+      # run, so the report set existed and was simply not reachable. The run was
+      # green and the measurement was gone.
+      #
+      # The artifact remains the primary record; this does not replace it. The
+      # job summary travels through a different channel, so a routing failure on
+      # the artifact path cannot remove it too. The goal is to convert "the run
+      # succeeded and we have nothing" into "the run succeeded and we have less
+      # detail" -- see docs/OPS-UNFETCHABLE-ARTIFACT.md.
+      #
+      # `if: always()` for the same reason the artifact upload uses it: the most
+      # valuable summary is often the one from a run that failed late.
+      #
+      # The renderer is a tracked script rather than inline shell so it can be
+      # tested. A summary is exactly the kind of code that is never exercised
+      # until the day it is needed, and an untested summary that throws would
+      # fail the run it was added to make more robust.
+      - name: Publish results to the job summary
+        if: always()
+        run: python3 tools/benchmark-summary.py packages/cortex-eval >> "$GITHUB_STEP_SUMMARY"
+
+
