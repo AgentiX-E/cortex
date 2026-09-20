@@ -183,11 +183,30 @@ rather than silently joining the same trap.
   string would change the artifact schema, which is a larger decision than this
   defect justifies — and one that would invalidate the comparison between existing
   archives and future ones.
-- **The audit covers reports, not diagnostics.** `benchmark-diagnostics.json`,
+- **~~The audit covers reports, not diagnostics.~~ Closed — see
+  `AUDIT-PERSISTED-NULLS.md`.** This item originally read: "`benchmark-diagnostics.json`,
   `benchmark-mr-diagnostics.json` and `benchmark-single-session-diagnostics.json`
-  are written but never re-rendered by a formatter, so they cannot hit this defect.
-  They were not searched for other serialisation hazards.
+  are written but never re-rendered by a formatter, so they cannot hit this
+  defect. They were not searched for other serialisation hazards." That was the
+  stated gap, and it has since been searched rather than argued: all 24 archived
+  artifacts were parsed leaf by leaf, and the diagnostics files contain **no
+  substitutable nulls at all**. They do contain 41 `decision.answer: null` values,
+  which are the interesting near-miss — the same field, the same literal, a
+  completely different provenance. Those are *values* (the recorded shape of a
+  decline, consistent in both directions with `abstained: true`), not *losses*.
+  The distinction is now drawn by a re-runnable instrument
+  (`tools/audit-persisted-nulls.py`) rather than by an argument in a document.
 - **`benchmark-error.log` is plain text** and out of scope.
+
+> **Note on why this item was originally left as a gap, and why that was right.**
+> The reasoning — "they are never re-rendered, so they cannot hit *this* defect" —
+> was correct about this defect and wrong about the class. A serialisation hazard
+> does not need a formatter to matter; it needs a *consumer*. The gap declaration
+> preserved that distinction instead of letting a narrow argument read as a clean
+> bill of health, and closing it produced the five-way classification in
+> `AUDIT-PERSISTED-NULLS.md` §2 that a blanket "no formatter, no risk" claim would
+> have skipped entirely.
+
 
 ## 9. Appendix — a resolved dead end: the job-log host
 
