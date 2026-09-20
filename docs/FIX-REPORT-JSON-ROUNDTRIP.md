@@ -188,3 +188,34 @@ rather than silently joining the same trap.
   are written but never re-rendered by a formatter, so they cannot hit this defect.
   They were not searched for other serialisation hazards.
 - **`benchmark-error.log` is plain text** and out of scope.
+
+## 9. Appendix — a resolved dead end: the job-log host
+
+Recorded because it cost real time and the resolution is not guessable from the
+symptom.
+
+Fetching a job's logs returns a 302 to
+`productionresultssa16.blob.core.windows.net/...` for the run that was in progress.
+Pinning that hostname to any Azure front-end IP produced `AccountNotFound` — which
+reads like a permissions or credential problem and invites a hunt for the right IP.
+
+It is not an IP problem. **The hostname is private while the job is running.**
+
+| Job | State | Log host | Publicly fetchable |
+| --- | --- | --- | --- |
+| `106057222316` | completed | `productionresultssa3` | yes |
+| `106045650999` | completed | `productionresultssa1` | yes |
+| `105795543701` | completed | `productionresultssa15` | yes |
+| `106077768627` | **in progress** | `productionresultssa16` | **no** |
+
+The control that distinguishes a real Azure error from a stale hostname: `sa3`
+answers `InvalidQueryParameterValue` (a genuine front-end response for an existing
+account) while `sa16` answers `AccountNotFound` with a real `RequestId`. Both are
+authentic Azure responses — the account in the second case genuinely does not exist
+publicly.
+
+**Consequence for the workflow, not the code**: live logs are not obtainable for a
+running job through this API. Progress must be read from the run's step list, and
+the log becomes available once the job completes. The artifact set — which is what
+any conclusion is drawn from — is unaffected, because artifacts are written to the
+public accounts and were downloadable throughout.
