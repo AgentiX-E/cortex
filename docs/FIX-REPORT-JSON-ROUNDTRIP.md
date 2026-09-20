@@ -1,7 +1,8 @@
 # FIX — The Report Dies When It Is Re-Read From JSON
 
-**Status:** fixed in `report.ts`; 6 new tests. Found by re-rendering a *real
-archived artifact*, not by reading code.
+**Status:** fixed in `report.ts`; 13 tests. Found by re-rendering a *real archived
+artifact*, not by reading code. Scope established afterwards by auditing all 13
+archived reports: **100% were affected**.
 
 This is the third defect in the conjunction-guard sequence, and the first that is
 not about the guard at all. It was found while verifying the second fix: feeding
@@ -139,13 +140,47 @@ missing and the numbers it previously crashed on.
 | The cohort banner survives persistence | Test: banner above `Δ accuracy` in a parsed report |
 | No workspace regression | See `09-progress-and-delivery-report.md` for the current count |
 
-## 8. Not claimed
+## 8. Scope of the defect, and what remains unclaimed
 
-- **No other report was audited for the same pattern.** This fix covers
-  `AblationReport`. The other `benchmark-*.json` writers were not checked for
-  fields that are `NaN`/`Infinity` in memory and consumed after a read-back.
-  Stated as a known gap.
+### 8.1 The defect was universal, not an edge case
+
+Every archived ablation report was audited by re-reading it and re-rendering it.
+Thirteen `benchmark-*-ablation-report.json` files from completed runs were checked,
+spanning the conjunction, MR, MR-retry, TR, TR-coverage, TR-window and
+KU-bitemporal arms:
+
+| | Result |
+| --- | --- |
+| Reports audited | 13 |
+| Reports containing a `null` numeric field | **13 (100%)** |
+| Reports renderable by the pre-fix expression | **0** |
+| Reports renderable after the fix | **13** |
+
+The counterfactual was checked as well, because an audit that passes on both the
+old and the new code proves nothing: driving the pre-fix expression
+(`Number.isNaN(p) ? … : p.toExponential(3)`) against the same thirteen real files
+threw on **13/13**.
+
+The reason is structural. A single-run ablation — which is every ablation except
+the main benchmark arm — produces `NaN` for `pValue` on **every** arm, because the
+Welch over-run t-test needs at least two runs. So every persisted report was
+unrenderable by construction. The only reason this was never observed is that the
+renderer happens to run **before** the report is serialised, so the one execution
+path that exists never re-read its own output.
+
+`report-json-roundtrip.test.ts` now carries 13 tests, including one per affected
+field shape, so a future arm that introduces a new numeric field fails by name
+rather than silently joining the same trap.
+
+### 8.2 What is still not claimed
+
 - **The `null` representation itself is not changed.** `JSON.stringify` still
   writes `null`; the reader now handles it. Making the writer emit a sentinel
   string would change the artifact schema, which is a larger decision than this
-  defect justifies.
+  defect justifies — and one that would invalidate the comparison between existing
+  archives and future ones.
+- **The audit covers reports, not diagnostics.** `benchmark-diagnostics.json`,
+  `benchmark-mr-diagnostics.json` and `benchmark-single-session-diagnostics.json`
+  are written but never re-rendered by a formatter, so they cannot hit this defect.
+  They were not searched for other serialisation hazards.
+- **`benchmark-error.log` is plain text** and out of scope.

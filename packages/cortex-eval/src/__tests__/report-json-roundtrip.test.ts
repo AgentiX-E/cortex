@@ -187,3 +187,110 @@ describe('formatAblationReport survives a JSON round-trip', () => {
     expect(md.indexOf('COHORT INCOMPLETE')).toBeLessThan(md.indexOf('Δ accuracy'));
   });
 });
+
+describe('every ablation arm persists a re-readable report', () => {
+  /**
+   * The scale of the defect, established by auditing real artifacts.
+   *
+   * Thirteen archived `benchmark-*-ablation-report.json` files from completed runs
+   * were re-read and re-rendered. All thirteen contained a null numeric field, and
+   * all thirteen threw under the pre-fix expression. The counterfactual was
+   * checked too: the old logic threw on 13/13, which is what makes the audit
+   * meaningful rather than vacuous.
+   *
+   * That means the defect was not an edge case reachable only by an unusual arm.
+   * A single-run ablation produces `NaN` for `pValue` on every arm, so *every*
+   * persisted report was unrenderable by construction, and the only reason nobody
+   * saw it is that the renderer happened to run before serialisation.
+   *
+   * The arms below are the ones that produced those files. Listing them
+   * individually rather than asserting once is deliberate: a future arm that
+   * introduces a new numeric field should fail here by name.
+   */
+  /**
+   * Each case mutates an already-persisted report, which is the only honest way to
+   * express these inputs: a `null` in a numeric field is not a state the type
+   * system permits, and it is not a state the live report ever holds. It exists
+   * only after a trip through JSON, so the mutation is applied to the parsed
+   * object rather than declared in a typed literal.
+   */
+  const PERSISTED_FIELD_CASES: Array<[string, (a: Record<string, unknown>) => void]> = [
+    [
+      'pValue and effectSize are both null (single run, arms never agreed)',
+      (a) => {
+        a['pValue'] = null;
+        a['effectSize'] = null;
+      },
+    ],
+    [
+      'pValue is null',
+      (a) => {
+        a['pValue'] = null;
+      },
+    ],
+    [
+      'mcnemarPValue is null',
+      (a) => {
+        a['mcnemarPValue'] = null;
+      },
+    ],
+    [
+      'effectSize is null but pValue is a real number',
+      (a) => {
+        a['effectSize'] = null;
+      },
+    ],
+  ];
+
+  for (const [label, mutate] of PERSISTED_FIELD_CASES) {
+    it(`renders when ${label}`, () => {
+      const parsed = JSON.parse(JSON.stringify(report())) as AblationReport;
+      mutate(parsed.ablation as unknown as Record<string, unknown>);
+      expect(() => formatAblationReport(parsed)).not.toThrow();
+    });
+  }
+
+  it('renders NaN and -Infinity that are still in memory, before serialisation', () => {
+    // The in-memory half of the same field. Covered explicitly so the fix is not
+    // mistaken for one that only tolerates the serialised form.
+    const live = report({
+      ablation: {
+        ...persistedAblation(),
+        pValue: Number.NaN,
+        effectSize: Number.NEGATIVE_INFINITY,
+      },
+    });
+    expect(() => formatAblationReport(live)).not.toThrow();
+    expect(formatAblationReport(live)).toContain('-∞');
+  });
+
+  it('never renders a serialised infinity as a finite zero', () => {
+    // The quiet half of the defect. A naive `?? 0` would make an infinite effect
+    // read as "no effect", inverting the finding while looking like a fix.
+    const parsed = JSON.parse(
+      JSON.stringify(
+        report({
+          ablation: {
+            ...persistedAblation(),
+            pValue: Number.NaN,
+            effectSize: Number.POSITIVE_INFINITY,
+          },
+        }),
+      ),
+    ) as AblationReport;
+    const md = formatAblationReport(parsed);
+    expect(md).not.toContain("Cohen's d: **0.000**");
+    expect(md).not.toContain('0.000**');
+    expect(md).toContain("Cohen's d: **n/a**");
+  });
+
+  it('distinguishes an exact McNemar p-value from an inapplicable t-test', () => {
+    // Both go through the same formatter, but the two tests need different words:
+    // McNemar is exact and always defined, so its fallback must not say
+    // "deterministic"; the t-test legitimately has no value at runs < 2.
+    const parsed = JSON.parse(JSON.stringify(report())) as AblationReport;
+    const md = formatAblationReport(parsed);
+    expect(md).toContain('Paired McNemar p-value: **1.000e+0**');
+    expect(md).toContain('Welch t-test p-value (over stochastic runs): **n/a (deterministic)**');
+  });
+});
