@@ -119,9 +119,9 @@ export function formatAblationReport(report: AblationReport): string {
     `- Δ accuracy (feature − baseline): **${(ab.delta >= 0 ? '+' : '') + pct(ab.delta)}**`,
     `- Baseline 95% Wilson CI: **[${pct(ab.baselineConfidence.lower)}–${pct(ab.baselineConfidence.upper)}]**`,
     `- Feature 95% Wilson CI: **[${pct(ab.featureConfidence.lower)}–${pct(ab.featureConfidence.upper)}]**`,
-    `- Paired McNemar p-value: **${ab.mcnemarPValue.toExponential(3)}** (significant: ${ab.mcnemarSignificant ? 'yes' : 'no'})`,
+    `- Paired McNemar p-value: **${formatPValue(ab.mcnemarPValue, 'exact')}** (significant: ${ab.mcnemarSignificant ? 'yes' : 'no'})`,
     `- Discordant pairs: baseline-correct/feature-wrong = ${ab.discordant.baselineCorrectFeatureIncorrect}, baseline-wrong/feature-correct = ${ab.discordant.baselineIncorrectFeatureCorrect}`,
-    `- Welch t-test p-value (over stochastic runs): **${Number.isNaN(ab.pValue) ? 'n/a (deterministic)' : ab.pValue.toExponential(3)}** (significant: ${ab.significant ? 'yes' : 'no'})`,
+    `- Welch t-test p-value (over stochastic runs): **${formatPValue(ab.pValue, 'n/a (deterministic)')}** (significant: ${ab.significant ? 'yes' : 'no'})`,
     `- Cohen's d: **${formatEffectSize(ab.effectSize)}**`,
     '',
     '## Per-capability breakdown (feature system)',
@@ -152,7 +152,44 @@ export function formatAblationReport(report: AblationReport): string {
   return lines.join('\n');
 }
 
-function formatEffectSize(d: number): string {
+/**
+ * Render a p-value that may have been through JSON.
+ *
+ * `runAblation` produces `NaN` for the over-run t-test when `runs < 2`, and
+ * `-Infinity`/`Infinity` for Cohen's d when the two arms never disagree. JSON has
+ * no representation for either, so `JSON.stringify` writes `null` — and the
+ * archived artifact, which is the durable record of a run, holds `null` where the
+ * live report held a number.
+ *
+ * `Number.isNaN(null)` is `false`, so the original `Number.isNaN(p) ? … :
+ * p.toExponential(3)` guard routed `null` into the numeric branch and threw. The
+ * report rendered correctly at the moment it was produced and became unrenderable
+ * once archived, which is the worst possible ordering: the failure surfaces long
+ * after the run, when the only remaining copy is the one that cannot be read.
+ *
+ * `null` is checked explicitly rather than with `p == null` matching both, because
+ * `undefined` means a malformed object and `null` means "JSON had no number here";
+ * both are unrenderable, so both take the fallback, but the reason is the same and
+ * the check reads as one condition.
+ */
+function formatPValue(p: number | null, fallback: string): string {
+  if (p === null || Number.isNaN(p)) {
+    return fallback;
+  }
+  return p.toExponential(3);
+}
+
+/**
+ * Format Cohen's d, including the infinities JSON cannot carry.
+ *
+ * A `null` here is a serialised infinity, which is a *real, meaningful* result —
+ * it means the two arms differed on every question — so it must render as `n/a`
+ * and never as `0.000`, which would read as "no effect" and invert the finding.
+ */
+function formatEffectSize(d: number | null): string {
+  if (d === null) {
+    return 'n/a';
+  }
   if (d === Infinity) {
     return '+∞';
   }

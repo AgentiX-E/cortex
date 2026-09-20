@@ -11,6 +11,7 @@ convention, **all content here is English**; user-facing documentation lives in
 | [`MEASURE-B2-RECALL-CURVE.md`](MEASURE-B2-RECALL-CURVE.md) | The recall-curve instrument that separates retrieval breadth from retrieval ordering, its first real LongMemEval-S measurement, and the pre-registered reading that decides candidate-pool width |
 | [`FIX-CONJUNCTION-GUARD-BLAST-RADIUS.md`](FIX-CONJUNCTION-GUARD-BLAST-RADIUS.md) | A defect found by running the benchmark: a correct pre-flight guard placed after the work it protects, which discarded every completed report when it fired |
 | [`FIX-COHORT-COVERAGE-SIDE-CHANNEL.md`](FIX-COHORT-COVERAGE-SIDE-CHANNEL.md) | The defect the previous fix introduced: coverage returned *beside* the report instead of *inside* it, so a 1-of-7 cohort rendered as an ordinary result with no caveat |
+| [`FIX-REPORT-JSON-ROUNDTRIP.md`](FIX-REPORT-JSON-ROUNDTRIP.md) | `JSON.stringify` turns `NaN`/`±Infinity` into `null`, so a report that rendered correctly when produced threw when re-read from the archived artifact — found by re-rendering real output, not by reading code |
 | [`../ARCHITECTURE.md`](../ARCHITECTURE.md) | Layering, invariants, key algorithms, implementation status |
 | [`../SOTA-BASELINE.md`](../SOTA-BASELINE.md) | Frozen LongMemEval-S baseline (historical anchor, with a staleness note) |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Engineering standards: ≥95% coverage per dimension, TDD, no mocks |

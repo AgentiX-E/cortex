@@ -78,6 +78,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 | Abstention confidence calibration (Platt / temperature) | **Not implemented** | Thresholds are fixed constants |
 | Cross-encoder reranking (`rerankHits` / `fuseRerank`) | **Implemented, wired, off by default** | On both retrieval paths of the eval pipeline; enabled via `CORTEX_RERANK`. See [`docs/MEASURE-B1-RERANKING.md`](docs/MEASURE-B1-RERANKING.md) |
 | Recall-curve diagnostic (`buildRecallCurve` / `computeRecallCurve`) | **Implemented, wired, measured** | Separates breadth from ordering; emits `benchmark-recall-curve.json`. First LongMemEval-S reading: ceiling 93.02%, gain 65.12%→2.33% across k=1→20. See [`docs/MEASURE-B2-RECALL-CURVE.md`](docs/MEASURE-B2-RECALL-CURVE.md) |
+| Persisted-report re-rendering (`formatAblationReport`) | **Implemented, round-trip safe** | A report read back from `benchmark-*.json` renders identically to the one held in memory; `null` (the JSON form of `NaN`/`±Infinity`) is labelled, never numbered. See [`docs/FIX-REPORT-JSON-ROUNDTRIP.md`](docs/FIX-REPORT-JSON-ROUNDTRIP.md) |
 
 Two consequences worth stating explicitly:
 
