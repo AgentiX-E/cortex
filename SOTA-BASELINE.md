@@ -98,6 +98,25 @@ reader. **83.55% is a strong result at the DeepSeek ceiling**; the residual gap 
 A stronger reader (GPT-4o/Claude/Gemini) would be the single largest lever, at the cost
 of leaving the DeepSeek-only constraint.
 
+> **Correction (2026-09-20).** The two sentences above do not survive contact with the
+> published evidence and are retained only so the error is on the record.
+>
+> 1. **DeepSeek is not the weaker reader here.** On LongBench v2 — raw long-context
+>    reading with no memory layer — DeepSeek-R1 scores **58.3** against GPT-4o's
+>    **51.4**. Systems running the *same or a smaller* reader tier already reach
+>    **94.87%** (GPT-5-mini) and **96.4%** (Gemini 3 Flash).
+> 2. **Architecture explains far more than the reader.** Holding the reader fixed at
+>    GPT-4o, the spread across systems is **37.0pp** (EmergenceMem 86.00 vs Mem0 49.00).
+>    Holding the architecture fixed, swapping 20B → Gemini 3 Pro is worth **7.8pp**
+>    (Hindsight). Architecture variance is **4.7x** reader variance.
+> 3. Therefore 82–86% is a **pipeline** ceiling, not a reader ceiling. The binding
+>    constraint is the structure of the context we hand the reader — we run no
+>    reranker, our query expansion takes only top-3 per query, and we have no
+>    specialised extraction channels.
+>
+> See `cortex-docs/docs/08-reader-parity-analysis.md` for the full attribution and the
+> reproduction script. "The reader is the remaining lever" is **withdrawn**.
+
 ## 6. Methodology (standing)
 
 - Same-instant 4-vs-4 A/B only; never staggered (time-of-day drift is ~1.7–2.1pp).
