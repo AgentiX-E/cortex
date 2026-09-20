@@ -123,31 +123,50 @@ A later run (`35516794168`, completed **success**, all 15 steps green) was route
 4,063,291 bytes, unexpired) fails to download in a **different** way, and the
 distinction matters:
 
-| Host | Public DNS resolution | Connect | Response |
-| --- | --- | --- | --- |
-| `productionresultssa3` | `57.150.27.1` (real) | succeeds, ~1.6s | `409` — real front-end reply |
-| `productionresultssa16` | `20.209.113.193` (real) | succeeds | `404 AccountNotFound` |
-| **`productionresultssa18`** | **`198.18.0.53`** (RFC 2544 synthetic) | **`000`, timeout** | none |
+| Host | DNS resolution | TCP 443 | TLS handshake | HTTP reply |
+| --- | --- | --- | --- | --- |
+| `productionresultssa3` | `57.150.27.1` (real) | ok (0.00s) | **ok** — genuine `*.blob.core.windows.net` cert, TLS 1.3 | `400` — ordinary Blob reply for a parameterless request |
+| `productionresultssa16` | `20.209.113.193` (real) | ok | ok | `404 AccountNotFound` |
+| **`productionresultssa18`** | **`198.18.0.53`** (RFC 2544 synthetic) | **ok (0.00s)** | **FAILS — closed during the handshake** | never reached |
+
+**This table corrects the "`000`, timeout" I recorded first.** The measured failure on
+`sa18` is **not** a routing blackhole: the TCP connection **succeeds** (0.00s, identical
+to `sa3`), and the failure happens at the **handshake**. Two independent TLS stacks
+agree on the error:
+
+| Tool | Error | Elapsed |
+| --- | --- | --- |
+| Python `ssl` | `SSLZeroReturnError: TLS/SSL connection has been closed (EOF)` | immediate |
+| `curl` (OpenSSL) | `(35) SSL_ERROR_SYSCALL`, `http_code=000` | **exactly 5.001s** (hard timeout) |
+
+Both point at the same thing: **the connection is accepted and then TLS is not allowed to
+negotiate** — the signature of **sandbox egress interception**, not a DNS or an Azure-side
+fault. The `sa3` control completed a full TLS 1.3 handshake and returned a real certificate
+plus `409` **during the same check**, so egress, credentials and TLS capability are all fine.
 
 Two things are notable:
 
-1. **The synthetic resolution is not the sandbox's DNS.** Querying `1.1.1.1` and
-   `8.8.8.8` directly returns the same `198.18.0.53`, so the hostname itself
-   resolves into the benchmarking range. Only Azure's internal routing can reach
-   it; the public internet cannot, and pinning to public IPs does not help (the
-   three known-good IPs return `404 AccountNotFound`, and unrelated Azure IPs
-   return `400`).
+1. **The synthetic resolution is not the sandbox's DNS.** The hostname itself resolves
+   into the benchmarking range. Only Azure's internal routing can reach it; the public
+   internet cannot, and pinning to public IPs does not help (the three known-good IPs
+   return `404 AccountNotFound`, and unrelated Azure IPs return `400`).
 2. **The control still holds.** `sa3` answered normally *during the same check*,
    so egress, credentials and the fetch path are all fine. As in §2.1, the
    variable is the host assignment — not anything on our side.
 
+> **Why the correction is load-bearing**: "non-public resolution / timeout" invites the
+> reader to try fixing DNS or pinning IPs, and there is nothing to fix there — the
+> genuinely reachable Azure IPs (`sa3`, `sa16`) both work. Only once the failure is
+> localised to **TLS interception** does the sole correct remedy become obvious:
+> **re-dispatch and wait for a usable host assignment.**
+
 So there are **two distinct failure modes** behind "the artifact will not
 download", and they must not be collapsed:
 
-| Mode | Host | Symptom | Recoverable by |
-| --- | --- | --- | --- |
-| Absent account | `sa16` | structured `404` + `RequestId` | re-dispatch only |
-| Non-public resolution | `sa18` | `000` / timeout | re-dispatch only |
+| Mode | Host | Symptom | Layer that fails | Recoverable by |
+| --- | --- | --- | --- | --- |
+| Absent account | `sa16` | structured `404` + `RequestId` | application | re-dispatch only |
+| TLS interception | `sa18` | `SSL_ERROR_SYSCALL` / `SSLZeroReturnError` | transport (handshake) | re-dispatch only |
 
 Both are unrecoverable from here, and both are silent in the place a reader looks:
 the run is green, the artifact is listed and unexpired, and the numbers are gone.
