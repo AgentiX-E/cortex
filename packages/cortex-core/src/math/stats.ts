@@ -160,6 +160,32 @@ function regularizedIncompleteBeta(a: number, b: number, x: number): number {
   if (x >= 1) {
     return 1;
   }
+  // The continued fraction below converges rapidly only in the region
+  //   x <= (a + 1) / (a + b + 2)
+  // and diverges outside it. Outside, the complementary identity
+  //   I_x(a, b) = 1 - I_{1-x}(b, a)
+  // puts the evaluation back inside the region: swapping the parameters moves
+  // the threshold from (a+1)/(a+b+2) to (b+1)/(a+b+2), which turns a failing
+  // x near 1 into a well-behaved 1-x near 0.
+  //
+  // Without this branch the routine silently returned values wrong by many
+  // orders of magnitude whenever `x` was close to 1 -- not NaN, so nothing
+  // signalled the failure. `binomialCdf` calls it with `x = 1 - p`, so a small
+  // `p` drove it deep into the divergent region:
+  //   binomialCdf(2, 10, 1e-12) returned 6.6e-5 instead of 1,
+  //   binomialCdf(2, 40, 1e-6)  returned 0.9694 instead of 0.999999999999999.
+  // The error was worst exactly where the binomial CDF is most certain, and it
+  // made the function non-monotone in `k`.
+  //
+  // The comparison is STRICT. At `x` exactly on the threshold the continued
+  // fraction is still valid, and using `>=` here makes the routine recurse
+  // forever on its own fixed point: when `a === b` the mapping sends
+  // `(a, a, x)` to `(a, a, 1 - x)`, so `x === 0.5` is sent to itself.
+  // `studentTCdf(t, 1)` hits exactly that, because `a = df/2 = b = 0.5` and
+  // `x = 1 / (1 + t*t) = 0.5` at `t = ±1`, which overflows the stack.
+  if (x > (a + 1) / (a + b + 2)) {
+    return 1 - regularizedIncompleteBeta(b, a, 1 - x);
+  }
   // Continued fraction (Lentz's method).
   const logBeta = logGamma(a) + logGamma(b) - logGamma(a + b);
   const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - logBeta) / a;
@@ -226,7 +252,18 @@ export function logGamma(z: number): number {
     1.5056327351493116e-7,
   ];
   if (z < 0.5) {
-    return Math.log(Math.PI / Math.sin(Math.PI * z)) - logGamma(1 - z);
+    // Reflection formula. It must use the ABSOLUTE value of the sine:
+    //   logGamma(z) = ln(pi / |sin(pi z)|) - logGamma(1 - z)
+    //
+    // `sin(pi z)` is negative whenever z lies in (-1, 0), (-3, -2), ... and
+    // `Math.log` of a negative argument is NaN, so dividing before taking the
+    // log silently poisons every negative non-integer input. That is not a
+    // corner case: logGamma is a public export, and `-0.5` returned NaN while
+    // `-1.5` happened to work purely because `sin(-1.5 * pi)` is positive. The
+    // sign of the sine carries no information -- it is a property of which
+    // half-period z falls in -- so discarding it is the mathematically correct
+    // reading of the identity, not a numerical patch.
+    return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * z))) - logGamma(1 - z);
   }
   const x = z - 1;
   let a = c[0]!;

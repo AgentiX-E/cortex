@@ -196,6 +196,50 @@ describe('branch coverage', () => {
     expect(gz * g1z).toBeCloseTo(Math.PI / Math.sin(Math.PI * 0.3), 6);
   });
 
+  it('logGamma is finite and correct for negative non-integer inputs', () => {
+    // REGRESSION. The version of this test above asserts only `z = 0.3` and
+    // `z = 0.7`, which are both POSITIVE, so despite its name it never took the
+    // `z < 0.5` branch with a negative argument. The reflection formula was
+    // therefore free to divide by a negative sine and take `Math.log` of the
+    // result, which is NaN -- and it did:
+    //
+    //   logGamma(-0.5) returned NaN, and so did every other negative
+    //   non-integer z in (-1, 0), (-3, -2), ... .
+    //
+    // `logGamma(-1.5)` kept working only because `sin(-1.5 * pi)` happens to be
+    // positive, which is exactly why the defect survived: a spot check on the
+    // wrong half-period looks healthy.
+    //
+    // Reference values are `math.lgamma` from the C library. The sign of the
+    // sine carries no information -- it only says which half-period z is in --
+    // so the identity uses `|sin(pi z)|`.
+    const reference: [number, number][] = [
+      [-2.5, -0.05624371649767457],
+      [-1.75, 1.0160888092144358],
+      [-1.5, 0.8600470153764812],
+      [-1.25, 1.3664317612369756],
+      [-0.75, 1.5757045971498589],
+      [-0.5, 1.265512123484645],
+      [-0.25, 1.5895753125511862],
+    ];
+    for (const [z, expected] of reference) {
+      const actual = logGamma(z);
+      expect(Number.isFinite(actual), `logGamma(${z}) must be finite`).toBe(true);
+      expect(actual, `logGamma(${z})`).toBeCloseTo(expected, 12);
+    }
+  });
+
+  it('logGamma satisfies the reflection identity across both half-periods', () => {
+    // The identity is the property the implementation is built on, so assert it
+    // directly rather than only through a table of constants: it must hold for
+    // negative z as well, where the sign of the sine flips.
+    for (const z of [-0.25, -0.5, -0.75, -1.25, -1.5, 0.25, 0.3, 0.7]) {
+      const lhs = logGamma(z) + logGamma(1 - z);
+      const rhs = Math.log(Math.PI / Math.abs(Math.sin(Math.PI * z)));
+      expect(lhs, `reflection identity at z=${z}`).toBeCloseTo(rhs, 10);
+    }
+  });
+
   it('studentTCdf is a valid CDF at extremes', () => {
     expect(studentTCdf(0, 10)).toBeCloseTo(0.5, 12);
     expect(studentTCdf(Infinity, 10)).toBeCloseTo(1, 12);

@@ -6,16 +6,15 @@
  * `c8 ignore` / `v8 ignore` comments assert that a line of code cannot execute.
  * That assertion is invisible to the type system, invisible to a code reviewer
  * skimming a diff, and — as `docs/FIX-COVERAGE-GATE-NOISE.md` establishes —
- * actively unstable in its effect on the reported percentage, because the v8
- * provider attributes ignored guard bodies to the enclosing loop on some runs and
- * not others.
+ * unreliable in a second way too: the annotations under-suppress on some runs,
+ * so the reported percentage moves between identical invocations of the suite.
  *
  * So an annotation is a load-bearing claim about the code, and an *undeclared*
  * annotation is a claim nobody reviewed. This test makes the set explicit: the
  * count is pinned, every entry carries its reason, and adding a new one fails
  * until it is declared here.
  *
- * ## The stated reasons in `math/stats.ts` are FALSE, and that is measured
+ * ## The stated reasons in `math/stats.ts` were FALSE when written
  *
  * An earlier version of this comment claimed the annotations were verified
  * correct by a 29.9-order-of-magnitude margin. **That verification was wrong**,
@@ -25,15 +24,28 @@
  * valid inputs*.
  *
  * `Infinity` is a valid input, and the suite already passes it. Replacing each of
- * the five in-loop guard bodies with a throwing sentinel fails **six tests per
- * guard**; the single test `studentTCdf is a valid CDF at extremes`, which calls
- * `studentTCdf(±Infinity, 10)`, trips all five on its own.
+ * the five in-loop guard bodies with a throwing sentinel failed **six tests per
+ * guard**, and `studentTCdf(±Infinity, 10)` tripped all five on its own.
  *
- * So the annotation text — "defensive guard, unreachable via valid inputs" — is
- * not a reviewable claim about this code. It is false, and the correct repair is
- * to test the guard bodies and then remove the annotations, which moves the
- * reported figure and therefore belongs in its own change. See
- * `docs/FIX-COVERAGE-GATE-NOISE.md` §5, §7 and §10.
+ * ## ...and are only now correct, by accident
+ *
+ * Chasing that contradiction uncovered **two genuine defects**, and fixing them
+ * moved the guards into the unreachable state the annotations had assumed:
+ *
+ * 1. `logGamma`'s reflection branch used `sin(pi z)` where the identity requires
+ *    `|sin(pi z)|`, so it took `Math.log` of a negative number and returned NaN
+ *    for every negative non-integer input.
+ * 2. `regularizedIncompleteBeta` omitted the complementary-identity branch, so it
+ *    ran the continued fraction far outside its convergence region and returned
+ *    values wrong by orders of magnitude for small `p` -- without producing NaN.
+ *
+ * With both fixed, re-running the same sentinel experiment leaves the suite
+ * **green**: all five guards are genuinely unreachable. The annotation text was
+ * false when written and true now, for a reason it never stated. That is the
+ * useful lesson -- **an annotation is a claim about a specific version of the
+ * code, and a later bug fix can silently make it true or false.**
+ *
+ * See `docs/FIX-COVERAGE-GATE-NOISE.md` §5, §7 and §10.
  *
  * ## What this test does NOT do
  *
@@ -69,22 +81,33 @@ const EXPECTED: Record<string, { count: number; reason: string }> = {
   },
   'math/stats.ts': {
     count: 6,
-    // This reason states what the annotations CLAIM, and records that the claim
-    // is false. It previously asserted the guards were "verified unreachable by
-    // arithmetic margin ... a 29.9-order-of-magnitude gap" — that verification
-    // sampled a grid of finite `(x, df)` pairs and generalised to all inputs,
-    // which is not a valid inference. `studentTCdf(±Infinity, 10)` reaches all
-    // five in-loop guards. Kept pinned at 6 so that removing them is a reviewed
-    // change rather than a silent one; see the file header and
-    // `docs/FIX-COVERAGE-GATE-NOISE.md` §5.
+    // The stated reason "unreachable via valid inputs" was measured FALSE at the
+    // time it was written: throwing sentinels placed in each of the five in-loop
+    // guards failed six tests apiece, and `studentTCdf(±Infinity, 10)` reached
+    // all five on its own. The guards were reachable, so the annotations were
+    // suppressing a coverage gap rather than documenting dead code.
+    //
+    // That is no longer the current state. Two genuine defects were found and
+    // fixed while investigating this file -- `logGamma` lost the sign of
+    // `sin(pi z)` on the reflection branch and returned NaN for every negative
+    // non-integer input, and `regularizedIncompleteBeta` was missing the
+    // complementary-identity branch and so evaluated the continued fraction far
+    // outside its region of convergence (returning silently wrong values for
+    // small `p`). With both fixed, the same sentinel experiment now leaves the
+    // suite GREEN: all five guards are genuinely unreachable, so the original
+    // reason is true, just not for the version of the code that made the claim.
+    //
+    // Kept pinned at 6 so that removing them stays a reviewed change; the count
+    // is unchanged because the guards are still there, only now dead.
     reason:
       'Underflow guards in the Student-t continued fraction and the Welch df ' +
-      'computation. The annotations state "unreachable via valid inputs", and ' +
-      'MEASURED REACHABILITY CONTRADICTS THAT: throwing sentinels placed in each ' +
-      'of the five in-loop bodies fail six tests apiece, and the existing test ' +
-      '"studentTCdf is a valid CDF at extremes" reaches all five through ' +
-      'studentTCdf(±Infinity, 10). Removing the annotations is the correct ' +
-      'repair and is an open item because it moves the reported figure.',
+      'computation. Originally annotated "unreachable via valid inputs", which ' +
+      'was FALSE at the time: throwing sentinels failed six tests per guard and ' +
+      'studentTCdf(±Infinity, 10) reached all five. After fixing the logGamma ' +
+      'reflection sign and adding the complementary-identity branch to ' +
+      'regularizedIncompleteBeta, the same sentinel experiment leaves the suite ' +
+      'green, so the guards are now genuinely unreachable and the annotations ' +
+      'are correct-by-accident. See docs/FIX-COVERAGE-GATE-NOISE.md §5 and §7.',
   },
 };
 
