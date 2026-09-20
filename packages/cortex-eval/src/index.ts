@@ -47,8 +47,10 @@ export { runAblation, type AblationOptions } from './ablation.js';
 export {
   runAblationReport,
   formatAblationReport,
+  retryFireLines,
   type AblationReport,
   type AblationReportOptions,
+  type RetryFireCounts,
 } from './report.js';
 export {
   runEmbeddingBenchmark,

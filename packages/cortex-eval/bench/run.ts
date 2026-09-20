@@ -382,9 +382,15 @@ async function main(): Promise<void> {
     temperature,
   });
   writeFileSync('benchmark-mr-retry-ablation-report.md', retryAblation.markdown);
+  // The report carries `retryFires` itself (see `AblationReport`), so it is
+  // serialised as-is. Spreading the side-channel field back in here would
+  // reintroduce exactly the two-paths-can-disagree shape that made the fire table
+  // vanish from a re-rendered report: the Markdown got it from a concatenation at
+  // the runner's return site, the JSON from this spread, and the renderer knew
+  // about neither.
   writeFileSync(
     'benchmark-mr-retry-ablation-report.json',
-    JSON.stringify({ ...retryAblation.report, retryFires: retryAblation.retryFires }, null, 2),
+    JSON.stringify(retryAblation.report, null, 2),
   );
   console.log('=== MR abstention-retry ablation ===');
   console.log(retryAblation.markdown);

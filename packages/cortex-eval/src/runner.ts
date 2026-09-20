@@ -24,7 +24,12 @@ import { judgeScorer } from './metrics.js';
 import type { DecisionTrace } from './natural-language-memory.js';
 import { classifyKnowledgeUpdateQualifier } from './fact-store.js';
 import { EXTENDED_ENGINE_OPTIONS } from './temporal-engine.js';
-import { formatAblationReport, runAblationReport, type AblationReport } from './report.js';
+import {
+  formatAblationReport,
+  retryFireLines,
+  runAblationReport,
+  type AblationReport,
+} from './report.js';
 
 export type BenchmarkRunnerOptions = {
   /** Abstention threshold for the feature system (default 0.5). */
@@ -661,7 +666,7 @@ export async function runAbstentionRetryAblation(
   });
 
   const judge = options.judge ?? createLlmJudge(llm);
-  const report = await runAblationReport(scoped, control, treatment, {
+  const result = await runAblationReport(scoped, control, treatment, {
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });
@@ -670,11 +675,14 @@ export async function runAbstentionRetryAblation(
     treatmentFires: countRetryFires(treatmentTraces),
     questions: questions.length,
   };
-  return {
-    report,
-    markdown: `${formatAblationReport(report)}${formatRetryFireSection(retryFires)}`,
-    retryFires,
-  };
+  // Attached to the report BEFORE formatting, so the fire table is produced by the
+  // renderer rather than concatenated at the return site. The previous shape
+  // removed the section from a re-rendered report entirely -- the persisted JSON
+  // carried the counts only because `bench/run.ts` spread them back in, so any
+  // other consumer of this function's `report` produced a document missing the one
+  // table that makes the arm's null result interpretable.
+  const report: AblationReport = { ...result, retryFires };
+  return { report, markdown: formatAblationReport(report), retryFires };
 }
 
 /**
@@ -698,42 +706,22 @@ function countRetryFires(traces: readonly DecisionTrace[]): number {
 }
 
 /**
- * Render the retry fire count as its own section, because it is the diagnostic
- * that makes a null result interpretable and `formatAblationReport` has no slot
- * for a counter. A bare `Δ = 0.00 pp` is unreadable on its own: it is the
- * predicted output of a working feature on a dataset it cannot help, and also
- * the predicted output of a feature that was never wired in.
+ * Render the retry fire count as its own section.
+ *
+ * Kept as a public entry point for callers that hold the counters but not a whole
+ * report, but it now delegates to the single implementation in `report.ts` rather
+ * than carrying its own copy of the table. Two copies is precisely how the section
+ * came to be absent from a re-rendered report: the Markdown received it from here,
+ * the JSON from a spread in `bench/run.ts`, and `formatAblationReport` knew about
+ * neither.
+ *
+ * A bare `Δ = 0.00 pp` is unreadable on its own: it is the predicted output of a
+ * working feature on a dataset it cannot help, and also the predicted output of a
+ * feature that was never wired in. The counters are the only thing that separates
+ * the two readings.
  */
 export function formatRetryFireSection(fires: RetryAblationReport['retryFires']): string {
-  const rate = fires.questions === 0 ? 0 : fires.treatmentFires / fires.questions;
-  const lines = [
-    '',
-    '## Abstention-retry fires',
-    '',
-    '| Arm | Retry fires |',
-    '|---|---|',
-    `| control (\`enableAbstentionRetry: false\`) | ${fires.controlFires} |`,
-    `| treatment (\`enableAbstentionRetry: true\`) | ${fires.treatmentFires} |`,
-    '',
-    `- Treatment fire rate: **${(rate * 100).toFixed(2)}%** of ${fires.questions} questions`,
-  ];
-  if (fires.controlFires !== 0) {
-    lines.push(
-      '',
-      `- **INVALID EXPERIMENT**: the control arm fired ${fires.controlFires} times despite ` +
-        '`enableAbstentionRetry: false`. The flag is not reaching the retry, so the two arms ' +
-        'are not the comparison this ablation claims to make.',
-    );
-  } else if (fires.treatmentFires === 0) {
-    lines.push(
-      '',
-      '- **INERT ON THIS DATASET**: the treatment arm never fired. The retry had zero ' +
-        'opportunities, so the Δ accuracy below measures nothing and must not be read as ' +
-        'evidence the feature does not work.',
-    );
-  }
-  lines.push('');
-  return lines.join('\n');
+  return retryFireLines(fires).join('\n');
 }
 
 /**

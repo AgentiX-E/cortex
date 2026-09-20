@@ -29,6 +29,39 @@ export type AblationReport = {
    * Absent for arms with no cohort, which is why the banner is conditional.
    */
   cohortCoverage?: CohortCoverage | undefined;
+  /**
+   * Retry-fire counts for the abstention-retry arm, when the arm runs a counter.
+   *
+   * Carried in the report for the same reason `cohortCoverage` is: the fire count
+   * is not metadata about the result, it is what makes the result interpretable.
+   * This arm's published finding is a null one (accuracy unchanged), and the
+   * source comment on `formatRetryFireSection` states why the counter is
+   * load-bearing -- `Δ = 0.00 pp` is equally predicted by a working feature on a
+   * dataset it cannot help and by a feature that was never wired in. Only the fire
+   * count separates those two.
+   *
+   * Returning it beside the report was the same defect class as the cohort
+   * coverage side channel (`docs/FIX-COHORT-COVERAGE-SIDE-CHANNEL.md`): the
+   * Markdown received the section through a string concatenation at the return
+   * site and the JSON through a spread at the call site, so neither the renderer
+   * nor a consumer holding the report could produce the section. Re-rendering the
+   * persisted artifact dropped it silently.
+   */
+  retryFires?: RetryFireCounts | undefined;
+};
+
+/**
+ * Distinct questions on which each arm's retry actually re-queried.
+ *
+ * Declared here rather than imported from `runner.ts` so the report type does not
+ * depend on the module that produces it -- `runner.ts` already imports from this
+ * one, and closing the cycle would make the type unavailable while `report.ts` is
+ * still initialising.
+ */
+export type RetryFireCounts = {
+  controlFires: number;
+  treatmentFires: number;
+  questions: number;
 };
 
 export type AblationReportOptions = {
@@ -148,8 +181,89 @@ export function formatAblationReport(report: AblationReport): string {
       `| ${capability} | ${stats.total} | ${pct(stats.baselineCorrect / stats.total)} | ${pct(stats.featureCorrect / stats.total)} | ${stats.baselineCorrectFeatureIncorrect} | ${stats.baselineIncorrectFeatureCorrect} | ${stats.mcnemarPValue.toExponential(3)} | ${stats.mcnemarSignificant ? 'yes' : 'no'} |`,
     );
   }
+  // The retry-fire table goes BELOW the results, unlike the cohort banner. The
+  // ordering is deliberate and the two are opposite for a reason: the banner
+  // qualifies what the numbers below it mean, so it must come first; the fire
+  // table is supporting evidence for a null delta, and reads as a footnote to it.
+  if (report.retryFires !== undefined) {
+    lines.push(...retryFireLines(report.retryFires));
+  }
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * The retry-fire section, as lines.
+ *
+ * Exported so that `formatRetryFireSection` in `runner.ts` and
+ * `formatAblationReport` above render it from ONE implementation. Two renderers
+ * for the same table is the defect this refactor removes: before it, the section
+ * reached the Markdown by string concatenation at the call site and the JSON by a
+ * spread at a different call site, so the two could disagree and a re-rendered
+ * report lost the section entirely.
+ *
+ * The two warning branches are the reason the section exists at all. A retry
+ * ablation publishes a null result by design, and a null is produced both by a
+ * feature that works on a dataset it cannot help and by a feature that was never
+ * wired in. The counters are what separate those readings, so an arm with a
+ * misconfigured control must not be allowed to look like a clean negative finding.
+ */
+export function retryFireLines(fires: RetryFireCounts): string[] {
+  const rate = fires.questions === 0 ? 0 : fires.treatmentFires / fires.questions;
+  const lines = [
+    '',
+    '## Abstention-retry fires',
+    '',
+    '| Arm | Retry fires |',
+    '|---|---|',
+    `| control (\`enableAbstentionRetry: false\`) | ${fires.controlFires} |`,
+    `| treatment (\`enableAbstentionRetry: true\`) | ${fires.treatmentFires} |`,
+    '',
+    `- Treatment fire rate: **${(rate * 100).toFixed(2)}%** of ${fires.questions} questions`,
+  ];
+  if (fires.controlFires !== 0) {
+    lines.push(
+      '',
+      `- **INVALID EXPERIMENT**: the control arm fired ${fires.controlFires} times despite ` +
+        '`enableAbstentionRetry: false`. The flag is not reaching the retry, so the two arms ' +
+        'are not the comparison this ablation claims to make.',
+    );
+  } else if (fires.treatmentFires === 0) {
+    lines.push(
+      '',
+      '- **INERT ON THIS DATASET**: the treatment arm never fired. The retry had zero ' +
+        'opportunities, so the Δ accuracy above measures nothing and must not be read as ' +
+        'evidence the feature does not work.',
+    );
+  } else if (fires.treatmentFires <= 2) {
+    // The third branch exists because the middle branch was read too broadly.
+    //
+    // "The treatment never fired" and "the treatment fired once or twice" are not
+    // the same finding, and the published result for this arm is the LATTER: a
+    // single fire across the whole dataset. A fire rate this low is still an INERT
+    // result -- with one opportunity the Δ accuracy can move by at most 1/N -- but
+    // it is inert for a different reason, and the remedy differs.
+    //
+    // Zero fires means the mechanism had no opportunity and the correct next step
+    // is to look for a population that produces bare abstentions. One or two fires
+    // means the mechanism works and is active, but that the retry-armed population
+    // is essentially disjoint from the one that fails. Collapsing the second case
+    // into the first would send the next iteration hunting for a wiring bug that
+    // does not exist -- which is exactly the misreading the counters are here to
+    // prevent, so the renderer must not commit it itself.
+    lines.push(
+      '',
+      `- **INERT ON THIS DATASET**: the treatment arm fired only ${fires.treatmentFires} ` +
+        `time${fires.treatmentFires === 1 ? '' : 's'} across ${fires.questions} questions ` +
+        `(${(rate * 100).toFixed(2)}%). The mechanism is wired and active — the control's 0 ` +
+        'confirms the flag reaches the retry — but it found almost no opportunities, so the ' +
+        'Δ accuracy above is bounded by ' +
+        `${(fires.treatmentFires / (fires.questions === 0 ? 1 : fires.questions) * 100).toFixed(2)} pp ` +
+        'and carries no information about whether the feature helps. Do not read it as a ' +
+        'negative result; read it as an under-powered one.',
+    );
+  }
+  return lines;
 }
 
 /**
