@@ -95,8 +95,15 @@ export type RetrievalDiagnosticOptions = {
   llm?: LLM;
 };
 
-/** Expand a question into retrieval phrases via the LLM, or [] without one. */
-async function expandDiagnosticQueries(
+/**
+ * Expand a question into retrieval phrases via the LLM, or [] without one.
+ *
+ * Exported because the recall curve (`recall-curve.ts`) must expand queries the
+ * same way this module does: a diagnostic that measured bare-question retrieval
+ * while the graded path expands would report a ceiling for a different pipeline.
+ * Sharing the helper is what keeps the two measurements comparable.
+ */
+export async function expandDiagnosticQueries(
   llm: LLM | undefined,
   question: string,
   promptBuilder: (question: string) => string,

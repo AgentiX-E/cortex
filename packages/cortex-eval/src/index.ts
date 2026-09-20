@@ -95,6 +95,16 @@ export {
   type SessionRetrievalDiagnostic,
 } from './retrieval-diagnostics.js';
 export {
+  buildRecallCurve,
+  computeRecallCurve,
+  rankOfFirstAnswer,
+  DEFAULT_CURVE_CUTOFFS,
+  type QuestionRank,
+  type RecallCurveOptions,
+  type RecallCurvePoint,
+  type RecallCurveMeasurementOptions,
+} from './recall-curve.js';
+export {
   retrieveTopK,
   retrieveTopKSessions,
   retrieveByQueries,

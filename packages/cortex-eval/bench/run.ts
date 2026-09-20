@@ -14,6 +14,7 @@ import {
   computeSessionRetrievalDiagnostics,
   createEmbeddingFromEnv,
   createLlmFromEnv,
+  computeRecallCurve,
   createRerankerFromEnv,
   deserializeEmbeddingCache,
   hasDiagnosticRecord,
@@ -169,6 +170,28 @@ async function main(): Promise<void> {
   writeFileSync('benchmark-diagnostics.json', JSON.stringify(diagnosticsWithDeterminism, null, 2));
   console.log('=== Retrieval diagnostics ===');
   console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));
+
+  // Recall curve (roadmap measure B2). recall@1 and recall@5 cannot say how much
+  // recall is still on the table at 10/20/50, so they cannot justify a candidate
+  // pool width. The curve separates breadth from ordering: `ceiling` is what a
+  // perfect reranker could reach from a pool of that width, `recall` is what the
+  // bi-encoder's own ordering already reaches, and `gain` is the difference --
+  // the recall a reranker could add with no new retrieval.
+  //
+  // Measured at the same query set as the graded path (expansion included), so
+  // the ceiling describes the pipeline that actually runs.
+  const recallCurve = await computeRecallCurve(diagnosticsSample as never, embedding, { llm });
+  writeFileSync('benchmark-recall-curve.json', JSON.stringify(recallCurve, null, 2));
+  console.log('=== Recall curve ===');
+  console.log(
+    `  k      recall   ceiling  gain     (n=${diagnosticsSample.length} sampled questions)`,
+  );
+  for (const point of recallCurve) {
+    console.log(
+      `  ${String(point.k).padEnd(6)} ${(point.recall * 100).toFixed(1).padStart(6)}%  ` +
+        `${(point.ceiling * 100).toFixed(1).padStart(6)}%  ${(point.gain * 100).toFixed(1).padStart(5)}%`,
+    );
+  }
 
   // Trace per-question decisions so threshold- and LLM-driven abstentions can be
   // separated instead of being conflated into a single abstention rate. The
