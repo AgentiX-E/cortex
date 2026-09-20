@@ -258,7 +258,7 @@ export function retryFireLines(fires: RetryFireCounts): string[] {
         `(${(rate * 100).toFixed(2)}%). The mechanism is wired and active — the control's 0 ` +
         'confirms the flag reaches the retry — but it found almost no opportunities, so the ' +
         'Δ accuracy above is bounded by ' +
-        `${(fires.treatmentFires / (fires.questions === 0 ? 1 : fires.questions) * 100).toFixed(2)} pp ` +
+        `${((fires.treatmentFires / (fires.questions === 0 ? 1 : fires.questions)) * 100).toFixed(2)} pp ` +
         'and carries no information about whether the feature helps. Do not read it as a ' +
         'negative result; read it as an under-powered one.',
     );

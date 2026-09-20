@@ -116,23 +116,19 @@ const ARM_SHAPES: { name: string; build: () => AblationReport }[] = [
   },
   {
     name: 'retry arm with a working control',
-    build: () =>
-      liveReport({ retryFires: { controlFires: 0, treatmentFires: 3, questions: 60 } }),
+    build: () => liveReport({ retryFires: { controlFires: 0, treatmentFires: 3, questions: 60 } }),
   },
   {
     name: 'retry arm with a misconfigured control',
-    build: () =>
-      liveReport({ retryFires: { controlFires: 2, treatmentFires: 3, questions: 60 } }),
+    build: () => liveReport({ retryFires: { controlFires: 2, treatmentFires: 3, questions: 60 } }),
   },
   {
     name: 'retry arm that never fired',
-    build: () =>
-      liveReport({ retryFires: { controlFires: 0, treatmentFires: 0, questions: 60 } }),
+    build: () => liveReport({ retryFires: { controlFires: 0, treatmentFires: 0, questions: 60 } }),
   },
   {
     name: 'retry arm that fired once',
-    build: () =>
-      liveReport({ retryFires: { controlFires: 0, treatmentFires: 1, questions: 60 } }),
+    build: () => liveReport({ retryFires: { controlFires: 0, treatmentFires: 1, questions: 60 } }),
   },
 ];
 
