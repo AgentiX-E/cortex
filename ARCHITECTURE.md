@@ -52,14 +52,46 @@ cortex-llm (pluggable adapters)
 | Capability | Algorithm | Notes |
 |---|---|---|
 | Value-driven write | utility threshold (VoI) | replaceable with learned MDP utility |
-| Abstention | calibrated confidence threshold | temperature/Platt scaling |
-| Retrieval-as-consolidation | Hebbian + FSRS + TD(λ) | significance-gated edge updates |
-| Cross-layer distillation | entropy-regularized optimal transport | Sinkhorn-Knopp |
+| Abstention | calibrated confidence threshold | temperature/Platt scaling **not yet implemented** |
+| Retrieval-as-consolidation | Hebbian + FSRS (**no TD(λ)**) | significance-gated edge updates |
+| Cross-layer distillation | entropy-regularized optimal transport | **implemented in `math/ot.ts`, currently uncalled** |
 | Temporal reasoning | bitemporal facts | valid time + system time |
 | Contradiction resolution | Bayesian evidence fusion | source-trust-weighted log-odds |
 | Similarity | cosine / L2 (Kahan) | Float64 |
 | Multi-hop retrieval | spreading activation | self-implemented associative adjacency list |
 | Associative graph | Hebbian edges + BFS | self-implemented (Float64, zero deps) |
+
+## Implementation status
+
+Not every algorithm above is on the evaluation path. This section states plainly which
+capabilities are load-bearing today, so no reader infers more coverage than exists.
+
+| Capability | Status | Note |
+|---|---|---|
+| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **not on the eval path** | The bench is served by `cortex-eval`'s own memory implementation |
+| Hebbian graph (`MemoryGraph`) | Implemented, tested, **not on the eval path** | Graph recall was trialled for temporal questions and reverted (see below) |
+| FSRS (`retrievability` / `review`) | Implemented, tested, **not on the eval path** | Used by `consolidate` only |
+| Bitemporal facts | Implemented, tested, **not on the eval path** | — |
+| Contradiction resolution | Implemented, tested, **not on the eval path** | — |
+| TD(λ) credit assignment | **Not implemented** | No eligibility traces exist in the codebase |
+| Optimal-transport distillation | **Implemented but inert** | `sinkhorn` is exported; nothing calls it |
+| Abstention confidence calibration (Platt / temperature) | **Not implemented** | Thresholds are fixed constants |
+
+Two consequences worth stating explicitly:
+
+1. The published LongMemEval-S figure is produced by `cortex-eval`, which imports only
+   statistics helpers and `BruteForceVectorIndex` from `cortex-core`. `cortex-core` is a
+   validated algorithm library, not the system under measurement. See
+   [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) §1 for the call-site evidence.
+2. Spreading-activation graph recall **was** wired into the temporal recall path (`1ce76aa`)
+   and then removed on measurement: temporal accuracy fell 77.95% → 70.87% (Δ −7.09pp,
+   15 questions broken against 6 repaired, one-sided exact McNemar p = 0.039; `7780071`).
+   It is closed, not pending.
+
+The root cause of (1) is a missing package, not a missing algorithm: nothing composes the
+cognitive layer into a runnable system. `docs/AUDIT-CODE-VS-DOCS.md` §6 specifies the required
+`cortex-memory` seam, the dependency direction that keeps `cortex-eval` an instrument rather than
+a participant, and the ordered work that closes the gap.
 
 ## Dependencies
 

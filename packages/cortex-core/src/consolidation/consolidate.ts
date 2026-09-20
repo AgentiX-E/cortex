@@ -1,7 +1,12 @@
 /**
- * Asynchronous consolidation: retrieval-as-consolidation (Hebbian + FSRS) plus
- * cross-layer distillation. Runs in a background worker; this module contains the
- * pure, side-effect-free orchestration logic shared by Node and browser workers.
+ * Asynchronous consolidation: retrieval-as-consolidation (Hebbian + FSRS).
+ * Runs in a background worker; this module contains the pure, side-effect-free
+ * orchestration logic shared by Node and browser workers.
+ *
+ * Scope note: this implements FSRS state updates, co-activation edge
+ * strengthening, and threshold-based forgetting. It does not perform
+ * optimal-transport distillation (see `math/ot.ts`, which is exported but not
+ * yet wired here) and it does not implement TD(lambda) credit assignment.
  */
 import type { MemoryValue } from '../domain/memory.js';
 import type { MemoryGraph } from '../graph/memory-graph.js';

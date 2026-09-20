@@ -7,6 +7,16 @@ and what the hard constraint on further gains is.
 **Measured on:** `master` @ `a52628f` (revert of the DCG experiment), DeepSeek LLM +
 Zhipu GLM embedding-3, temperature 0, full N=500, 4 interleaved runs.
 
+> **This is a historical measurement, not a description of current `master`.**
+> `a52628f` is **55 commits behind** `master` @ `31a3371`, and the evaluation harness
+> changed substantially in between: `packages/cortex-eval/src` gained **8,326 lines
+> and lost 227** across 30 files. Every capability number below is therefore an
+> *anchor from the DCG-revert point*, useful for measuring deltas against that exact
+> revision — it is **not** the current score, and should not be quoted as the current
+> state without re-running. See
+> [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) §2 for the drift detail
+> and the reproduction command.
+
 ---
 
 ## 1. Position

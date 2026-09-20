@@ -21,14 +21,24 @@ by similarity). Cortex solves the "mind" problem:
 - **Abstention** — refuse to answer when no memory is reliable enough (calibrated
   confidence), instead of forcing a top-k result.
 - **Asynchronous consolidation** — a background "sleep" process distills episodic
-  memories into semantic knowledge using Hebbian dynamics, an FSRS forgetting curve,
-  and entropy-regularized optimal transport.
+  memories into semantic knowledge using Hebbian dynamics and an FSRS forgetting
+  curve.
 - **Retrieval-as-consolidation** — every retrieval strengthens what it touches and
-  credits success/failure back to the responsible memories (TD(λ)).
+  credits success/failure back to the responsible memories.
 - **Bitemporal facts** — every fact carries *valid time* and *system time*, making
   knowledge update, contradiction resolution, and audit native.
 - **Provenance & trust** — every memory records its source, trust, and derivation
   history for poisoning defense and GDPR erasure.
+
+> **Status.** `cortex-core` is a validated library of cognitive contracts and pure
+> algorithms: it is fully unit-tested and holds ≥95% coverage on all four
+> dimensions. It is *not* yet the engine behind our published LongMemEval-S number
+> — the evaluation harness drives its own memory implementation and consumes only
+> statistics helpers and one vector index from core. Two documented capabilities
+> are not yet wired: optimal-transport distillation (`sinkhorn`, exported but
+> uncalled) and TD(λ) credit assignment (not implemented). See
+> [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) for the full,
+> measured reconciliation.
 
 ## Packages
 
