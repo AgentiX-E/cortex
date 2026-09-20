@@ -3,6 +3,7 @@
  * a structured report plus a Markdown rendering for CI artifacts.
  */
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
+import type { CohortCoverage } from './datasets/sampling.js';
 import { runAblation, type AblationOptions } from './ablation.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 
@@ -13,6 +14,21 @@ export type AblationReport = {
   feature: { name: string; metrics: Metrics };
   ablation: AblationResult;
   generatedAt: string;
+  /**
+   * Coverage of the pre-registered cohort, when the arm declares one.
+   *
+   * Part of the report rather than a side-channel return value because a
+   * coverage shortfall changes what the numbers below it MEAN. Returning it
+   * beside the report let `bench/run.ts` write the coverage to JSON while the
+   * Markdown rendered a 1-of-7 cohort as an ordinary 35-question ablation, with
+   * no caveat anywhere a human reader would look — the exact "same name,
+   * different experiment" outcome the guard exists to prevent. Carrying it in
+   * the report makes it impossible to render the results without having the
+   * coverage in hand.
+   *
+   * Absent for arms with no cohort, which is why the banner is conditional.
+   */
+  cohortCoverage?: CohortCoverage | undefined;
 };
 
 export type AblationReportOptions = {
@@ -63,6 +79,35 @@ export function formatAblationReport(report: AblationReport): string {
     `- Dataset: \`${report.dataset}\` (${report.questionCount} questions)`,
     `- Generated at: ${report.generatedAt}`,
     `- Feature: \`${report.feature.name}\` vs baseline \`${report.baseline.name}\``,
+  ];
+
+  // Cohort coverage goes ABOVE the results. A caveat printed below three tables
+  // of Wilson intervals is a caveat nobody reads, and the point of printing it is
+  // that a short cohort changes what every number beneath it means.
+  const coverage = report.cohortCoverage;
+  if (coverage !== undefined) {
+    const required = coverage.present.length + coverage.missing.length;
+    lines.push('');
+    if (coverage.missing.length > 0) {
+      lines.push(
+        `> **COHORT INCOMPLETE — read these numbers with care.**`,
+        `>`,
+        `> This arm's pre-registered predictions name ${required} specific questions. ` +
+          `**${coverage.present.length}/${required} (${pct(coverage.ratio)}) are present**; ` +
+          `the results below were scored on that subset and are therefore a ` +
+          `**different experiment** from the pre-registered one, not a weaker version of it.`,
+        `>`,
+        `> Missing: ${coverage.missing.join(', ')}`,
+      );
+    } else {
+      lines.push(
+        `> **Cohort complete** — all ${required} pre-registered questions present ` +
+          `(${pct(coverage.ratio)}).`,
+      );
+    }
+  }
+
+  lines.push(
     '',
     '## Ablation (abstention-aware accuracy)',
     '',
@@ -83,7 +128,7 @@ export function formatAblationReport(report: AblationReport): string {
     '',
     '| Capability | Accuracy | Total |',
     '|---|---|---|',
-  ];
+  );
   for (const [capability, result] of Object.entries(report.feature.metrics.perCapability)) {
     lines.push(`| ${capability} | ${pct(result.accuracy)} | ${result.total} |`);
   }

@@ -10,6 +10,7 @@ convention, **all content here is English**; user-facing documentation lives in
 | [`MEASURE-B1-RERANKING.md`](MEASURE-B1-RERANKING.md) | Implementation record for the cross-encoder reranking stage, including the three roadmap premises the code refuted and the wiring bug it found |
 | [`MEASURE-B2-RECALL-CURVE.md`](MEASURE-B2-RECALL-CURVE.md) | The recall-curve instrument that separates retrieval breadth from retrieval ordering, its first real LongMemEval-S measurement, and the pre-registered reading that decides candidate-pool width |
 | [`FIX-CONJUNCTION-GUARD-BLAST-RADIUS.md`](FIX-CONJUNCTION-GUARD-BLAST-RADIUS.md) | A defect found by running the benchmark: a correct pre-flight guard placed after the work it protects, which discarded every completed report when it fired |
+| [`FIX-COHORT-COVERAGE-SIDE-CHANNEL.md`](FIX-COHORT-COVERAGE-SIDE-CHANNEL.md) | The defect the previous fix introduced: coverage returned *beside* the report instead of *inside* it, so a 1-of-7 cohort rendered as an ordinary result with no caveat |
 | [`../ARCHITECTURE.md`](../ARCHITECTURE.md) | Layering, invariants, key algorithms, implementation status |
 | [`../SOTA-BASELINE.md`](../SOTA-BASELINE.md) | Frozen LongMemEval-S baseline (historical anchor, with a staleness note) |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Engineering standards: ≥95% coverage per dimension, TDD, no mocks |

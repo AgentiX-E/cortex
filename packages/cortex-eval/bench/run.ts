@@ -423,13 +423,14 @@ async function main(): Promise<void> {
       },
     );
     writeFileSync('benchmark-conjunction-ablation-report.md', conjunctionAblation.markdown);
+    // The report already carries `cohortCoverage` (see `AblationReport`), so it
+    // is serialised rather than re-attached here. Spreading the side-channel
+    // field back in would leave two paths that can disagree about coverage,
+    // which is how the Markdown came to describe a 1-of-7 cohort as an ordinary
+    // ablation in the first place.
     writeFileSync(
       'benchmark-conjunction-ablation-report.json',
-      JSON.stringify(
-        { ...conjunctionAblation.report, cohortCoverage: conjunctionAblation.coverage },
-        null,
-        2,
-      ),
+      JSON.stringify(conjunctionAblation.report, null, 2),
     );
     console.log('=== query-expansion conjunction ablation ===');
     console.log(

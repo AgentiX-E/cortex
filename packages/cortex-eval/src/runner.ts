@@ -867,9 +867,14 @@ export async function runQueryExpansionDecompositionAblation(
   });
 
   const judge = options.judge ?? createLlmJudge(llm);
-  const report = await runAblationReport(scopedDataset, fused, decomposed, {
+  const result = await runAblationReport(scopedDataset, fused, decomposed, {
     runs: options.runs ?? 1,
     scorer: judgeScorer(judge),
   });
+  // Attach the coverage to the report BEFORE formatting, so the Markdown cannot
+  // describe a 1-of-7 cohort as an ordinary ablation. Returning it alongside the
+  // report instead let the caller persist it to JSON while the rendered Markdown
+  // carried no caveat at all — the numbers were shipped looking complete.
+  const report: AblationReport = { ...result, cohortCoverage: coverage };
   return { report, markdown: formatAblationReport(report), coverage };
 }
