@@ -62,6 +62,7 @@ export {
   runBitemporalKnowledgeUpdateAblation,
   runAbstentionRetryAblation,
   runQueryExpansionDecompositionAblation,
+  runRerankAblation,
   CONJUNCTION_ABS_COHORT,
   CONJUNCTION_ABS_CONTROLS,
   CONJUNCTION_ABS_TARGET,

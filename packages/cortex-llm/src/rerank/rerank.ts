@@ -21,6 +21,7 @@
  */
 
 import type { RerankPair, RerankScoreFn } from '@agentix-e/cortex-core';
+import { retryableFetch } from '../retry.js';
 
 export type OpenAICompatibleRerankerOptions = {
   /** Base URL including the API version segment, e.g. `https://api.cohere.com/v2`. */
@@ -30,6 +31,12 @@ export type OpenAICompatibleRerankerOptions = {
   model: string;
   /** Injectable fetch for testability and for hosts without a global fetch. */
   fetchFn?: typeof fetch;
+  /** Retries on top of the first attempt; default `DEFAULT_MAX_RETRIES`. */
+  maxRetries?: number;
+  /** Initial backoff delay in milliseconds; doubles on each retry. */
+  retryBaseDelayMs?: number;
+  /** Per-attempt deadline in milliseconds; default `DEFAULT_RETRY_TIMEOUT_MS`. */
+  timeoutMs?: number;
 };
 
 /**
@@ -131,14 +138,28 @@ export class OpenAICompatibleReranker {
       const documents = bucket.pairs.map((pair) => pair.text);
       const body = buildRerankBody(question, documents, this.options.model);
       const fetchFn = this.options.fetchFn ?? fetch;
-      const response = await fetchFn(`${this.options.baseUrl}/rerank`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.options.apiKey}`,
+      // Routed through `retryableFetch` so this adapter carries the same 429/5xx
+      // backoff and per-attempt deadline as the LLM and embedding adapters. Without
+      // it a single throttled response aborts the call, and a benchmark issuing
+      // hundreds of rerank requests is exactly the workload that meets a 429 —
+      // so the omission would surface as an A/B arm that produced no measurement.
+      const response = await retryableFetch(
+        fetchFn,
+        `${this.options.baseUrl}/rerank`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.options.apiKey}`,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      });
+        {
+          maxRetries: this.options.maxRetries,
+          baseDelayMs: this.options.retryBaseDelayMs,
+          timeoutMs: this.options.timeoutMs,
+        },
+      );
       if (!response.ok) {
         throw new Error(`Rerank request failed: ${response.status} ${response.statusText}`);
       }

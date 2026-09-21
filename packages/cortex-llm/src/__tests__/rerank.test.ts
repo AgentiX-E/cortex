@@ -177,10 +177,16 @@ describe('OpenAICompatibleReranker', () => {
   });
 
   it('throws on a non-OK response so rerankHits can apply its fallback', async () => {
+    // The status is permanent here, so the retry budget is spent and the error
+    // surfaces. The budget is set explicitly to keep the test fast: with the
+    // default it would burn five 1s backoffs before failing, which is correct
+    // production behaviour and a 5s test.
     const reranker = new OpenAICompatibleReranker({
       baseUrl: 'https://example.invalid/v1',
       apiKey: 'k',
       model: 'm',
+      maxRetries: 1,
+      retryBaseDelayMs: 1,
       fetchFn: async () => new Response('rate limited', { status: 429 }),
     });
 
@@ -331,5 +337,98 @@ describe('CrossEncoderReranker', () => {
     });
 
     await expect(reranker.score(pairs)).rejects.toThrow(/incomplete/i);
+  });
+});
+
+/**
+ * Retry behaviour on the `/rerank` path.
+ *
+ * These cover a consistency gap rather than a new feature: `OpenAICompatibleLLM`
+ * and `OpenAIEmbedding` both route through `retryableFetch`, and this adapter did
+ * not — it called `fetchFn` directly. The consequence is not theoretical. A
+ * benchmark that issues hundreds of rerank calls per run is exactly the workload
+ * that meets a 429, and without retry a single throttled response aborts the run
+ * and the A/B arm produces no measurement at all.
+ *
+ * The fetch stand-ins below are plain functions that count their calls. Nothing is
+ * mocked at the module level; the adapter already accepts an injected `fetchFn`.
+ */
+describe('OpenAICompatibleReranker retry', () => {
+  const retryPairs = [{ question: 'q', candidateId: 'a', text: 'alpha' }] as const;
+  it('retries a 429 and succeeds on a later attempt', async () => {
+    let calls = 0;
+    const reranker = new OpenAICompatibleReranker({
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'k',
+      model: 'm',
+      maxRetries: 2,
+      retryBaseDelayMs: 1,
+      fetchFn: async () => {
+        calls += 1;
+        return calls === 1
+          ? jsonResponse({ error: 'slow down' }, 429)
+          : jsonResponse({ results: [{ index: 0, relevance_score: 0.7 }] });
+      },
+    });
+
+    expect(await reranker.score(retryPairs)).toEqual([0.7]);
+    expect(calls).toBe(2);
+  });
+
+  it('retries a 503, which is a transient server fault and not a caller error', async () => {
+    let calls = 0;
+    const reranker = new OpenAICompatibleReranker({
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'k',
+      model: 'm',
+      maxRetries: 2,
+      retryBaseDelayMs: 1,
+      fetchFn: async () => {
+        calls += 1;
+        return calls === 1
+          ? jsonResponse({}, 503)
+          : jsonResponse({ results: [{ index: 0, relevance_score: 0.3 }] });
+      },
+    });
+
+    expect(await reranker.score(retryPairs)).toEqual([0.3]);
+    expect(calls).toBe(2);
+  });
+
+  it('does not retry a 400, because a malformed request never becomes well-formed', async () => {
+    let calls = 0;
+    const reranker = new OpenAICompatibleReranker({
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'k',
+      model: 'm',
+      maxRetries: 3,
+      retryBaseDelayMs: 1,
+      fetchFn: async () => {
+        calls += 1;
+        return jsonResponse({ error: 'bad request' }, 400);
+      },
+    });
+
+    await expect(reranker.score(retryPairs)).rejects.toThrow(/400/);
+    expect(calls).toBe(1);
+  });
+
+  it('gives up after the retry budget and surfaces the last status', async () => {
+    let calls = 0;
+    const reranker = new OpenAICompatibleReranker({
+      baseUrl: 'https://example.invalid/v1',
+      apiKey: 'k',
+      model: 'm',
+      maxRetries: 2,
+      retryBaseDelayMs: 1,
+      fetchFn: async () => {
+        calls += 1;
+        return jsonResponse({}, 500);
+      },
+    });
+
+    await expect(reranker.score(retryPairs)).rejects.toThrow(/500/);
+    // 1 initial attempt plus 2 retries.
+    expect(calls).toBe(3);
   });
 });

@@ -18,7 +18,14 @@
  * configurable, so the same switch serves Cohere, Jina, Voyage, or a
  * self-hosted bge-reranker behind a proxy. No provider is baked in.
  */
-import { OpenAICompatibleReranker } from '@agentix-e/cortex-llm';
+import {
+  CrossEncoderReranker,
+  LLMReranker,
+  OpenAICompatibleLLM,
+  OpenAICompatibleReranker,
+  makeDefaultRerankPipelineFactory,
+  type CrossEncoderPipeline,
+} from '@agentix-e/cortex-llm';
 import type { RerankScoreFn } from '@agentix-e/cortex-core';
 
 export type RerankEnv = Record<string, string | undefined>;
@@ -27,8 +34,23 @@ export type RerankEnv = Record<string, string | undefined>;
 export const DEFAULT_RERANK_BASE_URL = 'https://api.cohere.com/v2';
 export const DEFAULT_RERANK_MODEL = 'rerank-v3.5';
 
+/**
+ * Default local cross-encoder. An ms-marco MiniLM cross-encoder is the smallest
+ * model that is actually a cross-encoder rather than a re-scored bi-encoder, so it
+ * is the cheapest honest offline baseline. Override with `CORTEX_RERANK_MODEL`.
+ */
+export const DEFAULT_LOCAL_RERANK_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
+
+/** Chat-model defaults for the LLM backend, matching the benchmark's answerer. */
+export const DEFAULT_LLM_RERANK_BASE_URL = 'https://api.deepseek.com/v1';
+export const DEFAULT_LLM_RERANK_MODEL = 'deepseek-chat';
+
 /** Values of `CORTEX_RERANK` that turn the stage on. Anything else is off. */
 const ENABLED_VALUES = new Set(['on', 'true', '1', 'yes', 'enabled']);
+
+/** Backends `CORTEX_RERANK_PROVIDER` can select. */
+export const RERANK_PROVIDERS = ['openai', 'llm', 'local'] as const;
+export type RerankProvider = (typeof RERANK_PROVIDERS)[number];
 
 /**
  * Build the reranking stage, or return undefined when it is not enabled.
@@ -49,6 +71,67 @@ export function createRerankerFromEnv(env: RerankEnv): RerankScoreFn | undefined
   if (!ENABLED_VALUES.has(flag)) {
     return undefined;
   }
+  return buildReranker(env, resolveProvider(env));
+}
+
+/**
+ * Resolve the backend. Defaults to the OpenAI-compatible client so that an
+ * existing configuration (which only ever set `CORTEX_RERANK`) keeps its meaning.
+ *
+ * An unrecognised value throws rather than falling back. A typo here would run the
+ * experiment against a different reranker than the one the operator named and then
+ * report the resulting accuracy as a fact about the named one — the exact class of
+ * silent substitution this project has already paid for once.
+ */
+function resolveProvider(env: RerankEnv): RerankProvider {
+  const raw = (env['CORTEX_RERANK_PROVIDER'] ?? 'openai').trim().toLowerCase();
+  const found = RERANK_PROVIDERS.find((provider) => provider === raw);
+  if (found === undefined) {
+    throw new Error(
+      `Unknown CORTEX_RERANK_PROVIDER "${raw}"; expected one of ${RERANK_PROVIDERS.join(', ')}`,
+    );
+  }
+  return found;
+}
+
+function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn {
+  if (provider === 'local') {
+    // No credential of any kind is consulted. This is the offline path, and it is
+    // the reason the B1 A/B can run where no rerank provider is configured.
+    //
+    // The pipeline factory resolves lazily and is memoised, so the model is
+    // downloaded once on first use rather than per call, and constructing the
+    // reranker stays synchronous — a factory that awaited here would turn this
+    // function async and force every call site to handle startup failure.
+    const model = env['CORTEX_RERANK_MODEL'] ?? DEFAULT_LOCAL_RERANK_MODEL;
+    const loadPipeline = makeDefaultRerankPipelineFactory(model);
+    let cached: Promise<CrossEncoderPipeline> | undefined;
+    const pipeline: CrossEncoderPipeline = (texts, options) => {
+      cached ??= loadPipeline();
+      return cached.then((resolve) => resolve(texts, options));
+    };
+    return new CrossEncoderReranker({ pipeline }).score;
+  }
+
+  if (provider === 'llm') {
+    // Reuses the chat credential the pipeline already has, so reranking does not
+    // require a second secret. `RERANK_API_KEY` is deliberately NOT consulted: it
+    // would be a key the chat endpoint cannot use, and accepting it would move the
+    // failure from startup to the first request.
+    const apiKey = env['DEEPSEEK_API_KEY'];
+    if (!apiKey) {
+      throw new Error(
+        'DEEPSEEK_API_KEY is required when CORTEX_RERANK_PROVIDER=llm; the LLM reranker reuses the chat credential, so set it (or switch to CORTEX_RERANK_PROVIDER=local, which needs no credential)',
+      );
+    }
+    const llm = new OpenAICompatibleLLM({
+      baseUrl: env['DEEPSEEK_BASE_URL'] ?? DEFAULT_LLM_RERANK_BASE_URL,
+      apiKey,
+      model: env['DEEPSEEK_MODEL'] ?? DEFAULT_LLM_RERANK_MODEL,
+    });
+    return new LLMReranker({ llm }).score;
+  }
+
   const apiKey = env['RERANK_API_KEY'];
   if (!apiKey) {
     throw new Error(

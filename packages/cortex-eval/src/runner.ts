@@ -52,6 +52,18 @@ export type BenchmarkRunnerOptions = {
    */
   rerankCandidatePool?: number | undefined;
   /**
+   * Leading hits the reranker may not move (default 0: the whole list is
+   * reorderable).
+   *
+   * Exposed because the abstention decision is read from `hits[0].score`. A stage
+   * that reorders freely therefore relocates the abstention boundary as a side
+   * effect of reordering, and this project has already paid for that once: when RRF
+   * re-ordered hits while the signal still came from `hits[0].score`, IE fell from
+   * 95.0% to 87.5%. Pinning a head is the control for that confound — anything the
+   * reranker changes below the pinned prefix cannot be an abstention-rate change.
+   */
+  rerankProtectedHead?: number | undefined;
+  /**
    * Include the entity-identity sentence in the abstention prompt (default true).
    *
    * Exposed only to separate that sentence from the admission cap, which shipped
@@ -167,6 +179,9 @@ export async function runNaturalLanguageBenchmark(
     ...(options.reranker !== undefined ? { reranker: options.reranker } : {}),
     ...(options.rerankCandidatePool !== undefined
       ? { rerankCandidatePool: options.rerankCandidatePool }
+      : {}),
+    ...(options.rerankProtectedHead !== undefined
+      ? { rerankProtectedHead: options.rerankProtectedHead }
       : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
@@ -865,4 +880,101 @@ export async function runQueryExpansionDecompositionAblation(
   // carried no caveat at all — the numbers were shipped looking complete.
   const report: AblationReport = { ...result, cohortCoverage: coverage };
   return { report, markdown: formatAblationReport(report), coverage };
+}
+
+/**
+ * Reranking ablation (roadmap measure B1).
+ *
+ * The main natural-language ablation varies abstention, so it cannot attribute an
+ * accuracy change to the reranking stage — both of its systems would carry the
+ * same `reranker` option. Passing the reranker into the existing arms is not the
+ * fix either: each of those arms isolates exactly one feature, so giving all of
+ * them a reranker would make every one bivariate and destroy the attribution
+ * their headers were written to protect.
+ *
+ * So this arm does what the others do — hold everything constant, vary one thing —
+ * and what varies is the reranker. Both systems are built inside this call from
+ * one instance list, and they share the answer cache. The sharing is load-bearing
+ * rather than an optimisation: the hosted endpoint is not reproducible across
+ * calls even at `temperature=0`, so a re-queried byte-identical prompt contributes
+ * a difference between two arms that have no configuration difference. Measured in
+ * run `34389565513`, cache-sharing arms disagreed on 0 of 470 questions while
+ * separately-cached identical arms disagreed on 2 of 127.
+ *
+ * The baseline never reranks. The baseline is the untouched reference; handing it
+ * the candidate stage would delete the comparison it exists to provide.
+ *
+ * Returned alongside the report is `abstentionShift` — the feature arm's
+ * abstention rate minus the baseline's. It is a separate return value rather than
+ * something a reader is expected to derive from the two metric objects because it
+ * decides whether the accuracy delta means anything. Reranking changes the
+ * ordering, and the abstention decision is taken from `hits[0].score`, so a
+ * reordered first hit moves the abstention boundary. This project has already paid
+ * for that coupling: when RRF re-ordered hits while the abstention signal still
+ * came from `hits[0].score`, IE fell from 95.0% to 87.5%. An accuracy gain
+ * measured with a shifted abstention rate is confounded — the system did not get
+ * better at answering, it changed when it declined.
+ */
+export async function runRerankAblation(
+  instances: readonly LongMemEvalInstance[],
+  embedding: EmbeddingModel,
+  llm: LLM,
+  options: BenchmarkRunnerOptions = {},
+): Promise<{ report: AblationReport; markdown: string; abstentionShift: number }> {
+  const dataset = loadLongMemEval(instances);
+  const expansionCache = new Map<string, string[]>();
+  const answerCache = new Map<string, string>();
+  const structuredCache = new Map<string, unknown>();
+
+  // `enableAbstention: true` on both sides for the reason the MR arm documents:
+  // with abstention off a declining model is coerced to the literal string
+  // 'unknown' and recorded as `abstained: false`, so `abstentionRate` is 0 by
+  // construction and the run cannot tell "answered" from "gave up quietly". The
+  // abstention shift is one of this arm's two outputs, so it has to be measurable.
+  const baseline = new NaturalLanguageMemorySystem('rerank-baseline', {
+    embedding,
+    llm,
+    enableAbstention: true,
+    queryExpansionCache: expansionCache,
+    answerCache,
+    structuredCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options.entityIdentityClause !== undefined
+      ? { entityIdentityClause: options.entityIdentityClause }
+      : {}),
+  });
+  const feature = new NaturalLanguageMemorySystem('rerank-feature', {
+    embedding,
+    llm,
+    enableAbstention: true,
+    queryExpansionCache: expansionCache,
+    answerCache,
+    structuredCache,
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options.entityIdentityClause !== undefined
+      ? { entityIdentityClause: options.entityIdentityClause }
+      : {}),
+    ...(options.reranker !== undefined ? { reranker: options.reranker } : {}),
+    ...(options.rerankCandidatePool !== undefined
+      ? { rerankCandidatePool: options.rerankCandidatePool }
+      : {}),
+    ...(options.rerankProtectedHead !== undefined
+      ? { rerankProtectedHead: options.rerankProtectedHead }
+      : {}),
+  });
+
+  const judge = options.judge ?? createLlmJudge(llm);
+  const result = await runAblationReport(dataset, baseline, feature, {
+    runs: options.runs ?? 1,
+    scorer: judgeScorer(judge),
+  });
+  return {
+    report: result,
+    markdown: formatAblationReport(result),
+    // Read from the report's nested metric objects. `runAblationReport` evaluates
+    // both systems once and reuses those metrics, so these are the same numbers the
+    // Markdown and the persisted JSON carry — deriving the shift from a separate
+    // evaluation would let the returned value disagree with the report beside it.
+    abstentionShift: result.feature.metrics.abstentionRate - result.baseline.metrics.abstentionRate,
+  };
 }

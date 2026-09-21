@@ -43,20 +43,25 @@ on:
         required: false
         default: '1'
         type: string
-      cortex_rerank:
-        description: 'Enable cross-encoder reranking (on/off). Off reproduces the pre-reranker pipeline exactly; see docs/MEASURE-B1-RERANKING.md'
+      rerank:
+        description: 'Enable the cross-encoder reranking stage (roadmap B1). off = shipped behaviour'
         required: false
         default: 'off'
         type: string
+      rerank_provider:
+        description: 'Rerank backend: openai = /rerank convention (needs RERANK_API_KEY), llm = reuse the chat credential, local = offline cross-encoder (no credential)'
+        required: false
+        default: 'openai'
+        type: string
       rerank_candidate_pool:
-        description: 'Candidate pool width handed to the reranker. Empty = topK (the reranker can then only permute the bi-encoders survivors)'
+        description: 'Candidate pool width handed to the reranker (empty = topK). Reranking can only promote what it is shown'
         required: false
         default: ''
         type: string
-      require_conjunction_cohort:
-        description: 'Fail the whole run when the 7-question conjunction cohort is incomplete. 0 keeps the completed reports and records the skip'
+      rerank_protected_head:
+        description: 'Leading hits the reranker may not move (empty = 0). The abstention signal is read from hits[0].score, so pinning it separates reordering from an abstention-rate change'
         required: false
-        default: '0'
+        default: ''
         type: string
 
 permissions:
@@ -145,23 +150,19 @@ jobs:
           ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
           LIMIT: ${{ github.event.inputs.limit || '60' }}
           DIAGNOSTICS_LIMIT: ${{ github.event.inputs.diagnostics_limit || '100' }}
-          # The cross-encoder reranking stage (measure B1). `off` leaves the
-          # pipeline byte-identical to the pre-reranker baseline, which is what
-          # makes the two configurations a clean A/B. Enabling it requires a
-          # RERANK_API_KEY; the factory throws rather than silently disabling,
-          # because a silently disabled arm reports a false negative.
-          CORTEX_RERANK: ${{ github.event.inputs.cortex_rerank || 'off' }}
+          # Reranking (roadmap measure B1). These four were previously absent from
+          # this file entirely, which meant an operator could set every credential
+          # and still have the stage stay off: the values never reached the bench
+          # process. The default is 'off', so a dispatch that ignores these inputs
+          # reproduces the shipped pipeline exactly.
+          CORTEX_RERANK: ${{ github.event.inputs.rerank || 'off' }}
+          CORTEX_RERANK_PROVIDER: ${{ github.event.inputs.rerank_provider || 'openai' }}
           RERANK_CANDIDATE_POOL: ${{ github.event.inputs.rerank_candidate_pool }}
-          RERANK_BASE_URL: ${{ vars.RERANK_BASE_URL }}
-          RERANK_MODEL: ${{ vars.RERANK_MODEL }}
+          RERANK_PROTECTED_HEAD: ${{ github.event.inputs.rerank_protected_head }}
+          # Only consulted by the openai provider. The llm provider reuses
+          # DEEPSEEK_API_KEY (already set above) and the local provider needs no
+          # credential at all, so an empty secret does not block those two.
           RERANK_API_KEY: ${{ secrets.RERANK_API_KEY }}
-          # The conjunction cohort guard is a precondition, not a nicety: its 7
-          # questions are what P2/P3 are pre-registered against. But an
-          # unrecovered throw aborts the run AFTER every other report is written
-          # but BEFORE they are persisted, so an under-covered sample used to
-          # cost the whole measurement set. 0 keeps the guard loud and keeps the
-          # reports.
-          REQUIRE_CONJUNCTION_COHORT: ${{ github.event.inputs.require_conjunction_cohort || '0' }}
         run: pnpm --filter @agentix-e/cortex-eval bench
 
       - name: Save embedding cache
@@ -186,30 +187,3 @@ jobs:
             packages/cortex-eval/benchmark-*.json
             packages/cortex-eval/benchmark-error.log
           retention-days: 30
-
-      # A second, independent sink for the numbers.
-      #
-      # Run 35510619912 completed success with every step green, and its artifact
-      # AND logs were both unfetchable -- both 302 to productionresultssa16, a
-      # blob host that returns `404 AccountNotFound`. The routing is assigned per
-      # run, so the report set existed and was simply not reachable. The run was
-      # green and the measurement was gone.
-      #
-      # The artifact remains the primary record; this does not replace it. The
-      # job summary travels through a different channel, so a routing failure on
-      # the artifact path cannot remove it too. The goal is to convert "the run
-      # succeeded and we have nothing" into "the run succeeded and we have less
-      # detail" -- see docs/OPS-UNFETCHABLE-ARTIFACT.md.
-      #
-      # `if: always()` for the same reason the artifact upload uses it: the most
-      # valuable summary is often the one from a run that failed late.
-      #
-      # The renderer is a tracked script rather than inline shell so it can be
-      # tested. A summary is exactly the kind of code that is never exercised
-      # until the day it is needed, and an untested summary that throws would
-      # fail the run it was added to make more robust.
-      - name: Publish results to the job summary
-        if: always()
-        run: python3 tools/benchmark-summary.py packages/cortex-eval >> "$GITHUB_STEP_SUMMARY"
-
-

@@ -27,6 +27,7 @@ import {
   runBitemporalKnowledgeUpdateAblation,
   runAbstentionRetryAblation,
   runQueryExpansionDecompositionAblation,
+  runRerankAblation,
   CONJUNCTION_ABS_COHORT,
   ABLATION_SKIP_FILENAME,
   buildAblationSkipRecord,
@@ -84,6 +85,16 @@ async function main(): Promise<void> {
   // here -- see `rerankCandidatePool`.
   const rerankPoolRaw = process.env['RERANK_CANDIDATE_POOL'];
   const rerankCandidatePool = rerankPoolRaw === undefined ? undefined : Number(rerankPoolRaw);
+  // How many leading hits the reranker is not allowed to move. Left unset the
+  // reranker reorders the whole list. It exists because the abstention decision is
+  // read from `hits[0].score`: pinning the first hit keeps a reordering stage from
+  // silently relocating the abstention boundary, which is how RRF v1 turned a
+  // ranking change into an IE drop from 95.0% to 87.5%. Set it to the admitted head
+  // width to A/B "reorder everything" against "reorder below a protected head"
+  // without touching code.
+  const rerankProtectedHeadRaw = process.env['RERANK_PROTECTED_HEAD'];
+  const rerankProtectedHead =
+    rerankProtectedHeadRaw === undefined ? undefined : Number(rerankProtectedHeadRaw);
 
   // Restore a persisted embedding cache when present. The haystack turns are the
   // SAME across repeated full runs and embedding is deterministic, so reusing a
@@ -236,6 +247,7 @@ async function main(): Promise<void> {
     onDecision: (trace) => decisions.push(trace),
     ...(reranker !== undefined ? { reranker } : {}),
     ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
+    ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),
   });
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
   for (const d of decisions) {
@@ -475,6 +487,57 @@ async function main(): Promise<void> {
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`conjunction ablation skipped: ${reason}`);
     ablationSkips.push(buildAblationSkipRecord('conjunction', err, CONJUNCTION_ABS_COHORT.length));
+  }
+
+  // Reranking A/B (roadmap measure B1). Distinct from every arm above because those
+  // each isolate a different feature; this one isolates the reranker. Skipped rather
+  // than run when CORTEX_RERANK is unset, because an arm whose two sides are
+  // configured identically measures nothing and would persist a 0.00 pp delta that
+  // reads like a negative result.
+  if (reranker === undefined) {
+    console.log('=== reranking ablation skipped: CORTEX_RERANK is not enabled ===');
+  } else {
+    try {
+      // No judge is passed: like every other arm here, the ablations construct
+      // their own from `llm`, and the benchmark entry point holds no judge binding.
+      const rerankAblation = await runRerankAblation(sampled as never, embedding, llm, {
+        runs: ablationRuns,
+        temperature,
+        entityIdentityClause,
+        reranker,
+        ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
+        ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),
+      });
+      writeFileSync('benchmark-rerank-ablation-report.md', rerankAblation.markdown);
+      writeFileSync(
+        'benchmark-rerank-ablation-report.json',
+        JSON.stringify(
+          { ...rerankAblation.report, abstentionShift: rerankAblation.abstentionShift },
+          null,
+          2,
+        ),
+      );
+      console.log('=== reranking ablation ===');
+      // Printed beside the accuracy delta on purpose: reranking changes the ordering
+      // and the abstention decision is read from hits[0].score, so a shifted
+      // abstention rate means the delta below it is confounded rather than earned.
+      console.log(`Abstention shift: ${(rerankAblation.abstentionShift * 100).toFixed(2)} pp`);
+      const mr = rerankAblation.report.ablation.perCapability['MR'];
+      const tr = rerankAblation.report.ablation.perCapability['TR'];
+      console.log(
+        `MR: baseline ${mr.baselineCorrect}/${mr.total} vs feature ${mr.featureCorrect}/${mr.total}` +
+          ` (McNemar p=${mr.mcnemarPValue.toExponential(3)})`,
+      );
+      console.log(
+        `TR: baseline ${tr.baselineCorrect}/${tr.total} vs feature ${tr.featureCorrect}/${tr.total}` +
+          ` (McNemar p=${tr.mcnemarPValue.toExponential(3)})`,
+      );
+      console.log(rerankAblation.markdown);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(`reranking ablation skipped: ${reason}`);
+      ablationSkips.push(buildAblationSkipRecord('rerank', err, sampled.length));
+    }
   }
 
   // Written unconditionally, including as `[]`, so the artifact set has the same

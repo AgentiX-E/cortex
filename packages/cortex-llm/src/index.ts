@@ -24,6 +24,16 @@ export {
   type CrossEncoderPipeline,
 } from './rerank/rerank.js';
 export {
+  LLMReranker,
+  buildListwiseRerankPrompt,
+  parseListwiseScores,
+  type LLMRerankerOptions,
+} from './rerank/llm-reranker.js';
+export {
+  createTransformersRerankPipeline,
+  makeDefaultRerankPipelineFactory,
+} from './rerank/transformers-rerank-pipeline.js';
+export {
   retryableFetch,
   isRetryableStatus,
   sleep,
