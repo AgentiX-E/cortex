@@ -250,4 +250,43 @@ describe('createRerankerFromEnv local provider', () => {
       /xenova|transformers|Cannot find/i,
     );
   });
+
+  /**
+   * The assertion above is weaker than it reads, and an experiment proved it.
+   *
+   * Its alternatives are a disjunction, and the one that actually fires in this
+   * environment is `Cannot find` — which comes from a *transitive* dependency of
+   * `@xenova/transformers`, not from `@xenova/transformers` itself. Measured: on a
+   * machine where that package is absent, `\`@xenova/transformers\`` does not appear
+   * in the message at all (`/xenova/i` → false), while the message is in fact a
+   * 706-character `sharp` installation manual:
+   *
+   *     Something went wrong installing the "sharp" module
+   *     Cannot find module '../build/Release/sharp-linux-x64.node'
+   *
+   * So an unrelated `sharp` breakage satisfies a test whose stated purpose is "names
+   * the missing module". The message names a module the operator never asked for.
+   *
+   * These assertions pin the message to the module the operator *did* ask for, and
+   * to the remedy. That is what makes the failure actionable: the CI-side symptom is
+   * a skipped ablation arm, and the skip reason has to say which peer to install.
+   */
+  it('names the peer the operator must install, not a transitive dependency', async () => {
+    const reranker = createRerankerFromEnv({
+      CORTEX_RERANK: 'on',
+      CORTEX_RERANK_PROVIDER: 'local',
+    });
+
+    let message = '';
+    try {
+      await reranker!([{ question: 'q', candidateId: 'a', text: 'text' }]);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    // The package the operator has to install, by the name they would type.
+    expect(message).toContain('@xenova/transformers');
+    // The switch that reaches a provider which needs no peer at all.
+    expect(message).toContain('CORTEX_RERANK_PROVIDER');
+  });
 });

@@ -107,7 +107,27 @@ function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn 
     const loadPipeline = makeDefaultRerankPipelineFactory(model);
     let cached: Promise<CrossEncoderPipeline> | undefined;
     const pipeline: CrossEncoderPipeline = (texts, options) => {
-      cached ??= loadPipeline();
+      cached ??= loadPipeline().catch((err: unknown) => {
+        // Name the peer and the alternative. The underlying failure is a bad error
+        // for this purpose: measured on a machine without the package, the message
+        // is a `sharp` installation manual, because `sharp` is a transitive
+        // dependency of `@xenova/transformers` and its own install is what broke.
+        // The string `@xenova/transformers` does not appear in it at all. An
+        // operator reading that message would install the wrong thing, and the CI
+        // symptom is only a skipped ablation arm whose skip reason they are trying
+        // to interpret.
+        //
+        // Rethrowing rather than swallowing: the stage must keep failing loudly,
+        // because the alternative is an arm that silently records the baseline's
+        // ordering as the feature's.
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `CORTEX_RERANK_PROVIDER=local requires the optional peer @xenova/transformers, ` +
+            `which could not be loaded (model "${model}"). Install it, or set ` +
+            `CORTEX_RERANK_PROVIDER=llm to reuse the chat credential. Underlying error: ${detail}`,
+          { cause: err },
+        );
+      });
       return cached.then((resolve) => resolve(texts, options));
     };
     return new CrossEncoderReranker({ pipeline }).score;

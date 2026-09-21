@@ -241,6 +241,91 @@ meant to promote unadmitted.
 | No mocks; only the model boundary is faked | met |
 | Workspace suite green | met (1228 tests) |
 
+### §5.3 Pre-registration: what this run can and cannot decide
+
+Recorded **before** the first B1 run reports, so that the reading cannot be chosen
+after the number is known.
+
+**Design.** One dispatch of `.github/workflows/benchmark.yml` yields a *paired* A/B,
+because `runRerankAblation` constructs both arms itself: `rerank-baseline` (no
+reranker) and `rerank-feature` (reranker attached), over one instance list, sharing
+one answer cache. Sharing the cache is not an optimisation — the hosted endpoint is
+not reproducible across calls even at `temperature=0`, so separately-cached arms
+would differ for reasons unrelated to the treatment.
+
+**Configuration.** `limit=150`, `ablation_runs=1`, `temperature=0`,
+`model=deepseek-chat`, `CORTEX_RERANK_PROVIDER=llm`, `RERANK_CANDIDATE_POOL=60`,
+`RERANK_PROTECTED_HEAD` unset.
+
+Two choices carry the whole experiment:
+
+- **`pool=60` and not the default.** `retrieveTopKByQueries` truncates to `topK`
+  internally, and `topK` is 15. With the pool left at its default the reranker can
+  only *permute the 15 survivors* — it cannot promote evidence cosine ranked 20th.
+  A test run with the default would therefore measure a permutation, report ~0, and
+  that ~0 would be about the pool width, not about reranking. 60 is 4x the context
+  width, inside the 3-10x band the option's own documentation names.
+- **`RERANK_PROTECTED_HEAD` unset, deliberately.** The abstention signal was moved
+  off `hits[0].score` to an order-independent `maxHitScore`, so the confound that
+  motivated the pin is no longer present. Pinning here would suppress a real effect
+  to guard against one that the code no longer has. It stays available as the
+  *diagnostic* if the measured abstention shift turns out non-zero.
+
+### 5.3.1 A cost ceiling this configuration reveals
+
+Calculated before the result arrived, because it bounds what any `llm`-provider run
+can configure.
+
+`rerankCandidatePool` uses the same 2000-character truncation as the graded path.
+The listwise prompt for one question is therefore approximately `pool x 2000`
+characters plus the question. At the chosen `pool=60` that is ~120K characters, or
+roughly **30K tokens per question** — inside `deepseek-chat`'s context, which is
+why 60 is a defensible setting rather than an over-reach.
+
+But it is not far from the edge, and the failure mode at the edge is a specific one:
+
+| Pool | Approx. prompt | Expected behaviour |
+| --- | --- | --- |
+| 15 (default) | ~7.5K tokens | Comfortable, but the reranker can only permute the 15 survivors. |
+| 60 (this run) | ~30K tokens | Sized to the task. |
+| >= 128 | ~64K+ tokens | Exceeds the context window; **every** call fails. |
+
+The last row is the one that matters, because it fails in the way §7.1 exists to
+catch. An over-wide pool does not degrade the result — it produces a *total* parse
+failure, so `score` returns an empty array, `rerankHits` returns the input order,
+and the arm reports `0.00pp`. That is the correct, safe outcome, and it is only
+distinguishable from a genuine null because `fallbackCount` is now reported.
+
+So the counters added in §7.1 are not merely a diagnostic for provider flakiness.
+They are the guard on a configuration error that is invisible in the number it
+produces.
+
+**Power, stated before the result.** Sampling is stratified round-robin across nine
+buckets (IE split into its three sub-types, plus TR, KU, MR, ABS). At `limit=150`
+each capability lands near 16-17 questions. For a paired McNemar test that is a
+weak instrument: to reach p<0.05 one-sided, the discordant pairs must be roughly
+6-to-0 or 7-to-1. So:
+
+| Outcome | Permitted reading |
+| --- | --- |
+| p<0.05 with MR and TR both up | The pre-registered criterion is met. |
+| p≥0.05 | **Underpowered, not refuted.** This run cannot separate "no effect" from "effect below detection at n≈16". |
+| MR up, TR down by more than MR's gain | Pre-registered reversal condition: no net benefit, roll back. |
+
+The distinction in row 2 is the same one the retry arm already cost this project
+(`docs/09-progress-and-delivery-report.md` §7.1): an underpowered zero constrains
+what we know, not what the product does.
+
+**What must be read beside the delta, in this order:**
+
+1. `fallbacks` — if non-null and non-zero, the reranker declined to score, the delta
+   understates the feature, and no verdict follows from it (§7.1).
+2. `abstentionShift` — if non-zero, reordering moved the abstention boundary and the
+   delta is confounded; re-run with `RERANK_PROTECTED_HEAD=1` and compare.
+3. The MR/TR per-capability pair, not the aggregate. A mechanism that helps one
+   capability and hurts another nets to zero in the average, which is exactly the
+   failure mode the per-capability split exists to expose.
+
 ### 5.1 "Offline fallback exists" was not true
 
 The earlier revision of this table marked the offline fallback met because
