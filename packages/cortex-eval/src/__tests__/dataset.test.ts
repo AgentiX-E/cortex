@@ -128,4 +128,49 @@ describe('typecheck coverage', () => {
     const buildTsconfig = readJson('tsconfig.json');
     expect(buildTsconfig.include).toEqual(['src']);
   });
+
+  /**
+   * The bench project resolves this package by name, which sends TypeScript to
+   * `package.json#types` — `dist/index.d.ts` — rather than to the sources beside
+   * it. Under `moduleResolution: NodeNext` a `paths` alias does not override that
+   * for a package's own name, so the artifact is genuinely on the resolution path
+   * and the bench typecheck depends on it.
+   *
+   * The consequence is a local-only failure that reads as a code defect: edit
+   * `src/runner.ts` to return a new field, run the gates without rebuilding, and
+   * `bench/run.ts` reports `TS2339: Property 'x' does not exist` against a
+   * signature that is correct in the file the compiler was asked to check. CI was
+   * immune because it builds before it checks; the person running the gates
+   * locally was not, and theirs is the fastest feedback loop in the project.
+   *
+   * The fix is to stop depending on deployment order and declare the dependency:
+   * the bench typecheck must be preceded by a build of this package. These
+   * assertions do not compile anything; they fail if that ordering is removed,
+   * which is what reopens the hole.
+   */
+  it('emits declarations before it typechecks the bench entry point', () => {
+    // The bench project must not be typechecked against a declaration set that the
+    // same command declined to produce. Running the source project with `--noEmit`
+    // leaves whatever `dist` happened to be on disk, which is why an omitted
+    // `--noEmit` is the fix rather than a cosmetic difference: it is what makes the
+    // compile own its artifact. Anchoring on the ordering rather than on exact
+    // command text keeps the assertion from breaking on an unrelated script edit.
+    const { scripts } = readJson('package.json');
+    const typecheck = scripts?.typecheck ?? '';
+    const buildIndex = typecheck.indexOf('tsc -p tsconfig.json');
+    const benchIndex = typecheck.indexOf('tsconfig.bench.json');
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(benchIndex).toBeGreaterThan(buildIndex);
+  });
+
+  it('does not suppress emit in the typecheck command that bench depends on', () => {
+    // `--noEmit` here is the regression this pair of tests exists to catch: it
+    // restores the dependency on a stale artifact while looking like a harmless
+    // speed-up, and the symptom it produces — TS2339 on a signature that is correct
+    // in the sources — points at the wrong file.
+    const { scripts } = readJson('package.json');
+    const typecheck = scripts?.typecheck ?? '';
+    const sourceInvocation = typecheck.slice(0, typecheck.indexOf('&&'));
+    expect(sourceInvocation).not.toContain('--noEmit');
+  });
 });

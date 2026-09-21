@@ -19,11 +19,12 @@ ordering layer in `cortex-core`, two pluggable adapters in `cortex-llm` (remote
 | LLM adapter | `cortex-llm/src/rerank/llm-reranker.ts` | 100 / 100 / 100 / 100 |
 | Factory | `cortex-eval/src/rerank-factory.ts` | 100 / 100 / 100 / 100 |
 | Wiring | `cortex-eval/src/natural-language-memory.ts` | 100 / 98.96 / 100 / 100 |
-| A/B arm | `cortex-eval/src/runner.ts` | 99.32 / 95.23 / 100 / 99.32 |
+| A/B arm | `cortex-eval/src/runner.ts` | 98.92 / 94.64 / 100 / 98.92 |
 
 61 tests in the first revision. The second added the LLM adapter, the local
-provider branch, the A/B arm and the retry coverage: workspace total 1228 tests,
-0 failures, every coverage dimension ≥95% across all four packages.
+provider branch, the A/B arm and the retry coverage. The third added the fallback
+accounting (§7.1) and the stale-artifact guard (§7.3): workspace total **1237
+tests**, 0 failures, every coverage dimension ≥95% across all four packages.
 
 The second revision exists because three acceptance claims in the first were
 **not true**, and one of them had been carried into the roadmap as a planning
@@ -288,15 +289,126 @@ dispatch from the roadmap would otherwise expect a secret to be sufficient.
 The wiring is complete; the measurement is not. What remains:
 
 1. Run the pre-registered reranking A/B with a widened candidate pool — now
-   possible in three ways that did not exist before: offline
-   (`CORTEX_RERANK_PROVIDER=local`, no credential), credential-free-in-addition
-   (`=llm`, reusing `DEEPSEEK_API_KEY`), or the original `/rerank` client once its
-   key exists.
+   possible in four ways: offline (`CORTEX_RERANK_PROVIDER=local`, no
+   credential), credential-free-in-addition (`=llm`, reusing `DEEPSEEK_API_KEY`),
+   the original `/rerank` client once its key exists, or CI
+   (`.github/workflows/benchmark.yml`, which needs no manual `LONGMEMEVAL_PATH` —
+   the workflow downloads the dataset and exports the path itself).
 2. Read `abstentionShift` beside the MR and TR deltas. A non-zero shift means the
    delta is confounded; re-run with `RERANK_PROTECTED_HEAD=1` to separate
    reordering from an abstention-boundary move.
-3. Record the result as a verdict, including a negative one.
-4. Only then consider B3 (specialised extraction channels).
+3. Read the fallback line before believing any delta, including a zero one. See
+   §7.1.
+4. Record the result as a verdict, including a negative one.
+5. Only then consider B3 (specialised extraction channels).
+
+### 7.1 The reading that decides whether the other readings mean anything
+
+`LLMReranker` returns a **short array** when a bucket's reply does not parse, and
+`rerankHits` reads a short array as a failure and returns the input order. That is
+the right failure semantics — padding a failed bucket would reorder candidates on
+invented scores — but it has a consequence for measurement that was not visible
+until the adapter existed:
+
+> If every bucket fails, the feature arm is behaviourally identical to its
+> baseline, and the arm reports `0.00 pp`. That is the same number a genuinely
+> ineffective reranker produces.
+
+A negative B1 verdict would therefore have been **unfalsifiable**: "reranking does
+not help" and "reranking never ran" were the same output. The arm now reports the
+counters (`RerankFallbackReport`), read from the reranker **after** both systems
+have run:
+
+| Reading | Meaning |
+| --- | --- |
+| `fallbacks: null` | The reranker exposes no counters (a plain `RerankScoreFn`). The delta is unattributed either way. |
+| `fallbackCount === 0` | Every bucket parsed. The delta measures the reranker. |
+| `fallbackCount > 0` | The reranker declined to score some buckets. It was **more conservative** than intended, so the delta **understates** the feature. |
+
+`null` rather than `0` is deliberate: a fabricated zero would be an unmeasured
+number presented beside measured ones. The partially-instrumented case is treated
+the same way — a non-finite counter yields `null` rather than rendering `NaN`
+beside plausible figures.
+
+### 7.2 What the sandbox could and could not reach
+
+The first attempt to run the A/B in the agent sandbox failed, and the failure is
+recorded because it is a real constraint on how this measure can be executed, not
+an incidental inconvenience. All three paths were probed; the results:
+
+| Requirement | Sandbox result | Evidence |
+| --- | --- | --- |
+| LongMemEval-S dataset | **Absent** | No `data/` directory in either package; no `longmemeval_s_cleaned.json` anywhere on disk |
+| `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `RERANK_API_KEY`, `HF_TOKEN` | **All unset** | Enumerated from the environment |
+| `huggingface.co` | **Blackholed** | `http=000`; DNS answers rewritten to `198.18.0.0/15` |
+| `registry.npmjs.org` | Reachable | `http=200` after the resolver workaround |
+| `hf-mirror.com` | Reachable | Model config and tokenizer fetched (`config.json`, 711 KB `tokenizer.json`) |
+| ONNX weights | **Unreachable** | The mirror 302s to `cas-bridge.xethub.hf.co`, which is `http=000` |
+
+So the `local` path fails on exactly one file — the ONNX weights the cross-encoder
+needs to run — and the `llm` path fails on its credential. Neither is a defect in
+the implementation; both are egress constraints of the sandbox. The CI workflow is
+unaffected: it runs on `ubuntu-latest` with the org-level secrets and downloads
+the dataset itself.
+
+The consequence for this document is that **no accuracy number appears below, and
+none may be inferred.** The measure is implemented, wired, tested and observable;
+it is not measured.
+
+### 7.3 A second defect found by trying to measure
+
+Writing this document required running the gates repeatedly, and the gates
+reported a defect that did not exist — twice. Chasing it produced a real finding
+that has nothing to do with reranking and would have bitten anyone editing an
+exported signature.
+
+`bench/run.ts` imports this package **by its own name**:
+
+```ts
+import { runRerankAblation, /* ... */ } from '@agentix-e/cortex-eval';
+```
+
+Under `moduleResolution: NodeNext`, a package's own name resolves through
+`package.json#exports` → `dist/index.d.ts`. So the bench typecheck reads a **build
+artifact**, not the sources beside it. That was invisible while CI built before it
+checked, and it surfaced locally as:
+
+```
+bench/run.ts(518,39): error TS2339: Property 'fallbacks' does not exist on
+  type '{ report: AblationReport; markdown: string; abstentionShift: number; }'
+```
+
+`fallbacks` was in `runner.ts`, in the return type, correct. The message pointed
+at `bench/run.ts`, which was also correct. The wrong thing was `dist/index.d.ts`,
+stale from before the edit — and nothing in the output said so.
+
+Two fixes were attempted. The first, a `paths` alias mapping the package to its
+own source, **did not work and was reverted**: `paths` does not override
+self-name resolution under `NodeNext`. It looked right, the tests for it passed
+(they only asserted the config text), and a deliberate experiment — overwriting
+`dist/index.d.ts` and re-running the bench typecheck — showed the same `TS2306`
+error, proving the alias was inert.
+
+The working fix is one character of intent: the `typecheck` script ran
+
+```json
+"typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.bench.json"
+```
+
+The `--noEmit` is the defect. It asserts a type-check while leaving the artifact
+that the very next command consumes untouched, so the second invocation compiles
+against whatever `dist` was last written by an unrelated `build`. Removing it
+makes the compile own its output, and the stale-artifact class of failure
+disappears.
+
+**Verified by experiment rather than by reasoning**, because the first attempt at
+this fix was also wrong: an early draft deleted `--noEmit` but the compiler still
+skipped emit, because `incremental: true` plus an up-to-date `tsconfig.tsbuildinfo`
+made it believe nothing had changed. Deleting the build-info file rebuilt `dist`
+(16 bytes → 5657 bytes) and confirmed the mechanism. The regression guard is a
+pair of assertions in `dataset.test.ts` — one on the ordering, one that the source
+invocation does not contain `--noEmit` — and both were confirmed to fail when the
+`--noEmit` was injected back.
 
 The two order-sensitive reads at `natural-language-memory.ts:571` and `:1009` are
 deliberately left unchanged — see `docs/AUDIT-B1-HITS0-READ-SITES.md` §6 for why

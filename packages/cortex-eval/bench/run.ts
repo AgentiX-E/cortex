@@ -512,7 +512,11 @@ async function main(): Promise<void> {
       writeFileSync(
         'benchmark-rerank-ablation-report.json',
         JSON.stringify(
-          { ...rerankAblation.report, abstentionShift: rerankAblation.abstentionShift },
+          {
+            ...rerankAblation.report,
+            abstentionShift: rerankAblation.abstentionShift,
+            fallbacks: rerankAblation.fallbacks,
+          },
           null,
           2,
         ),
@@ -522,6 +526,29 @@ async function main(): Promise<void> {
       // and the abstention decision is read from hits[0].score, so a shifted
       // abstention rate means the delta below it is confounded rather than earned.
       console.log(`Abstention shift: ${(rerankAblation.abstentionShift * 100).toFixed(2)} pp`);
+      // Also printed beside the delta, and for a sharper reason. When every bucket
+      // fails to parse, `LLMReranker` returns an empty array, `rerankHits` answers
+      // with the input order, and the two arms become behaviourally identical — a
+      // `0.00 pp` delta that reads as "reranking does not help" when the truth is
+      // that reranking never ran. Without this line those two outcomes are the same
+      // output, so a negative B1 verdict would be unfalsifiable.
+      const { fallbacks } = rerankAblation;
+      if (fallbacks === null) {
+        console.log('Reranker fallbacks: not reported (reranker exposes no counters)');
+      } else {
+        const rate =
+          fallbacks.bucketCount === 0 ? 0 : fallbacks.fallbackCount / fallbacks.bucketCount;
+        console.log(
+          `Reranker fallbacks: ${fallbacks.fallbackCount}/${fallbacks.bucketCount} buckets` +
+            ` (${(rate * 100).toFixed(1)}%)`,
+        );
+        if (fallbacks.fallbackCount > 0) {
+          console.log(
+            'WARNING: fallbacks mean the reranker abstained on its own scoring, so the delta above' +
+              ' understates the feature rather than measuring it.',
+          );
+        }
+      }
       const mr = rerankAblation.report.ablation.perCapability['MR'];
       const tr = rerankAblation.report.ablation.perCapability['TR'];
       console.log(

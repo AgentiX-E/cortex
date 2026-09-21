@@ -36,7 +36,7 @@ import { describe, expect, it } from 'vitest';
 import type { RerankPair, RerankScoreFn } from '@agentix-e/cortex-core';
 import type { LLM } from '@agentix-e/cortex-core';
 
-import { runRerankAblation } from '../runner.js';
+import { readRerankFallbacks, runRerankAblation } from '../runner.js';
 import { HashEmbedding } from '../embedding.js';
 import type { AnswerJudge } from '../judge.js';
 import type { LongMemEvalInstance } from '../datasets/longmemeval-loader.js';
@@ -324,5 +324,144 @@ describe('runRerankAblation option forwarding', () => {
     });
 
     expect(report.questionCount).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The fallback report is what separates a real negative result from a provider
+ * that never ran.
+ *
+ * A reranker whose every bucket fails to parse returns an empty array, which
+ * `rerankHits` reads as a failure and answers with the input order. The feature
+ * arm is then byte-identical in behaviour to its baseline and the report says
+ * `0.00pp` — indistinguishable from "reranking was tried and did not help".
+ * The arm therefore has to surface how many buckets the reranker abandoned.
+ */
+describe('runRerankAblation fallback reporting', () => {
+  it('reports zero fallbacks for a reranker that accounts for nothing', async () => {
+    // A plain `RerankScoreFn` carries no counters at all. The arm must not invent
+    // a zero and present it as a measurement, so the report says it has none.
+    const { fallbacks } = await runRerankAblation(instances, embedding, firstContextLlm(), {
+      reranker: reversingReranker(),
+      judge: acceptJudge,
+    });
+
+    expect(fallbacks).toBeNull();
+  });
+
+  it('reads the counters off a reranker that exposes them', async () => {
+    const reranker = reversingReranker();
+    const instrumented = Object.assign(reranker, { fallbackCount: 3, bucketCount: 4 });
+
+    const { fallbacks } = await runRerankAblation(instances, embedding, firstContextLlm(), {
+      reranker: instrumented,
+      judge: acceptJudge,
+    });
+
+    expect(fallbacks).toEqual({ fallbackCount: 3, bucketCount: 4 });
+  });
+
+  it('reports counters accumulated by the real adapter during the run', async () => {
+    // The counters a caller sees before the run are not the ones that matter: the
+    // retrieval pipeline invokes `score` once per question, so the reading that
+    // belongs in the report is the one taken after both systems have run.
+    //
+    // The stand-in is a callable whose counters advance on every invocation, which
+    // is the shape the real adapter has: `LLMReranker` exposes `score` and also the
+    // counters, and the two have to be read from the same object after the run.
+    //
+    // The counters live on a wrapper object reached via a prototype getter rather
+    // than via `Object.assign`. `Object.assign` *evaluates* a source getter and
+    // copies the resulting value, so a counter assigned that way is frozen at zero
+    // and the assertion below would pass for the wrong reason on a reranker that
+    // was never called.
+    const stats = { fallbackCount: 0, bucketCount: 0 };
+    const callable = async (pairs: readonly RerankPair[]) => {
+      stats.bucketCount += 1;
+      stats.fallbackCount += 1;
+      return pairs.map((_, index) => -index);
+    };
+    const reranker = new Proxy(callable, {
+      get: (target, prop, receiver) =>
+        prop in stats ? stats[prop as keyof typeof stats] : Reflect.get(target, prop, receiver),
+    }) as typeof callable & { fallbackCount: number; bucketCount: number };
+
+    const { fallbacks } = await runRerankAblation(instances, embedding, firstContextLlm(), {
+      reranker,
+      judge: acceptJudge,
+    });
+
+    expect(fallbacks).not.toBeNull();
+    expect(fallbacks!.fallbackCount).toBeGreaterThan(0);
+    expect(fallbacks!.bucketCount).toBe(fallbacks!.fallbackCount);
+  });
+
+  it('ignores a counter object whose counters are not finite numbers', async () => {
+    // A partially-instrumented reranker must degrade to "no data" rather than
+    // reporting NaN, which would render as 'NaN' in the Markdown beside real
+    // numbers and read as a measurement.
+    const reranker = Object.assign(reversingReranker(), {
+      fallbackCount: Number.NaN,
+      bucketCount: 4,
+    });
+
+    const { fallbacks } = await runRerankAblation(instances, embedding, firstContextLlm(), {
+      reranker,
+      judge: acceptJudge,
+    });
+
+    expect(fallbacks).toBeNull();
+  });
+});
+
+/**
+ * `readRerankFallbacks` is the boundary between an instrumented reranker and the
+ * report, so its "no data" answers are asserted directly rather than only through
+ * a full ablation run — the run exercises one path, and the interesting cases are
+ * the ones a successful run never takes.
+ */
+describe('readRerankFallbacks', () => {
+  it('reports no data when there is no reranker at all', () => {
+    // The common configuration: reranking is off, so there is nothing to account
+    // for and nothing may be claimed about whether it ran.
+    expect(readRerankFallbacks(undefined)).toBeNull();
+  });
+
+  it('reports no data for a reranker that exposes no counters', () => {
+    expect(readRerankFallbacks(async () => [])).toBeNull();
+  });
+
+  it('reports no data when only one of the two counters is present', () => {
+    // Half an instrumented reranker cannot yield a rate, and reporting it as
+    // `n/0` would invent a denominator.
+    const half = Object.assign(async () => [], { fallbackCount: 2 });
+    expect(readRerankFallbacks(half)).toBeNull();
+  });
+
+  it('reports a genuine zero, which is different from no data', () => {
+    // This is the reading that makes a `0.00pp` delta attributable: the reranker
+    // ran and completed, so the delta measures it rather than its absence.
+    const counter = async () => [];
+    counter.fallbackCount = 0;
+    counter.bucketCount = 7;
+
+    expect(readRerankFallbacks(counter)).toEqual({ fallbackCount: 0, bucketCount: 7 });
+  });
+
+  it('reports no data rather than NaN for a non-finite counter', () => {
+    const infinite = Object.assign(async () => [], {
+      fallbackCount: Number.POSITIVE_INFINITY,
+      bucketCount: 7,
+    });
+
+    expect(readRerankFallbacks(infinite)).toBeNull();
+  });
+
+  it('passes through a total-failure reading, where every bucket fell back', () => {
+    const counter = async () => [];
+    counter.fallbackCount = 9;
+    counter.bucketCount = 9;
+
+    expect(readRerankFallbacks(counter)).toEqual({ fallbackCount: 9, bucketCount: 9 });
   });
 });

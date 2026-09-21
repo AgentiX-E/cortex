@@ -13,12 +13,14 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --coverage",
     "lint": "eslint src/ bench/",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.bench.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.bench.json",
     "bench": "node --import tsx bench/run.ts",
     "clean": "rm -rf dist *.tsbuildinfo coverage"
   },

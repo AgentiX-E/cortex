@@ -31,6 +31,54 @@ import {
   type AblationReport,
 } from './report.js';
 
+/**
+ * Fallback counters read off a reranker that exposes them.
+ *
+ * This is deliberately a structural read rather than a widened `RerankScoreFn`.
+ * The score contract is `(pairs) => Promise<number[]>`, and it is implemented by
+ * the `/rerank` HTTP client, the local cross-encoder, and the LLM adapter alike.
+ * Adding counters to it would force every implementation — including the ones that
+ * cannot fail this way — to carry accounting they have no use for, so the counter
+ * is an optional capability detected at the boundary instead.
+ */
+export type RerankFallbackReport = {
+  /** Buckets whose reply did not parse, so their ordering was left as retrieved. */
+  fallbackCount: number;
+  /** Buckets attempted. The ratio is the provider's parse-failure rate. */
+  bucketCount: number;
+};
+
+/**
+ * Read the fallback counters a reranker may expose, or `null` if it exposes none.
+ *
+ * `null` rather than zero on purpose. A plain `RerankScoreFn` has no counters, and
+ * reporting `0 / 0` for it would put a fabricated measurement in the report next to
+ * real ones. Whether reranking actually ran is the single fact that decides if a
+ * `0.00pp` delta means "no effect" or "never executed", so "unknown" has to be
+ * representable — and it also catches the partially-instrumented case, where a
+ * non-finite counter would otherwise render as `NaN` beside plausible numbers.
+ */
+export function readRerankFallbacks(
+  reranker: RerankScoreFn | undefined,
+): RerankFallbackReport | null {
+  if (reranker === undefined) {
+    return null;
+  }
+  const { fallbackCount, bucketCount } = reranker as {
+    fallbackCount?: unknown;
+    bucketCount?: unknown;
+  };
+  if (
+    typeof fallbackCount !== 'number' ||
+    typeof bucketCount !== 'number' ||
+    !Number.isFinite(fallbackCount) ||
+    !Number.isFinite(bucketCount)
+  ) {
+    return null;
+  }
+  return { fallbackCount, bucketCount };
+}
+
 export type BenchmarkRunnerOptions = {
   /** Abstention threshold for the feature system (default 0.5). */
   abstainThreshold?: number;
@@ -920,7 +968,12 @@ export async function runRerankAblation(
   embedding: EmbeddingModel,
   llm: LLM,
   options: BenchmarkRunnerOptions = {},
-): Promise<{ report: AblationReport; markdown: string; abstentionShift: number }> {
+): Promise<{
+  report: AblationReport;
+  markdown: string;
+  abstentionShift: number;
+  fallbacks: RerankFallbackReport | null;
+}> {
   const dataset = loadLongMemEval(instances);
   const expansionCache = new Map<string, string[]>();
   const answerCache = new Map<string, string>();
@@ -976,5 +1029,10 @@ export async function runRerankAblation(
     // Markdown and the persisted JSON carry — deriving the shift from a separate
     // evaluation would let the returned value disagree with the report beside it.
     abstentionShift: result.feature.metrics.abstentionRate - result.baseline.metrics.abstentionRate,
+    // Read *after* the run, not before: the retrieval pipeline invokes the reranker
+    // once per question, so the counters only become meaningful once both systems
+    // have finished. Reading them at construction time would report zero fallbacks
+    // for any run, including one in which every single call failed.
+    fallbacks: readRerankFallbacks(options.reranker),
   };
 }

@@ -63,11 +63,13 @@ export {
   runAbstentionRetryAblation,
   runQueryExpansionDecompositionAblation,
   runRerankAblation,
+  readRerankFallbacks,
   CONJUNCTION_ABS_COHORT,
   CONJUNCTION_ABS_CONTROLS,
   CONJUNCTION_ABS_TARGET,
   formatRetryFireSection,
   type BenchmarkRunnerOptions,
+  type RerankFallbackReport,
   type RetryAblationReport,
 } from './runner.js';
 export { createLongMemEvalMini } from './datasets/longmemeval-mini.js';

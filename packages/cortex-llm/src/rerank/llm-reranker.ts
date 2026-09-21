@@ -129,8 +129,36 @@ export function parseListwiseScores(reply: string, expected: number): number[] |
 export class LLMReranker {
   private readonly options: LLMRerankerOptions;
 
+  /**
+   * Buckets whose reply could not be parsed. Cumulative across invocations because
+   * the retrieval pipeline calls `score` once per turn, so a per-call counter would
+   * report only the last turn's health.
+   */
+  private fallbacks = 0;
+
+  /** Buckets attempted. Paired with `fallbackCount` to give a ratio, not just a count. */
+  private buckets = 0;
+
   constructor(options: LLMRerankerOptions) {
     this.options = options;
+  }
+
+  /**
+   * Buckets abandoned because their reply did not parse as a positional score array.
+   *
+   * Exposed because a fallback is otherwise invisible: when every bucket fails,
+   * `score` returns an empty array, `rerankHits` returns the input order, and the
+   * A/B arm reports the same accuracy as its baseline — `0.00pp`, which reads as
+   * "reranking does not help". The real cause is that reranking never ran, and
+   * without this counter those two outcomes are the same output.
+   */
+  get fallbackCount(): number {
+    return this.fallbacks;
+  }
+
+  /** Buckets attempted, so `fallbackCount / bucketCount` is the provider's failure rate. */
+  get bucketCount(): number {
+    return this.buckets;
   }
 
   /** `RerankScoreFn`: scores in the order the pairs were supplied. */
@@ -158,6 +186,7 @@ export class LLMReranker {
     // the caller receives is short and unambiguous.
     const scored: { position: number; score: number }[] = [];
     for (const [question, bucket] of byQuestion) {
+      this.buckets += 1;
       const texts = bucket.pairs.map((pair) => pair.text);
       const prompt = buildListwiseRerankPrompt(
         question,
@@ -167,6 +196,7 @@ export class LLMReranker {
       const reply = await this.options.llm.complete(prompt, { temperature: 0 });
       const parsed = parseListwiseScores(reply, texts.length);
       if (parsed === null) {
+        this.fallbacks += 1;
         continue;
       }
       bucket.positions.forEach((position, i) => {

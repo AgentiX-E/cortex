@@ -179,3 +179,70 @@ describe('LLMReranker', () => {
     expect(llm.prompts[0]).not.toContain('gamma');
   });
 });
+
+/**
+ * A silent fallback is indistinguishable from a real negative result.
+ *
+ * When every bucket fails to parse, `score` returns an empty array, `rerankHits`
+ * returns the input order, and an A/B arm records exactly the same accuracy as its
+ * baseline — reported as `0.00pp`, i.e. "reranking does not help". The true cause
+ * is that reranking never ran. Without a counter the two are the same output, so
+ * the adapter has to say which one happened.
+ */
+describe('LLMReranker fallback accounting', () => {
+  it('reports zero fallbacks when every bucket parses', async () => {
+    const llm = recordingLlm(['[0.9, 0.1]', '[0.4]']);
+    const reranker = new LLMReranker({ llm });
+
+    await reranker.score([...PAIRS]);
+
+    expect(reranker.fallbackCount).toBe(0);
+    expect(reranker.bucketCount).toBe(2);
+  });
+
+  it('counts a bucket that failed to parse', async () => {
+    const llm = recordingLlm(['not json at all', '[0.4]']);
+    const reranker = new LLMReranker({ llm });
+
+    await reranker.score([...PAIRS]);
+
+    expect(reranker.fallbackCount).toBe(1);
+    expect(reranker.bucketCount).toBe(2);
+  });
+
+  it('counts every bucket when none parses, which is the total-failure case', async () => {
+    const llm = recordingLlm(['nope', 'also nope']);
+    const reranker = new LLMReranker({ llm });
+
+    const scores = await reranker.score([...PAIRS]);
+
+    // The observable output of a total failure is an empty array — the same shape
+    // the caller would see from a genuinely useless reranker.
+    expect(scores).toEqual([]);
+    expect(reranker.fallbackCount).toBe(2);
+    expect(reranker.bucketCount).toBe(2);
+  });
+
+  it('accumulates across invocations, because one turn scores one bucket', async () => {
+    const llm = recordingLlm(['nope', '[0.5]']);
+    const reranker = new LLMReranker({ llm });
+
+    await reranker.score([{ question: 'q', candidateId: 'a', text: 't' }]);
+    await reranker.score([{ question: 'q2', candidateId: 'b', text: 't2' }]);
+
+    // The retrieval pipeline calls `score` once per retrieval turn, so a counter
+    // that reset per call would report only the last turn's health.
+    expect(reranker.fallbackCount).toBe(1);
+    expect(reranker.bucketCount).toBe(2);
+  });
+
+  it('leaves the counters untouched when there is nothing to score', async () => {
+    const llm = recordingLlm([]);
+    const reranker = new LLMReranker({ llm });
+
+    await reranker.score([]);
+
+    expect(reranker.fallbackCount).toBe(0);
+    expect(reranker.bucketCount).toBe(0);
+  });
+});
