@@ -159,11 +159,64 @@ describe('the job summary renders the persisted shapes', () => {
     expect(out).toContain('never fired');
   });
 
-  it('renders the recall curve, which is a top-level list', () => {
-    // The shape that matters: `benchmark-recall-curve.json` is a bare array, not
-    // an object with a `points` key. A summary that assumed the object shape
-    // printed `_Unexpected top-level type: list_` and lost the one table that
-    // separates a breadth failure from an ordering failure.
+  it('renders the recall curve from the object form the writer now emits', () => {
+    // The writer emits `{points, considered, excluded}`. A summary that assumed
+    // a bare array printed `_Unexpected top-level type: dict_` and lost the one
+    // table that separates a breadth failure from an ordering failure.
+    write('benchmark-recall-curve.json', {
+      points: [
+        {
+          k: 1,
+          recalled: 142,
+          recall: 0.3317757009345794,
+          ceiling: 0.9626168224299065,
+          gain: 0.6308411214953271,
+        },
+        {
+          k: 50,
+          recalled: 412,
+          recall: 0.9626168224299065,
+          ceiling: 0.9626168224299065,
+          gain: 0,
+        },
+      ],
+      considered: 428,
+      excluded: [
+        { questionId: 'a_abs', reason: 'abstention' },
+        { questionId: 'b_abs', reason: 'abstention' },
+        { questionId: 'ku1', reason: 'derived' },
+      ],
+    });
+    const out = run(dir);
+    expect(out).toContain('| k | recall | ceiling | gain |');
+    expect(out).toContain('| 1 | 33.18% | 96.26% | 63.08% |');
+    expect(out).toContain('| 50 | 96.26% | 96.26% | 0.00% |');
+  });
+
+  it('states the curve denominator and the shortfall by reason', () => {
+    // The defect this guards: a curve over 428 questions was read as if it were
+    // over the run's 500, because neither the artifact nor the summary said
+    // otherwise. The exclusion may be correct; staying silent about it is not.
+    write('benchmark-recall-curve.json', {
+      points: [{ k: 1, recalled: 1, recall: 0.5, ceiling: 0.5, gain: 0 }],
+      considered: 428,
+      excluded: [
+        { questionId: 'a_abs', reason: 'abstention' },
+        { questionId: 'ku1', reason: 'derived' },
+        { questionId: 'ku2', reason: 'derived' },
+      ],
+    });
+    const out = run(dir);
+    expect(out).toContain('Covered **428** questions');
+    expect(out).toContain('Excluded **3**');
+    expect(out).toContain('abstention 1');
+    expect(out).toContain('derived 2');
+  });
+
+  it('renders the legacy bare-array curve without a denominator block', () => {
+    // Older artifacts are a bare array and carry no denominator. The summary
+    // must still render their table rather than treating the absence of
+    // `considered` as a parse failure.
     write('benchmark-recall-curve.json', [
       {
         k: 1,
@@ -177,7 +230,7 @@ describe('the job summary renders the persisted shapes', () => {
     const out = run(dir);
     expect(out).toContain('| k | recall | ceiling | gain |');
     expect(out).toContain('| 1 | 32.56% | 93.02% | 60.47% |');
-    expect(out).toContain('| 50 | 93.02% | 93.02% | 0.00% |');
+    expect(out).not.toContain('Covered **');
   });
 });
 

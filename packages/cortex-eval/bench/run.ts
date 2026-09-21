@@ -184,17 +184,37 @@ async function main(): Promise<void> {
   //
   // Measured at the same query set as the graded path (expansion included), so
   // the ceiling describes the pipeline that actually runs.
+  //
+  // The curve reports its own denominator and the questions it left out. That
+  // matters because the graded accuracy is measured over `sampled.length` while
+  // the curve can only cover questions with a retrievable answer turn; on the
+  // first full run those were 500 and 428, and the artifact named neither. Any
+  // reader comparing `ceiling` to accuracy is now comparing two populations
+  // that are both stated.
   const recallCurve = await computeRecallCurve(diagnosticsSample as never, embedding, { llm });
   writeFileSync('benchmark-recall-curve.json', JSON.stringify(recallCurve, null, 2));
   console.log('=== Recall curve ===');
   console.log(
-    `  k      recall   ceiling  gain     (n=${diagnosticsSample.length} sampled questions)`,
+    `  k      recall   ceiling  gain     (n=${recallCurve.considered} of ` +
+      `${diagnosticsSample.length} sampled questions)`,
   );
-  for (const point of recallCurve) {
+  for (const point of recallCurve.points) {
     console.log(
       `  ${String(point.k).padEnd(6)} ${(point.recall * 100).toFixed(1).padStart(6)}%  ` +
         `${(point.ceiling * 100).toFixed(1).padStart(6)}%  ${(point.gain * 100).toFixed(1).padStart(5)}%`,
     );
+  }
+  if (recallCurve.excluded.length > 0) {
+    const byReason = new Map<string, string[]>();
+    for (const e of recallCurve.excluded) {
+      byReason.set(e.reason, [...(byReason.get(e.reason) ?? []), e.questionId]);
+    }
+    console.log(`  excluded from the curve, by reason (${recallCurve.excluded.length} total):`);
+    for (const [reason, ids] of [...byReason].sort()) {
+      console.log(
+        `    ${reason.padEnd(11)} ${String(ids.length).padStart(4)}  e.g. ${ids[0] ?? '-'}`,
+      );
+    }
   }
 
   // Trace per-question decisions so threshold- and LLM-driven abstentions can be

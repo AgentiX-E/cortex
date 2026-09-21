@@ -29,7 +29,11 @@
  * retrieval pass.
  *
  * `computeRecallCurve` is the measurement half: it performs that retrieval at a
- * configured pool width using the same implementation the graded path uses.
+ * configured pool width using the same implementation the graded path uses. It
+ * returns the curve together with the questions it left out and the reason for
+ * each, because a denominator that shrinks without saying so is a silent
+ * measurement loss — see `computeRecallCurve` for the measurement that exposed
+ * exactly that.
  */
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import { turnText, type LongMemEvalInstance } from './datasets/longmemeval-loader.js';
@@ -70,6 +74,45 @@ export type RecallCurvePoint = {
   ceiling: number;
   /** `ceiling - recall`, clamped at 0; the recall a reranker could unlock. */
   gain: number;
+};
+
+/**
+ * Why a question was left out of the curve.
+ *
+ * These are three distinct situations that the shape of a `has_answer` scan
+ * cannot tell apart at the place where the exclusion happens — all three present
+ * as "this question contributed no answer text". They differ in whether the
+ * exclusion is *intended*:
+ *
+ *   - `abstention`  — the question's correct answer is to refuse, so there is
+ *                     nothing to retrieve. Excluding it is the point.
+ *   - `derived`     — the question is answerable but its answer is an
+ *                     aggregation or a value computed from the evidence
+ *                     ("four", "25 minutes and 50 seconds"), so no single turn
+ *                     carries it verbatim. Excluding it removes a real
+ *                     answerable question from the denominator.
+ *   - `no-flag`     — the question is answerable but the dataset never raised
+ *                     `has_answer` on any turn. This is a data or loader
+ *                     problem, and the exclusion is a silent measurement loss.
+ *
+ * Reporting only a count makes all three look identical, which is how a
+ * 500-question run produced a curve over 428 questions with nothing in the
+ * artifact saying so.
+ */
+export type RecallCurveExclusion = {
+  /** The question's id, so the excluded set is nameable and re-checkable. */
+  questionId: string;
+  /** Which of the three situations this is. */
+  reason: 'abstention' | 'derived' | 'no-flag';
+};
+
+export type RecallCurveResult = {
+  /** The curve itself, one point per cutoff. */
+  points: RecallCurvePoint[];
+  /** Questions the curve was computed over. */
+  considered: number;
+  /** Questions left out, with the reason, so the denominator is auditable. */
+  excluded: RecallCurveExclusion[];
 };
 
 /**
@@ -125,6 +168,10 @@ type TextualHit = { text: string };
  * abstention question has no `has_answer` turn, and treating "no answer to find"
  * as "found at rank 0" would score every such question as perfect retrieval and
  * inflate every point on the curve.
+ *
+ * An empty answer set is not *always* an abstention question, though. The
+ * caller cannot tell the difference from here, so it must not assume — see
+ * `classifyExclusion` for the three situations and why the distinction matters.
  */
 export function rankOfFirstAnswer(
   hits: readonly TextualHit[],
@@ -158,25 +205,89 @@ export type RecallCurveMeasurementOptions = {
 };
 
 /**
+ * Classify a question that produced no answer text.
+ *
+ * The order of the tests encodes the priority: an abstention question is
+ * *supposed* to have no evidence turn, so it is checked first and never
+ * mislabelled as a data problem. Only after that does "has no answer text"
+ * become evidence of something being wrong.
+ *
+ * `question_id` is optional on the input type (callers measure over instances
+ * assembled from several sources, and the abstention marker lives in the id), so
+ * a missing id is reported as an empty string rather than throwing. An
+ * unnameable exclusion is still a shortfall a reader has to see.
+ */
+export function classifyExclusion(
+  inst: LongMemEvalInstance,
+  hadContext: boolean,
+): RecallCurveExclusion | null {
+  if (!hadContext) {
+    return null;
+  }
+  const id = inst.question_id ?? '';
+  // An abstention question's expected answer is null and its id carries `_abs`.
+  // Calling it `derived` would be wrong twice over: it is not answerable at all,
+  // and its exclusion needs no fix.
+  if (id.endsWith('_abs')) {
+    return { questionId: id, reason: 'abstention' };
+  }
+  // Answerable, flagged turns exist somewhere, but none matched the joined
+  // text. The grader can still answer this from the derived value, so this is
+  // the "real question silently dropped" case.
+  if (hasFlaggedTurn(inst)) {
+    return { questionId: id, reason: 'derived' };
+  }
+  return { questionId: id, reason: 'no-flag' };
+}
+
+/** Whether any turn in the instance is flagged `has_answer`. */
+function hasFlaggedTurn(inst: LongMemEvalInstance): boolean {
+  for (const session of inst.haystack_sessions ?? []) {
+    for (const turn of session) {
+      if (turn.has_answer === true) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Measure the recall curve over a LongMemEval-style dataset.
  *
  * One retrieval pass per answerable question, at `poolWidth` depth, using the
- * same retrieval implementation the graded path uses. Questions with no answer
- * turn (abstention) are skipped: they carry no retrieval signal and would
- * otherwise be scored as misses, dragging every cutoff down by their share.
+ * same retrieval implementation the graded path uses.
  *
- * This is the instrument B2 needs. Deciding a pool width from recall@1 and
- * recall@5 alone is a guess; deciding it from the point where `gain` reaches
- * zero and `ceiling` stops climbing is a measurement.
+ * ## What gets excluded, and why the caller is told
+ *
+ * A question contributes no answer text in three different situations, and they
+ * are not the same kind of event: an abstention question *should* have no
+ * evidence turn, an aggregation question is answerable but has no turn carrying
+ * its answer verbatim, and a question whose turns were never flagged is a data
+ * problem. All three reach this function as "no answer text".
+ *
+ * This function used to `continue` on all three and return only the curve, so
+ * the denominator silently shrank and the artifact said nothing. A 500-question
+ * run produced a curve over 428 questions — the 72 missing were answerable KU
+ * questions whose answers are derived values — and the only place the number
+ * appeared was as an `n=` in the console line. Anyone reading
+ * `benchmark-recall-curve.json` would compare its `ceiling` against an accuracy
+ * measured over 500 and be comparing two different populations.
+ *
+ * The result therefore carries `excluded` with a per-question reason, and the
+ * curve's `ceiling`/`recall` are stated against `considered`, not against the
+ * input length. Reporting the shortfall is the fix: the exclusion may be
+ * correct, but it may not be invisible.
  */
 export async function computeRecallCurve(
   instances: readonly LongMemEvalInstance[],
   embedding: EmbeddingModel,
   options: RecallCurveMeasurementOptions = {},
-): Promise<RecallCurvePoint[]> {
+): Promise<RecallCurveResult> {
   const cutoffs = [...(options.cutoffs ?? DEFAULT_CURVE_CUTOFFS)];
   const poolWidth = options.poolWidth ?? Math.max(...cutoffs);
   const ranks: QuestionRank[] = [];
+  const excluded: RecallCurveExclusion[] = [];
 
   for (const inst of instances) {
     const sessions = inst.haystack_sessions ?? [];
@@ -200,6 +311,10 @@ export async function computeRecallCurve(
       }
     }
     if (answerTexts.size === 0 || context.length === 0) {
+      const reason = classifyExclusion(inst, context.length > 0);
+      if (reason) {
+        excluded.push(reason);
+      }
       continue;
     }
 
@@ -211,5 +326,9 @@ export async function computeRecallCurve(
     ranks.push({ rankOfFirstAnswer: rankOfFirstAnswer(hits, answerTexts) });
   }
 
-  return buildRecallCurve(ranks, cutoffs, { poolWidth });
+  return {
+    points: buildRecallCurve(ranks, cutoffs, { poolWidth }),
+    considered: ranks.length,
+    excluded,
+  };
 }

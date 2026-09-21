@@ -137,6 +137,7 @@ def curve_table(data: object) -> list[str]:
                 )
             else:
                 lines.append(f"| {num(point)} | -- | -- | -- |")
+        lines.extend(curve_denominator(data))
         return lines
     if isinstance(points, dict):
         # A map of k -> point.
@@ -147,8 +148,43 @@ def curve_table(data: object) -> list[str]:
                     f"| {k} | {pct(point.get('recall'))} | "
                     f"{pct(point.get('ceiling'))} | {pct(point.get('gain'))} |"
                 )
+        lines.extend(curve_denominator(data))
         return lines
     return ["_No recall-curve points in this file._"]
+
+
+def curve_denominator(data: object) -> list[str]:
+    """State the curve's own denominator and what it left out.
+
+    Without this the table's `ceiling` reads as a percentage of the run's
+    questions. It is not: the curve can only cover questions with a retrievable
+    answer turn, and on the first full run that was 428 of 500 -- the 72 missing
+    being answerable KU questions whose answers are derived values. A reader
+    comparing this `ceiling` to `benchmark-report.json`'s accuracy would be
+    comparing two populations without knowing it.
+    """
+    if not isinstance(data, dict):
+        return []
+    considered = data.get("considered")
+    excluded = data.get("excluded")
+    if considered is None and not excluded:
+        return []
+    lines = [""]
+    if considered is not None:
+        lines.append(f"Covered **{num(considered)}** questions.")
+    if isinstance(excluded, list) and excluded:
+        counts: dict[str, int] = {}
+        for entry in excluded:
+            if isinstance(entry, dict):
+                key = str(entry.get("reason"))
+                counts[key] = counts.get(key, 0) + 1
+        rendered = ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
+        lines.append(
+            f"Excluded **{len(excluded)}** ({rendered}) -- abstention is expected; "
+            "`derived` and `no-flag` remove answerable questions from the "
+            "denominator and cap how far this ceiling generalises."
+        )
+    return lines
 
 
 def summarise(path: Path) -> str:

@@ -99,11 +99,14 @@ export {
 export {
   buildRecallCurve,
   computeRecallCurve,
+  classifyExclusion,
   rankOfFirstAnswer,
   DEFAULT_CURVE_CUTOFFS,
   type QuestionRank,
   type RecallCurveOptions,
   type RecallCurvePoint,
+  type RecallCurveResult,
+  type RecallCurveExclusion,
   type RecallCurveMeasurementOptions,
 } from './recall-curve.js';
 export {

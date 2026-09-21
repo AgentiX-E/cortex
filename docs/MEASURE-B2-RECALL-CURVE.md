@@ -82,9 +82,27 @@ the number from asserting a conclusion the configuration cannot support.
 `rankOfFirstAnswer` returns `null` when the answer set is empty. An abstention
 question has no `has_answer` turn; treating "no answer to find" as "found at rank
 0" would score every such question as perfect retrieval and inflate every point.
-Abstention questions are excluded from the curve entirely, because they carry no
-retrieval signal and would otherwise be scored as misses, dragging every cutoff
-down by their share.
+An empty answer set is therefore excluded from the curve rather than counted as a
+miss, which would drag every cutoff down by that question's share.
+
+**An empty answer set is not always an abstention question, and the first version
+of this document said it was.** The exclusion happens on one condition — no
+answer text — but three different situations produce it, and only the first is
+intended. `computeRecallCurve` now classifies each one and reports it:
+
+| Reason | Meaning | Excluding it is... |
+| --- | --- | --- |
+| `abstention` | Correct answer is to refuse; no evidence turn exists | Correct, and the point of the rule |
+| `derived` | Answerable, but its answer is a value *computed* from the evidence ("four", "25 minutes and 50 seconds", `$400,000`) so no single turn carries it verbatim | A real answerable question removed from the denominator, which caps how far the ceiling generalises |
+| `no-flag` | Answerable, but no turn was ever marked `has_answer` | A silent measurement loss and a data/loader problem |
+
+The measurement that exposed this is in §4.1: a run over **500** questions
+produced a curve with a denominator of **428**. The missing 72 are answerable KU
+questions whose answers are derived values, and neither the artifact nor this
+document said so — `ceiling` sat beside an accuracy measured over 500 as though
+the two shared a population. The artifact now carries `considered` and
+`excluded[]`, the job summary states both, and the console line prints the
+per-reason breakdown.
 
 ### 2.4 The measurement uses the graded path's retrieval, including expansion
 
@@ -121,14 +139,20 @@ retrieval ordering does not propagate to answers, and both directions close.
 | `buildRecallCurve` (pure arithmetic) | Implemented, tested |
 | `rankOfFirstAnswer` | Implemented, tested |
 | `computeRecallCurve` (measurement) | Implemented, tested |
-| CLI emission (`benchmark-recall-curve.json`) | Wired |
+| `classifyExclusion` (shortfall reporting) | Implemented, tested |
+| CLI emission (`benchmark-recall-curve.json`) | Wired, carries `considered` + `excluded[]` |
+| Job-summary rendering of the denominator | Wired |
 | Coverage, all four dimensions | 100 / 97.05 / 100 / 100 |
-| **Actual measurement on LongMemEval-S** | **Run** — run `35498421148`, `LIMIT=60`, 43 answerable questions |
+| **Smoke measurement** | Run `35498421148`, `LIMIT=60`, `DIAGNOSTICS_LIMIT=100`, 43 answerable |
+| **Full measurement** | Run `35523328949`, `LIMIT=0`, `DIAGNOSTICS_LIMIT=0`, 428 answerable of 500 |
 
 ### 4.1 The measurement
 
-Run `35498421148` (commit `16ca1ea`), DeepSeek + Zhipu GLM embedding-3,
-temperature 0, `DIAGNOSTICS_LIMIT=100`:
+Two measurements exist. The first is the capped smoke run that set the shape; the
+second is the full 500-question run that closed B2.
+
+**Smoke run `35498421148`** (commit `16ca1ea`), `LIMIT=60`,
+`DIAGNOSTICS_LIMIT=100`, 43 answerable questions:
 
 | k | recalled | recall | ceiling | gain |
 | --- | --- | --- | --- | --- |
@@ -139,47 +163,74 @@ temperature 0, `DIAGNOSTICS_LIMIT=100`:
 | 20 | 39 | 90.70% | 93.02% | 2.33% |
 | 50 | 40 | 93.02% | 93.02% | 0.00% |
 
+**Full run `35523328949`** (commit `a7e846d`), `LIMIT=0`, `DIAGNOSTICS_LIMIT=0`,
+DeepSeek + Zhipu GLM embedding-3, temperature 0. Denominator **428 of 500**:
+
+| k | recalled | recall | ceiling | gain |
+| --- | --- | --- | --- | --- |
+| 1 | 142 | 33.18% | 96.26% | 63.08% |
+| 3 | 242 | 56.54% | 96.26% | 39.72% |
+| 5 | 289 | 67.52% | 96.26% | 28.74% |
+| 10 | 340 | 79.44% | 96.26% | 16.82% |
+| 20 | 384 | 89.72% | 96.26% | 6.54% |
+| 50 | 412 | 96.26% | 96.26% | 0.00% |
+
+The denominator is confirmed by `benchmark-diagnostics.json`, which reports
+`totalQuestions: 500` and `answerableQuestions: 428` in the same run.
+
 ### 4.2 Reading, against the pre-registered table in §3
 
 The observed shape is **`gain` large at the current pool with `ceiling` flat
 beyond it** — row 1. The pre-registered action is therefore: execute B1's A/B,
 and **do not widen the pool.**
 
-Three facts worth stating separately:
+Three facts worth stating separately, all read from the full run:
 
-1. **`ceiling` = 93.02% of 43 answerable questions.** 40 have their answer turn
-   inside the pool. The other 3 (6.98%) are unreachable by any reordering, so
+1. **`ceiling` = 96.26% of 428 answerable questions.** 412 have their answer turn
+   inside the pool. The other 16 (3.74%) are unreachable by any reordering, so
    that is an honest floor no reranker can touch.
-2. **`gain` decays from 65.12% at `k=1` to 2.33% by `k=20`.** The headroom B1
+2. **`gain` decays from 63.08% at `k=1` to 6.54% by `k=20`.** The headroom B1
    could occupy is large only where the context window is narrow relative to the
    answer's rank. At the system's working width it has mostly been absorbed by
-   width itself.
+   width itself. Note that `gain` has **not** reached zero at `k=20` — the
+   difference between the smoke run's 2.33% and the full run's 6.54% is the
+   sample, not a change in the pipeline, and only the full-run number should be
+   quoted.
 3. **Cortex has no breadth problem at usable widths.** This closes the direction
    that "add recall channels" proposals would reopen. Any such proposal now has
-   to justify itself against the remaining 6.98%, not against `recall@5 = 86%`,
-   which is a cutoff and not a ceiling.
+   to justify itself against the remaining 3.74%, not against `recall@5`, which
+   is a cutoff and not a ceiling.
 
 This is exactly why the pre-registration mattered. Read alone, `recall@5 =
-62.79%` looks like a pipeline missing a third of its evidence and would justify
-either remedy. The curve shows both the ceiling (93.02%, so the evidence is
-there) and where the ordering debt actually sits (at `k<=10`, not at the working
-width).
+62.79%` on the smoke sample looks like a pipeline missing a third of its
+evidence and would justify either remedy. The curve shows both the ceiling (so
+the evidence is there) and where the ordering debt actually sits (at `k<=10`, not
+at the working width).
 
-> **Denominator caution.** 60-question stratified sample, not the full 500. The
-> three unreachable questions are 6.98% of 43 and move in ~2.3pp steps on a
-> different sample. The *shape* — steep `gain` decay, flat `ceiling` — is robust
-> at this resolution; the specific `ceiling` is not, and should be re-read from a
-> `LIMIT=0` run before being quoted externally.
+> **Denominator caution, now partially retired.** The earlier version of this
+> section warned that the numbers came from a 60-question sample and could not be
+> quoted externally. That is true of the smoke table above and no longer true of
+> the full-run table, which is over 428 answerable questions. What survives is a
+> narrower caution: **the full-run ceiling is over 428, not the run's 500**, so
+> it is not directly comparable to `benchmark-report.json`'s accuracy. The 72
+> excluded are answerable KU questions with derived answers (§2.3), and the
+> ceiling therefore says nothing about whether *their* evidence would have been
+> retrievable. Whether that gap is worth closing is open.
 
 ### 4.3 What remains unknown
 
 - **No accuracy claim.** The curve is a retrieval diagnostic; it says nothing
   about what the reader does with the evidence. B1's A/B is the measurement that
   connects ordering to accuracy, and it is not yet run.
-- **The `k=1` headroom is an upper bound, not a forecast.** `gain = 65.12%` at
+- **The `k=1` headroom is an upper bound, not a forecast.** `gain = 63.08%` at
   `k=1` is what a *perfect* reordering would reach. A real cross-encoder will
   capture some fraction of it, and the A/B exists to measure that fraction rather
   than assume it.
+- **What the 72 excluded questions would have contributed.** They are answerable
+  and the grader scores them; the curve does not see them. A ceiling quoted over
+  428 is silent on whether their evidence was retrievable, so any future claim
+  about "KU retrieval" has to be measured separately rather than inferred from
+  this curve.
 
 ## 5. Why this is not just "more diagnostics"
 
