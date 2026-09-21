@@ -86,15 +86,66 @@ describe('binomialCdf', () => {
   });
 
   it('is monotone non-decreasing in k and bounded in [0, 1]', () => {
+    // `p` MUST be generated, not fixed. This test previously hardcoded
+    // `p = 0.5` while its name claimed to check monotonicity in general, and
+    // `p = 0.5` is precisely the one value at which the defect below cannot
+    // occur: it puts `x = 1 - p = 0.5` comfortably inside the continued
+    // fraction's region of convergence, so the missing complementary branch was
+    // never exercised. Every other assertion in this file used p = 0.5, 0 or 1,
+    // which is why no test ever entered the region where the routine was wrong.
+    //
+    // The lower bound is `Number.MIN_VALUE` rather than an arbitrary small
+    // number so that underflow-scale probabilities are covered too -- that is
+    // exactly where the error was largest.
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 20 }), fc.integer({ min: 0, max: 19 }), (n, k) => {
-        const cdf = binomialCdf(k, n, 0.5);
-        expect(cdf).toBeGreaterThanOrEqual(0);
-        expect(cdf).toBeLessThanOrEqual(1);
-        expect(binomialCdf(k, n, 0.5)).toBeLessThanOrEqual(binomialCdf(k + 1, n, 0.5));
-      }),
-      { numRuns: 50 },
+      fc.property(
+        fc.integer({ min: 1, max: 20 }),
+        fc.integer({ min: 0, max: 19 }),
+        fc.double({ min: Number.MIN_VALUE, max: 1, noNaN: true }),
+        (n, k, p) => {
+          const cdf = binomialCdf(k, n, p);
+          expect(cdf).toBeGreaterThanOrEqual(0);
+          expect(cdf).toBeLessThanOrEqual(1);
+          expect(binomialCdf(k, n, p)).toBeLessThanOrEqual(binomialCdf(k + 1, n, p));
+        },
+      ),
+      { numRuns: 200 },
     );
+  });
+
+  it('agrees with an independent pmf sum for small interior p', () => {
+    // Regression. `regularizedIncompleteBeta` was missing the branch that swaps
+    // to the complementary pair when `x = 1 - p` sits outside the continued
+    // fraction's convergence region, so a small `p` produced values wrong by
+    // orders of magnitude -- silently, since the result was a plausible number
+    // rather than NaN, and worst exactly where the CDF is closest to 1.
+    //
+    // The reference is the definition, computed independently here:
+    //   CDF(k) = sum_{i=0..k} C(n, i) p^i (1-p)^(n-i)
+    const pmfSum = (k: number, n: number, p: number): number => {
+      let total = 0;
+      let binom = 1;
+      for (let i = 0; i <= k; i++) {
+        total += binom * Math.pow(p, i) * Math.pow(1 - p, n - i);
+        binom = (binom * (n - i)) / (i + 1);
+      }
+      return total;
+    };
+    const cases: [number, number, number][] = [
+      [2, 40, 1e-6],
+      [3, 40, 1e-6],
+      [1, 40, 1e-6],
+      [0, 40, 1e-6],
+      [2, 10, 1e-12],
+      [4, 50, 1e-3],
+      [1, 20, 1e-8],
+    ];
+    for (const [k, n, p] of cases) {
+      expect(binomialCdf(k, n, p), `binomialCdf(${k}, ${n}, ${p})`).toBeCloseTo(
+        pmfSum(k, n, p),
+        12,
+      );
+    }
   });
 });
 
@@ -139,6 +190,26 @@ describe('wilsonScoreInterval', () => {
 
 describe('stats numerical properties', () => {
   it('logGamma matches the gamma recurrence for positive reals', () => {
+    // AUDIT NOTE -- this test cannot reach the reflection branch, and that is
+    // unavoidable, not an oversight to be "fixed" here.
+    //
+    // The recurrence `logGamma(x+1) - logGamma(x) = log(x)` is only a valid
+    // oracle for `x > 0`: for `x` in `(-1, 0)` the sub-expression `logGamma(x+1)`
+    // is evaluated at a positive argument while `logGamma(x)` is evaluated by
+    // reflection, and `log(x)` is not real. Evaluating the identity across zero
+    // makes it fail for arithmetic reasons, not because the routine is wrong.
+    //
+    // The lower bound was `0.5`, which is *also* the reflection threshold in
+    // `logGamma` (`z < 0.5`), so the generator's minimum sat exactly on the branch
+    // boundary and every draw of `x` was evaluable by the direct path alone. That
+    // is the same shape as the `binomialCdf` defect this file used to have: a
+    // property test whose generator never enters the branch under test. It is only
+    // tolerable here because the branch *is* covered elsewhere -- see
+    // `branch-coverage.test.ts`, whose descriptions name the reflection branch
+    // explicitly and whose generator spans negative half-periods. The bound stays
+    // at 0.5 rather than being widened, because widening it would require inventing
+    // a comparison that is simultaneously real-valued and sensitive to the sign
+    // error that `Math.abs` fixes.
     fc.assert(
       fc.property(fc.double({ min: 0.5, max: 20, noNaN: true }), (x) => {
         const g = logGamma(x);

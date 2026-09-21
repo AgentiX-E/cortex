@@ -165,6 +165,62 @@ cycle silently restored the *unfixed* source, so a first pass reported "no chang
 for the wrong reason. The re-run above copies the pristine source aside first and
 verifies both `diff` and the sentinel count (`0`) before and after.
 
+### 5.1.1 A false positive in the sentinel method itself, and the clean re-run
+
+The re-run described above still had a defect of its own, and it is the more
+instructive one. Patching a guard by replacing
+
+```ts
+/* c8 ignore next -- defensive guard, unreachable via valid inputs */
+if (Math.abs(d) < 1e-30) {
+  d = 1e-30;
+}
+```
+
+with the same block minus the annotation made **exactly one** test fail —
+`the coverage-ignore annotation set is pinned`, in
+`coverage-annotations.test.ts`. That test asserts the annotation *text* is still
+present, so removing it makes the test fail **regardless of whether the guard was
+ever reached.** Read naively, "one guard ⇒ one failing test" looks like evidence
+of reachability. It is evidence of an edited comment.
+
+The corrected experiment keeps **every annotation line byte-identical** and
+replaces **only the guarded body**, so the only possible reason for a failure is
+that the body executed:
+
+| Guard body replaced with `throw` | Annotation text left intact | Failing tests |
+| --- | --- | --- |
+| `welchTTest` df guard (line 76) | 6 of 6 present | **0** — 127/127 pass |
+| `betaContinuedFraction` `d` init (line 204) | 6 of 6 present | **0** — 127/127 pass |
+| both in-loop `d` guards | 6 of 6 present | **0** — 127/127 pass |
+| both in-loop `c` guards | 6 of 6 present | **0** — 127/127 pass |
+
+All four runs leave the suite green at the current revision, which is
+perturbation-free proof that the guards are unreachable: **a `throw` on an
+executed path cannot pass a test suite.**
+
+This also corrects the *earlier* figure. The "six tests fail per guard" recorded
+in §5 was measured by a run that did not separately protect the annotation text,
+so an unknown part of it was this same false positive. The honest statement of
+the before/after is therefore:
+
+| Revision | Sentinels in guard bodies | Annotation text | Failing tests | Verdict |
+| --- | --- | --- | --- | --- |
+| before §6.3 / §6.4 fixes | `throw` | **removed** | 1 (annotation pin) | inconclusive |
+| before §6.3 / §6.4 fixes | `throw` | intact | not re-measured | — |
+| after §6.3 / §6.4 fixes | `throw` | intact | **0** | unreachable |
+
+The "after" row is the only one that is methodologically clean end-to-end, and
+it is the one the annotation's truth value rests on. The before-row is recorded as
+*inconclusive* rather than restated, because the revision it was taken on no
+longer exists in the tree and re-creating it would require reverting two
+independent bug fixes.
+
+> **A sentinel experiment has two perturbation knobs, and both must be held
+> fixed.** The body must change (that is the probe) and *nothing else* may. Here
+> the annotation comment was an unacknowledged second knob, and it was wired to a
+> test that fails on being turned.
+
 ### 5.2 Why the counter probe said otherwise
 
 Adding a statement to a guard body changes v8's block structure, and the added
@@ -404,11 +460,20 @@ dismiss it as caching, exactly as I did twice.
   documented, not eliminated. The retained `coverage-final.json` makes any
   recurrence diagnosable by the method used here rather than by noticing a number
   moved.
-- **The six annotations' stated reason was false when written and is true now.**
-  The guards were reachable (§5); after §6.3 and §6.4 they are dead (§5.1). The
-  text is correct by accident, and nothing re-evaluates it. Deleting the hints
-  moves the reported figure and therefore belongs in its own change with its own
-  evidence.
+- **The annotation's reason was false when written and is true now.** The guards
+  were reachable at the revision the annotation was authored on; after §6.3 and
+  §6.4 they are dead (§5.1), now established by a clean sentinel run in which all
+  six annotation lines stay byte-identical and only the guarded bodies change
+  (§5.1.1). The text is correct by accident, and nothing re-evaluates it. Deleting
+  the hints moves the reported figure and therefore belongs in its own change with
+  its own evidence.
+- **The sentinel experiment has two perturbation knobs and both must be held.**
+  Recorded once as a stash accident (the *source* was restored silently) and once
+  as a false positive (the *annotation text* was disturbed, tripping a test that
+  pins it, §5.1.1). The method now requires: copy the pristine source aside, keep
+  annotations byte-identical, change bodies only, and assert `diff` clean
+  afterwards. The "six tests fail per guard" figure in §5 is therefore downgraded
+  to *inconclusive* rather than restated.
 - **`logGamma`'s public contract was broken for all negative non-integer inputs**
   (§6.3). Fixed and covered, but it is a reminder that "the statistics are fine"
   is not the same as "the exported function is fine" — the two diverge whenever
@@ -417,11 +482,12 @@ dismiss it as caching, exactly as I did twice.
   with exact references. Nothing in the current evaluation consumes it at those
   parameter values, so no published number is affected — but that is a statement
   about today's call sites, not about correctness.
-- **The sentinel experiment is easy to get wrong, and was, once.** A first attempt
-  left the instrumented file in the tree and a `git stash` cycle silently restored
-  the *pre-fix* source, producing a "no change" reading for the wrong reason. Any
-  re-run must copy the pristine source aside and assert the sentinel count is `0`
-  afterwards.
+- **The sentinel experiment is easy to get wrong, and was, twice.** Once as a
+  stash accident that silently restored the *pre-fix* source, giving "no change"
+  for the wrong reason; once as a false positive where patching a guard also
+  removed its `c8 ignore` comment, which failed the annotation-pinning test and
+  was briefly read as evidence the guard had been reached (§5.1.1). The method is
+  now stated as a procedure rather than a habit.
 
 **Not claimed:** that the reported figure is now stable. It is claimed that its
 instability is measured, bounded, localised to six statements, and that the four
@@ -450,3 +516,72 @@ touching a line of the annotation or a test of its claim.
 > better comments; it is to put a mechanism where the claim is structural —
 > here, a test that pins the annotation *set*, so that the claim cannot change
 > quietly even though its truth cannot be checked automatically.
+
+## 12. Addendum — the two defect classes the correction exposed, generalised
+
+Fixing §6.3 and §6.4 was not the end of it. Both defects had the same *reason for
+surviving*, and once that reason was named it was found a second time.
+
+### 12.1 A test named for a branch it never takes
+
+`logGamma`'s reflection branch carried a test described as
+`logGamma reflection formula handles z < 0.5`, and it asserted `z = 0.3` and
+`z = 0.7` — **both on the direct path.** The branch's own name was the only thing
+pointing at it, and a name is not a generator. This is why the NaN survived: the
+test looked like coverage for exactly the branch that was broken.
+
+`branch-coverage.test.ts` now carries a generative anchor over the whole
+non-integer line rather than a table of eight hand-picked points, because the
+table is what failed the first time:
+
+```ts
+const nearPole = (z: number) => Math.abs(Math.sin(Math.PI * z)) < 1e-6;
+fc.assert(
+  fc.property(fc.double({ min: -50, max: 50, noNaN: true }), (raw) => {
+    const z = Math.round(raw) + 0.37;   // non-integer by construction
+    fc.pre(!nearPole(z));                // poles are legitimately Infinity
+    ...
+  }),
+  { numRuns: 400 },
+);
+```
+
+### 12.2 A property test with a hardcoded parameter inside it
+
+The second instance was worse, because it *was* a property test and therefore
+looked like the strong form of the check. `binomialCdf`'s monotonicity test read
+`fc.property(n, k, ...)` and then used `p = 0.5` from the enclosing scope, never
+taking `p` as a generated input.
+
+`p = 0.5` is the one value at which the §6.4 defect cannot occur: it puts
+`x = 1 - p = 0.5` inside the continued fraction's region of convergence. Every
+other `binomialCdf` assertion in the repository used `p = 0.5`, `0` or `1` —
+enumerated, that is **11, 2 and 0** respectively, where the two `0`/`1` cases are
+short-circuited by clamping before the fraction is entered. **No test had ever
+evaluated the routine in the region where it was wrong.**
+
+The fix is to generate the parameter that matters:
+
+```ts
+fc.double({ min: Number.MIN_VALUE, max: 1, noNaN: true })
+```
+
+`Number.MIN_VALUE` rather than an arbitrary "small" number, because the error grew
+as `p` shrank and the smallest representable positive `p` is where it was worst.
+
+**Verification that the new tests are not decoration.** Each was run against the
+defective code with the fix reverted, one defect at a time:
+
+| Injected defect | Tests that turn red |
+| --- | --- |
+| `Math.abs` removed from the `logGamma` reflection branch | 3 — including the generative anchor |
+| complementary branch removed from `regularizedIncompleteBeta` | 5 — including both generative anchors |
+
+Both defects are now caught by more than one independent test, and by at least one
+that asserts a **property over generated inputs** rather than a constant.
+
+> **A property test is only as strong as its generator.** `fc.property` with a
+> free variable that is then overridden by a constant in the enclosing scope is
+> strictly weaker than no property test at all, because it reads as a general
+> claim. When adding one, the question to ask is: *which input would have to occur
+> for this to fail, and does the generator produce it?*

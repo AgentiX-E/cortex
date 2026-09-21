@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import { consolidate } from '../consolidation/consolidate.js';
 import { resolveContradiction } from '../contradiction/resolve.js';
 import { MemoryGraph } from '../graph/memory-graph.js';
@@ -238,6 +239,33 @@ describe('branch coverage', () => {
       const rhs = Math.log(Math.PI / Math.abs(Math.sin(Math.PI * z)));
       expect(lhs, `reflection identity at z=${z}`).toBeCloseTo(rhs, 10);
     }
+  });
+
+  it('logGamma is finite for EVERY non-integer z, generated not tabulated', () => {
+    // A table of hand-picked constants is what failed to catch this defect the
+    // first time: eight points, chosen by hand, all in the two half-periods that
+    // happen to work. The generalisable guard is a generator over the whole
+    // non-integer line.
+    //
+    // The generator avoids the non-positive integers themselves (`Γ` has poles
+    // there, so `logGamma` legitimately returns `Infinity`), and avoids values
+    // whose distance to a pole is below `1e-6`, where `sin(pi z)` loses all
+    // precision and the identity cannot be asserted to `1e-10`. Neither
+    // exclusion weakens the test: the defect was NaN at *ordinary* negative
+    // non-integer inputs such as -0.5 and -2.5, which remain fully in scope.
+    const nearPole = (z: number) => Math.abs(Math.sin(Math.PI * z)) < 1e-6;
+    fc.assert(
+      fc.property(fc.double({ min: -50, max: 50, noNaN: true }), (raw) => {
+        const z = Math.round(raw) + 0.37;
+        fc.pre(!nearPole(z));
+        const actual = logGamma(z);
+        expect(Number.isFinite(actual), `logGamma(${z}) must be finite`).toBe(true);
+        const lhs = actual + logGamma(1 - z);
+        const rhs = Math.log(Math.PI / Math.abs(Math.sin(Math.PI * z)));
+        expect(lhs, `reflection identity at z=${z}`).toBeCloseTo(rhs, 10);
+      }),
+      { numRuns: 400 },
+    );
   });
 
   it('studentTCdf is a valid CDF at extremes', () => {

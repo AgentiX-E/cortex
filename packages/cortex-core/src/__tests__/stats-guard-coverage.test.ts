@@ -3,16 +3,28 @@
  *
  * ## Why these tests exist
  *
- * Five guard bodies in `betaContinuedFraction` and one in `welchTTest` carry
+ * Five guard bodies in `betaContinuedFraction` carry
  * `c8 ignore next -- defensive guard, unreachable via valid inputs`.
  * **That stated reason was measured and found to be false** — see
  * `docs/FIX-COVERAGE-GATE-NOISE.md` §5 and the throwing-sentinel table there:
- * replacing each in-loop body with a `throw` fails six existing tests apiece.
+ * replacing each in-loop body with a `throw` failed six existing tests apiece at
+ * the revision then under test.
  *
- * The guards are therefore *reachable*, and the annotations were suppressing a
- * real coverage gap rather than documenting unreachable code. This file closes
- * the gap the honest way: it drives each guard from the public API, so the
- * annotations can be deleted on their own evidence instead of merely relabelled.
+ * ## ...and the same experiment now says the opposite
+ *
+ * The sentinel experiment was re-run after the two defects in §6.3 and §6.4 were
+ * fixed (`logGamma`'s reflection sign, `regularizedIncompleteBeta`'s missing
+ * complementary branch). **The suite is now green with the sentinels in place**,
+ * so at the current revision the guards are genuinely unreachable and the
+ * annotations are correct — by accident, not by intent. Both measurements are
+ * right; they were taken on different revisions. An annotation is a claim about
+ * a specific revision, and the `c8 ignore` text here has not changed since it was
+ * written, so it cannot distinguish the two states. See §5.1 of the same doc.
+ *
+ * This file is therefore a *characterisation* suite, not a gap-closer: it pins
+ * the behaviour of the asymptotic path the guards sit on, so that if a future
+ * change makes those guards load-bearing again, the change is visible here rather
+ * than only in the coverage number.
  *
  * ## What "driving the guard" actually requires
  *
@@ -33,6 +45,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 import { binomialCdf, studentTCdf } from '../math/stats.js';
 
 describe('underflow guards in the regularized incomplete beta', () => {
@@ -131,5 +144,42 @@ describe('underflow guards in the regularized incomplete beta', () => {
       }
       expect(previous, `binomialCdf(40, 40, ${p})`).toBeCloseTo(1, 12);
     }
+  });
+
+  it('agrees with an independent pmf sum for generated small p', () => {
+    // The grid above is a list of five hand-chosen `p`. The complementary-branch
+    // defect in `regularizedIncompleteBeta` was invisible on almost all of those
+    // values, and every other `binomialCdf` assertion that existed before this
+    // round used `p = 0.5`, `0` or `1` -- so no test in the repository had ever
+    // entered the region where the routine was wrong. Generating `p` over the
+    // whole open unit interval, with `Number.MIN_VALUE` as the floor, is what
+    // makes the region reachable: the error grows as `p` shrinks, and the
+    // smallest representable positive `p` is where it was worst.
+    //
+    // Asserted against the pmf sum computed here, not against the implementation.
+    const pmfSum = (k: number, n: number, p: number): number => {
+      let total = 0;
+      let binom = 1;
+      for (let i = 0; i <= k; i++) {
+        if (i > 0) {
+          binom = (binom * (n - i + 1)) / i;
+        }
+        total += binom * p ** i * (1 - p) ** (n - i);
+      }
+      return total;
+    };
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 30 }),
+        fc.integer({ min: 0, max: 29 }),
+        fc.double({ min: Number.MIN_VALUE, max: 1, noNaN: true }),
+        (n, kRaw, p) => {
+          const k = Math.min(kRaw, n - 1);
+          const expected = Math.min(1, pmfSum(k, n, p));
+          expect(binomialCdf(k, n, p), `binomialCdf(${k}, ${n}, ${p})`).toBeCloseTo(expected, 10);
+        },
+      ),
+      { numRuns: 300 },
+    );
   });
 });
