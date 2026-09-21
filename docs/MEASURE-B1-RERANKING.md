@@ -12,14 +12,14 @@ ordering layer in `cortex-core`, two pluggable adapters in `cortex-llm` (remote
 `/rerank` and local cross-encoder), an environment-driven factory in
 `cortex-eval`, and it is wired into both retrieval paths of the memory system.
 
-| Layer | Location | Coverage (stmts/branch/funcs/lines) |
-| --- | --- | --- |
-| Pure ordering | `cortex-core/src/retrieval/rerank.ts` | 100 / 100 / 100 / 100 |
-| Adapters | `cortex-llm/src/rerank/rerank.ts` | 100 / 100 / 100 / 100 |
-| LLM adapter | `cortex-llm/src/rerank/llm-reranker.ts` | 100 / 100 / 100 / 100 |
-| Factory | `cortex-eval/src/rerank-factory.ts` | 100 / 100 / 100 / 100 |
-| Wiring | `cortex-eval/src/natural-language-memory.ts` | 100 / 98.96 / 100 / 100 |
-| A/B arm | `cortex-eval/src/runner.ts` | 98.92 / 94.64 / 100 / 98.92 |
+| Layer         | Location                                     | Coverage (stmts/branch/funcs/lines) |
+| ------------- | -------------------------------------------- | ----------------------------------- |
+| Pure ordering | `cortex-core/src/retrieval/rerank.ts`        | 100 / 100 / 100 / 100               |
+| Adapters      | `cortex-llm/src/rerank/rerank.ts`            | 100 / 100 / 100 / 100               |
+| LLM adapter   | `cortex-llm/src/rerank/llm-reranker.ts`      | 100 / 100 / 100 / 100               |
+| Factory       | `cortex-eval/src/rerank-factory.ts`          | 100 / 100 / 100 / 100               |
+| Wiring        | `cortex-eval/src/natural-language-memory.ts` | 100 / 98.96 / 100 / 100             |
+| A/B arm       | `cortex-eval/src/runner.ts`                  | 98.92 / 94.64 / 100 / 98.92         |
 
 61 tests in the first revision. The second added the LLM adapter, the local
 provider branch, the A/B arm and the retry coverage. The third added the fallback
@@ -70,7 +70,7 @@ already exists.
 `retrieveTopKByQueries` performs reciprocal rank fusion and then **truncates to
 `topK` internally**. By the time a reranker sees the pool, everything outside
 the bi-encoder's top-K has already been discarded. With the default pool the
-reranker can only *permute the survivors*; it cannot rescue a turn the embedding
+reranker can only _permute the survivors_; it cannot rescue a turn the embedding
 ranked just below the cut.
 
 This is the constraint that decides whether reranking can do anything at all,
@@ -112,12 +112,12 @@ means the ordering can be reasoned about without a provider.
 Reranking reorders; it must not filter. Every failure mode returns the **input
 order** rather than a truncated list:
 
-| Failure | Behaviour |
-| --- | --- |
-| Scorer throws | input order |
-| Response is not an array | input order |
-| Response length ≠ candidate count | input order |
-| Any score non-finite | input order |
+| Failure                           | Behaviour                 |
+| --------------------------------- | ------------------------- |
+| Scorer throws                     | input order               |
+| Response is not an array          | input order               |
+| Response length ≠ candidate count | input order               |
+| Any score non-finite              | input order               |
 | Score valid but negative (logits) | accepted, ranked normally |
 
 A short response is treated as a failure rather than padded, because truncating
@@ -134,15 +134,15 @@ shift.
 
 ### 3.4 Three adapters, none a single point of lock-in
 
-| Adapter | Transport | Credential | Rationale |
-| --- | --- | --- | --- |
-| `OpenAICompatibleReranker` | `POST /rerank` | `RERANK_API_KEY` | The convention shared by Cohere, Jina, Voyage, and self-hosted bge proxies. Base URL and model are both configurable. |
-| `CrossEncoderReranker` | local transformers.js | none | Offline fallback: no provider, no key, no network — the same escape hatch the embedding layer already has. |
-| `LLMReranker` | the existing `LLM` | the chat key (`DEEPSEEK_API_KEY`) | Listwise scoring through the chat endpoint. For providers that ship no `/rerank` surface, and for reusing a credential the pipeline already holds. |
+| Adapter                    | Transport             | Credential                        | Rationale                                                                                                                                          |
+| -------------------------- | --------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OpenAICompatibleReranker` | `POST /rerank`        | `RERANK_API_KEY`                  | The convention shared by Cohere, Jina, Voyage, and self-hosted bge proxies. Base URL and model are both configurable.                              |
+| `CrossEncoderReranker`     | local transformers.js | none                              | Offline fallback: no provider, no key, no network — the same escape hatch the embedding layer already has.                                         |
+| `LLMReranker`              | the existing `LLM`    | the chat key (`DEEPSEEK_API_KEY`) | Listwise scoring through the chat endpoint. For providers that ship no `/rerank` surface, and for reusing a credential the pipeline already holds. |
 
 The third adapter was added after a question that exposed a gap in the first two:
-*a chat provider with no `/rerank` endpoint is not a rerank provider, so is
-reranking blocked on a second vendor?* The answer is no. DeepSeek publishes no
+_a chat provider with no `/rerank` endpoint is not a rerank provider, so is
+reranking blocked on a second vendor?_ The answer is no. DeepSeek publishes no
 dedicated reranking model and no `/rerank` endpoint — verified against its
 endpoint list — but it does not need to, because reranking is not a protocol, it
 is a scoring function. Routed through the same `LLM` abstraction the judge and
@@ -225,28 +225,28 @@ meant to promote unadmitted.
 
 ## 5. Acceptance criteria
 
-| Criterion | Status |
-| --- | --- |
-| Pure ordering logic in `cortex-core`, zero I/O | met |
-| Provider-agnostic; offline fallback **reachable** | met (was not: see §5.1) |
-| Provider-agnostic; **credential reuse** without a second vendor | met (`CORTEX_RERANK_PROVIDER=llm`) |
-| Default-off; misconfiguration throws | met |
-| Both retrieval paths wired through one helper | met |
-| Candidate-pool limitation removable and pinned by test | met |
-| Protected-head control reachable from the benchmark | met (was not) |
-| A dedicated A/B arm exists for the stage | met (`runRerankAblation`) |
-| API values reach the bench process in CI | met (was not: see §5.2) |
-| `hits[0].score` read sites audited | met (`docs/AUDIT-B1-HITS0-READ-SITES.md`) |
-| ≥95% coverage on every dimension, all packages | met (100% on all new modules) |
-| No mocks; only the model boundary is faked | met |
-| Workspace suite green | met (1228 tests) |
+| Criterion                                                       | Status                                    |
+| --------------------------------------------------------------- | ----------------------------------------- |
+| Pure ordering logic in `cortex-core`, zero I/O                  | met                                       |
+| Provider-agnostic; offline fallback **reachable**               | met (was not: see §5.1)                   |
+| Provider-agnostic; **credential reuse** without a second vendor | met (`CORTEX_RERANK_PROVIDER=llm`)        |
+| Default-off; misconfiguration throws                            | met                                       |
+| Both retrieval paths wired through one helper                   | met                                       |
+| Candidate-pool limitation removable and pinned by test          | met                                       |
+| Protected-head control reachable from the benchmark             | met (was not)                             |
+| A dedicated A/B arm exists for the stage                        | met (`runRerankAblation`)                 |
+| API values reach the bench process in CI                        | met (was not: see §5.2)                   |
+| `hits[0].score` read sites audited                              | met (`docs/AUDIT-B1-HITS0-READ-SITES.md`) |
+| ≥95% coverage on every dimension, all packages                  | met (100% on all new modules)             |
+| No mocks; only the model boundary is faked                      | met                                       |
+| Workspace suite green                                           | met (1228 tests)                          |
 
 ### §5.3 Pre-registration: what this run can and cannot decide
 
 Recorded **before** the first B1 run reports, so that the reading cannot be chosen
 after the number is known.
 
-**Design.** One dispatch of `.github/workflows/benchmark.yml` yields a *paired* A/B,
+**Design.** One dispatch of `.github/workflows/benchmark.yml` yields a _paired_ A/B,
 because `runRerankAblation` constructs both arms itself: `rerank-baseline` (no
 reranker) and `rerank-feature` (reranker attached), over one instance list, sharing
 one answer cache. Sharing the cache is not an optimisation — the hosted endpoint is
@@ -261,7 +261,7 @@ Two choices carry the whole experiment:
 
 - **`pool=60` and not the default.** `retrieveTopKByQueries` truncates to `topK`
   internally, and `topK` is 15. With the pool left at its default the reranker can
-  only *permute the 15 survivors* — it cannot promote evidence cosine ranked 20th.
+  only _permute the 15 survivors_ — it cannot promote evidence cosine ranked 20th.
   A test run with the default would therefore measure a permutation, report ~0, and
   that ~0 would be about the pool width, not about reranking. 60 is 4x the context
   width, inside the 3-10x band the option's own documentation names.
@@ -269,7 +269,7 @@ Two choices carry the whole experiment:
   off `hits[0].score` to an order-independent `maxHitScore`, so the confound that
   motivated the pin is no longer present. Pinning here would suppress a real effect
   to guard against one that the code no longer has. It stays available as the
-  *diagnostic* if the measured abstention shift turns out non-zero.
+  _diagnostic_ if the measured abstention shift turns out non-zero.
 
 ### 5.3.1 A cost ceiling this configuration reveals
 
@@ -284,14 +284,14 @@ why 60 is a defensible setting rather than an over-reach.
 
 But it is not far from the edge, and the failure mode at the edge is a specific one:
 
-| Pool | Approx. prompt | Expected behaviour |
-| --- | --- | --- |
-| 15 (default) | ~7.5K tokens | Comfortable, but the reranker can only permute the 15 survivors. |
-| 60 (this run) | ~30K tokens | Sized to the task. |
-| >= 128 | ~64K+ tokens | Exceeds the context window; **every** call fails. |
+| Pool          | Approx. prompt | Expected behaviour                                               |
+| ------------- | -------------- | ---------------------------------------------------------------- |
+| 15 (default)  | ~7.5K tokens   | Comfortable, but the reranker can only permute the 15 survivors. |
+| 60 (this run) | ~30K tokens    | Sized to the task.                                               |
+| >= 128        | ~64K+ tokens   | Exceeds the context window; **every** call fails.                |
 
 The last row is the one that matters, because it fails in the way §7.1 exists to
-catch. An over-wide pool does not degrade the result — it produces a *total* parse
+catch. An over-wide pool does not degrade the result — it produces a _total_ parse
 failure, so `score` returns an empty array, `rerankHits` returns the input order,
 and the arm reports `0.00pp`. That is the correct, safe outcome, and it is only
 distinguishable from a genuine null because `fallbackCount` is now reported.
@@ -306,11 +306,11 @@ each capability lands near 16-17 questions. For a paired McNemar test that is a
 weak instrument: to reach p<0.05 one-sided, the discordant pairs must be roughly
 6-to-0 or 7-to-1. So:
 
-| Outcome | Permitted reading |
-| --- | --- |
-| p<0.05 with MR and TR both up | The pre-registered criterion is met. |
-| p≥0.05 | **Underpowered, not refuted.** This run cannot separate "no effect" from "effect below detection at n≈16". |
-| MR up, TR down by more than MR's gain | Pre-registered reversal condition: no net benefit, roll back. |
+| Outcome                               | Permitted reading                                                                                          |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| p<0.05 with MR and TR both up         | The pre-registered criterion is met.                                                                       |
+| p≥0.05                                | **Underpowered, not refuted.** This run cannot separate "no effect" from "effect below detection at n≈16". |
+| MR up, TR down by more than MR's gain | Pre-registered reversal condition: no net benefit, roll back.                                              |
 
 The distinction in row 2 is the same one the retry arm already cost this project
 (`docs/09-progress-and-delivery-report.md` §7.1): an underpowered zero constrains
@@ -325,6 +325,26 @@ what we know, not what the product does.
 3. The MR/TR per-capability pair, not the aggregate. A mechanism that helps one
    capability and hurts another nets to zero in the average, which is exactly the
    failure mode the per-capability split exists to expose.
+
+### 5.3.2 Wiring verified end to end, without claiming a measurement
+
+Before the CI run reported, the arm was executed locally against the synthetic mini
+dataset purely to prove the path executes. **This produces no benchmark number and
+none may be read from it**: the mini dataset is 13 questions across five
+capabilities, so it is a wiring check, not an experiment.
+
+What it established, in order of how much each matters:
+
+| Observation                                            | Why it matters                                                                                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| The reranker was invoked **13 times for 13 questions** | One listwise call per question, and the feature side is not silently identical to the baseline.                                             |
+| `fallbacks` read `{fallbackCount: 0, bucketCount: 13}` | The counters are reachable _and_ distinguishable from "no data". A `null` here would have meant the verdict could not be attributed at all. |
+| Abstention shift was `0`                               | Both sides declined identically, so the delta is not confounded by a moved boundary.                                                        |
+| MR reported `total: 2`, TR `total: 3`                  | **The power concern in §5.3 is not hypothetical.** At these sizes a McNemar test cannot reach significance at any realistic effect.         |
+
+The last row is the one worth keeping. It is the measured confirmation that a small
+run's `p >= 0.05` means "not detected", and the reason §5.3 fixes the reading rules
+before the number exists rather than after.
 
 ### 5.1 "Offline fallback exists" was not true
 
@@ -354,7 +374,6 @@ and their `env:` entries now exist (`rerank`, `rerank_provider`,
 The roadmap stated that "workflow 的 5 个透传变量已就位". They were not. The
 claim is corrected there rather than only here, because a reader planning a
 dispatch from the roadmap would otherwise expect a secret to be sufficient.
-
 
 ## 6. What is deliberately not claimed
 
@@ -404,11 +423,11 @@ not help" and "reranking never ran" were the same output. The arm now reports th
 counters (`RerankFallbackReport`), read from the reranker **after** both systems
 have run:
 
-| Reading | Meaning |
-| --- | --- |
-| `fallbacks: null` | The reranker exposes no counters (a plain `RerankScoreFn`). The delta is unattributed either way. |
-| `fallbackCount === 0` | Every bucket parsed. The delta measures the reranker. |
-| `fallbackCount > 0` | The reranker declined to score some buckets. It was **more conservative** than intended, so the delta **understates** the feature. |
+| Reading               | Meaning                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `fallbacks: null`     | The reranker exposes no counters (a plain `RerankScoreFn`). The delta is unattributed either way.                                  |
+| `fallbackCount === 0` | Every bucket parsed. The delta measures the reranker.                                                                              |
+| `fallbackCount > 0`   | The reranker declined to score some buckets. It was **more conservative** than intended, so the delta **understates** the feature. |
 
 `null` rather than `0` is deliberate: a fabricated zero would be an unmeasured
 number presented beside measured ones. The partially-instrumented case is treated
@@ -421,14 +440,14 @@ The first attempt to run the A/B in the agent sandbox failed, and the failure is
 recorded because it is a real constraint on how this measure can be executed, not
 an incidental inconvenience. All three paths were probed; the results:
 
-| Requirement | Sandbox result | Evidence |
-| --- | --- | --- |
-| LongMemEval-S dataset | **Absent** | No `data/` directory in either package; no `longmemeval_s_cleaned.json` anywhere on disk |
-| `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `RERANK_API_KEY`, `HF_TOKEN` | **All unset** | Enumerated from the environment |
-| `huggingface.co` | **Blackholed** | `http=000`; DNS answers rewritten to `198.18.0.0/15` |
-| `registry.npmjs.org` | Reachable | `http=200` after the resolver workaround |
-| `hf-mirror.com` | Reachable | Model config and tokenizer fetched (`config.json`, 711 KB `tokenizer.json`) |
-| ONNX weights | **Unreachable** | The mirror 302s to `cas-bridge.xethub.hf.co`, which is `http=000` |
+| Requirement                                                       | Sandbox result  | Evidence                                                                                 |
+| ----------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------- |
+| LongMemEval-S dataset                                             | **Absent**      | No `data/` directory in either package; no `longmemeval_s_cleaned.json` anywhere on disk |
+| `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `RERANK_API_KEY`, `HF_TOKEN` | **All unset**   | Enumerated from the environment                                                          |
+| `huggingface.co`                                                  | **Blackholed**  | `http=000`; DNS answers rewritten to `198.18.0.0/15`                                     |
+| `registry.npmjs.org`                                              | Reachable       | `http=200` after the resolver workaround                                                 |
+| `hf-mirror.com`                                                   | Reachable       | Model config and tokenizer fetched (`config.json`, 711 KB `tokenizer.json`)              |
+| ONNX weights                                                      | **Unreachable** | The mirror 302s to `cas-bridge.xethub.hf.co`, which is `http=000`                        |
 
 So the `local` path fails on exactly one file — the ONNX weights the cross-encoder
 needs to run — and the `llm` path fails on its credential. Neither is a defect in
@@ -450,7 +469,7 @@ exported signature.
 `bench/run.ts` imports this package **by its own name**:
 
 ```ts
-import { runRerankAblation, /* ... */ } from '@agentix-e/cortex-eval';
+import { runRerankAblation /* ... */ } from '@agentix-e/cortex-eval';
 ```
 
 Under `moduleResolution: NodeNext`, a package's own name resolves through
