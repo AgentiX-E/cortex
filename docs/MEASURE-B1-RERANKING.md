@@ -271,6 +271,43 @@ Two choices carry the whole experiment:
   to guard against one that the code no longer has. It stays available as the
   _diagnostic_ if the measured abstention shift turns out non-zero.
 
+### 5.3.3 The pre-registration, executed — first measured dispatch
+
+> The verdict lives in [`VERDICT-B1-RERANKING.md`](VERDICT-B1-RERANKING.md). This
+> section records only what the pre-registration above predicted versus what the
+> run delivered, so the two can be compared without moving the goalposts.
+
+Run `35624110842`, `completed/success`, 15/15 steps green; artifact `10654395809`
+retrieved byte-exact. Configuration was exactly the one pre-registered above.
+
+| Pre-registered item | Predicted before the data | Observed |
+| --- | --- | --- |
+| Δ accuracy | not predicted | **+1.33 pp** (86.00% → 87.33%) |
+| McNemar p | not predicted | **0.7539**, not significant |
+| Reading rule 1: `fallbacks` | if non-null and non-zero, no verdict follows | **`null`** — see below |
+| Reading rule 2: `abstentionShift` | if non-zero, the delta is confounded | **+2.00 pp — confounded** |
+| Reading rule 3: MR/TR pair, not aggregate | — | MR **0 vs 0**; TR 2 vs 0 |
+| Power: `p>=0.05` means underpowered, not refuted | stated as the expected outcome | **exactly what happened** |
+
+**Reading rule 1 fired in a way the pre-registration did not anticipate.** The rule
+anticipates `fallbacks` being non-null and non-zero. It was `null` — which the rule
+reads as "this reranker has no counters", the correct answer for the local
+cross-encoder. It was also the answer for `provider=llm`, the one provider that
+does have counters, because `buildReranker` returned `new LLMReranker({ llm }).score`
+and `.score` is an instance-bound arrow function that does not carry the getters.
+The counters were unreachable through the factory boundary on **all three**
+providers, so the pre-registered rule could not be evaluated as written. Fixed;
+see the verdict document §5.
+
+**The `RERANK_PROTECTED_HEAD` decision above is now falsifiable, and it was
+falsified.** The pre-registration argued the pin was unnecessary because the
+abstention signal had been moved off `hits[0].score` to `maxHitScore`. That is
+true of five of seven read sites — but `AUDIT-B1-HITS0-READ-SITES.md` found sites
+`571` and `1009` still reading position 1, and the measured abstention shift is
+**+2.00 pp**, not the ~0 the argument implies. The audit document existed and
+said so; this section's reasoning did not consult it. The confound is real and
+the control that isolates it (`RERANK_PROTECTED_HEAD=1`) is the next dispatch.
+
 ### 5.3.1 A cost ceiling this configuration reveals
 
 Calculated before the result arrived, because it bounds what any `llm`-provider run

@@ -1,8 +1,9 @@
 # OPS — A Completed Run's Artifact and Logs Can Be Unfetchable
 
-**Status:** characterised and diagnosed; not fixable from our side. Workaround is
-to re-dispatch. Recorded because the failure mode is indistinguishable from a
-permission problem and cost real time to separate from one.
+**Status:** characterised and diagnosed; partly recoverable — see §6, which
+amends the "re-dispatch only" conclusion below. Recorded because the failure mode
+is indistinguishable from a permission problem and cost real time to separate
+from one.
 
 ---
 
@@ -294,3 +295,60 @@ to actually exercise it; see §4.
 > channel failure was invisible. Redundancy here is not an optimisation; it is
 > what makes the green light mean anything — provided the run is dispatched at a
 > commit that has it.
+
+## 6. Amendment: one of the two modes IS recoverable, and "re-dispatch only" was wrong
+
+§2.1.2 concluded that the `sa18` TLS-interception mode is unrecoverable and that
+"re-dispatch only" is the remedy for both modes. **A later retrieval disproves
+that for `sa18`.**
+
+Artifact `10654395809` (`productionresultssa18`, 1,298,259 bytes) was fetched
+successfully through this repository's own `tools/fetch-artifact.py`, which
+resolves the signed host over DoH and substitutes the real A records before
+connecting:
+
+```
+egress  : substituted answers (local resolver returned 198.18.x)
+          productionresultssa18.blob.core.windows.net -> 20.150.88.228,
+                                                         52.239.172.36,
+                                                         20.150.82.228
+artifact: .../actions/artifacts/10654395809/zip -> 200, 1298258 bytes
+written : /tmp/b1-artifact.zip
+```
+
+Two competing explanations were on the table, and this separates them:
+
+| Explanation | Prediction | Observed |
+| --- | --- | --- |
+| Transport-level TLS interception cannot be worked around | fails even with the real address | **contradicted** — 200 with the real address |
+| The synthetic `198.18.0.53` answer was the problem | succeeds once the real address is supplied | **confirmed** |
+
+The earlier measurement saw TCP connect in 0.00s and TLS die immediately, and
+read that as egress interception. It is consistent with interception, but it is
+**also** exactly what happens when a connection is accepted by a sinkhole at the
+synthetic address. The second reading is the correct one: the failure was in
+**name resolution**, and supplying the address the resolver would not give fixes
+it.
+
+This does **not** contradict §2.1.1's finding that the SAS is host-bound — that
+remains true, and substituting a *different* host still returns `403`. DoH
+supplies the right address for the **same** host, which is a categorically
+different operation from cross-host substitution.
+
+### 6.1 Corrected remedy
+
+| Mode | Host | Recoverable? | Correct action |
+| --- | --- | --- | --- |
+| Absent account | `sa16` | **no** — the account does not exist behind the name | re-dispatch |
+| Name resolution | `sa18` | **yes** | `python3 tools/fetch-artifact.py <id> <repo> <dest.zip>` |
+
+**Try the DoH fetch first; re-dispatch only if `tools/fetch-artifact.py` reports
+that it resolved nothing.** The earlier document's advice to re-dispatch
+immediately would have discarded a complete measurement set for no reason.
+
+> **Lesson, fifth instance, and the sharpest one.** The previous four lessons in
+> this file were about attributing a failure to the wrong cause. This one is
+> about a **diagnosis that was correct and still produced the wrong decision**:
+> "TLS interception" accurately described the *symptom*, and the remedy was
+> derived from where the symptom appeared rather than from where the cause lived.
+> A symptom at the transport layer does not imply a cause at the transport layer.

@@ -94,6 +94,24 @@ function resolveProvider(env: RerankEnv): RerankProvider {
   return found;
 }
 
+/**
+ * A `RerankScoreFn` that also carries live fallback counters.
+ *
+ * The counters are defined as getters that read through to `adapter` on every
+ * access rather than being copied once. A copy would pass a construction-time
+ * assertion and then keep reporting `0/0` after any number of failures — the same
+ * silent-unknown outcome the counters exist to prevent, just harder to notice.
+ */
+function withFallbackCounters(
+  score: RerankScoreFn,
+  adapter: { readonly fallbackCount: number; readonly bucketCount: number },
+): RerankScoreFn {
+  return Object.defineProperties(score, {
+    fallbackCount: { get: () => adapter.fallbackCount, enumerable: true },
+    bucketCount: { get: () => adapter.bucketCount, enumerable: true },
+  });
+}
+
 function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn {
   if (provider === 'local') {
     // No credential of any kind is consulted. This is the offline path, and it is
@@ -149,7 +167,8 @@ function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn 
       apiKey,
       model: env['DEEPSEEK_MODEL'] ?? DEFAULT_LLM_RERANK_MODEL,
     });
-    return new LLMReranker({ llm }).score;
+    const reranker = new LLMReranker({ llm });
+    return withFallbackCounters(reranker.score, reranker);
   }
 
   const apiKey = env['RERANK_API_KEY'];
