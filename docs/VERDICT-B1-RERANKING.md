@@ -232,3 +232,47 @@ So "re-dispatch only" should be amended to: **retry through
 `tools/fetch-artifact.py` first; re-dispatch only if the DoH resolution itself
 returns nothing.** One of the two documented modes (`sa16`, a genuinely absent
 account) remains unrecoverable, so the amendment is narrowing, not a retraction.
+
+## 7. The follow-up dispatch, and what it is designed to separate
+
+Dispatched the moment the fix above landed: **run `35693431980` on `caf20810`** —
+`limit=150`, `runs=1`, `temperature=0`, `rerank=on`, `provider=llm`, `pool=60`,
+and **`RERANK_PROTECTED_HEAD=1`**.
+
+The pin is the whole point, and it is one of the two configurations
+`AUDIT-B1-HITS0-READ-SITES.md` §4 calls legitimate:
+
+| Configuration | Question it answers |
+| --- | --- |
+| unprotected (run `35624110842`) | what happens if reranking ships with abstention coupling included |
+| **protected head ≥ 1** (run `35693431980`) | how much of the change is reranking the *evidence* rather than moving the *abstention boundary* |
+
+`rerankProtectedHead` pins the leading hit, and read sites `571` and `1009` take
+abstention confidence from `hits[0].score`, so a protected head of 1 makes that
+confidence **invariant** under reranking. The expected signature of a clean
+attributable effect is therefore:
+
+1. `abstentionShift` ≈ 0 — the confound removed, not merely hoped away;
+2. the MR/TR pair readable as evidence about answer content.
+
+And the precondition this document exists to establish: **the run must report a
+non-null `fallbacks`.** If it reports `null` again, the fix did not survive
+whatever path the workflow takes to the bench process, and that is a second
+defect — not a second reading.
+
+### 7.1 What would change the verdict, stated before the data
+
+The verdict in §1 is "undecided". These are the observations that would move it,
+fixed now so they cannot be chosen afterwards:
+
+| Observation in `35693431980` | Revised verdict |
+| --- | --- |
+| `abstentionShift` ≈ 0 **and** TR moves with p<0.05 | reranking has an attributable effect on TR; revisit shipping it |
+| `abstentionShift` ≈ 0 **and** TR/MR both ~0 | reranking has no detectable effect at this sample size — still underpowered, so **not** a refutation |
+| `abstentionShift` still non-zero with the head pinned | the pin does not reach the coupling; the audit's two read sites are not the whole mechanism, and that becomes the next investigation |
+| `fallbacks` non-null and non-zero | the previous run's numbers are uninterpretable in a *second*, measured way — re-read `35624110842`'s delta as counting an arm that partly abstained |
+
+Note the third row: it is the outcome the pre-registration has no branch for, and
+it would mean the abstention confound has a cause beyond the two lines the audit
+found. Recording that in advance is the point — an unexpected result should
+produce a new investigation, not a retro-fitted explanation.
