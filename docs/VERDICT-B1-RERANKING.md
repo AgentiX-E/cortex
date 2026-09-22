@@ -13,10 +13,10 @@ not by assumption.
 
 ## 1. Headline
 
-| Arm | Configuration | Accuracy | Correct |
-| --- | --- | --- | --- |
-| baseline | shipped pipeline, reranking off | **86.00%** | 129/150 |
-| feature | reranking on, `llm` provider, pool 60 | **87.33%** | 131/150 |
+| Arm      | Configuration                         | Accuracy   | Correct |
+| -------- | ------------------------------------- | ---------- | ------- |
+| baseline | shipped pipeline, reranking off       | **86.00%** | 129/150 |
+| feature  | reranking on, `llm` provider, pool 60 | **87.33%** | 131/150 |
 
 - **Δ accuracy: +1.33 pp** (feature − baseline)
 - **McNemar p = 0.7539** — not significant
@@ -39,7 +39,7 @@ That is the honest field value, and it is also the defect. `fallbacks: null` is
 supposed to mean "this reranker has no fallback concept" — the correct answer for
 the local cross-encoder, which throws rather than abstaining. It was **also** the
 answer for `provider=llm`, which is the one provider the dispatch used and the
-one provider that *does* have the concept.
+one provider that _does_ have the concept.
 
 Cause, confirmed by probe rather than inference:
 
@@ -61,8 +61,8 @@ had no effect" from "reranking never ran". With them unreachable, this run's
 the adapter returned `[]`, and `rerankHits` preserved the retrieved order. The
 dispatch's `CORTEX_RERANK_PROVIDER=llm` and the presence of a non-zero
 `abstentionShift` (§2.2) both make a total failure **implausible** — an arm that
-never reranked cannot move the abstention boundary. But *implausible by argument*
-is not *measured*, and this project does not accept the former where the latter
+never reranked cannot move the abstention boundary. But _implausible by argument_
+is not _measured_, and this project does not accept the former where the latter
 is obtainable.
 
 Fixed in the same change as this document; see §5.
@@ -71,15 +71,15 @@ Fixed in the same change as this document; see §5.
 
 The pre-registered rule is categorical:
 
-| Abstention shift | What the accuracy delta means |
-| --- | --- |
-| ≈ 0 | attributable to reranking's effect on which evidence is read |
-| non-zero | **confounded** — the system changed when it declines, not only what it reads |
+| Abstention shift | What the accuracy delta means                                                |
+| ---------------- | ---------------------------------------------------------------------------- |
+| ≈ 0              | attributable to reranking's effect on which evidence is read                 |
+| non-zero         | **confounded** — the system changed when it declines, not only what it reads |
 
 The measured shift is **+2.00 pp** (16.67% → 18.67% abstention rate; 25 → 28
 abstentions), so the second row applies. The `+1.33 pp` accuracy change is **not
 attributable to reranking the evidence**; it is entangled with a reranker-driven
-move in *when the system declines to answer*.
+move in _when the system declines to answer_.
 
 `AUDIT-B1-HITS0-READ-SITES.md` predicted exactly this, and named the mechanism:
 read sites `571` and `1009` take abstention confidence from `hits[0].score`, so a
@@ -91,13 +91,13 @@ the confound was known, bounded, and left in place on purpose, with the control
 
 ### 2.3 The MR/TR pair — and why "not significant" is the wrong summary
 
-| Capability | n | baseline | feature | b✓f✗ | b✗f✓ | McNemar p |
-| --- | --- | --- | --- | --- | --- | --- |
-| IE | 64 | 90.63% | 89.06% | 3 | 2 | 1.000 |
-| **MR** | 22 | 81.82% | **81.82%** | 0 | 0 | 1.000 |
-| KU | 21 | 71.43% | 76.19% | 1 | 2 | 1.000 |
-| **TR** | 21 | 80.95% | **90.48%** | 0 | 2 | 0.500 |
-| ABS | 22 | 95.45% | 95.45% | 0 | 0 | 1.000 |
+| Capability | n   | baseline | feature    | b✓f✗ | b✗f✓ | McNemar p |
+| ---------- | --- | -------- | ---------- | ---- | ---- | --------- |
+| IE         | 64  | 90.63%   | 89.06%     | 3    | 2    | 1.000     |
+| **MR**     | 22  | 81.82%   | **81.82%** | 0    | 0    | 1.000     |
+| KU         | 21  | 71.43%   | 76.19%     | 1    | 2    | 1.000     |
+| **TR**     | 21  | 80.95%   | **90.48%** | 0    | 2    | 0.500     |
+| ABS        | 22  | 95.45%   | 95.45%     | 0    | 0    | 1.000     |
 
 The aggregate `+1.33 pp` is the sum of two movements in opposite directions
 (IE −1.56 pp, MR 0.00 pp, KU +4.76 pp, TR +9.52 pp, ABS 0.00 pp). Reporting the
@@ -190,11 +190,11 @@ silent-unknown outcome the counters exist to prevent, just harder to notice.
 
 Verification (TDD, tests written first and observed red):
 
-| Method | Result |
-| --- | --- |
-| 7 new tests written before the fix | **3 red** on the counter contract |
-| Defect injection: revert the fix | **4 red**, 24 passed |
-| Restore, re-run | 28 passed |
+| Method                                 | Result                                             |
+| -------------------------------------- | -------------------------------------------------- |
+| 7 new tests written before the fix     | **3 red** on the counter contract                  |
+| Defect injection: revert the fix       | **4 red**, 24 passed                               |
+| Restore, re-run                        | 28 passed                                          |
 | Live end-to-end via injected `fetchFn` | `bucketCount: 2`, `fallbackCount: 2`, `scores: []` |
 
 The end-to-end check is the one that matters: it drives the real adapter through
@@ -225,7 +225,7 @@ artifact -> 200, 1298259 bytes  (sha256 truncated 083bfeb74f7d4768)
 The distinction the earlier document drew — "the SAS is host-bound, so
 cross-host recovery is closed" — remains correct and is not contradicted: DoH
 supplies the **right** address for the **same** host, which is a different thing
-from substituting a different host. The failure was in the *name resolution*,
+from substituting a different host. The failure was in the _name resolution_,
 not in the signature.
 
 So "re-dispatch only" should be amended to: **retry through
@@ -242,10 +242,10 @@ and **`RERANK_PROTECTED_HEAD=1`**.
 The pin is the whole point, and it is one of the two configurations
 `AUDIT-B1-HITS0-READ-SITES.md` §4 calls legitimate:
 
-| Configuration | Question it answers |
-| --- | --- |
-| unprotected (run `35624110842`) | what happens if reranking ships with abstention coupling included |
-| **protected head ≥ 1** (run `35693431980`) | how much of the change is reranking the *evidence* rather than moving the *abstention boundary* |
+| Configuration                              | Question it answers                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| unprotected (run `35624110842`)            | what happens if reranking ships with abstention coupling included                               |
+| **protected head ≥ 1** (run `35693431980`) | how much of the change is reranking the _evidence_ rather than moving the _abstention boundary_ |
 
 `rerankProtectedHead` pins the leading hit, and read sites `571` and `1009` take
 abstention confidence from `hits[0].score`, so a protected head of 1 makes that
@@ -265,12 +265,12 @@ defect — not a second reading.
 The verdict in §1 is "undecided". These are the observations that would move it,
 fixed now so they cannot be chosen afterwards:
 
-| Observation in `35693431980` | Revised verdict |
-| --- | --- |
-| `abstentionShift` ≈ 0 **and** TR moves with p<0.05 | reranking has an attributable effect on TR; revisit shipping it |
-| `abstentionShift` ≈ 0 **and** TR/MR both ~0 | reranking has no detectable effect at this sample size — still underpowered, so **not** a refutation |
-| `abstentionShift` still non-zero with the head pinned | the pin does not reach the coupling; the audit's two read sites are not the whole mechanism, and that becomes the next investigation |
-| `fallbacks` non-null and non-zero | the previous run's numbers are uninterpretable in a *second*, measured way — re-read `35624110842`'s delta as counting an arm that partly abstained |
+| Observation in `35693431980`                          | Revised verdict                                                                                                                                     |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `abstentionShift` ≈ 0 **and** TR moves with p<0.05    | reranking has an attributable effect on TR; revisit shipping it                                                                                     |
+| `abstentionShift` ≈ 0 **and** TR/MR both ~0           | reranking has no detectable effect at this sample size — still underpowered, so **not** a refutation                                                |
+| `abstentionShift` still non-zero with the head pinned | the pin does not reach the coupling; the audit's two read sites are not the whole mechanism, and that becomes the next investigation                |
+| `fallbacks` non-null and non-zero                     | the previous run's numbers are uninterpretable in a _second_, measured way — re-read `35624110842`'s delta as counting an arm that partly abstained |
 
 Note the third row: it is the outcome the pre-registration has no branch for, and
 it would mean the abstention confound has a cause beyond the two lines the audit
