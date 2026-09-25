@@ -276,3 +276,133 @@ Note the third row: it is the outcome the pre-registration has no branch for, an
 it would mean the abstention confound has a cause beyond the two lines the audit
 found. Recording that in advance is the point — an unexpected result should
 produce a new investigation, not a retro-fitted explanation.
+
+## 8. The control arm: read, and it corrects §2.1 — plus one alarm that was mine, not the code's
+
+Run `35693431980` (commit `caf20810`, `RERANK_PROTECTED_HEAD=1`) completed
+success; artifact `10680667211` retrieved byte-exact.
+
+### 8.1 The precondition is satisfied, and the fix is confirmed in production
+
+```
+fallbacks = { "fallbackCount": 0, "bucketCount": 300 }
+```
+
+**300 buckets scored, zero abstentions.** This is the first run that has ever
+reported this field truthfully, and it is what §2.1 could not obtain: the
+observability gap is closed, and it was closed on the one provider the experiment
+uses. §5's fix is therefore verified in the environment it was written for, not
+merely in tests.
+
+It also retro-validates run A retrospectively: an arm that never reranked could
+not have produced these counters, so run A's reranker was running too. The
+argument §2.1 said was "plausible but not measured" is now measured.
+
+### 8.2 The control arm's numbers
+
+| Arm      | Accuracy | Correct |
+| -------- | -------- | ------- |
+| baseline | 87.33%   | 131/150 |
+| feature  | 86.00%   | 129/150 |
+
+Δ = **−1.33 pp**, McNemar p = **0.7539**, `abstentionShift` = **+0.67 pp**.
+
+Compare run A: baseline 129, feature 131, Δ = **+1.33 pp**, same p.
+
+**The two runs are exact mirrors.** Under the pre-registration in §7.1 the
+reading is the second row — `abstentionShift` is small but non-zero, and TR/MR do
+not move significantly — so the verdict is unchanged: **reranking has no
+detectable effect at this sample size.** Pinning the head did shrink the
+abstention shift (+2.00 → +0.67 pp), which is the direction §4 of
+`AUDIT-B1-HITS0-READ-SITES.md` predicts, but it did not change the conclusion.
+
+### 8.3 The alarm: two identical configurations scored differently
+
+`rerank-baseline` is by construction the shipped pipeline with no reranker. The
+same run's main test measures that same configuration as `nl-abstain-feature`. In
+run B they disagreed:
+
+| Configuration        | Source in run B | Correct     |
+| -------------------- | --------------- | ----------- |
+| `rerank-baseline`    | rerank ablation | **131**/150 |
+| `nl-abstain-feature` | main test       | **129**/150 |
+
+I raised this as a possible defect — "two configurations that should be identical
+score differently, so the pairing premise is broken". **That alarm was wrong, and
+the way it was wrong is worth recording.**
+
+### 8.4 Why they differ, and why it is not a defect
+
+The caches are declared **per ablation**:
+
+```ts
+const answerCache = new Map<string, string>(); // inside each run*Ablation
+```
+
+So the two arms _within_ an ablation share a cache, while **different ablations
+and the main benchmark do not share one with each other**. Since the hosted
+endpoint is not reproducible across calls even at `temperature = 0`, arms with
+separate caches acquire a difference they were not built to measure.
+
+This is already documented in the repository from the opposite direction
+(`runner.ts`, on the MR-adjacent arms):
+
+> shared-cache arms disagreed on **0 of 470** questions, while two
+> identically-configured arms with **separate caches** disagreed on **2 of 127**.
+
+`2 of 127` ≈ `2 of 150`. The observed gap **is** the documented behaviour, and the
+correct conclusion is the reverse of my alarm: the cross-ablation comparison is
+the invalid one, and it was never a comparison the experiment makes. Within a run
+the arms are paired, which is the whole point of `runRerankAblation` constructing
+both of them itself.
+
+### 8.5 What was actually tested, and what the tests pin
+
+Asserting "the arms agree with the main test" would be asserting something false.
+The defensible properties are:
+
+| Property                                                   | Why it matters                                                                           | Verified by           |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------- |
+| A shared cache serves each distinct prompt once            | A byte-identical prompt cannot acquire a difference the arm did not measure              | `cache-scope.test.ts` |
+| Separate caches do re-issue the same prompt                | The control that keeps the assertion above from passing vacuously                        | same file             |
+| The cache key is the **rendered prompt**, not the question | Otherwise a reranker's reorder would be invisible and the ablation would measure nothing | same file             |
+
+The third is the one that would have mattered most: if the key were the question,
+`rerank-baseline` and `rerank-feature` would share answers and B1 would have
+measured zero by construction — while reporting a plausible-looking number.
+
+Measured values on the fixture (4 completions for the first arm; sharing absorbs
+part but not all of the second, 6 total, versus 8 with separate caches) are
+asserted as observed rather than as a rounded-up "absorbs everything", because
+the gap between "absorbs most" and "absorbs all" is exactly what a reader would
+otherwise have to guess.
+
+Defect injection, both directions: a cache that never **stores** fails 2 of 2; a
+cache that never **reads** fails 1 of 2. Both restored byte-exact.
+
+### 8.6 A false positive I produced, and the fix to my own method
+
+Earlier in this investigation I reported that the reranker's scores were being
+**ignored entirely**, on the evidence that four different scorers all produced
+`["a","b","c"]`. I was wrong: my probe returned `-i` for "reverse", and
+`-0 > -1 > -2` means the **first** candidate already wins, so `["a","b","c"]` was
+correct behaviour. A second scorer in the same probe, returning `i`, produced
+`["c","b","a"]` and I did not read the pair together.
+
+The lesson is not "be careful with signs". It is that **a probe whose expected
+output is not shown beside a known-different case is not evidence** — the same
+rule this repository already applies to tests. Both the corrected probes and the
+committed test file now print a control beside the observation.
+
+### 8.7 Corrected verdict
+
+Unchanged in substance, and strengthened in basis:
+
+1. **No detectable reranking effect at n≈150**, in either the unprotected or the
+   head-pinned configuration. `p = 0.7539` in both, from discordant splits of
+   4:6 and 6:4 — the two runs differ by sign and nothing else.
+2. **Reranking stays off by default.** Nothing in either run justifies enabling it.
+3. **The observability gap is closed and verified in production** (300/300
+   buckets, 0 fallbacks), which is the durable outcome of this iteration.
+4. **No defect was found in the cache scope or the ordering path.** Both were
+   investigated on suspicion, and both were cleared with controls.
