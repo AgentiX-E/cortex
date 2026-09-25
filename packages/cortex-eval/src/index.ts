@@ -100,6 +100,14 @@ export {
   type SessionRetrievalDiagnostic,
 } from './retrieval-diagnostics.js';
 export {
+  attributeRecallGap,
+  rankingGapFailureCount,
+  type AttributeRecallGapOptions,
+  type CapabilityAccuracy,
+  type CurveSummary,
+  type RetrievalGapAttribution,
+} from './retrieval-attribution.js';
+export {
   buildRecallCurve,
   computeRecallCurve,
   classifyExclusion,

@@ -37,6 +37,8 @@ import {
   snapshotEmbeddingCache,
   toCapability,
   turnText,
+  attributeRecallGap,
+  type Metrics,
   type AblationSkipRecord,
   type DecisionTrace,
   type LongMemEvalInstance,
@@ -55,6 +57,25 @@ function answerSessionsContent(inst: LongMemEvalInstance): string[] {
     }
   }
   return out;
+}
+
+/**
+ * Flatten a `Metrics` figure into the per-capability array the attribution takes.
+ *
+ * Iterates the record rather than a hard-coded capability list, so a capability
+ * added to the dataset is attributed without a second edit here -- and a
+ * capability present in one arm but not the other is caught by the attribution's
+ * own comparison rather than silently dropped by this function.
+ */
+function toCapabilityAccuracy(
+  metrics: Metrics,
+): { capability: string; total: number; correct: number; abstained: number }[] {
+  return Object.entries(metrics.perCapability).map(([capability, value]) => ({
+    capability,
+    total: value.total,
+    correct: value.correct,
+    abstained: value.abstained,
+  }));
 }
 
 async function main(): Promise<void> {
@@ -255,6 +276,54 @@ async function main(): Promise<void> {
   }
   console.log('=== Decision reasons (feature system) ===');
   console.log(JSON.stringify(reasonCounts));
+
+  // Attribute the recall curve's k=1 gap to the mechanism that could close it.
+  //
+  // The curve reports a gap and the roadmap read it as "ranking is the
+  // bottleneck". The rerank arms then measured no effect, which refuted the
+  // inference without explaining the gap. The missing step is that a gap
+  // measures what retrieval DELIVERED, not what the reader could have USED: a
+  // question whose evidence sat at rank 30 but which the reader answered anyway
+  // from the rest of its context is not recoverable by ranking better.
+  //
+  // Writing the attribution into the artifact rather than leaving it to a probe
+  // is the point. The last three defects in this area were all a number that
+  // existed only in a console line or in an operator's notebook (see
+  // AUDIT-SILENT-DENOMINATOR.md and AUDIT-DISCORDANT-IDENTITY.md); a figure that
+  // decides which subsystem gets worked on next has to be in the artifact the
+  // decision is reviewed against.
+  const k1Point = recallCurve.points.find((point) => point.k === 1);
+  if (k1Point !== undefined) {
+    const attribution = attributeRecallGap({
+      curve: {
+        considered: recallCurve.considered,
+        ceiling: k1Point.ceiling,
+        recallAtOne: k1Point.recall,
+      },
+      baseline: toCapabilityAccuracy(report.ablation.baselineMetrics),
+      feature: toCapabilityAccuracy(report.ablation.featureMetrics),
+    });
+    writeFileSync('benchmark-gap-attribution.json', JSON.stringify(attribution, null, 2));
+    console.log('=== k=1 gap attribution ===');
+    console.log(
+      `  denominator ${attribution.curveDenominator} (run graded ` +
+        `${attribution.runQuestionCount}; ${attribution.absentFromDenominatorQuestions} ` +
+        `absent, all abstention)`,
+    );
+    console.log(
+      `  admitted ${attribution.admittedAtOne} + ranking gap ` +
+        `${attribution.rankingGapQuestions} + retrieval gap ` +
+        `${attribution.retrievalGapQuestions} = ${attribution.curveDenominator}`,
+    );
+    console.log(
+      `  of the ranking gap, ${attribution.gapAlreadyAbsorbedByReader} are already ` +
+        `absorbed by the reader; recoverable ${attribution.recoverableFromRanking}`,
+    );
+    console.log(
+      `  improvement: abstention ${attribution.improvementFromAbstention}, ` +
+        `everything else ${attribution.improvementFromOtherCapabilities}`,
+    );
+  }
 
   // Per-question correctness of the feature system, keyed by question text so the
   // diagnostics below can annotate each failure with its verdict instead of
