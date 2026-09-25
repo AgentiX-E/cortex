@@ -242,7 +242,11 @@ describe('runAblation discordant identity', () => {
    * answer is not literally `'RIGHT'`, which silently collapses the fixture to
    * "everything wrong" and makes every identity assertion vacuous.
    */
-  function systemKnowing(name: string, dataset: BenchmarkDataset, knows: readonly string[]): MemorySystem {
+  function systemKnowing(
+    name: string,
+    dataset: BenchmarkDataset,
+    knows: readonly string[],
+  ): MemorySystem {
     const known = new Set(knows);
     const expectedById = new Map(dataset.questions.map((q) => [q.id, q.expected]));
     return {

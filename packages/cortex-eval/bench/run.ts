@@ -38,7 +38,9 @@ import {
   toCapability,
   turnText,
   attributeRecallGap,
+  decomposeFailures,
   type Metrics,
+  type DiagnosticRecord,
   type AblationSkipRecord,
   type DecisionTrace,
   type LongMemEvalInstance,
@@ -389,6 +391,45 @@ async function main(): Promise<void> {
   );
   console.log('=== Single-session diagnostics ===');
   console.log(JSON.stringify(singleSessionDiagnostics, null, 2));
+
+  // Census where the failures actually are.
+  //
+  // The report states the accuracy as one figure and the roadmap spends it on
+  // capability ranking, but nothing had ever said WHICH questions are missing --
+  // even though the diagnostics above carry the capability, the verdict and the
+  // decision for every one of them. The information was in the artifact and
+  // absent from the reading of it.
+  //
+  // The census is written to its own file for the same reason the gap
+  // attribution is: a figure that decides which subsystem gets worked on next
+  // belongs in the artifact the decision is reviewed against, not in a console
+  // line. See `failure-census.ts` for why the refused/answered split is two axes
+  // rather than one, and why the capability is inferred for MR records.
+  //
+  // Both diagnostic files are read here because they partition the run: the
+  // single-session file holds everything except MR, and the MR file holds MR.
+  const census = decomposeFailures({
+    records: [
+      ...(mrDiagnostics as DiagnosticRecord[]),
+      ...(singleSessionDiagnostics as DiagnosticRecord[]),
+    ],
+  });
+  writeFileSync('benchmark-failure-census.json', JSON.stringify(census, null, 2));
+  console.log('=== Failure census ===');
+  console.log(
+    `  ${census.failed} failed of ${census.total} (${census.correct} correct); ` +
+      `${census.failedAnswered} answered wrong, ${census.failedRefused} refused wrong`,
+  );
+  console.log(`  abstained overall: ${census.abstained}`);
+  for (const [capability, slice] of Object.entries(census.byCapability).sort(
+    (a, b) => b[1].failed - a[1].failed,
+  )) {
+    console.log(
+      `    ${capability.padEnd(5)} ${String(slice.failed).padStart(3)} failed of ` +
+        `${String(slice.total).padStart(3)}  ` +
+        `(answered ${slice.failedAnswered}, refused ${slice.failedRefused})`,
+    );
+  }
 
   writeFileSync('benchmark-report.md', markdown);
   writeFileSync(

@@ -108,6 +108,12 @@ export {
   type RetrievalGapAttribution,
 } from './retrieval-attribution.js';
 export {
+  decomposeFailures,
+  type CapabilityCensus,
+  type DiagnosticRecord,
+  type FailureCensus,
+} from './failure-census.js';
+export {
   buildRecallCurve,
   computeRecallCurve,
   classifyExclusion,
