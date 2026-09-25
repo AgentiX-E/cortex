@@ -190,3 +190,152 @@ describe('runAblation', () => {
     expect(Number.isFinite(result.effectSize)).toBe(true);
   });
 });
+
+/**
+ * A discordant COUNT answers "how many" and leaves "which" unanswerable, and
+ * "which" is what separates a mechanism from a coincidence. These tests pin the
+ * identity that the count alone cannot supply.
+ *
+ * The motivation is concrete rather than theoretical. The conjunction arm
+ * reported four flips against one, all inside IE, while its target population
+ * (ABS) never moved — across six runs and 143 ABS questions, zero flips. That is
+ * the difference between "the intervention did nothing" and "the intervention
+ * did something somewhere else", and no archived artifact could show it: the
+ * report stored the flip COUNT and the feature's per-question vector, but never
+ * the question ids and never the baseline's vector.
+ */
+describe('runAblation discordant identity', () => {
+  /**
+   * A dataset whose correctness is decided entirely by question id, so a test can
+   * state "this system knows these questions" and get exactly that.
+   */
+  function controllableDataset(): BenchmarkDataset {
+    const q = (
+      id: string,
+      capability: Question['capability'],
+      expected: string | null,
+    ): Question => ({
+      id,
+      capability,
+      question: `question for ${id}`,
+      expected,
+      context: [`fact=${expected ?? 'none'}`],
+    });
+    return {
+      name: 'controllable',
+      questions: [
+        q('ie-a', 'IE', 'a'),
+        q('ie-b', 'IE', 'b'),
+        q('abs-a', 'ABS', null),
+        q('ku-a', 'KU', 'c'),
+      ],
+    };
+  }
+
+  /**
+   * A system that answers correctly for exactly the ids it is told it knows, and
+   * incorrectly for the rest. Correctness therefore comes from the test rather
+   * than from retrieval quality, which is what makes a flip positionable.
+   *
+   * Correctness is implemented as returning the question's own `expected` value:
+   * a plain sentinel such as `'RIGHT'` would fail every question whose expected
+   * answer is not literally `'RIGHT'`, which silently collapses the fixture to
+   * "everything wrong" and makes every identity assertion vacuous.
+   */
+  function systemKnowing(name: string, dataset: BenchmarkDataset, knows: readonly string[]): MemorySystem {
+    const known = new Set(knows);
+    const expectedById = new Map(dataset.questions.map((q) => [q.id, q.expected]));
+    return {
+      name,
+      answer: async (question: string) => {
+        const id = question.replace('question for ', '');
+        if (!known.has(id)) return 'WRONG-ANSWER';
+        return expectedById.get(id) ?? null;
+      },
+    };
+  }
+
+  it('names the questions the baseline got right and the feature got wrong', async () => {
+    const ds = controllableDataset();
+    // Baseline knows three; the feature additionally loses ie-b.
+    const baseline = systemKnowing('base', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const feature = systemKnowing('feat', ds, ['ie-a', 'abs-a']);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toEqual(['ie-b']);
+    expect(result.discordantQuestions.baselineIncorrectFeatureCorrect).toEqual([]);
+  });
+
+  it('names the questions the baseline got wrong and the feature got right', async () => {
+    const ds = controllableDataset();
+    const baseline = systemKnowing('base', ds, ['ie-a', 'abs-a']);
+    const feature = systemKnowing('feat', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.discordantQuestions.baselineIncorrectFeatureCorrect).toEqual(['ie-b']);
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toEqual([]);
+  });
+
+  it('names both directions independently when a question flips each way', async () => {
+    const ds = controllableDataset();
+    // Baseline knows ie-a and ie-b; feature knows ie-b and ku-a. So ie-a is a
+    // regression and ku-a is a gain — both directions populated at once.
+    const baseline = systemKnowing('base', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const feature = systemKnowing('feat', ds, ['ie-b', 'ku-a', 'abs-a']);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toEqual(['ie-a']);
+    expect(result.discordantQuestions.baselineIncorrectFeatureCorrect).toEqual(['ku-a']);
+  });
+
+  it('keeps the identity arrays the same length as the counts they explain', async () => {
+    const ds = controllableDataset();
+    const baseline = systemKnowing('base', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const feature = systemKnowing('feat', ds, ['ie-b', 'ku-a', 'abs-a']);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    // The whole point of the field: a reader must be able to check that the
+    // names account for the count, rather than trusting the count.
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toHaveLength(
+      result.discordant.baselineCorrectFeatureIncorrect,
+    );
+    expect(result.discordantQuestions.baselineIncorrectFeatureCorrect).toHaveLength(
+      result.discordant.baselineIncorrectFeatureCorrect,
+    );
+  });
+
+  it('names ids, not indices, and each name belongs to its own capability', async () => {
+    const ds = controllableDataset();
+    const baseline = systemKnowing('base', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const feature = systemKnowing('feat', ds, ['ie-b', 'ku-a', 'abs-a']);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    const byId = new Map(ds.questions.map((q) => [q.id, q.capability]));
+    const regression = result.discordantQuestions.baselineCorrectFeatureIncorrect;
+    const gain = result.discordantQuestions.baselineIncorrectFeatureCorrect;
+    // An index-based implementation passes a bare length check but fails here:
+    // `0` is not a question, and `'0'` is not in the dataset.
+    for (const id of [...regression, ...gain]) {
+      expect(byId.has(id)).toBe(true);
+    }
+    // The IE regression must be attributed to an IE question, which is the
+    // property that lets a per-capability count be audited at all.
+    expect(byId.get(regression[0]!)).toBe('IE');
+    expect(byId.get(gain[0]!)).toBe('KU');
+  });
+
+  it('reports empty arrays rather than undefined when nothing is discordant', async () => {
+    const ds = controllableDataset();
+    const a = systemKnowing('same', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const b = systemKnowing('same', ds, ['ie-a', 'ie-b', 'abs-a']);
+    const result = await runAblation(ds, a, b, { runs: 1 });
+    // `[]` and `undefined` must stay distinguishable: an empty array is a
+    // measured zero, a missing field is an unmeasured one.
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toEqual([]);
+    expect(result.discordantQuestions.baselineIncorrectFeatureCorrect).toEqual([]);
+  });
+
+  it('preserves dataset order within each identity array', async () => {
+    const ds = controllableDataset();
+    // Both IE questions regress; the dataset order is ie-a then ie-b.
+    const baseline = systemKnowing('base', ds, ['ie-a', 'ie-b']);
+    const feature = systemKnowing('feat', ds, []);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toEqual(['ie-a', 'ie-b']);
+  });
+});

@@ -77,6 +77,12 @@ export async function runAblation(
 
   let baselineCorrectFeatureIncorrect = 0;
   let baselineIncorrectFeatureCorrect = 0;
+  // Collected alongside the counts, in the same pass. A flip count alone cannot
+  // distinguish a mechanism from a coincidence: the conjunction arm's four flips
+  // were all in IE while its target population never moved, and nothing in the
+  // artifact could name them.
+  const discordantRegression: string[] = [];
+  const discordantGain: string[] = [];
   const perCapability = Object.fromEntries(
     ALL_CAPABILITIES.map((c) => [c, emptyPairedStats()]),
   ) as Record<Capability, PerCapabilityPairedStats>;
@@ -95,9 +101,11 @@ export async function runAblation(
     if (baseCorrect && !featCorrect) {
       baselineCorrectFeatureIncorrect++;
       bucket.baselineCorrectFeatureIncorrect++;
+      discordantRegression.push(dataset.questions[i]!.id);
     } else if (!baseCorrect && featCorrect) {
       baselineIncorrectFeatureCorrect++;
       bucket.baselineIncorrectFeatureCorrect++;
+      discordantGain.push(dataset.questions[i]!.id);
     }
   }
 
@@ -165,6 +173,10 @@ export async function runAblation(
     discordant: {
       baselineCorrectFeatureIncorrect,
       baselineIncorrectFeatureCorrect,
+    },
+    discordantQuestions: {
+      baselineCorrectFeatureIncorrect: discordantRegression,
+      baselineIncorrectFeatureCorrect: discordantGain,
     },
     baselineMetrics: baseFirst.metrics,
     featureMetrics: featFirst.metrics,

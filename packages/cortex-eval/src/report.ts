@@ -181,6 +181,24 @@ export function formatAblationReport(report: AblationReport): string {
       `| ${capability} | ${stats.total} | ${pct(stats.baselineCorrect / stats.total)} | ${pct(stats.featureCorrect / stats.total)} | ${stats.baselineCorrectFeatureIncorrect} | ${stats.baselineIncorrectFeatureCorrect} | ${stats.mcnemarPValue.toExponential(3)} | ${stats.mcnemarSignificant ? 'yes' : 'no'} |`,
     );
   }
+  // The identity of the discordant pairs is printed directly beneath the table
+  // whose counts it explains. A count tells a reader how many questions moved; it
+  // does not tell them whether the arm's *target* population was among them, and
+  // that is the question the conjunction arm needed answered -- four flips, all
+  // in IE, while ABS never moved. A reader who wants to check a per-capability
+  // count against the underlying questions should not have to open the JSON.
+  //
+  // `(none)` rather than `0`: an empty list is a measured absence, and writing
+  // `0` alongside a count of `0` would make "nothing moved" and "nothing was
+  // recorded" render identically -- the same distinction the fallback counters
+  // draw between `null` and `0`.
+  lines.push('', '### Discordant questions (identity)', '');
+  const regression = ab.discordantQuestions.baselineCorrectFeatureIncorrect;
+  const gain = ab.discordantQuestions.baselineIncorrectFeatureCorrect;
+  lines.push(
+    `- Baseline-correct/feature-wrong (${regression.length}): ${regression.length > 0 ? regression.join(', ') : '(none)'}`,
+    `- Baseline-wrong/feature-correct (${gain.length}): ${gain.length > 0 ? gain.join(', ') : '(none)'}`,
+  );
   // The retry-fire table goes BELOW the results, unlike the cohort banner. The
   // ordering is deliberate and the two are opposite for a reason: the banner
   // qualifies what the numbers below it mean, so it must come first; the fire

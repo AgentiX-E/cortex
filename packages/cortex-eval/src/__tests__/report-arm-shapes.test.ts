@@ -76,6 +76,10 @@ function liveReport(overrides: Partial<AblationReport> = {}): AblationReport {
     mcnemarPValue: 0.0039062500000000095,
     mcnemarSignificant: true,
     discordant: { baselineCorrectFeatureIncorrect: 1, baselineIncorrectFeatureCorrect: 2 },
+    discordantQuestions: {
+      baselineCorrectFeatureIncorrect: ['q-regressed'],
+      baselineIncorrectFeatureCorrect: ['q-gained-a', 'q-gained-b'],
+    },
     baselineMetrics: metrics(),
     featureMetrics: metrics(),
     featureCorrect: Array.from({ length: 60 }, (_, i) => i % 4 !== 0),
@@ -219,5 +223,50 @@ describe('the JSON round-trip changes exactly the fields that cannot survive it'
     // one would leave the in-memory path unexercised and vice versa.
     const md = formatAblationReport(liveReport());
     expect(md).toContain("Cohen's d: **-∞**");
+  });
+});
+
+/**
+ * The discordant identity section.
+ *
+ * The count tells a reader how many questions moved. It does not tell them
+ * whether the arm's own target population was among them, and that is the
+ * question the conjunction arm needed answered: four flips, all in IE, while ABS
+ * never moved once across six runs. A count cannot show that; a list can.
+ */
+describe('formatAblationReport discordant identity', () => {
+  it('names the questions behind each discordant count', () => {
+    const md = formatAblationReport(liveReport());
+    expect(md).toContain('### Discordant questions (identity)');
+    expect(md).toContain('Baseline-correct/feature-wrong (1): q-regressed');
+    expect(md).toContain('Baseline-wrong/feature-correct (2): q-gained-a, q-gained-b');
+  });
+
+  it('renders an empty direction as (none) rather than as a bare zero', () => {
+    const report = liveReport();
+    const md = formatAblationReport({
+      ...report,
+      ablation: {
+        ...report.ablation,
+        discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 2 },
+        discordantQuestions: {
+          baselineCorrectFeatureIncorrect: [],
+          baselineIncorrectFeatureCorrect: ['q-gained-a', 'q-gained-b'],
+        },
+      },
+    });
+    // `(none)` and `0` must stay distinguishable: an empty list is a measured
+    // absence of movement, and rendering it as a numeral would make it read the
+    // same as a direction that was never recorded.
+    expect(md).toContain('Baseline-correct/feature-wrong (0): (none)');
+  });
+
+  it('survives the JSON round trip that production actually performs', () => {
+    // The renderer's real input is the persisted object, not the in-memory one,
+    // and `bench/run.ts` renders from a parsed artifact on some paths.
+    const persisted = JSON.parse(JSON.stringify(liveReport())) as AblationReport;
+    const md = formatAblationReport(persisted);
+    expect(md).toContain('Baseline-correct/feature-wrong (1): q-regressed');
+    expect(md).toContain('Baseline-wrong/feature-correct (2): q-gained-a, q-gained-b');
   });
 });

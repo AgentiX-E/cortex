@@ -76,6 +76,7 @@ function persistedRetryReport(): AblationReport & { retryFires: unknown } {
     mcnemarPValue: 1,
     mcnemarSignificant: false,
     discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 0 },
+    discordantQuestions: { baselineCorrectFeatureIncorrect: [], baselineIncorrectFeatureCorrect: [] },
     baselineMetrics: metrics(),
     featureMetrics: metrics(),
     featureCorrect: Array.from({ length: 60 }, () => true),

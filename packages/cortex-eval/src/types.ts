@@ -191,6 +191,29 @@ export type AblationResult = {
     /** Questions the baseline got wrong and the feature got right. */
     baselineIncorrectFeatureCorrect: number;
   };
+  /**
+   * Identity of every discordant pair, so a flip COUNT can be audited.
+   *
+   * The counts answer "how many" and leave "which" unanswerable, and "which" is
+   * what separates a mechanism from a coincidence. The conjunction arm reported
+   * four flips against one, all inside IE, while its target population (ABS)
+   * never moved — zero flips across six runs and 143 ABS questions. That is the
+   * difference between "the intervention did nothing" and "the intervention did
+   * something somewhere else", and the earlier report could not show it: it
+   * carried the flip count and the feature's per-question vector, but neither the
+   * question ids nor the baseline's vector, so no archived artifact could name
+   * the questions that moved.
+   *
+   * Ids rather than indices, because an index is meaningful only relative to a
+   * dataset order that is not itself recorded. Ids survive reordering, and they
+   * let a reader confirm a per-capability count instead of trusting it.
+   */
+  discordantQuestions: {
+    /** Ids of questions the baseline got right and the feature got wrong. */
+    readonly baselineCorrectFeatureIncorrect: readonly string[];
+    /** Ids of questions the baseline got wrong and the feature got right. */
+    readonly baselineIncorrectFeatureCorrect: readonly string[];
+  };
   /** Metrics from the first evaluation of the baseline system. */
   baselineMetrics: Metrics;
   /** Metrics from the first evaluation of the feature system. */

@@ -54,6 +54,7 @@ function report(overrides: Partial<AblationReport> = {}): AblationReport {
     mcnemarPValue: 1,
     mcnemarSignificant: false,
     discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 0 },
+    discordantQuestions: { baselineCorrectFeatureIncorrect: [], baselineIncorrectFeatureCorrect: [] },
     baselineMetrics: m,
     featureMetrics: m,
     featureCorrect: [],

@@ -90,6 +90,7 @@ function persistedAblation(): AblationResult {
     mcnemarPValue: 1,
     mcnemarSignificant: false,
     discordant: { baselineCorrectFeatureIncorrect: 1, baselineIncorrectFeatureCorrect: 0 },
+    discordantQuestions: { baselineCorrectFeatureIncorrect: ['q1'], baselineIncorrectFeatureCorrect: [] },
     baselineMetrics: metrics({ total: 35, correct: 33, accuracy: 0.9428571428571428 }),
     featureMetrics: metrics(),
     featureCorrect: Array.from({ length: 35 }, () => true),
