@@ -156,6 +156,60 @@ the fixtures happened to be insensitive:
 > nothing can observe is not safety, it is a second copy of a check. Removing it
 > is what made the mutation meaningful.
 
+## 6a. Verification of the intervention layer
+
+The intervention (`candidate-context.ts`) is verified separately, and its first
+revision is the reason this section exists: **46 unit tests green, 0 of 17 real
+questions annotated.** The tests and the implementation agreed with each other
+and both disagreed with the data. The harness now carries the three defects that
+run exposed, so a green suite under any of them would reproduce the original
+failure inside the harness.
+
+| check                              | result                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| unit tests                         | 84 passing                                                              |
+| coverage on `candidate-context.ts` | **100 / 100 / 100 / 100** (statements / branches / functions / lines)   |
+| defect injection (18 mutations)    | **18 / 18 caught**, restored byte-identical (md5 `a1b1bfa5bf98bbb271fd7e69805a7af1`) |
+| real-data annotation rate          | 13 of 17 competing-candidate questions annotated; 4 decline             |
+| truth and answer in different clusters | **9 of 17**, of which 10 questions report exactly two clusters       |
+| label placement                    | the reader's own dated-turn pattern still matches every labelled line    |
+| non-candidate turns                | never labelled; no turn deleted or reordered                            |
+| repo gate (`pnpm check`)           | green: 1423 tests across four packages, every dimension above 95%       |
+
+Seven mutations were missed across four passes, and the repairs split into three
+kinds. Only the first kind is about the tests.
+
+1. **Suite gap -- add a test.** `require-every-token-of-side-literally` was
+   unobservable because the narrowed distinctive set is usually a single token,
+   so a conjunction over it cannot differ from a disjunction. Re-aimed at a
+   multi-token distinctive set, which is the only shape that can see it.
+2. **Unobservable mutant -- re-aim the mutation.** `label-before-the-role` was
+   first written as a string-concatenation reorder, which turned out to produce
+   byte-identical output: the capture group already contained the role. The
+   mutation now rewrites the line, which is what a caller can actually observe.
+3. **Dead code -- delete the implementation.** Three mutants guarded branches
+   that no input could reach:
+   - `label-on-empty-context` -- the empty context is already returned by the
+     newline/turn disagreement check one line later, so the explicit empty-string
+     test could never change the result. Deleted.
+   - `accept-out-of-range-index` -- a cluster index past the end never enters the
+     membership map, so its turn passes through unlabelled either way. The guard
+     that "refused to mislabel" produced exactly the unlabelled output it was
+     written to avoid. Deleted.
+   - `drop-the-role-preserving-fallback` -- collapsing `appendLabel`'s three
+     shape-matching arms into a plain append left **all 75 tests green**. The
+     arms were observable-equivalent to the append for every reachable input, so
+     they were deleted. This is the strongest form of the finding: the arms made
+     the reader's role adjacency look like a property of the code, when the line
+     shape was carrying it all along, and they concealed that by looking careful.
+
+> **Discipline (extended):** when a mutation survives, read the *mutated output*
+> before touching the suite. Twice in this round the first instinct -- add a test
+> for the branch -- would have pinned behaviour that does not exist, and the
+> second instinct -- re-aim the mutation -- was needed for one case and wrong for
+> three. The mutant decides which: if the mutated code cannot produce different
+> output, the implementation is the finding.
+
 ## 7. What this does not claim
 
 - **Not a claim about reasoning.** Token presence is not entailment. A context

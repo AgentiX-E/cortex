@@ -11,6 +11,7 @@
 import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { fuseRerank, type RerankScoreFn } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
+import { CANDIDATE_DISCRIMINATION_INSTRUCTION } from './candidate-context.js';
 import {
   expandContextWindowBounded,
   expandContextWindowBySession,
@@ -1576,10 +1577,25 @@ function annotateTimeWindow(turnDate: string, window: TimeRange): string | undef
 }
 
 /** Build a grounded QA prompt with an explicit abstention instruction. */
+export type QaPromptOptions = {
+  /**
+   * Add the candidate-discrimination instruction (default `false`).
+   *
+   * Off by default because the instruction is only meaningful when the context
+   * actually carries cluster labels, which `renderDiscriminatedContext` adds.
+   * An instruction about labels that are not there is noise the model must read
+   * and discard, and it would apply to every question rather than to the 11 that
+   * the measurement identified. The caller that renders the labels is the caller
+   * that turns this on, so the two cannot drift apart.
+   */
+  readonly candidateDiscrimination?: boolean;
+};
+
 export function buildQaPrompt(
   question: string,
   context: string,
   abstainToken: string = DEFAULT_ABSTAIN_TOKEN,
+  options: QaPromptOptions = {},
 ): string {
   return [
     'You are answering questions based on a conversation memory.',
@@ -1587,6 +1603,7 @@ export function buildQaPrompt(
     '',
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     'If the context offers more than one possible answer, choose the one that best matches the question (the most recent, the most specific, or the one matching any qualifier in the question). Choosing between candidates or combining several turns is NOT a reason to abstain.',
+    ...(options.candidateDiscrimination === true ? [CANDIDATE_DISCRIMINATION_INSTRUCTION] : []),
     `Respond with exactly "${abstainToken}" ONLY when the context offers no answer to the question at all.`,
     '',
     'Context (a JSON array of turns, each with date, role, and content):',

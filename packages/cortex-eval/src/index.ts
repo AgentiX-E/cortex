@@ -129,6 +129,23 @@ export {
   type DistinguishingTokens,
 } from './candidate-discrimination.js';
 export {
+  CANDIDATE_ANNOTATION_VERSION,
+  CANDIDATE_DISCRIMINATION_INSTRUCTION,
+  CANDIDATE_RECORD_SCHEMA_KEY,
+  candidateSides,
+  candidateSpanCount,
+  clusterCandidates,
+  contentTerms,
+  discriminateContext,
+  discriminatingQuestionTerms,
+  isCandidateDiscriminationEnabled,
+  renderDiscriminatedContext,
+  type CandidateCluster,
+  type DiscriminatedContext,
+  type DiscriminatedContextOptions,
+  type TurnLike,
+} from './candidate-context.js';
+export {
   buildRecallCurve,
   computeRecallCurve,
   classifyExclusion,
