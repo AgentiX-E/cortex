@@ -4,6 +4,18 @@ coverage/
 *.tsbuildinfo
 .env
 .DS_Store
-benchmark-report.md
-benchmark-report.json
-benchmark-error.log
+__pycache__/
+# Benchmark artifacts. Written into the repo root by `bench/run.ts`, so they land
+# next to the working tree rather than in a scratch directory.
+#
+# Enumerated one by one until this change, which is the defect: the list named the
+# three artifacts that existed when it was written and nothing since, so every
+# artifact added later -- the recall curve, the gap attribution, the failure
+# census, the TR classes, the skip record, and all three ablation report pairs --
+# was committable. A measurement is not source, and committing one makes a
+# figure that must be re-derivable look like a tracked fact; it also means a
+# single `git add -A` after a local run silently ships the operator's numbers.
+#
+# A glob covers the whole family and, more importantly, covers the next artifact
+# too -- which is what an enumeration cannot do, and what went wrong here.
+benchmark-*

@@ -17,6 +17,7 @@ import {
   CONJUNCTION_ABS_TARGET,
 } from '../runner.js';
 import type { AnswerJudge } from '../judge.js';
+import { buildAblationSkipRecord } from '../ablation-skip.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
 import type { DecisionTrace } from '../natural-language-memory.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
@@ -1598,6 +1599,38 @@ describe('runQueryExpansionDecompositionAblation', () => {
       await expect(
         runQueryExpansionDecompositionAblation(partial, embedding, inert),
       ).rejects.toThrow(/edced276_abs/);
+    });
+
+    it('emits a guard message the skip recorder can deconstruct', async () => {
+      // `parseMissingCohortMembers` recovers the missing ids from the guard's
+      // message TEXT, because the throw is the only place they exist by the time
+      // the CLI catches it. That makes the two modules coupled through a string,
+      // and a coupling nothing tests is a coupling that breaks silently: reword
+      // the guard and every skip record loses its ids while the whole suite stays
+      // green, which is exactly the data loss the recorder was added to prevent.
+      //
+      // `ablation-skip.test.ts` parses a hand-copied literal of this message, so
+      // it pins the PARSER but cannot notice the guard drifting away from the
+      // copy. This test runs the REAL guard and parses what actually comes out,
+      // so the two sides are bound to each other rather than to a transcription.
+      const partial = [cohortMember(CONJUNCTION_ABS_TARGET)];
+      const error = await runQueryExpansionDecompositionAblation(partial, embedding, inert).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(error).toBeInstanceOf(Error);
+
+      const record = buildAblationSkipRecord('conjunction', error, CONJUNCTION_ABS_COHORT.length);
+      // Every cohort member except the one supplied must be recovered. Asserting
+      // the exact set rather than a count, because "6 of 6" is also what a parser
+      // returning six wrong strings would produce.
+      expect(new Set(record.missing)).toEqual(
+        new Set(CONJUNCTION_ABS_COHORT.filter((id) => id !== CONJUNCTION_ABS_TARGET)),
+      );
+      expect(record.required).toBe(CONJUNCTION_ABS_COHORT.length);
+      // And the reason is carried unmodified, so a reader can see the guard's own
+      // wording next to the ids it produced.
+      expect(record.reason).toMatch(/cohort is incomplete/);
     });
 
     it('runs and reports full coverage when the whole cohort is present', async () => {
