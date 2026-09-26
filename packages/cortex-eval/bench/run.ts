@@ -490,18 +490,23 @@ async function main(): Promise<void> {
         groundTruth: record.ground_truth ?? null,
         answer: record.decision.answer ?? null,
         classification: detail.classification,
-        maxTokenOccurrences: detail.maxTokenOccurrences,
+        maxDistinctiveOccurrences: detail.maxDistinctiveOccurrences,
+        maxOccurrenceToken: detail.maxOccurrenceToken,
         answerTokens: detail.answerTokens,
       };
     });
 
   const trGrounded = trFailures.filter((f) => f.classification === 'grounded').length;
   const trUngrounded = trFailures.length - trGrounded;
+  // Bucketed on the distinctive-token count, not the raw one. The raw count read
+  // the English article in several real records: `gpt4_59149c78` was filed as
+  // weak evidence because `the` occurs 95 times in its context, while
+  // `metropolitan` -- the token that identifies the museum -- occurs once.
   const trStrong = trFailures.filter(
-    (f) => f.classification === 'grounded' && f.maxTokenOccurrences <= 2,
+    (f) => f.classification === 'grounded' && f.maxDistinctiveOccurrences <= 2,
   ).length;
   const trWeak = trFailures.filter(
-    (f) => f.classification === 'grounded' && f.maxTokenOccurrences >= 10,
+    (f) => f.classification === 'grounded' && f.maxDistinctiveOccurrences >= 10,
   ).length;
 
   writeFileSync(

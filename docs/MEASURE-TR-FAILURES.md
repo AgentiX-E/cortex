@@ -2,8 +2,8 @@
 
 **Status:** measured. Of the 27 answered-wrong TR failures, 13 are ungrounded
 (the evidence was never retrieved) and 14 are grounded — but only **4** of those
-14 rest on strong evidence, and 6 rest on a token so ubiquitous in the context
-that the verdict carries almost no weight.
+14 rest on strong evidence, and 5 rest on a token so common in the context that
+the verdict carries almost no weight.
 **Found by:** roadmap item 9e, opened by `MEASURE-FAILURE-CENSUS.md`, which
 located 36 TR failures — 51% of all failures — and split them by decision without
 ever saying why any of them failed.
@@ -89,8 +89,8 @@ wrong = 36, answered-wrong = 27):
 | --------------------------------- | ----- | ------------------------------- |
 | **ungrounded** — evidence absent  | **13** | 0 (at least one token absent)  |
 | grounded, strong evidence         | **4**  | 1–2                             |
-| grounded, moderate evidence       | **4**  | 3–9                             |
-| grounded, weak evidence           | **6**  | ≥ 10                            |
+| grounded, moderate evidence       | **5**  | 3–9                             |
+| grounded, weak evidence           | **5**  | ≥ 10                            |
 
 The ungrounded column is solid: every one of the 13 is ungrounded because at least
 one token of a multi-token answer is absent, or because a single token genuinely
@@ -98,42 +98,82 @@ never occurs. Absence is absence and `a3838d2b` (answer `"4"`) is the clean case
 with **zero** occurrences.
 
 The grounded column is **mixed**, and the occurrence counts are what separate it.
-The retrieved contexts run 8k–14k characters and the answers are single digits, so
-a token like `1` legitimately occurs dozens of times as a date fragment or a list
-counter:
+The retrieved contexts run 8k–14k characters, so a token that occurs dozens of
+times is not evidence that the fact was retrieved:
 
-| id             | answer | context | occurrences |
-| -------------- | ------ | ------- | ----------- |
-| `b46e15ed`     | 2      | 12,465  | **1**       |
-| `0bc8ad92`     | 5      | 13,641  | **1**       |
-| `gpt4_385a5000`| Tomatoes | 12,258 | **2**      |
-| `gpt4_7abb270c`| 19-token | 12,970 | 51          |
-| `gpt4_d31cdae3`| 8-token  | 11,200 | 68          |
-| `gpt4_59149c78`| 5-token  | 12,981 | **95**      |
+| id             | answer | context | occurrences | driver token |
+| -------------- | ------ | ------- | ----------- | ------------ |
+| `b46e15ed`     | 2      | 12,465  | **1**       | `2`          |
+| `0bc8ad92`     | 5      | 13,641  | **1**       | `5`          |
+| `gpt4_385a5000`| Tomatoes | 12,258 | **2**      | `tomatoes`   |
+| `gpt4_76048e76`| bike   | 12,625  | 10          | `bike`       |
+| `gpt4_59149c78`| 5-token | 12,981 | 16          | `museum`     |
+| `gpt4_7abb270c`| 19-token | 12,970 | 48          | `art`        |
 
 So `grounded` here means **"the answer string occurs in the context"**, not "the
 evidence was adequate". The 14 is an **upper bound** on reader-attributable
-failures. The strictly reader-attributable population is the 4 strong cases; the 6
+failures. The strictly reader-attributable population is the 4 strong cases; the 5
 weak cases are unresolved by this instrument and are reported as unresolved rather
 than counted as either.
 
-`maxTokenOccurrences` is emitted per question so the confidence travels with the
-verdict instead of being re-derived by whoever reads it.
+`maxDistinctiveOccurrences` and `maxOccurrenceToken` are emitted per question so
+the confidence travels with the verdict instead of being re-derived by whoever
+reads it.
+
+## 4b. The confidence term was measuring the English article
+
+The first version of the confidence term counted **all** answer tokens and
+reported the maximum. Measured against the artifact, that was wrong in a way that
+would have misled every reader of it.
+
+`gpt4_59149c78` has ground truth `"The Metropolitan Museum of Art."`. Its token
+set includes `the`, which occurs **95 times** in the context, so the term read 95
+and the question was filed as weak evidence — while `metropolitan`, the one token
+that identifies the museum, occurs exactly **once**.
+
+The term was reading the article and reporting it as a statement about the museum.
+`gpt4_d31cdae3` the same way: `the` ×68 against `road` ×1.
+
+The fix is to compute the term over **distinctive** tokens only, and to report the
+driver token alongside the count, because a bare number cannot be audited: 95
+means one thing when the token is `metropolitan` and the opposite when it is `the`.
+
+| bucket   | raw-count version | distinctive version | note                                |
+| -------- | ----------------- | ------------------- | ----------------------------------- |
+| strong   | 4                 | **4**               | unchanged                           |
+| moderate | 4                 | **5**               | `gpt4_d31cdae3` weak → moderate     |
+| weak     | 6                 | **5**               | same question                       |
+
+**The correction moved exactly one question.** That is the honest scale of it, and
+it is worth stating plainly because the *temptation* was to treat the discovery as
+having invalidated the earlier split — it did not. The grounded/ungrounded split
+(13 / 14) is a containment result and was never affected; only the confidence
+attribution was wrong, and only for one bucket assignment.
+
+What the correction did change is whether the published number can be **read**.
+Before it, `gpt4_59149c78` reported 95 and a reader would conclude the museum was
+discussed 95 times. Now it reports `museum` ×16, which is a true statement about
+that context.
+
+> **Discipline:** a confidence term is a claim, and a claim that is computed over
+> the wrong set is wrong even when its bucket assignment happens to survive. The
+> test is not "did the conclusion change" but "can the number be read as
+> stated" — and 95 attributed to a museum was not readable as stated.
 
 ## 5. What this changes about the plan
 
 **TR does not have a single dominant failure mechanism.** The split is 13 / 14,
 close to even, so a fix aimed at only one side addresses at most half the
-population — and if the 6 weak cases are genuinely retrieval-side, the split is
-closer to 19 / 8 in favour of retrieval.
+population — and if the 5 weak cases are genuinely retrieval-side, the split is
+closer to 18 / 9 in favour of retrieval.
 
 Two consequences:
 
-1. **The 6 weak cases need a different instrument, not a different verdict.**
-   Distinguishing "the digit was in the context but in an unrelated sentence" from
-   "the digit was in the sentence that answers the question" needs a proximity or
-   relevance term the current artifact does not carry. Until that exists, those 6
-   are unclassified and must not be spent.
+1. **The 5 weak cases need a different instrument, not a different verdict.**
+   Distinguishing "the answer token appears in an unrelated turn" from "it appears
+   in the turn that answers the question" needs a proximity or relevance term the
+   current artifact does not carry. Until that exists, those 5 are unclassified
+   and must not be spent.
 2. **Reader work is justified by 4 questions, not 14.** That is a much weaker
    warrant than the raw grounded count suggests, and it is the number a
    cost-benefit decision should use.
@@ -146,8 +186,8 @@ refused TR failures in either bucket would invent a finding.
 
 | check                                        | result                                                             |
 | -------------------------------------------- | ------------------------------------------------------------------ |
-| unit tests                                   | 20 passing, 100% on all four coverage dimensions                    |
-| defect injection (9 mutations)               | **9 / 9 caught**, implementation restored byte-identical (md5)      |
+| unit tests                                   | 23 passing, 100% on all four coverage dimensions                    |
+| defect injection (12 mutations)              | **12 / 12 caught**, implementation restored byte-identical (md5)    |
 | same input as string and as JSON number      | identical tokens and identical classification                       |
 | numeric answer inside a longer number        | `4` not satisfied by `40`; not by a date                            |
 | single-digit answers matchable               | `4`/`3`/`5` yield `['4']`/`['3']`/`['5']`                           |
@@ -167,9 +207,16 @@ Two defects were caught **by the verification rather than by review**:
   Putting the literal word `null` into that fixture is what made the assertion
   depend on the guard. The mutation is caught now.
 
+A third was caught by **reading the artifact rather than by any test**:
+
+- The confidence term counted grammatical tokens. Section 4b. Two mutations now
+  pin it — one that removes the distinctive-token filter, one that omits the
+  driver token — because a defect that no test originally exercised will not be
+  prevented by adding the fix alone.
+
 > **Discipline:** a test suite that has only ever passed proves nothing. The
 > injection harness is what makes "the suite tests this" a measurement instead of
-> a belief — and the mutation it missed is the one that shows why.
+> a belief — and the mutations it missed are what show why.
 
 ## 7. What this does not claim
 

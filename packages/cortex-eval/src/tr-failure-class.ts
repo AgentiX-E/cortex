@@ -97,26 +97,85 @@ export type TrFailureDetail = {
    */
   readonly answerTokens: readonly string[];
   /**
-   * How many times the most frequent answer token occurs in the context.
+   * The highest occurrence count among the answer's **distinctive** tokens, and
+   * the token that produced it.
    *
    * This is the confidence term the classification alone does not carry. The
-   * retrieved contexts in the A2 artifact run 8k-14k characters, and TR answers
-   * are single digits, so a token like `1` can occur dozens of times as a date
-   * fragment, a list counter, or an unrelated number. A `grounded` verdict from
-   * a token with one occurrence means the fact was retrieved; the same verdict
-   * from a token with ninety-five occurrences means the digit happens to appear.
+   * retrieved contexts in the A2 artifact run 8k-14k characters, so a token that
+   * occurs once means the fact was retrieved while a token that occurs ninety
+   * times means it happens to appear.
    *
-   * Reported rather than folded into the classification, because the two
-   * populations need differently calibrated confidence and merging them would
-   * destroy the distinction. Zero for an ungrounded multi-token answer, where
-   * at least one token was absent and the count of the present ones is not what
-   * decided the verdict.
+   * It is computed over distinctive tokens rather than all tokens because the
+   * first version was not, and it misreported real records. `gpt4_59149c78` has
+   * ground truth "The Metropolitan Museum of Art."; its tokens include `the`,
+   * which occurs **95** times in the context, so the term read 95 and the
+   * question was filed as weak evidence -- while `metropolitan`, the one token
+   * that identifies the museum, occurs exactly **once**. The term was measuring
+   * the English article and reporting it as a statement about the museum.
+   *
+   * The driver token is reported with the count because a bare number cannot be
+   * audited: 95 means one thing when the token is `metropolitan` and the
+   * opposite when the token is `the`.
+   *
+   * Zero for an ungrounded verdict, where it was an absent token rather than the
+   * count of the present ones that decided the outcome.
    */
-  readonly maxTokenOccurrences: number;
+  readonly maxDistinctiveOccurrences: number;
+  /** The token that produced `maxDistinctiveOccurrences`, or null when zero. */
+  readonly maxOccurrenceToken: string | null;
 };
 
 /** Whether a token carries any alphanumeric content. See the module note. */
 const ALPHANUMERIC = /[\p{L}\p{N}]/u;
+
+/**
+ * Words that carry no weight about *which* answer is correct.
+ *
+ * Short and deliberately so: this is a statement of which tokens are answers and
+ * which are grammar, not a linguistic stopword list. Everything here is a closed
+ * class that cannot be a TR answer, so nothing that could distinguish two
+ * candidate answers is filtered. `four` is not here; `the` is.
+ *
+ * A distinctive-token filter is load-bearing rather than cosmetic. The
+ * measurement that forced it: of the A2 TR failures, `the` occurs 95 times in
+ * one context, `of` 51 times in another, and both were being reported as the
+ * confidence term.
+ */
+const GRAMMATICAL_TOKENS = new Set([
+  'the',
+  'a',
+  'an',
+  'of',
+  'and',
+  'or',
+  'to',
+  'in',
+  'on',
+  'at',
+  'for',
+  'with',
+  'by',
+  'as',
+  'from',
+  'that',
+  'this',
+  'it',
+  'is',
+  'was',
+  'were',
+  'be',
+  'been',
+  'am',
+  'are',
+  'did',
+  'do',
+  'does',
+  'had',
+  'has',
+  'have',
+  'my',
+  'i',
+]);
 
 /**
  * Extract the tokens of an answer.
@@ -201,15 +260,40 @@ export function classifyTrFailure(
     ? 'grounded'
     : 'ungrounded';
   if (options?.detail === true) {
-    // Reported only for a grounded verdict. For an ungrounded multi-token answer
-    // it was the absent token, not the count of the present ones, that decided
-    // the verdict, so a count there would suggest a strength the verdict does
-    // not have.
-    const maxTokenOccurrences =
-      classification === 'grounded'
-        ? tokens.reduce((best, token) => Math.max(best, occurrences(input.retrieved, token)), 0)
-        : 0;
-    return { classification, answerTokens: tokens, maxTokenOccurrences };
+    // Reported only for a grounded verdict. For an ungrounded answer it was the
+    // absent token, not the count of the present ones, that decided the verdict,
+    // so a count there would suggest a strength the verdict does not have.
+    //
+    // Computed over distinctive tokens only. A token set that is entirely
+    // grammatical (`"the of"`) yields no distinctive token and therefore reports
+    // zero -- which is the honest reading, because no token in it can carry
+    // evidence about which answer is correct.
+    //
+    // Ties are broken by first appearance in the token array rather than by
+    // iteration accident, so the reported driver is a function of the answer and
+    // the context and not of how the token list happened to be ordered. The
+    // count is what the field is for; the driver is there so the count can be
+    // audited, and an audit that names a different token on each run is not one.
+    let maxDistinctiveOccurrences = 0;
+    let maxOccurrenceToken: string | null = null;
+    if (classification === 'grounded') {
+      for (const token of tokens) {
+        if (GRAMMATICAL_TOKENS.has(token)) {
+          continue;
+        }
+        const count = occurrences(input.retrieved, token);
+        if (count > maxDistinctiveOccurrences) {
+          maxDistinctiveOccurrences = count;
+          maxOccurrenceToken = token;
+        }
+      }
+    }
+    return {
+      classification,
+      answerTokens: tokens,
+      maxDistinctiveOccurrences,
+      maxOccurrenceToken,
+    };
   }
   return classification;
 }

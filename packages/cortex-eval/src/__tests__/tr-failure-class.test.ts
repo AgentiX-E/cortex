@@ -205,8 +205,8 @@ describe('classifyTrFailure', () => {
 
   it('reports low occurrence counts for a grounded verdict whose evidence is a single appearance', () => {
     // The strong form of a grounded verdict: the answer appears once, in a turn
-    // that states it. `maxTokenOccurrences` is what lets a reader tell this
-    // apart from the weak form below without re-deriving it.
+    // that states it. `maxDistinctiveOccurrences` is what lets a reader tell
+    // this apart from the weak form below without re-deriving it.
     //
     // The date is deliberately free of the answer digits. A first draft used
     // `2023/10/15` as the timestamp and asserted a count of 1; the counter
@@ -222,7 +222,8 @@ describe('classifyTrFailure', () => {
       { detail: true },
     );
     expect(detail.classification).toBe('grounded');
-    expect(detail.maxTokenOccurrences).toBe(1);
+    expect(detail.maxDistinctiveOccurrences).toBe(1);
+    expect(detail.maxOccurrenceToken).toBe('15');
   });
 
   it('reports high occurrence counts when a short answer token is ubiquitous', () => {
@@ -244,7 +245,8 @@ describe('classifyTrFailure', () => {
       { detail: true },
     );
     expect(detail.classification).toBe('grounded');
-    expect(detail.maxTokenOccurrences).toBe(3);
+    expect(detail.maxDistinctiveOccurrences).toBe(3);
+    expect(detail.maxOccurrenceToken).toBe('1');
   });
 
   it('counts a token at the very start of the context', () => {
@@ -260,7 +262,7 @@ describe('classifyTrFailure', () => {
       { detail: true },
     );
     expect(detail.classification).toBe('grounded');
-    expect(detail.maxTokenOccurrences).toBe(1);
+    expect(detail.maxDistinctiveOccurrences).toBe(1);
   });
 
   it('counts a token at the very end of the context', () => {
@@ -274,7 +276,7 @@ describe('classifyTrFailure', () => {
       { detail: true },
     );
     expect(detail.classification).toBe('grounded');
-    expect(detail.maxTokenOccurrences).toBe(1);
+    expect(detail.maxDistinctiveOccurrences).toBe(1);
   });
 
   it('reports zero occurrences for an ungrounded verdict rather than a partial count', () => {
@@ -290,6 +292,79 @@ describe('classifyTrFailure', () => {
       { detail: true },
     );
     expect(detail.classification).toBe('ungrounded');
-    expect(detail.maxTokenOccurrences).toBe(0);
+    expect(detail.maxDistinctiveOccurrences).toBe(0);
+    expect(detail.maxOccurrenceToken).toBeNull();
+  });
+
+  it('ignores a ubiquitous grammatical token when reporting the confidence term', () => {
+    // The defect this field was rewritten for, taken from a real record.
+    // `gpt4_59149c78` has ground truth "The Metropolitan Museum of Art." and a
+    // context in which `the` occurs 95 times. The first version of the confidence
+    // term read 95 and the question was filed as weak evidence -- while
+    // `metropolitan`, the token that identifies the museum, occurs exactly once.
+    //
+    // The term was measuring the English article and reporting it as a statement
+    // about the museum.
+    const filler = Array.from({ length: 95 }, (_, i) => 'the thing ' + i).join(' ');
+    const detail = classifyTrFailure(
+      {
+        ...grounded(),
+        groundTruth: 'The Metropolitan Museum of Art.',
+        retrieved: filler + ' I went to the Metropolitan Museum of Art last week.',
+      },
+      { detail: true },
+    );
+    expect(detail.classification).toBe('grounded');
+    // `the` occurs 96 times. Every distinctive token occurs exactly once, so the
+    // driver is whichever comes first in the token array -- `metropolitan`.
+    // The assertion on the count is the point: 1, not 96.
+    expect(detail.maxOccurrenceToken).toBe('metropolitan');
+    expect(detail.maxDistinctiveOccurrences).toBe(1);
+  });
+
+  it('breaks an occurrence tie by first appearance so the driver is reproducible', () => {
+    // A tie is the common case for a short answer, and it must not be resolved by
+    // iteration accident: a field that names a different token on each run cannot
+    // be used to audit the count it accompanies.
+    const detail = classifyTrFailure(
+      {
+        ...grounded(),
+        groundTruth: 'red bike',
+        retrieved: 'I rode the red bike and then a red bike again.',
+      },
+      { detail: true },
+    );
+    expect(detail.maxOccurrenceToken).toBe('red');
+    expect(detail.maxDistinctiveOccurrences).toBe(2);
+
+    // Reversing the order of the answer's tokens must not change the count.
+    const reversed = classifyTrFailure(
+      {
+        ...grounded(),
+        groundTruth: 'bike red',
+        retrieved: 'I rode the red bike and then a red bike again.',
+      },
+      { detail: true },
+    );
+    expect(reversed.maxDistinctiveOccurrences).toBe(detail.maxDistinctiveOccurrences);
+  });
+
+  it('reports no distinctive token when an answer is entirely grammatical', () => {
+    // A degenerate but reachable case: an answer made only of closed-class words
+    // has no token that can carry evidence about which answer is correct. Zero is
+    // the honest reading, and reporting it as zero is what keeps the weak-evidence
+    // bucket from being entered by a question that never had a distinctive token
+    // to begin with.
+    const detail = classifyTrFailure(
+      {
+        ...grounded(),
+        groundTruth: 'the of',
+        retrieved: 'the of the of the of',
+      },
+      { detail: true },
+    );
+    expect(detail.classification).toBe('grounded');
+    expect(detail.maxDistinctiveOccurrences).toBe(0);
+    expect(detail.maxOccurrenceToken).toBeNull();
   });
 });

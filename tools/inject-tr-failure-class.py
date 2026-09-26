@@ -76,6 +76,24 @@ MUTATIONS = [
         "index = lower.indexOf(needle, index + 1);",
         "index = lower.indexOf(needle, index + 1) === -1 ? -1 : index + 1;",
     ),
+    (
+        "count-grammatical-tokens-too",
+        "Drop the distinctive-token filter, so `the` occurring 95 times is the confidence term.",
+        "if (GRAMMATICAL_TOKENS.has(token)) {\n          continue;\n        }",
+        "",
+    ),
+    (
+        "report-a-count-without-its-driver",
+        "Leave the driver token null, so the count cannot be audited.",
+        "maxDistinctiveOccurrences = count;\n          maxOccurrenceToken = token;",
+        "maxDistinctiveOccurrences = count;",
+    ),
+    (
+        "report-a-count-even-when-ungrounded",
+        "Compute the term for an ungrounded verdict, implying a strength it does not have.",
+        "if (classification === 'grounded') {\n      for (const token of tokens) {",
+        "if (classification !== 'grounded' || true) {\n      for (const token of tokens) {",
+    ),
 ]
 
 
