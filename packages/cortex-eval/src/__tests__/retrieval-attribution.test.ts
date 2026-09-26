@@ -186,18 +186,74 @@ describe('attributeRecallGap', () => {
     expect(result.unchangedCapabilities).toEqual(['IE', 'MR', 'KU', 'TR']);
   });
 
-  it('reports zero gap rather than a negative one when the ceiling is below the achieved recall', () => {
+  it('bounds the admitted count by the pool instead of letting it exceed it', () => {
     // A pool narrower than a requested cutoff makes achieved recall exceed the
     // ceiling. The curve clamps its own `gain` for the same reason; a negative
     // count here would read as "ranking work would make things worse".
+    //
+    // The clamp that matters is NOT the one on `rankingGapQuestions`, which the
+    // earlier revision of this test asserted and which was never the defect.
+    // `admittedAtOne` is by definition a subset of the covered set -- nothing can
+    // be admitted by ranking unless its evidence turn was in the pool to rank --
+    // so 80 admitted against a 50-question pool is arithmetically impossible, and
+    // it is what broke the partition: 80 + 0 + 50 = 130 against a denominator of
+    // 100, with the inflation landing in `retrievalGapQuestions`, the figure that
+    // decides whether retrieval work is the next thing to do.
+    //
+    // Asserting `retrievalGapQuestions === 50` alone could not catch that, because
+    // 50 is also the correct value; the broken term was the one the test never
+    // looked at. The partition identity is the assertion that sees the whole
+    // object at once, so it is the one stated here.
     const result = attributeRecallGap({
       curve: { considered: 100, ceiling: 0.5, recallAtOne: 0.8 },
       baseline: [{ capability: 'IE', total: 100, correct: 80, abstained: 0 }],
       feature: [{ capability: 'IE', total: 100, correct: 80, abstained: 0 }],
     });
 
+    expect(result.coveredQuestions).toBe(50);
+    expect(result.admittedAtOne).toBe(50);
     expect(result.rankingGapQuestions).toBe(0);
     expect(result.retrievalGapQuestions).toBe(50);
+    expect(result.admittedAtOne + result.rankingGapQuestions + result.retrievalGapQuestions).toBe(
+      result.curveDenominator,
+    );
+  });
+
+  it('closes the partition for every curve the recall curve can emit', () => {
+    // The identity stated on `admittedAtOne` is a property of the function over
+    // its whole input domain, not of one interesting input, so it is asserted
+    // over the domain.
+    //
+    // Swept rather than enumerated deliberately: the breaking case is a relation
+    // between two fields (recall above ceiling), not a named input, and a list of
+    // hand-picked cases would only re-test the cases I already thought of -- which
+    // is exactly how the broken term above survived a test that named its own
+    // scenario.
+    const curves: { considered: number; ceiling: number; recallAtOne: number }[] = [];
+    for (const considered of [0, 1, 3, 7, 100, 500]) {
+      for (const ceiling of [0, 0.25, 1 / 3, 0.5, 0.9, 1]) {
+        for (const recallAtOne of [0, 1 / 3, 0.5, 0.8, 1, 1.5]) {
+          curves.push({ considered, ceiling, recallAtOne });
+        }
+      }
+    }
+    expect(curves.length).toBe(216);
+
+    for (const curve of curves) {
+      const result = attributeRecallGap({
+        curve,
+        baseline: [{ capability: 'IE', total: 10, correct: 4, abstained: 0 }],
+        feature: [{ capability: 'IE', total: 10, correct: 5, abstained: 0 }],
+      });
+      const label = JSON.stringify(curve);
+      expect(result.admittedAtOne, label).toBeLessThanOrEqual(result.coveredQuestions);
+      expect(
+        result.admittedAtOne + result.rankingGapQuestions + result.retrievalGapQuestions,
+        label,
+      ).toBe(result.curveDenominator);
+      expect(result.rankingGapQuestions, label).toBeGreaterThanOrEqual(0);
+      expect(result.retrievalGapQuestions, label).toBeGreaterThanOrEqual(0);
+    }
   });
 
   it('ignores a capability the baseline did not measure instead of scoring it as a gain', () => {
@@ -237,6 +293,140 @@ describe('attributeRecallGap', () => {
     expect(result.coveredQuestions).toBe(0);
     expect(result.rankingGapQuestions).toBe(0);
     expect(result.recoverableFromRanking).toBe(0);
+  });
+
+  it('reports a capability that went backwards as moved, not as unchanged', () => {
+    // `unchangedCapabilities` answers "which capabilities did this intervention
+    // move". A capability that lost questions was moved, so filing it as
+    // unchanged would understate the intervention's footprint in exactly the
+    // direction that flatters it -- and the conjunction arm's whole finding was
+    // that an intervention can move things it was not aimed at.
+    //
+    // The relation, not the value, is what the assertion is about: a regression
+    // and a gain are both movements, so neither belongs in the unchanged set.
+    const result = attributeRecallGap({
+      curve: { considered: 10, ceiling: 1, recallAtOne: 0.5 },
+      baseline: [
+        { capability: 'IE', total: 10, correct: 5, abstained: 0 },
+        { capability: 'TR', total: 10, correct: 8, abstained: 0 },
+      ],
+      feature: [
+        { capability: 'IE', total: 10, correct: 7, abstained: 0 },
+        { capability: 'TR', total: 10, correct: 6, abstained: 0 },
+      ],
+    });
+
+    expect(result.unchangedCapabilities).toEqual([]);
+    expect(result.improvementFromOtherCapabilities).toBe(0);
+  });
+
+  it('does not let the improvement figures hide a move that cancels out', () => {
+    // Two capabilities moving in opposite directions net to zero, which is the
+    // one shape where the two improvement totals agree with "nothing happened"
+    // while the unchanged list correctly disagrees. Without this the totals can
+    // be read as a stability claim they do not make.
+    const result = attributeRecallGap({
+      curve: { considered: 10, ceiling: 1, recallAtOne: 0.5 },
+      baseline: [
+        { capability: 'IE', total: 10, correct: 5, abstained: 0 },
+        { capability: 'TR', total: 10, correct: 5, abstained: 0 },
+      ],
+      feature: [
+        { capability: 'IE', total: 10, correct: 8, abstained: 0 },
+        { capability: 'TR', total: 10, correct: 2, abstained: 0 },
+      ],
+    });
+
+    expect(result.improvementFromOtherCapabilities).toBe(0);
+    expect(result.unchangedCapabilities).toEqual([]);
+  });
+
+  it('clamps the absent-from-denominator count when the curve covers more than the run graded', () => {
+    // The curve's denominator and the run's population are measured over
+    // different filters, so the curve can be the wider of the two. The field
+    // states how many graded questions the curve omitted; a curve that omitted
+    // none has nothing positive to report, and a negative count would read as
+    // "the curve covered questions the run did not grade", which is not a thing
+    // that can happen.
+    const result = attributeRecallGap({
+      curve: { considered: 500, ceiling: 0.96, recallAtOne: 0.33 },
+      baseline: [{ capability: 'IE', total: 120, correct: 100, abstained: 0 }],
+      feature: [{ capability: 'IE', total: 120, correct: 100, abstained: 0 }],
+    });
+
+    expect(result.curveDenominator).toBe(500);
+    expect(result.runQuestionCount).toBe(120);
+    expect(result.absentFromDenominatorQuestions).toBe(0);
+  });
+
+  it('sizes the abstention population from the arm that added it', () => {
+    // In A2 the baseline's ABS capability existed and scored 0; the feature
+    // scored 29. The field exists to keep the abstention questions separable
+    // from the ranking gap, and the population that matters is the one the run
+    // *answered by refusing* -- the feature.
+    //
+    // The two arms are given deliberately DIFFERENT totals here. An earlier
+    // revision of this test gave both 30, which made it pass under either
+    // reading: with equal populations, "from the baseline" and "from the
+    // feature" return the same number and the assertion cannot tell them apart.
+    // The mutation survived that test. A capability's population CAN differ
+    // between arms -- that is what a capability added or removed between two
+    // dispatches looks like -- so the test has to use a case where it does.
+    const result = attributeRecallGap({
+      curve: { considered: 470, ceiling: 0.96, recallAtOne: 0.33 },
+      baseline: [{ capability: 'ABS', total: 30, correct: 0, abstained: 0 }],
+      feature: [{ capability: 'ABS', total: 44, correct: 29, abstained: 29 }],
+    });
+
+    expect(result.abstentionQuestions).toBe(44);
+    expect(result.improvementFromAbstention).toBe(29);
+
+    // And it is not silently counted twice: the curve excluded these questions,
+    // so they are outside the denominator the gap is measured against.
+    const wide = attributeRecallGap({
+      curve: { considered: 470, ceiling: 0.96, recallAtOne: 0.33 },
+      baseline: [{ capability: 'ABS', total: 10, correct: 0, abstained: 0 }],
+      feature: [{ capability: 'ABS', total: 470, correct: 470, abstained: 470 }],
+    });
+    expect(wide.abstentionQuestions).toBe(470);
+    expect(wide.curveDenominator).toBe(470);
+  });
+
+  it('rounds the fraction to the nearest count rather than truncating', () => {
+    // The curve's own `recalled` and the attribution's `admittedAtOne` are meant
+    // to describe the same questions, and truncation makes them disagree by one
+    // on every fraction whose product does not land on an integer. On 428
+    // considered at recall 0.9626 exactly that happens, and the disagreement
+    // would show up as a one-question difference between two artifacts that
+    // claim to count the same population.
+    const result = attributeRecallGap({
+      curve: { considered: 428, ceiling: 1, recallAtOne: 0.9626 },
+      baseline: [{ capability: 'IE', total: 428, correct: 412, abstained: 0 }],
+      feature: [{ capability: 'IE', total: 428, correct: 412, abstained: 0 }],
+    });
+
+    // 0.9626 * 428 = 411.99..., which rounds to 412 and truncates to 411.
+    expect(result.admittedAtOne).toBe(412);
+  });
+
+  it('clamps the retrieval gap when a caller supplies a ceiling above one', () => {
+    // `CurveSummary` is a public type, so `ceiling > 1` is constructible even
+    // though `buildRecallCurve` cannot emit it (`inPool <= total`). The clamp is
+    // kept for that caller rather than removed as unreachable, because the
+    // failure mode is a *negative* retrieval gap -- a report stating that
+    // retrieval covered more questions than the denominator contains.
+    //
+    // This is the one assertion here that guards an input the shipped pipeline
+    // cannot produce, and it is stated as such rather than dressed up as a
+    // reachable case.
+    const result = attributeRecallGap({
+      curve: { considered: 100, ceiling: 1.5, recallAtOne: 0 },
+      baseline: [{ capability: 'IE', total: 100, correct: 0, abstained: 0 }],
+      feature: [{ capability: 'IE', total: 100, correct: 0, abstained: 0 }],
+    });
+
+    expect(result.coveredQuestions).toBe(150);
+    expect(result.retrievalGapQuestions).toBe(0);
   });
 });
 

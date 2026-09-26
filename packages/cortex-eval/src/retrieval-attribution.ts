@@ -168,9 +168,25 @@ export function rankingGapFailureCount(input: {
   return Math.max(0, coveredButUnadmitted - absorbed);
 }
 
-/** Rounds a fraction-of-`considered` to a question count, clamped at zero. */
-function toQuestions(fraction: number, considered: number): number {
-  return Math.max(0, Math.round(fraction * considered));
+/**
+ * Rounds a fraction-of-`considered` to a question count, clamped at zero.
+ *
+ * The optional ceiling is not defensive coding. `admittedAtOne` is by definition
+ * a subset of the covered set -- a question cannot have been admitted by ranking
+ * unless its evidence turn was in the pool to be ranked -- so a computed
+ * `admitted` above `covered` is an arithmetic impossibility, not a large value.
+ * It is nonetheless *producible*: `buildRecallCurve` measures `ceiling` against
+ * the pool width and `recall` against each cutoff, so when the pool is narrower
+ * than a requested cutoff `recall` exceeds `ceiling` (the curve clamps its own
+ * `gain` at zero for exactly this reason). Left unclamped that case breaks the
+ * partition stated on `admittedAtOne` -- `admitted + rankingGap + retrievalGap`
+ * reached 140 against a denominator of 100 on a probe -- and it breaks it by
+ * inflating `retrievalGapQuestions`, which is the figure that decides whether
+ * retrieval work is the next thing to do.
+ */
+function toQuestions(fraction: number, considered: number, ceiling?: number): number {
+  const count = Math.max(0, Math.round(fraction * considered));
+  return ceiling === undefined ? count : Math.min(count, ceiling);
 }
 
 export function attributeRecallGap(options: AttributeRecallGapOptions): RetrievalGapAttribution {
@@ -180,11 +196,16 @@ export function attributeRecallGap(options: AttributeRecallGapOptions): Retrieva
 
   const considered = curve.considered;
   const coveredQuestions = toQuestions(curve.ceiling, considered);
-  const admittedAtOne = toQuestions(curve.recallAtOne, considered);
+  // Bounded by `coveredQuestions` so the partition below closes for every input
+  // the curve can emit, including one where the pool is narrower than the cutoff.
+  const admittedAtOne = toQuestions(curve.recallAtOne, considered, coveredQuestions);
 
-  // Covered but not admitted. Clamped for the pool-narrower-than-cutoff case
-  // the curve's own `gain` clamps for: a negative gap would read as "ranking
-  // work makes things worse" when the truth is "the pool is too narrow".
+  // Covered but not admitted. This is the segmentation the whole file is about,
+  // and it is non-negative by construction now that `admittedAtOne` is bounded by
+  // `coveredQuestions`. The clamp is kept anyway because the invariant it guards
+  // is stated in the type's documentation and a reader should not have to
+  // re-derive it from the bound two lines above to know the field cannot go
+  // negative.
   const rankingGapQuestions = Math.max(0, coveredQuestions - admittedAtOne);
   const retrievalGapQuestions = Math.max(0, considered - coveredQuestions);
 
