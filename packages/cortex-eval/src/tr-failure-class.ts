@@ -141,7 +141,7 @@ const ALPHANUMERIC = /[\p{L}\p{N}]/u;
  * one context, `of` 51 times in another, and both were being reported as the
  * confidence term.
  */
-const GRAMMATICAL_TOKENS = new Set([
+export const GRAMMATICAL_TOKENS: ReadonlySet<string> = new Set([
   'the',
   'a',
   'an',

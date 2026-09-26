@@ -116,10 +116,18 @@ export {
 export {
   answerTokens,
   classifyTrFailure,
+  GRAMMATICAL_TOKENS,
   type TrFailureClass,
   type TrFailureDetail,
   type TrFailureInput,
 } from './tr-failure-class.js';
+export {
+  adjudicateGroundedFailure,
+  distinguishingTokens,
+  type CandidateInput,
+  type CandidateVerdict,
+  type DistinguishingTokens,
+} from './candidate-discrimination.js';
 export {
   buildRecallCurve,
   computeRecallCurve,

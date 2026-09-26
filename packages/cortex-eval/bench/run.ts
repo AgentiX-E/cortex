@@ -40,6 +40,7 @@ import {
   attributeRecallGap,
   decomposeFailures,
   classifyTrFailure,
+  adjudicateGroundedFailure,
   type Metrics,
   type DiagnosticRecord,
   type AblationSkipRecord,
@@ -493,6 +494,17 @@ async function main(): Promise<void> {
         maxDistinctiveOccurrences: detail.maxDistinctiveOccurrences,
         maxOccurrenceToken: detail.maxOccurrenceToken,
         answerTokens: detail.answerTokens,
+        // Only a grounded verdict has candidates to adjudicate. An ungrounded
+        // question never retrieved the answer, so asking whether the reader
+        // chose between retrieved candidates is not a question that applies.
+        adjudication:
+          detail.classification === 'grounded'
+            ? adjudicateGroundedFailure({
+                groundTruth: record.ground_truth ?? null,
+                readerAnswer: record.decision.answer ?? null,
+                retrieved: record.decision.retrieved ?? '',
+              })
+            : null,
       };
     });
 
@@ -508,6 +520,9 @@ async function main(): Promise<void> {
   const trWeak = trFailures.filter(
     (f) => f.classification === 'grounded' && f.maxDistinctiveOccurrences >= 10,
   ).length;
+  const trCompeting = trFailures.filter((f) => f.adjudication === 'competing-candidates').length;
+  const trEvidenceOnly = trFailures.filter((f) => f.adjudication === 'evidence-only').length;
+  const trUnadjudicable = trFailures.filter((f) => f.adjudication === 'unadjudicable').length;
 
   writeFileSync(
     'benchmark-tr-failure-classes.json',
@@ -518,6 +533,11 @@ async function main(): Promise<void> {
         ungrounded: trUngrounded,
         groundedStrongEvidence: trStrong,
         groundedWeakEvidence: trWeak,
+        adjudication: {
+          competingCandidates: trCompeting,
+          evidenceOnly: trEvidenceOnly,
+          unadjudicable: trUnadjudicable,
+        },
         questions: trFailures,
       },
       null,
@@ -532,6 +552,10 @@ async function main(): Promise<void> {
   console.log(
     `    of the grounded, ${trStrong} rest on 1-2 occurrences (reader-attributable), ` +
       `${trWeak} on >=10 (token is ubiquitous, verdict is weak)`,
+  );
+  console.log(
+    `    adjudication: ${trCompeting} competing-candidates, ` +
+      `${trEvidenceOnly} evidence-only, ${trUnadjudicable} unadjudicable`,
   );
 
   writeFileSync('benchmark-report.md', markdown);

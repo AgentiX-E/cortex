@@ -162,6 +162,16 @@ that context.
 
 ## 5. What this changes about the plan
 
+> **Superseded in part.** The five weak cases below were opened by
+> [`MEASURE-CANDIDATE-DISCRIMINATION.md`](MEASURE-CANDIDATE-DISCRIMINATION.md).
+> Four resolve to `competing-candidates` — retrieval delivered the answer and the
+> reader chose the wrong one — and the fifth is declined as a list-answer case.
+> The occurrence count was reporting a symptom: the token recurs because the
+> context offers both candidates. The 13/14 split below still holds; what changes
+> is that the grounded half now has two mechanisms rather than one, and the
+> `proximity or relevance term` named in consequence 1 is not the term that was
+> needed.
+
 **TR does not have a single dominant failure mechanism.** The split is 13 / 14,
 close to even, so a fix aimed at only one side addresses at most half the
 population — and if the 5 weak cases are genuinely retrieval-side, the split is
@@ -170,10 +180,11 @@ closer to 18 / 9 in favour of retrieval.
 Two consequences:
 
 1. **The 5 weak cases need a different instrument, not a different verdict.**
-   Distinguishing "the answer token appears in an unrelated turn" from "it appears
-   in the turn that answers the question" needs a proximity or relevance term the
-   current artifact does not carry. Until that exists, those 5 are unclassified
-   and must not be spent.
+   This was the right call and the instrument has since been built — see
+   [`MEASURE-CANDIDATE-DISCRIMINATION.md`](MEASURE-CANDIDATE-DISCRIMINATION.md) §2.
+   The mechanism turned out not to need a proximity term: distinguishing "the answer
+   token appears in an unrelated turn" from "the context offers a competing answer"
+   is settled by which side's **unique** tokens are present.
 2. **Reader work is justified by 4 questions, not 14.** That is a much weaker
    warrant than the raw grounded count suggests, and it is the number a
    cost-benefit decision should use.
