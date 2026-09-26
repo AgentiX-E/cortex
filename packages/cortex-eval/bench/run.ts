@@ -39,12 +39,30 @@ import {
   turnText,
   attributeRecallGap,
   decomposeFailures,
+  classifyTrFailure,
   type Metrics,
   type DiagnosticRecord,
   type AblationSkipRecord,
   type DecisionTrace,
   type LongMemEvalInstance,
 } from '@agentix-e/cortex-eval';
+
+/**
+ * A diagnostic record plus the fields the TR classifier reads.
+ *
+ * `DiagnosticRecord` in the eval package narrows `decision` to the two fields the
+ * census needs. The classifier also reads `retrieved` and `answer`, and the
+ * record carries `ground_truth` and `question_date`, so the wider shape is
+ * stated here rather than widening the census type to fields it does not use.
+ */
+type TrClassifiableRecord = DiagnosticRecord & {
+  readonly question_date?: string;
+  readonly ground_truth?: string | number | null;
+  readonly decision: DiagnosticRecord['decision'] & {
+    readonly retrieved?: string;
+    readonly answer?: string | null;
+  };
+};
 
 /** Resolve an instance's answer session ids to their full session text. */
 function answerSessionsContent(inst: LongMemEvalInstance): string[] {
@@ -430,6 +448,86 @@ async function main(): Promise<void> {
         `(answered ${slice.failedAnswered}, refused ${slice.failedRefused})`,
     );
   }
+
+  // Why the TR failures happened, which neither the census nor the report says.
+  //
+  // The census locates 36 TR failures and splits them into answered-wrong and
+  // refused-wrong. It does not say why any of them failed, and the two possible
+  // mechanisms need opposite work: an answer that was in the context and was
+  // misread sends the work to the reader, while an answer that was never
+  // retrieved sends it to retrieval. At 51% of all failures, TR is the
+  // population where that distinction decides the next subsystem.
+  //
+  // The classification is emitted with its own confidence term. The retrieved
+  // contexts run 8k-14k characters and the TR answers are single digits, so a
+  // grounded verdict from a token that occurs once is a different claim from one
+  // where the digit occurs ninety-five times as a date fragment. Reporting the
+  // count rather than folding it into the verdict is what keeps the two
+  // separable: the strong population is the one that justifies work on the
+  // reader, and the weak one does not.
+  //
+  // Only answered-wrong questions are classified. A refusal cannot be grounded or
+  // ungrounded -- the reader produced no assertion to check -- and putting the
+  // refused population in either bucket would invent a finding.
+  const trFailures = [
+    ...(mrDiagnostics as TrClassifiableRecord[]),
+    ...(singleSessionDiagnostics as TrClassifiableRecord[]),
+  ]
+    .filter((record) => record.capability === 'TR' && !record.correct && !record.decision.abstained)
+    .map((record) => {
+      const detail = classifyTrFailure(
+        {
+          question: record.question,
+          groundTruth: record.ground_truth ?? null,
+          answer: record.decision.answer ?? null,
+          retrieved: record.decision.retrieved ?? '',
+          questionDate: record.question_date ?? '',
+        },
+        { detail: true },
+      );
+      return {
+        questionId: record.question_id,
+        groundTruth: record.ground_truth ?? null,
+        answer: record.decision.answer ?? null,
+        classification: detail.classification,
+        maxTokenOccurrences: detail.maxTokenOccurrences,
+        answerTokens: detail.answerTokens,
+      };
+    });
+
+  const trGrounded = trFailures.filter((f) => f.classification === 'grounded').length;
+  const trUngrounded = trFailures.length - trGrounded;
+  const trStrong = trFailures.filter(
+    (f) => f.classification === 'grounded' && f.maxTokenOccurrences <= 2,
+  ).length;
+  const trWeak = trFailures.filter(
+    (f) => f.classification === 'grounded' && f.maxTokenOccurrences >= 10,
+  ).length;
+
+  writeFileSync(
+    'benchmark-tr-failure-classes.json',
+    JSON.stringify(
+      {
+        total: trFailures.length,
+        grounded: trGrounded,
+        ungrounded: trUngrounded,
+        groundedStrongEvidence: trStrong,
+        groundedWeakEvidence: trWeak,
+        questions: trFailures,
+      },
+      null,
+      2,
+    ),
+  );
+  console.log('=== TR failure classification ===');
+  console.log(
+    `  ${trFailures.length} answered-wrong TR failures: ` +
+      `${trGrounded} grounded, ${trUngrounded} ungrounded`,
+  );
+  console.log(
+    `    of the grounded, ${trStrong} rest on 1-2 occurrences (reader-attributable), ` +
+      `${trWeak} on >=10 (token is ubiquitous, verdict is weak)`,
+  );
 
   writeFileSync('benchmark-report.md', markdown);
   writeFileSync(

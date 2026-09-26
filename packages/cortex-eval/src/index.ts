@@ -114,6 +114,13 @@ export {
   type FailureCensus,
 } from './failure-census.js';
 export {
+  answerTokens,
+  classifyTrFailure,
+  type TrFailureClass,
+  type TrFailureDetail,
+  type TrFailureInput,
+} from './tr-failure-class.js';
+export {
   buildRecallCurve,
   computeRecallCurve,
   classifyExclusion,
