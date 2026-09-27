@@ -62,26 +62,50 @@ export function percentile(sorted: readonly number[], p: number): number {
 }
 
 /**
- * Probe the embedding provider for determinism: embed each text twice and return
- * the maximum absolute element-wise difference across both runs. A value near
- * zero means the provider is deterministic; a large value means repeated calls
- * drift, which would confound retrieval scores.
+ * Result of the embedding determinism probe.
+ *
+ * `dimension` travels with `maxAbsDiff` because a drift of zero is only a fact
+ * about an embedding of a known width. The audit's §6 finding was that the
+ * artifact carried `embeddingMaxAbsDiff: 0` with no field identifying the
+ * provider, model, or dimension — and a reader comparing two such artifacts
+ * cannot tell a 1024-dimension Zhipu run from a 256-dimension hash-fallback run,
+ * because both are deterministic and both read `0`. Reporting the width here is
+ * what makes the number interpretable next to the provenance block, and reading
+ * it off the vectors rather than from the configured value is what makes it
+ * evidence of what the provider actually returned rather than of what was asked
+ * for.
+ */
+export type EmbeddingDeterminism = {
+  /** Maximum absolute element-wise difference between two embeddings of one text. */
+  maxAbsDiff: number;
+  /** Width of the vectors the provider returned. */
+  dimension: number;
+};
+
+/**
+ * Probe the embedding provider for determinism: embed each text twice and report
+ * the maximum absolute element-wise difference across both runs, plus the width
+ * of the vectors returned. A `maxAbsDiff` near zero means the provider is
+ * deterministic; a large value means repeated calls drift, which would confound
+ * retrieval scores.
  */
 export async function checkEmbeddingDeterminism(
   embedding: EmbeddingModel,
   texts: string[],
-): Promise<number> {
+): Promise<EmbeddingDeterminism> {
   let maxDiff = 0;
+  let dimension = 0;
   for (const text of texts) {
     const [v1] = await embedding.embed([text]);
     const [v2] = await embedding.embed([text]);
     const a = v1 ?? new Float64Array(0);
     const b = v2 ?? new Float64Array(0);
+    dimension = Math.max(dimension, a.length, b.length);
     for (let i = 0; i < Math.min(a.length, b.length); i++) {
       maxDiff = Math.max(maxDiff, Math.abs(a[i]! - b[i]!));
     }
   }
-  return maxDiff;
+  return { maxAbsDiff: maxDiff, dimension };
 }
 
 /** Options controlling how the recall diagnostics perform retrieval. */

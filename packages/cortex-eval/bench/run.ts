@@ -12,11 +12,15 @@ import {
   checkEmbeddingDeterminism,
   computeRetrievalDiagnostics,
   computeSessionRetrievalDiagnostics,
-  createEmbeddingFromEnv,
+  createEmbeddingWithProvenanceFromEnv,
   createLlmFromEnv,
   computeRecallCurve,
   createRerankerFromEnv,
   deserializeEmbeddingCache,
+  embeddingBatchIntervalMs,
+  embeddingSourceStats,
+  resetEmbeddingSourceStats,
+  setEmbeddingBatchIntervalMs,
   hasDiagnosticRecord,
   mergeEmbeddingCache,
   runMrAggregationAblation,
@@ -45,6 +49,7 @@ import {
   type DiagnosticRecord,
   type AblationSkipRecord,
   type DecisionTrace,
+  type EmbeddingProvenance,
   type LongMemEvalInstance,
 } from '@agentix-e/cortex-eval';
 
@@ -99,6 +104,51 @@ function toCapabilityAccuracy(
   }));
 }
 
+/**
+ * The embedding backend this run graded against, attached to every JSON artifact.
+ *
+ * The audit's §7.5 requirement is that two runs can be compared "without
+ * assuming", and the artifact a reader compares is not always
+ * `benchmark-diagnostics.json` — an ablation report is compared against the same
+ * ablation from an earlier run. Stamping each artifact at the moment it is
+ * written is what makes that possible without a reader having to find the one
+ * file that happens to carry the backend, and without a run that predates this
+ * change being mistaken for a run against a different backend.
+ *
+ * `null` until `main` has resolved the backend, so an artifact written before
+ * that point records the absence of the fact rather than a plausible default.
+ */
+let runEmbeddingProvenance: EmbeddingProvenance | null = null;
+
+/** Serialize a JSON artifact, naming the embedding backend it was measured on. */
+function writeReportJson(filename: string, payload: unknown): void {
+  writeFileSync(
+    filename,
+    JSON.stringify({ embedding: runEmbeddingProvenance, ...(payload as object) }, null, 2),
+  );
+}
+
+/**
+ * Prefix a Markdown report with the embedding backend it was measured on.
+ *
+ * The JSON artifacts are audited by comparison; the Markdown is read as a
+ * conclusion. A reader who opens only the Markdown gets the accuracy figure with
+ * no way to tell which embedding produced it, and the hash fallback is reachable
+ * without any error — so the line goes where the conclusion is, not only where
+ * the data is.
+ */
+function withEmbeddingProvenance(markdown: string): string {
+  const p = runEmbeddingProvenance;
+  const line =
+    p === null
+      ? 'Embedding: **not recorded** (the report was written before the backend was resolved)'
+      : `Embedding: \`${p.provider}\`` +
+        ` · model \`${p.model ?? 'n/a'}\`` +
+        ` · baseUrl \`${p.baseUrl ?? 'n/a'}\`` +
+        ` · dimensions ${p.dimensions}`;
+  return `${line}\n\n${markdown}`;
+}
+
 async function main(): Promise<void> {
   const dataPath = process.env['LONGMEMEVAL_PATH'];
   if (!dataPath) {
@@ -115,7 +165,38 @@ async function main(): Promise<void> {
   const limit = Number(process.env['LIMIT'] ?? 0);
   const sampled = sampleInstances(instances as never, limit);
 
-  const embedding = createEmbeddingFromEnv(process.env);
+  const { embedding, provenance: embeddingProvenance } = createEmbeddingWithProvenanceFromEnv(
+    process.env,
+  );
+  runEmbeddingProvenance = embeddingProvenance;
+  // Pace consecutive embedding requests from the SECOND batch onward. The 429
+  // audit found the provider throttles on request rate and the batch loop issued
+  // back-to-back maximum-size batches, discovering the limit by being rejected.
+  // The retry layer absorbs a rejection, but a retry spends wall-clock on a
+  // request that was avoidable, so the rate stays under the limit rather than
+  // probing it. Zero by default so an unset environment reproduces the previous
+  // request pattern exactly.
+  const appliedBatchIntervalMs = setEmbeddingBatchIntervalMs(
+    Number(process.env['EMBEDDING_BATCH_INTERVAL_MS'] ?? 0),
+  );
+  if (appliedBatchIntervalMs !== 0) {
+    throw new Error(
+      `EMBEDDING_BATCH_INTERVAL_MS was already ${appliedBatchIntervalMs} before this run configured it`,
+    );
+  }
+  resetEmbeddingSourceStats();
+  // Printed before any request is made: the embedding backend is the single
+  // largest determinant of the numbers that follow, and the factory falls back
+  // silently to a 256-dimension hash embedding when no credential is present.
+  // A run that graded against the fallback and a run that graded against Zhipu
+  // each produced a real report; only this line distinguishes them in the log.
+  console.log(
+    `Embedding backend: ${embeddingProvenance.provider} ` +
+      `(model=${embeddingProvenance.model ?? 'n/a'}, ` +
+      `baseUrl=${embeddingProvenance.baseUrl ?? 'n/a'}, ` +
+      `dimensions=${embeddingProvenance.dimensions}), ` +
+      `batchIntervalMs=${embeddingBatchIntervalMs()}`,
+  );
   const llm = createLlmFromEnv(process.env);
   const threshold = Number(process.env['ABSTAIN_THRESHOLD'] ?? 0.5);
   // The cross-encoder reranking stage (roadmap measure B1). Off unless
@@ -186,12 +267,18 @@ async function main(): Promise<void> {
   );
 
   // Verify the embedding provider is deterministic before trusting retrieval
-  // scores; a large drift would confound the threshold comparison.
+  // scores; a large drift would confound the threshold comparison. The probe
+  // also reports the width the provider actually returned, which is recorded
+  // beside the provenance: a determinism score of zero is a fact about an
+  // embedding of a known dimension, not about an embedding in the abstract.
   const determinism = await checkEmbeddingDeterminism(embedding, [
     'determinism probe alpha',
     'determinism probe beta',
   ]);
-  console.log(`Embedding determinism (max abs diff): ${determinism}`);
+  console.log(
+    `Embedding determinism (max abs diff): ${determinism.maxAbsDiff} ` +
+      `(vector width ${determinism.dimension})`,
+  );
 
   // Measure the retrieval signal before grading so the abstention threshold can
   // be set from data instead of guessed. Turn-level recall is complemented by
@@ -222,9 +309,23 @@ async function main(): Promise<void> {
   const diagnosticsWithDeterminism = {
     ...turnDiagnostics,
     session: sessionDiagnostics,
-    embeddingMaxAbsDiff: determinism,
+    embedding: {
+      ...embeddingProvenance,
+      // The width the provider RETURNED, not the width that was requested. The
+      // two agree for every configured backend today; recording the returned
+      // value is what makes a disagreement visible instead of assumed away.
+      returnedDimensions: determinism.dimension,
+      maxAbsDiff: determinism.maxAbsDiff,
+      // How the vectors behind the scores above were obtained. A run restored
+      // from the persisted cache and a run that embedded everything live produce
+      // identical reports, and the second is the one that actually exercised the
+      // provider and the request-rate limit. Without these four numbers the
+      // report cannot say which one it is reading.
+      source: embeddingSourceStats(),
+      batchIntervalMs: embeddingBatchIntervalMs(),
+    },
   };
-  writeFileSync('benchmark-diagnostics.json', JSON.stringify(diagnosticsWithDeterminism, null, 2));
+  writeReportJson('benchmark-diagnostics.json', diagnosticsWithDeterminism);
   console.log('=== Retrieval diagnostics ===');
   console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));
 
@@ -245,7 +346,7 @@ async function main(): Promise<void> {
   // reader comparing `ceiling` to accuracy is now comparing two populations
   // that are both stated.
   const recallCurve = await computeRecallCurve(diagnosticsSample as never, embedding, { llm });
-  writeFileSync('benchmark-recall-curve.json', JSON.stringify(recallCurve, null, 2));
+  writeReportJson('benchmark-recall-curve.json', recallCurve);
   console.log('=== Recall curve ===');
   console.log(
     `  k      recall   ceiling  gain     (n=${recallCurve.considered} of ` +
@@ -324,7 +425,7 @@ async function main(): Promise<void> {
       baseline: toCapabilityAccuracy(report.ablation.baselineMetrics),
       feature: toCapabilityAccuracy(report.ablation.featureMetrics),
     });
-    writeFileSync('benchmark-gap-attribution.json', JSON.stringify(attribution, null, 2));
+    writeReportJson('benchmark-gap-attribution.json', attribution);
     console.log('=== k=1 gap attribution ===');
     console.log(
       `  denominator ${attribution.curveDenominator} (run graded ` +
@@ -375,7 +476,7 @@ async function main(): Promise<void> {
         decision: trace ?? null,
       };
     });
-  writeFileSync('benchmark-mr-diagnostics.json', JSON.stringify(mrDiagnostics, null, 2));
+  writeReportJson('benchmark-mr-diagnostics.json', mrDiagnostics);
   console.log('=== MR diagnostics ===');
   console.log(JSON.stringify(mrDiagnostics, null, 2));
 
@@ -404,10 +505,7 @@ async function main(): Promise<void> {
         decision: trace ?? null,
       };
     });
-  writeFileSync(
-    'benchmark-single-session-diagnostics.json',
-    JSON.stringify(singleSessionDiagnostics, null, 2),
-  );
+  writeReportJson('benchmark-single-session-diagnostics.json', singleSessionDiagnostics);
   console.log('=== Single-session diagnostics ===');
   console.log(JSON.stringify(singleSessionDiagnostics, null, 2));
 
@@ -433,7 +531,7 @@ async function main(): Promise<void> {
       ...(singleSessionDiagnostics as DiagnosticRecord[]),
     ],
   });
-  writeFileSync('benchmark-failure-census.json', JSON.stringify(census, null, 2));
+  writeReportJson('benchmark-failure-census.json', census);
   console.log('=== Failure census ===');
   console.log(
     `  ${census.failed} failed of ${census.total} (${census.correct} correct); ` +
@@ -524,26 +622,19 @@ async function main(): Promise<void> {
   const trEvidenceOnly = trFailures.filter((f) => f.adjudication === 'evidence-only').length;
   const trUnadjudicable = trFailures.filter((f) => f.adjudication === 'unadjudicable').length;
 
-  writeFileSync(
-    'benchmark-tr-failure-classes.json',
-    JSON.stringify(
-      {
-        total: trFailures.length,
-        grounded: trGrounded,
-        ungrounded: trUngrounded,
-        groundedStrongEvidence: trStrong,
-        groundedWeakEvidence: trWeak,
-        adjudication: {
-          competingCandidates: trCompeting,
-          evidenceOnly: trEvidenceOnly,
-          unadjudicable: trUnadjudicable,
-        },
-        questions: trFailures,
-      },
-      null,
-      2,
-    ),
-  );
+  writeReportJson('benchmark-tr-failure-classes.json', {
+    total: trFailures.length,
+    grounded: trGrounded,
+    ungrounded: trUngrounded,
+    groundedStrongEvidence: trStrong,
+    groundedWeakEvidence: trWeak,
+    adjudication: {
+      competingCandidates: trCompeting,
+      evidenceOnly: trEvidenceOnly,
+      unadjudicable: trUnadjudicable,
+    },
+    questions: trFailures,
+  });
   console.log('=== TR failure classification ===');
   console.log(
     `  ${trFailures.length} answered-wrong TR failures: ` +
@@ -558,11 +649,8 @@ async function main(): Promise<void> {
       `${trEvidenceOnly} evidence-only, ${trUnadjudicable} unadjudicable`,
   );
 
-  writeFileSync('benchmark-report.md', markdown);
-  writeFileSync(
-    'benchmark-report.json',
-    JSON.stringify({ ...report, decisionReasons: reasonCounts }, null, 2),
-  );
+  writeFileSync('benchmark-report.md', withEmbeddingProvenance(markdown));
+  writeReportJson('benchmark-report.json', { ...report, decisionReasons: reasonCounts });
   console.log(markdown);
 
   // Isolate the MR aggregation prompt contribution: legacy inline-counting vs
@@ -572,8 +660,8 @@ async function main(): Promise<void> {
     runs: ablationRuns,
     temperature,
   });
-  writeFileSync('benchmark-mr-ablation-report.md', mrAblation.markdown);
-  writeFileSync('benchmark-mr-ablation-report.json', JSON.stringify(mrAblation.report, null, 2));
+  writeFileSync('benchmark-mr-ablation-report.md', withEmbeddingProvenance(mrAblation.markdown));
+  writeReportJson('benchmark-mr-ablation-report.json', mrAblation.report);
   console.log('=== MR aggregation ablation ===');
   console.log(mrAblation.markdown);
 
@@ -584,8 +672,8 @@ async function main(): Promise<void> {
     runs: ablationRuns,
     temperature,
   });
-  writeFileSync('benchmark-tr-ablation-report.md', trAblation.markdown);
-  writeFileSync('benchmark-tr-ablation-report.json', JSON.stringify(trAblation.report, null, 2));
+  writeFileSync('benchmark-tr-ablation-report.md', withEmbeddingProvenance(trAblation.markdown));
+  writeReportJson('benchmark-tr-ablation-report.json', trAblation.report);
   console.log('=== TR temporal-engine ablation ===');
   console.log(trAblation.markdown);
 
@@ -597,11 +685,11 @@ async function main(): Promise<void> {
     runs: ablationRuns,
     temperature,
   });
-  writeFileSync('benchmark-tr-window-ablation-report.md', trWindowAblation.markdown);
   writeFileSync(
-    'benchmark-tr-window-ablation-report.json',
-    JSON.stringify(trWindowAblation.report, null, 2),
+    'benchmark-tr-window-ablation-report.md',
+    withEmbeddingProvenance(trWindowAblation.markdown),
   );
+  writeReportJson('benchmark-tr-window-ablation-report.json', trWindowAblation.report);
   console.log('=== TR time-window annotation ablation ===');
   console.log(trWindowAblation.markdown);
 
@@ -615,11 +703,11 @@ async function main(): Promise<void> {
     llm,
     { runs: ablationRuns, temperature },
   );
-  writeFileSync('benchmark-tr-coverage-ablation-report.md', trCoverageAblation.markdown);
   writeFileSync(
-    'benchmark-tr-coverage-ablation-report.json',
-    JSON.stringify(trCoverageAblation.report, null, 2),
+    'benchmark-tr-coverage-ablation-report.md',
+    withEmbeddingProvenance(trCoverageAblation.markdown),
   );
+  writeReportJson('benchmark-tr-coverage-ablation-report.json', trCoverageAblation.report);
   console.log('=== TR deterministic-coverage ablation ===');
   console.log(trCoverageAblation.markdown);
 
@@ -633,11 +721,11 @@ async function main(): Promise<void> {
     llm,
     { runs: ablationRuns, temperature },
   );
-  writeFileSync('benchmark-ku-bitemporal-ablation-report.md', kuBitemporalAblation.markdown);
   writeFileSync(
-    'benchmark-ku-bitemporal-ablation-report.json',
-    JSON.stringify(kuBitemporalAblation.report, null, 2),
+    'benchmark-ku-bitemporal-ablation-report.md',
+    withEmbeddingProvenance(kuBitemporalAblation.markdown),
   );
+  writeReportJson('benchmark-ku-bitemporal-ablation-report.json', kuBitemporalAblation.report);
   console.log('=== KU bitemporal ablation ===');
   console.log(kuBitemporalAblation.markdown);
 
@@ -650,17 +738,17 @@ async function main(): Promise<void> {
     runs: ablationRuns,
     temperature,
   });
-  writeFileSync('benchmark-mr-retry-ablation-report.md', retryAblation.markdown);
+  writeFileSync(
+    'benchmark-mr-retry-ablation-report.md',
+    withEmbeddingProvenance(retryAblation.markdown),
+  );
   // The report carries `retryFires` itself (see `AblationReport`), so it is
   // serialised as-is. Spreading the side-channel field back in here would
   // reintroduce exactly the two-paths-can-disagree shape that made the fire table
   // vanish from a re-rendered report: the Markdown got it from a concatenation at
   // the runner's return site, the JSON from this spread, and the renderer knew
   // about neither.
-  writeFileSync(
-    'benchmark-mr-retry-ablation-report.json',
-    JSON.stringify(retryAblation.report, null, 2),
-  );
+  writeReportJson('benchmark-mr-retry-ablation-report.json', retryAblation.report);
   console.log('=== MR abstention-retry ablation ===');
   console.log(retryAblation.markdown);
 
@@ -697,16 +785,16 @@ async function main(): Promise<void> {
         requireCohortCoverage: process.env['REQUIRE_CONJUNCTION_COHORT'] === '1',
       },
     );
-    writeFileSync('benchmark-conjunction-ablation-report.md', conjunctionAblation.markdown);
+    writeFileSync(
+      'benchmark-conjunction-ablation-report.md',
+      withEmbeddingProvenance(conjunctionAblation.markdown),
+    );
     // The report already carries `cohortCoverage` (see `AblationReport`), so it
     // is serialised rather than re-attached here. Spreading the side-channel
     // field back in would leave two paths that can disagree about coverage,
     // which is how the Markdown came to describe a 1-of-7 cohort as an ordinary
     // ablation in the first place.
-    writeFileSync(
-      'benchmark-conjunction-ablation-report.json',
-      JSON.stringify(conjunctionAblation.report, null, 2),
-    );
+    writeReportJson('benchmark-conjunction-ablation-report.json', conjunctionAblation.report);
     console.log('=== query-expansion conjunction ablation ===');
     console.log(
       `Cohort coverage: ${conjunctionAblation.coverage.present.length}/${CONJUNCTION_ABS_COHORT.length} ` +
@@ -745,19 +833,15 @@ async function main(): Promise<void> {
         ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
         ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),
       });
-      writeFileSync('benchmark-rerank-ablation-report.md', rerankAblation.markdown);
       writeFileSync(
-        'benchmark-rerank-ablation-report.json',
-        JSON.stringify(
-          {
-            ...rerankAblation.report,
-            abstentionShift: rerankAblation.abstentionShift,
-            fallbacks: rerankAblation.fallbacks,
-          },
-          null,
-          2,
-        ),
+        'benchmark-rerank-ablation-report.md',
+        withEmbeddingProvenance(rerankAblation.markdown),
       );
+      writeReportJson('benchmark-rerank-ablation-report.json', {
+        ...rerankAblation.report,
+        abstentionShift: rerankAblation.abstentionShift,
+        fallbacks: rerankAblation.fallbacks,
+      });
       console.log('=== reranking ablation ===');
       // Printed beside the accuracy delta on purpose: reranking changes the ordering
       // and the abstention decision is read from hits[0].score, so a shifted

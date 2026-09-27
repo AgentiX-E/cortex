@@ -43,12 +43,15 @@ describe('percentile', () => {
 });
 
 describe('checkEmbeddingDeterminism', () => {
-  it('returns zero for a deterministic embedding', async () => {
+  it('returns zero drift and the returned width for a deterministic embedding', async () => {
     const embedding: EmbeddingModel = {
       dimension: () => 4,
       embed: async (texts) => texts.map(() => new Float64Array([1, 2, 3, 4])),
     };
-    expect(await checkEmbeddingDeterminism(embedding, ['a', 'b'])).toBe(0);
+    expect(await checkEmbeddingDeterminism(embedding, ['a', 'b'])).toEqual({
+      maxAbsDiff: 0,
+      dimension: 4,
+    });
   });
 
   it('returns the maximum drift for a non-deterministic embedding', async () => {
@@ -60,7 +63,68 @@ describe('checkEmbeddingDeterminism', () => {
         return texts.map(() => new Float64Array(flip ? [1, 2] : [3, 4]));
       },
     };
-    expect(await checkEmbeddingDeterminism(embedding, ['a'])).toBe(2);
+    expect(await checkEmbeddingDeterminism(embedding, ['a'])).toEqual({
+      maxAbsDiff: 2,
+      dimension: 2,
+    });
+  });
+
+  it('reports the width the provider returned, not the width it declared', async () => {
+    // The declared width and the returned width are separate claims, and the
+    // whole point of the audit finding was that a reader could not tell which
+    // backend produced the vectors. A provider that silently honours its own
+    // default dimension instead of the requested one is exactly the case where
+    // believing the declaration would record the wrong number.
+    const embedding: EmbeddingModel = {
+      dimension: () => 1024,
+      embed: async (texts) => texts.map(() => new Float64Array(256)),
+    };
+    const probe = await checkEmbeddingDeterminism(embedding, ['a']);
+    expect(probe.dimension).toBe(256);
+  });
+
+  it('reports the widest vector when the provider is inconsistent across texts', async () => {
+    // Taking the max rather than the first or the last makes the probe
+    // order-independent: an artifact whose reported width depends on which text
+    // happened to be embedded first is not evidence of anything.
+    let call = 0;
+    const embedding: EmbeddingModel = {
+      dimension: () => 0,
+      embed: async (texts) => {
+        call += 1;
+        const width = call <= 2 ? 3 : 5;
+        return texts.map(() => new Float64Array(width));
+      },
+    };
+    const probe = await checkEmbeddingDeterminism(embedding, ['a', 'b']);
+    expect(probe.dimension).toBe(5);
+  });
+
+  it('tolerates a provider that returns no vector for a text', async () => {
+    // `embed` returning fewer vectors than texts is a provider contract
+    // violation, and the `?? new Float64Array(0)` fallbacks are what keep the
+    // probe from throwing on `undefined.length` deep inside a benchmark run
+    // where the stack would not name the provider. Asserting the two fallbacks
+    // are taken also asserts the probe degrades instead of crashing.
+    const embedding: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async () => [],
+    };
+    expect(await checkEmbeddingDeterminism(embedding, ['a'])).toEqual({
+      maxAbsDiff: 0,
+      dimension: 0,
+    });
+  });
+
+  it('reports zero width and zero drift for an empty probe list', async () => {
+    const embedding: EmbeddingModel = {
+      dimension: () => 8,
+      embed: async (texts) => texts.map(() => new Float64Array(8)),
+    };
+    expect(await checkEmbeddingDeterminism(embedding, [])).toEqual({
+      maxAbsDiff: 0,
+      dimension: 0,
+    });
   });
 });
 
@@ -348,5 +412,153 @@ describe('computeSessionRetrievalDiagnostics', () => {
     // The expansion phrases must be embedded as retrieval queries.
     expect(embedded.some((t) => t === 'the trip')).toBe(true);
     expect(embedded.some((t) => t === 'vacation')).toBe(true);
+  });
+});
+
+/**
+ * Degenerate haystacks.
+ *
+ * `computeRetrievalDiagnostics` and its session counterpart read optional
+ * dataset fields (`haystack_sessions`, `haystack_dates`) and skip questions with
+ * no evidence turn, so an unanswerable or malformed instance must be EXCLUDED
+ * from the denominator rather than counted as a miss. Counting it as a miss
+ * would report a recall figure over questions that have no answer to recall,
+ * which reads as a retrieval failure and is really a property of the dataset.
+ */
+describe('retrieval diagnostics over degenerate instances', () => {
+  const embedding = new HashEmbedding(64);
+
+  function instance(overrides: Partial<LongMemEvalInstance>): LongMemEvalInstance {
+    return {
+      question_id: 'q',
+      question_type: 'single-session-user',
+      question: 'What did I say?',
+      answer: 'x',
+      ...overrides,
+    };
+  }
+
+  it('reports a zero-answerable diagnostic for an empty instance list', async () => {
+    const diag = await computeRetrievalDiagnostics([], embedding);
+    expect(diag).toEqual({
+      totalQuestions: 0,
+      answerableQuestions: 0,
+      recallAt1: 0,
+      recallAt5: 0,
+      hitScores: [],
+      missScores: [],
+      recommendedThreshold: 0,
+    });
+  });
+
+  it('excludes an instance with no haystack from the denominator', async () => {
+    // The `?? []` on `haystack_sessions` is the branch under test: a dataset
+    // entry that omits the field entirely must be skipped, not treated as an
+    // empty haystack with a miss recorded against it.
+    const diag = await computeRetrievalDiagnostics([instance({})], embedding);
+    expect(diag.totalQuestions).toBe(1);
+    expect(diag.answerableQuestions).toBe(0);
+    expect(diag.recallAt5).toBe(0);
+  });
+
+  it('excludes an instance whose only turns are assistant turns', async () => {
+    // The assistant-turn filter runs before the answer check, so a session of
+    // nothing but assistant turns has no evidence turn and carries no signal.
+    const diag = await computeRetrievalDiagnostics(
+      [
+        instance({
+          haystack_sessions: [[{ role: 'assistant', content: 'Sure.', has_answer: true }]],
+        }),
+      ],
+      embedding,
+    );
+    expect(diag.answerableQuestions).toBe(0);
+  });
+
+  it('reads turns with no dates when the dataset omits them', async () => {
+    // `dates?.[i]` is undefined here, which `turnText` must tolerate. The
+    // question IS answerable, so this asserts the branch is taken without the
+    // instance dropping out of the denominator.
+    const diag = await computeRetrievalDiagnostics(
+      [
+        instance({
+          haystack_sessions: [[{ role: 'user', content: 'I like tea.', has_answer: true }]],
+        }),
+      ],
+      embedding,
+    );
+    expect(diag.answerableQuestions).toBe(1);
+    expect(diag.recallAt1).toBe(1);
+  });
+
+  it('mixes answerable and unanswerable instances without diluting recall', async () => {
+    // The measurement whose absence would matter most: a run over a dataset
+    // half abstention questions must report the recall of the answerable half,
+    // not the recall of the whole set.
+    const diag = await computeRetrievalDiagnostics(
+      [
+        instance({
+          question_id: 'answerable',
+          haystack_sessions: [[{ role: 'user', content: 'I like tea.', has_answer: true }]],
+        }),
+        instance({
+          question_id: 'abstention',
+          haystack_sessions: [[{ role: 'user', content: 'Hi.' }]],
+        }),
+      ],
+      embedding,
+    );
+    expect(diag.totalQuestions).toBe(2);
+    expect(diag.answerableQuestions).toBe(1);
+    expect(diag.recallAt1).toBe(1);
+  });
+
+  it('reports a zero-answerable session diagnostic for an empty instance list', async () => {
+    const diag = await computeSessionRetrievalDiagnostics([], embedding);
+    expect(diag).toEqual({
+      totalQuestions: 0,
+      answerableQuestions: 0,
+      recallAt1: 0,
+      recallAtK: 0,
+      hitScores: [],
+      missScores: [],
+      recommendedThreshold: 0,
+    });
+  });
+
+  it('excludes a session-less instance from the session denominator', async () => {
+    const diag = await computeSessionRetrievalDiagnostics([instance({})], embedding);
+    expect(diag.answerableQuestions).toBe(0);
+  });
+
+  it('excludes an instance whose only session is assistant-only', async () => {
+    const diag = await computeSessionRetrievalDiagnostics(
+      [
+        instance({
+          haystack_sessions: [[{ role: 'assistant', content: 'Sure.', has_answer: true }]],
+        }),
+      ],
+      embedding,
+    );
+    expect(diag.answerableQuestions).toBe(0);
+  });
+
+  it('mixes answerable and unanswerable instances at session level', async () => {
+    const diag = await computeSessionRetrievalDiagnostics(
+      [
+        instance({
+          question_id: 'answerable',
+          haystack_sessions: [[{ role: 'user', content: 'I like tea.', has_answer: true }]],
+        }),
+        instance({
+          question_id: 'abstention',
+          haystack_sessions: [[{ role: 'user', content: 'Hi.' }]],
+        }),
+      ],
+      embedding,
+    );
+    expect(diag.totalQuestions).toBe(2);
+    expect(diag.answerableQuestions).toBe(1);
+    expect(diag.recallAt1).toBe(1);
   });
 });

@@ -36,9 +36,11 @@ export {
 export {
   retryableFetch,
   isRetryableStatus,
+  parseRetryAfterMs,
   sleep,
   DEFAULT_MAX_RETRIES,
   DEFAULT_RETRY_BASE_DELAY_MS,
   DEFAULT_RETRY_TIMEOUT_MS,
+  DEFAULT_RETRY_BUDGET_MS,
   type RetryOptions,
 } from './retry.js';

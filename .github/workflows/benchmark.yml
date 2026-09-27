@@ -63,6 +63,11 @@ on:
         required: false
         default: ''
         type: string
+      embedding_batch_interval_ms:
+        description: 'Minimum spacing between consecutive embedding requests in ms (0 = unpaced). Zhipu throttles on request rate, so a real run should pace'
+        required: false
+        default: '0'
+        type: string
 
 permissions:
   contents: read
@@ -159,6 +164,13 @@ jobs:
           CORTEX_RERANK_PROVIDER: ${{ github.event.inputs.rerank_provider || 'openai' }}
           RERANK_CANDIDATE_POOL: ${{ github.event.inputs.rerank_candidate_pool }}
           RERANK_PROTECTED_HEAD: ${{ github.event.inputs.rerank_protected_head }}
+          # Client-side pacing for the embedding requests. The 429 root-cause
+          # audit found the provider throttles on REQUEST RATE and the batch loop
+          # issued back-to-back maximum-size requests; pacing keeps the rate under
+          # the limit instead of discovering it by rejection. Default 0, so a
+          # dispatch that ignores this input reproduces the previous request
+          # pattern exactly and the two form a clean A/B.
+          EMBEDDING_BATCH_INTERVAL_MS: ${{ github.event.inputs.embedding_batch_interval_ms || '0' }}
           # Only consulted by the openai provider. The llm provider reuses
           # DEEPSEEK_API_KEY (already set above) and the local provider needs no
           # credential at all, so an empty secret does not block those two.

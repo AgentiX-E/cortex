@@ -155,3 +155,44 @@ constrained by §2 and §3:
 Items 1–4 are the reliability fix; item 5 is what makes any future benchmark
 claim auditable. Item 5 is the one this repository's existing findings say to do
 first, because without it a green run and a red run are not comparable.
+
+## 8. Fix status
+
+All five requirements are implemented. Each row names the code that carries it
+and the evidence that the fix is reachable from a real run, not only from a unit
+test.
+
+| # | Requirement              | Implementation                                                                 | Evidence                                                                                  |
+| - | ------------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 1 | Read `Retry-After`       | `parseRetryAfterMs` in `packages/cortex-llm/src/retry.ts`; consulted ahead of the computed backoff | 5 parser tests (delta-seconds, HTTP-date, fractional, malformed rejection) + 6 `retryableFetch` tests |
+| 2 | Outlast a minute window  | `DEFAULT_RETRY_BUDGET_MS = 120_000`; the ceiling is a wall-clock budget, not an attempt count | `DEFAULT_RETRY_BUDGET_MS > 60_000` test + fake-timer test asserting the budget stops a 10-retry sequence at exactly 5 requests |
+| 3 | Pace the batch loop      | `EMBEDDING_BATCH_INTERVAL_MS` → `setEmbeddingBatchIntervalMs`, read by `embedManyCached` when no per-call value is given | pacing test over two 64-entry batches; the value is printed in the run log and recorded in the artifact |
+| 4 | Bound tokens per request | `EMBED_MAX_TOKENS = 3072` and `shapeBatches` in `packages/cortex-eval/src/retrieval.ts` | token-overflow split test, oversized-single-text test, and a small-text test proving the bound does not degenerate to one request per text |
+| 5 | Record provenance        | `createEmbeddingWithProvenanceFromEnv`, `EmbeddingSourceStats`, and the `embedding` block on every JSON artifact plus a header on every Markdown report | 9 embedding-provenance tests, 8 source-accounting tests, and an end-to-end run whose artifacts all carry the block |
+
+**Why §3's pacing needed a process-wide setting rather than a parameter.** The
+retrieval functions that actually embed (`retrieveTopKByQueries`,
+`buildTurnIndex`, `retrieveByQueries`, and five others) take no options object, so
+a per-call `batchIntervalMs` was unreachable from the benchmark — the only caller
+that has a quota to respect. Threading an options parameter through eight
+functions to set one number would put it on every caller that has no opinion
+about it. `setEmbeddingBatchIntervalMs` is read by `embedManyCached` only when its
+own option is absent, so the per-call contract stays testable without a global
+reset.
+
+**Why the provenance block needed a counter rather than the cache snapshot.** An
+audit reader has to separate a run that embedded everything live from a run that
+restored the persisted cache, and those two produce byte-identical reports. The
+snapshot's size cannot answer it: it says how many vectors exist, not how many of
+a given call's inputs were already present. The counts are therefore incremented
+where the cache lookup and the batch dispatch actually happen, which is also the
+only way the pair can disagree with the cache if the code drifts.
+
+**One surviving gap, stated rather than rounded away.** `retrieval.ts` lines
+631–632 are uncovered. They guard `indexOf(hit) < 0` inside a loop whose hits come
+from a map keyed by the same session, so the branch is unreachable for every input
+the caller can construct. It is a defensive guard, not a behaviour: no test can
+reach it without fabricating a state the function cannot receive, and a test that
+did would assert a fiction. Recorded here so the coverage figure reads as measured
+rather than as met.
+

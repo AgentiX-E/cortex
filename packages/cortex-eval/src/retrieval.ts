@@ -11,8 +11,178 @@ import { BruteForceVectorIndex } from '@agentix-e/cortex-core';
 /** Zhipu embedding-3 accepts at most 64 inputs per request. */
 const EMBED_BATCH = 64;
 
+/**
+ * Zhipu embedding-3 accepts at most 3072 tokens per request.
+ *
+ * The entry cap alone is not sufficient. 64 long turns can exceed this bound and
+ * draw a 400, and a 400 is not retryable — it is not a throttle — so the retry
+ * logic cannot absorb it and the whole run fails on a batch that was legal by
+ * the only rule the loop was checking.
+ */
+const EMBED_MAX_TOKENS = 3072;
+
+/**
+ * Estimate an English-or-code text's token count as `ceil(chars / 4)`.
+ *
+ * Deliberately a character heuristic rather than a real tokenizer. A tokenizer
+ * would be exact for one model family and wrong for the next, and the providers
+ * this adapter targets all publish a per-request token cap rather than a
+ * tokenizer. The estimate only has to be safe in one direction: an over-estimate
+ * costs one more request, while an under-estimate costs a rejected batch.
+ *
+ * `ceil(chars / 4)` is at or above the true count for ordinary prose (the usual
+ * figure is ~4 characters per token) and for the token-dense cases this benchmark
+ * actually sends — CJK text and code both run near one token per character, so
+ * the estimate under-counts CJK by up to 4x.
+ *
+ * That gap is bounded rather than ignored: `EMBED_MAX_TOKENS` is compared against
+ * a sum of estimates, and the provider's own cap applies to the true count. A
+ * mixed batch is therefore split more coarsely than strictly necessary, which
+ * costs requests and never correctness. A text whose own estimate exceeds the cap
+ * is sent alone rather than dropped, because dropping it would silently retrieve
+ * against an empty vector — a retrieval failure rather than an input error.
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Group indices into batches that satisfy BOTH provider caps.
+ *
+ * A single text over the token cap gets its own batch rather than being skipped:
+ * it cannot be split, and omitting it would leave the caller with an empty vector
+ * and no error.
+ */
+function shapeBatches(indices: readonly number[], texts: readonly string[]): number[][] {
+  const batches: number[][] = [];
+  let current: number[] = [];
+  let currentTokens = 0;
+  for (const index of indices) {
+    const tokens = estimateTokens(texts[index]!);
+    const wouldOverflowEntries = current.length >= EMBED_BATCH;
+    const wouldOverflowTokens = currentTokens + tokens > EMBED_MAX_TOKENS;
+    if (current.length > 0 && (wouldOverflowEntries || wouldOverflowTokens)) {
+      batches.push(current);
+      current = [];
+      currentTokens = 0;
+    }
+    current.push(index);
+    currentTokens += tokens;
+  }
+  if (current.length > 0) {
+    batches.push(current);
+  }
+  return batches;
+}
+
+/** Options for {@link embedManyCached}. */
+export type EmbedManyCachedOptions = {
+  /**
+   * Minimum spacing between consecutive provider requests, in milliseconds.
+   *
+   * Exists because the provider throttles on REQUEST RATE, and a loop that
+   * issues back-to-back maximum-size batches discovers that limit by being
+   * rejected. Pacing keeps the rate under the limit instead of probing it.
+   *
+   * Applied from the SECOND batch onward: the interval spaces requests from each
+   * other, so charging it before the first one would add latency to every call,
+   * including the single-batch calls that have nothing to be spaced from.
+   *
+   * Default 0 (no pacing), because pacing trades wall-clock for headroom and the
+   * right value depends on the deployment's quota. A benchmark run should set it.
+   */
+  batchIntervalMs?: number | undefined;
+};
+
+/**
+ * Process-wide batch interval, applied to every embedding path.
+ *
+ * `embedManyCached` already accepted `batchIntervalMs`, but the retrieval
+ * functions that actually call it (`retrieveTopKByQueries`, `buildTurnIndex`,
+ * `retrieveByQueries`, and the rest) took no options object, so every internal
+ * call site used the default of 0 and the pacing was unreachable from the
+ * benchmark. Threading an options parameter through eight retrieval functions to
+ * set one number would put the parameter on every caller that has no opinion
+ * about it, so the value lives here and `embedManyCached` reads it when its own
+ * option is absent.
+ *
+ * An explicit `options.batchIntervalMs` still wins, which is what keeps the
+ * per-call behaviour testable without a global reset.
+ */
+let configuredBatchIntervalMs = 0;
+
+/**
+ * Set the process-wide batch interval. Returns the previous value so a caller
+ * (a test, or a benchmark that restores its own configuration) can put it back
+ * without knowing what it was.
+ */
+export function setEmbeddingBatchIntervalMs(intervalMs: number): number {
+  const previous = configuredBatchIntervalMs;
+  configuredBatchIntervalMs = intervalMs;
+  return previous;
+}
+
+/** Read the process-wide batch interval, in milliseconds. */
+export function embeddingBatchIntervalMs(): number {
+  return configuredBatchIntervalMs;
+}
+
 /** Shared cache of embedding vectors keyed by source text. */
 const embeddingCache = new Map<string, Float64Array>();
+
+/**
+ * Where the vectors embedded during this process came from.
+ *
+ * Counted at the point of decision rather than derived from the cache snapshot,
+ * because the snapshot cannot answer the question. A snapshot of size N says how
+ * many vectors exist; it does not say how many of a given call's inputs were
+ * already present. A run restored from the persisted cache and a run that embedded
+ * everything from scratch therefore produce identical snapshots, identical
+ * scores, and are not the same measurement — the first is nearly free and the
+ * second is what actually exercises the provider.
+ *
+ * `liveRequests` and `batches` are the same number for every path that exists
+ * today, since each batch is one request. They are counted separately because
+ * they are different claims: `batches` is how the provider caps were satisfied,
+ * and a future path that retried a batch internally would move one and not the
+ * other.
+ */
+export type EmbeddingSourceStats = {
+  /** Requests actually sent to the embedding provider. */
+  liveRequests: number;
+  /** Batches the input was shaped into, cached texts excluded. */
+  batches: number;
+  /** Texts served from the in-memory cache without a provider call. */
+  cachedTexts: number;
+  /** Texts sent to the provider. */
+  liveTexts: number;
+};
+
+const embeddingSourceCounters: EmbeddingSourceStats = {
+  liveRequests: 0,
+  batches: 0,
+  cachedTexts: 0,
+  liveTexts: 0,
+};
+
+/** Zero the source counters (used by tests and by a process reuse/reset boundary). */
+export function resetEmbeddingSourceStats(): void {
+  embeddingSourceCounters.liveRequests = 0;
+  embeddingSourceCounters.batches = 0;
+  embeddingSourceCounters.cachedTexts = 0;
+  embeddingSourceCounters.liveTexts = 0;
+}
+
+/**
+ * Read the source counters as a copy.
+ *
+ * A copy, not the live object: the artifact writer holds the value it read across
+ * the rest of a long run, and handing it a reference would let stages that run
+ * later mutate numbers that have already been written down.
+ */
+export function embeddingSourceStats(): EmbeddingSourceStats {
+  return { ...embeddingSourceCounters };
+}
 
 /** Clear the shared embedding cache (used by tests and long-running processes). */
 export function clearEmbeddingCache(): void {
@@ -47,10 +217,17 @@ export function hashText(text: string): string {
   return (h >>> 0).toString(36);
 }
 
-/** Embed many texts in bounded batches, reusing cached vectors. */
+/**
+ * Embed many texts in bounded batches, reusing cached vectors.
+ *
+ * Batches are shaped by BOTH provider caps (see `shapeBatches`), and consecutive
+ * requests are spaced by `options.batchIntervalMs` so the request rate stays
+ * under the provider's limit rather than being discovered by rejection.
+ */
 export async function embedManyCached(
   embedding: EmbeddingModel,
   texts: string[],
+  options: EmbedManyCachedOptions = {},
 ): Promise<Float64Array[]> {
   const result = new Array<Float64Array>(texts.length);
   const missing: number[] = [];
@@ -58,12 +235,24 @@ export async function embedManyCached(
     const cached = embeddingCache.get(texts[i]!);
     if (cached) {
       result[i] = cached;
+      embeddingSourceCounters.cachedTexts += 1;
     } else {
       missing.push(i);
     }
   }
-  for (let start = 0; start < missing.length; start += EMBED_BATCH) {
-    const chunk = missing.slice(start, start + EMBED_BATCH);
+  embeddingSourceCounters.liveTexts += missing.length;
+  const batches = shapeBatches(missing, texts);
+  embeddingSourceCounters.batches += batches.length;
+  const intervalMs = options.batchIntervalMs ?? configuredBatchIntervalMs;
+  for (let b = 0; b < batches.length; b++) {
+    // Paced from the second batch onward. A fully cached call has no batches at
+    // all and so pays nothing, which matters because re-running over a persisted
+    // cache is the common case in this benchmark.
+    if (b > 0 && intervalMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    const chunk = batches[b]!;
+    embeddingSourceCounters.liveRequests += 1;
     const vectors = await embedding.embed(chunk.map((i) => texts[i]!));
     for (let j = 0; j < chunk.length; j++) {
       const idx = chunk[j]!;

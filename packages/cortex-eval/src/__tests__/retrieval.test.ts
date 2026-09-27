@@ -15,6 +15,10 @@ import {
   meanPool,
   embedManyCached,
   embedOneCached,
+  embeddingSourceStats,
+  resetEmbeddingSourceStats,
+  embeddingBatchIntervalMs,
+  setEmbeddingBatchIntervalMs,
   clearEmbeddingCache,
   snapshotEmbeddingCache,
   mergeEmbeddingCache,
@@ -109,6 +113,333 @@ describe('embedManyCached', () => {
     expect(result).toHaveLength(2);
     expect(result[0]!.length).toBe(0);
     expect(result[1]!.length).toBe(0);
+  });
+});
+
+describe('embedManyCached request shaping', () => {
+  /**
+   * The provider caps TWO quantities per request: 64 entries and 3072 tokens.
+   * The batch loop only respected the first, so a haystack of long turns could
+   * exceed the token cap and draw a 400 -- a failure that is not a throttle and
+   * therefore invisible to the retry logic. Splitting on estimated tokens is the
+   * fix; the estimator has to be conservative, since an over-estimate costs one
+   * extra request while an under-estimate costs a failed batch.
+   */
+  it('splits a batch whose entries fit but whose tokens do not', async () => {
+    clearEmbeddingCache();
+    const batches: number[] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => {
+        batches.push(texts.length);
+        return texts.map(() => new Float64Array([1, 2]));
+      },
+    };
+    // 40 texts of 400 characters each: well under 64 entries, but 40 * ~100
+    // estimated tokens = ~4000, over the 3072 cap. Two batches are required.
+    const texts = Array.from({ length: 40 }, (_, i) => 'x'.repeat(400) + String(i));
+    await embedManyCached(embedding, texts);
+
+    expect(batches.length).toBeGreaterThan(1);
+    expect(batches.every((n) => n <= 40)).toBe(true);
+    // Every text still embedded exactly once.
+    expect(batches.reduce((a, b) => a + b, 0)).toBe(40);
+  });
+
+  it('keeps a token-heavy single text in a batch of its own rather than dropping it', async () => {
+    // The degenerate case: one text alone exceeds the token estimate. It cannot
+    // be split, so it must be sent alone rather than skipped -- a dropped text
+    // would silently retrieve against an empty vector, which reads later as a
+    // retrieval failure rather than as an input that was never embedded.
+    clearEmbeddingCache();
+    const batches: number[] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => {
+        batches.push(texts.length);
+        return texts.map(() => new Float64Array([1, 2]));
+      },
+    };
+    await embedManyCached(embedding, ['y'.repeat(20_000), 'short']);
+    expect(batches.reduce((a, b) => a + b, 0)).toBe(2);
+    expect(batches.length).toBe(2);
+  });
+
+  it('sends small texts in one batch rather than one request each', async () => {
+    // The over-estimate guard: a conservative estimator that split every text
+    // into its own request would multiply the request count by 64 against a
+    // rate-limited provider -- fixing the token cap by making the concurrency
+    // problem worse.
+    clearEmbeddingCache();
+    const batches: number[] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => {
+        batches.push(texts.length);
+        return texts.map(() => new Float64Array([1, 2]));
+      },
+    };
+    const texts = Array.from({ length: 64 }, () => 'hi');
+    await embedManyCached(embedding, texts);
+    expect(batches).toEqual([64]);
+  });
+
+  /**
+   * The provider throttles on REQUEST RATE, so a batch loop that issues
+   * back-to-back requests discovers the limit by being rejected. Pacing is the
+   * fix: the rate stays under the limit rather than being probed by failure.
+   */
+  it('paces consecutive batches instead of issuing them back to back', async () => {
+    clearEmbeddingCache();
+    const times: number[] = [];
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => {
+        times.push(Date.now());
+        return texts.map(() => new Float64Array([1, 2]));
+      },
+    };
+    // 128 texts of 64 characters: two full batches, with the second paced.
+    const texts = Array.from(
+      { length: 128 },
+      (_, i) => String(i).padStart(4, '0') + 'z'.repeat(60),
+    );
+    await embedManyCached(embedding, texts, { batchIntervalMs: 120 });
+
+    expect(times.length).toBe(2);
+    const gap = times[1]! - times[0]!;
+    expect(gap).toBeGreaterThanOrEqual(100);
+  });
+
+  it('does not pace before the first batch', async () => {
+    // The interval spaces requests from each other; charging it before the first
+    // one would add latency to every call, including single-batch ones that have
+    // nothing to be spaced from.
+    clearEmbeddingCache();
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => texts.map(() => new Float64Array([1, 2])),
+    };
+    const started = Date.now();
+    await embedManyCached(embedding, ['only'], { batchIntervalMs: 500 });
+    expect(Date.now() - started).toBeLessThan(400);
+  });
+
+  it('sends nothing at all when every text is cached', async () => {
+    // Pacing must not invent a wait when there is no request to make: a fully
+    // cached re-run is the common case in this benchmark and an unconditional
+    // sleep would turn it into a slow one.
+    clearEmbeddingCache();
+    let calls = 0;
+    const embedding: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts) => {
+        calls += 1;
+        return texts.map(() => new Float64Array([1, 2]));
+      },
+    };
+    await embedManyCached(embedding, ['p', 'q'], { batchIntervalMs: 200 });
+    const started = Date.now();
+    await embedManyCached(embedding, ['p', 'q'], { batchIntervalMs: 200 });
+    expect(calls).toBe(1);
+    expect(Date.now() - started).toBeLessThan(150);
+  });
+});
+
+/**
+ * Process-wide pacing.
+ *
+ * The retrieval functions that embed (`retrieveTopKByQueries`, `buildTurnIndex`,
+ * `retrieveByQueries`, ...) take no options object, so a per-call
+ * `batchIntervalMs` is unreachable from the benchmark — which is the only place
+ * that needs it. The process-wide setting is what makes the throttle reach the
+ * calls that actually make requests.
+ */
+describe('embedding batch interval configuration', () => {
+  /** Embedding that records when each request was issued. */
+  function timedEmbedding(): { embedding: EmbeddingModel; times: number[] } {
+    const times: number[] = [];
+    return {
+      times,
+      embedding: {
+        dimension: () => 2,
+        embed: async (texts) => {
+          times.push(Date.now());
+          return texts.map(() => new Float64Array([1, 2]));
+        },
+      },
+    };
+  }
+
+  /** Two full-sized batches, so the interval between them is observable. */
+  const twoBatchTexts = (): string[] =>
+    Array.from({ length: 128 }, (_, i) => String(i).padStart(4, '0') + 'z'.repeat(60));
+
+  it('defaults to no pacing', () => {
+    expect(embeddingBatchIntervalMs()).toBe(0);
+  });
+
+  it('returns the previous value so a caller can restore it', () => {
+    const previous = setEmbeddingBatchIntervalMs(150);
+    try {
+      expect(previous).toBe(0);
+      expect(setEmbeddingBatchIntervalMs(0)).toBe(150);
+    } finally {
+      setEmbeddingBatchIntervalMs(0);
+    }
+  });
+
+  it('paces internal calls that pass no options of their own', async () => {
+    // The point of the setting: this call passes no options, so without the
+    // process-wide value the two batches would go out back to back.
+    clearEmbeddingCache();
+    const previous = setEmbeddingBatchIntervalMs(120);
+    try {
+      const { embedding, times } = timedEmbedding();
+      await embedManyCached(embedding, twoBatchTexts());
+      expect(times.length).toBe(2);
+      expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(100);
+    } finally {
+      setEmbeddingBatchIntervalMs(previous);
+    }
+  });
+
+  it('lets an explicit per-call option win over the process-wide value', async () => {
+    // An explicit 0 must mean "no pacing here" rather than "use the global",
+    // otherwise a test that sets the global once would silently pace every later
+    // call in the file and the per-call contract would be untestable.
+    clearEmbeddingCache();
+    const previous = setEmbeddingBatchIntervalMs(5_000);
+    try {
+      const { embedding, times } = timedEmbedding();
+      const started = Date.now();
+      await embedManyCached(embedding, twoBatchTexts(), { batchIntervalMs: 0 });
+      expect(times.length).toBe(2);
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      setEmbeddingBatchIntervalMs(previous);
+    }
+  });
+
+  it('paces a cached-then-live run by its live batches only', async () => {
+    // A restored cache turns most inputs into hits; the interval applies to the
+    // batches that remain, not to the input length.
+    clearEmbeddingCache();
+    const previous = setEmbeddingBatchIntervalMs(0);
+    try {
+      const seed = timedEmbedding();
+      const texts = twoBatchTexts();
+      await embedManyCached(seed.embedding, texts);
+      setEmbeddingBatchIntervalMs(120);
+      const { embedding, times } = timedEmbedding();
+      // Half cached, half live: one live batch, so no interval is charged.
+      const started = Date.now();
+      await embedManyCached(embedding, [...texts.slice(0, 64), 'fresh-0', 'fresh-1']);
+      expect(times.length).toBe(1);
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      setEmbeddingBatchIntervalMs(previous);
+    }
+  });
+});
+
+/**
+ * Cache-vs-live accounting.
+ *
+ * The audit's §7.5 requirement asks a diagnostics artifact to record "whether a
+ * vector came from cache or the live API". The count cannot be reconstructed
+ * after the fact from the cache snapshot: the snapshot's size says how many
+ * vectors exist, not how many of THIS call's inputs were already present, and a
+ * run restored from a persisted cache and a run that embedded everything from
+ * scratch are exactly the two cases a reader needs to tell apart. It has to be
+ * counted where the decision is made.
+ */
+describe('embedding source accounting', () => {
+  /** Embedding that counts the requests it receives. */
+  function countingEmbedding(): { embedding: EmbeddingModel; requests: () => number } {
+    let requests = 0;
+    return {
+      embedding: {
+        dimension: () => 2,
+        embed: async (texts) => {
+          requests += 1;
+          return texts.map(() => new Float64Array([1, 2]));
+        },
+      },
+      requests: () => requests,
+    };
+  }
+
+  it('counts live requests, cached hits, and texts per source', async () => {
+    clearEmbeddingCache();
+    resetEmbeddingSourceStats();
+    const { embedding, requests } = countingEmbedding();
+    const first = await embedManyCached(embedding, ['a', 'b', 'c']);
+    expect(first.length).toBe(3);
+    const second = await embedManyCached(embedding, ['b', 'c', 'd']);
+
+    const stats = embeddingSourceStats();
+    // Two from cache (b, c) and one live (d), across the whole process rather
+    // than the second call alone -- the artifact describes the run, and the run
+    // is every call it made.
+    expect(stats.cachedTexts).toBe(2);
+    expect(stats.liveTexts).toBe(4);
+    expect(stats.liveRequests).toBe(2);
+    expect(stats.batches).toBe(2);
+    expect(second.length).toBe(3);
+    expect(requests()).toBe(2);
+  });
+
+  it('reports zero live work for a fully cached run', async () => {
+    // The restored-from-cache case, which is the common case for this benchmark
+    // and the one a reader most needs to recognise: identical scores from a
+    // cached run and a live run are the same numbers with very different
+    // meanings, and only this counter separates them.
+    clearEmbeddingCache();
+    const { embedding } = countingEmbedding();
+    await embedManyCached(embedding, ['x', 'y']);
+    resetEmbeddingSourceStats();
+    await embedManyCached(embedding, ['x', 'y']);
+    expect(embeddingSourceStats()).toEqual({
+      liveRequests: 0,
+      batches: 0,
+      cachedTexts: 2,
+      liveTexts: 0,
+    });
+  });
+
+  it('starts counting at zero on a fresh process', () => {
+    resetEmbeddingSourceStats();
+    expect(embeddingSourceStats()).toEqual({
+      liveRequests: 0,
+      batches: 0,
+      cachedTexts: 0,
+      liveTexts: 0,
+    });
+  });
+
+  it('counts one request and one batch for a single live text', async () => {
+    clearEmbeddingCache();
+    resetEmbeddingSourceStats();
+    const { embedding } = countingEmbedding();
+    await embedOneCached(embedding, 'solo');
+    expect(embeddingSourceStats()).toEqual({
+      liveRequests: 1,
+      batches: 1,
+      cachedTexts: 0,
+      liveTexts: 1,
+    });
+  });
+
+  it('returns a copy, so a caller cannot write through it', async () => {
+    // The artifact writer holds this value across a long run. A live reference to
+    // the mutable counter object would let a later stage's numbers appear inside
+    // an already-serialized snapshot, which is the class of drift this whole
+    // accounting exists to prevent.
+    resetEmbeddingSourceStats();
+    const stats = embeddingSourceStats();
+    stats.liveTexts = 999;
+    expect(embeddingSourceStats().liveTexts).toBe(0);
   });
 });
 

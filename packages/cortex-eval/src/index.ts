@@ -98,6 +98,7 @@ export {
   percentile,
   type RetrievalDiagnostic,
   type SessionRetrievalDiagnostic,
+  type EmbeddingDeterminism,
 } from './retrieval-diagnostics.js';
 export {
   attributeRecallGap,
@@ -178,6 +179,10 @@ export {
   meanPool,
   embedManyCached,
   embedOneCached,
+  embeddingSourceStats,
+  resetEmbeddingSourceStats,
+  embeddingBatchIntervalMs,
+  setEmbeddingBatchIntervalMs,
   clearEmbeddingCache,
   snapshotEmbeddingCache,
   mergeEmbeddingCache,
@@ -185,6 +190,8 @@ export {
   deserializeEmbeddingCache,
   hashText,
   reciprocalRankFusion,
+  type EmbedManyCachedOptions,
+  type EmbeddingSourceStats,
   type RetrievalHit,
   type SessionHit,
 } from './retrieval.js';
@@ -254,11 +261,14 @@ export {
 export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,
+  createEmbeddingWithProvenanceFromEnv,
   DEFAULT_HASH_DIMENSION,
   DEFAULT_ZHIPU_BASE_URL,
   DEFAULT_ZHIPU_EMBEDDING_MODEL,
   DEFAULT_ZHIPU_EMBEDDING_DIMENSIONS,
   type EmbeddingEnv,
+  type EmbeddingProvenance,
+  type EmbeddingWithProvenance,
 } from './embedding-factory.js';
 export {
   createLlmFromEnv,
