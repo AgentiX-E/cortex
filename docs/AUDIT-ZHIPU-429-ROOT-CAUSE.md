@@ -117,6 +117,18 @@ because the status code is shared between the two causes.
 > fallback), read the provider's error table — a remedy sized to the wrong cause
 > is indistinguishable from no fix, and it costs money.
 
+> **Discipline 26: an atomic step fails as a whole, so its blast radius is set by
+> its worst input, not its average one.** `pnpm install` exits 1 if any single
+> postinstall fails, and on that exit no workspace `.bin` link is created — so a
+> native module reached by one optional adapter removed `eslint` from all four
+> packages, and the failure surfaced three steps later as `eslint: not found`.
+> Two consequences follow. First, a dependency that is only ever reached through
+> `await import()` must not be declared where the whole workspace must resolve
+> it; optionality is a property of the declaration, not of the import. Second,
+> when an atomic step fails, the step that *reports* the failure is not the step
+> that *caused* it — read the failing command's own output before editing the
+> code the error message points at.
+
 ## 6. Ranking signal
 
 This is not only a reliability issue. A run that fails mid-way has already
@@ -187,6 +199,50 @@ snapshot's size cannot answer it: it says how many vectors exist, not how many o
 a given call's inputs were already present. The counts are therefore incremented
 where the cache lookup and the batch dispatch actually happen, which is also the
 only way the pair can disagree with the cache if the code drifts.
+
+## 9. The A/B, and what it has actually shown so far
+
+The audit's requirement is that the pacing fix be confirmed by a real dispatch:
+paced versus unpaced, compared on 429 rate and wall-clock. The workflow now
+carries `embedding_batch_interval_ms` as a dispatch input, and both arms are
+configured as follows.
+
+| Arm     | Input                          | Everything else                       |
+| ------- | ------------------------------ | ------------------------------------- |
+| paced   | `embedding_batch_interval_ms: 250` | `limit=60`, `diagnostics_limit=100`, `rerank=off`, `thinking=disabled` |
+| control | `embedding_batch_interval_ms: 0`   | identical to the paced arm            |
+
+Zero is the control rather than a separate "before" commit: `0` means unpaced, so
+the two arms differ in exactly the one value under test and a third variable
+cannot enter through a code delta.
+
+**Status: dispatched four times, not yet concluded, and the reason is a defect this audit introduced.** The honest sequence:
+
+| Attempt | Commit | Step reached | Outcome |
+| ------- | ------ | ------------ | ------- |
+| 1 (two arms) | `6863fa2f` | 5. Install dependencies | failure — `ERR_PNPM_OUTDATED_LOCKFILE` |
+| 2–4 (two arms, retried) | `42232bfe` | 7. Verify library | failure — `eslint: not found` |
+
+Attempt 1's cause is recorded above and was fixed in `42232bfe`. Attempt 2's cause is **not** what this document previously claimed. The correct account:
+
+The lockfile fix worked — `Install dependencies` went green and the failure moved one step later, to `Verify library` (which is `pnpm check`). `pnpm check` then died with `sh: 1: eslint: not found`. The cause was **`@xenova/transformers` being added to the root `devDependencies` in `42232bfe`**: it hard-depends on `sharp@0.32.6`, whose postinstall downloads libvips. `pnpm install` is atomic — one native postinstall failure exits 1 and the workspace `.bin` links are never created, so every package loses `eslint`. A dependency that is only ever reached through `await import()` had been made mandatory for the whole workspace.
+
+The fix, in two parts, is a controlled experiment rather than a plausible edit:
+
+| Arm | Configuration | `sharp` script | `pnpm install` |
+| --- | ------------- | -------------- | -------------- |
+| A (fix) | `optionalDependencies` + `pnpm.onlyBuiltDependencies` | ignored | `Done in 2.1s` |
+| B (control) | root `devDependencies`, no allowlist | ran → `Failed` | exit 1 |
+
+Both arms were run under the pinned `pnpm@9.15.0`, the version CI uses, not the sandbox default.
+
+**What the earlier retry loop got wrong, recorded because it is the same error this document exists to name.** The four dispatch attempts were made by a script that treated HTTP 422 as retryable. It is not: 422 is deterministic, and retrying a deterministic rejection re-issues the request. The dispatcher therefore created 23 runs, 21 of them probes. The 422 itself was never the obstacle — the same request body later returned 204 unchanged, and all 13 inputs were accepted individually. The failure was one step downstream the whole time.
+
+**A second false green, recorded for the same reason.** The first `pnpm check` run reported green because the working tree still held a `dist/` and a `node_modules/` from an earlier build. The command was correct; the tree was not pristine. Every verification after that point was re-run on a freshly materialised copy of the pushed commit. That is the standard this document now holds itself to.
+
+**No 429-rate comparison is claimed here.** A red dispatch that never ran the benchmark is not a negative result about pacing, and reading it as one would repeat the mistake this record exists to correct — sizing a conclusion to a measurement that was never taken.
+
+**What remains unproven, stated precisely.** The `eslint` failure is fixed and *that* claim is verified against the pushed tree under `pnpm@9.15.0`. What could **not** be verified locally is `better-sqlite3`, a required native dependency of `cortex-node` with a static import: its postinstall needs `nodejs.org` for headers and `github.com` for a prebuilt, and this sandbox blackholes both. On a GitHub runner both are reachable, so the local failure is environmental — but it means the local environment cannot certify the install path end to end. The next dispatch is what decides it, and it should be read as a test of that claim rather than as a formality.
 
 **One surviving gap, stated rather than rounded away.** `retrieval.ts` lines
 631–632 are uncovered. They guard `indexOf(hit) < 0` inside a loop whose hits come
