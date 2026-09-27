@@ -20,6 +20,7 @@ import {
   embeddingBatchIntervalMs,
   embeddingSourceStats,
   resetEmbeddingSourceStats,
+  transportRetryReport,
   setEmbeddingBatchIntervalMs,
   hasDiagnosticRecord,
   mergeEmbeddingCache,
@@ -52,6 +53,11 @@ import {
   type EmbeddingProvenance,
   type LongMemEvalInstance,
 } from '@agentix-e/cortex-eval';
+// The transport-retry counters live in the LLM package, beside `retryableFetch`
+// that produces them. Importing them from `cortex-eval` would re-export state the
+// eval package does not own, and the process aggregate is specifically the LLM
+// layer's to report.
+import { resetRetryStats, retryStats } from '@agentix-e/cortex-llm';
 
 /**
  * A diagnostic record plus the fields the TR classifier reads.
@@ -185,6 +191,11 @@ async function main(): Promise<void> {
     );
   }
   resetEmbeddingSourceStats();
+  // The transport-retry counters are reset here, beside the embedding-source
+  // counters and for the same reason: the run reports both, so both must describe
+  // this run. A stale count from an earlier phase of the same process would
+  // attribute traffic to a configuration that did not produce it.
+  resetRetryStats();
   // Printed before any request is made: the embedding backend is the single
   // largest determinant of the numbers that follow, and the factory falls back
   // silently to a 256-dimension hash embedding when no credential is present.
@@ -323,11 +334,39 @@ async function main(): Promise<void> {
       // report cannot say which one it is reading.
       source: embeddingSourceStats(),
       batchIntervalMs: embeddingBatchIntervalMs(),
+      // How many times the provider refused, and how many refusals the retry
+      // layer absorbed. `source` above says where the vectors CAME from; without
+      // these counters the artifact cannot say what the requests COST.
+      //
+      // This is the field the paced-vs-control A/B needed and did not have. Both
+      // arms completed and both wrote full reports; the question the A/B existed
+      // to answer -- does pacing reduce the throttling rate -- had no answer in
+      // either artifact, because `retryableFetch` retried internally and returned
+      // only the final response. A call rejected twice then succeeding and a call
+      // succeeding immediately were byte-identical.
+      //
+      // Read from the process aggregate, so it describes the whole run rather than
+      // this sampling step. `scope: 'process'` travels with the numbers for that
+      // reason.
+      transportRetry: transportRetryReport(retryStats(), { provider: 'embedding' }),
     },
   };
   writeReportJson('benchmark-diagnostics.json', diagnosticsWithDeterminism);
   console.log('=== Retrieval diagnostics ===');
   console.log(JSON.stringify(diagnosticsWithDeterminism, null, 2));
+
+  // Printed separately AND included in the artifact. The artifact is the durable
+  // record, but reading it requires downloading a ZIP; the A/B's whole purpose was
+  // to compare one number between two runs, and a number that needs an artifact
+  // fetch to see is a number that does not get compared. Same value, two readers.
+  const retry = retryStats();
+  console.log(
+    `=== Transport retries (process scope) === ` +
+      `calls=${retry.calls}, retriedCalls=${retry.retriedCalls}, ` +
+      `attempts=${retry.attempts}, retried=${retry.retried}, ` +
+      `rateLimited=${retry.rateLimited}, retryAfterHonoured=${retry.retryAfterHonoured}, ` +
+      `retryRate=${(retry.retryRate * 100).toFixed(2)}%`,
+  );
 
   // Recall curve (roadmap measure B2). recall@1 and recall@5 cannot say how much
   // recall is still on the table at 10/20/50, so they cannot justify a candidate

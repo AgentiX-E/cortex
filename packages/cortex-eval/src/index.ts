@@ -99,6 +99,9 @@ export {
   type RetrievalDiagnostic,
   type SessionRetrievalDiagnostic,
   type EmbeddingDeterminism,
+  transportRetryReport,
+  type TransportRetryReport,
+  type TransportRetryScope,
 } from './retrieval-diagnostics.js';
 export {
   attributeRecallGap,

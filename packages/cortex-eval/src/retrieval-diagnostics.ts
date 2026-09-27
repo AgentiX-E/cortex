@@ -312,3 +312,82 @@ export async function computeSessionRetrievalDiagnostics(
     recommendedThreshold: percentile(sortedHits, 0.25),
   };
 }
+
+/**
+ * Which traffic the transport-retry counters in an artifact describe.
+ *
+ * `retryableFetch` is the single choke point for every remote call in the
+ * workspace, so the process-level aggregate is deliberately shared: it cannot
+ * attribute a retry to the embedding backend rather than the LLM after the fact,
+ * because both pass through the same loop. Naming the caller's intent here is the
+ * honest alternative to inventing a per-provider breakdown that does not exist.
+ * An artifact that presents the shared total as the embedding's alone would be
+ * reporting a number it cannot substantiate.
+ */
+export type TransportRetryScope = {
+  provider: 'embedding' | 'llm';
+};
+
+/**
+ * The transport-retry counters as they appear in `benchmark-diagnostics.json`.
+ *
+ * `scope` is always `'process'`: see {@link TransportRetryScope} for why a
+ * per-provider split is unavailable rather than simply unrequested. `provider`
+ * records what the section is being read for, so a reader can tell the embedding
+ * section's counters from any future LLM section's.
+ */
+export type TransportRetryReport = TransportRetrySnapshot & {
+  provider: TransportRetryScope['provider'];
+  scope: 'process';
+};
+
+/** The counter fields, restated here so the artifact's shape is visible in one place. */
+type TransportRetrySnapshot = {
+  /** Remote requests actually issued, including the first attempt of each call. */
+  attempts: number;
+  /** Retries actually performed. */
+  retried: number;
+  /** Attempts answered with HTTP 429. */
+  rateLimited: number;
+  /** Retries whose delay came from a `Retry-After` header. */
+  retryAfterHonoured: number;
+  /** Calls made. */
+  calls: number;
+  /** Calls that retried at least once. */
+  retriedCalls: number;
+  /** Calls that never retried. */
+  cleanCalls: number;
+  /** `retriedCalls / calls` -- per call, never per retry. */
+  retryRate: number;
+};
+
+/**
+ * Format a transport-retry snapshot for inclusion in a report.
+ *
+ * Takes a **snapshot**, not the aggregate. The process-level aggregate is
+ * reachable only through `retryStats()` in `cortex-llm`, and this function pairs
+ * with it: passing the snapshot keeps the counter's write path (`record()`) out
+ * of every caller that only needs to read, so a reporter cannot accidentally
+ * contribute to the numbers it is describing.
+ *
+ * The function is pure. Adding a snapshot to an artifact must not change what the
+ * next snapshot reads, or a run that writes two reports would describe the second
+ * with the first's readings folded in.
+ */
+export function transportRetryReport(
+  snapshot: TransportRetrySnapshot,
+  scope: TransportRetryScope,
+): TransportRetryReport {
+  return {
+    provider: scope.provider,
+    scope: 'process',
+    attempts: snapshot.attempts,
+    retried: snapshot.retried,
+    rateLimited: snapshot.rateLimited,
+    retryAfterHonoured: snapshot.retryAfterHonoured,
+    calls: snapshot.calls,
+    retriedCalls: snapshot.retriedCalls,
+    cleanCalls: snapshot.cleanCalls,
+    retryRate: snapshot.retryRate,
+  };
+}

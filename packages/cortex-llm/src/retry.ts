@@ -164,6 +164,159 @@ export type RetryOptions = {
 };
 
 /**
+ * What one `retryableFetch` call observed.
+ *
+ * ## Why this exists
+ *
+ * The retry, and the counters behind it, had to be checked against its consumers,
+ * not only against its own tests. An A/B was dispatched to measure the effect of
+ * client-side pacing on the provider's 429 rate, and both arms completed with
+ * artifacts that contained **no** record of a retry, a 429 or a throttle. The
+ * comparison the experiment existed to make was not merely absent — it was
+ * **unmakeable**, because the layer that absorbs a rejection returns only the
+ * final response and a request rejected twice was therefore indistinguishable, in
+ * every artifact, from one served first time.
+ *
+ * Two conclusions follow, and both are encoded here rather than written down:
+ * a retried request is a fact about the run and belongs in the run's artifact,
+ * and a counter is only useful if the thing it counts is separable. `rateLimited`
+ * and `retried` are distinct fields for that reason: a 503 is retried but is not
+ * a rate limit, and a transport failure is retried but had no status to read.
+ * Folding them into one number would report a rate limit that never happened.
+ */
+export type RetryStats = {
+  /**
+   * Requests actually issued, including the first.
+   *
+   * Counted at the point the request is made rather than inferred from the
+   * retry count, because the two diverge whenever the budget refuses a retry:
+   * an unaffordable retry sleeps nothing and issues nothing, so a reader
+   * deriving attempts from retries would report traffic the provider never saw.
+   */
+  attempts: number;
+  /** Retries actually made, i.e. `attempts` minus the calls that never retried. */
+  retried: number;
+  /** Attempts answered with `429`, counted per attempt, not per call. */
+  rateLimited: number;
+  /**
+   * Retries whose delay came from the response's `Retry-After` rather than from
+   * the computed backoff.
+   *
+   * Separate from `retried` because it measures a different thing: whether the
+   * provider's own hint was consulted at all. A run that retried 40 times could
+   * have a `retryAfterHonoured` of 0, and that is a finding.
+   */
+  retryAfterHonoured: number;
+};
+
+/** One call's stats plus the response it finally returned. */
+export type RetryOutcome = RetryStats & { response: Response };
+
+/** Cross-call view of {@link RetryStats}, with the sample size attached. */
+export type RetryStatsSnapshot = RetryStats & {
+  /** Calls recorded, i.e. the sample the rate below is computed over. */
+  calls: number;
+  /** Calls that made at least one retry. */
+  retriedCalls: number;
+  /** Calls that completed without a single retry. */
+  cleanCalls: number;
+  /**
+   * `retriedCalls / calls` — the share of calls that had to retry.
+   *
+   * Per **call**, not per retry: a `retried / calls` ratio would let one call
+   * that retried 40 times report a rate of 40, which is not a rate. The retry
+   * volume is already carried by `retried`, and keeping the two separate is what
+   * lets a reader tell "many calls each retrying once" from "one call retrying
+   * many times".
+   *
+   * `0` for an empty aggregate rather than `NaN`: `NaN` serializes to `null`,
+   * which would read beside a genuine `0` as missing data. The sample size is
+   * `calls`, so a reader has what they need to tell "no retries" from "no data".
+   */
+  retryRate: number;
+};
+
+/**
+ * Accumulate {@link RetryStats} across calls.
+ *
+ * A class rather than a module-level variable so a caller can hold an isolated
+ * one — a test asserting on accounting must not have its numbers moved by
+ * another test's traffic, and the process-level aggregate below is exactly that
+ * hazard.
+ */
+export class RetryStatsAggregate {
+  #attempts = 0;
+  #retried = 0;
+  #rateLimited = 0;
+  #retryAfterHonoured = 0;
+  #calls = 0;
+  #retriedCalls = 0;
+  #cleanCalls = 0;
+
+  record(stats: RetryStats): void {
+    this.#attempts += stats.attempts;
+    this.#retried += stats.retried;
+    this.#rateLimited += stats.rateLimited;
+    this.#retryAfterHonoured += stats.retryAfterHonoured;
+    this.#calls += 1;
+    if (stats.retried === 0) {
+      this.#cleanCalls += 1;
+    } else {
+      this.#retriedCalls += 1;
+    }
+  }
+
+  /** A copy, so a caller holding it cannot mutate numbers already read. */
+  snapshot(): RetryStatsSnapshot {
+    return {
+      attempts: this.#attempts,
+      retried: this.#retried,
+      rateLimited: this.#rateLimited,
+      retryAfterHonoured: this.#retryAfterHonoured,
+      calls: this.#calls,
+      retriedCalls: this.#retriedCalls,
+      cleanCalls: this.#cleanCalls,
+      retryRate: this.#calls === 0 ? 0 : this.#retriedCalls / this.#calls,
+    };
+  }
+
+  /** Zero every counter, so the aggregate can be reused across runs. */
+  reset(): void {
+    this.#attempts = 0;
+    this.#retried = 0;
+    this.#rateLimited = 0;
+    this.#retryAfterHonoured = 0;
+    this.#calls = 0;
+    this.#retriedCalls = 0;
+    this.#cleanCalls = 0;
+  }
+}
+
+/** Create an empty aggregate. */
+export function createRetryStatsAggregate(): RetryStatsAggregate {
+  return new RetryStatsAggregate();
+}
+
+/**
+ * Process-level aggregate, for the benchmark's artifact writer.
+ *
+ * Process-wide for the same reason `setEmbeddingBatchIntervalMs` is: the
+ * functions that actually issue provider requests take no options object, so a
+ * per-call aggregate would be unreachable from the run that needs to report it.
+ */
+const processRetryStats = new RetryStatsAggregate();
+
+/** Read the process-level aggregate. */
+export function retryStats(): RetryStatsSnapshot {
+  return processRetryStats.snapshot();
+}
+
+/** Zero the process-level aggregate (tests, and a process reuse boundary). */
+export function resetRetryStats(): void {
+  processRetryStats.reset();
+}
+
+/**
  * Build the abort signal for ONE attempt.
  *
  * The deadline has to be created per attempt rather than once before the loop.
@@ -204,6 +357,11 @@ function attemptSignal(
  * attempt's start) is not attempted at all; the last response is returned. The
  * budget is checked before sleeping rather than after, so an unaffordable retry
  * costs no wall-clock time.
+ *
+ * The accounting is recorded into the process-level aggregate as well as
+ * returned, because the callers that issue provider requests in bulk have no way
+ * to thread an aggregate down to this layer and the run's artifact still has to
+ * carry it.
  */
 export async function retryableFetch(
   fetchFn: typeof fetch,
@@ -211,6 +369,23 @@ export async function retryableFetch(
   init: RequestInit,
   options: RetryOptions = {},
 ): Promise<Response> {
+  const outcome = await retryableFetchWithStats(fetchFn, url, init, options);
+  return outcome.response;
+}
+
+/**
+ * {@link retryableFetch}, reporting what the call observed.
+ *
+ * Kept as a separate export rather than a fifth parameter on `RetryOptions` so
+ * that the many existing call sites stay unchanged and cannot forget to read a
+ * result they do not want.
+ */
+export async function retryableFetchWithStats(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit,
+  options: RetryOptions = {},
+): Promise<RetryOutcome> {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelayMs = options.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_RETRY_TIMEOUT_MS;
@@ -232,33 +407,65 @@ export async function retryableFetch(
   // is unaffordable or the budget runs out. Without it the budget path would
   // have nothing to return and would have to fabricate a status.
   let resFromLastAttempt: Response | undefined;
+  const stats: RetryStats = {
+    attempts: 0,
+    retried: 0,
+    rateLimited: 0,
+    retryAfterHonoured: 0,
+  };
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      const waitMs = retryAfterMs(resFromLastAttempt) ?? baseDelayMs * 2 ** (attempt - 1);
+      const fromHeader = retryAfterMs(resFromLastAttempt);
+      const waitMs = fromHeader ?? baseDelayMs * 2 ** (attempt - 1);
       if (budgetEnforced && Date.now() - sequenceStart + waitMs > retryBudgetMs) {
         // Unaffordable. Returning `resFromLastAttempt` rather than sleeping past
         // the deadline: the caller inspects `res.ok` and raises the provider's
         // own status, which is strictly more informative than a timeout error
         // raised after the run has already been delayed.
-        return resFromLastAttempt ?? new Response(null, { status: 429 });
+        //
+        // No counter is incremented here, and that is the point: this retry was
+        // never made, so recording it would report a request the provider never
+        // received.
+        return withResponse(resFromLastAttempt ?? new Response(null, { status: 429 }), stats);
+      }
+      // Counted at the retry itself, after the budget has agreed to it, so
+      // `retried` is a count of retries performed rather than of retries wanted.
+      stats.retried += 1;
+      if (fromHeader !== null) {
+        stats.retryAfterHonoured += 1;
       }
       await sleep(waitMs);
     }
     const signal = attemptSignal(init.signal, timeoutMs);
     let res: Response;
     try {
+      stats.attempts += 1;
       res = await fetchFn(url, signal ? { ...init, signal } : init);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       // A transport failure carries no response, so there is no header to read
       // on the next iteration and the computed backoff applies.
+      //
+      // Deliberately not counted as `rateLimited`: no status was received, so a
+      // 429 count incremented here would attribute a network fault to the
+      // provider's rate limiter.
       resFromLastAttempt = undefined;
       continue;
     }
+    if (res.status === 429) {
+      stats.rateLimited += 1;
+    }
     if (res.ok || !isRetryableStatus(res.status) || attempt === maxRetries) {
-      return res;
+      return withResponse(res, stats);
     }
     resFromLastAttempt = res;
   }
   throw lastError ?? new Error(`fetch failed after ${maxRetries + 1} attempts`);
+}
+
+/** Attach the final response, record the call, and return the outcome. */
+function withResponse(response: Response, stats: RetryStats): RetryOutcome {
+  const outcome: RetryOutcome = { ...stats, response };
+  processRetryStats.record(outcome);
+  return outcome;
 }

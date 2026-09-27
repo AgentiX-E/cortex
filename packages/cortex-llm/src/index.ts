@@ -35,12 +35,20 @@ export {
 } from './rerank/transformers-rerank-pipeline.js';
 export {
   retryableFetch,
+  retryableFetchWithStats,
   isRetryableStatus,
   parseRetryAfterMs,
   sleep,
+  RetryStatsAggregate,
+  createRetryStatsAggregate,
+  retryStats,
+  resetRetryStats,
   DEFAULT_MAX_RETRIES,
   DEFAULT_RETRY_BASE_DELAY_MS,
   DEFAULT_RETRY_TIMEOUT_MS,
   DEFAULT_RETRY_BUDGET_MS,
   type RetryOptions,
+  type RetryStats,
+  type RetryOutcome,
+  type RetryStatsSnapshot,
 } from './retry.js';

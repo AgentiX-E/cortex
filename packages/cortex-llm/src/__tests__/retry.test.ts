@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import {
   retryableFetch,
+  retryableFetchWithStats,
+  createRetryStatsAggregate,
+  retryStats,
+  resetRetryStats,
   isRetryableStatus,
   parseRetryAfterMs,
   DEFAULT_MAX_RETRIES,
@@ -563,6 +567,37 @@ describe('retryableFetch respects a wall-clock budget', () => {
     expect(calls()).toBe(1);
   });
 
+  it('synthesises a 429 when the budget refuses a retry after a transport failure', async () => {
+    // The refusal path returns `resFromLastAttempt`, and after a transport failure
+    // there is no response to return -- the failure cleared it. The fallback is a
+    // synthetic 429, so the caller still sees an HTTP status to act on instead of
+    // a bare `undefined` reaching `res.ok`.
+    //
+    // The mutation this guards: replacing the fallback with a non-429 status, or
+    // removing it, makes the refused-after-failure case report a status the
+    // retry layer never observed. `rateLimited` must stay at zero either way,
+    // because no 429 was ever received.
+    let calls = 0;
+    const fetchFn = async (): Promise<Response> => {
+      calls += 1;
+      throw new Error('socket hang up');
+    };
+    resetRetryStats();
+    const outcome = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 10, baseDelayMs: 30, retryBudgetMs: 10 },
+    );
+
+    expect(outcome.response.status).toBe(429);
+    expect(calls).toBe(1);
+    // A refused retry is a retry that never happened.
+    expect(outcome.retried).toBe(0);
+    expect(outcome.rateLimited).toBe(0);
+    expect(outcome.attempts).toBe(1);
+  });
+
   it('keeps retrying while the budget still allows it', async () => {
     const { fetchFn, calls } = rateLimitedThenOk(2, { 'Retry-After': '0' });
     const res = await retryableFetch(
@@ -649,5 +684,209 @@ describe('retryableFetch respects a wall-clock budget', () => {
     );
     expect(res.status).toBe(429);
     expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
+/**
+ * The retry layer used to be silent: it retried internally and returned only the
+ * final response, so a request that was rejected twice and then served was
+ * indistinguishable in every artifact from one served first time. Two A/B arms
+ * were dispatched to measure a 429 rate that nothing recorded, which is the
+ * measurement gap these tests close.
+ */
+describe('retry accounting', () => {
+  it('reports the attempts and statuses a retried call actually saw', async () => {
+    const { fetchFn } = rateLimitedThenOk(2, {});
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 3, baseDelayMs: 1 },
+    );
+    // Two rejections then a success: three requests, and the statuses of the two
+    // that were retried. The success is not a "retry", it is the outcome.
+    expect(stats.attempts).toBe(3);
+    expect(stats.retried).toBe(2);
+    expect(stats.rateLimited).toBe(2);
+    expect(stats.retryAfterHonoured).toBe(0);
+    expect(stats.response.ok).toBe(true);
+  });
+
+  it('counts a 5xx as retried but not as rate-limited', async () => {
+    // 503 is retryable and carries `Retry-After` too, so a counter that folded
+    // both into one bucket would report a rate limit that never happened.
+    const { fetchFn } = statusThenOkFetch(503, 1, {});
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1 },
+    );
+    expect(stats.attempts).toBe(2);
+    expect(stats.retried).toBe(1);
+    expect(stats.rateLimited).toBe(0);
+  });
+
+  it('counts a retry whose delay came from Retry-After', async () => {
+    const { fetchFn } = rateLimitedThenOk(1, { 'Retry-After': '0.05' });
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1 },
+    );
+    expect(stats.retried).toBe(1);
+    expect(stats.rateLimited).toBe(1);
+    expect(stats.retryAfterHonoured).toBe(1);
+  });
+
+  it('counts a transport failure as a retried attempt with no status', async () => {
+    // A transport failure has no response, so it contributes to `attempts` and
+    // `retried` but must not be counted as a rate limit -- there was no status
+    // to read. Folding it in would inflate the 429 count with network errors.
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls < 3) throw new Error('ECONNRESET');
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 5, baseDelayMs: 1 },
+    );
+    expect(stats.attempts).toBe(3);
+    expect(stats.retried).toBe(2);
+    expect(stats.rateLimited).toBe(0);
+    expect(stats.response.ok).toBe(true);
+  });
+
+  it('reports zero retries for a first-attempt success', async () => {
+    const fetchFn = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    const stats = await retryableFetchWithStats(fetchFn, 'http://x', {}, {});
+    expect(stats.attempts).toBe(1);
+    expect(stats.retried).toBe(0);
+    expect(stats.rateLimited).toBe(0);
+  });
+
+  it('counts every attempt when the retryable status never clears', async () => {
+    const fetchFn = (async () => new Response('{}', { status: 429 })) as unknown as typeof fetch;
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1 },
+    );
+    // 1 initial + 2 retries = 3 attempts, all rejected.
+    expect(stats.attempts).toBe(3);
+    expect(stats.retried).toBe(2);
+    expect(stats.rateLimited).toBe(3);
+    expect(stats.response.status).toBe(429);
+  });
+
+  it('does not count a retry that the budget refused to make', async () => {
+    // The budget returns before sleeping, so no request is issued. Counting it
+    // would report a request the provider never received, which is the specific
+    // error this counter exists to prevent.
+    const { fetchFn } = rateLimitedThenOk(99, { 'Retry-After': '10' });
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 5, baseDelayMs: 1, retryBudgetMs: 200 },
+    );
+    expect(stats.attempts).toBe(1);
+    expect(stats.retried).toBe(0);
+    expect(stats.rateLimited).toBe(1);
+  });
+
+  it('counts a non-retryable status as neither retried nor rate-limited', async () => {
+    const fetchFn = (async () => new Response('{}', { status: 404 })) as unknown as typeof fetch;
+    const stats = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 3, baseDelayMs: 1 },
+    );
+    expect(stats.attempts).toBe(1);
+    expect(stats.retried).toBe(0);
+    expect(stats.rateLimited).toBe(0);
+  });
+});
+
+describe('retry stats aggregation', () => {
+  it('sums counters across calls and recomputes the derived totals', () => {
+    const agg = createRetryStatsAggregate();
+    agg.record({ attempts: 3, retried: 2, rateLimited: 2, retryAfterHonoured: 1 });
+    agg.record({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+    agg.record({ attempts: 2, retried: 1, rateLimited: 0, retryAfterHonoured: 0 });
+    const snap = agg.snapshot();
+    expect(snap.attempts).toBe(6);
+    expect(snap.retried).toBe(3);
+    expect(snap.rateLimited).toBe(2);
+    expect(snap.retryAfterHonoured).toBe(1);
+    // Derived, not stored: a stored copy is a second source of truth that can
+    // disagree with the inputs it was computed from.
+    expect(snap.calls).toBe(3);
+    expect(snap.cleanCalls).toBe(1);
+    // Two of the three calls retried (2 and 1), so the rate is 2/3.
+    expect(snap.retryRate).toBeCloseTo(2 / 3, 10);
+  });
+
+  it('reports a zero retry rate rather than NaN for an empty aggregate', () => {
+    // A rate over zero calls is not zero, but `NaN` serializes to `null` in JSON
+    // and would read as "no data" beside a genuine 0. Zero clean calls is the
+    // honest answer, and the `calls` field carries the sample size.
+    const snap = createRetryStatsAggregate().snapshot();
+    expect(snap.calls).toBe(0);
+    expect(snap.retryRate).toBe(0);
+    expect(Number.isNaN(snap.retryRate)).toBe(false);
+  });
+
+  it('exposes a process-level aggregate that a caller can read and reset', async () => {
+    resetRetryStats();
+    const fetchFn = (async () => new Response('{}', { status: 429 })) as unknown as typeof fetch;
+    await retryableFetchWithStats(fetchFn, 'http://x', {}, { maxRetries: 1, baseDelayMs: 1 });
+    await retryableFetchWithStats(fetchFn, 'http://x', {}, { maxRetries: 0 });
+    const snap = retryStats();
+    expect(snap.calls).toBe(2);
+    expect(snap.attempts).toBe(3);
+    expect(snap.rateLimited).toBe(3);
+    expect(snap.retried).toBe(1);
+    resetRetryStats();
+    expect(retryStats().calls).toBe(0);
+  });
+
+  it('zeroes every counter on reset, not just the call count', () => {
+    // `bench/run.ts` resets at the start of a run and reports at the end, so a
+    // field that survives the reset is attributed to a run that did not produce
+    // it. Asserting only `calls` would leave the other seven free to leak: the
+    // retry RATE is `retriedCalls / calls`, so a stale numerator over a fresh
+    // denominator reports a rate above 100%.
+    const agg = createRetryStatsAggregate();
+    agg.record({ attempts: 5, retried: 4, rateLimited: 3, retryAfterHonoured: 2 });
+    agg.record({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+
+    agg.reset();
+
+    expect(agg.snapshot()).toEqual({
+      attempts: 0,
+      retried: 0,
+      rateLimited: 0,
+      retryAfterHonoured: 0,
+      calls: 0,
+      retriedCalls: 0,
+      cleanCalls: 0,
+      retryRate: 0,
+    });
+  });
+
+  it('returns a copy, so a caller cannot write through the snapshot', () => {
+    const agg = createRetryStatsAggregate();
+    agg.record({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+    const snap = agg.snapshot();
+    snap.rateLimited = 999;
+    expect(agg.snapshot().rateLimited).toBe(0);
   });
 });

@@ -279,3 +279,131 @@ reach it without fabricating a state the function cannot receive, and a test tha
 did would assert a fiction. Recorded here so the coverage figure reads as measured
 rather than as met.
 
+## 10. The instrument §9 asked for
+
+§9 ends on a gap: the A/B could not report a throttling rate because nothing in
+the pipeline recorded one. This section is the fix, and it is deliberately narrow
+— an instrument, not a behaviour change.
+
+### 10.1 What was added
+
+| Symbol | Package | Role |
+| ------ | ------- | ---- |
+| `RetryStats` | `cortex-llm` | per-call counters: `attempts`, `retried`, `rateLimited`, `retryAfterHonoured` |
+| `RetryOutcome` | `cortex-llm` | `RetryStats` plus the final `Response` |
+| `retryableFetchWithStats` | `cortex-llm` | the retry loop, now returning its own counters |
+| `retryableFetch` | `cortex-llm` | unchanged signature — a thin wrapper over the above |
+| `RetryStatsSnapshot` | `cortex-llm` | the same counters aggregated across calls, plus `retryRate` |
+| `RetryStatsAggregate` | `cortex-llm` | `record()` / `snapshot()` / `reset()` |
+| `retryStats()` / `resetRetryStats()` | `cortex-llm` | the process-level aggregate's only read path |
+| `transportRetryReport()` | `cortex-eval` | formats a snapshot for an artifact |
+| `embedding.transportRetry` | artifact field | where the counters land |
+
+`retryableFetch`'s signature and behaviour are **unchanged**. Every existing
+caller — the embedding adapter, the OpenAI-compatible LLM — needed no edit, which
+is what makes this an instrument rather than a refactor: the only observable
+difference is the presence of new numbers.
+
+### 10.2 Two decisions worth their own paragraphs
+
+**`retryRate` is per call, not per retry.** The first implementation computed
+`retried / calls`. A test caught it: one call retrying 40 times reported a rate of
+**40**. That is not a rate. The numerator is `retriedCalls` — calls that retried at
+least once — so the metric answers "what share of calls had to retry", and the
+retry *volume* stays in `retried`, where a reader can still tell "many calls each
+retrying once" from "one call retrying many times". The two live side by side on
+purpose; collapsing them was the bug.
+
+**A refused retry is not counted.** When the wall-clock budget rejects a retry
+(§2), the branch returns early and increments nothing. Recording it would report a
+request the provider never received, which would inflate `retried` in exactly the
+scenario the budget exists to create. The one thing that branch *does* do is
+synthesise a `429` when there is no response to return — after a transport failure
+`resFromLastAttempt` is cleared, so without the fallback the caller receives
+`undefined` and reads `res.ok` off nothing. `rateLimited` stays zero on that path:
+no 429 was ever received.
+
+### 10.3 The mutation experiment
+
+A counter that reports the wrong thing is worse than no counter, because it looks
+authoritative. `tools/inject-retry-stats.py` injects 16 plausible accounting
+errors and requires the suite to catch each one.
+
+| Mutation | Caught by |
+| -------- | --------- |
+| `retry-not-counted` | retry accounting |
+| `rate-limited-counts-5xx` | retry accounting |
+| `budget-refusal-counted` | retry accounting (budget) |
+| `budget-refusal-status-shifted` | retry accounting (budget) |
+| `retry-rate-per-retry` | retry stats aggregation |
+| `transport-failure-counted` | retry accounting |
+| `retry-after-always-honoured` | retry accounting |
+| `retried-call-recorded-clean` | retry stats aggregation |
+| `clean-call-recorded-retried` | retry stats aggregation |
+| `snapshot-drops-retried-calls` | build (type) then tests |
+| `reset-leaves-retried-calls` | retry stats aggregation (reset) |
+| `reset-leaves-attempts` | retry stats aggregation (reset) |
+| `report-drops-rate-limited` | transport retry report |
+| `report-drops-retry-after` | transport retry report |
+| `report-relabels-scope` | transport retry report |
+| `report-drops-attempts` | transport retry report |
+
+**16 / 16 caught.** Each file is restored from memory and md5-verified after every
+mutation, so no mutation can survive in the tree even if the run aborts.
+
+Three of the sixteen are worth calling out because the experiment found them:
+
+1. **Two mutations initially had no test at all.** `reset()` had no coverage — the
+   existing test asserted only `calls` after a reset, leaving seven fields free to
+   leak. That matters here specifically because the retry *rate* is
+   `retriedCalls / calls`: a stale numerator over a fresh denominator reports a
+   rate above 100%. A test asserting the whole snapshot now exists.
+2. **One mutation survived as a no-op.** `snapshot-not-a-copy` was written as
+   `attempts: this.#attempts + 0`, which is behaviourally identical to the
+   original. It was a mislabelled mutation, not a test gap — the aggregate's fields
+   are private numbers, so a snapshot returning primitives cannot alias mutable
+   state. It was replaced with mutations that are actually expressible.
+3. **One mutation was caught by the type checker, not a test.** The mutation
+   harness runs a build before the eval suite, and the eval package resolves
+   `cortex-llm`'s **built** `dist/`. Without that build the eval tests would keep
+   passing against pre-mutation code and report survivors that do not exist. This
+   was found the hard way: the first run reported `BASELINE RED` for that reason.
+
+### 10.4 Where the number goes
+
+The counters are written to two places, deliberately:
+
+- `benchmark-diagnostics.json`, under `embedding.transportRetry`, alongside
+  `source` — `source` says where the vectors **came from**, `transportRetry` says
+  what the requests **cost**.
+- The step log, as a `=== Transport retries (process scope) ===` line.
+
+A number that requires downloading a ZIP to read is a number that does not get
+compared, and this A/B exists to compare one number between two runs. Same value,
+two readers.
+
+The field carries `scope: 'process'` because `retryableFetch` is the single choke
+point for embedding **and** LLM traffic, so the aggregate is process-wide and
+cannot be split after the fact. Naming the scope is the honest alternative to
+inventing a per-provider breakdown the counter does not have. `provider:
+'embedding'` records what the section is being read for.
+
+### 10.5 Status
+
+**Implemented, verified, and not yet dispatched.** The 429-rate comparison §9 could
+not make remains unmade — the instrument exists, but no run has yet produced two
+sets of counters to compare. What has changed is that a re-dispatch can now answer
+the question, where before it provably could not.
+
+Gate: **1513 tests** across four packages, every dimension ≥95%.
+
+| Package | Tests | Stmts | Branch | Funcs | Lines |
+| ------- | ----- | ----- | ------ | ----- | ----- |
+| cortex-core | 127 | 98.48 | 98.34 | 100 | 98.48 |
+| cortex-node | 16 | 100 | 98.61 | 100 | 100 |
+| cortex-llm | 131 | 99.27 | 98.11 | 100 | 99.27 |
+| cortex-eval | 1239 | 99.87 | 99.03 | 100 | 99.87 |
+
+`retry.ts` is at **100 / 100 / 100 / 100**. The branch that was uncovered before
+this section — the `??` fallback on the budget-refusal return — now has a test that
+reaches it, by refusing a retry after a transport failure rather than after a 429.
