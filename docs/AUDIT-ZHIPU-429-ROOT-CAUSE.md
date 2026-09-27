@@ -249,7 +249,27 @@ Both arms were run under the pinned `pnpm@9.15.0`, the version CI uses, not the 
 
 That gap is why attempt 5 was treated as the experiment rather than as a formality, and it is now closed: on `ca40bf99` both arms report `Verify library = success` on a real runner. The lesson worth keeping is that the local environment reported the *opposite* of the truth for `better-sqlite3` — it failed there for reasons that do not exist on a runner — so a local red on a native build is not evidence of a repository defect. Distinguishing the two required reading the failing command's own output down to the fetch error, not inferring from the exit code.
 
-**What is still unproven.** The 429-rate comparison itself. Both arms have entered the benchmark; until they finish and their diagnostics are read side by side, this document claims nothing about pacing's effect on 429 rate or wall-clock.
+**Attempt 5 result: both arms succeeded, and the comparison it was meant to make cannot be made from these artifacts.** Stated first, because it is the finding:
+
+| | paced | control |
+| --- | --- | --- |
+| `batchIntervalMs` | **250** | **0** |
+| provider / model / dimensions | `openai-compatible` / `embedding-3` / 1024 | identical |
+| `source.liveRequests` | 80 | 78 |
+| `source.batches` | 80 | 78 |
+| `source.cachedTexts` | 31947 | 31950 |
+| run wall-clock | 816s | 789s |
+| `Run benchmark` step | 746s | 725s |
+
+The provenance block did exactly what §6 asked of it: it makes the two arms distinguishable, and it confirms both used the **real Zhipu backend** rather than the hash fallback. That is the block earning its place.
+
+**But there is no 429 rate to compare, because nothing records one.** A scan of all artifacts in both arms finds no retry counter, no 429 count, and no throttle field. This is not a missing measurement that a re-run would produce — `retryableFetch` retries internally and returns only the final response, so a request that was rejected twice and then succeeded is indistinguishable in the output from one that succeeded first time. The pacing overhead is visible (`80` requests × 250ms ≈ 19.8s, against a 21s wall-clock gap), which confirms the setting reached the production path. The thing the A/B was designed to measure is instrumented nowhere.
+
+**So the honest verdict on the original question is: unanswered, and unanswerable from this run's output.** The three defects of §0 remain fixed, and each fix is verified reachable from a real run — but the claim "pacing reduces the 429 rate" is **not** supported by these two runs, and is not refuted by them either. What the runs do show is that both configurations completed the benchmark against the live provider without exhausting retries, which is consistent with the rate being survivable at this sample size either way.
+
+The gap is the same family as §6's: **a value that is not written down cannot be audited.** Adding a retry counter to the same `EmbeddingSourceStats` structure is the prerequisite for the comparison, and until it exists a re-dispatch would produce two more reports that look identical on the axis under test.
+
+**What attempt 5 does settle.** The install and gate path is fixed on a real runner — the step that failed eight consecutive times now passes, on the environment that can build the native dependencies this sandbox cannot.
 
 **One surviving gap, stated rather than rounded away.** `retrieval.ts` lines
 631–632 are uncovered. They guard `indexOf(hit) < 0` inside a loop whose hits come
