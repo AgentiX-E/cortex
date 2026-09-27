@@ -20,7 +20,11 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { computeTargetCohort, verifyTargetCohort, judgeCriterion } from '../packages/cortex-eval/dist/b7-cohort.js';
+import {
+  computeTargetCohort,
+  verifyTargetCohort,
+  judgeCriterion,
+} from '../packages/cortex-eval/dist/b7-cohort.js';
 
 const PUBLISHED_TARGET_COUNT = 9;
 
@@ -36,12 +40,9 @@ function load(path) {
  * silently-empty cohort would make the verdict vacuous.
  */
 function extractQuestions(report, label) {
-  const candidates = [
-    report.questions,
-    report.perQuestion,
-    report.results,
-    report.details,
-  ].filter(Array.isArray);
+  const candidates = [report.questions, report.perQuestion, report.results, report.details].filter(
+    Array.isArray,
+  );
   if (candidates.length === 0) {
     throw new Error(
       `${label}: no per-question array found. Top-level keys: ${Object.keys(report).join(', ')}`,
@@ -111,7 +112,9 @@ function main() {
   } else {
     console.log(`published count claimed: ${verdict.published}`);
     console.log(`computed roster size:    ${verdict.computed}`);
-    console.log(`publication says ${PUBLISHED_TARGET_COUNT}; recomputation found ${verdict.computed}`);
+    console.log(
+      `publication says ${PUBLISHED_TARGET_COUNT}; recomputation found ${verdict.computed}`,
+    );
     if (verdict.computed !== PUBLISHED_TARGET_COUNT) {
       console.log(
         `>>> DISAGREEMENT with the published count. The published "9" is a claim about a\n` +

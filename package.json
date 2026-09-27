@@ -18,7 +18,9 @@
     "format": "prettier --check '**/*.ts'",
     "format:fix": "prettier --write '**/*.ts'",
     "clean": "pnpm -r clean",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm format"
+    "census": "node tools/export-census.mjs",
+    "census:check": "node tools/export-census.mjs --check",
+    "check": "pnpm build && pnpm lint && pnpm typecheck && pnpm census:check && pnpm test && pnpm format"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

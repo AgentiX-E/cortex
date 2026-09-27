@@ -79,3 +79,23 @@ export {
   type ConsolidationStats,
   type AccessRecord,
 } from './consolidation/consolidate.js';
+
+// tooling: the export census that `tools/export-census.mjs` drives through dist
+export {
+  isSourceFile,
+  isTestFile,
+  isBarrelFile,
+  isCallerOnlyFile,
+  packageOf,
+  extractExportedSymbols,
+  countCallers,
+  identifierPattern,
+  censusPackage,
+  buildCensusReport,
+  listOrphans,
+  type ExportKind,
+  type ExportedSymbol,
+  type SymbolCensusEntry,
+  type PackageCensus,
+  type CensusReport,
+} from './export-census.js';
