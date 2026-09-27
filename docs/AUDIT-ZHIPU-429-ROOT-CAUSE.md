@@ -390,10 +390,11 @@ inventing a per-provider breakdown the counter does not have. `provider:
 
 ### 10.5 Status
 
-**Implemented, verified, and not yet dispatched.** The 429-rate comparison §9 could
-not make remains unmade — the instrument exists, but no run has yet produced two
-sets of counters to compare. What has changed is that a re-dispatch can now answer
-the question, where before it provably could not.
+**Implemented, verified, and dispatched.** The comparison §9 could not make was
+subsequently made — see §11. Both arms report `retryRate = 0.00%`, which is a
+measured null rather than a confirmation: at this sample size neither configuration
+was throttled at all. The instrument is what turned "unanswerable" into "answered,
+with a null".
 
 Gate: **1513 tests** across four packages, every dimension ≥95%.
 
@@ -407,3 +408,88 @@ Gate: **1513 tests** across four packages, every dimension ≥95%.
 `retry.ts` is at **100 / 100 / 100 / 100**. The branch that was uncovered before
 this section — the `??` fallback on the budget-refusal return — now has a test that
 reaches it, by refusing a retry after a transport failure rather than after a 429.
+
+## 11. The measurement, taken
+
+§10 left one thing undone: the instrument existed, but no run had produced two
+sets of counters to compare. This section is that run.
+
+**Dispatch `b5edea00`, runs `36302416472` (paced) and `36302418319` (control), both
+`completed/success`.** Dispatch was `204 × 2` on the first attempt with zero
+retries, so the request body that §9's loop kept misreading as a 422 is not a
+factor here — that was settled in §9 and it stayed settled.
+
+### 11.1 The numbers
+
+| | paced (`250ms`) | control (`0ms`) |
+| --- | --- | --- |
+| `batchIntervalMs` | **250** | **0** |
+| provider / model / dimensions | `openai-compatible` / `embedding-3` / 1024 | identical |
+| `source.liveRequests` | 79 | 79 |
+| `source.liveTexts` | 212 | 206 |
+| `source.cachedTexts` | 31948 | 31951 |
+| `transportRetry.attempts` | **169** | **169** |
+| `transportRetry.calls` | 169 | 169 |
+| `transportRetry.retried` | **0** | **0** |
+| `transportRetry.rateLimited` | **0** | **0** |
+| `transportRetry.retryAfterHonoured` | 0 | 0 |
+| `transportRetry.retriedCalls` | 0 | 0 |
+| `transportRetry.cleanCalls` | 169 | 169 |
+| `transportRetry.retryRate` | **0.00%** | **0.00%** |
+
+**Both arms: 169 calls, 169 attempts, zero retries, zero 429s.**
+
+### 11.2 Reading it honestly
+
+**The instrument worked, and it produced a null result.** Stated plainly, because
+the temptation here is to read "no 429s" as "the fix worked":
+
+Three cross-checks confirm the counters are measuring what they claim, rather than
+being structurally zero:
+
+1. `attempts == calls` in both arms — every call succeeded on its first attempt.
+   Had the counter been dead, `attempts` would be `0`, not `169`.
+2. `attempts - source.liveRequests = 90` in **both** arms. The embedding backend
+   made 79 live requests; the remaining 90 transport calls are the LLM's. That the
+   same split appears independently in both arms is what rules out a stuck counter —
+   a broken one would not reproduce a 79/90 division from two different runs.
+3. `calls == cleanCalls == 169` and `retriedCalls == 0`, which is exactly the shape
+   a zero-retry run must have. The two arms agree on all eight fields.
+
+So the counter is live and reports zero. **There is no throttling to reduce at this
+sample size, in either configuration.**
+
+### 11.3 What this does and does not settle
+
+**It settles:** at `limit=60` against the live Zhipu backend, with a warm embedding
+cache (≈31.9k texts restored, ~210 embedded live per arm), **neither configuration
+was throttled at all.** The three defects fixed in §0 remain fixed and reachable,
+and the earlier diagnosis that the 429 was a concurrency cap rather than a quota
+exhaustion is consistent with what is observed — but it is **not** what this run
+proves, since no 429 occurred to characterise.
+
+**It does not settle:** whether pacing reduces the 429 rate **under throttling**.
+A zero-vs-zero comparison cannot establish a difference in a rate that was zero in
+both arms. Anyone reading "paced = 0, control = 0" as evidence for pacing has read
+a null result as a confirmation.
+
+The reason both arms were clean is visible in the provenance: the cache carries
+≈31.9k of the ≈32.1k texts, so each arm issued only ~79 live embedding requests.
+That is a **much lighter** load than the scenario the pacing fix was designed for.
+Producing a throttled arm would require a cold cache, a larger `limit`, or both.
+
+### 11.4 The comparison §9 could not make is now makeable — and was made
+
+This is the difference the instrument bought, and it is worth being precise about
+it. §9 could not report a rate because **no number existed in either artifact.**
+§11 reports a rate for both arms. The answer is `0.00%` and `0.00%`.
+
+That is a less satisfying answer than a large delta would have been. It is,
+however, a **measured** answer, which is the only kind this record accepts. §10's
+discipline applies to it directly: the number was written where both runs could
+read it, so it could be compared — and the comparison was made.
+
+**Next step, stated rather than left implicit:** to obtain a decision about pacing,
+the load has to be heavy enough to elicit a 429. That means a cold embedding cache
+and/or a substantially larger `limit`, not another run at the current settings.
+Dispatching the same two arms again would reproduce this same pair of zeros.
