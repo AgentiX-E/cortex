@@ -120,6 +120,21 @@ export type BenchmarkRunnerOptions = {
    * see `buildConservativeQaPrompt`.
    */
   entityIdentityClause?: boolean;
+  /**
+   * Candidate-context discrimination in the feature system (roadmap measure B7).
+   *
+   * The feature renders retrieved candidates as sides of a discriminated
+   * rendering instead of a flat list, so the reader is shown which candidate
+   * contradicts which rather than being handed one undifferentiated block.
+   *
+   * Forwarded to the FEATURE only, on the same reasoning as `reranker`: the
+   * baseline is the untouched reference, and an arm whose control side also has
+   * the feature measures nothing. This is the reason the option exists here at
+   * all -- before it did, the switch was declared and consumed inside
+   * `natural-language-memory.ts` and set nowhere outside it, so no dispatch could
+   * turn it on. See `runRerankAblation`'s test suite for the reachability proof.
+   */
+  candidateDiscrimination?: boolean;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
   /**
@@ -1014,6 +1029,11 @@ export async function runRerankAblation(
     ...(options.rerankProtectedHead !== undefined
       ? { rerankProtectedHead: options.rerankProtectedHead }
       : {}),
+    // Feature side only. The baseline does not receive this, for the reason its
+    // own construction documents about the reranker: the baseline is the
+    // untouched reference, and a control arm carrying the feature produces a
+    // delta of zero by construction.
+    ...(options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {}),
   });
 
   const judge = options.judge ?? createLlmJudge(llm);

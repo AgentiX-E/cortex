@@ -391,3 +391,27 @@ export function transportRetryReport(
     retryRate: snapshot.retryRate,
   };
 }
+
+/**
+ * Renders the first few ids of a population for a log line.
+ *
+ * Truncation is stated, not implied. `… +241 more` tells a reader that the
+ * artifact holds a longer list; a bare five-element preview would let someone
+ * conclude the population is five questions when the count printed one line
+ * above says 270. The artifact carries the full list either way -- this is the
+ * copy for whoever is watching the run, not the record.
+ *
+ * It lives here rather than beside its caller because `bench/**` is excluded
+ * from coverage as a CLI entry point, and this has three branches worth testing:
+ * an empty population, one that exactly fills the preview, and one that
+ * overflows. The middle branch is the one that matters -- `<= limit` and
+ * `< limit` differ only there, and the wrong one appends `… +0 more`, a line
+ * claiming there is more to see when there is not.
+ */
+export function formatIdPreview(ids: readonly string[], limit = 5): string {
+  if (ids.length === 0) {
+    return '(none)';
+  }
+  const shown = ids.slice(0, limit).join(', ');
+  return ids.length <= limit ? shown : `${shown} … +${ids.length - limit} more`;
+}

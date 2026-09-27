@@ -45,6 +45,52 @@ TEST = "src/__tests__/retrieval-attribution.test.ts"
 # (name, defect introduced, anchor, replacement)
 MUTATIONS = [
     (
+        "ranking-ids-swapped-with-retrieval",
+        "Pair the ranking count with the retrieval population, so the count and "
+        "the names beside it describe different sets. This is the failure the id "
+        "fields exist to prevent, reintroduced: a reader comparing the two would "
+        "have no way to tell which is authoritative.",
+        "    rankingGapQuestionIds: [...options.membership.rankingGap],",
+        "    rankingGapQuestionIds: [...options.membership.retrievalGap],",
+    ),
+    (
+        "retrieval-ids-swapped-with-ranking",
+        "The same swap on the other field, so a fix applied to one side only is "
+        "still caught.",
+        "    retrievalGapQuestionIds: [...options.membership.retrievalGap],",
+        "    retrievalGapQuestionIds: [...options.membership.rankingGap],",
+    ),
+    (
+        "ids-aliased-not-copied",
+        "Return the caller's array instead of a copy, so a reader that sorts what "
+        "it was given reorders the curve it came from. The symptom appears in a "
+        "different field, later.",
+        "    rankingGapQuestionIds: [...options.membership.rankingGap],",
+        "    rankingGapQuestionIds: options.membership.rankingGap as string[],",
+    ),
+    (
+        "ranking-ids-sorted",
+        "Sort the ids, discarding the order the measurement produced. A diff "
+        "between two runs then cannot show which questions moved, which is the "
+        "one thing the list is for.",
+        "    rankingGapQuestionIds: [...options.membership.rankingGap],",
+        "    rankingGapQuestionIds: [...options.membership.rankingGap].sort(),",
+    ),
+    (
+        "ranking-ids-truncated-to-admitted",
+        "Report the admitted population as the ranking gap, so the names describe "
+        "the questions that already work.",
+        "    rankingGapQuestionIds: [...options.membership.rankingGap],",
+        "    rankingGapQuestionIds: [...options.membership.admitted],",
+    ),
+    (
+        "ranking-ids-emptied",
+        "Report no population at all while the count beside it stays non-zero. "
+        "The pair then reads as self-contradictory rather than as absent.",
+        "    rankingGapQuestionIds: [...options.membership.rankingGap],",
+        "    rankingGapQuestionIds: [],",
+    ),
+    (
         "partition-identity",
         "Drop the pool bound on the admitted count, so a pool narrower than the "
         "cutoff yields an admitted count above the pool and the three partition "

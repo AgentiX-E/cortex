@@ -43,6 +43,11 @@ on:
         required: false
         default: '1'
         type: string
+      candidate_discrimination:
+        description: 'Enable candidate-context discrimination in the feature arm (roadmap B7): 1 = on, 0 = shipped behaviour. The reranking A/B is the arm that measures it'
+        required: false
+        default: '0'
+        type: string
       rerank:
         description: 'Enable the cross-encoder reranking stage (roadmap B1). off = shipped behaviour'
         required: false
@@ -138,6 +143,15 @@ jobs:
           # run that attributes the abstention recovery to one or the other.
           # Unset (or any value but 0) keeps the shipped configuration.
           ENTITY_IDENTITY_CLAUSE: ${{ github.event.inputs.entity_identity_clause || '1' }}
+          # Roadmap B7. Unlike ENTITY_IDENTITY_CLAUSE above, this defaults OFF and
+          # the reader is strict: only '1' switches it on. The two options sit next
+          # to each other with opposite defaults on purpose. An unset
+          # ENTITY_IDENTITY_CLAUSE means "run the shipped configuration", which has
+          # the sentence; an unset CANDIDATE_DISCRIMINATION means "this measurement
+          # was not requested", and the feature must be absent for the A/B's control
+          # arm to exist. Before this input existed, no dispatch could reach the
+          # switch at all.
+          CANDIDATE_DISCRIMINATION: ${{ github.event.inputs.candidate_discrimination || '0' }}
           DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
           DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           # Default to a small stratified sample so iterative debugging does not

@@ -120,12 +120,56 @@ export type RetrievalGapAttribution = {
   /** Covered-but-unadmitted questions the reader failed. */
   readonly recoverableFromRanking: number;
 
+  /**
+   * The questions `rankingGapQuestions` counts, by id, in measured order.
+   *
+   * A count states how large a population is; it does not let anyone name it,
+   * and a population that cannot be named cannot be checked against a
+   * pre-registered prediction. The B7 criterion -- "the targeted questions must
+   * move" -- was unjudgeable for exactly this reason: the artifact carried
+   * `rankingGapQuestions: 27` and nothing that said *which* 27.
+   *
+   * Required, not optional, on the same reasoning as `discordantQuestions`: an
+   * optional field lets every existing caller keep compiling while reporting no
+   * population at all, which is the silent-omission failure being fixed. A
+   * missing id list has to be a compile error, because that is the only kind of
+   * reminder that cannot be ignored.
+   *
+   * Ids rather than indices: an index names a position in one particular
+   * ordering of one particular run, and re-running the benchmark produces a
+   * different ordering. Only an id survives to the next run, which is the only
+   * place a comparison can happen.
+   *
+   * Order is the measurement's, not sorted. Sorting discards the arrival order,
+   * and arrival order is the only evidence that the curve and this list were
+   * built from the same pass.
+   */
+  readonly rankingGapQuestionIds: string[];
+  /** The questions `retrievalGapQuestions` counts, by id. Same contract. */
+  readonly retrievalGapQuestionIds: string[];
+
   /** Correctness the feature added in capabilities whose answers are refusals. */
   readonly improvementFromAbstention: number;
   /** Correctness the feature added everywhere else. */
   readonly improvementFromOtherCapabilities: number;
   /** Capabilities whose `correct` count is identical in both arms. */
   readonly unchangedCapabilities: string[];
+};
+
+/**
+ * The three partitions of a curve's population, by question id.
+ *
+ * Structurally matches the `membership` field `computeRecallCurve` returns, and
+ * is declared as a structural type rather than imported from `recall-curve.ts`
+ * so this module keeps depending on the *shape* of a curve summary rather than
+ * on the curve builder. The attribution has never needed to know how the
+ * population was partitioned, only that someone partitioned it with the same
+ * predicate it uses for its own counts.
+ */
+export type CurveMembership = {
+  readonly admitted: readonly string[];
+  readonly rankingGap: readonly string[];
+  readonly retrievalGap: readonly string[];
 };
 
 /**
@@ -145,6 +189,19 @@ export type AttributeRecallGapOptions = {
    * capability in LongMemEval.
    */
   readonly abstentionCapabilities?: readonly string[];
+  /**
+   * Which questions the curve put in which partition.
+   *
+   * Passed in rather than recomputed here. The counts above are derived from
+   * `curve` by arithmetic -- `covered - admitted`, `considered - covered` -- and
+   * reconstructing the populations from those counts would mean re-deriving the
+   * predicate, at which point two implementations of "was this question
+   * recalled" exist and can disagree. This module takes the partition the curve
+   * actually used, which is the same source the counts came from.
+   *
+   * Required: see `rankingGapQuestionIds`.
+   */
+  readonly membership: CurveMembership;
 };
 
 /**
@@ -260,6 +317,12 @@ export function attributeRecallGap(options: AttributeRecallGapOptions): Retrieva
     abstentionQuestions,
     gapAlreadyAbsorbedByReader,
     recoverableFromRanking,
+    // Copied, not aliased. The caller handed us the curve's own arrays, and a
+    // reader that sorts or filters what it got back would otherwise reorder the
+    // curve it came from -- a mutation whose only symptom is that a *different*
+    // field reports the wrong thing later.
+    rankingGapQuestionIds: [...options.membership.rankingGap],
+    retrievalGapQuestionIds: [...options.membership.retrievalGap],
     improvementFromAbstention,
     improvementFromOtherCapabilities,
     unchangedCapabilities,

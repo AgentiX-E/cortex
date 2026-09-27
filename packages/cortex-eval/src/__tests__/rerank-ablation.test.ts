@@ -38,6 +38,7 @@ import type { LLM } from '@agentix-e/cortex-core';
 
 import { readRerankFallbacks, runRerankAblation } from '../runner.js';
 import { HashEmbedding } from '../embedding.js';
+import { CANDIDATE_DISCRIMINATION_INSTRUCTION } from '../candidate-context.js';
 import type { AnswerJudge } from '../judge.js';
 import type { LongMemEvalInstance } from '../datasets/longmemeval-loader.js';
 
@@ -463,5 +464,109 @@ describe('readRerankFallbacks', () => {
     counter.bucketCount = 9;
 
     expect(readRerankFallbacks(counter)).toEqual({ fallbackCount: 9, bucketCount: 9 });
+  });
+});
+
+/**
+ * Roadmap measure B7's switch has to be reachable from the arm that measures it.
+ *
+ * When this was written, `candidateDiscrimination` was declared and consumed
+ * inside `natural-language-memory.ts` and assigned nowhere outside it. Four
+ * exported functions (`clusterCandidates`, `discriminateContext`,
+ * `candidateSides`, `renderDiscriminatedContext`) had no caller at all, and the
+ * benchmark had no input that could turn the feature on. Unit tests passed
+ * anyway, because they call the exported functions directly and therefore never
+ * traverse the layer that was missing -- the same shape as the batch-throttling
+ * gap: every part in place, nothing connecting them.
+ *
+ * These tests are written against the arm entry point, not against the system
+ * class, because the missing link was exactly the arm entry point.
+ */
+describe('runRerankAblation candidate discrimination', () => {
+  /**
+   * An LLM that records every prompt it is shown.
+   *
+   * Reaching the switch requires evidence about what the model was asked, and the
+   * arm's accuracy numbers cannot supply it: `acceptJudge` scores both arms
+   * identically by construction, so a feature that never fired produces the same
+   * report as one that fired correctly. The prompts are the observable.
+   */
+  function recordingLlm(prompts: string[]): LLM {
+    return {
+      complete: async (prompt: string) => {
+        prompts.push(prompt);
+        return 'unknown';
+      },
+      completeStructured: async () => {
+        throw new Error('not used by the rerank arm');
+      },
+    };
+  }
+
+  it('leaves the instruction out when the switch is not set', async () => {
+    const prompts: string[] = [];
+    await runRerankAblation(instances, embedding, recordingLlm(prompts), {
+      reranker: reversingReranker(),
+      judge: acceptJudge,
+    });
+
+    // The default is off. A feature that switches itself on is not an ablation
+    // arm, and the arm's control side is defined by its absence.
+    expect(prompts.length).toBeGreaterThan(0);
+    expect(prompts.some((p) => p.includes(CANDIDATE_DISCRIMINATION_INSTRUCTION))).toBe(false);
+  });
+
+  it('carries the instruction into the prompt when the switch is on', async () => {
+    const prompts: string[] = [];
+    await runRerankAblation(instances, embedding, recordingLlm(prompts), {
+      reranker: reversingReranker(),
+      candidateDiscrimination: true,
+      judge: acceptJudge,
+    });
+
+    // This is the assertion that would have failed before the wiring existed:
+    // the option was reachable from the system class but not from the arm.
+    expect(prompts.some((p) => p.includes(CANDIDATE_DISCRIMINATION_INSTRUCTION))).toBe(true);
+  });
+
+  it('does not leak the instruction into the baseline arm', async () => {
+    // Two runs, one with the switch and one without, sharing nothing.
+    //
+    // Counting inside a single run cannot answer this. Both arms are given the
+    // same LLM object, prompts do not carry the system's name, and
+    // `runAblationReport` evaluates each system end to end in turn -- so a
+    // prompt recorded mid-run cannot be attributed to an arm from its text. The
+    // first attempt at this test filtered prompts for the arm names and asserted
+    // the filtered lists were empty, which was true whether or not the instruction
+    // leaked: a vacuous pass.
+    //
+    // The difference between the two runs can answer it. Turning the switch on
+    // must add discriminating prompts, and the number it adds must be bounded by
+    // the feature arm's own question count. If the baseline had it too, the delta
+    // would be roughly twice that bound.
+    const off: string[] = [];
+    await runRerankAblation(instances, embedding, recordingLlm(off), {
+      reranker: reversingReranker(),
+      judge: acceptJudge,
+    });
+    const on: string[] = [];
+    const { report } = await runRerankAblation(instances, embedding, recordingLlm(on), {
+      reranker: reversingReranker(),
+      candidateDiscrimination: true,
+      judge: acceptJudge,
+    });
+
+    const countInstruction = (prompts: readonly string[]): number =>
+      prompts.filter((p) => p.includes(CANDIDATE_DISCRIMINATION_INSTRUCTION)).length;
+
+    // Off is the control, so it must contribute zero -- otherwise the arm has no
+    // un-discriminated side and the A/B measures nothing.
+    expect(countInstruction(off)).toBe(0);
+    // On contributes at least one, or the switch is still unreachable.
+    expect(countInstruction(on)).toBeGreaterThan(0);
+    // And is bounded by the feature arm's own workload: the instruction is part
+    // of the QA prompt, and the feature arm answers `report.questionCount`
+    // questions once. Twice that would mean the baseline prompt carried it too.
+    expect(countInstruction(on)).toBeLessThanOrEqual(report.questionCount);
   });
 });

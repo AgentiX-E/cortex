@@ -100,6 +100,7 @@ export {
   type SessionRetrievalDiagnostic,
   type EmbeddingDeterminism,
   transportRetryReport,
+  formatIdPreview,
   type TransportRetryReport,
   type TransportRetryScope,
 } from './retrieval-diagnostics.js';
@@ -108,6 +109,7 @@ export {
   rankingGapFailureCount,
   type AttributeRecallGapOptions,
   type CapabilityAccuracy,
+  type CurveMembership,
   type CurveSummary,
   type RetrievalGapAttribution,
 } from './retrieval-attribution.js';
@@ -297,3 +299,20 @@ export {
   type VarianceStats,
   type VarianceSummary,
 } from './variance.js';
+
+export { readToggle, type ReadToggleOptions } from './env-toggle.js';
+
+export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-options.js';
+
+export {
+  computeTargetCohort,
+  judgeCriterion,
+  sidesLandInDistinctClusters,
+  verifyTargetCohort,
+  type ArmOutcome,
+  type CohortQuestion,
+  type CohortVerdict,
+  type CriterionVerdict,
+  type TargetCohort,
+  type TargetMember,
+} from './b7-cohort.js';

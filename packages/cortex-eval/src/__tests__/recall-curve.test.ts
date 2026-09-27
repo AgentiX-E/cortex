@@ -23,10 +23,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRecallCurve,
   classifyExclusion,
+  classifyCurveMembership,
   DEFAULT_CURVE_CUTOFFS,
   computeRecallCurve,
   rankOfFirstAnswer,
   type RecallCurvePoint,
+  type QuestionRank,
 } from '../recall-curve.js';
 
 describe('buildRecallCurve', () => {
@@ -320,6 +322,59 @@ describe('computeRecallCurve', () => {
 
     expect(curve.points).toHaveLength(2);
     expect(curve.points.every((p) => p.recall === 0)).toBe(true);
+  });
+
+  it('classifies the membership at the smallest cutoff it was asked about', async () => {
+    // Which cutoff defines "admitted" is a decision, and it has to be the
+    // strictest one. A question admitted at k=1 but not at k=2 is exactly the
+    // question the ranking gap is about; taking the largest cutoff instead would
+    // empty the gap by calling that question admitted.
+    //
+    // Defect injection found this untested: swapping `Math.min` for `Math.max`
+    // here left the whole suite green, because every test that touches the
+    // membership passes an explicit `k` to `classifyCurveMembership` and never
+    // goes through this choice.
+    //
+    // The fixture below is built to make the choice visible, which needs a curve
+    // whose recall actually differs between the two cutoffs. `q1`'s evidence turn
+    // is the top hit for its question, so it is admitted at k=1; `q2`'s evidence
+    // is its second hit, so k=1 misses it and only k=2 admits it. Measured:
+    // recall 0.5 at k=1 and 1 at k=2.
+    const dims: Record<string, number[]> = {
+      Q1: [1, 0, 0],
+      e1: [1, 0, 0],
+      f1: [0, 1, 0],
+      Q2: [1, 0, 0],
+      f2: [1, 0, 0],
+      e2: [0, 1, 0],
+    };
+    const insts = [
+      instance('Q1', [{ text: 'e1', answer: true }, { text: 'f1' }]),
+      instance('Q2', [{ text: 'f2' }, { text: 'e2', answer: true }]),
+    ].map((inst, i) => ({ ...inst, question_id: `q${i + 1}` }));
+
+    const curve = await computeRecallCurve(insts as never[], embedding(dims), {
+      cutoffs: [1, 2],
+      poolWidth: 2,
+    });
+
+    // Guard the premise. If the fixture ever stops producing a gap, the
+    // assertions below would pass for the wrong reason.
+    expect(curve.points.find((p) => p.k === 1)!.recall).toBeCloseTo(0.5, 10);
+    expect(curve.points.find((p) => p.k === 2)!.recall).toBeCloseTo(1, 10);
+
+    // Asserted against the curve's own k=1 point rather than a literal, so the
+    // two cannot drift apart.
+    const atOne = curve.points.find((p) => p.k === 1)!;
+    expect(curve.membership.admitted).toHaveLength(atOne.recalled);
+    expect(curve.membership.rankingGap).toEqual(['q2']);
+
+    // And the identity that makes the pair readable, over the whole population.
+    expect(
+      curve.membership.admitted.length +
+        curve.membership.rankingGap.length +
+        curve.membership.retrievalGap.length,
+    ).toBe(curve.considered);
   });
 
   it('accepts an embedding-only options object without an llm', async () => {
@@ -670,5 +725,161 @@ describe('computeRecallCurve exclusion reporting', () => {
       questionId: 'orphan',
       reason: 'no-flag',
     });
+  });
+});
+
+/**
+ * The curve reports counts and the artifact reports counts, so no archived
+ * result can name the questions a decision was made about.
+ *
+ * That gap is not hypothetical. The pre-registered criterion for roadmap measure
+ * B7 is "the targeted 9 questions must move" (§2.5.10.6), and answering it
+ * requires knowing *which* questions are in the ranking gap. The attribution
+ * module returned `rankingGapQuestions: 27` and nothing else, so the criterion
+ * was unjudgeable against any artifact this pipeline produced — the same
+ * instrument gap that `discordantQuestions` closed for the A2 ablation
+ * (`C(9,4) = 126` consistent assignments until ids were recorded).
+ *
+ * `classifyCurveMembership` is the reader that closes it. It partitions the
+ * measured questions by the same rule `buildRecallCurve` counts with, and names
+ * each one. Counts stay in the curve; identity lives here, so the two cannot
+ * disagree about the rule -- the partition is derived from one predicate.
+ *
+ * Ids rather than indices, following the precedent: an index is only meaningful
+ * relative to an ordering that was never recorded.
+ */
+describe('classifyCurveMembership', () => {
+  const rank = (id: string, r: number | null): QuestionRank => ({
+    questionId: id,
+    rankOfFirstAnswer: r,
+  });
+
+  it('separates admitted from ranking-gap from retrieval-gap', () => {
+    const membership = classifyCurveMembership(
+      [rank('a', 0), rank('b', 3), rank('c', 7), rank('d', null)],
+      { k: 1, poolWidth: 5 },
+    );
+
+    expect(membership.admitted).toEqual(['a']);
+    expect(membership.rankingGap).toEqual(['b']);
+    expect(membership.retrievalGap).toEqual(['c', 'd']);
+  });
+
+  it('puts a question found in the pool but below the cutoff in the ranking gap', () => {
+    // The distinction the whole module exists for: this question is retrievable
+    // by ranking alone, which is what makes it B7's population rather than the
+    // retrieval channel's.
+    const membership = classifyCurveMembership([rank('x', 4)], { k: 1, poolWidth: 10 });
+
+    expect(membership.admitted).toEqual([]);
+    expect(membership.rankingGap).toEqual(['x']);
+    expect(membership.retrievalGap).toEqual([]);
+  });
+
+  it('treats a question whose answer is beyond the pool as a retrieval gap', () => {
+    // `poolWidth` is the depth actually fetched. An answer at rank 9 when only 5
+    // candidates were returned is not in the pool at all, so no reordering can
+    // surface it -- counting it as a ranking gap would credit the reranker with
+    // a question it cannot reach.
+    const membership = classifyCurveMembership([rank('x', 9)], { k: 1, poolWidth: 5 });
+
+    expect(membership.admitted).toEqual([]);
+    expect(membership.rankingGap).toEqual([]);
+    expect(membership.retrievalGap).toEqual(['x']);
+  });
+
+  it('counts a question at exactly the pool boundary as inside the pool', () => {
+    // The boundary itself, and the mutation that found it missing. Ranks are
+    // zero-based and `poolWidth` is a count, so rank 4 is the last of 5 fetched
+    // candidates -- inside. `< poolWidth` and `<= poolWidth` differ on this one
+    // input and nowhere else, and no test had it: defect injection's
+    // `membership-pool-boundary-off-by-one` left the suite green.
+    const membership = classifyCurveMembership([rank('last-of-pool', 4)], {
+      k: 1,
+      poolWidth: 5,
+    });
+
+    expect(membership.rankingGap).toEqual(['last-of-pool']);
+    expect(membership.retrievalGap).toEqual([]);
+
+    // One past it is outside, which is what makes the boundary a boundary rather
+    // than an off-by-one in the other direction.
+    const justOutside = classifyCurveMembership([rank('beyond-pool', 5)], {
+      k: 1,
+      poolWidth: 5,
+    });
+    expect(justOutside.rankingGap).toEqual([]);
+    expect(justOutside.retrievalGap).toEqual(['beyond-pool']);
+  });
+
+  it('agrees with the curve counts it partitions', () => {
+    // The load-bearing property. Two independent implementations of "is this
+    // question in the ranking gap" would drift, and the counts are what the
+    // roadmap reads while the ids are what a criterion is judged on. Deriving
+    // both from one predicate is what makes them impossible to disagree.
+    const ranks = [
+      rank('a', 0),
+      rank('b', 0),
+      rank('c', 1),
+      rank('d', 4),
+      rank('e', 49),
+      rank('f', null),
+    ];
+    const cutoffs = [1, 5];
+
+    for (const k of cutoffs) {
+      const membership = classifyCurveMembership(ranks, { k, poolWidth: 50 });
+      const point = buildRecallCurve(ranks, [k], { poolWidth: 50 }).find((p) => p.k === k)!;
+      const inPool = ranks.filter((r) => r.rankOfFirstAnswer !== null && r.rankOfFirstAnswer < 50);
+
+      expect(membership.admitted.length).toBe(point.recalled);
+      expect(membership.admitted.length + membership.rankingGap.length).toBe(inPool.length);
+      expect(
+        membership.admitted.length + membership.rankingGap.length + membership.retrievalGap.length,
+      ).toBe(ranks.length);
+    }
+  });
+
+  it('classifies every question exactly once', () => {
+    const ranks = [rank('a', 0), rank('b', 3), rank('c', 9), rank('d', null)];
+    const membership = classifyCurveMembership(ranks, { k: 1, poolWidth: 5 });
+
+    const all = [...membership.admitted, ...membership.rankingGap, ...membership.retrievalGap];
+    expect(all).toHaveLength(ranks.length);
+    expect(new Set(all).size).toBe(ranks.length);
+  });
+
+  it('reports an empty list rather than omitting the field', () => {
+    // A missing key and an empty population read the same to a human but not to
+    // a criterion: "no question is in the ranking gap" is a finding, and it is
+    // not expressible by an absent field. Same reasoning as `discordantQuestions`.
+    const membership = classifyCurveMembership([], { k: 1, poolWidth: 5 });
+
+    expect(membership.admitted).toEqual([]);
+    expect(membership.rankingGap).toEqual([]);
+    expect(membership.retrievalGap).toEqual([]);
+  });
+
+  it('falls back to an empty id when a rank carries none', () => {
+    // `questionId` stays optional on the input type because callers assemble
+    // ranks from several sources. An unnameable member is still a member -- the
+    // count must not change just because the name is missing.
+    const membership = classifyCurveMembership(
+      [{ rankOfFirstAnswer: 0 }, { rankOfFirstAnswer: 3 }],
+      { k: 1, poolWidth: 5 },
+    );
+
+    expect(membership.admitted).toEqual(['']);
+    expect(membership.rankingGap).toEqual(['']);
+  });
+
+  it('uses a zero-based cutoff test, so rank 0 is admitted at k=1', () => {
+    const membership = classifyCurveMembership([rank('top', 0), rank('second', 1)], {
+      k: 1,
+      poolWidth: 10,
+    });
+
+    expect(membership.admitted).toEqual(['top']);
+    expect(membership.rankingGap).toEqual(['second']);
   });
 });

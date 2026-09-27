@@ -20,6 +20,9 @@ import {
   embeddingBatchIntervalMs,
   embeddingSourceStats,
   resetEmbeddingSourceStats,
+  formatIdPreview,
+  readToggle,
+  rerankArmOptions,
   transportRetryReport,
   setEmbeddingBatchIntervalMs,
   hasDiagnosticRecord,
@@ -420,7 +423,15 @@ async function main(): Promise<void> {
   // movement to either. `ENTITY_IDENTITY_CLAUSE=0` removes the sentence while
   // leaving the cap in place, which is what separates them. Unset means the
   // shipped configuration (sentence present).
-  const entityIdentityClause = process.env['ENTITY_IDENTITY_CLAUSE'] !== '0';
+  const entityIdentityClause = readToggle(process.env, 'ENTITY_IDENTITY_CLAUSE', {
+    defaultOn: true,
+  });
+  // Roadmap measure B7. Strict `'1'`, default off. The parsing lives in
+  // `env-toggle.ts` rather than here because `bench/**` is outside coverage, so a
+  // comparison written on this line cannot be tested; defect injection showed
+  // that mutating it to `!== '0'` or to a literal left every test green.
+  const candidateDiscrimination = readToggle(process.env, 'CANDIDATE_DISCRIMINATION');
+
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
     entityIdentityClause,
@@ -463,6 +474,11 @@ async function main(): Promise<void> {
       },
       baseline: toCapabilityAccuracy(report.ablation.baselineMetrics),
       feature: toCapabilityAccuracy(report.ablation.featureMetrics),
+      // The curve's own partition, passed through rather than recomputed. The
+      // counts above are arithmetic over `curve`; the ids are not derivable from
+      // them, and re-deriving the membership here would put a second
+      // implementation of "was this question recalled" next to the curve's.
+      membership: recallCurve.membership,
     });
     writeReportJson('benchmark-gap-attribution.json', attribution);
     console.log('=== k=1 gap attribution ===');
@@ -475,6 +491,19 @@ async function main(): Promise<void> {
       `  admitted ${attribution.admittedAtOne} + ranking gap ` +
         `${attribution.rankingGapQuestions} + retrieval gap ` +
         `${attribution.retrievalGapQuestions} = ${attribution.curveDenominator}`,
+    );
+    // The ids, printed as well as archived. A population that is only in the
+    // artifact is checkable by whoever downloads it; a population that is also
+    // printed is checkable in the run log, which is what a dispatching operator
+    // actually reads. The cap keeps a 270-question list from burying the rest of
+    // the step log -- the artifact carries the full list and this line says so.
+    console.log(
+      `  ranking gap ids (${attribution.rankingGapQuestionIds.length}): ` +
+        `${formatIdPreview(attribution.rankingGapQuestionIds)}`,
+    );
+    console.log(
+      `  retrieval gap ids (${attribution.retrievalGapQuestionIds.length}): ` +
+        `${formatIdPreview(attribution.retrievalGapQuestionIds)}`,
     );
     console.log(
       `  of the ranking gap, ${attribution.gapAlreadyAbsorbedByReader} are already ` +
@@ -864,14 +893,23 @@ async function main(): Promise<void> {
     try {
       // No judge is passed: like every other arm here, the ablations construct
       // their own from `llm`, and the benchmark entry point holds no judge binding.
+      //
+      // The option object is built by `rerankArmOptions` rather than inline. An
+      // inline object here is unreachable from any test -- `bench/**` is excluded
+      // from coverage -- and defect injection showed that deleting the B7 spread
+      // from this very call site, or defaulting the toggle on, changed nothing
+      // any test could observe.
       const rerankAblation = await runRerankAblation(sampled as never, embedding, llm, {
         runs: ablationRuns,
         temperature,
         entityIdentityClause,
-        reranker,
-        ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
-        ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),
-      });
+        ...rerankArmOptions({
+          reranker,
+          candidateDiscrimination,
+          ...(rerankCandidatePool === undefined ? {} : { rerankCandidatePool }),
+          ...(rerankProtectedHead === undefined ? {} : { rerankProtectedHead }),
+        }),
+      } as Parameters<typeof runRerankAblation>[3]);
       writeFileSync(
         'benchmark-rerank-ablation-report.md',
         withEmbeddingProvenance(rerankAblation.markdown),
@@ -880,8 +918,19 @@ async function main(): Promise<void> {
         ...rerankAblation.report,
         abstentionShift: rerankAblation.abstentionShift,
         fallbacks: rerankAblation.fallbacks,
+        // The configuration the delta was measured under, recorded beside it. A
+        // B7 delta read from an artifact that does not say whether the feature
+        // was on is a delta whose sign cannot be interpreted: the same file is
+        // produced by the control arm. Recorded here rather than only in the
+        // workflow log because the artifact is what gets downloaded and compared.
+        featureConfig: { candidateDiscrimination },
       });
       console.log('=== reranking ablation ===');
+      // Stated before the numbers, not after. Every figure below this line is
+      // conditioned on which side of the switch the run was on.
+      console.log(
+        `Candidate discrimination: ${candidateDiscrimination ? 'ON (feature arm carries the discriminating instruction)' : 'off (control)'}`,
+      );
       // Printed beside the accuracy delta on purpose: reranking changes the ordering
       // and the abstention decision is read from hits[0].score, so a shifted
       // abstention rate means the delta below it is confounded rather than earned.

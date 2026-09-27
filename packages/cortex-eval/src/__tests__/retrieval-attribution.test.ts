@@ -3,6 +3,7 @@ import {
   attributeRecallGap,
   rankingGapFailureCount,
   type CapabilityAccuracy,
+  type CurveMembership,
 } from '../retrieval-attribution.js';
 
 /**
@@ -39,12 +40,30 @@ function a2Feature(): CapabilityAccuracy[] {
   ];
 }
 
+/**
+ * The curve membership the A2 fixture implies: 428 considered, 412 covered,
+ * 142 admitted, so 270 in the ranking gap and 16 in the retrieval gap.
+ *
+ * Every test that does not care about the ids still has to say what the curve
+ * partitioned, because the field is required. Filling in a plausible default
+ * here keeps the required-ness honest while not repeating a 270-element literal
+ * in twenty places -- and the tests that *do* care pass their own.
+ */
+function a2Membership(): CurveMembership {
+  return {
+    admitted: Array.from({ length: 142 }, (_, i) => `admitted-${i}`),
+    rankingGap: Array.from({ length: 270 }, (_, i) => `rank-gap-${i}`),
+    retrievalGap: Array.from({ length: 16 }, (_, i) => `retrieval-gap-${i}`),
+  };
+}
+
 describe('attributeRecallGap', () => {
   it('reports the ranking gap as a count of questions, not a percentage', () => {
     const result = attributeRecallGap({
       curve: { considered: 428, ceiling: 0.9626168224299065, recallAtOne: 0.3317757009345794 },
       baseline: a2Baseline(),
       feature: a2Feature(),
+      membership: a2Membership(),
     });
 
     // 428 * 0.9626168224299065 = 412.0 -> 412 covered, 16 uncovered.
@@ -60,6 +79,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 428, ceiling: 0.9626168224299065, recallAtOne: 0.3317757009345794 },
       baseline: a2Baseline(),
       feature: a2Feature(),
+      membership: a2Membership(),
     });
 
     // ABS is 30 questions whose correct answer is to refuse: there is no
@@ -86,6 +106,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 428, ceiling: 0.9626168224299065, recallAtOne: 0.3317757009345794 },
       baseline: a2Baseline(),
       feature: a2Feature(),
+      membership: a2Membership(),
     });
 
     // The pool splits into covered and not-covered, and the covered part splits
@@ -120,6 +141,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 100, ceiling: 0.9, recallAtOne: 0.2 },
       baseline: [{ capability: 'IE', total: 100, correct: 90, abstained: 0 }],
       feature: [{ capability: 'IE', total: 100, correct: 90, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     // 100 covered, 20 admitted, so 70 covered-but-not-admitted.
@@ -139,6 +161,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 100, ceiling: 0.9, recallAtOne: 0.2 },
       baseline: [{ capability: 'IE', total: 100, correct: 50, abstained: 0 }],
       feature: [{ capability: 'IE', total: 100, correct: 50, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     expect(result.rankingGapQuestions).toBe(70);
@@ -163,6 +186,7 @@ describe('attributeRecallGap', () => {
         { capability: 'IE', total: 70, correct: 0, abstained: 0 },
         { capability: 'ABS', total: 30, correct: 29, abstained: 29 },
       ],
+      membership: a2Membership(),
     });
 
     expect(result.abstentionQuestions).toBe(30);
@@ -181,6 +205,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 428, ceiling: 0.9626168224299065, recallAtOne: 0.3317757009345794 },
       baseline: a2Baseline(),
       feature: a2Feature(),
+      membership: a2Membership(),
     });
 
     expect(result.unchangedCapabilities).toEqual(['IE', 'MR', 'KU', 'TR']);
@@ -208,6 +233,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 100, ceiling: 0.5, recallAtOne: 0.8 },
       baseline: [{ capability: 'IE', total: 100, correct: 80, abstained: 0 }],
       feature: [{ capability: 'IE', total: 100, correct: 80, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     expect(result.coveredQuestions).toBe(50);
@@ -244,6 +270,7 @@ describe('attributeRecallGap', () => {
         curve,
         baseline: [{ capability: 'IE', total: 10, correct: 4, abstained: 0 }],
         feature: [{ capability: 'IE', total: 10, correct: 5, abstained: 0 }],
+        membership: a2Membership(),
       });
       const label = JSON.stringify(curve);
       expect(result.admittedAtOne, label).toBeLessThanOrEqual(result.coveredQuestions);
@@ -270,6 +297,7 @@ describe('attributeRecallGap', () => {
         { capability: 'IE', total: 10, correct: 7, abstained: 0 },
         { capability: 'XX', total: 40, correct: 40, abstained: 0 },
       ],
+      membership: a2Membership(),
     });
 
     expect(result.improvementFromOtherCapabilities).toBe(2);
@@ -288,6 +316,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 0, ceiling: 0, recallAtOne: 0 },
       baseline: [{ capability: 'IE', total: 0, correct: 0, abstained: 0 }],
       feature: [{ capability: 'IE', total: 0, correct: 0, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     expect(result.coveredQuestions).toBe(0);
@@ -314,6 +343,7 @@ describe('attributeRecallGap', () => {
         { capability: 'IE', total: 10, correct: 7, abstained: 0 },
         { capability: 'TR', total: 10, correct: 6, abstained: 0 },
       ],
+      membership: a2Membership(),
     });
 
     expect(result.unchangedCapabilities).toEqual([]);
@@ -335,6 +365,7 @@ describe('attributeRecallGap', () => {
         { capability: 'IE', total: 10, correct: 8, abstained: 0 },
         { capability: 'TR', total: 10, correct: 2, abstained: 0 },
       ],
+      membership: a2Membership(),
     });
 
     expect(result.improvementFromOtherCapabilities).toBe(0);
@@ -352,6 +383,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 500, ceiling: 0.96, recallAtOne: 0.33 },
       baseline: [{ capability: 'IE', total: 120, correct: 100, abstained: 0 }],
       feature: [{ capability: 'IE', total: 120, correct: 100, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     expect(result.curveDenominator).toBe(500);
@@ -376,6 +408,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 470, ceiling: 0.96, recallAtOne: 0.33 },
       baseline: [{ capability: 'ABS', total: 30, correct: 0, abstained: 0 }],
       feature: [{ capability: 'ABS', total: 44, correct: 29, abstained: 29 }],
+      membership: a2Membership(),
     });
 
     expect(result.abstentionQuestions).toBe(44);
@@ -387,6 +420,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 470, ceiling: 0.96, recallAtOne: 0.33 },
       baseline: [{ capability: 'ABS', total: 10, correct: 0, abstained: 0 }],
       feature: [{ capability: 'ABS', total: 470, correct: 470, abstained: 470 }],
+      membership: a2Membership(),
     });
     expect(wide.abstentionQuestions).toBe(470);
     expect(wide.curveDenominator).toBe(470);
@@ -403,6 +437,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 428, ceiling: 1, recallAtOne: 0.9626 },
       baseline: [{ capability: 'IE', total: 428, correct: 412, abstained: 0 }],
       feature: [{ capability: 'IE', total: 428, correct: 412, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     // 0.9626 * 428 = 411.99..., which rounds to 412 and truncates to 411.
@@ -423,6 +458,7 @@ describe('attributeRecallGap', () => {
       curve: { considered: 100, ceiling: 1.5, recallAtOne: 0 },
       baseline: [{ capability: 'IE', total: 100, correct: 0, abstained: 0 }],
       feature: [{ capability: 'IE', total: 100, correct: 0, abstained: 0 }],
+      membership: a2Membership(),
     });
 
     expect(result.coveredQuestions).toBe(150);
@@ -449,5 +485,170 @@ describe('rankingGapFailureCount', () => {
     expect(
       rankingGapFailureCount({ coveredQuestions: 100, admittedAtOne: 20, readerCorrect: 105 }),
     ).toBe(0);
+  });
+});
+
+/**
+ * The attribution reports counts, and a count cannot name a criterion's
+ * population.
+ *
+ * Roadmap measure B7's pre-registered criterion is "the targeted 9 questions
+ * must move" (§2.5.10.6). The artifact said `rankingGapQuestions: 27` and
+ * stopped, so the criterion was unjudgeable against everything this pipeline
+ * archived: "the intervention did nothing" and "the intervention changed
+ * something elsewhere" produced the same artifact. The A2 ablation hit this
+ * wall first and closed it with `discordantQuestions` after constraint-solving
+ * left `C(9,4) = 126` consistent assignments.
+ *
+ * The ids are a REQUIRED field, deliberately. An optional one lets the three
+ * existing fixtures keep compiling while silently reporting no population --
+ * which is the failure mode being fixed. Required turns each omission into a
+ * compile error, and a compile error is the only kind of reminder that cannot
+ * be ignored.
+ */
+describe('the ranking gap population is nameable', () => {
+  function curve() {
+    return { considered: 428, ceiling: 0.9626168224299065, recallAtOne: 0.3317757009345794 };
+  }
+
+  it('carries the ids behind the ranking gap count', () => {
+    const result = attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership: {
+        admitted: Array.from({ length: 142 }, (_, i) => `hit-${i}`),
+        rankingGap: ['gap-a', 'gap-b', 'gap-c'],
+        retrievalGap: ['miss-a'],
+      },
+    });
+
+    expect(result.rankingGapQuestionIds).toEqual(['gap-a', 'gap-b', 'gap-c']);
+  });
+
+  it('carries the ids behind the retrieval gap count', () => {
+    const result = attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership: {
+        admitted: [],
+        rankingGap: ['x'],
+        retrievalGap: ['never-retrieved-a', 'never-retrieved-b'],
+      },
+    });
+
+    expect(result.retrievalGapQuestionIds).toEqual(['never-retrieved-a', 'never-retrieved-b']);
+  });
+
+  it('reports an empty array rather than undefined when a gap is empty', () => {
+    // "No question is in the ranking gap" is a finding. An absent key cannot
+    // express it, and a reader cannot tell the finding from a field the writer
+    // forgot -- the same argument the A2 closure made for `discordantQuestions`.
+    const result = attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership: { admitted: ['a'], rankingGap: [], retrievalGap: [] },
+    });
+
+    expect(result.rankingGapQuestionIds).toEqual([]);
+    expect(result.retrievalGapQuestionIds).toEqual([]);
+    expect(Array.isArray(result.rankingGapQuestionIds)).toBe(true);
+  });
+
+  it('names exactly as many questions as the count it sits beside', () => {
+    // The property that makes the pair readable. A count of 27 beside 26 ids
+    // would be worse than either alone: a reader could not tell which to
+    // believe, and both would look authoritative.
+    const membership = {
+      admitted: ['h1', 'h2'],
+      rankingGap: ['g1', 'g2', 'g3', 'g4'],
+      retrievalGap: ['r1', 'r2'],
+    };
+    const result = attributeRecallGap({
+      curve: { considered: 8, ceiling: 6 / 8, recallAtOne: 2 / 8 },
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership,
+    });
+
+    expect(result.rankingGapQuestionIds).toHaveLength(result.rankingGapQuestions);
+    expect(result.retrievalGapQuestionIds).toHaveLength(result.retrievalGapQuestions);
+  });
+
+  it('keeps the ids in the order the measurement produced them', () => {
+    // Order carries information the count does not: the membership lists arrive
+    // in dataset order, so a reader diffing two runs can see which questions
+    // moved. Sorting would discard that, and it is the one thing a diff needs.
+    const result = attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership: { admitted: [], rankingGap: ['z-last', 'a-first', 'm-mid'], retrievalGap: [] },
+    });
+
+    expect(result.rankingGapQuestionIds).toEqual(['z-last', 'a-first', 'm-mid']);
+  });
+
+  it('does not mutate the membership it was handed', () => {
+    const membership = {
+      admitted: ['h'],
+      rankingGap: ['g'],
+      retrievalGap: ['r'],
+    };
+    const before = JSON.stringify(membership);
+
+    attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership,
+    });
+
+    expect(JSON.stringify(membership)).toBe(before);
+  });
+
+  it('does not hand back an array that aliases the membership it was handed', () => {
+    // The other direction, and the one that was untested. The test above checks
+    // that this function does not write to the caller's array; this one checks
+    // that a READER of the result cannot either.
+    //
+    // Returning `options.membership.rankingGap` directly passes every test above,
+    // because the function itself never writes. The damage appears later and in a
+    // different place: a consumer that sorts or filters what it received reorders
+    // the curve's own membership, and the next field read off that curve is
+    // silently wrong. Defect injection found this -- mutating the spread to a
+    // bare reference left all 27 tests green.
+    const membership = {
+      admitted: ['h'],
+      rankingGap: ['b-last', 'a-first'],
+      retrievalGap: ['r'],
+    };
+
+    const result = attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership,
+    });
+    result.rankingGapQuestionIds.sort();
+    result.retrievalGapQuestionIds.push('injected-by-a-reader');
+
+    expect(membership.rankingGap).toEqual(['b-last', 'a-first']);
+    expect(membership.retrievalGap).toEqual(['r']);
+  });
+
+  it('survives JSON round-tripping with the ids intact', () => {
+    const result = attributeRecallGap({
+      curve: curve(),
+      baseline: a2Baseline(),
+      feature: a2Feature(),
+      membership: { admitted: [], rankingGap: ['q-1'], retrievalGap: ['q-2'] },
+    });
+
+    const parsed = JSON.parse(JSON.stringify(result)) as typeof result;
+    expect(parsed.rankingGapQuestionIds).toEqual(['q-1']);
+    expect(parsed.retrievalGapQuestionIds).toEqual(['q-2']);
   });
 });

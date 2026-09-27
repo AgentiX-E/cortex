@@ -33,7 +33,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createRetryStatsAggregate, retryStats, resetRetryStats } from '@agentix-e/cortex-llm';
-import { transportRetryReport, type TransportRetryScope } from '../retrieval-diagnostics.js';
+import {
+  formatIdPreview,
+  transportRetryReport,
+  type TransportRetryScope,
+} from '../retrieval-diagnostics.js';
 
 describe('transport retry report', () => {
   it('reports the counters the aggregate holds', () => {
@@ -130,5 +134,48 @@ describe('transport retry report', () => {
 
     expect(parsed).toEqual(report);
     expect(parsed.retryAfterHonoured).toBe(2);
+  });
+});
+
+/**
+ * A population's size and its names are read together, and a log line that
+ * shows five of them without saying so is a line that misleads.
+ *
+ * This lives in `src/` rather than in `bench/run.ts` because it has logic worth
+ * testing -- an empty population, a population that exactly fills the preview,
+ * and one that overflows all take different branches -- and `bench/**` is
+ * excluded from coverage as a CLI entry point. A function with three branches
+ * and no test is a function whose third branch is discovered by an operator
+ * reading a truncated log.
+ */
+describe('formatIdPreview', () => {
+  it('says so when the population is empty rather than returning nothing', () => {
+    // "No question is in this gap" is a finding. An empty string in a log reads
+    // as a line that failed to render.
+    expect(formatIdPreview([])).toBe('(none)');
+  });
+
+  it('lists a population that fits without a truncation marker', () => {
+    expect(formatIdPreview(['a', 'b', 'c'])).toBe('a, b, c');
+  });
+
+  it('does not claim truncation when the population exactly fills the preview', () => {
+    // The boundary. `<= limit` and `< limit` differ only here, and getting it
+    // wrong appends "… +0 more" -- a line that says there is more to see when
+    // there is not.
+    expect(formatIdPreview(['a', 'b', 'c', 'd', 'e'])).toBe('a, b, c, d, e');
+  });
+
+  it('states how many are not shown when the population overflows', () => {
+    const ids = Array.from({ length: 270 }, (_, i) => `q${i}`);
+    const preview = formatIdPreview(ids);
+    expect(preview.startsWith('q0, q1, q2, q3, q4 … +265 more')).toBe(true);
+    // The count in the marker must reconcile with the population size, or a
+    // reader cannot reconstruct how many the artifact will hold.
+    expect(preview).toContain('+265 more');
+  });
+
+  it('honours a caller-supplied limit', () => {
+    expect(formatIdPreview(['a', 'b', 'c'], 2)).toBe('a, b … +1 more');
   });
 });

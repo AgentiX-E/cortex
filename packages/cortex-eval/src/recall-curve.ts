@@ -49,6 +49,16 @@ export type QuestionRank = {
    * and `rank < k` is the cutoff test with no off-by-one.
    */
   rankOfFirstAnswer: number | null;
+  /**
+   * The question this rank belongs to.
+   *
+   * Optional because callers assemble ranks from several sources and a bare
+   * probe has no ids to hand. It is here at all because without it the curve can
+   * only report *how many* questions sit in a gap, never *which* -- and a
+   * pre-registered criterion of the form "the targeted 9 must move" is
+   * unjudgeable against counts alone. See `classifyCurveMembership`.
+   */
+  questionId?: string;
 };
 
 export type RecallCurveOptions = {
@@ -113,6 +123,15 @@ export type RecallCurveResult = {
   considered: number;
   /** Questions left out, with the reason, so the denominator is auditable. */
   excluded: RecallCurveExclusion[];
+  /**
+   * The measured questions, named and partitioned at the narrowest cutoff.
+   *
+   * Carried on the result rather than recomputed by the caller because the ranks
+   * that produced it are local to this function. The counts in `points` and the
+   * ids here come from the same predicate, so the artifact cannot report a gap
+   * of 27 while naming 26 questions.
+   */
+  membership: { admitted: string[]; rankingGap: string[]; retrievalGap: string[] };
 };
 
 /**
@@ -140,9 +159,7 @@ export function buildRecallCurve(
   const ceiling = total === 0 ? 0 : inPool / total;
 
   return ks.map((k) => {
-    const recalled = ranks.filter(
-      (r) => r.rankOfFirstAnswer !== null && r.rankOfFirstAnswer < k,
-    ).length;
+    const recalled = ranks.filter((r) => isRecalled(r, k)).length;
     const recall = total === 0 ? 0 : recalled / total;
     return {
       k,
@@ -156,6 +173,71 @@ export function buildRecallCurve(
       gain: Math.max(0, ceiling - recall),
     };
   });
+}
+
+/**
+ * Whether a question's answer turn was retrieved within the cutoff.
+ *
+ * The single predicate behind both the curve's `recalled` count and
+ * `classifyCurveMembership`'s `admitted` list. Two implementations of this test
+ * would be free to drift, and the drift would be invisible in the worst way: the
+ * count is what the roadmap reads and the ids are what a pre-registered
+ * criterion is judged on, so the two would disagree about the same run with
+ * neither obviously wrong.
+ */
+function isRecalled(rank: QuestionRank, k: number): boolean {
+  return rank.rankOfFirstAnswer !== null && rank.rankOfFirstAnswer < k;
+}
+
+/**
+ * The measured questions, named and partitioned by the curve's own rule.
+ *
+ * `buildRecallCurve` answers "how many"; this answers "which". Both are needed
+ * and neither is sufficient:
+ *
+ *   - A criterion stated over a *population* -- roadmap measure B7's "the
+ *     targeted 9 questions must move" -- cannot be judged from counts. Until
+ *     this existed the attribution artifact reported `rankingGapQuestions: 27`
+ *     and nothing else, so "the intervention did nothing" and "the intervention
+ *     changed something elsewhere" were indistinguishable in the archive. The
+ *     A2 ablation hit the identical wall: `discordantQuestions` was added after
+ *     constraint-solving left `C(9,4) = 126` consistent assignments.
+ *   - A total without a population invites the opposite error: an intervention
+ *     that moves *different* questions than intended reads as success.
+ *
+ * `k` and `poolWidth` arrive together because the partition depends on both and
+ * on their difference. A question whose answer sits at rank 9 out of a 5-deep
+ * pool is in the *retrieval* gap -- no reordering reaches it -- while the same
+ * rank inside a 50-deep pool is a *ranking* gap. Passing one without the other
+ * would make that distinction unstatable, and it is precisely the distinction
+ * that decides which subsystem gets worked on.
+ *
+ * Ids, not indices: an index is only meaningful relative to an ordering that was
+ * never recorded. A rank without an id contributes `''` rather than being
+ * dropped, because the counts must not change just because a name is missing --
+ * which is also why the three lists are always present, empty when empty.
+ */
+export function classifyCurveMembership(
+  ranks: readonly QuestionRank[],
+  options: { readonly k: number; readonly poolWidth: number },
+): { admitted: string[]; rankingGap: string[]; retrievalGap: string[] } {
+  const { k, poolWidth } = options;
+  const admitted: string[] = [];
+  const rankingGap: string[] = [];
+  const retrievalGap: string[] = [];
+
+  for (const rank of ranks) {
+    const id = rank.questionId ?? '';
+    if (isRecalled(rank, k)) {
+      admitted.push(id);
+    } else if (rank.rankOfFirstAnswer !== null && rank.rankOfFirstAnswer < poolWidth) {
+      rankingGap.push(id);
+    } else {
+      retrievalGap.push(id);
+    }
+  }
+
+  return { admitted, rankingGap, retrievalGap };
 }
 
 /** The minimum a hit must expose to be matched against the answer set. */
@@ -323,12 +405,23 @@ export async function computeRecallCurve(
       ...(await expandDiagnosticQueries(options.llm, inst.question, buildQueryExpansionPrompt)),
     ];
     const hits = await retrieveTopKByQueries(embedding, queries, context, poolWidth);
-    ranks.push({ rankOfFirstAnswer: rankOfFirstAnswer(hits, answerTexts) });
+    // The id travels with the rank so the result can name what it measured. It
+    // is not decoration: `classifyCurveMembership` turns these into the
+    // population a criterion is judged on, and a rank that arrives without one
+    // would leave that population unnameable while still being counted.
+    ranks.push({
+      rankOfFirstAnswer: rankOfFirstAnswer(hits, answerTexts),
+      ...(inst.question_id === undefined ? {} : { questionId: inst.question_id }),
+    });
   }
 
   return {
     points: buildRecallCurve(ranks, cutoffs, { poolWidth }),
     considered: ranks.length,
     excluded,
+    membership: classifyCurveMembership(ranks, {
+      k: Math.min(...cutoffs),
+      poolWidth,
+    }),
   };
 }

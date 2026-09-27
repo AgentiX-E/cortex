@@ -173,3 +173,128 @@ for a fault that has nothing to do with it.
 > causes will be attributed to whichever one you already have a story for.**
 > The control is what makes the two distinguishable; without it, the diagnosis is
 > a guess wearing the clothes of a measurement.
+
+## 6. Measurement, 2026-09-27 ~09:50 +08:00 (condition A, again)
+
+The condition recurred. Recorded here because a recurrence is what turns a
+diagnosis into a pattern, and because the **control was run before the
+conclusion** rather than after.
+
+```
+--- getent hosts api.github.com ---
+198.18.0.5      api.github.com
+--- getent hosts github.com ---
+198.18.0.16     github.com
+--- getent hosts example.com ---
+104.20.23.154   example.com
+172.66.147.243  example.com
+--- getent hosts mirrors.tencent.com ---
+169.254.0.3     mirrors.tencent.com
+```
+
+| Host | Resolved to | Result |
+| --- | --- | --- |
+| `api.github.com` | `198.18.0.5` | `000` at **5.001s** |
+| `github.com` | `198.18.0.16` | `000` at **5.001s** |
+| `productionresultssa3.blob.core.windows.net` | synthetic | `000` at **5.001s** |
+| `mirrors.tencent.com` | `169.254.0.3` | **`200` at 0.020s** |
+
+The wall clock is pinned at 5.001s on every blocked name and the working control
+answers in 0.020s. **This is §3's rule reproduced exactly, with no counterexample
+added:** names resolving into `198.18.0.0/15` are blackholed by name; names
+resolving to a real address are reachable.
+
+Four probes, five consecutive retries against the API, all `000`. Deterministic,
+not flaky — so this is not a case for a retry loop.
+
+**Consequence for this session, stated rather than worked around:** the push to
+`AgentiX-E/cortex` and `AgentiX-E/cortex-docs` could not be performed. Per §5
+step 3, the correct action is local work plus a later retry, **not** a
+re-dispatch and not a DNS workaround. The commit is staged locally; the push is
+the only step that remains.
+
+### 6.1 Why `mirrors.tencent.com` is the right control here
+
+It is not one of §3.1's listed hosts, which makes it a better control than a
+reused one: it was chosen **before** the result was known, it answers, and it is
+unrelated to every host under test. A control that is known in advance to work
+only proves that the control works; an unrelated host that works proves **the
+egress path is alive at the same instant the blocked names fail.**
+
+## 8. Correction: condition A is not a wait state, it is a bypassable condition
+
+§5 step 3 said condition A means "do local work; retry the network", on the
+reading that the resolver's answer is outside our control. **That step is wrong**,
+and it is the kind of wrong this repository's defect log keeps naming: it took a
+**fixable** condition and wrote it down as a **wait**.
+
+The resolver is not the only way to obtain an A record. `dns.alidns.com` answers
+over HTTPS on port 443, which is not intercepted. Measured 2026-09-27 ~20:00
++08:00:
+
+```
+GET https://dns.alidns.com/resolve?name=api.github.com&type=A
+  -> {"Status":0, "Answer":[{"type":1, "data":"20.205.243.168"}]}
+
+getent hosts api.github.com
+  -> 198.18.0.12                       (the synthetic answer)
+```
+
+| Host | System resolver | DoH | Connection with the DoH address |
+| --- | --- | --- | --- |
+| `api.github.com` | `198.18.0.12` | `20.205.243.168` | **`200`** |
+| `github.com` | `198.18.0.16` | `20.205.243.166` | `200` |
+| `nodejs.org` | `198.18.0.45` | `104.16.212.131` | headers download succeeds |
+
+The decisive step is the last column and it is one command:
+
+```sh
+curl --resolve api.github.com:443:20.205.243.168 \
+     -H "Authorization: Bearer $TOKEN" \
+     https://api.github.com/repos/AgentiX-E/cortex
+# -> 200
+```
+
+**Nothing changed but the address.** Same host name, same TLS, same token.
+That is what turns "the resolver is answering wrong" from a diagnosis into a
+repair, and it is why §2's framing of condition A as environmental was
+incomplete: the *symptom* is environmental, the *cause* is a resolution answer
+that a second, unblocked channel can supply.
+
+### 8.1 The repair, and why it is a script
+
+`tools/pin-github-hosts.py` resolves the needed hosts over DoH and writes the real
+addresses into `/etc/hosts`. It is a script rather than a one-off edit because
+`/etc/hosts` is **restored on workspace restart** — its own header says so — which
+makes a manual fix a fix that expires silently.
+
+Three properties it has that a hand-edit does not:
+
+1. **It refuses to pin a synthetic answer.** If DoH itself returned an address in
+   `198.18.0.0/15`, the interception is upstream of the resolver and pinning would
+   produce a hang instead of a failure. It reports and exits non-zero.
+2. **It unions with the existing pins.** Resolving only the names it was given and
+   then clearing its own section would silently unpin `api.github.com` when invoked
+   as `pin-github-hosts.py nodejs.org` — **a fix that breaks the previous fix**.
+   The written set is the union of defaults, existing pins, and arguments.
+3. **It verifies through the system resolver**, i.e. through the thing that was
+   broken, rather than trusting its own write.
+
+### 8.2 The scope is wider than GitHub
+
+`nodejs.org` was found in the same state, during `pnpm install`: a native module's
+`node-gyp` step fetches headers from there and failed with a socket disconnect
+that looks like a network fault and is not. **The condition is a set of names, and
+the set is not the one §3.1 lists.** Any host that resolves synthetically is in it,
+which is why the check is `getent` plus comparison against `198.18.0.0/15` rather
+than membership in a hard-coded list.
+
+> **Where this sits in the discipline list — and it is an inversion of §3.3's
+> conclusion.** §3.3 was right that the `000` on a synthetic name is
+> deterministic and that retrying the same request cannot help. It was wrong to
+> conclude that the only remaining action is to wait. **"Retrying does not help"
+> and "nothing helps" are different claims**, and the second one was never
+> measured. What was missing was not patience but a second channel — and the
+> repository had already used that channel for artifact fetches
+> (`tools/fetch-artifact.py`, `docs/VERDICT-B1-RERANKING.md`) without drawing the
+> general conclusion from it.

@@ -133,6 +133,20 @@ export type NaturalLanguageMemorySystemOptions = {
    * same commit; see `buildConservativeQaPrompt`. Only an experiment should set it.
    */
   entityIdentityClause?: boolean;
+  /**
+   * Add the candidate-discrimination instruction to the QA prompt (default false).
+   *
+   * Roadmap measure B7. Placed on the system rather than only on the prompt
+   * builder because that was the gap: the option existed on `QaPromptOptions`
+   * and nothing on this class ever passed it, so no configuration of this system
+   * could turn the instruction on. `respondWith` reads it from here.
+   *
+   * Off by default, and it must stay off in every arm that is not measuring it:
+   * the instruction is only meaningful when the context carries the cluster
+   * labels `renderDiscriminatedContext` adds, and an instruction about labels
+   * that are not present is text the model has to read and discard.
+   */
+  candidateDiscrimination?: boolean;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
   /** Per-turn character budget for the single-session path (default 2000). */
@@ -453,7 +467,12 @@ const FACTS_SCHEMA: JsonSchema = {
   required: ['facts'],
 };
 
-type PromptBuilder = (question: string, context: string, abstainToken?: string) => string;
+type PromptBuilder = (
+  question: string,
+  context: string,
+  abstainToken?: string,
+  options?: QaPromptOptions,
+) => string;
 type AnswerParser = (raw: string, abstainToken?: string) => Answer;
 
 export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
@@ -700,10 +719,19 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // so the builder remains interchangeable with every other prompt builder;
     // `abstainToken` and the option are both optional, so each is spread
     // conditionally rather than passed as `undefined`.
+    //
+    // The fourth parameter is forwarded rather than dropped. This closure is the
+    // point where the switch was dying: it accepted three arguments, so the
+    // `QaPromptOptions` `respondWith` now passes were discarded here and the
+    // instruction could not appear on this path however the system was
+    // configured.
     const entityIdentityClause = this.options.entityIdentityClause;
-    const conservativePrompt: PromptBuilder = (q, c, token) =>
+    const conservativePrompt: PromptBuilder = (q, c, token, promptOptions) =>
       buildConservativeQaPrompt(q, c, token ?? DEFAULT_ABSTAIN_TOKEN, {
         ...(entityIdentityClause === undefined ? {} : { entityIdentityClause }),
+        ...(promptOptions?.candidateDiscrimination === true
+          ? { candidateDiscrimination: true }
+          : {}),
       });
     return this.respondWith(
       question,
@@ -1272,7 +1300,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       return null;
     }
 
-    const prompt = promptBuilder(question, retrieved, this.options.abstainToken);
+    // `candidateDiscrimination` is read from the system's options, not from the
+    // caller. Before this, the builder was invoked with three arguments and the
+    // option only existed on `QaPromptOptions`, so no system configuration could
+    // reach it -- the option was present on the prompt builder and unreachable
+    // from the class that calls it.
+    const prompt = promptBuilder(
+      question,
+      retrieved,
+      this.options.abstainToken,
+      this.options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {},
+    );
     const cache = this.options.answerCache;
     /** Cache-first call: the default path, and what makes repeats free. */
     const complete = async (p: string): Promise<string> => {
@@ -1632,6 +1670,17 @@ export type ConservativeQaPromptOptions = {
    * flip it in production without a run to justify it.
    */
   entityIdentityClause?: boolean;
+  /**
+   * Add the candidate-discrimination instruction (default `false`).
+   *
+   * Same meaning as on `QaPromptOptions`, and present here for the same reason:
+   * the rerank arm answers through THIS builder, not through `buildQaPrompt`, so
+   * a switch wired only into the other one would be reachable on a path the arm
+   * never takes. Off by default for the reason stated there -- the instruction
+   * describes cluster labels that a caller which did not render them has not
+   * provided.
+   */
+  candidateDiscrimination?: boolean;
 };
 
 /**
@@ -1673,6 +1722,7 @@ export function buildConservativeQaPrompt(
     'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
     `Respond with exactly "${abstainToken}" ONLY if the context contains no relevant information at all.`,
     ...identityClause,
+    ...(options.candidateDiscrimination === true ? [CANDIDATE_DISCRIMINATION_INSTRUCTION] : []),
     '',
     'Context:',
     context,
