@@ -246,6 +246,19 @@ export async function runNaturalLanguageBenchmark(
     ...(options.rerankProtectedHead !== undefined
       ? { rerankProtectedHead: options.rerankProtectedHead }
       : {}),
+    // Roadmap B7. Forwarded to the FEATURE only, on the same reasoning as the
+    // two options above: a control side that also carries the feature measures
+    // nothing.
+    //
+    // This spread is the fix for a defect that a full A/B dispatch could not see.
+    // The toggle was being read by the CLI into a local whose only consumers sat
+    // inside the `CORTEX_RERANK` branch, so a dispatch with
+    // `candidate_discrimination=1` and `rerank=off` produced a feature arm that
+    // was byte-identical to its control. The option was already declared on this
+    // type and documented here; the constructor never received it. Absence means
+    // off, matching `candidateDiscrimination` on the system options, which is
+    // read with `=== true`.
+    ...(options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);
