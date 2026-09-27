@@ -216,12 +216,15 @@ Zero is the control rather than a separate "before" commit: `0` means unpaced, s
 the two arms differ in exactly the one value under test and a third variable
 cannot enter through a code delta.
 
-**Status: dispatched four times, not yet concluded, and the reason is a defect this audit introduced.** The honest sequence:
+**Status: dispatched five times. The install and gate are now cleared; the 429 comparison is not yet made.** The honest sequence:
 
 | Attempt | Commit | Step reached | Outcome |
 | ------- | ------ | ------------ | ------- |
 | 1 (two arms) | `6863fa2f` | 5. Install dependencies | failure — `ERR_PNPM_OUTDATED_LOCKFILE` |
 | 2–4 (two arms, retried) | `42232bfe` | 7. Verify library | failure — `eslint: not found` |
+| 5 (two arms, no retries) | `ca40bf99` | 7. Verify library | **success, both arms** — entered the benchmark |
+
+Attempt 5 settles the open question the previous attempt left: the `eslint` failure is not merely fixed in a sandbox copy, it is fixed **on a GitHub runner**, which is the only environment where `better-sqlite3` can build. That is the claim this record could not make locally, and it is now made by the environment that can test it.
 
 Attempt 1's cause is recorded above and was fixed in `42232bfe`. Attempt 2's cause is **not** what this document previously claimed. The correct account:
 
@@ -242,7 +245,11 @@ Both arms were run under the pinned `pnpm@9.15.0`, the version CI uses, not the 
 
 **No 429-rate comparison is claimed here.** A red dispatch that never ran the benchmark is not a negative result about pacing, and reading it as one would repeat the mistake this record exists to correct — sizing a conclusion to a measurement that was never taken.
 
-**What remains unproven, stated precisely.** The `eslint` failure is fixed and *that* claim is verified against the pushed tree under `pnpm@9.15.0`. What could **not** be verified locally is `better-sqlite3`, a required native dependency of `cortex-node` with a static import: its postinstall needs `nodejs.org` for headers and `github.com` for a prebuilt, and this sandbox blackholes both. On a GitHub runner both are reachable, so the local failure is environmental — but it means the local environment cannot certify the install path end to end. The next dispatch is what decides it, and it should be read as a test of that claim rather than as a formality.
+**What was unproven locally, and how attempt 5 closed it.** The `eslint` failure is fixed, and that claim was verified two ways rather than one. Locally it was verified against a freshly materialised copy of the pushed tree under `pnpm@9.15.0` — the pinned version, not the sandbox default. What could **not** be verified locally was `better-sqlite3`, a required native dependency of `cortex-node` with a static import: its postinstall needs `nodejs.org` for headers and `github.com` for a prebuilt, and this sandbox blackholes both.
+
+That gap is why attempt 5 was treated as the experiment rather than as a formality, and it is now closed: on `ca40bf99` both arms report `Verify library = success` on a real runner. The lesson worth keeping is that the local environment reported the *opposite* of the truth for `better-sqlite3` — it failed there for reasons that do not exist on a runner — so a local red on a native build is not evidence of a repository defect. Distinguishing the two required reading the failing command's own output down to the fetch error, not inferring from the exit code.
+
+**What is still unproven.** The 429-rate comparison itself. Both arms have entered the benchmark; until they finish and their diagnostics are read side by side, this document claims nothing about pacing's effect on 429 rate or wall-clock.
 
 **One surviving gap, stated rather than rounded away.** `retrieval.ts` lines
 631–632 are uncovered. They guard `indexOf(hit) < 0` inside a loop whose hits come
