@@ -88,6 +88,10 @@ importers:
       '@agentix-e/cortex-core':
         specifier: workspace:*
         version: link:../cortex-core
+    optionalDependencies:
+      '@xenova/transformers':
+        specifier: ^2.17.2
+        version: 2.17.2
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
