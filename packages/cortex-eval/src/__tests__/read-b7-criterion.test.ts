@@ -45,12 +45,35 @@ type Question = {
 };
 
 /**
- * Run the reader and capture stdout. A non-zero exit is surfaced rather than
- * swallowed: the reader's verdicts are all successful exits, so an exit code
- * other than 0 means the tool itself failed.
+ * Run the reader and capture stdout, whether or not it exits zero.
+ *
+ * This used to let a non-zero exit propagate, on the theory that "every verdict
+ * is a successful exit, so non-zero means the tool failed". That theory is now
+ * wrong: the reader REFUSES to judge an arm with an unrecorded answer and exits
+ * 1, and the refusal's stdout is exactly what the tests below need to assert on.
+ * A helper that threw would make the documented refusal path untestable through
+ * the same entry point as every other case — which is how a refusal comes to be
+ * verified by a re-implementation in the test rather than by the real tool.
+ *
+ * The exit status is still available to callers that care, via `runStatus`.
  */
 function run(controlPath: string, featurePath: string): string {
-  return execFileSync('node', [SCRIPT, controlPath, featurePath], { encoding: 'utf8' });
+  try {
+    return execFileSync('node', [SCRIPT, controlPath, featurePath], { encoding: 'utf8' });
+  } catch (error) {
+    // `execFileSync` attaches the child's captured streams to the error.
+    return String((error as { stdout?: string }).stdout ?? '');
+  }
+}
+
+/** The reader's exit status, for tests that assert on the refusal itself. */
+function runStatus(controlPath: string, featurePath: string): number {
+  try {
+    execFileSync('node', [SCRIPT, controlPath, featurePath], { encoding: 'utf8', stdio: 'pipe' });
+    return 0;
+  } catch (error) {
+    return (error as { status?: number }).status ?? -1;
+  }
 }
 
 function write(name: string, questions: unknown): string {
@@ -257,6 +280,190 @@ describe('the reader applies the three clauses in their pre-registered order', (
     expect(out).toContain('NO-MOVE');
     expect(out).toContain('finding about the READER');
     expect(out).not.toContain('SETTLED');
+  });
+});
+
+describe('the reader accepts the shape the runner actually persists', () => {
+  /**
+   * THE END-TO-END PROPERTY, and the one that was missing.
+   *
+   * Every other test in this file feeds the reader a hand-built fixture. The
+   * fixtures are correct, and the reader read them — while the reader could not
+   * read a SINGLE real artifact, because no real artifact contained a
+   * per-question array. `extractQuestions` failed with "no per-question array
+   * found" on every archived report, and no test noticed because the fixtures
+   * supplied the array the reports did not.
+   *
+   * This test closes that gap by building the report the way the runner does:
+   * through `buildRecordsFromDataset`, which is the function that fills the
+   * `questions` field. A future change that renames the field, drops it, or
+   * changes the record shape now fails here rather than in a CI log nobody reads.
+   */
+  it('reads a report whose `questions` came from buildRecordsFromDataset', async () => {
+    const { buildRecordsFromDataset } = await import('../question-record.js');
+
+    const records = buildRecordsFromDataset(
+      [
+        {
+          id: 'b7-target',
+          question: 'which value did the unit report?',
+          capability: 'IE',
+          expected: '85',
+        },
+      ],
+      [
+        {
+          question: 'which value did the unit report?',
+          answer: '240',
+          retrieved: 'the record says 85\nthe note says 240',
+        },
+      ],
+      [false],
+      () => true,
+    );
+    expect(records).toHaveLength(1);
+
+    // Persisted exactly as `bench/run.ts` writes it, which is what the reader
+    // reads in production: `JSON.stringify` with the embedding provenance
+    // spread in front.
+    const path = join(dir, 'real-shape.json');
+    writeFileSync(
+      path,
+      JSON.stringify({ embedding: { provider: 'zhipu' }, questions: records }, null, 2),
+    );
+
+    const out = run(path, path);
+    expect(out).toContain('questions considered: 1');
+    expect(out).toContain('targets: 1');
+    // The whole point: a target roster was recomputed from a real artifact.
+    expect(out).not.toContain('no per-question array found');
+  });
+
+  it('reports a no-move verdict from the persisted shape rather than throwing', () => {
+    const records = [
+      {
+        questionId: 't1',
+        question: 'which one is it for t1?',
+        capability: 'IE',
+        groundTruth: '85',
+        answer: '240',
+        correct: false,
+        grounded: true,
+        turns: [
+          { index: 0, text: 'the correct value is 85 according to the record' },
+          { index: 1, text: 'the competing value is 240 according to the note' },
+        ],
+      },
+    ];
+    const path = join(dir, 'persisted-records.json');
+    writeFileSync(path, JSON.stringify({ questions: records }, null, 2));
+    const out = run(path, path);
+    expect(out).toContain('NO-MOVE');
+    expect(out).toContain('finding about the READER');
+  });
+});
+
+describe('the reader refuses to spend a recording gap as evidence against an arm', () => {
+  /**
+   * THE DEFECT THIS BLOCK EXISTS FOR.
+   *
+   * `QuestionRecord.answer` distinguishes `null` (the reader abstained, which is
+   * a finding) from an ABSENT key (no trace reached the question, so nobody
+   * recorded what the arm produced, which is a gap). The criterion's `ArmOutcome`
+   * consumes only the first — `null` means "this arm abstained".
+   *
+   * The reader used to normalize with `q.answer ?? q.predicted ?? null`, a `??`
+   * chain that maps `undefined` onto `null`. That single character turned a gap
+   * into an abstention, and an abstention on a NON-TARGET is a regression — the
+   * severest verdict the criterion can return, and the one the module documents
+   * as unable to be overridden by a target gain. So an artifact that merely
+   * failed to record a question could reject an arm outright.
+   *
+   * The three tests below are the three consequences, each of which fails
+   * against the collapsing reader:
+   *
+   *   1. The gap is reported as a gap, by id and by arm.
+   *   2. No verdict is produced at all, because the arm's real behaviour for
+   *      that question was never captured and any verdict would invent it.
+   *   3. The exit status is non-zero, so a shell pipeline that only reads the
+   *      status cannot mistake a refusal for a result.
+   */
+  /** The shape the runner writes when a question has NO trace: no `answer` key. */
+  const recordWithoutAnswer = {
+    questionId: 'nt1',
+    question: 'how big is the garden?',
+    capability: 'IE',
+    groundTruth: 'small',
+    // `answer` is deliberately ABSENT. Not `null`: `null` would mean abstention.
+    correct: false,
+    grounded: true,
+    turns: [{ index: 0, text: 'the garden is small' }],
+  };
+
+  it('names the unrecorded question and the arm it is missing from', () => {
+    const control = write('c-gap.json', [targetQuestion('t1', '85', '240')]);
+    const feature = write('f-gap.json', [recordWithoutAnswer]);
+    const out = run(control, feature);
+
+    expect(out).toContain('--- record completeness');
+    expect(out).toContain('UNRECORDED: 1 question(s)');
+    expect(out).toContain('feature:nt1');
+    expect(out).toContain('NOT an abstention');
+  });
+
+  it('produces no verdict when either arm has an unrecorded answer', () => {
+    const control = write('c-gap2.json', [targetQuestion('t1', '85', '240')]);
+    const feature = write('f-gap2.json', [recordWithoutAnswer]);
+    const out = run(control, feature);
+
+    // The property is the ABSENCE of a verdict. Against the collapsing reader
+    // this run reported REGRESSION for `nt1`, because the missing record was
+    // read as the garden question moving from 'small' to an abstention.
+    expect(out).not.toContain('REGRESSION');
+    expect(out).not.toContain('NO-MOVE');
+    expect(out).not.toContain('SETTLED');
+    expect(out).toContain('REFUSING to judge');
+  });
+
+  it('does not use verdict vocabulary in the refusal itself', () => {
+    // Found by the assertion above failing against my OWN first draft of the
+    // refusal, whose explanation contained the literal word "REGRESSION". A
+    // reader that greps the output for a verdict token — which is exactly how a
+    // shell consumer decides what happened — would match the refusal and treat
+    // it as the severest verdict the criterion can return. The refusal must be
+    // lexically disjoint from the verdicts, not merely semantically different.
+    const control = write('c-gap4.json', [targetQuestion('t1', '85', '240')]);
+    const feature = write('f-gap4.json', [recordWithoutAnswer]);
+    const out = run(control, feature);
+
+    expect(out).toContain('REFUSING to judge');
+    for (const verdict of ['REGRESSION', 'NO-MOVE', 'SETTLED']) {
+      expect(out).not.toContain(verdict);
+    }
+    expect(out).toContain('No verdict is printed');
+  });
+
+  it('exits non-zero so a shell cannot mistake a refusal for a result', () => {
+    const control = write('c-gap3.json', [targetQuestion('t1', '85', '240')]);
+    const feature = write('f-gap3.json', [recordWithoutAnswer]);
+    // Against the collapsing reader this was 0: it printed a REGRESSION, which
+    // is a verdict, and a verdict is a successful exit.
+    expect(runStatus(control, feature)).toBe(1);
+  });
+
+  it('still judges when the arm abstained EXPLICITLY, because that is recorded', () => {
+    // The discriminator for the whole block. An explicit `null` is a finding
+    // about the reader and must reach the criterion; it is only the ABSENT key
+    // that is a gap. A reader that refused on both would be over-correcting and
+    // would make abstentions — the very outcome B7's switch is meant to affect —
+    // unreadable.
+    const control = write('c-null.json', [targetQuestion('t1', '85', '240')]);
+    const feature = write('f-null.json', [{ ...targetQuestion('t1', '85', '240'), answer: null }]);
+    const out = run(control, feature);
+
+    expect(out).toContain('complete: both arms recorded an answer');
+    expect(out).toContain('SETTLED');
+    expect(out).toContain('t1');
   });
 });
 

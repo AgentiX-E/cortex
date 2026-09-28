@@ -457,3 +457,92 @@ describe('createRerankerFromEnv fallback counters survive the factory', () => {
     expect(report).toEqual({ fallbackCount: 0, bucketCount: 0 });
   });
 });
+
+describe('an enable flag that is given a provider name is an error, not a silent off', () => {
+  /**
+   * THE REGRESSION TEST for a switch that accepted a value and did nothing.
+   *
+   * `CORTEX_RERANK` decides whether the stage exists; `CORTEX_RERANK_PROVIDER`
+   * decides which backend it uses. They are different questions with different
+   * vocabularies, and `rerank_provider` documents `local` as a backend name.
+   * Passing `local` to the enable flag is therefore an easy and natural mistake:
+   * the two variables sit next to each other in the workflow, and `local` is the
+   * only spelling that appears in both contexts' descriptions.
+   *
+   * The old reader returned `undefined` for it, exactly as it did for `off`. The
+   * consequence was not a failed run but an absent one: the reranking ablation
+   * is guarded on the reranker existing, so the arm was skipped and the run
+   * still reported success. Measured on the C5 A/B dispatch, which passed
+   * `rerank=local`: `benchmark-rerank-ablation-report.json` was never produced,
+   * and that file was the only artifact carrying `featureConfig`.
+   *
+   * The fix is to reject the confusion loudly. A value that is a known provider
+   * name is a caller error -- the operator meant "use this backend", and reading
+   * it as "off" turns a misconfigured run into a confident negative result.
+   */
+  it('rejects a provider name in CORTEX_RERANK instead of reading it as off', () => {
+    for (const provider of ['local', 'openai', 'llm']) {
+      expect(() => createRerankerFromEnv({ CORTEX_RERANK: provider })).toThrow(/CORTEX_RERANK/);
+    }
+  });
+
+  it('names the variable the caller probably meant, in the error', () => {
+    // An error that only says "invalid" makes the operator re-derive the two
+    // variables from the workflow file. Naming CORTEX_RERANK_PROVIDER turns the
+    // message into the correction.
+    expect(() => createRerankerFromEnv({ CORTEX_RERANK: 'local' })).toThrow(
+      /CORTEX_RERANK_PROVIDER/,
+    );
+  });
+
+  it('still reads a genuine off as off, because that is a valid answer', () => {
+    // The guard must not swallow the case it was designed around. `off` is what
+    // the workflow defaults to and what the shipped behaviour means, so it has
+    // to stay a quiet `undefined` rather than becoming an error.
+    expect(createRerankerFromEnv({ CORTEX_RERANK: 'off' })).toBeUndefined();
+    expect(createRerankerFromEnv({ CORTEX_RERANK: 'disabled' })).toBeUndefined();
+    expect(createRerankerFromEnv({})).toBeUndefined();
+  });
+
+  it('rejects an unrecognised value rather than reading it as off', () => {
+    // A typo must not become a measurement of something other than what the
+    // operator named -- the same reason `resolveProvider` throws on an unknown
+    // provider. `off` is spelled out in DISABLED_VALUES precisely so that "this
+    // value was a deliberate refusal" and "this value was not understood" stop
+    // being the same outcome.
+    expect(() => createRerankerFromEnv({ CORTEX_RERANK: 'ture' })).toThrow(/Unknown CORTEX_RERANK/);
+    expect(() => createRerankerFromEnv({ CORTEX_RERANK: 'enable' })).toThrow(
+      /Unknown CORTEX_RERANK/,
+    );
+  });
+
+  it('lists both the enabling and the disabling spellings in the error', () => {
+    // The message has to make the correction available: an operator who typed
+    // `ture` needs to see `true` in the set, and one who typed `nope` needs to
+    // see that `off` was available and chosen.
+    let message = '';
+    try {
+      createRerankerFromEnv({ CORTEX_RERANK: 'nope' });
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    }
+    expect(message).toContain('on');
+    expect(message).toContain('off');
+    expect(message).toContain('nope');
+  });
+
+  it('keeps accepting the enable spellings it already accepted', () => {
+    // The rejection is scoped to provider names. Every value that meant "on"
+    // before the change must still mean "on", or the guard has traded one silent
+    // misconfiguration for another.
+    for (const flag of ['on', 'true', '1', 'yes', 'enabled', 'ON', 'True']) {
+      expect(
+        createRerankerFromEnv({
+          CORTEX_RERANK: flag,
+          CORTEX_RERANK_PROVIDER: 'openai',
+          RERANK_API_KEY: 'k',
+        }),
+      ).toBeDefined();
+    }
+  });
+});

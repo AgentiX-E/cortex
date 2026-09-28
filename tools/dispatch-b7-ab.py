@@ -20,6 +20,15 @@ CORTEX_RERANK is set because the ablation arm is guarded on `reranker !==
 undefined`: with it off the arm is skipped, not run without a reranker. The
 reranker goes to the feature side only, so it is constant across the two arms and
 cannot carry the delta.
+
+`rerank` is "on" and `rerank_provider` is "local", which are two different
+questions and used to be conflated here. This script passed `rerank=local`, and
+`local` is a provider name: the enable check did not recognise it and returned
+"off", so the reranking ablation was skipped, no reranker was ever built, and the
+run reported success while measuring a configuration nobody had asked for. It
+also silently removed the only artifact that recorded `featureConfig`. The
+factory now rejects a provider name in the enable flag, and this line is the
+correction.
 """
 
 from __future__ import annotations
@@ -44,7 +53,8 @@ ARMS = {
 # difference, which a small sample exposes without paying for 500 questions.
 COMMON = {
     "candidate_discrimination": "1",
-    "rerank": "local",
+    # Enable the stage, then name the backend. Never the other way round.
+    "rerank": "on",
     "rerank_provider": "local",
     "limit": "60",
 }

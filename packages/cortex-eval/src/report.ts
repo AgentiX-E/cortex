@@ -4,6 +4,7 @@
  */
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
 import type { CohortCoverage } from './datasets/sampling.js';
+import type { QuestionRecord } from './question-record.js';
 import { runAblation, type AblationOptions } from './ablation.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 
@@ -48,7 +49,69 @@ export type AblationReport = {
    * persisted artifact dropped it silently.
    */
   retryFires?: RetryFireCounts | undefined;
+  /**
+   * The switches this run was configured with, recorded in the report itself.
+   *
+   * Every number in the report is conditioned on this object, and without it the
+   * same artifact is produced by both arms of an A/B -- so a reader holding only
+   * the file cannot tell whether the feature was on, off, or inert. That was not
+   * hypothetical: the C5 B7 comparison downloaded two artifacts that differed by
+   * 2 questions, and neither one said which side of `retrievalSides` it was on.
+   * The delta's sign was therefore uninterpretable, and the run had to be
+   * discarded (`docs/09-progress-and-delivery-report.md` §20).
+   *
+   * It was previously written at a single call site, inside the reranking
+   * ablation. That arm is guarded on the reranker existing, so a run without a
+   * reranker lost the record of its configuration entirely -- and the ablation
+   * itself was silently skipped when the enable flag was given a provider name
+   * (`rerank=local`), which is how the C5 artifacts came to have no such field.
+   * Carrying it in the report type makes the record a property of the report
+   * rather than of one branch that happens to run.
+   */
+  featureConfig?: FeatureConfig | undefined;
+  /**
+   * The per-question records this report was computed from, one per graded
+   * question, in dataset order.
+   *
+   * This is the field three separate readers were blocked on, and the reason it
+   * belongs in the report rather than beside it is the same reason
+   * `cohortCoverage` does -- except stronger, because unlike a coverage caveat
+   * this array is the only copy of the evidence:
+   *
+   * 1. `tools/read-b7-criterion.mjs` needs it to recompute the target roster and
+   *    apply the three clauses. Absent, the reader fails with "no per-question
+   *    array found" and the pre-registered criterion cannot be executed at all.
+   * 2. `compareQuestionVectors` needs two aligned correctness vectors to measure
+   *    how far the endpoint moves on its own. `variance.ts` was written for
+   *    exactly this and had no real caller, because the artifacts carried counts
+   *    and discordant ids but never a roster.
+   * 3. A reader asking *which* questions moved needs the ids. A count is not a
+   *    roster: §20 records an A/B whose two arms differed by two questions and
+   *    whose artifacts could not name them.
+   *
+   * Absent rather than empty when a caller does not supply it. `[]` would say
+   * "this run graded zero questions", which is a claim; absence says nobody
+   * recorded a roster, which is the truth for an arm that predates this field.
+   * The distinction is the same one the retry-fire counters draw between `null`
+   * and `0`.
+   */
+  questions?: readonly QuestionRecord[] | undefined;
 };
+
+/**
+ * The feature switches a benchmark run was configured with.
+ *
+ * Open-ended by key so a new switch is recorded by adding to the object rather
+ * than to a type and a renderer. The values are booleans because every switch
+ * here is one: a flag that is only meaningful in combination (as
+ * `retrievalSides` is without `candidateDiscrimination`) needs both entries
+ * present, which the object shape gives naturally.
+ *
+ * `false` must be recorded, not omitted: a report that lists only the enabled
+ * features cannot distinguish "this switch was off" from "this run predates the
+ * switch", and those are different claims about the same file.
+ */
+export type FeatureConfig = Readonly<Record<string, boolean>>;
 
 /**
  * Distinct questions on which each arm's retry actually re-queried.
@@ -70,6 +133,16 @@ export type AblationReportOptions = {
   abstentionAware?: boolean;
   generatedAt?: string;
   scorer?: AnswerScorer;
+  featureConfig?: FeatureConfig;
+  /**
+   * Per-question records for the graded set, in dataset order.
+   *
+   * Passed in rather than built here because building them needs the retrieval
+   * context the systems saw and the scorer's per-question verdicts, and this
+   * module's only view of a run is the aggregate `AblationResult`. The runner
+   * holds both, so it assembles the records and this function carries them.
+   */
+  questions?: readonly QuestionRecord[];
 };
 
 export async function runAblationReport(
@@ -100,6 +173,8 @@ export async function runAblationReport(
     feature: { name: feature.name, metrics: ablation.featureMetrics },
     ablation,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
+    ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
+    ...(options.questions === undefined ? {} : { questions: options.questions }),
   };
 }
 
@@ -113,6 +188,20 @@ export function formatAblationReport(report: AblationReport): string {
     `- Generated at: ${report.generatedAt}`,
     `- Feature: \`${report.feature.name}\` vs baseline \`${report.baseline.name}\``,
   ];
+
+  // The configuration goes above the results, with the cohort banner and for the
+  // same reason: it is what the numbers below are conditioned on. Rendered as a
+  // single line so a reader comparing two arms can diff it visually, and written
+  // sorted so the two arms' lines differ only where the switch does.
+  const config = report.featureConfig;
+  if (config !== undefined) {
+    const entries = Object.entries(config).sort(([a], [b]) => (a < b ? -1 : 1));
+    if (entries.length > 0) {
+      lines.push(
+        `- Feature config: ${entries.map(([k, v]) => `\`${k}=${v ? 'on' : 'off'}\``).join(', ')}`,
+      );
+    }
+  }
 
   // Cohort coverage goes ABOVE the results. A caveat printed below three tables
   // of Wilson intervals is a caveat nobody reads, and the point of printing it is

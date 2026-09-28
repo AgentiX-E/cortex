@@ -376,6 +376,132 @@ describe('runNaturalLanguageBenchmark', () => {
   });
 });
 
+describe('the natural-language report carries a per-question roster', () => {
+  const embedding = new HashEmbedding(64);
+  const llm: LLM = {
+    complete: async (prompt) => (prompt.includes('color') ? 'blue' : 'UNANSWERABLE'),
+    completeStructured: async <T>() => ({}) as T,
+  };
+
+  /**
+   * THE REGRESSION TEST for the artefact that could not be audited.
+   *
+   * Three readers need a per-question array and none of them had one. The B7
+   * criterion reader fails outright without it ("no per-question array found"),
+   * `compareQuestionVectors` has no vectors to compare, and a reader asking
+   * "which questions moved" has only a count -- which §20 records as the reason
+   * an A/B whose arms differed by two questions could not name them.
+   *
+   * Asserted through the entry point a caller actually uses, so a future change
+   * that stops threading the records fails here rather than producing a report
+   * that looks complete and cannot be re-read.
+   */
+  it('persists one record per graded question, in dataset order', async () => {
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, { runs: 1 });
+    expect(report.questions).toBeDefined();
+    expect(report.questions).toHaveLength(instances.length);
+    expect(report.questions!.map((r) => r.questionId)).toEqual(['q1', 'q2_abs']);
+  });
+
+  it('carries the fields the criterion clusters over', async () => {
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, { runs: 1 });
+    const record = report.questions![0]!;
+    expect(record.question).toBe('What is the favorite color?');
+    expect(record.capability).toBe('IE');
+    // The gold is the dataset's `answer`, passed through uncoerced.
+    expect(record.groundTruth).toBe('blue');
+    expect(record.correct).toBe(true);
+    // Every record carries the retrieved context as split turns, which is what
+    // `computeTargetCohort` clusters. An empty `turns` for a question that WAS
+    // answered would report every target `unseparable` and look like an
+    // instrument limitation rather than a transcription gap.
+    expect(record.turns.length).toBeGreaterThan(0);
+  });
+
+  it('stamps the configuration onto every record, so a record states its own arm', async () => {
+    // The whole point of the C5 fix, one layer down: a reader handed ONE record
+    // out of the array -- a diff, a filtered subset -- must still see which side
+    // of the switch produced it.
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, {
+      runs: 1,
+      retrievalSides: true,
+      candidateDiscrimination: true,
+    });
+    for (const record of report.questions!) {
+      expect(record.featureConfig).toBeDefined();
+      expect(record.featureConfig!['retrievalSides']).toBe(true);
+      expect(record.featureConfig!['candidateDiscrimination']).toBe(true);
+    }
+  });
+
+  it('agrees with the ablation correctness vector it was built from', async () => {
+    // Two sources for one boolean is how a report and the vector inside it come
+    // to disagree. The records are built FROM `featureCorrect`, so this asserts
+    // the join actually used it rather than a second scoring pass.
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, { runs: 1 });
+    expect(report.questions!.map((r) => r.correct)).toEqual(report.ablation.featureCorrect);
+  });
+
+  it('survives the JSON round-trip the CI artifact takes', async () => {
+    // A roster present in memory and absent after serialisation would be in the
+    // report at review time and missing for whoever downloads the artefact --
+    // which is the same class of defect the null p-value round-trip test covers.
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, { runs: 1 });
+    const parsed = JSON.parse(JSON.stringify(report)) as typeof report;
+    expect(parsed.questions).toHaveLength(instances.length);
+    expect(parsed.questions![0]!.turns.length).toBeGreaterThan(0);
+  });
+
+  it('emits no roster for the embedding-only benchmark that has no traces', async () => {
+    // `runEmbeddingBenchmark` runs a system with no decision tracing, so it has
+    // no retrieved context to record. It must still produce a valid report --
+    // and the report must not fabricate a roster of abstentions, which would
+    // read as a reader that refused every question.
+    const ds = createLongMemEvalMini();
+    const { report } = await runEmbeddingBenchmark(
+      [
+        {
+          question_id: 'e1',
+          question_type: 'single-session-user',
+          question: 'What is the favorite color?',
+          answer: 'blue',
+          haystack_sessions: [[{ role: 'user', content: 'favorite color=blue' }]],
+        },
+      ] as never,
+      new HashEmbedding(64),
+      { runs: 1 },
+    );
+    expect(report.questionCount).toBeGreaterThan(0);
+    expect(report.questions).toBeUndefined();
+    void ds;
+  });
+  it('collects traces for the roster even when the caller passes no onDecision', async () => {
+    // The roster must not depend on the caller asking for traces. Before this,
+    // the collector was installed only when `options.onDecision` was given, so
+    // the two callers that matter most -- `bench/run.ts` supplies one, a library
+    // caller does not -- would have produced rosters of different completeness
+    // from the same code path. Asserted here because the difference is invisible
+    // in the report's own shape: both produce a `questions` array, and only this
+    // test tells them apart.
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, { runs: 1 });
+    expect(report.questions).toHaveLength(instances.length);
+    expect(report.questions!.some((r) => r.turns.length > 0)).toBe(true);
+  });
+
+  it('still fires the caller callback alongside its own collector', async () => {
+    // Both must run. An implementation that installed the collector INSTEAD of
+    // the caller's callback would drop the tracing `bench/run.ts` depends on for
+    // its MR and single-session diagnostics, and the roster would look correct.
+    const seen: string[] = [];
+    const { report } = await runNaturalLanguageBenchmark(instances, embedding, llm, {
+      runs: 1,
+      onDecision: (trace) => seen.push(trace.question),
+    });
+    expect(seen.length).toBeGreaterThan(0);
+    expect(report.questions).toHaveLength(instances.length);
+  });
+});
+
 describe('runMrAggregationAblation', () => {
   const embedding = new HashEmbedding(64);
   const llm: LLM = {
@@ -1667,5 +1793,98 @@ describe('runQueryExpansionDecompositionAblation', () => {
         }),
       ).rejects.toThrow(/0\/7 present/);
     });
+  });
+});
+
+describe('the runner records the feature configuration it was given', () => {
+  /**
+   * The runner must record the configuration it actually received, and the record
+   * must be observable on the report it returns.
+   *
+   * Asserted through `runNaturalLanguageBenchmark` rather than a private helper:
+   * the property that matters is on the produced report, and the earlier version
+   * of this record -- a literal object written at one call site -- left the whole
+   * suite green because nothing observed the field. A record that cannot fail a
+   * test is a comment.
+   *
+   * The config is passed explicitly here because the CLI supplies its own (only it
+   * knows whether a reranker was *requested* and what `CORTEX_RERANK` said). What
+   * this pins is that a supplied config reaches the report unchanged, in every
+   * direction, which is what makes the artifact a description of the run.
+   */
+  const emptyEmbedding = createEmbeddingFromEnv({});
+  const stubLlm = { complete: async () => 'yes' } as unknown as LLM;
+
+  async function configOf(featureConfig: Record<string, boolean>) {
+    const { report } = await runNaturalLanguageBenchmark([], emptyEmbedding, stubLlm, {
+      featureConfig,
+      runs: 1,
+    });
+    return report.featureConfig;
+  }
+
+  it('records every switch, including the ones that are off', async () => {
+    // `false` must be recorded, not omitted: a report listing only enabled
+    // switches cannot distinguish "this switch was off" from "this run predates
+    // the switch", and only the first makes the numbers interpretable.
+    const config = await configOf({
+      candidateDiscrimination: false,
+      retrievalSides: false,
+      entityIdentityClause: false,
+      reranker: false,
+    });
+    expect(config).toEqual({
+      candidateDiscrimination: false,
+      retrievalSides: false,
+      entityIdentityClause: false,
+      reranker: false,
+    });
+  });
+
+  it('carries the supplied value through in both directions', async () => {
+    // Falsifiable both ways: a hardcoded object fails one of these two cases.
+    expect(
+      await configOf({ candidateDiscrimination: true, retrievalSides: true, reranker: false }),
+    ).toMatchObject({ candidateDiscrimination: true, retrievalSides: true });
+
+    expect(
+      await configOf({ candidateDiscrimination: false, retrievalSides: false, reranker: true }),
+    ).toMatchObject({ candidateDiscrimination: false, retrievalSides: false, reranker: true });
+  });
+
+  it('distinguishes the two arms of an A/B by the one switch that differs', async () => {
+    // This is the property the C5 comparison needed and did not have: two
+    // artifacts that differ only in `retrievalSides` must be distinguishable from
+    // the files themselves.
+    const control = await configOf({ candidateDiscrimination: true, retrievalSides: false });
+    const feature = await configOf({ candidateDiscrimination: true, retrievalSides: true });
+
+    expect(control?.retrievalSides).toBe(false);
+    expect(feature?.retrievalSides).toBe(true);
+    expect(control?.candidateDiscrimination).toBe(feature?.candidateDiscrimination);
+  });
+
+  it('derives a truthful record when the caller supplied none', async () => {
+    // A library caller that passes no config still gets one, derived from the
+    // options it did pass. Omitting the field would be worse than deriving it:
+    // three of these four switches default in a way a reader cannot see from the
+    // call site, and the artifact is the only place that records what the run
+    // actually used.
+    //
+    // The derived values are asserted exactly, because each is a default that a
+    // reader has to be able to trust: the two B7 switches default off, the
+    // entity-identity clause defaults ON (unset means the shipped configuration),
+    // and no reranker was supplied.
+    const { report } = await runNaturalLanguageBenchmark([], emptyEmbedding, stubLlm, { runs: 1 });
+    expect(report.featureConfig).toEqual({
+      candidateDiscrimination: false,
+      retrievalSides: false,
+      entityIdentityClause: true,
+      reranker: false,
+    });
+    // And it reaches the rendered report, not just the object.
+    const md = formatAblationReport(report);
+    expect(md).toContain('`entityIdentityClause=on`');
+    expect(md).toContain('`retrievalSides=off`');
   });
 });

@@ -18,7 +18,9 @@
  * 35502712132), which is exactly the shape a reader of the artifact set holds.
  */
 import { describe, it, expect } from 'vitest';
-import { formatAblationReport, type AblationReport } from '../report.js';
+import { formatAblationReport, runAblationReport, type AblationReport } from '../report.js';
+import { FactMemorySystem } from '../fact-memory.js';
+import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';
 import type { AblationResult, Capability, Metrics, PerCapabilityPairedStats } from '../types.js';
 
 const CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
@@ -296,5 +298,138 @@ describe('every ablation arm persists a re-readable report', () => {
     const md = formatAblationReport(parsed);
     expect(md).toContain('Paired McNemar p-value: **1.000e+0**');
     expect(md).toContain('Welch t-test p-value (over stochastic runs): **n/a (deterministic)**');
+  });
+});
+
+describe('the report carries the feature configuration it was produced under', () => {
+  /**
+   * THE REGRESSION TEST for an artifact that did not state its own configuration.
+   *
+   * Every number in a report is conditioned on which switches were on, and an A/B
+   * compares two reports that differ ONLY in those switches. Without the
+   * configuration recorded in the artifact the two files have the same shape, so
+   * a reader cannot tell which side of a switch either one is on and a delta
+   * between them has no interpretable sign.
+   *
+   * Measured on the C5 B7 comparison: two arms differed by 2 questions, the same
+   * 2 questions moved in both the baseline and feature halves (which the switch
+   * cannot touch), and neither artifact recorded `retrievalSides`. The run had to
+   * be discarded, and the field was absent because it was written at a single
+   * call site inside the reranking ablation -- an arm that is skipped when no
+   * reranker is built. See `docs/09-progress-and-delivery-report.md` §20.
+   */
+  it('renders the configuration above the results, not below them', () => {
+    const md = formatAblationReport(
+      report({
+        featureConfig: { candidateDiscrimination: true, retrievalSides: true, reranker: false },
+      }),
+    );
+    const configIndex = md.indexOf('Feature config:');
+    const resultsIndex = md.indexOf('Paired McNemar');
+    expect(configIndex).toBeGreaterThan(-1);
+    expect(resultsIndex).toBeGreaterThan(-1);
+    // Above, because every figure beneath it is conditioned on it. A caveat
+    // printed after the statistics is a caveat nobody reads.
+    expect(configIndex).toBeLessThan(resultsIndex);
+  });
+
+  it('marks each switch on or off, so two arms are distinguishable by eye', () => {
+    const control = formatAblationReport(
+      report({ featureConfig: { candidateDiscrimination: true, retrievalSides: false } }),
+    );
+    const feature = formatAblationReport(
+      report({ featureConfig: { candidateDiscrimination: true, retrievalSides: true } }),
+    );
+
+    expect(control).toContain('`retrievalSides=off`');
+    expect(feature).toContain('`retrievalSides=on`');
+    // Both arms still agree on the constant switch, which is what makes the two
+    // lines diffable rather than merely different.
+    expect(control).toContain('`candidateDiscrimination=on`');
+    expect(feature).toContain('`candidateDiscrimination=on`');
+  });
+
+  it('sorts the entries so two arms render in the same order', () => {
+    // Insertion order differs between the two writers of this object (the CLI and
+    // the runner's derived default), so an unstable order would make a textual
+    // diff of two arms show differences that are not differences in configuration.
+    const md = formatAblationReport(
+      report({
+        featureConfig: { retrievalSides: true, candidateDiscrimination: false, reranker: false },
+      }),
+    );
+    const line = md.split('\n').find((l) => l.startsWith('- Feature config:')) ?? '';
+    const order = [...line.matchAll(/`([a-zA-Z]+)=/g)].map((m) => m[1]);
+    expect(order.length).toBeGreaterThan(1);
+    expect(order).toEqual([...order].sort());
+  });
+
+  it('survives the JSON round-trip the artifact actually takes', () => {
+    // A field present in memory but absent after `JSON.parse(JSON.stringify(…))`
+    // would be in the CI artifact and missing for whoever reads it later.
+    const original = report({
+      featureConfig: { candidateDiscrimination: true, retrievalSides: false, reranker: true },
+    });
+    const parsed = JSON.parse(JSON.stringify(original)) as AblationReport;
+    expect(parsed.featureConfig).toEqual(original.featureConfig);
+    expect(formatAblationReport(parsed)).toContain('`retrievalSides=off`');
+    expect(formatAblationReport(parsed)).toContain('`reranker=on`');
+  });
+
+  it('omits the line entirely when no configuration was recorded', () => {
+    // A library caller that supplies none must not get a fabricated
+    // "everything off" line: that is a claim about a run nobody recorded, and it
+    // reads as evidence, which is worse than an absent line.
+    expect(formatAblationReport(report())).not.toContain('Feature config:');
+  });
+
+  it('renders nothing rather than an empty label when the config has no entries', () => {
+    expect(formatAblationReport(report({ featureConfig: {} }))).not.toContain('Feature config:');
+  });
+});
+
+describe('the report carries the per-question roster through runAblationReport', () => {
+  /**
+   * The pass-through half of the roster. `runNaturalLanguageBenchmark` is one
+   * caller; `runAblationReport` is the library entry point every other arm uses,
+   * and the roster has to survive it as a first-class field rather than as
+   * something only the natural-language path can produce. Asserted directly on
+   * the builder because a roster that reached the report by a spread at one call
+   * site is exactly the side-channel shape that made the retry-fire table vanish
+   * from a re-rendered artifact.
+   */
+  it('forwards a supplied roster onto the report, and omits the field when none is given', async () => {
+    const ds = createLongMemEvalMini();
+    const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
+
+    const without = await runAblationReport(ds, baseline, feature, { runs: 1 });
+    expect(without.questions).toBeUndefined();
+    expect('questions' in without).toBe(false);
+
+    const roster = ds.questions.map((q, i) => ({
+      questionId: q.id,
+      question: q.question,
+      capability: q.capability,
+      groundTruth: q.expected,
+      correct: i % 2 === 0,
+      grounded: true,
+      turns: [],
+    }));
+    const with_ = await runAblationReport(ds, baseline, feature, { runs: 1, questions: roster });
+    expect(with_.questions).toHaveLength(roster.length);
+    expect(with_.questions![0]!.questionId).toBe(roster[0]!.questionId);
+  });
+
+  it('omits the roster for a genuinely empty array, since absence and emptiness differ', async () => {
+    // `[]` says "this run graded zero questions"; absent says nobody recorded a
+    // roster. The two are different claims, and the caller's `[]` must reach the
+    // report as `[]` rather than being normalised to absence -- and vice versa.
+    const ds = createLongMemEvalMini();
+    const baseline = new FactMemorySystem('naive', { fallback: 'unknown' });
+    const feature = new FactMemorySystem('abstain', { abstainThreshold: 0.3 });
+    const empty = await runAblationReport(ds, baseline, feature, { runs: 1, questions: [] });
+    expect(empty.questions).toEqual([]);
+    expect('questions' in empty).toBe(true);
   });
 });

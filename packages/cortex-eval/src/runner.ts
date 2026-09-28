@@ -21,6 +21,11 @@ import {
 } from './natural-language-memory.js';
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
+import {
+  buildRecordsFromDataset,
+  type RecordableQuestion,
+  type RecordableTrace,
+} from './question-record.js';
 import type { DecisionTrace } from './natural-language-memory.js';
 import { classifyKnowledgeUpdateQualifier } from './fact-store.js';
 import { EXTENDED_ENGINE_OPTIONS } from './temporal-engine.js';
@@ -29,6 +34,7 @@ import {
   retryFireLines,
   runAblationReport,
   type AblationReport,
+  type FeatureConfig,
 } from './report.js';
 
 /**
@@ -156,6 +162,19 @@ export type BenchmarkRunnerOptions = {
    * would make the arm a measurement of a system no deployment can reproduce.
    */
   retrievalSides?: boolean;
+  /**
+   * The switches this run is configured with, as recorded in the report.
+   *
+   * When absent the runner derives it from the options it received, which is the
+   * right default for a library caller. An entry-point caller supplies it
+   * explicitly because it can see state the runner cannot: `bench/run.ts` knows
+   * whether it *tried* to build a reranker and what `CORTEX_RERANK` said, and
+   * that distinction -- requested-but-absent versus never-requested -- is exactly
+   * what a reader needs to interpret a delta. A supplied config is therefore used
+   * as given rather than merged, so the artifact records the caller's view
+   * instead of a reconciliation of two views.
+   */
+  featureConfig?: FeatureConfig;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
   /**
@@ -216,6 +235,34 @@ export async function runEmbeddingBenchmark(
   return { report, markdown: formatAblationReport(report) };
 }
 
+/**
+ * Describe the feature switches a run was configured with, for the report.
+ *
+ * Every entry is written for both states, because a report that lists only the
+ * enabled switches cannot distinguish "this one was off" from "this one did not
+ * exist when the file was written". The two are different claims about the same
+ * artifact, and only one of them makes the numbers interpretable.
+ *
+ * Not exported: the runner is its only caller, and the census gate treats an
+ * export without a non-test caller as debt. Its behaviour is asserted through
+ * `runNaturalLanguageBenchmark`, which is the entry point a caller actually
+ * uses -- the record has to be observable on the produced report, so a test of
+ * the helper in isolation would not pin the property that matters.
+ *
+ * The mapping is explicit rather than `Object.entries(options).filter(boolean)`:
+ * a generic sweep would silently begin recording unrelated boolean options
+ * (there are several, e.g. `abstentionAware`) and the artifact would grow fields
+ * that no consumer asked for and no reader expects.
+ */
+function describeFeatureConfig(options: BenchmarkRunnerOptions): FeatureConfig {
+  return {
+    candidateDiscrimination: options.candidateDiscrimination === true,
+    retrievalSides: options.retrievalSides === true,
+    entityIdentityClause: options.entityIdentityClause !== false,
+    reranker: options.reranker !== undefined,
+  };
+}
+
 /** Natural-language QA benchmark: baseline never abstains; feature abstains. */
 export async function runNaturalLanguageBenchmark(
   instances: readonly LongMemEvalInstance[],
@@ -248,6 +295,26 @@ export async function runNaturalLanguageBenchmark(
     structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
   });
+  // Per-question traces, collected here rather than by the caller.
+  //
+  // The runner is the only place that holds both the trace stream and the
+  // per-question correctness vector the ablation computes, so it is the only
+  // place that can assemble a record aligned with the graded set. A caller
+  // collecting traces separately could not align them: `featureCorrect` is
+  // produced inside `runAblationReport` and never leaves it.
+  //
+  // The caller's own `onDecision` still fires; this is an additional collector,
+  // not a replacement.
+  const traces: DecisionTrace[] = [];
+  // The same objects, typed as what `buildRecordsFromDataset` consumes.
+  //
+  // A separate name rather than a cast at the call site: `DecisionTrace` is a
+  // WIDER type than `RecordableTrace` (it carries the abstention reason, the
+  // expansion queries, the score), and the narrower view is the part the record
+  // builder is allowed to depend on. Naming it here means a future field added to
+  // the record's inputs has to be added to `RecordableTrace` deliberately,
+  // instead of becoming visible to every record through the wider type.
+  const recordableTraces: RecordableTrace[] = traces;
   const feature = new NaturalLanguageMemorySystem('nl-abstain-feature', {
     embedding,
     llm,
@@ -256,7 +323,10 @@ export async function runNaturalLanguageBenchmark(
     answerCache,
     structuredCache,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-    ...(options.onDecision ? { onDecision: options.onDecision } : {}),
+    onDecision: (trace) => {
+      traces.push(trace);
+      options.onDecision?.(trace);
+    },
     ...(options.entityIdentityClause !== undefined
       ? { entityIdentityClause: options.entityIdentityClause }
       : {}),
@@ -284,11 +354,66 @@ export async function runNaturalLanguageBenchmark(
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);
+  const featureConfig = options.featureConfig ?? describeFeatureConfig(options);
   const report = await runAblationReport(dataset, baseline, feature, {
     runs: options.runs ?? 3,
     scorer: judgeScorer(judge),
+    // Recorded from the options this function actually received, not from a
+    // literal written here. A hardcoded object would describe the intent of
+    // whoever wrote this line rather than the configuration of the run, and the
+    // two drift silently -- which is how the C5 A/B produced two artifacts that
+    // differed by 2 questions with neither one stating which side of the switch
+    // it was on. Built by a helper so the mapping from option to entry is
+    // testable: a caller that stops forwarding an option must fail a test here,
+    // not produce a report that still claims the option was on.
+    featureConfig,
   });
-  return { report, markdown: formatAblationReport(report) };
+  // The per-question roster, assembled AFTER the ablation because the correctness
+  // vector is the ablation's own output (`featureCorrect`) and the records must
+  // carry the verdict the scorer actually returned rather than a second guess at
+  // it. Building them before would need this function to score the answers a
+  // second time, which is both a doubled judge bill and a second source of truth
+  // for one boolean.
+  //
+  // Without this the persisted artifact carries counts and discordant ids but no
+  // roster: the pre-registered B7 criterion cannot be executed against it -- the
+  // reader fails with "no per-question array found" -- and the noise model
+  // (`compareQuestionVectors`) has no vectors to compare.
+  const questions = buildRecordsFromDataset(
+    // Annotated with the parameter's own element type rather than left to
+    // inference. The two types ARE the call's contract -- the dataset side and
+    // the trace side -- and naming them here is what keeps them from being
+    // restated structurally at every future call site, where a renamed field
+    // would silently stop matching.
+    dataset.questions.map((q): RecordableQuestion => ({
+      id: q.id,
+      question: q.question,
+      capability: q.capability,
+      expected: q.expected,
+    })),
+    recordableTraces,
+    // Indexed directly rather than through `?? false`. `featureCorrect` is built
+    // by `scoreEvaluation`, which pushes once per dataset question, so it is
+    // length-aligned with `dataset.questions` by construction -- and
+    // `buildRecordsFromDataset` throws on a length mismatch, which is where an
+    // alignment failure would surface. A `?? false` fallback here would be
+    // unreachable code that reads as a safety net: it would silently file an
+    // unaligned question as INCORRECT, which is the one verdict a missing entry
+    // must never be read as.
+    report.ablation.featureCorrect,
+    // Groundedness for the B7 cohort: a grounded failure is a question the reader
+    // ANSWERED and got WRONG. An abstention is excluded because a question with
+    // no answer has no competing candidate to discriminate between, and a
+    // correct answer is excluded because it is not a failure. The truth is not
+    // consulted here -- the criterion's clustering does that, from the record's
+    // own `groundTruth` and `turns`.
+    ({ trace }) => trace !== undefined && trace.answer !== null && trace.answer !== undefined,
+    featureConfig,
+  );
+  return {
+    report: { ...report, questions },
+    markdown: formatAblationReport({ ...report, questions }),
+  };
 }
 
 /**

@@ -448,6 +448,18 @@ async function main(): Promise<void> {
     runs,
     temperature,
     onDecision: (trace) => decisions.push(trace),
+    // Recorded in the report so the artifact states its own configuration. The
+    // reranking ablation used to be the only writer of this field, and that arm
+    // is skipped when no reranker exists -- so a run without one lost the record
+    // of which switches it was actually testing. Both arms of an A/B then
+    // produced the same artifact shape, and a delta between them could not be
+    // attributed (`docs/09-progress-and-delivery-report.md` §20).
+    featureConfig: {
+      candidateDiscrimination,
+      retrievalSides,
+      entityIdentityClause,
+      reranker: reranker !== undefined,
+    },
     ...(reranker !== undefined ? { reranker } : {}),
     ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
     ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),

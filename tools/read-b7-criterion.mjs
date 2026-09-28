@@ -14,7 +14,18 @@
  *   2. Reconcile it against the published count BEFORE reading the arms, so a
  *      roster that no longer describes these inputs is reported as such rather
  *      than silently deciding the verdict.
- *   3. Only then judge the arms.
+ *   3. Check that BOTH arms actually recorded an answer for every question, and
+ *      refuse to judge if either did not.
+ *   4. Only then judge the arms.
+ *
+ * Step 3 is not a nicety. `QuestionRecord.answer` distinguishes `null` (the
+ * reader abstained) from an ABSENT key (nobody recorded an answer), and the
+ * criterion consumes only the first. This reader used to collapse both to `null`
+ * with a `??` chain, which made a recording gap in the feature arm read as a
+ * non-target question moving from its answer to an abstention -- i.e. as a
+ * REGRESSION, the one verdict that cannot be overridden by a target gain. A
+ * missing record is a fact about the artifact, not about the pipeline, and it
+ * must be reported as a gap rather than spent as evidence against the arm.
  *
  * Usage: node tools/read-b7-criterion.mjs <control.json> <feature.json>
  */
@@ -25,6 +36,7 @@ import {
   verifyTargetCohort,
   judgeCriterion,
 } from '../packages/cortex-eval/dist/b7-cohort.js';
+import { buildQuestionRecords } from '../packages/cortex-eval/dist/question-record.js';
 
 const PUBLISHED_TARGET_COUNT = 9;
 
@@ -35,14 +47,24 @@ function load(path) {
 /**
  * Pull per-question records out of a benchmark report.
  *
- * The report's exact key names are not assumed here beyond the ones the
- * criterion needs; a missing key is reported rather than defaulted, because a
- * silently-empty cohort would make the verdict vacuous.
+ * `questions` is FIRST in the candidate list because it is the field
+ * `runNaturalLanguageBenchmark` now produces, with the record shape
+ * `computeTargetCohort` consumes (`questionId / question / groundTruth / answer
+ * / turns / grounded`). The older names are kept as fallbacks so a run that
+ * predates the field still reads rather than being reported as unreadable.
+ *
+ * A missing key is reported rather than defaulted, because a silently-empty
+ * cohort would make the verdict vacuous — a criterion that returns `no-move`
+ * because it was handed zero questions is indistinguishable from one that
+ * returns `no-move` because nothing moved.
  */
 function extractQuestions(report, label) {
-  const candidates = [report.questions, report.perQuestion, report.results, report.details].filter(
-    Array.isArray,
-  );
+  const candidates = [
+    report.questions,
+    report.perQuestion,
+    report.results,
+    report.details,
+  ].filter(Array.isArray);
   if (candidates.length === 0) {
     throw new Error(
       `${label}: no per-question array found. Top-level keys: ${Object.keys(report).join(', ')}`,
@@ -51,8 +73,58 @@ function extractQuestions(report, label) {
   return candidates[0];
 }
 
-function normaliseAnswer(value) {
-  if (value === undefined || value === null) return null;
+/**
+ * Read one arm's per-question records.
+ *
+ * Delegated to the package's own `buildQuestionRecords`, the same function
+ * `tools/quantify-endpoint-noise.mjs` uses, rather than mapped inline here. Two
+ * parsers for one artifact is two places for the same field-name fallbacks to
+ * drift, and the failure is silent: the two readers would disagree about the
+ * same file while both looked correct. This reader previously carried its own
+ * `q.questionId ?? q.id ?? q.question_id` chain; that is now the builder's job.
+ *
+ * `retrieved` is reassembled from `turns` because `buildQuestionRecords` accepts
+ * the joined text (it splits it back into turns). The round trip is lossless for
+ * what the criterion consumes: it clusters over turn TEXT, and `toTurns` drops
+ * only blank lines, which carry no content terms and cannot be clustered.
+ */
+function readRecords(report, label) {
+  const questions = extractQuestions(report, label);
+  const inputs = questions.map((q, i) => {
+    // The builder requires an id and throws on a duplicate; a record with no id
+    // cannot be joined against anything, so it is reported here rather than
+    // silently dropped, which would shrink the cohort without saying so.
+    const questionId = String(q.questionId ?? '');
+    if (questionId === '') {
+      throw new Error(
+        `${label}: question at index ${i} carries no 'questionId'. The per-question ` +
+          'roster is the join key for the whole criterion; an unkeyable record cannot ' +
+          'be used and dropping it would silently shrink the target cohort.',
+      );
+    }
+    const turns = q.turns ?? [];
+    return {
+      questionId,
+      question: String(q.question ?? ''),
+      capability: String(q.capability ?? 'unknown'),
+      // Spread conditionally so an absent `groundTruth` stays absent. Passing
+      // `undefined` explicitly is not the same thing under
+      // `exactOptionalPropertyTypes`, and "the dataset states no gold" is a real
+      // case (`null` gold) distinct from "this record has no gold field".
+      ...(q.groundTruth === undefined ? {} : { groundTruth: q.groundTruth }),
+      ...(q.answer === undefined ? {} : { answer: q.answer }),
+      correct: q.correct === true,
+      grounded: q.grounded === true,
+      retrieved: turns.map((t) => String(t.text ?? '')).join('\n'),
+    };
+  });
+  return buildQuestionRecords(inputs);
+}
+
+/** Render one record's answer for the criterion: text, or `null` for abstention. */
+function toAnswer(value) {
+  if (value === null) return null;
+  if (value === undefined) return null;
   const text = String(value).trim();
   return text.length === 0 ? null : text;
 }
@@ -67,10 +139,10 @@ function main() {
   const control = load(controlPath);
   const feature = load(featurePath);
 
-  const controlQuestions = extractQuestions(control, 'control');
-  const featureQuestions = extractQuestions(feature, 'feature');
-  console.log(`control questions: ${controlQuestions.length}`);
-  console.log(`feature questions: ${featureQuestions.length}`);
+  const controlRecords = readRecords(control, 'control');
+  const featureRecords = readRecords(feature, 'feature');
+  console.log(`control questions: ${controlRecords.length}`);
+  console.log(`feature questions: ${featureRecords.length}`);
 
   // Every per-question record is passed through, including ungrounded ones. An
   // earlier revision filtered to `grounded === true` here, which made
@@ -78,24 +150,14 @@ function main() {
   // reader — a bucket that always reads 0 looks like "nothing was excluded"
   // when the truth is "the exclusion happened before the counter could see it".
   // The module classifies; this reader only transcribes.
-  const cohortInput = controlQuestions
-    .map((q) => ({
-      questionId: String(q.questionId ?? q.id ?? q.question_id ?? ''),
-      question: String(q.question ?? ''),
-      groundTruth: q.groundTruth ?? q.truth ?? q.answer_true ?? null,
-      answer: q.answer ?? q.predicted ?? null,
-      turns: (q.turns ?? q.context ?? []).map((t, i) => ({
-        index: Number(t.index ?? i),
-        text: String(t.text ?? t.content ?? ''),
-      })),
-      grounded: q.grounded === true,
-    }))
-    .filter((q) => q.questionId !== '');
-
-  const missingIds = cohortInput.filter((q) => q.questionId === '').length;
-  if (missingIds > 0) {
-    console.log(`WARNING: ${missingIds} question(s) had no usable id and were dropped`);
-  }
+  const cohortInput = controlRecords.map((record) => ({
+    questionId: record.questionId,
+    question: record.question,
+    ...(record.groundTruth === undefined ? {} : { groundTruth: record.groundTruth }),
+    ...(record.answer === undefined ? {} : { answer: record.answer }),
+    turns: record.turns,
+    grounded: record.grounded,
+  }));
 
   const cohort = computeTargetCohort(cohortInput);
   console.log(`\n--- recomputed cohort ---`);
@@ -105,41 +167,81 @@ function main() {
   console.log(`unseparable: ${cohort.unseparable.length}`);
   console.log(`notGrounded: ${cohort.notGrounded.length}`);
 
-  const verdict = verifyTargetCohort(cohort, []);
+  const cohortVerdict = verifyTargetCohort(cohort, []);
   console.log(`\n--- cohort verification (published roster is empty: a count is not a roster) ---`);
-  if (verdict.kind === 'matches') {
-    console.log(`matches: ${verdict.count}`);
+  if (cohortVerdict.kind === 'matches') {
+    console.log(`matches: ${cohortVerdict.count}`);
   } else {
-    console.log(`published count claimed: ${verdict.published}`);
-    console.log(`computed roster size:    ${verdict.computed}`);
+    console.log(`published count claimed: ${cohortVerdict.published}`);
+    console.log(`computed roster size:    ${cohortVerdict.computed}`);
     console.log(
-      `publication says ${PUBLISHED_TARGET_COUNT}; recomputation found ${verdict.computed}`,
+      `publication says ${PUBLISHED_TARGET_COUNT}; recomputation found ${cohortVerdict.computed}`,
     );
-    if (verdict.computed !== PUBLISHED_TARGET_COUNT) {
+    if (cohortVerdict.computed !== PUBLISHED_TARGET_COUNT) {
       console.log(
         `>>> DISAGREEMENT with the published count. The published "9" is a claim about a\n` +
-          `    snapshot; this run's inputs give ${verdict.computed}. Report this BEFORE the arms.`,
+          `    snapshot; this run's inputs give ${cohortVerdict.computed}. Report this BEFORE the arms.`,
       );
     } else {
       console.log(
-        `>>> Count agrees (${verdict.computed}), but identity is still unconfirmable — the\n` +
+        `>>> Count agrees (${cohortVerdict.computed}), but identity is still unconfirmable — the\n` +
           `    publication names no ids. The ids above are the roster.`,
       );
     }
   }
 
-  const toOutcome = (questions) =>
-    questions
-      .map((q) => ({
-        questionId: String(q.questionId ?? q.id ?? q.question_id ?? ''),
-        answer: normaliseAnswer(q.answer ?? q.predicted ?? null),
-      }))
-      .filter((o) => o.questionId !== '');
+  // The gap check, run BEFORE the arms and reported as its own block.
+  //
+  // A record with no `answer` key means no trace reached this question, so nobody
+  // recorded what the arm produced. That is a fact about the artifact, while the
+  // criterion's input is a fact about the arm — and a `?? null` would turn the
+  // first into the second by reporting the gap as an abstention. An abstention on
+  // a NON-target is a regression, so the substitution does not merely mislabel:
+  // it manufactures the severest verdict the criterion can return out of a
+  // missing record. Refusing to judge is the only honest response, because the
+  // arm's actual behaviour for that question was never captured.
+  const unrecorded = [];
+  for (const [arm, records] of [
+    ['control', controlRecords],
+    ['feature', featureRecords],
+  ]) {
+    for (const record of records) {
+      if (record.answer === undefined) unrecorded.push(`${arm}:${record.questionId}`);
+    }
+  }
+  console.log(`\n--- record completeness (BOTH arms must have recorded an answer) ---`);
+  if (unrecorded.length > 0) {
+    console.log(`UNRECORDED: ${unrecorded.length} question(s) have no recorded answer`);
+    for (const entry of unrecorded) console.log(`  ${entry}`);
+    console.log(
+      `\nREFUSING to judge. An absent 'answer' key means nobody recorded what that arm\n` +
+        `produced — it is NOT an abstention, which is recorded as an explicit null. A\n` +
+        `reader that collapses the two would read the gap as that question moving to an\n` +
+        `abstention, and on a non-target that manufactures the severest verdict the\n` +
+        `criterion can return out of a missing record. Re-dispatch the arm whose records\n` +
+        `are incomplete.\n` +
+        `\nNo verdict is printed above or below this line, so a consumer that scans the\n` +
+        `output for a verdict token will find none — a refusal is not a result.`,
+    );
+    return 1;
+  }
+  console.log(`complete: both arms recorded an answer for all ${controlRecords.length} questions`);
+
+  // Both arms are now known to have an `answer` for every question, so the
+  // `undefined` case that `toAnswer` also handles is unreachable here — it is
+  // kept because the function is the single place the criterion's answer
+  // normalization is defined, and a second definition is where the abstention
+  // distinction would be lost again.
+  const toOutcome = (records) =>
+    records.map((record) => ({
+      questionId: record.questionId,
+      answer: toAnswer(record.answer),
+    }));
 
   const criterion = judgeCriterion({
     cohort,
-    control: toOutcome(controlQuestions),
-    feature: toOutcome(featureQuestions),
+    control: toOutcome(controlRecords),
+    feature: toOutcome(featureRecords),
   });
 
   console.log(`\n--- criterion verdict ---`);

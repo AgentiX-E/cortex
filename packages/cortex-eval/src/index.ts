@@ -50,6 +50,7 @@ export {
   retryFireLines,
   type AblationReport,
   type AblationReportOptions,
+  type FeatureConfig,
   type RetryFireCounts,
 } from './report.js';
 export {
@@ -299,6 +300,12 @@ export {
   type VarianceStats,
   type VarianceSummary,
 } from './variance.js';
+export {
+  buildRecordsFromDataset,
+  correctnessVector,
+  recordIds,
+  type QuestionRecord,
+} from './question-record.js';
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 

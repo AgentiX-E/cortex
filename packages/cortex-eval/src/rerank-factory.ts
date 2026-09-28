@@ -45,8 +45,11 @@ export const DEFAULT_LOCAL_RERANK_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 export const DEFAULT_LLM_RERANK_BASE_URL = 'https://api.deepseek.com/v1';
 export const DEFAULT_LLM_RERANK_MODEL = 'deepseek-chat';
 
-/** Values of `CORTEX_RERANK` that turn the stage on. Anything else is off. */
+/** Values of `CORTEX_RERANK` that turn the stage on. */
 const ENABLED_VALUES = new Set(['on', 'true', '1', 'yes', 'enabled']);
+
+/** Values of `CORTEX_RERANK` that turn the stage off, explicitly. */
+const DISABLED_VALUES = new Set(['', 'off', '0', 'false', 'no', 'disabled']);
 
 /** Backends `CORTEX_RERANK_PROVIDER` can select. */
 export const RERANK_PROVIDERS = ['openai', 'llm', 'local'] as const;
@@ -62,15 +65,52 @@ export type RerankProvider = (typeof RERANK_PROVIDERS)[number];
  * is expected, and pretending otherwise would push the unwrapping onto every
  * call site).
  *
- * Exactly one configuration is an error: enabled without a key. That is thrown
- * rather than downgraded to "reranking off", because a silently disabled
- * experiment produces a number that looks like a negative result and is not one.
+ * ## Two configurations are errors, and neither is downgraded to "off"
+ *
+ * 1. **Enabled without a key.** A silently disabled experiment produces a number
+ *    that looks like a negative result and is not one.
+ * 2. **A provider name where the enable flag belongs.** This is the mistake the
+ *    two adjacent variables invite: `CORTEX_RERANK` decides *whether* the stage
+ *    exists, `CORTEX_RERANK_PROVIDER` decides *which backend* it uses, and
+ *    `local` is a documented spelling of the second. Reading it as "off" was the
+ *    old behaviour, and the cost was an offline run that looked like a completed
+ *    one: the reranking ablation is guarded on this function returning a
+ *    reranker, so the arm was skipped and the job still reported success. The
+ *    only artifact that carried `featureConfig` was written inside that arm, so
+ *    the run also lost the record of its own configuration.
+ *
+ * An unrecognised value is an error rather than an off, for the same reason
+ * `resolveProvider` throws on an unknown provider: a typo must not become a
+ * measurement of something other than what the operator named. `off` is spelled
+ * out in `DISABLED_VALUES` precisely so that "this value was a deliberate
+ * refusal" and "this value was not understood" stop being the same outcome.
  */
 export function createRerankerFromEnv(env: RerankEnv): RerankScoreFn | undefined {
-  const flag = (env['CORTEX_RERANK'] ?? '').trim().toLowerCase();
-  if (!ENABLED_VALUES.has(flag)) {
+  const raw = env['CORTEX_RERANK'];
+  const flag = (raw ?? '').trim().toLowerCase();
+
+  if (DISABLED_VALUES.has(flag)) {
     return undefined;
   }
+
+  const providerInFlag = RERANK_PROVIDERS.find((provider) => provider === flag);
+  if (providerInFlag !== undefined) {
+    throw new Error(
+      `CORTEX_RERANK="${raw}" is a backend name, not an enable flag. ` +
+        `Set CORTEX_RERANK=on to enable the stage and ` +
+        `CORTEX_RERANK_PROVIDER=${providerInFlag} to select that backend; ` +
+        `leave CORTEX_RERANK unset (or "off") to run without reranking.`,
+    );
+  }
+
+  if (!ENABLED_VALUES.has(flag)) {
+    throw new Error(
+      `Unknown CORTEX_RERANK value "${raw}"; expected one of ` +
+        `${[...ENABLED_VALUES].join(', ')} to enable, or ` +
+        `${[...DISABLED_VALUES].filter(Boolean).join(', ')} to disable.`,
+    );
+  }
+
   return buildReranker(env, resolveProvider(env));
 }
 

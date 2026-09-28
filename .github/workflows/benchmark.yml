@@ -54,7 +54,7 @@ on:
         default: '0'
         type: string
       rerank:
-        description: 'Enable the cross-encoder reranking stage (roadmap B1). off = shipped behaviour'
+        description: 'Enable the cross-encoder reranking stage (roadmap B1). on = enabled (pick the backend with rerank_provider), off = shipped behaviour. A backend name here is rejected with an error rather than read as off: "local" belongs in rerank_provider'
         required: false
         default: 'off'
         type: string
