@@ -25,6 +25,17 @@ export type RerankArmOptionsInput = {
    * feature.
    */
   readonly candidateDiscrimination: boolean;
+  /**
+   * Roadmap B7 channel C, already parsed from the environment by `readToggle`.
+   *
+   * Required for the same reason as the field above, and it carries one more
+   * consequence: channel C is the only non-oracle path that reaches two sides, so
+   * an arm that omits it falls back to the question-only extraction and gets a
+   * structural `annotated: false`. Omitting it therefore does not produce a
+   * weaker feature arm, it produces a second control arm -- which is the failure
+   * §13 already recorded once, when both arms came out byte-identical.
+   */
+  readonly retrievalSides: boolean;
   /** Candidate pool width, when one was configured. */
   readonly rerankCandidatePool?: number | undefined;
   /** Leading hits the reranker may not move, when one was configured. */
@@ -52,6 +63,13 @@ export function rerankArmOptions(input: RerankArmOptionsInput): Record<string, u
     // future change to the runner's check cannot turn an explicit `false` into
     // an enabled feature.
     ...(input.candidateDiscrimination ? { candidateDiscrimination: true } : {}),
+    // Roadmap B7 channel C, present only when on. Absent rather than `false`,
+    // because `natural-language-memory.ts` reads it as `=== true`: an explicit
+    // `false` would be a configured value that means "off anyway", and the
+    // runner's `=== true` forward would drop it in either case. Keeping it
+    // absent makes the shipped configuration and the explicit-off configuration
+    // the same object, so they cannot diverge.
+    ...(input.retrievalSides ? { retrievalSides: true } : {}),
     ...(input.rerankCandidatePool === undefined
       ? {}
       : { rerankCandidatePool: input.rerankCandidatePool }),

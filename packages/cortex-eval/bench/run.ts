@@ -431,6 +431,16 @@ async function main(): Promise<void> {
   // comparison written on this line cannot be tested; defect injection showed
   // that mutating it to `!== '0'` or to a literal left every test green.
   const candidateDiscrimination = readToggle(process.env, 'CANDIDATE_DISCRIMINATION');
+  // Roadmap B7, channel C. Parsed here rather than compared inline for the same
+  // reason as the toggle above: `bench/**` is outside coverage, so a comparison
+  // written on this line is unreachable from any test, and defect injection
+  // showed that mutating `CANDIDATE_DISCRIMINATION`'s read left every test green.
+  //
+  // This input did not exist until now, which is the §14 defect repeating: the
+  // producer was wired and the switch was reachable from the runner, but no
+  // dispatch could set it, so the channel-C arm could not be constructed. An
+  // unset value is `false` and the shipped configuration is byte-identical.
+  const retrievalSides = readToggle(process.env, 'RETRIEVAL_SIDES');
 
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
@@ -906,6 +916,7 @@ async function main(): Promise<void> {
         ...rerankArmOptions({
           reranker,
           candidateDiscrimination,
+          retrievalSides,
           ...(rerankCandidatePool === undefined ? {} : { rerankCandidatePool }),
           ...(rerankProtectedHead === undefined ? {} : { rerankProtectedHead }),
         }),
@@ -923,13 +934,22 @@ async function main(): Promise<void> {
         // was on is a delta whose sign cannot be interpreted: the same file is
         // produced by the control arm. Recorded here rather than only in the
         // workflow log because the artifact is what gets downloaded and compared.
-        featureConfig: { candidateDiscrimination },
+        featureConfig: { candidateDiscrimination, retrievalSides },
       });
       console.log('=== reranking ablation ===');
       // Stated before the numbers, not after. Every figure below this line is
       // conditioned on which side of the switch the run was on.
       console.log(
         `Candidate discrimination: ${candidateDiscrimination ? 'ON (feature arm carries the discriminating instruction)' : 'off (control)'}`,
+      );
+      // Printed separately from the line above because the two switches can
+      // disagree, and when they do the feature arm has an instruction but no
+      // sides to apply it to -- `discriminateContext` declines below two sides,
+      // so the injection is a no-op and the delta below is a 0.00 pp that reads
+      // like a refuted feature. Stated as a no-op rather than left to be
+      // inferred from two booleans.
+      console.log(
+        `Retrieval sides (channel C): ${retrievalSides ? (candidateDiscrimination ? 'ON (sides drawn from the retrieved turns)' : 'set but INERT: candidate discrimination is off, so no producer runs') : 'off (the question-only extraction yields one side, and one side cannot annotate)'}`,
       );
       // Printed beside the accuracy delta on purpose: reranking changes the ordering
       // and the abstention decision is read from hits[0].score, so a shifted

@@ -48,6 +48,11 @@ on:
         required: false
         default: '0'
         type: string
+      retrieval_sides:
+        description: 'Source B7 candidate sides from the retrieved turns (channel C, roadmap B7): 1 = on, 0 = shipped behaviour. Requires candidate_discrimination=1; without it there is no producer to feed'
+        required: false
+        default: '0'
+        type: string
       rerank:
         description: 'Enable the cross-encoder reranking stage (roadmap B1). off = shipped behaviour'
         required: false
@@ -152,6 +157,15 @@ jobs:
           # arm to exist. Before this input existed, no dispatch could reach the
           # switch at all.
           CANDIDATE_DISCRIMINATION: ${{ github.event.inputs.candidate_discrimination || '0' }}
+          # Roadmap B7, channel C. This input has to exist for the same reason
+          # CANDIDATE_DISCRIMINATION does: a switch that no dispatch can set is a
+          # switch that cannot be measured, and B7 already lost one round to
+          # exactly that (§14: three broken links, the first of which was here).
+          # Default '0' keeps the shipped configuration byte-identical for every
+          # existing dispatch. It is read only when the annotation producer runs,
+          # so setting it without candidate_discrimination=1 changes nothing —
+          # that combination is a no-op, not a second control arm.
+          RETRIEVAL_SIDES: ${{ github.event.inputs.retrieval_sides || '0' }}
           DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
           DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           # Default to a small stratified sample so iterative debugging does not

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { rerankArmOptions } from '../bench-arm-options.js';
@@ -22,12 +24,20 @@ describe('rerankArmOptions', () => {
     // Absence, not `false`. The runner's forwarding reads `=== true`, so both
     // work at runtime today -- but an always-present key makes the option's
     // default unreachable and hides which arm a config describes.
-    const options = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: false });
+    const options = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+    });
     expect('candidateDiscrimination' in options).toBe(false);
   });
 
   it('sets the feature option to true when the toggle is on', () => {
-    const options = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: true });
+    const options = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: true,
+      retrievalSides: true,
+    });
     expect(options.candidateDiscrimination).toBe(true);
   });
 
@@ -36,7 +46,9 @@ describe('rerankArmOptions', () => {
     // this is the one key that must never depend on the B7 toggle.
     const reranker = { name: 'r' };
     for (const candidateDiscrimination of [false, true]) {
-      expect(rerankArmOptions({ reranker, candidateDiscrimination }).reranker).toBe(reranker);
+      expect(
+        rerankArmOptions({ reranker, candidateDiscrimination, retrievalSides: false }).reranker,
+      ).toBe(reranker);
     }
   });
 
@@ -44,12 +56,17 @@ describe('rerankArmOptions', () => {
     // Same absence convention as the toggle, for the same reason: the runner
     // distinguishes "not configured" from a value, and a pool of `undefined`
     // would be read as configured.
-    const without = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: false });
+    const without = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+    });
     expect('rerankCandidatePool' in without).toBe(false);
 
     const withPool = rerankArmOptions({
       reranker: { name: 'r' },
       candidateDiscrimination: false,
+      retrievalSides: false,
       rerankCandidatePool: 50,
     });
     expect(withPool.rerankCandidatePool).toBe(50);
@@ -61,11 +78,16 @@ describe('rerankArmOptions', () => {
     const zero = rerankArmOptions({
       reranker: { name: 'r' },
       candidateDiscrimination: false,
+      retrievalSides: false,
       rerankProtectedHead: 0,
     });
     expect(zero.rerankProtectedHead).toBe(0);
 
-    const absent = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: false });
+    const absent = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+    });
     expect('rerankProtectedHead' in absent).toBe(false);
   });
 
@@ -75,13 +97,18 @@ describe('rerankArmOptions', () => {
     const set = rerankArmOptions({
       reranker: { name: 'r' },
       candidateDiscrimination: false,
+      retrievalSides: false,
       temperature: 0,
       runs: 3,
     });
     expect(set.temperature).toBe(0);
     expect(set.runs).toBe(3);
 
-    const absent = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: false });
+    const absent = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+    });
     expect('temperature' in absent).toBe(false);
     expect('runs' in absent).toBe(false);
   });
@@ -93,11 +120,16 @@ describe('rerankArmOptions', () => {
     const off = rerankArmOptions({
       reranker: { name: 'r' },
       candidateDiscrimination: false,
+      retrievalSides: false,
       entityIdentityClause: false,
     });
     expect(off.entityIdentityClause).toBe(false);
 
-    const absent = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: false });
+    const absent = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+    });
     expect('entityIdentityClause' in absent).toBe(false);
   });
 
@@ -105,10 +137,69 @@ describe('rerankArmOptions', () => {
     // The composition, not the individual cases. An object built from six
     // independent spreads can be wrong in the way that matters only when they
     // are combined: a key that leaks in from a neighbouring condition.
-    const both = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: true });
-    expect(Object.keys(both).sort()).toEqual(['candidateDiscrimination', 'reranker']);
+    const both = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: true,
+      retrievalSides: true,
+    });
+    expect(Object.keys(both).sort()).toEqual([
+      'candidateDiscrimination',
+      'reranker',
+      'retrievalSides',
+    ]);
 
-    const neither = rerankArmOptions({ reranker: { name: 'r' }, candidateDiscrimination: false });
+    const neither = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+    });
     expect(Object.keys(neither)).toEqual(['reranker']);
+  });
+
+  describe('channel C (roadmap B7, the non-oracle side source)', () => {
+    it('omits the option when the toggle is off', () => {
+      const options = rerankArmOptions({
+        reranker: { name: 'r' },
+        candidateDiscrimination: true,
+        retrievalSides: false,
+      });
+      expect('retrievalSides' in options).toBe(false);
+    });
+
+    it('sets the option to true exactly when the toggle is on', () => {
+      const options = rerankArmOptions({
+        reranker: { name: 'r' },
+        candidateDiscrimination: true,
+        retrievalSides: true,
+      });
+      expect(options.retrievalSides).toBe(true);
+    });
+
+    it('keeps the two B7 switches independent, so the inert combination stays expressible', () => {
+      // Channel C is read only inside the annotation producer, which runs only
+      // when discrimination is on. So this combination is a no-op at runtime,
+      // and the option object must still record that channel C was requested
+      // rather than folding it away. Folding would make the dispatch and the
+      // artifact disagree about which arm was asked for -- and the artifact is
+      // what gets compared after the fact.
+      const inert = rerankArmOptions({
+        reranker: { name: 'r' },
+        candidateDiscrimination: false,
+        retrievalSides: true,
+      });
+      expect(inert.retrievalSides).toBe(true);
+      expect('candidateDiscrimination' in inert).toBe(false);
+    });
+
+    it('cannot be omitted by a forgetful caller, because the field is required', () => {
+      // The type is the guard, so this asserts the guard exists rather than that
+      // a runtime check fires. A defaulted `false` would be the §13 failure mode:
+      // an arm believing itself the feature arm while running the control
+      // configuration, producing two byte-identical arms and a `no-move` verdict
+      // that describes the dispatch instead of the feature.
+      const source = readFileSync(new URL('../bench-arm-options.ts', import.meta.url), 'utf8');
+      expect(source).toMatch(/readonly retrievalSides: boolean;/);
+      expect(source).not.toMatch(/readonly retrievalSides\?: boolean;/);
+    });
   });
 });
