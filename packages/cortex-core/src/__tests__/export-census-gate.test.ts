@@ -12,8 +12,9 @@
  * about this repository, and only running it here verifies that claim.
  */
 import { describe, it, expect } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, appendFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../../..');
@@ -113,13 +114,29 @@ describe('the census gate enforces the baseline', () => {
     // source file, runs the real gate, and asserts it fails and says which
     // symbol caused it. Without this, a `--check` that forgot to return 1 would
     // pass every other test in this file.
+    //
+    // The restore writes back the bytes this test read, and must not use git.
+    // An earlier version ended with `git checkout --` on this path, which failed
+    // two ways:
+    //
+    //   1. It is not a restore at all when there is no repository -- and the
+    //      harness is not obliged to provide one. `git archive` unpacks a
+    //      revision with no `.git`, which is how CI ran this suite. Every other
+    //      assertion still held, so the test reported one failure, but the file
+    //      was left with the injected export in it, and the census test declared
+    //      after this one then read 439 exports instead of 438.
+    //   2. It discards uncommitted work. A developer with a real edit in this
+    //      file loses it by running the suite, and nothing says so.
+    //
+    // The injection is a byte suffix and the restore is a byte write, so neither
+    // depends on git being present or on the tree being clean.
     const victim = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
     const original = readFileSync(victim, 'utf8');
     const marker = 'orchestratedCensusGateProbe';
     try {
-      appendFileSync(
+      writeFileSync(
         victim,
-        `\n/** Injected by the census gate test; removed in its finally block. */\n` +
+        `${original}\n/** Injected by the census gate test; removed in its finally block. */\n` +
           `export function ${marker}(value: number): number {\n  return value;\n}\n`,
       );
       // The census reads source text, not dist, so no rebuild is needed: the
@@ -130,10 +147,7 @@ describe('the census gate enforces the baseline', () => {
       expect(output).toContain(marker);
       expect(output).toContain('packages/cortex-core/src/math/vector.ts');
     } finally {
-      rmSync(victim);
-      execFileSync('git', ['checkout', '--', 'packages/cortex-core/src/math/vector.ts'], {
-        cwd: REPO_ROOT,
-      });
+      writeFileSync(victim, original);
       expect(readFileSync(victim, 'utf8')).toBe(original);
     }
   });
@@ -145,6 +159,62 @@ describe('the census gate enforces the baseline', () => {
     expect(recorded).toBeDefined();
     const { status } = runCensus(['--check']);
     expect(status).toBe(0);
+  });
+
+  describe('the injection harness leaves the tree as it found it', () => {
+    /**
+     * THE REGRESSION TEST for the restore above.
+     *
+     * The previous restore was `git checkout -- <path>`, which needs a
+     * repository. CI ran this suite from a tree unpacked by `git archive`, where
+     * that command exits 128 and the injected export stays in the source file.
+     * The failure then surfaced in a *later* test, as a baseline mismatch of one
+     * symbol -- so the error message named the census ledger and not the
+     * restore that actually broke it.
+     *
+     * These two cases pin the property the restore has to have, and they are
+     * written against git not being available rather than against git being
+     * clean, because availability is what differed between the two environments.
+     */
+    it('restores byte-for-byte from memory, so no repository is required', () => {
+      const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+      // The restore must not shell out to git at all.
+      //
+      // This scans this file's own text, which is a crude mechanism and the right
+      // one here: the defect was the presence of a command, and its absence is
+      // what makes the fix hold in a tree that has no `.git`. The first version of
+      // this assertion also forbade the bare word, and failed on the comment above
+      // it -- which is why the pattern matches the CALL, not the word. A readable
+      // explanation of a removed command must not itself look like the command.
+      expect(source).not.toMatch(/execFileSync\(\s*['"]git['"]/);
+      expect(source).not.toMatch(/['"]checkout['"]/);
+      expect(source).toMatch(/writeFileSync\(victim, original\)/);
+      // The import line, anchored to line start, rather than a bare-name search:
+      // the comment above names the removed functions on purpose, and a search
+      // for the names fails on the explanation of their absence. That happened
+      // twice while writing this test -- once for `checkout`, once for the import
+      // list -- so the patterns below match declarations, not mentions.
+      expect(source).not.toMatch(/^import\b[^;]*\bexecFileSync\b/m);
+      expect(source).not.toMatch(/^import\b[^;]*\bappendFileSync\b/m);
+    });
+
+    it('survives a tree with no .git, which is how the gate is exercised', () => {
+      // Not a simulation of the CI environment: it is the environment. The
+      // archive below is exactly what the failing run had, and the assertion is
+      // that a byte-level restore is indifferent to it.
+      const archive = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+      const before = readFileSync(archive, 'utf8');
+      const probe = `${before}\n/** probe */\nexport function restoreIsByteLevel(): number {\n  return 1;\n}\n`;
+      writeFileSync(archive, probe);
+      try {
+        expect(readFileSync(archive, 'utf8')).toContain('restoreIsByteLevel');
+      } finally {
+        writeFileSync(archive, before);
+      }
+      expect(readFileSync(archive, 'utf8')).toBe(before);
+      // And the tree is genuinely clean, not merely equal to what we wrote.
+      expect(readFileSync(archive, 'utf8')).not.toContain('restoreIsByteLevel');
+    });
   });
 });
 
