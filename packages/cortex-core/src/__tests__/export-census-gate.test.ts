@@ -291,3 +291,87 @@ describe('the baseline is a ledger, not a rubber stamp', () => {
     expect(sites).toBe(orphaned);
   });
 });
+
+describe('the census CLI survives output that is larger than a pipe buffer', () => {
+  /**
+   * THE REGRESSION TEST for the truncated-report defect.
+   *
+   * The CLI ended with `process.exit(main())`. `process.exit` does not wait for
+   * stdout to drain, and stdout is asynchronous whenever it is a pipe, so the
+   * tail of any payload larger than the pipe buffer was discarded. Measured
+   * before the fix, on this repository:
+   *
+   *   --json to a file           172475 bytes
+   *   --json piped to `cat`      131072 bytes   <- truncated mid-string
+   *   --json piped to `wc -c`     65536 bytes
+   *
+   * `--json` output was therefore not parseable, and `--check` could lose the
+   * line that names the new orphan. A truncated report is not a smaller report:
+   * it is a report that says something different, and in the gate's case it says
+   * the reassuring thing.
+   *
+   * The defect is invisible without a pipe, because a terminal and a regular file
+   * are written synchronously. That is why this is tested through a real pipe
+   * with a reader that does not consume everything at once, rather than through
+   * `spawnSync`, which hands back a buffer the child has already finished
+   * writing into.
+   */
+  it('emits the whole --json payload when the reader is a pipe', () => {
+    const shell = (command: string): { status: number | null; stdout: string } => {
+      const result = spawnSync('bash', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8' });
+      return { status: result.status, stdout: result.stdout };
+    };
+
+    // `cat` is a reader that does not drain the pipe eagerly, so it reproduces
+    // the CI shape, where the output went through `tee` and was cut at a buffer
+    // boundary. The byte count is compared against the same command writing to a
+    // file, so the test states the property -- a pipe must not change the output
+    // -- without hard-coding a size that will drift as the tree grows.
+    const direct = shell('node tools/export-census.mjs --json | wc -c');
+    const toFile = shell(
+      'node tools/export-census.mjs --json > /tmp/census-direct.json && wc -c < /tmp/census-direct.json',
+    );
+    expect(direct.status).toBe(0);
+    expect(toFile.status).toBe(0);
+    // Before the fix this pair was 8192 and 172475 on this machine: the pipe
+    // dropped 96% of the payload, and the truncation point moves with the
+    // reader's buffer size, so no smaller payload is safe on another host.
+    expect(Number(direct.stdout.trim())).toBe(Number(toFile.stdout.trim()));
+
+    // And the piped payload is parseable, which the truncation made false. This
+    // is the assertion with teeth: it is what a caller of `--json` actually needs.
+    const piped = shell('node tools/export-census.mjs --json | cat');
+    const payload = JSON.parse(piped.stdout) as { orphans: string[] };
+    expect(payload.orphans.length).toBeGreaterThan(0);
+  });
+
+  it('still reports the new orphan through a pipe, and still exits 1', () => {
+    // The gate's refusal has to arrive intact through the same pipe that used to
+    // eat it, because losing the refusal is the failure mode that matters: CI
+    // reads the exit status AND the named symbol, and a silent truncation gives
+    // a red run whose message does not say why.
+    const victim = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+    const original = readFileSync(victim, 'utf8');
+    const marker = 'pipedCensusGateProbe';
+    try {
+      writeFileSync(
+        victim,
+        `${original}\n/** Injected by the pipe regression test; removed in its finally block. */\n` +
+          `export function ${marker}(value: number): number {\n  return value;\n}\n`,
+      );
+      const result = spawnSync(
+        'bash',
+        ['-c', 'node tools/export-census.mjs --check 2>&1 | cat; exit ${PIPESTATUS[0]}'],
+        { cwd: REPO_ROOT, encoding: 'utf8' },
+      );
+      // `${PIPESTATUS[0]}` is the CLI's status, not `cat`'s: the point is that the
+      // gate keeps its non-zero exit through a pipeline, which is how CI runs it.
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(`${marker}`);
+      expect(result.stdout).toContain('1 NEW orphan(s) not in the baseline');
+    } finally {
+      writeFileSync(victim, original);
+      expect(readFileSync(victim, 'utf8')).toBe(original);
+    }
+  });
+});

@@ -143,4 +143,25 @@ function main() {
   return 1;
 }
 
-process.exit(main());
+// The exit code is set, not forced, and the difference is not cosmetic.
+//
+// This was `process.exit(main())`. That call terminates the process without
+// waiting for stdout to drain, and stdout is asynchronous whenever it is a pipe.
+// So any run whose output exceeded the pipe buffer -- on Linux, one page or 64KiB
+// depending on how the reader drains it -- was cut off mid-write:
+//
+//   $ node tools/export-census.mjs --json > f   # 172475 bytes
+//   $ node tools/export-census.mjs --json | cat # 131072 bytes, last line truncated
+//   $ node tools/export-census.mjs --json | wc  #  65536 bytes
+//
+// The `--json` payload is malformed as a result, and `--check` could lose the
+// very line naming the new orphan, so the gate would print a truncated report
+// and still be read as "no new orphans". CI pipes this output through `tee`,
+// which is how the defect surfaced, but the defect is here and not in the pipe:
+// an unpiped terminal writes synchronously and hides it.
+//
+// Setting `process.exitCode` lets Node exit on its own once the write queue is
+// drained, which it does with the same status the old code passed to `exit`.
+// It is the last statement in the file for that reason: nothing may run after it
+// that assumes the process is already gone.
+process.exitCode = main();

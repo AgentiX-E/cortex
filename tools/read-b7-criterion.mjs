@@ -168,4 +168,8 @@ function main() {
   return 0;
 }
 
-process.exit(main());
+// See the longer note at the end of export-census.mjs. `process.exit(code)` does
+// not wait for stdout to drain, so piping more than a buffer's worth of output
+// truncates it. This tool prints one verdict block per question, which exceeds
+// that on a full run, so it carries the same latent defect.
+process.exitCode = main();

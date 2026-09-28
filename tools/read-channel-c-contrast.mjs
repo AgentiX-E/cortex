@@ -122,4 +122,8 @@ function main() {
   return 0;
 }
 
-process.exit(main());
+// See the longer note at the end of export-census.mjs. `process.exit(code)` does
+// not wait for stdout to drain, so piping more than a buffer's worth of output
+// truncates it. This tool reports both fixtures, which is enough output to hit
+// that bound, so it carries the same latent defect.
+process.exitCode = main();
