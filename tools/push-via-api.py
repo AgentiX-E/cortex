@@ -24,8 +24,28 @@ import time
 import urllib.error
 import urllib.request
 
-REPO = "AgentiX-E/cortex"
-BRANCH = "master"
+# The repo is derived from `origin`, not written down here.
+#
+# It was the literal "AgentiX-E/cortex", and running this script from a checkout
+# of cortex-docs -- which has its own `origin` and its own token -- would have
+# pushed cortex-docs content into the cortex repository. The push was killed
+# before it completed, and the fix is to read the remote rather than to remember
+# to edit a constant: the wrong repo is now unrepresentable, not merely
+# discouraged.
+def _origin() -> tuple[str, str]:
+    for line in subprocess.run(
+        ["git", "remote", "get-url", "origin"], check=True, capture_output=True, text=True
+    ).stdout.splitlines():
+        url = line.strip()
+        if "github.com" in url:
+            path = url.split("github.com", 1)[1].lstrip(":/").removesuffix(".git")
+            owner, _, name = path.partition("/")
+            if owner and name:
+                return f"{owner}/{name}", "master"
+    sys.exit("origin is not a github.com remote; refusing to guess a repository")
+
+
+REPO, BRANCH = _origin()
 
 
 def token() -> str:
