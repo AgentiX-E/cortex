@@ -11,7 +11,13 @@
 import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { fuseRerank, type RerankScoreFn } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
-import { CANDIDATE_DISCRIMINATION_INSTRUCTION } from './candidate-context.js';
+import {
+  CANDIDATE_DISCRIMINATION_INSTRUCTION,
+  discriminateContext,
+  renderDiscriminatedContext,
+  retrievalCandidateSides,
+  type TurnLike,
+} from './candidate-context.js';
 import {
   expandContextWindowBounded,
   expandContextWindowBySession,
@@ -147,6 +153,30 @@ export type NaturalLanguageMemorySystemOptions = {
    * that are not present is text the model has to read and discard.
    */
   candidateDiscrimination?: boolean;
+  /**
+   * Supply the QA path with the ANNOTATED context, using candidate sides derived
+   * from the retrieval result rather than from the ground truth.
+   *
+   * Roadmap measure B7, and the producer the feature has been missing. It is not
+   * a switch that changes the prompt text; it is the missing half of the pair,
+   * because `renderDiscriminatedContext` is the only thing that writes
+   * ` [candidateCluster: N]` into a turn and nothing in production has ever
+   * called it. With `candidateDiscrimination` on and this off, the reader is told
+   * to choose between labelled candidates while the context carries no labels.
+   *
+   * Off by default, and the default must stay off: an A/B that is not measuring
+   * this must not have its context rewritten, and the annotation is a claim about
+   * which turns discuss which candidate -- a claim that has to be earned per
+   * question, not applied globally.
+   *
+   * Deliberately NOT a `groundTruth` field. The sides come from the retrieved
+   * turns and, when the baseline has one, its answer; both are things the system
+   * already has at inference time. A ground-truth input would make every arm that
+   * set it measure a system no deployment can reproduce, because at inference
+   * time the truth is exactly what is unknown -- that is why the question is
+   * being asked. See docs/16.3 and 16.6.3.
+   */
+  retrievalSides?: boolean;
   /** Per-session character budget when aggregating sessions (default 2000). */
   maxSessionChars?: number;
   /** Per-turn character budget for the single-session path (default 2000). */
@@ -510,6 +540,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       parseQaAnswer,
       expansionQueries,
       this.options.abstainThreshold,
+      undefined,
+      true,
+      hits,
     );
   }
 
@@ -594,6 +627,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       parseQaAnswer,
       expansionQueries,
       this.options.abstainThreshold,
+      undefined,
+      true,
+      hits,
     );
   }
 
@@ -672,6 +708,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       parseQaAnswer,
       expansionQueries,
       this.options.abstainThreshold,
+      undefined,
+      true,
+      hits,
     );
   }
 
@@ -743,6 +782,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       this.options.abstainThreshold,
       undefined,
       false,
+      hits,
     );
   }
 
@@ -777,6 +817,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       parseRecommendationAnswer,
       expansionQueries,
       this.options.abstainThreshold,
+      undefined,
+      true,
+      hits,
     );
   }
 
@@ -826,6 +869,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       parseQaAnswer,
       expansionQueries,
       this.options.abstainThreshold,
+      undefined,
+      true,
+      hits,
     );
   }
 
@@ -1048,6 +1094,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
           }
         : undefined,
       abstentionRetryAllowed,
+      // No turns: this path retrieves SESSIONS, not turns, so its hits carry a
+      // `sessionIndex` and a joined session text rather than one turn per hit.
+      // The annotation labels individual turns, and a joined session is not one,
+      // so there is nothing here to label. Omitted deliberately rather than
+      // adapted -- the aggregation prompt lists items rather than selecting a
+      // value among competing candidates, so B7 does not apply to it either.
     );
   }
 
@@ -1250,6 +1302,38 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     return max;
   }
 
+  /**
+   * Render `retrieved` with candidate-cluster labels, when the B7 producer is on
+   * and the retrieval actually contains a competition.
+   *
+   * Returns the input BYTE-IDENTICAL otherwise, which is the load-bearing part:
+   * an annotation that always fired would rewrite every prompt and turn a
+   * targeted reader fix into a global one. The measurement that justifies the
+   * annotation is per-question, so a question with one candidate leaves the
+   * context alone.
+   *
+   * The sides come from the retrieval result. `answer` is not passed even when
+   * the caller has one, and that is a deliberate narrowing rather than an
+   * oversight: on this path the answer is what the system is ABOUT to produce, so
+   * it does not exist yet. Using it would mean annotating with a value the arm
+   * has not committed to, which is oracle-assisted by the back door. The
+   * retrieval alone is enough -- measured, it separates a two-candidate
+   * question into `cargo bike` and `racing bike` (docs/16).
+   */
+  private annotateWithCandidateSides(
+    retrieved: string,
+    turns: readonly TurnLike[] | undefined,
+  ): string {
+    if (this.options.retrievalSides !== true || turns === undefined || turns.length === 0) {
+      return retrieved;
+    }
+    const sides = retrievalCandidateSides({ question: '', retrieved: turns });
+    if (sides.length < 2) return retrieved;
+    const { clusters } = discriminateContext(turns, { question: '', sidesOverride: sides });
+    if (clusters.length === 0) return retrieved;
+    return renderDiscriminatedContext(retrieved, clusters, { question: '' });
+  }
+
   private async respondWith(
     question: string,
     top1Score: number,
@@ -1275,6 +1359,18 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
      * spend a model call to convert right answers into wrong ones.
      */
     abstentionRetry = true,
+    /**
+     * The admitted turns `retrieved` was rendered from, in the order they appear
+     * in it. Only the B7 annotation reads them, and it cannot use the string:
+     * `retrieved` has already been through session completion and truncation, so
+     * a newline in it is not a turn boundary. Passing the turns keeps the
+     * annotation aligning on the same units the renderer splits on.
+     *
+     * Omitted by paths that do not build a turn list; the annotation then has
+     * nothing to cluster and declines, which is the correct outcome rather than
+     * an error.
+     */
+    turns?: readonly TurnLike[],
   ): Promise<Answer> {
     const abstentionEnabled = this.options.enableAbstention !== false;
     // The path permits the pass; the caller may still forbid it. `runAbstention-
@@ -1305,9 +1401,17 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // option only existed on `QaPromptOptions`, so no system configuration could
     // reach it -- the option was present on the prompt builder and unreachable
     // from the class that calls it.
+    //
+    // The annotation is applied to the context BEFORE the builder sees it, and
+    // only when `retrievalSides` is on. Without it the reader receives an
+    // instruction to pick between labelled candidates while the context carries
+    // no labels -- the instruction is then text the model must read and discard.
+    // The two options are independent so an A/B can isolate the instruction from
+    // the labels; see `annotateWithCandidateSides`.
+    const context = this.annotateWithCandidateSides(retrieved, turns);
     const prompt = promptBuilder(
       question,
-      retrieved,
+      context,
       this.options.abstainToken,
       this.options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {},
     );
@@ -1398,7 +1502,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     if (parsed === null) {
       if (!abstentionEnabled) {
         this.emitTrace(question, top1Score, false, 'answered', {
-          retrieved,
+          retrieved: context,
           llmRaw: raw,
           answer: 'unknown',
           expansionQueries,
@@ -1407,7 +1511,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         return 'unknown';
       }
       this.emitTrace(question, top1Score, true, 'llm', {
-        retrieved,
+        retrieved: context,
         llmRaw: raw,
         answer: null,
         expansionQueries,
@@ -1416,7 +1520,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       return null;
     }
     this.emitTrace(question, top1Score, false, 'answered', {
-      retrieved,
+      retrieved: context,
       llmRaw: raw,
       answer: parsed,
       expansionQueries,

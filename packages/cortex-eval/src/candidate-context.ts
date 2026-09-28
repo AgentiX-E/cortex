@@ -149,6 +149,21 @@ export type DiscriminatedContextOptions = {
   readonly groundTruth?: string | number | null;
   /** The reader's answer. The other side of the candidate pair. */
   readonly answer?: string | number | null;
+  /**
+   * Pre-derived sides, used INSTEAD of deriving them from `groundTruth`/`answer`.
+   *
+   * Exists for the non-oracle channel. `groundTruth` is unknown at inference
+   * time -- that is why the question is being asked -- so an arm that clusters
+   * using it measures a system no deployment can reproduce. A caller that has
+   * derived its sides from the retrieval result supplies them here and passes no
+   * ground truth, which keeps the arm non-oracle while still giving the
+   * clustering the two sides it requires.
+   *
+   * Takes precedence when present, including when it is an empty list: an empty
+   * list means "the caller looked and found no competition", which is a decision
+   * and not the same as "the caller had no opinion".
+   */
+  readonly sidesOverride?: readonly (readonly string[])[];
 };
 
 /** The minimal turn shape the module needs. Deliberately not the retrieval hit. */
@@ -425,7 +440,11 @@ export function discriminateContext(
   turns: readonly TurnLike[],
   options: DiscriminatedContextOptions,
 ): DiscriminatedContext {
-  const sides = candidateSides(options);
+  // An explicit override wins, and is distinguished from "absent" by identity
+  // rather than by emptiness: `sidesOverride: []` is a caller reporting that it
+  // found no competition, which must not silently fall through to deriving sides
+  // from a ground truth the caller deliberately did not supply.
+  const sides = options.sidesOverride ?? candidateSides(options);
   if (sides.length < 2) {
     // One side means nothing competes, and the annotation would label every turn
     // that mentions one value while claiming to discriminate. Decline instead:
@@ -495,6 +514,181 @@ export function candidateSides(
   if (truthOnly.length > 0) sides.push(truthOnly);
   if (answerOnly.length > 0) sides.push(answerOnly);
   return sides;
+}
+
+/**
+ * Derive two competing candidate sides from the RETRIEVAL RESULT alone.
+ *
+ * This is the non-oracle channel, and it exists because the two obvious ones do
+ * not work (see docs/16 for the measurements):
+ *
+ *   - Deriving from `groundTruth` makes the arm oracle-assisted (docs/16.3).
+ *   - Deriving from the question returns ONE side with the candidates merged
+ *     (docs/16.4), so `discriminateContext` declines and the feature is inert.
+ *
+ * Both inputs here are available at inference time: `retrieved` is what the
+ * retriever returned and `answer` is what the baseline arm produced. NEITHER IS
+ * TRUTH, which is the property that makes an A/B run this way a measurement of a
+ * deployable system. `answer` does not violate this -- it is the system's own
+ * output, not the dataset's ground truth.
+ *
+ * How the sides are found
+ * -----------------------
+ * A candidate's identity is usually a MULTI-WORD span, and this is the fact that
+ * makes a bag-of-words derivation fail. Measured on the fixture:
+ *
+ *   "I took the cargo bike to the coast last week."   -> took, cargo, bike, coast, last, week
+ *   "I rode the racing bike to the coast for the race." -> rode, racing, bike, coast, race
+ *
+ * `bike` and `coast` are shared by both turns while `cargo` and `racing` are the
+ * discriminators. So the mechanism is: find two-word spans that RECUR across
+ * turns -- `cargo bike` and `racing bike` each appear twice -- and treat the
+ * modifier as the candidate's identity. Requiring recurrence is what separates a
+ * candidate from an incidental collocation, and it needs no vocabulary list.
+ *
+ * @param input `retrieved` are the turns; `question` is accepted for a
+ *   consistent call shape but is not used to form a side, because the framing
+ *   terms a question reduces to match nothing (docs/16.4).
+ * @param input.answer the baseline arm's answer, used to recognise which
+ *   recurring span the system already committed to. It never forms a side alone.
+ * @returns zero, one or two sides. Fewer than two means no competition was
+ *   found and the caller should decline to annotate -- guessing a pair would
+ *   assert a choice the retrieval does not contain.
+ */
+export function retrievalCandidateSides(input: {
+  readonly question: string;
+  readonly retrieved: readonly TurnLike[];
+  readonly answer?: string | number | null;
+}): readonly string[][] {
+  // Assistant turns are excluded because `sideForTurn` excludes them: a side
+  // built only from the assistant's vocabulary would match no turn and produce
+  // an empty cluster.
+  const userTurns = input.retrieved.filter((turn) => parseTurn(turn.text).role !== 'assistant');
+  if (userTurns.length === 0) return [];
+
+  // Recurring two-word spans, as modifier -> the turns it appears in.
+  const spans = new Map<string, Set<number>>();
+  for (const turn of userTurns) {
+    const terms = contentTerms(parseTurn(turn.text).content);
+    for (let i = 0; i + 1 < terms.length; i += 1) {
+      const modifier = terms[i]!;
+      const head = terms[i + 1]!;
+      const key = `${modifier} ${head}`;
+      const seen = spans.get(key) ?? new Set<number>();
+      seen.add(turn.index);
+      spans.set(key, seen);
+    }
+  }
+
+  // Group spans by their HEAD word: "cargo bike" and "racing bike" compete
+  // because they are alternatives for the same slot.
+  //
+  // Recurrence is required of the SLOT, not of each modifier, and getting that
+  // backwards was the first implementation's bug. Measured on the fixture, only
+  // `racing bike` recurs across turns while `cargo bike` appears once, so a
+  // filter applied before grouping discards the very alternative that makes the
+  // pair. What recurrence establishes is that the head names a real slot -- a
+  // word several turns use to talk about the same thing -- and once the slot is
+  // established, every modifier filling it is a candidate, however often it
+  // appears.
+  const byHead = new Map<string, { modifier: string; turns: Set<number> }[]>();
+  for (const [key, turns] of spans) {
+    // `head === undefined` is not checked because it cannot happen: every key was
+    // built above as two content terms joined by a space, and `contentTerms`
+    // never emits an empty term. A guard here would be a branch no input can
+    // take, which reads as safety and is only a second copy of the invariant.
+    const space = key.indexOf(' ');
+    const head = key.slice(space + 1);
+    const group = byHead.get(head) ?? [];
+    group.push({ modifier: key.slice(0, space), turns });
+    byHead.set(head, group);
+  }
+
+  // A slot competes when it holds at least two modifiers AND its alternatives
+  // actually diverge, which is established by RECURRENCE somewhere in the slot.
+  //
+  // Recurrence is required of the SLOT, not of each modifier, and it is checked
+  // in BOTH directions -- a modifier that recurs, or a head seen more than once.
+  // Getting either wrong has a measured cost:
+  //
+  //   - Filtering before grouping discarded `cargo bike` (mentioned once) on the
+  //     fixture, leaving the slot with one alternative and returning [] -- the
+  //     feature switching itself off.
+  //   - Anchoring on a recurring MODIFIER alone dropped a three-alternative bike
+  //     slot (`cargo`/`racing`/`touring`, each once) in favour of a two-
+  //     alternative car slot (`blue` twice, `red` once), so the retrieval raised
+  //     a three-way choice and the annotation reported the two-way one.
+  //
+  // The head count is what the second case needs: `bike` appears in three turns
+  // and `car` in three, but `bike` is the slot with the most alternatives, and
+  // the number of turns mentioning the head is a measure of how much the
+  // retrieval is ABOUT that slot. Counting the head and the modifiers together
+  // means the requirement is satisfied by either kind of evidence, which is the
+  // property both failures were missing.
+  const competitive = [...byHead].filter(
+    ([, group]) =>
+      group.length >= 2 &&
+      (group.some((entry) => entry.turns.size >= 2) || headTurnCount(group) >= 2),
+  );
+
+  // The slot with the most competing modifiers is the one the question is about,
+  // because a question that names alternatives produces several of them. Ties go
+  // to the alphabetically first head so the choice does not depend on iteration
+  // order.
+  const best = competitive.sort((a, b) =>
+    a[1].length === b[1].length ? (a[0] < b[0] ? -1 : 1) : b[1].length - a[1].length,
+  )[0];
+  if (best === undefined) return [];
+  const [headWord, group] = best;
+
+  // At most two sides, because `discriminateContext` labels a binary choice and
+  // a third alternative would make a label ambiguous. The answer, when it names
+  // one of the modifiers, decides which two -- otherwise the first two by
+  // alphabetical modifier keep the result deterministic.
+  const ordered = [...group].sort((a, b) => (a.modifier < b.modifier ? -1 : 1));
+  const answerTerms = new Set(contentTerms(input.answer));
+  const chosen = ordered.length <= 2 ? ordered : pickWithAnswer(ordered, answerTerms);
+
+  // Each side is the modifier plus the shared head, so a turn is matched on the
+  // full candidate ("cargo bike") rather than on a word the candidates share.
+  return chosen.map((entry) => [entry.modifier, headWord]);
+}
+
+/**
+ * How many distinct turns mention a slot, however they spell the alternative.
+ *
+ * A slot is "discussed" when more than one turn names SOMETHING that fills it,
+ * even if each alternative is named once. That is the evidence a recurring
+ * modifier provides and the evidence a three-way bike slot provides without any
+ * modifier recurring -- the retrieval returns to the slot even though it never
+ * returns to one modifier.
+ */
+function headTurnCount(group: readonly { turns: Set<number> }[]): number {
+  const turns = new Set<number>();
+  for (const entry of group) {
+    for (const index of entry.turns) turns.add(index);
+  }
+  return turns.size;
+}
+
+/** Narrows more than two alternatives to the two the answer points at. */
+function pickWithAnswer(
+  ordered: readonly { modifier: string; turns: Set<number> }[],
+  answerTerms: ReadonlySet<string>,
+): { modifier: string; turns: Set<number> }[] {
+  const mentioned = ordered.filter((entry) => answerTerms.has(entry.modifier));
+  // Strictly one, not "at least one". A hedged answer naming two alternatives is
+  // not a commitment, and treating it as one makes the surviving pair depend on
+  // the ORDER OF THE HEDGE: measured, 'racing and touring bike' returns
+  // [racing, cargo] under `>= 1` but [cargo, racing] under `=== 1`.
+  if (mentioned.length !== 1) return ordered.slice(0, 2);
+  // The partner always exists: this is only called with more than two
+  // alternatives, so some entry differs from the winner. Searching for it rather
+  // than indexing keeps the winner out of its own pair without needing a guard
+  // for a case that cannot arise.
+  const winner = mentioned[0]!;
+  const partner = ordered.find((entry) => entry.modifier !== winner.modifier)!;
+  return [winner, partner];
 }
 
 /**

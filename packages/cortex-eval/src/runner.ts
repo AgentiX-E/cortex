@@ -135,6 +135,27 @@ export type BenchmarkRunnerOptions = {
    * turn it on. See `runRerankAblation`'s test suite for the reachability proof.
    */
   candidateDiscrimination?: boolean;
+  /**
+   * Also build the candidate-cluster LABELS the instruction refers to, deriving
+   * the competing sides from the retrieval result.
+   *
+   * The instruction and the labels are one intervention split across two
+   * switches, and either alone is inert in a different way. The instruction
+   * without labels tells the reader to choose between marked candidates that are
+   * not marked; the labels without the instruction mark turns and never say what
+   * a mark means. This option is the half that was missing -- `discriminateContext`
+   * and `renderDiscriminatedContext` had no production caller at all before it, so
+   * the feature could not fire however it was configured.
+   *
+   * Forwarded to the FEATURE only, for the same reason as `reranker` and
+   * `candidateDiscrimination`: a control arm carrying the feature measures
+   * nothing.
+   *
+   * The sides come from the retrieval result, never from the question's answer.
+   * At inference time the truth is what is unknown, so deriving sides from it
+   * would make the arm a measurement of a system no deployment can reproduce.
+   */
+  retrievalSides?: boolean;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
   /**
@@ -259,6 +280,7 @@ export async function runNaturalLanguageBenchmark(
     // off, matching `candidateDiscrimination` on the system options, which is
     // read with `=== true`.
     ...(options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {}),
+    ...(options.retrievalSides === true ? { retrievalSides: true } : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);
@@ -1047,6 +1069,7 @@ export async function runRerankAblation(
     // untouched reference, and a control arm carrying the feature produces a
     // delta of zero by construction.
     ...(options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {}),
+    ...(options.retrievalSides === true ? { retrievalSides: true } : {}),
   });
 
   const judge = options.judge ?? createLlmJudge(llm);
