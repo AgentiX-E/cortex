@@ -298,3 +298,144 @@ than membership in a hard-coded list.
 > repository had already used that channel for artifact fetches
 > (`tools/fetch-artifact.py`, `docs/VERDICT-B1-RERANKING.md`) without drawing the
 > general conclusion from it.
+
+## 7. Condition A is recoverable in one command, and §5 did not say so
+
+§5 step 3 says "do not re-dispatch; do local work; retry the network, which is
+waiting on the resolver". That is accurate about the cause and unhelpful about
+the remedy. It reads as "wait", and this section records that waiting is not
+required: the repository already contains the fix, and running it restores every
+pinned host in under ten seconds.
+
+### 7.1 The remedy
+
+```sh
+python3 tools/pin-github-hosts.py
+```
+
+It resolves the repository's hosts over DoH (which is not affected, because the
+pollution is per-name and `dns.alidns.com` answers normally), writes them into
+`/etc/hosts` under a `# doh-pin` marker, and verifies the result **through the
+system resolver** — the layer that was broken. It is safe to re-run: it strips
+its own previous lines first and takes the union with what was already pinned, so
+`main(['nodejs.org'])` does not silently unpin `api.github.com`.
+
+Each address is accepted only after it answered **three real HTTPS requests**.
+The acceptance test is a measured success rate, not a certificate read and not a
+single sample -- see §7.4, which is the correction of a wrong conclusion this
+section's first draft drew from exactly one attempt.
+
+### 7.2 Measurement, 2026-09-29 ~07:20 +08:00 (condition A, third occurrence)
+
+This is the occurrence that produced §7. The resolver was still handing out the
+synthetic range, and the pin lifted it immediately.
+
+**Before**, resolver answer and the resulting failure:
+
+```
+getent hosts api.github.com  ->  198.18.0.5
+curl https://api.github.com/rate_limit
+  -> curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.github.com:443
+  -> HTTP 000
+```
+
+`198.18.0.5` is inside `198.18.0.0/15`, so §3.3 classifies this as condition A
+without any further measurement.
+
+**The control, run before the conclusion:** real addresses on GitHub's published
+ranges accepted TCP immediately, while the synthetic answer did not.
+
+```
+140.82.112.6:443 OPEN    140.82.113.6:443 OPEN
+140.82.114.6:443 OPEN    140.82.121.6:443 OPEN
+```
+
+**After pinning**, same command as before:
+
+```
+curl https://api.github.com/rate_limit
+  -> HTTP:200   time:0.677175s
+```
+
+So the failure and the recovery are 0.68s apart, on the same host, with no
+change other than the resolver answer. **Nothing about the network was ever
+broken.**
+
+### 7.3 What this changes
+
+| Claim | Status after §7 |
+| --- | --- |
+| "egress is down" | wrong; the real endpoints answer in under a second |
+| "wait for the resolver" | not necessary; `pin-github-hosts.py` bypasses it |
+| "a `000` means retry later" | a `000` on a synthetic answer means **pin, then proceed** |
+| §5 step 3 ("do local work; retry the network") | superseded for pinned hosts: pin first, then push |
+
+The §5 procedure is left in place because its diagnosis is correct and its
+"do not re-dispatch" instruction is still right — a re-dispatch would run on
+GitHub's runners and would not address the artifact fetch. What §5 got wrong is
+the cost: it presents condition A as a wait, when for every host this repository
+uses it is a one-command fix.
+
+> **The lesson, in the shape this file's §5 already uses:** a correct diagnosis
+> that stops at "the cause is X" and omits "and here is the remedy" is
+> operationally the same as no diagnosis. The defect log has the matching entry —
+> knowing which of two causes you are looking at is only half the work; the other
+> half is that one of them is fixable and the write-up must say so.
+
+### 7.4 Correction: the acceptance test is a rate, and this section got that wrong first
+
+§7.1's first draft claimed the DoH answer was itself blackholed, on this
+measurement:
+
+```
+github.com -> 20.205.243.166 (DoH)   tcp OPEN, TLS fails at exactly 5.001s
+github.com -> 140.82.112.3   (cert)  tcp OPEN, info/refs returns 200 in 0.73s
+```
+
+That conclusion was wrong, and the way it was wrong is worth recording because
+it is the same error this file's §5 warns about, committed by §7 while warning
+about it.
+
+**One more request to each address reversed the result:**
+
+```
+20.205.243.166: handshake OK, issuer=Sectigo Limited
+   first byte of response: b'HTTP/1.1 200 OK\\r\\nDate: M'
+140.82.112.3: handshake OK, issuer=Sectigo Limited
+   TimeoutError: The read operation timed out
+```
+
+The same two addresses, minutes apart, exchanged which one worked. The quantity
+being sampled is **intermittent**, so a single probe of it says nothing. Three
+attempts per address, run concurrently, gave the actual shape:
+
+| Host | Address | Success |
+| --- | --- | --- |
+| `api.github.com` | `20.205.243.168` (DoH) | 3/3 |
+| `api.github.com` | `140.82.112.6` … `121.6` | 3/3 each |
+| `github.com` | `20.205.243.166` (DoH) | 2/3 |
+| `github.com` | `20.205.243.167` | 2/3 |
+| `github.com` | `140.82.112.3`, `.113.3` | 3/3 |
+| `github.com` | `140.82.114.3` | 1/3 |
+
+And a later run of the same probe returned **3/3 for every address on every
+host**, including the DoH answers. So the population is not "good addresses and
+bad addresses"; it is a set that is mostly fine with a per-address success rate
+below 1 that moves with time.
+
+**What the script does about it.** `select()` ranks candidates by measured
+success over three attempts and prefers a candidate that answered every time. A
+single success no longer selects anything, which is what makes the earlier
+reversal impossible to repeat: `1/3` and `3/3` both used to read as "works".
+
+**Why the certificate first appeared to be the answer.** A handshake completes
+before any application data is sent, so `getpeercert()` succeeds against an
+endpoint that then drops the connection. That made the certificate test look like
+it discriminated -- and it did, on that one sample. It is a weaker test than an
+actual request, and `end_to_end_ok()` now does the actual request.
+
+> **The rule this section adds to §5's list.** When a quantity is intermittent,
+> n=1 is not a measurement of it. The first draft of §7 was written from two
+> single samples and drew the opposite conclusion from the second one -- and
+> both were honest reports of what a single probe saw. The failure was not a
+> misread result; it was treating one sample as the population.
