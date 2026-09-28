@@ -114,7 +114,24 @@ jobs:
         run: pnpm build
 
       - name: Verify library
-        run: pnpm check
+        run: |
+          set -o pipefail
+          pnpm check 2>&1 | tee check-output.log
+
+      # The job log is served from a host the development sandbox cannot reach,
+      # so a failing `Verify library` step reported only "the step exited
+      # non-zero". That is enough to know CI is red and not enough to know why,
+      # and the run in which this was written cost twelve dispatches to a
+      # hypothesis that could not be tested. `if: always()` because the artifact
+      # matters precisely when the step above failed; on success it is a few
+      # hundred lines of green.
+      - name: Upload check output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-output
+          path: check-output.log
+          if-no-files-found: ignore
 
       - name: Download LongMemEval-S
         env:
