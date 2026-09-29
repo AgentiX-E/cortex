@@ -439,3 +439,114 @@ actual request, and `end_to_end_ok()` now does the actual request.
 > single samples and drew the opposite conclusion from the second one -- and
 > both were honest reports of what a single probe saw. The failure was not a
 > misread result; it was treating one sample as the population.
+
+## 9. The pin script had been silently un-pinning, and the check could not see it
+
+Condition A returned on 2026-09-29 and §7's remedy was run, and then
+`git ls-remote` still failed:
+
+```
+gnutls_handshake() failed: The TLS connection was non-properly terminated.
+```
+
+The script reported `pinned 5 hosts` and `verified through the system resolver`.
+Both statements were true and the host was still broken.
+
+### 9.1 What `/etc/hosts` actually contained
+
+```
+140.82.112.6   api.github.com                     <- unmarked, from an earlier session
+140.82.112.3   github.com                         <- unmarked
+140.82.112.9   codeload.github.com                <- unmarked
+185.199.108.133 raw.githubusercontent.com         <- unmarked
+20.205.243.168 api.github.com  # doh-pin
+20.205.243.166 github.com      # doh-pin
+20.205.243.165 codeload.github.com # doh-pin
+185.199.110.133 objects.githubusercontent.com # doh-pin
+185.199.108.133 raw.githubusercontent.com      # doh-pin
+```
+
+`strip_previous_pins` removed only lines carrying `# doh-pin`, so the four
+unmarked rows survived every run. `getent hosts api.github.com` then printed
+**two** addresses:
+
+```
+20.205.243.168  api.github.com
+140.82.112.99   api.github.com     (the injected row, in the reproduction)
+```
+
+Two `A` records for one name is not a half-applied fix. The resolver returns
+both, the caller takes whichever it reaches first, and the observable symptom is
+an intermittent TLS failure on a name that resolves correctly -- **which is the
+same symptom as condition A itself**, and was diagnosed as condition A.
+
+### 9.2 The failure mode was worse than "stale rows survive"
+
+The old `strip_previous_pins` removed the MARKED line and kept the unmarked one.
+Measured against the real file:
+
+```python
+OLD strip kept the stale row?  True
+OLD count of api.github.com lines: 1
+```
+
+So re-running did not merely fail to clean up. It **replaced a verified address
+with an unverified one**: the `# doh-pin` row, which had been through
+`select()`'s three-attempt ranking, was deleted, and a hand-written address that
+had never been tested became the sole source. A tool that is run to repair something
+and leaves it in a state it never validated is worse than one that does nothing,
+because the run is reported as a success.
+
+### 9.3 Why the verification passed
+
+The post-write check asked **whether any reported address was real**:
+
+```python
+if any(is_synthetic(line.split()[0]) for line in output.splitlines() if line.split()):
+    print(f"FAIL  {name}: still synthetic after pinning")
+```
+
+With one real address and one stale real address, that is `False` and the check
+passes. The question has the wrong answer set: the property that matters is not
+"is a real address present" but **"how many sources does this name have"**, and
+the file had just been rewritten to hold exactly one per host. A second answer
+therefore means the pin is not in effect. It now counts and requires exactly one.
+
+### 9.4 The fix
+
+- `strip_previous_pins` removes **any** line naming a managed host, wherever it
+  came from. The name is read from the second field, so `ADDRESS host alias` is
+  recognised, and matched as a whole field, so `api.github.com.evil.example` is
+  not.
+- The verification counts resolvers and requires exactly one.
+- `existing_pins` parses the comment-free part of the line, so a truncated
+  `ADDRESS # doh-pin` no longer becomes a pin for a host named `#`.
+
+### 9.5 Why this survived: the tool had no tests and no CI
+
+`tools/` held nine Python scripts -- including the only publisher, the only
+dispatcher, and this resolver repair -- with **zero tests and no CI job**. The
+first tests (21, in `tools/__tests__/test_pin_github_hosts.py`) were written with
+this fix and wired into `pnpm check`, so the same command runs locally and on the
+runner.
+
+Adding them immediately found two more defects, both recorded here because each
+is the same shape -- a check that cannot see the thing it guards:
+
+1. **The dependency list was incomplete.** `pnpm check` on a clean runner failed
+   four `fetch-artifact.test.ts` cases with `expected 1 to be 2` and an empty
+   stdout. `fetch-artifact.py` imports `requests` at module scope, so it cannot
+   print its usage without it; the development sandbox happened to have
+   `requests` installed, so no local run could fail. Reproduced exactly with
+   `python3 -S tools/fetch-artifact.py`.
+2. **The test harness swallowed the evidence.** It captured stderr and never
+   printed it, so a pre-`main` import failure presented as a wrong exit code with
+   no message. This is the same class as §8's `process.exit` truncation and
+   the workflow's missing `tee`: the failure was visible to the machine and not
+   to the person reading the log.
+
+> **The rule this section adds.** A verification whose question admits an answer
+> set wider than the intended one will pass on broken input. "Is any address
+> real" is satisfied by a real address that is not the one you wrote. The check
+> has to ask about the property that was established, not a weaker consequence
+> of it.
