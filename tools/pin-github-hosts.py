@@ -118,6 +118,34 @@ DEFAULT_HOSTS = (
 HOSTS_FILE = Path("/etc/hosts")
 MARKER = "# doh-pin"
 
+# Every name this tool owns, whatever wrote the line. `strip_previous_pins` reads
+# this, so it must include anything an earlier run could have pinned -- which is
+# why it is derived from the defaults plus whatever the file currently pins, and
+# not a second hand-maintained list that would drift from the first.
+def managed_hosts(extra: tuple[str, ...] = ()) -> frozenset[str]:
+    return frozenset((*DEFAULT_HOSTS, *extra))
+
+
+def count_resolvers(getent_output: str, name: str) -> int:
+    """
+    How many `A` records the system resolver reports for `name`.
+
+    The post-pin check used to ask whether ANY reported address was real. That
+    question has the wrong answer set: with a stale pin in place the name resolves
+    to one real address AND another, so "is one of them real" is `True` while the
+    host is broken. Counting is what makes the defect visible, and the expected
+    count is exactly one -- a second record means the file was not fully cleaned.
+
+    Comment lines are ignored; `getent` prints none, but this also accepts a
+    hand-edited file's shape without silently counting a comment as an answer.
+    """
+    count = 0
+    for line in getent_output.splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) >= 2 and parts[1] == name:
+            count += 1
+    return count
+
 
 def resolve(name: str) -> list[str]:
     """A records for `name` per DoH. Raises on a non-answer rather than guessing."""
@@ -235,12 +263,6 @@ def select(name: str, proposed: list[str], previous: list[str], attempts: int = 
     return [best_address]
 
 
-def strip_previous_pins(text: str) -> str:
-    """Remove this tool's own lines, so re-running cannot stack duplicates."""
-    lines = [line for line in text.splitlines() if MARKER not in line]
-    return "\n".join(lines).rstrip("\n") + "\n"
-
-
 def existing_pins(text: str) -> dict[str, list[str]]:
     """
     Host -> addresses for pins already in the file.
@@ -249,17 +271,55 @@ def existing_pins(text: str) -> dict[str, list[str]]:
     run resolves only the names it was given. Without reading the old pins back,
     `main(['nodejs.org'])` would silently unpin `api.github.com` -- a fix that
     breaks the previous fix, which is worse than no re-run at all.
+
+    A marked line records a pin by DEFINITION, so the marker is the test for
+    membership. The fields are then parsed from the comment-free part, which is
+    the same parse `strip_previous_pins` uses: reading `parts[1]` off the raw line
+    turns `"ADDRESS # doh-pin"` -- a truncated write -- into a host named `"#"`,
+    and a pin for a host that cannot exist would be carried forward forever.
     """
     pins: dict[str, list[str]] = {}
     for line in text.splitlines():
         if MARKER not in line:
             continue
-        parts = line.split()
+        parts = line.split("#", 1)[0].split()
         if len(parts) < 2:
             continue
         address, name = parts[0], parts[1]
         pins.setdefault(name, []).append(address)
     return pins
+
+
+def strip_previous_pins(text: str) -> str:
+    """
+    Remove every line that names a managed host, so re-running cannot stack.
+
+    This used to remove only lines carrying `MARKER`, on the theory that the
+    marker is this tool's ownership record and unmarked lines belong to someone
+    else. The theory is wrong for the case that matters: a pin written by hand, or
+    by a revision of this tool predating the marker, is ALSO this tool's line in
+    effect -- it names the same hosts, it is there for the same reason, and it is
+    the reason the host resolves twice.
+
+    Two `A` records for one name is not a half-applied fix. `getent` returns both,
+    a caller takes whichever it tries first, and the observable result is an
+    intermittent `gnutls_handshake() failed` on a name that resolves correctly --
+    which is indistinguishable from a network outage, and was diagnosed as one.
+    Measured 2026-09-29: `/etc/hosts` carried four unmarked pins from an earlier
+    session alongside the current four.
+
+    The name is read from the SECOND whitespace field, so an aliased line
+    (`ADDRESS host alias`) is still recognised, and the match is on the whole
+    field, so `api.github.com.evil.example` is left alone.
+    """
+    keep = []
+    managed = managed_hosts(tuple(existing_pins(text).keys()))
+    for line in text.splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) >= 2 and parts[1] in managed:
+            continue
+        keep.append(line)
+    return "\n".join(keep).rstrip("\n") + "\n"
 
 
 def main() -> int:
@@ -304,6 +364,13 @@ def main() -> int:
     print(f"\npinned {len(resolved)} hosts in {HOSTS_FILE}")
 
     # Verify through the system resolver, which is the thing that was broken.
+    #
+    # Two questions, and the second is the one the earlier revision failed to
+    # ask. "Did a real address appear" passes while a stale second record is
+    # still there; "how many records did this name get" does not. Exactly one is
+    # the contract, because the file was just rewritten to contain exactly one
+    # line per host, so a second answer comes from somewhere this tool does not
+    # control and the pin is not in effect.
     for name in resolved:
         try:
             output = subprocess.run(
@@ -314,6 +381,14 @@ def main() -> int:
             return 1
         if any(is_synthetic(line.split()[0]) for line in output.splitlines() if line.split()):
             print(f"FAIL  {name}: still synthetic after pinning")
+            return 1
+        sources = count_resolvers(output, name)
+        if sources != 1:
+            print(
+                f"FAIL  {name}: resolves to {sources} address(es), expected 1 — another\n"
+                f"      source is overriding the pin. Look for an unmarked line for this\n"
+                f"      name elsewhere in {HOSTS_FILE}, or a resolver that precedes it."
+            )
             return 1
     print("verified through the system resolver")
     return 0

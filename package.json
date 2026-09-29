@@ -2,7 +2,7 @@
   "name": "@agentix-e/cortex",
   "version": "0.0.0",
   "private": true,
-  "description": "Cortex — a value-driven cognitive memory layer for AI agents, for Node.js and the browser",
+  "description": "Cortex \u2014 a value-driven cognitive memory layer for AI agents, for Node.js and the browser",
   "repository": {
     "type": "git",
     "url": "https://github.com/AgentiX-E/cortex.git"
@@ -20,7 +20,8 @@
     "clean": "pnpm -r clean",
     "census": "node tools/export-census.mjs",
     "census:check": "node tools/export-census.mjs --check",
-    "check": "pnpm build && pnpm lint && pnpm typecheck && pnpm census:check && pnpm test && pnpm format"
+    "check": "pnpm test:tools && pnpm build && pnpm lint && pnpm typecheck && pnpm census:check && pnpm test && pnpm format",
+    "test:tools": "python3 -m pytest tools/__tests__ -q"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

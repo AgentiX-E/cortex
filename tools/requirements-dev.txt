@@ -1,0 +1,12 @@
+# Test dependencies for the `tools/` Python scripts.
+#
+# These scripts are not incidental: `push-via-api.py` is the only path that can
+# publish to GitHub from this sandbox, `dispatch-b7-ab.py` is the only path that
+# can start a benchmark run, and `pin-github-hosts.py` is what makes either work
+# at all. All three were untested and absent from CI until this file existed,
+# which is how a defect that silently stops the pin from applying survived.
+#
+# Version ranges rather than pins: this is a test-only toolchain for a repository
+# whose runtime is Node, and an exact pin here would need a bot to keep it fresh.
+# The runner image supplies the interpreter; only the test framework is installed.
+pytest>=8,<10

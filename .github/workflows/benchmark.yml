@@ -96,6 +96,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The `tools/` Python scripts are part of the delivery path, not scratch
+      # work: one publishes to GitHub, one dispatches this workflow, and one makes
+      # the resolver usable. `pnpm check` runs their tests, so the interpreter and
+      # pytest have to be present before it does.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --requirement tools/requirements-dev.txt
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
