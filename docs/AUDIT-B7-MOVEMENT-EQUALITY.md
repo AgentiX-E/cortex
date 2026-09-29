@@ -414,3 +414,76 @@ The census also cannot currently express "referenced, but only inside its own
 file" as a distinct state from "referenced by nothing". That distinction is why
 the number stays at 235 while the defect count is zero, and it is the next thing
 this measurement should learn to say.
+
+## 11. The gate that was never running
+
+### 11.1 The finding
+
+`.github/workflows/` held one file and its only trigger was `workflow_dispatch`.
+There was no `push` trigger and no `pull_request` trigger anywhere in the
+repository.
+
+So `pnpm check` — unit tests, coverage floors, lint, typecheck, the export
+census, formatting — **ran when somebody remembered to ask**. Every green CI
+result recorded in the delivery log was a run that had been dispatched by hand,
+and a push that broke the build produced no signal at all until the next
+dispatch.
+
+### 11.2 Why it was invisible for so long
+
+Because a dispatched run and a triggered run are **indistinguishable from the
+outside**. Both produce a badge-shaped artifact, both report `success`, both name
+the SHA. The delivery log recorded "CI green" and the phrase was true of every
+run it described. What was false was the implication that a green check meant
+the tree had been verified — the tree had been verified *on request*.
+
+It stayed invisible for the same reason as the defects before it: **the check
+that would have caught it was the check that was missing.**
+
+### 11.3 The fix, and the evidence it works
+
+`.github/workflows/verify.yml` adds `push` and `pull_request` triggers and calls
+the same `pnpm check` the pre-push hook calls, under `set -o pipefail`, with the
+transcript uploaded on failure so a red run is diagnosable without a second
+dispatch. It is a separate file from `benchmark.yml` because the two have
+opposite shapes: this one must run on every push and finish in minutes, while the
+benchmark needs the LongMemEval corpus, network model downloads and up to four
+hours, and is dispatched deliberately.
+
+The evidence is not that the file exists. It is that **the very next push
+produced a run**:
+
+```
+#1   10367259 Verify  in_progress  None  event=push
+...
+#1   10367259 Verify  completed   success  event=push
+```
+
+That is the first `event=push` run in the repository's history, and it finished
+green. Every prior run was `event=workflow_dispatch`.
+
+It also settles a question this project had been guessing at: the Git Data API
+push path **does** deliver `push` events. The four earlier pushes produced no runs
+because no workflow listened, not because the API bypasses the event.
+
+### 11.4 The tests
+
+Four assertions in `repo-gates.test.ts`:
+
+1. some workflow triggers on `push` or `pull_request` — asserted over the **set**
+   of workflows, so moving the gate between files cannot silently remove it;
+2. the `push:` block is scoped with `branches:` rather than filtered to nothing —
+   a key that is present but matches no branch would satisfy a check for the key;
+3. the step runs `pnpm check` under `set -o pipefail` — without `pipefail`, `tee`
+   reports its own success and hides the failing gate behind it;
+4. `Setup Python` and the `requirements-dev.txt` install precede the gate.
+
+Assertion 4 was written first against string offsets, and it **failed on a
+correct workflow** because the file's own explanatory comment mentions
+`actions/setup-python` above the step that uses it. It now asserts over the
+ordered list of step **names**, which is a property of the workflow rather than
+of its prose.
+
+> **Rule added here.** **A gate you have to remember to run is a gate that is not
+> running, and a green result cannot tell you which kind it was.** The only way to
+> tell is to check what the gate is attached to.
