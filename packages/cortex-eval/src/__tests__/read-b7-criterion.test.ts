@@ -40,6 +40,15 @@ type Question = {
   question: string;
   groundTruth: string | null;
   answer: string | null;
+  /**
+   * The scorer's verdict, and the field the criterion reads to decide whether an
+   * outcome moved. It is REQUIRED on these fixtures even though the reader
+   * tolerates its absence (`q.correct === true`): a fixture without it makes
+   * every arm unscored, and an unscored arm has no observable movement beyond
+   * abstention. Omitting it here silently turned three of these tests into
+   * assertions about the wrong thing.
+   */
+  correct: boolean;
   grounded: boolean;
   turns: Turn[];
 };
@@ -86,13 +95,17 @@ function write(name: string, questions: unknown): string {
  * A grounded failure where truth and answer are DIFFERENT values that both
  * appear in the context, in separate turns. This is the B7 target shape: the
  * reader had both candidates in front of it and chose the wrong one.
+ *
+ * `correct` therefore defaults to `false` here: by construction this fixture is
+ * the reader choosing the wrong candidate.
  */
-function targetQuestion(id: string, truth: string, answer: string): Question {
+function targetQuestion(id: string, truth: string, answer: string, correct = false): Question {
   return {
     questionId: id,
     question: `which one is it for ${id}?`,
     groundTruth: truth,
     answer,
+    correct,
     grounded: true,
     turns: [
       { index: 0, text: `the correct value is ${truth} according to the record` },
@@ -104,13 +117,17 @@ function targetQuestion(id: string, truth: string, answer: string): Question {
 /**
  * A grounded failure whose truth and answer carry the SAME content terms, so the
  * two sides cannot be told apart. Classified `identical`, not targeted.
+ *
+ * `correct` defaults to `true`: the reader reproduced the truth, which is why
+ * the question is not a target.
  */
-function identicalQuestion(id: string, value: string): Question {
+function identicalQuestion(id: string, value: string, correct = true): Question {
   return {
     questionId: id,
     question: `what is the ${id} reading?`,
     groundTruth: value,
     answer: value,
+    correct,
     grounded: true,
     turns: [{ index: 0, text: `the reading is ${value} for the unit` }],
   };
@@ -123,6 +140,7 @@ function ungroundedQuestion(id: string): Question {
     question: 'an unrelated question',
     groundTruth: null,
     answer: null,
+    correct: false,
     grounded: false,
     turns: [],
   };
@@ -188,26 +206,56 @@ describe('the reader reports the recomputed cohort before it reads the arms', ()
 });
 
 describe('the reader applies the three clauses in their pre-registered order', () => {
+  it('reports reworded-but-unmoved questions in their own census, and excludes them', () => {
+    // The measured C5 case, end to end through the reader. `n1` is a non-target
+    // whose answer text changes while the scorer scores both arms the same, and
+    // `t1` is a target that flips. The verdict must be SETTLED, not REGRESSION,
+    // and the reworded question must be accounted for explicitly rather than
+    // vanishing -- a fix that silently drops these would be indistinguishable
+    // from one that never saw them.
+    // `n1`'s answer text differs between the arms ('72' vs 'Seventy two'),
+    // while the scorer passes both. A capitalisation-only edit would be
+    // normalized away by the reader's trim, so the reword here is larger than
+    // that -- the point is only that the text differs and the score does not.
+    const control = write('c-reword.json', [
+      targetQuestion('t1', '85', '240'),
+      identicalQuestion('n1', '72'),
+    ]);
+    const feature = write('f-reword.json', [
+      targetQuestion('t1', '85', '240', true),
+      { ...identicalQuestion('n1', '72'), answer: 'Seventy two' },
+    ]);
+
+    const out = run(control, feature);
+
+    expect(out).toContain('--- movement census');
+    expect(out).toContain('reworded but not moved: 1 question(s)');
+    expect(out).toContain('SETTLED');
+    expect(out).not.toContain('REGRESSION');
+  });
+
   it('reports a non-target regression ahead of a target gain', () => {
     // The target moves AND a non-target moves. The guard clause is checked
     // first and must win: a guard that can be overridden by what it guards is
     // not a guard.
     //
-    // The non-target is a question the reader got RIGHT (truth === answer, so
-    // it classifies as `identical`, not as a target). This is the only way to
-    // make a non-target at all once the cohort is recomputed from the control
-    // arm: any B7-shaped question is a target by construction.
+    // The non-target is a question the reader got RIGHT in the control arm
+    // (truth === answer, so it classifies as `identical`, not as a target) and
+    // WRONG in the feature arm. Only the scorer's verdict distinguishes the two
+    // states: the answer text changes as well, but text is not what the guard
+    // reads, so this fixture is what proves the guard is reading the score.
     const control = write('c-both.json', [
       targetQuestion('t1', '85', '240'),
       identicalQuestion('n1', '72'),
     ]);
     const feature = write('f-both.json', [
-      targetQuestion('t1', '85', '999'),
+      targetQuestion('t1', '85', '999', true),
       {
         questionId: 'n1',
         question: 'what is the n1 reading?',
         groundTruth: '72',
         answer: '71',
+        correct: false,
         grounded: true,
         turns: [{ index: 0, text: 'the reading is 72 for the unit' }],
       },
@@ -252,13 +300,20 @@ describe('the reader applies the three clauses in their pre-registered order', (
   it('treats a target that flips to an abstention as movement, not as an absence', () => {
     // `null` is the abstention. A reader that compared only answers-as-strings
     // would see "no answer" and could misread the flip as nothing happening.
-    const control = write('c-abstain.json', [targetQuestion('t1', '85', '240')]);
+    //
+    // The control arm is scored correct, so the target is a target because its
+    // ANSWER text differs from the truth while the scorer still passed it. The
+    // feature arm abstains, which is the one outcome change that is visible
+    // without a score -- but here both sides disagree on the score as well, so
+    // the movement is doubly observable.
+    const control = write('c-abstain.json', [targetQuestion('t1', '85', '240', true)]);
     const feature = write('f-abstain.json', [
       {
         questionId: 't1',
         question: 'which one is it for t1?',
         groundTruth: '85',
         answer: null,
+        correct: false,
         grounded: true,
         turns: [
           { index: 0, text: 'the correct value is 85 according to the record' },
@@ -457,8 +512,10 @@ describe('the reader refuses to spend a recording gap as evidence against an arm
     // that is a gap. A reader that refused on both would be over-correcting and
     // would make abstentions — the very outcome B7's switch is meant to affect —
     // unreadable.
-    const control = write('c-null.json', [targetQuestion('t1', '85', '240')]);
-    const feature = write('f-null.json', [{ ...targetQuestion('t1', '85', '240'), answer: null }]);
+    const control = write('c-null.json', [targetQuestion('t1', '85', '240', true)]);
+    const feature = write('f-null.json', [
+      { ...targetQuestion('t1', '85', '240', true), answer: null, correct: false },
+    ]);
     const out = run(control, feature);
 
     expect(out).toContain('complete: both arms recorded an answer');

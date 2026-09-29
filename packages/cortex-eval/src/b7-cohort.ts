@@ -275,10 +275,13 @@ export function verifyTargetCohort(
  *    arms, the annotation reached the prompt without changing the reading. The
  *    published criterion says this is a **finding about the reader**, to be
  *    reported rather than tuned away — so `targetsMoved === 0` yields `no-move`,
- *    not `fail`.
+ *    not `fail`. "Identically" means the OUTCOME, not the wording: see
+ *    `outcomeMoved`.
  * 2. **Non-targets must not regress.** A always-on annotation would turn a
  *    targeted fix into a global rewrite; this is the guard against it. Any
  *    regression here is a `regression` verdict regardless of the target result.
+ *    It is the same test as clause 1 — one definition of "moved" for both
+ *    clauses, because two is how the reader and the noise tool disagreed.
  * 3. **Only then is a gain claimable.**
  *
  * The order matters and is not cosmetic: a run that gains on targets *and*
@@ -295,12 +298,57 @@ export type CriterionVerdict =
       readonly lost: readonly string[];
     };
 
-/** One question's outcome in an arm: the answer it produced, or abstention. */
+/**
+ * One question's outcome in an arm: the answer it produced, or abstention, plus
+ * the scorer's verdict when the caller has one.
+ *
+ * `correct` is what makes movement decidable, and it is optional only because
+ * not every producer of an arm has run a scorer. When it is ABSENT the criterion
+ * treats the outcome as unscored rather than as wrong: absence is missing
+ * evidence, and reading it as `false` would turn "we did not score this" into
+ * "this regressed" -- the same substitution that makes a recording gap look like
+ * a reader failure one layer up.
+ */
 export type ArmOutcome = {
   readonly questionId: string;
   /** The answer text, normalized by the caller. `null` means the arm abstained. */
   readonly answer: string | null;
+  /** The scorer's verdict for this question, when the caller has one. */
+  readonly correct?: boolean;
 };
+
+/**
+ * Whether one question's OUTCOME differs between two arms.
+ *
+ * This is the single definition of "moved" in this module, and it exists because
+ * two definitions is exactly how the reader and the noise tool came to disagree:
+ * given the same pair of C5 arms, `read-b7-criterion.mjs` reported 4 moved
+ * non-targets and `quantify-endpoint-noise.mjs` reported 1, because the first
+ * compared ANSWER TEXT and the second compared CORRECTNESS. Both were labelled
+ * "movement" and neither said which it meant.
+ *
+ * **Text is not an outcome.** A language model does not reproduce its own wording
+ * byte for byte, so a text comparison fires on `three times a week` ->
+ * `Three times a week` -- a measured C5 case, and one the scorer scored the same
+ * in both arms. A guard that fires on capitalisation fires on every arm a
+ * language model ever produced, which is the same as not having a guard: the
+ * criterion becomes unpassable and its most severe verdict becomes the default.
+ *
+ * The rule, in both directions, is:
+ *
+ * 1. Both sides scored -> compare the scores. This is the case the guard exists
+ *    for, and the only case where "the outcome changed" is directly observed.
+ * 2. Either side unscored -> compare against ABSTENTION only. An arm that stopped
+ *    producing an answer did move, and that is visible without a scorer; an arm
+ *    that merely reworded did not, and claiming so needs evidence the criterion
+ *    does not have.
+ */
+export function outcomeMoved(before: ArmOutcome, after: ArmOutcome): boolean {
+  if (before.correct !== undefined && after.correct !== undefined) {
+    return before.correct !== after.correct;
+  }
+  return (before.answer === null) !== (after.answer === null);
+}
 
 export function judgeCriterion(input: {
   readonly cohort: TargetCohort;
@@ -308,8 +356,7 @@ export function judgeCriterion(input: {
   readonly feature: readonly ArmOutcome[];
 }): CriterionVerdict {
   const targetIds = new Set(input.cohort.targets.map((member) => member.questionId));
-  const controlById = new Map(input.control.map((o) => [o.questionId, o.answer]));
-  const featureById = new Map(input.feature.map((o) => [o.questionId, o.answer]));
+  const controlById = new Map(input.control.map((o) => [o.questionId, o]));
 
   const regressed: string[] = [];
   const moved: string[] = [];
@@ -318,19 +365,27 @@ export function judgeCriterion(input: {
 
   for (const outcome of input.feature) {
     const id = outcome.questionId;
-    if (!controlById.has(id)) continue;
-    const before = controlById.get(id) ?? null;
-    const after = featureById.get(id) ?? null;
-    const changed = before !== after;
+    const before = controlById.get(id);
+    if (before === undefined) continue;
+    const changed = outcomeMoved(before, outcome);
     if (targetIds.has(id)) {
-      if (changed) moved.push(id);
+      if (!changed) continue;
+      moved.push(id);
+      // Direction needs BOTH scores. With either side unscored the module knows
+      // the outcome changed but not which way, and a guessed direction would be
+      // a claim the artifact does not support.
+      if (before.correct !== undefined && outcome.correct !== undefined) {
+        if (outcome.correct && !before.correct) gained.push(id);
+        if (!outcome.correct && before.correct) lost.push(id);
+      }
       continue;
     }
     // Non-target: any change away from the control is a regression, because the
     // criterion does not license movement outside the target set in EITHER
     // direction. A non-target that flips to an ABSTENTION is the case this
     // catches, and it is invisible to a bare accuracy comparison that only
-    // counts answers.
+    // counts answers. Both cases are covered by `outcomeMoved`; reworded text is
+    // deliberately not one of them.
     if (changed) regressed.push(id);
   }
 
@@ -338,9 +393,5 @@ export function judgeCriterion(input: {
   if (moved.length === 0) {
     return { kind: 'no-move', targets: [...targetIds] };
   }
-  // "Gained"/"lost" are directional and therefore need the outcome to be scored.
-  // Without a judge this module cannot know which direction a move was, so the
-  // caller supplies that by passing only SCORED questions; when it does not, the
-  // lists stay empty and the verdict still reports that the targets moved.
   return { kind: 'settled', moved, gained, lost };
 }

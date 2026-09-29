@@ -35,6 +35,7 @@ import {
   computeTargetCohort,
   verifyTargetCohort,
   judgeCriterion,
+  outcomeMoved,
 } from '../packages/cortex-eval/dist/b7-cohort.js';
 import { buildQuestionRecords } from '../packages/cortex-eval/dist/question-record.js';
 
@@ -232,10 +233,18 @@ function main() {
   // kept because the function is the single place the criterion's answer
   // normalization is defined, and a second definition is where the abstention
   // distinction would be lost again.
+  //
+  // `correct` is passed through because it is the criterion's definition of
+  // movement. Without it the reader would fall back to comparing answer TEXT,
+  // which is what this reader used to do — and on the C5 arms it reported 4
+  // non-target regressions where the scored comparison finds 0, because
+  // `three times a week` -> `Three times a week` is a reworded answer that the
+  // scorer scored correct in both arms. Text is not an outcome.
   const toOutcome = (records) =>
     records.map((record) => ({
       questionId: record.questionId,
       answer: toAnswer(record.answer),
+      correct: record.correct === true,
     }));
 
   const criterion = judgeCriterion({
@@ -243,6 +252,39 @@ function main() {
     control: toOutcome(controlRecords),
     feature: toOutcome(featureRecords),
   });
+
+  // Cross-check the criterion's branch against a direct question-by-question
+  // application of the SAME movement test, and report the two disagreements it
+  // can produce. This block exists because the two are different questions:
+  //
+  // - The criterion reports a VERDICT, which is a summary -- it stops at the
+  //   first clause that fires, so on a regression it names no target movement at
+  //   all, and a reader would take that silence for "the targets did not move".
+  // - This block reports the PER-QUESTION census under both equality tests, so
+  //   the reader can see how many questions changed only in wording.
+  //
+  // The wording count is the one that matters and the one nothing else printed.
+  // `outcomeMoved` says wording is not movement; a reworded answer therefore
+  // disappears from every count above, and without this line its disappearance
+  // would be indistinguishable from "the arms were identical". Reporting it is
+  // what keeps the fix auditable rather than merely asserted.
+  const reworded = [];
+  const controlById = new Map(controlRecords.map((r) => [r.questionId, r]));
+  for (const record of featureRecords) {
+    const before = controlById.get(record.questionId);
+    if (before === undefined) continue;
+    const beforeOutcome = { questionId: before.questionId, answer: toAnswer(before.answer), correct: before.correct === true };
+    const afterOutcome = { questionId: record.questionId, answer: toAnswer(record.answer), correct: record.correct === true };
+    if (outcomeMoved(beforeOutcome, afterOutcome)) continue;
+    if (toAnswer(before.answer) === toAnswer(record.answer)) continue;
+    reworded.push(record.questionId);
+  }
+  console.log(`\n--- movement census (both arms, one question at a time) ---`);
+  console.log(
+    `reworded but not moved: ${reworded.length} question(s) — the text differs, the`,
+  );
+  console.log(`  scorer's verdict does not. These are NOT movement and are excluded above.`);
+  for (const id of reworded) console.log(`  ${id}`);
 
   console.log(`\n--- criterion verdict ---`);
   switch (criterion.kind) {

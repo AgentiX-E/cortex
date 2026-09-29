@@ -48,7 +48,11 @@ import {
   compareQuestionVectors,
   requiredEffectSize,
 } from '../packages/cortex-eval/dist/variance.js';
-import { recordIds, correctnessVector, buildQuestionRecords } from '../packages/cortex-eval/dist/question-record.js';
+import {
+  recordIds,
+  correctnessVector,
+  buildQuestionRecords,
+} from '../packages/cortex-eval/dist/question-record.js';
 
 /**
  * @typedef {import('../packages/cortex-eval/dist/question-record.js').QuestionRecordInput} QuestionRecordInput
@@ -225,8 +229,7 @@ function main() {
   const referenceIds = recordIds(reference.records);
   for (const report of reports.slice(1)) {
     const ids = recordIds(report.records);
-    const same =
-      ids.length === referenceIds.length && ids.every((id, i) => id === referenceIds[i]);
+    const same = ids.length === referenceIds.length && ids.every((id, i) => id === referenceIds[i]);
     if (!same) {
       console.error(
         `${report.path}: different question sets. ${reference.path} graded ` +
@@ -286,9 +289,7 @@ function main() {
       continue;
     }
     const entries = Object.entries(config).sort(([a], [b]) => (a < b ? -1 : 1));
-    console.log(
-      `  run${i + 1}: ${entries.map(([k, v]) => `${k}=${v ? 'on' : 'off'}`).join(', ')}`,
-    );
+    console.log(`  run${i + 1}: ${entries.map(([k, v]) => `${k}=${v ? 'on' : 'off'}`).join(', ')}`);
   }
   if (unrecorded > 0) {
     console.log(
@@ -298,8 +299,50 @@ function main() {
     );
   }
 
+  // Whether these runs are the same configuration at all -- decided, not left to
+  // the reader, because the block below is TITLED as a repeated identical run.
+  //
+  // Reporting the configs and then asserting sameness in the heading is worse
+  // than not reporting them: the detail was present and the conclusion
+  // contradicted it. Two arms that differ in a switch measure the SWITCH, so the
+  // number they produce is not a floor for anything, and the C5 arms are exactly
+  // this case (`retrievalSides=off` vs `on`) -- the first real run through this
+  // tool presented a cross-configuration delta as an endpoint floor.
+  //
+  // Compared key-by-key rather than by JSON text: `featureConfig` is serialized
+  // from an object literal, so key order varies between producers and a textual
+  // comparison would warn on identical configurations.
+  const divergentKeys = [];
+  const comparable = configs.filter((c) => c !== undefined);
+  if (comparable.length > 1) {
+    const keys = new Set(comparable.flatMap((c) => Object.keys(c)));
+    for (const key of [...keys].sort()) {
+      const values = new Set(comparable.map((c) => Boolean(c[key])));
+      if (values.size > 1) {
+        divergentKeys.push(
+          `${key} (${comparable.map((c) => (c[key] ? 'on' : 'off')).join(' vs ')})`,
+        );
+      }
+    }
+  }
+  const crossConfiguration = divergentKeys.length > 0;
+  if (crossConfiguration) {
+    console.log('');
+    console.log(
+      `  WARNING: these runs recorded DIFFERENT configurations, so their movement is\n` +
+        `  the difference between the runs and NOT the endpoint's own noise. Differing key(s):\n` +
+        divergentKeys.map((k) => `    ${k}`).join('\n') +
+        `\n  The figure below is still computed and printed, because it describes these runs.\n` +
+        `  It is not a floor: a floor has to come from runs that shared a configuration.`,
+    );
+  }
+
   console.log('');
-  console.log('--- endpoint movement (same configuration, repeated) ---');
+  console.log(
+    crossConfiguration
+      ? '--- endpoint movement (runs with DIFFERENT configurations -- NOT a floor) ---'
+      : '--- endpoint movement (same configuration, repeated) ---',
+  );
   console.log(
     `overall: min ${summary.overall.minCorrect}, max ${summary.overall.maxCorrect}, ` +
       `mean ${summary.overall.meanCorrect.toFixed(2)}, ` +
@@ -315,11 +358,7 @@ function main() {
   console.log('--- per-pair question movement ---');
   const firstVector = vectorOf(reference.records);
   for (const report of reports.slice(1)) {
-    const comparison = compareQuestionVectors(
-      referenceIds,
-      firstVector,
-      vectorOf(report.records),
-    );
+    const comparison = compareQuestionVectors(referenceIds, firstVector, vectorOf(report.records));
     console.log(
       `${reference.path} vs ${report.path}: compared ${comparison.compared}, ` +
         `stable ${comparison.stable}, changed: ${comparison.changed} ` +

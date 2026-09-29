@@ -350,3 +350,79 @@ describe('the tool refuses to fabricate a floor', () => {
     expect(out).toContain('changed: 1');
   });
 });
+
+describe('the tool refuses to present a cross-configuration comparison as a floor', () => {
+  /**
+   * Write a report whose `featureConfig` is recorded.
+   *
+   * `featureConfig` is what separates "two runs of the same thing" from "two
+   * different things", and it is exactly what the tool used to read and then
+   * ignore: it printed both configurations and *still* titled the block
+   * `(same configuration, repeated)`.
+   */
+  function writeConfigured(
+    name: string,
+    correct: readonly boolean[],
+    featureConfig: Record<string, boolean>,
+  ): string {
+    const questions = correct.map((c, i) => record(`q${i}`, c));
+    const path = join(dir, name);
+    writeFileSync(path, JSON.stringify({ featureConfig, questions }, null, 2));
+    return path;
+  }
+
+  it('warns when two runs recorded DIFFERENT configurations', () => {
+    // The C5 arms, reproduced: `retrievalSides` off in one arm and on in the
+    // other. Their movement is the SWITCH, not the endpoint, so the number
+    // computed from them is not a floor. The tool knows this -- it printed both
+    // configs -- but it then asserted sameness anyway in the block title.
+    const a = writeConfigured('cfg-a.json', [true, true, true, true], {
+      retrievalSides: false,
+      reranker: true,
+    });
+    const b = writeConfigured('cfg-b.json', [true, true, false, true], {
+      retrievalSides: true,
+      reranker: true,
+    });
+    const out = run([a, b]);
+
+    expect(out).toContain('DIFFERENT configurations');
+    expect(out).not.toContain('same configuration, repeated');
+  });
+
+  it('does not warn when every run recorded the SAME configuration', () => {
+    // The guard must not fire on the case the tool exists for.
+    const config = { retrievalSides: false, reranker: true };
+    const a = writeConfigured('cfg-same-a.json', [true, true, true, true], config);
+    const b = writeConfigured('cfg-same-b.json', [true, true, true, false], config);
+    const out = run([a, b]);
+
+    expect(out).toContain('same configuration, repeated');
+    expect(out).not.toContain('DIFFERENT configurations');
+  });
+
+  it('does not warn when the runs agree on every key, even if key order differs', () => {
+    // `featureConfig` is serialized from an object literal, so key order is not
+    // stable across producers. A comparison that depended on it would warn on
+    // identical configurations and train the reader to ignore the warning.
+    const a = writeConfigured('cfg-order-a.json', [true, true], {
+      reranker: true,
+      retrievalSides: false,
+    });
+    const b = writeConfigured('cfg-order-b.json', [true, true], {
+      retrievalSides: false,
+      reranker: true,
+    });
+    const out = run([a, b]);
+
+    expect(out).toContain('same configuration, repeated');
+  });
+
+  it('names the key that differs, because "they differ" is not actionable', () => {
+    const a = writeConfigured('cfg-key-a.json', [true, true], { retrievalSides: false });
+    const b = writeConfigured('cfg-key-b.json', [true, true], { retrievalSides: true });
+    const out = run([a, b]);
+
+    expect(out).toContain('retrievalSides');
+  });
+});

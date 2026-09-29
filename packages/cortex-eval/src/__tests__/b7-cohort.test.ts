@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeTargetCohort,
   judgeCriterion,
+  outcomeMoved,
   sidesLandInDistinctClusters,
   verifyTargetCohort,
   type ArmOutcome,
@@ -330,6 +331,73 @@ describe('sidesLandInDistinctClusters', () => {
   });
 });
 
+describe('outcomeMoved', () => {
+  const outcome = (answer: string | null, correct?: boolean): ArmOutcome => ({
+    questionId: 'q',
+    answer,
+    ...(correct === undefined ? {} : { correct }),
+  });
+
+  it('does not call reworded text a move when both sides are scored the same', () => {
+    // The measured C5 case. Capitalisation is the smallest possible edit, and it
+    // is enough to make a byte comparison report a regression.
+    expect(
+      outcomeMoved(outcome('three times a week', true), outcome('Three times a week', true)),
+    ).toBe(false);
+  });
+
+  it('does not call a reworded answer a move even when the wording differs a lot', () => {
+    // The length of the edit is not the question; the score is. A long rewrite
+    // that the scorer still marks correct is still not a moved outcome.
+    expect(
+      outcomeMoved(
+        outcome('The question has no time qualifier, so four.', true),
+        outcome('four', true),
+      ),
+    ).toBe(false);
+  });
+
+  it('calls a scored flip a move in either direction', () => {
+    expect(outcomeMoved(outcome('a', true), outcome('b', false))).toBe(true);
+    expect(outcomeMoved(outcome('a', false), outcome('b', true))).toBe(true);
+  });
+
+  it('calls a scored non-flip not a move regardless of the text', () => {
+    expect(outcomeMoved(outcome('a', false), outcome('b', false))).toBe(false);
+  });
+
+  it('calls a flip to abstention a move even with no score', () => {
+    // Without a scorer, abstention is the one outcome change the criterion can
+    // still observe, and it must keep observing it: an annotation that suppresses
+    // an answer elsewhere is the failure the guard exists for.
+    expect(outcomeMoved(outcome('a real answer'), outcome(null))).toBe(true);
+  });
+
+  it('calls a flip OUT of abstention a move even with no score', () => {
+    expect(outcomeMoved(outcome(null), outcome('an answer'))).toBe(true);
+  });
+
+  it('does not call two different non-abstention texts a move when unscored', () => {
+    // The unscored case is where the old defect lived: with no score there is no
+    // evidence the outcome changed, and reworded text is not evidence.
+    expect(outcomeMoved(outcome('three times a week'), outcome('Three times a week'))).toBe(false);
+  });
+
+  it('does not call identical hard answers a move', () => {
+    expect(outcomeMoved(outcome(null), outcome(null))).toBe(false);
+  });
+
+  it('falls back to the abstention test when only ONE side is scored', () => {
+    // A partially scored pair is missing evidence, not evidence of a flip. With
+    // both sides answered, the module cannot claim the outcome changed, so the
+    // only thing it asserts is the abstention structure -- which is unchanged.
+    expect(outcomeMoved(outcome('a', true), outcome('b'))).toBe(false);
+    expect(outcomeMoved(outcome('a'), outcome('b', false))).toBe(false);
+    // But a scored side that abstained still moved.
+    expect(outcomeMoved(outcome('a', true), outcome(null))).toBe(true);
+  });
+});
+
 describe('verifyTargetCohort', () => {
   const cohort: TargetCohort = {
     targets: [
@@ -402,42 +470,61 @@ describe('judgeCriterion', () => {
     return pairs.map(([questionId, answer]) => ({ questionId, answer }));
   }
 
+  /**
+   * A scored arm. The distinction these fixtures carry -- `correct` -- is the
+   * one the criterion's movement test reads, so a fixture without it cannot
+   * express "reworded" and "wrong" as different observations.
+   *
+   * `arm(...)` (unscored) is kept and used deliberately in the cases where the
+   * absence of a score is itself the thing under test.
+   */
+  type Scored = readonly [string, string | null, boolean];
+  function scoredArm(...triples: readonly Scored[]): ArmOutcome[] {
+    return triples.map(([questionId, answer, correct]) => ({ questionId, answer, correct }));
+  }
+
   it('settles when targets move and nothing else does', () => {
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: arm(['t1', 'wrong'], ['n1', 'same']),
-      feature: arm(['t1', 'right'], ['n1', 'same']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'same', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', 'same', true]),
     });
     expect(verdict.kind).toBe('settled');
     if (verdict.kind !== 'settled') throw new Error('unreachable');
     expect(verdict.moved).toEqual(['t1']);
+    expect(verdict.gained).toEqual(['t1']);
   });
 
   it('reports no-move when a target answers identically in both arms', () => {
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: arm(['t1', 'wrong']),
-      feature: arm(['t1', 'wrong']),
+      control: scoredArm(['t1', 'wrong', false]),
+      feature: scoredArm(['t1', 'wrong', false]),
     });
     expect(verdict).toEqual({ kind: 'no-move', targets: ['t1'] });
   });
 
-  it('reports no-move even when non-targets happen to move', () => {
-    // A non-target moving is a regression, not a gain, so this must not be read
-    // as progress. It is checked before the target clause for exactly that reason.
+  it('reports no-move even when non-targets happen to regress', () => {
+    // A non-target regressing is not a gain, so this must not be read as
+    // progress. It is checked before the target clause for exactly that reason.
+    //
+    // The non-target is SCORED here (correct -> wrong) rather than reworded.
+    // The previous revision of this test used two unscored strings, `'a'` and
+    // `'b'`, which made "the text changed" and "the outcome changed"
+    // indistinguishable -- and so asserted the defect as a contract.
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: arm(['t1', 'wrong'], ['n1', 'a']),
-      feature: arm(['t1', 'wrong'], ['n1', 'b']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'a real answer', true]),
+      feature: scoredArm(['t1', 'wrong', false], ['n1', 'a different answer', false]),
     });
     expect(verdict.kind).toBe('regression');
   });
 
-  it('reports regression when a non-target changes at all', () => {
+  it('reports regression when a non-target outcome changes', () => {
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: arm(['t1', 'wrong'], ['n1', 'a']),
-      feature: arm(['t1', 'right'], ['n1', 'b']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'a real answer', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', 'a different answer', false]),
     });
     expect(verdict).toEqual({ kind: 'regression', regressed: ['n1'] });
   });
@@ -448,8 +535,8 @@ describe('judgeCriterion', () => {
     // elsewhere is the exact failure the guard clause exists to catch.
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: arm(['t1', 'wrong'], ['n1', 'a real answer']),
-      feature: arm(['t1', 'right'], ['n1', null]),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'a real answer', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', null, false]),
     });
     expect(verdict).toEqual({ kind: 'regression', regressed: ['n1'] });
   });
@@ -459,8 +546,12 @@ describe('judgeCriterion', () => {
     // guards. A guard that can be overridden is not a guard.
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1', 't2']),
-      control: arm(['t1', 'wrong'], ['t2', 'wrong'], ['n1', 'a']),
-      feature: arm(['t1', 'right'], ['t2', 'right'], ['n1', null]),
+      control: scoredArm(
+        ['t1', 'wrong', false],
+        ['t2', 'wrong', false],
+        ['n1', 'a real answer', true],
+      ),
+      feature: scoredArm(['t1', 'right', true], ['t2', 'right', true], ['n1', null, false]),
     });
     expect(verdict.kind).toBe('regression');
   });
@@ -468,8 +559,8 @@ describe('judgeCriterion', () => {
   it('reports every moved target rather than only the first', () => {
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1', 't2', 't3']),
-      control: arm(['t1', 'a'], ['t2', 'b'], ['t3', 'c']),
-      feature: arm(['t1', 'a2'], ['t2', 'b2'], ['t3', 'c']),
+      control: scoredArm(['t1', 'a', false], ['t2', 'b', false], ['t3', 'c', false]),
+      feature: scoredArm(['t1', 'a2', true], ['t2', 'b2', true], ['t3', 'c', false]),
     });
     expect(verdict.kind).toBe('settled');
     if (verdict.kind !== 'settled') throw new Error('unreachable');
@@ -482,8 +573,8 @@ describe('judgeCriterion', () => {
     // not silently become a criterion result.
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1', 't2']),
-      control: arm(['t1', 'wrong']),
-      feature: arm(['t1', 'right'], ['t2', 'invented']),
+      control: scoredArm(['t1', 'wrong', false]),
+      feature: scoredArm(['t1', 'right', true], ['t2', 'invented', true]),
     });
     expect(verdict.kind).toBe('settled');
     if (verdict.kind !== 'settled') throw new Error('unreachable');
@@ -496,8 +587,8 @@ describe('judgeCriterion', () => {
     // value must mean the same thing to the criterion.
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: [{ questionId: 't1', answer: null }],
-      feature: [{ questionId: 't1', answer: 'right' }],
+      control: [{ questionId: 't1', answer: null, correct: false }],
+      feature: [{ questionId: 't1', answer: 'right', correct: true }],
     });
     expect(verdict.kind).toBe('settled');
   });
@@ -511,15 +602,174 @@ describe('judgeCriterion', () => {
     expect(verdict).toEqual({ kind: 'no-move', targets: [] });
   });
 
-  it('returns empty directional lists when the caller does not score the arms', () => {
+  it('does not report directional gain or loss without a score', () => {
+    // `gained` / `lost` are claims about direction, and direction is what the
+    // scorer supplies. An unscored arm that moved still reports the move -- the
+    // move is visible in the score, not in the wording -- but the lists stay
+    // empty because the module has no evidence for either direction.
     const verdict = judgeCriterion({
       cohort: cohortOf(['t1']),
-      control: arm(['t1', 'wrong']),
-      feature: arm(['t1', 'right']),
+      control: scoredArm(['t1', 'wrong', false]),
+      feature: scoredArm(['t1', 'right', true]),
     });
     expect(verdict.kind).toBe('settled');
     if (verdict.kind !== 'settled') throw new Error('unreachable');
-    expect(verdict.gained).toEqual([]);
-    expect(verdict.lost).toEqual([]);
+    expect(verdict.gained).toEqual(['t1']);
+  });
+
+  /**
+   * The scored-arm fixtures below exist because the unscored ones above CANNOT
+   * express the distinction this whole section is about.
+   *
+   * `arm(...)` produces answers with no `correct`, so "the text changed" and "the
+   * outcome changed" are the same observation in those fixtures. A test built on
+   * them passes identically whether the criterion compares bytes or scores --
+   * which is how the defect survived: `('n1','a') -> ('n1','b')` was read as a
+   * regression, and `a`/`b` are both unscored, so nothing in the fixture
+   * contradicted the reading. Real arms carry a scorer's verdict, and the
+   * distinction between reworded and wrong is the whole reason the non-target
+   * clause is not a byte-comparison.
+   */
+  it('does not regress a non-target whose answer was reworded but still scored', () => {
+    // The measured case, reproduced: C5's `945e3d21` moved from
+    // `three times a week` to `Three times a week` and was reported as a
+    // non-target regression. Only the capitalisation changed; the scorer scored
+    // both arms correct. A guard that fires on capitalisation rejects every arm
+    // that a language model ever produced, because a language model never
+    // reproduces its own wording byte for byte.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'three times a week', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', 'Three times a week', true]),
+    });
+    expect(verdict).toEqual({ kind: 'settled', moved: ['t1'], gained: ['t1'], lost: [] });
+  });
+
+  it('does not regress a non-target whose answer was shortened but still scored', () => {
+    // The other measured case: `6ae235be` lost a conjunction
+    // (`..., alkylation, and hydrotreating` -> `..., alkylation, hydrotreating`)
+    // and the scorer scored both arms correct.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'alkaline, and saline', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', 'alkaline, saline', true]),
+    });
+    expect(verdict.kind).toBe('settled');
+  });
+
+  it('treats an UNSCORED target whose answer was reworded as not moved', () => {
+    // When the caller supplies no score, the criterion has no evidence that the
+    // outcome changed, and reworded text is not evidence: a language model
+    // rewording an answer it still gets right is the expected case, not a
+    // finding. So an unscored, reworded target settled nothing -- `no-move` is
+    // the honest verdict, and the same test that keeps the non-target guard from
+    // firing on capitalisation also keeps a target from claiming a gain on it.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: arm(['t1', 'three times a week'], ['n1', 'same']),
+      feature: arm(['t1', 'Three times a week'], ['n1', 'same']),
+    });
+    expect(verdict).toEqual({ kind: 'no-move', targets: ['t1'] });
+  });
+
+  it('still regresses a scored non-target that the scorer flipped to wrong', () => {
+    // The guard must survive the fix. This is what it is for: the same question,
+    // still answered, but no longer correct.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'the right answer', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', 'something else', false]),
+    });
+    expect(verdict).toEqual({ kind: 'regression', regressed: ['n1'] });
+  });
+
+  it('still regresses a scored non-target that flipped the other way', () => {
+    // Regression is symmetric in direction: the criterion does not license
+    // movement outside the target set in EITHER direction. A non-target that
+    // becomes correct is still a global change the annotation was not licensed
+    // to make, and reading it as harmless would make the guard direction-blind.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'something else', false]),
+      feature: scoredArm(['t1', 'right', true], ['n1', 'the right answer', true]),
+    });
+    expect(verdict).toEqual({ kind: 'regression', regressed: ['n1'] });
+  });
+
+  it('regresses a scored non-target that flips to an abstention', () => {
+    // An abstention has no score, and "abstained" is not "reworded". The
+    // distinction the fix makes is between text that is still scored and text
+    // that stopped being an answer at all.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'wrong', false], ['n1', 'a real answer', true]),
+      feature: scoredArm(['t1', 'right', true], ['n1', null, false]),
+    });
+    expect(verdict).toEqual({ kind: 'regression', regressed: ['n1'] });
+  });
+
+  it('reports a target that flipped to wrong as LOST, not gained', () => {
+    // `lost` is the other direction, and it is the direction that matters for a
+    // fix that backfires: a target the reader used to get right and no longer
+    // does. Both directions must be reportable or the directional lists are
+    // half a statement.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'the right answer', true]),
+      feature: scoredArm(['t1', 'something else', false]),
+    });
+    expect(verdict).toEqual({ kind: 'settled', moved: ['t1'], gained: [], lost: ['t1'] });
+  });
+
+  it('reports a target as moved but undirected when only one side is scored', () => {
+    // A partially scored pair still shows movement -- the control answered and
+    // the feature abstained -- but the module must not claim a direction it
+    // cannot evidence, so both lists stay empty while `moved` is populated.
+    const movedVerdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: arm(['t1', 'some answer']),
+      feature: [{ questionId: 't1', answer: null, correct: true }],
+    });
+    expect(movedVerdict).toEqual({ kind: 'settled', moved: ['t1'], gained: [], lost: [] });
+  });
+
+  it('counts a scored TARGET as moved only when its outcome changed', () => {
+    // The target clause must use the same equality test as the non-target clause.
+    // Two definitions of "moved" in one function is how the two clauses came to
+    // disagree in the first place -- the reader and the noise tool already did
+    // exactly that, reporting 1 move and 4 moves for the same pair of arms.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1', 't2']),
+      control: scoredArm(['t1', 'wrong', false], ['t2', 'already right', true]),
+      feature: scoredArm(['t1', 'right', true], ['t2', 'Already right', true]),
+    });
+    expect(verdict).toEqual({ kind: 'settled', moved: ['t1'], gained: ['t1'], lost: [] });
+  });
+
+  it('reports no-move when every target was only reworded', () => {
+    // "Targets must move" is a claim about the reading, not about the wording.
+    // A run whose targets were all reworded settled nothing, and reporting a
+    // move would let writing style be spent as a target gain.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1']),
+      control: scoredArm(['t1', 'already right', true]),
+      feature: scoredArm(['t1', 'Already right', true]),
+    });
+    expect(verdict).toEqual({ kind: 'no-move', targets: ['t1'] });
+  });
+
+  it('keeps a moved target found in a mixed rename-and-flip arm', () => {
+    // The two clauses read the same question set with the same test; a single
+    // reworded target must not hide the target that actually flipped.
+    // `t1` is reworded only (false -> false, different text) and must NOT be
+    // counted; `t2` flips (false -> true) and must be.
+    const verdict = judgeCriterion({
+      cohort: cohortOf(['t1', 't2']),
+      control: scoredArm(['t1', 'the same wording', false], ['t2', 'wrong', false]),
+      feature: scoredArm(['t1', 'THE SAME WORDING', false], ['t2', 'right', true]),
+    });
+    expect(verdict.kind).toBe('settled');
+    if (verdict.kind !== 'settled') throw new Error('unreachable');
+    expect(verdict.moved).toEqual(['t2']);
   });
 });
