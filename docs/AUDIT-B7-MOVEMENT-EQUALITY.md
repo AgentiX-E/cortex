@@ -183,3 +183,171 @@ The floor for C5 is therefore **not yet measured**, and cannot be until each arm
 is dispatched more than once. The available figure — 1 question moved between the
 arms, `6aeb4375`, correct → wrong — is a **cross-configuration delta** and is
 exactly the quantity the criterion's verdict is about, not a bound on it.
+
+---
+
+## 8. The floor, measured: C5 is zero and `6aeb4375` was noise
+
+§7.1 concluded the floor could not be computed from one A/B pair and had to come
+from repeats **within** each arm. Four dispatches were made on one SHA
+(`4837759b`) — control × 2 (`retrievalSides=off`, runs `#386`/`#388`), feature × 2
+(`retrievalSides=on`, runs `#387`/`#389`) — and all four finished `success`.
+
+### 8.1 The arms' own floors
+
+| arm | runs | correct | questions moved | count range |
+| --- | ---- | ------- | --------------- | ----------- |
+| control (`off`) | #386 / #388 | 52 / 51 | 1 (`32260d93`) | 1 |
+| feature (`on`) | #387 / #389 | 51 / 50 | **3** (`0a995998`, `6aeb4375` out; `32260d93` in) | 1 |
+
+Both arms' count-based range is 1, so both would yield a bar of 2. The feature
+arm's **roster** movement is 3 — three times its score range.
+
+### 8.2 Only three questions moved, and they do not follow the switch
+
+| question | capability | #386 off | #388 off | #387 on | #389 on |
+| -------- | ---------- | -------- | -------- | ------- | ------- |
+| `0a995998` | MR | ✅ | ✅ | ✅ | ❌ |
+| `6aeb4375` | KU | ✅ | ✅ | ✅ | ❌ |
+| `32260d93` | IE | ✅ | ❌ | ❌ | ✅ |
+
+The other **57 questions are stable across all four runs**. The three that move
+are not grouped by arm: `32260d93` flips once in each arm. This is decoding
+unsteadiness, not a retrieval effect, and `6aeb4375`'s answer text shows the
+mechanism directly:
+
+```
+#386  'four'                                                            ✅
+#388  'The question has no time qualifier, so report the value from the latest turn: fo…'  ✅
+#387  'The question has no time qualifier, so report the value from the latest turn: fo…'  ✅
+#389  'Let me work through this chronologically.'                       ❌
+```
+
+`#389` emitted a reasoning preamble instead of an answer.
+
+**`6aeb4375` is the question §7.1 named as the only movement between the arms.**
+With within-arm repeats it is shown to be noise. §7.1's figure was wrong for
+exactly the reason §7.1 itself diagnosed: a cross-configuration delta was being
+read as a bound on the verdict rather than as the quantity under discussion.
+
+### 8.3 The C5 effect is 0.00 questions, and B7's is +9
+
+`ablation.delta` is byte-identical across all four runs:
+
+| run | sides | baseline | feature | delta | McNemar p | B→W | W→C |
+| --- | ----- | -------- | ------- | ----- | --------- | --- | --- |
+| #386 | off | 0.7167 | 0.8667 | **+9.0** | 0.003906 | 0 | 9 |
+| #388 | off | 0.7000 | 0.8500 | **+9.0** | 0.003906 | 0 | 9 |
+| #387 | on | 0.7000 | 0.8500 | **+9.0** | 0.003906 | 0 | 9 |
+| #389 | on | 0.6833 | 0.8333 | **+9.0** | 0.003906 | 0 | 9 |
+
+The **discordant set is the same nine `_abs` questions** every time, with B→W
+always 0 and W→C always 9.
+
+```
+mean control delta = +9.00 questions
+mean feature delta = +9.00 questions
+C5 (retrievalSides) effect = +0.00 questions
+```
+
+### 8.4 Verdicts
+
+| question | answer | evidence |
+| -------- | ------ | -------- |
+| Does B7 work? | **Yes: +9 questions / +15 pp, p=0.0039, 4/4 repeatable** | the delta's range is **0.0** against an effect of 9 |
+| Does C5 (`retrievalSides`) contribute? | **No: 0.00 questions** | identical mean delta in both arms; effect **below** the floor |
+| Should C5 ship? | **No** | zero effect, zero repeatability gain, one extra retrieval branch |
+
+This is not "unmeasurable". It was measured, and it measured zero.
+
+> **Rule added here.** **An effect of exactly zero and an effect that cannot be
+> measured are different conclusions, and the only way to tell them apart is to
+> run the same configuration more than once.** §7 stopped at "refuse to report";
+> this section refuses the feature.
+
+## 9. The bar had been derived from the score, and the roster moved three times further
+
+### 9.1 The defect
+
+`quantify-endpoint-noise.mjs` printed the bar, then printed a **warning** below it
+saying the bar was too low:
+
+```
+minQuestionsStrictlyGreaterThan: 2
+...
+WARNING: the count-based range is 1 questions but up to 3 questions moved
+```
+
+The evidence needed to correct the bar was computed **after** the bar had already
+been emitted, and the correction was advisory text on the next screen. An arm
+judged against `2` would clear it while the endpoint's demonstrated movement was
+`3`.
+
+### 9.2 The fix
+
+`requiredEffectSize` now takes the pairwise roster movements and derives the bar
+from the **larger** of the two measurements:
+
+```ts
+const movement = rosterChanged ?? 0;
+const floorQuestions = Math.max(stats.rangeQuestions, movement);
+return {
+  rangeQuestions: stats.rangeQuestions,
+  floorPp: stats.spreadPp,
+  minQuestionsStrictlyGreaterThan: Math.max(1, floorQuestions + 1),
+  rosterChanged: movement,
+};
+```
+
+Measured effect on the real feature arm:
+
+| capability | bar before | bar after |
+| ---------- | ---------- | --------- |
+| overall | 2 | **4** |
+| ABS | 1 | **4** |
+| IE | 2 | **4** |
+| KU | 2 | **4** |
+| MR | 2 | **4** |
+| TR | 1 | **4** |
+
+The control arm is unchanged at 2, because there the range already equalled the
+roster movement. **The fix raises a bar and never lowers one**, so a caller that
+supplies no movements keeps exactly the old, under-cautious figure.
+
+The `WARNING` is now a `floor source:` line naming which of the two figures set
+the bar — because a single printed number derived from two measurements does not
+say which one it came from.
+
+### 9.3 What the fix does not claim
+
+Per-capability bars take the **overall** roster movement, not a per-capability
+one: attributing a flip to a capability needs a second pass this module does not
+have, and using the overall figure is the conservative direction — it can only
+raise a capability's bar.
+
+The number of movement figures is checked against `n * (n - 1) / 2`. A caller
+that passes the wrong count has derived its pairs differently from this module,
+and a bar built from two notions of "pair" would average incommensurable things.
+
+### 9.4 The census gate caught a real gap in this change
+
+Making `PairwiseMovement` a new export produced `1 NEW orphan`:
+
+```
+cortex-eval: PairwiseMovement (packages/cortex-eval/src/variance.ts:157)
+```
+
+Not a false positive. `tools/*.mjs` are counted as callers but never as
+declaration sites, so a type only the CLI names has **no TypeScript-side
+consumer at all**. The gate's own self-check then caught a second thing: adding
+the entry to `knownOrphans` alone left `locations` short by one, failing
+
+```
+expect(sites).toBe(orphaned);   // 276 !== 277
+```
+
+Both were fixed — the export is recorded in the ledger with the reason above, and
+`locations` now carries it, so `448 = 171 + 277` holds again.
+
+> **Rule added here.** **A ledger with two parallel counts will drift, and the
+> drift is only visible because something asserts the two counts agree.**

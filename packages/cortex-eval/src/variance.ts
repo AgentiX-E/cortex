@@ -107,6 +107,12 @@ export type RequiredEffectSize = {
   basedOnObservations: number;
   overall: CapabilityRequirement;
   perCapability: Partial<Record<Capability, CapabilityRequirement>>;
+  /**
+   * The largest roster movement any pair of runs showed, or undefined when the
+   * caller supplied none. Present so a reader can see WHICH of the two figures
+   * set the bar; the bar alone does not say.
+   */
+  rosterChanged?: number | undefined;
 };
 
 export type CapabilityRequirement = {
@@ -114,11 +120,37 @@ export type CapabilityRequirement = {
   floorPp: number;
   /**
    * An arm must move **more than** this many questions. Strictly greater than
-   * the observed range, because matching the noise is not clearing it, and never
+   * the observed floor, because matching the noise is not clearing it, and never
    * below 1, because an arm that changes zero questions has shown nothing even if
    * the endpoint happened to be perfectly stable.
    */
   minQuestionsStrictlyGreaterThan: number;
+  /**
+   * The roster movement the bar was derived from, or 0 when the caller supplied
+   * none. Carried so a reader can tell a bar set by a stable score from one set
+   * by a stable score and an unstable roster.
+   */
+  rosterChanged: number;
+};
+
+/**
+ * How many questions moved between a pair of runs.
+ *
+ * Supplied by the caller rather than computed here because this module sees only
+ * counts: a `RunObservation` carries `correct` and `total`, and moving from
+ * counts to a roster is what `compareQuestionVectors` does over a vector this
+ * module never receives. The caller that ran the comparison has the figure.
+ *
+ * Structurally identical to a stripped `QuestionVectorComparison`, and NOT a
+ * re-export of it, for a measured reason the census gate caught: `tools/*.mjs`
+ * are counted as callers but never as declaration sites, so a type only the CLI
+ * names reads as an orphan from a TypeScript caller's point of view. The CLI
+ * builds `{ changed }` literals, which needs a declared shape rather than a
+ * structural match it can already satisfy.
+ */
+export type PairwiseMovement = {
+  /** Questions whose correctness differed between the pair -- `changed`. */
+  changed: number;
 };
 
 /** Counts of correct answers, used to build a `VarianceStats`. */
@@ -312,11 +344,31 @@ export function compareQuestionVectors(
 }
 
 /** Derive the minimum arm effect that clears the floor implied by a summary. */
-function requirementFrom(stats: VarianceStats): CapabilityRequirement {
+function requirementFrom(
+  stats: VarianceStats,
+  rosterChanged: number | undefined,
+): CapabilityRequirement {
+  // The bar is the LARGER of two measurements of the same thing, because they
+  // can disagree and the disagreement is not symmetric.
+  //
+  // The range bounds how far the SCORE moved. The roster bounds how much of the
+  // ROSTER moved. A pair of runs that swaps one correct answer for another has a
+  // range of zero and two discordant questions: the score is stable while the
+  // endpoint is demonstrably unstable. Deriving the bar from the range alone
+  // therefore understates noise on exactly the runs where the noise is largest,
+  // and an arm that flipped one question would clear a bar of one.
+  //
+  // Measured on the C5 feature arm: range 1 question, THREE questions moved. The
+  // bar that run produced was 2, and the movement it should have had to beat was
+  // 4. Taking the maximum cannot lower a bar an existing caller already had, so
+  // an older caller that supplies no roster is under-cautious rather than wrong.
+  const movement = rosterChanged ?? 0;
+  const floorQuestions = Math.max(stats.rangeQuestions, movement);
   return {
     rangeQuestions: stats.rangeQuestions,
     floorPp: stats.spreadPp,
-    minQuestionsStrictlyGreaterThan: Math.max(1, stats.rangeQuestions + 1),
+    minQuestionsStrictlyGreaterThan: Math.max(1, floorQuestions + 1),
+    rosterChanged: movement,
   };
 }
 
@@ -326,22 +378,51 @@ function requirementFrom(stats: VarianceStats): CapabilityRequirement {
  *
  * Throws when the summary rests on fewer than two observations: with n=1 there is
  * no spread, so any bar derived from it is fabricated rather than measured.
+ *
+ * @param summary the config-identical observations.
+ * @param movements one entry per PAIR of observations — `n * (n - 1) / 2` of
+ *   them, in any order — as produced by comparing the per-question correctness
+ *   vectors pairwise. Omit it and the bar falls back to the count-based range,
+ *   which is the pre-existing behaviour. A count that does not match the pair
+ *   count is rejected rather than ignored: the caller has derived its pairs
+ *   differently from this module, and a bar built from two notions of "pair"
+ *   would be an average of incommensurable things.
  */
-export function requiredEffectSize(summary: VarianceSummary): RequiredEffectSize {
+export function requiredEffectSize(
+  summary: VarianceSummary,
+  movements?: readonly PairwiseMovement[],
+): RequiredEffectSize {
   if (!summary.sufficient) {
     throw new Error('requiredEffectSize requires at least two observations to measure a spread');
   }
+
+  const expectedPairs = (summary.n * (summary.n - 1)) / 2;
+  if (movements !== undefined && movements.length !== expectedPairs) {
+    throw new Error(
+      `requiredEffectSize got ${movements.length} pairwise movement figure(s) but ` +
+        `${summary.n} observations have ${expectedPairs} pair(s). Each figure must ` +
+        'describe one pair of the same observations the summary was built from.',
+    );
+  }
+  const rosterChanged =
+    movements === undefined ? undefined : Math.max(...movements.map((m) => m.changed));
 
   const perCapability: Partial<Record<Capability, CapabilityRequirement>> = {};
   for (const [capability, stats] of Object.entries(summary.perCapability) as Array<
     [Capability, VarianceStats]
   >) {
-    perCapability[capability] = requirementFrom(stats);
+    // Per-capability bars take the OVERALL roster movement, not a per-capability
+    // one. The comparison that produced the figure is over whole questions, and
+    // attributing a flip to a capability would need a second pass this module
+    // does not have. Using the overall movement is the conservative direction:
+    // it can only raise a capability's bar, never lower it.
+    perCapability[capability] = requirementFrom(stats, rosterChanged);
   }
 
   return {
     basedOnObservations: summary.n,
-    overall: requirementFrom(summary.overall),
+    overall: requirementFrom(summary.overall, rosterChanged),
     perCapability,
+    rosterChanged,
   };
 }

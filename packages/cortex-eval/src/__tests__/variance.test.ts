@@ -376,6 +376,93 @@ describe('requiredEffectSize', () => {
     expect(() => requiredEffectSize(summary)).toThrow(/at least two observations/);
   });
 
+  it('raises the bar above the range when the runs swapped questions', () => {
+    // THE DEFECT, found on real artifacts. Two runs whose scores differ by one
+    // question can still disagree about three: one net-correct swap hides two
+    // questions that moved in both directions. Measured on the C5 feature arm,
+    // the range was 1 while THREE questions moved, and a bar derived from the
+    // range said an arm needed to clear one question to beat noise.
+    //
+    // The two arms below have identical accuracy (2 of 4 each) and differ on two
+    // questions, so the range is 0. A bar of "1" would let an arm that flipped a
+    // single question claim it had beaten the endpoint's own movement, when the
+    // endpoint had just demonstrated it flips two.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, true, false, false] }),
+      observation('r2', { IE: [false, false, true, true] }),
+    ]);
+
+    // The count-based range is blind to this, which is the point.
+    expect(summary.overall.rangeQuestions).toBe(0);
+
+    const required = requiredEffectSize(summary, [{ changed: 2 }]);
+
+    // Strictly greater than the TWO that moved, not the zero the score moved by.
+    expect(required.overall.minQuestionsStrictlyGreaterThan).toBe(3);
+    expect(required.overall.rangeQuestions).toBe(0);
+  });
+
+  it('keeps the range as the bar when it already exceeds the roster movement', () => {
+    // The roster figure does not replace the range, it joins it. A run whose
+    // score swung two questions while only two questions moved is bounded by the
+    // range, and the roster must not lower that bar.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, true, false, false] }),
+      observation('r2', { IE: [true, false, false, false] }),
+    ]);
+
+    const required = requiredEffectSize(summary, [{ changed: 1 }]);
+
+    expect(required.overall.rangeQuestions).toBe(1);
+    expect(required.overall.minQuestionsStrictlyGreaterThan).toBe(2);
+  });
+
+  it('refuses to derive a bar from roster movements that do not align with the observations', () => {
+    // `maxPairwiseChanged` reports one figure per PAIR of observations, so the
+    // count is `n * (n - 1) / 2` -- three observations have three pairs, not two.
+    // A caller that passes the wrong number has derived its pairs differently
+    // from this module, and silently ignoring the mismatch would produce a bar
+    // from two different notions of what a pair is.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, false] }),
+      observation('r2', { IE: [true, false] }),
+      observation('r3', { IE: [true, false] }),
+    ]);
+
+    // Three observations, so two figures is one short of the three pairs.
+    expect(() => requiredEffectSize(summary, [{ changed: 1 }, { changed: 2 }])).toThrow(/pair/);
+  });
+
+  it('takes the largest movement when several pairs are supplied', () => {
+    // A set where r1 and r2 agree and r3 is an outlier has a small mean but is
+    // exactly the situation a floor has to survive. The maximum, not the mean.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, true, false, false] }),
+      observation('r2', { IE: [true, true, false, false] }),
+      observation('r3', { IE: [false, true, true, false] }),
+    ]);
+
+    const required = requiredEffectSize(summary, [{ changed: 0 }, { changed: 1 }, { changed: 3 }]);
+
+    expect(required.rosterChanged).toBe(3);
+    // 3 moved, so an arm must move 4 -- not the 1 the zero range would give.
+    expect(required.overall.minQuestionsStrictlyGreaterThan).toBe(4);
+  });
+
+  it('falls back to the range alone when no roster movement is supplied', () => {
+    // Backwards-compatible by design: a caller that has only counts still gets a
+    // bar, and it is the old one. The new evidence RAISES the bar and never
+    // lowers it, so an old caller is under-cautious rather than wrong.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, true, false, false] }),
+      observation('r2', { IE: [true, false, false, false] }),
+    ]);
+
+    const required = requiredEffectSize(summary);
+
+    expect(required.overall.minQuestionsStrictlyGreaterThan).toBe(2);
+  });
+
   it('carries the observation count so a caller can see what the bar rests on', () => {
     const summary = summarizeVariance([
       observation('r1', { IE: [true] }),

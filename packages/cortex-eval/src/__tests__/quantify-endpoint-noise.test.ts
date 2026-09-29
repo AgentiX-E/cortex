@@ -142,24 +142,36 @@ describe('the tool reports the endpoint movement between config-identical runs',
     // floor alone is unsafe.
     //
     // Net accuracy is IDENTICAL across these two runs (2/3 each), so the
-    // count-based range is 0 and the count-based bar is the minimum of 1. But 2
-    // of the 3 questions actually moved. An arm that moved exactly 1 question
-    // would clear the count-based bar while the endpoint's own per-question
-    // movement was 2 -- so the bar understates the noise on precisely the runs
-    // where the noise is largest.
-    //
-    // Both readings are printed, and this test pins both, because printing only
-    // the first would make the tool repeat §20's mistake in a new artifact.
+    // count-based range is 0. But 2 of the 3 questions actually moved, so the
+    // bar must be derived from the ROSTER. Until §25 the tool printed the range
+    // as the bar and a warning below it; the bar an arm would be judged against
+    // was the understated one.
     expect(out).toContain('range: 0 questions');
-    expect(out).toContain('minQuestionsStrictlyGreaterThan: 1');
     expect(out).toContain('changed: 2');
     expect(out).toContain('66.67%');
+    // The bar now comes from the roster: 2 moved, so an arm must move 3.
+    expect(out).toContain('minQuestionsStrictlyGreaterThan: 3');
+    expect(out).toContain('floor source: the ROSTER, not the score');
+  });
+
+  it('keeps the score range as the bar when the roster moved no further', () => {
+    // The roster figure joins the range, it does not replace it. Here the score
+    // swung one question and exactly one question moved, so nothing is being
+    // hidden and the bar is the ordinary one.
+    const a = writeReport('agree-a.json', [true, true, false, false]);
+    const b = writeReport('agree-b.json', [true, false, false, false]);
+    const out = run([a, b]);
+
+    expect(out).toContain('range: 1 questions');
+    expect(out).toContain('changed: 1');
+    expect(out).toContain('minQuestionsStrictlyGreaterThan: 2');
+    expect(out).toContain('floor source: the score range');
   });
 
   it('derives the minimum clearing effect from the observed range', () => {
-    // Three runs, correct counts 1/2/3 over 4 questions: range 2, so an arm must
-    // move strictly MORE than 2 questions. Strictly, because matching the noise
-    // is not clearing it.
+    // Three runs, correct counts 1/2/3 over 4 questions: range 2, and up to 2
+    // questions move between a pair, so an arm must move strictly MORE than 2.
+    // Strictly, because matching the noise is not clearing it.
     const a = writeReport('range-a.json', [true, false, false, false]);
     const b = writeReport('range-b.json', [true, true, false, false]);
     const c = writeReport('range-c.json', [true, true, true, false]);

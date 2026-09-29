@@ -170,16 +170,15 @@ function resolveInputs(args) {
 }
 
 /**
- * The largest number of questions any pair of runs disagreed about.
+ * Every pairwise roster movement, as the figures `requiredEffectSize` consumes.
  *
- * The maximum rather than the mean, and pairwise rather than versus the first
- * run only. A set where run1 and run2 agree and run3 is an outlier has a small
- * mean but is exactly the situation a floor must survive, and a mean would hide
- * it. Comparing all pairs is O(n^2) in the number of runs, which is two or three
- * for a dispatched A/B.
+ * One entry per pair, because that is the unit the figure is defined over: a set
+ * where run1 and run2 agree and run3 is an outlier has a small mean but is
+ * exactly the situation a floor must survive, so the module takes the maximum
+ * over pairs rather than pooling.
  */
-function maxPairwiseChanged(referenceIds, reports) {
-  let worst = 0;
+function pairwiseMovements(referenceIds, reports) {
+  const movements = [];
   for (let i = 0; i < reports.length; i++) {
     for (let j = i + 1; j < reports.length; j++) {
       const comparison = compareQuestionVectors(
@@ -187,11 +186,19 @@ function maxPairwiseChanged(referenceIds, reports) {
         vectorOf(reports[i].records),
         vectorOf(reports[j].records),
       );
-      worst = Math.max(worst, comparison.changed);
+      movements.push({ changed: comparison.changed });
     }
   }
-  return worst;
+  return movements;
 }
+
+/*
+ * There is deliberately no `maxPairwiseChanged` helper here. Until §25 one
+ * existed whose only caller was the warning block; folding the roster figure into
+ * the bar left it with no caller, and a second implementation of "the maximum
+ * over pairs" is a second thing that can drift from the reduction inside
+ * `requiredEffectSize`. The figure is computed inline where it is needed.
+ */
 
 function main() {
   const args = process.argv.slice(2);
@@ -258,9 +265,17 @@ function main() {
   });
 
   const summary = summarizeVariance(observations);
+
+  // The roster movement per pair, computed BEFORE the bar. The bar is derived
+  // from both this and the count range, and until §25 the CLI computed the
+  // roster figure only after the bar had already been printed -- so the tool
+  // printed a bar it had the evidence to correct, then warned below it.
+  const movements = pairwiseMovements(referenceIds, reports);
+  const maxChanged = movements.length === 0 ? 0 : Math.max(...movements.map((m) => m.changed));
+
   let requirement;
   try {
-    requirement = requiredEffectSize(summary);
+    requirement = requiredEffectSize(summary, movements);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
@@ -393,27 +408,32 @@ function main() {
       `floorPp: ${requirement.overall.floorPp.toFixed(2)}`,
   );
 
-  // The divergence between the two measurements, stated rather than left for the
-  // reader to notice.
+  // Which of the two measurements set the bar. Stated rather than left to the
+  // reader, because the printed `minQuestionsStrictlyGreaterThan` is one number
+  // derived from two figures and the number alone does not say which.
   //
   // The count-based range can be ZERO while a large fraction of questions moved:
   // two runs that swap one correct answer for another have identical accuracy and
-  // two discordant questions. The bar derived from the range is then the minimum
-  // of 1, which understates the noise on precisely the runs where the noise is
-  // largest -- and an arm that moved exactly one question would clear it.
+  // two discordant questions. Until §25 the CLI printed the range-derived bar and
+  // a warning BELOW it, so the bar an arm would be judged against was the
+  // understated one and the correction was advisory text on the next screen.
   //
-  // Reported as a warning rather than folded into the bar because the two measure
-  // different things: the range bounds how far the SCORE moves, the changed rate
-  // bounds how much of the ROSTER moves. A per-question claim needs the second.
-  const maxChanged = maxPairwiseChanged(referenceIds, reports);
+  // The bar is now the maximum of the two. Nothing here is a warning any more:
+  // the roster figure is an input to the number, not a caveat under it.
   if (maxChanged > summary.overall.rangeQuestions) {
     console.log('');
     console.log(
-      `WARNING: the count-based range is ${summary.overall.rangeQuestions} questions but up to ` +
-        `${maxChanged} questions moved between a pair of these runs. The range bounds how far ` +
-        'the SCORE moves; it does not bound how much of the ROSTER moves. An arm judged only ' +
-        'against the range could clear it while the questions it claims to affect are the ' +
-        'same ones the endpoint already moves on its own.',
+      `floor source: the ROSTER, not the score. The count-based range is ` +
+        `${summary.overall.rangeQuestions} question(s) but up to ${maxChanged} question(s) moved ` +
+        'between a pair of these runs. The range bounds how far the SCORE moves; it does not ' +
+        'bound how much of the ROSTER moves. The bar above was derived from the larger figure, ' +
+        'so it is not the one the range alone would have given.',
+    );
+  } else {
+    console.log('');
+    console.log(
+      `floor source: the score range (${summary.overall.rangeQuestions} question(s)), which is at ` +
+        `least the roster movement (${maxChanged} question(s)) on these runs.`,
     );
   }
 
