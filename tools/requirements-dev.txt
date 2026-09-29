@@ -10,3 +10,14 @@
 # whose runtime is Node, and an exact pin here would need a bot to keep it fresh.
 # The runner image supplies the interpreter; only the test framework is installed.
 pytest>=8,<10
+
+# Not a test dependency: `fetch-artifact.py` imports it at module scope, so the
+# script cannot even print its usage without it. Its absence on a clean runner is
+# what the first CI run of `pnpm check` failed on -- three usage tests got exit 1
+# and an empty stdout, because the import raised before `main` was reached, and
+# the subprocess harness captures stderr without printing it. The tool works
+# locally only because the development environment already had `requests`.
+#
+# Every other tool in this directory uses the standard library alone, so this is
+# the complete set.
+requests>=2.31,<3

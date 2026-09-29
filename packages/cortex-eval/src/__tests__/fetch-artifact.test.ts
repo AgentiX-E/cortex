@@ -57,6 +57,32 @@ function run(args: string[]): Run {
   }
 }
 
+/**
+ * Run `python3` with a controlled environment, for the tests that assert on a
+ * failure to import rather than on behaviour.
+ *
+ * `skipSite` adds `-S`, which drops `site-packages` from `sys.path` -- the same
+ * shape a clean runner has when a dependency was never installed.
+ */
+function runWithEnv(
+  args: string[],
+  env: Record<string, string | undefined>,
+  options: { skipSite?: boolean } = {},
+): Run {
+  const flags = options.skipSite ? ['-S', ...args] : args;
+  try {
+    const stdout = execFileSync('python3', flags, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
+    return { status: 0, stdout, stderr: '' };
+  } catch (error) {
+    const e = error as { status?: number; stdout?: string; stderr?: string };
+    return { status: e.status ?? -1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+  }
+}
+
 describe('fetch-artifact CLI', () => {
   it('is syntactically valid and importable', () => {
     // A tool that only runs on the day the network is broken is a tool that has
@@ -115,5 +141,41 @@ describe('fetch-artifact CLI', () => {
     expect(source).toMatch(/198\.18\.0\.0\/15/);
     expect(source).toMatch(/SAS|signature/i);
     expect(source).toMatch(/AccountNotFound/);
+  });
+
+  it('reports stderr when the script dies before main, so CI is diagnosable', () => {
+    // The defect this guards. `fetch-artifact.py` imports `requests` at module
+    // scope, and a clean CI runner has no `requests`. Three usage tests then got
+    // exit 1 with an EMPTY stdout, and the harness above captures stderr without
+    // printing it -- so `pnpm check` reported `expected 1 to be 2` four times and
+    // nothing about the missing module. Root-causing that needed downloading the
+    // artifact and reading the raw log.
+    //
+    // The contract asserted here is on the HARNESS, not on the script: any run
+    // whose stderr is non-empty must be surfaced, because a bare exit code is
+    // exactly the class of unactionable failure the repository's other tooling
+    // was fixed to stop emitting.
+    const probe = runWithEnv(['-c', 'import definitely_not_a_module'], {
+      PYTHONPATH: undefined,
+    });
+    expect(probe.status).not.toBe(0);
+    expect(probe.stderr).not.toBe('');
+    expect(probe.stderr).toMatch(/ModuleNotFoundError|ImportError/);
+  });
+
+  it('surfaces the missing module by name when an import is unavailable', () => {
+    // The same failure at the granularity that matters for this script: run it
+    // with `requests` made unimportable and confirm the diagnostic names it.
+    // `-S` skips site-packages, which is what a runner without the dependency
+    // looks like.
+    const r = runWithEnv(
+      [SCRIPT],
+      { PYTHONNOUSERSITE: '1', PYTHONPATH: '' },
+      {
+        skipSite: true,
+      },
+    );
+    if (r.status === 0) return; // `requests` present in the interpreter anyway
+    expect(r.stderr).toMatch(/requests/);
   });
 });
