@@ -375,3 +375,37 @@ describe('the census CLI survives output that is larger than a pipe buffer', () 
     }
   });
 });
+
+describe('the census counts the workspace outside packages/*/src', () => {
+  it('counts bench/run.ts as a caller, because it is the benchmark entry point', () => {
+    // THE BLIND SPOT. `readAllSources` walked `packages/<pkg>/src` and `tools/*.mjs`
+    // and nothing else, so `packages/cortex-eval/bench/run.ts` -- the benchmark's
+    // actual entry point, 1000+ lines that import the export surface by name --
+    // was read by NEITHER. The gate therefore reported 41 exports as orphans whose
+    // only production caller is that file.
+    //
+    // The check is by name against a symbol this test can prove is called there,
+    // not a count: a count would change whenever unrelated code moved, and the
+    // property under test is "bench/run.ts is read", not "the file has N refs".
+    const benchPath = resolve(REPO_ROOT, 'packages/cortex-eval/bench/run.ts');
+    const bench = readFileSync(benchPath, 'utf8');
+    expect(bench).toContain('createLlmFromEnv');
+
+    const { status, output } = runCensus(['--check']);
+    expect(status).toBe(0);
+    expect(output).not.toContain('cortex-eval: createLlmFromEnv');
+    expect(output).not.toContain('cortex-eval: sampleInstances');
+  });
+
+  it('keeps a bench file from being counted as a declaration site', () => {
+    // `bench/run.ts` is a TypeScript file, so `isSourceFile` is true for it and it
+    // must be read -- but it declares no exported symbol the census should
+    // attribute. Asserting the outcome rather than the mechanism: a bench file
+    // added to the declaration walk would show up as a `cortex-eval: <name>`
+    // orphan whose location is under `bench/`, which is the shape to forbid.
+    const { output } = runCensus(['--json']);
+    const payload = JSON.parse(output) as { orphans: string[] };
+    const fromBench = payload.orphans.filter((line) => line.includes('/bench/'));
+    expect(fromBench).toEqual([]);
+  });
+});

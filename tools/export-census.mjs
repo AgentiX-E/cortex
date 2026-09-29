@@ -19,7 +19,7 @@
  * defect that let B7's annotation producer ship with no callers.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve, dirname } from 'node:path';
+import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   censusPackage,
@@ -45,17 +45,33 @@ function walk(dir) {
 
 /**
  * Reads every source file the census should consider: each package's `src` tree
- * for declarations, plus the tool scripts as callers.
+ * for declarations, plus every other production entry point as a caller.
  *
  * The tool scripts import from the packages' `dist` output, so they are
  * production consumers of the exported API. Without them the census reports its
  * own public surface as orphaned.
+ *
+ * `packages/<pkg>/bench/**` was the original blind spot, and it is a large one.
+ * `packages/cortex-eval/bench/run.ts` is the benchmark's actual entry point --
+ * over a thousand lines that name the export surface directly -- and it was read
+ * by NEITHER the `src` walk nor the `tools` walk, because it sits between them in
+ * the layout. Measured when this was found: 41 exports were reported as orphans
+ * whose only production caller is that file, including `createLlmFromEnv`,
+ * `createRerankerFromEnv`, `sampleInstances`, and eight `run*Ablation` functions.
+ *
+ * A gate that reports live entry-point calls as dead is worse than no gate: it
+ * teaches its readers that the list can be ignored, which is the one outcome a
+ * debt ledger cannot survive. The walk below is therefore over the whole
+ * workspace, with build output and dependencies excluded, rather than over a
+ * hand-listed pair of directories.
  */
 function readAllSources() {
   const packagesDir = join(REPO_ROOT, 'packages');
-  const fromPackages = readdirSync(packagesDir).flatMap((packageName) =>
-    walk(join(packagesDir, packageName, 'src'))
-      .filter((path) => /\.tsx?$/.test(path))
+  const packageNames = readdirSync(packagesDir);
+  const fromPackages = packageNames.flatMap((packageName) =>
+    walk(join(packagesDir, packageName))
+      .filter((path) => /\.(ts|tsx|mjs)$/.test(path))
+      .filter((path) => !path.includes(`${sep}src${sep}__tests__${sep}`))
       .map((path) => ({ path: relative(REPO_ROOT, path), text: readFileSync(path, 'utf8') })),
   );
   const fromTools = walk(join(REPO_ROOT, 'tools'))

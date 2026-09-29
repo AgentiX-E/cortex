@@ -1,9 +1,9 @@
 {
-  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. PAYOFF RECORDED: six entries were removed because they acquired real non-test callers, not because the ledger was relaxed. compareQuestionVectors, requiredEffectSize, summarizeVariance and RunObservation are now called by tools/quantify-endpoint-noise.mjs, the endpoint-noise CLI, which is the first real consumer of the noise model; runNaturalLanguageBenchmark is called by tools/read-b7-criterion.mjs; CohortQuestion is now named at the call sites that construct it. Each of these was a symbol that existed, was tested, and was wired to nothing -- the AUDIT-B7-ANNOTATION-PRODUCER defect class -- so removing them from this list is the intended direction of travel, and the list is one entry shorter for a reason rather than for a preference.",
+  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. PAYOFF RECORDED: six entries were removed because they acquired real non-test callers, not because the ledger was relaxed. compareQuestionVectors, requiredEffectSize, summarizeVariance and RunObservation are now called by tools/quantify-endpoint-noise.mjs, the endpoint-noise CLI, which is the first real consumer of the noise model; runNaturalLanguageBenchmark is called by tools/read-b7-criterion.mjs; CohortQuestion is now named at the call sites that construct it. Each of these was a symbol that existed, was tested, and was wired to nothing -- the AUDIT-B7-ANNOTATION-PRODUCER defect class -- so removing them from this list is the intended direction of travel, and the list is one entry shorter for a reason rather than for a preference. PAYOFF RECORDED (second): forty entries were removed because the CENSUS was blind, not because the ledger was relaxed. `readAllSources` walked `packages/<pkg>/src` and `tools/*.mjs` and nothing between them, so `packages/cortex-eval/bench/run.ts` -- the benchmark's actual entry point, 1052 lines naming the export surface directly -- was read by neither. Forty exports were reported as orphans whose only production caller is that file, including createLlmFromEnv, createRerankerFromEnv, sampleInstances, tableEmbedding and eight `run*Ablation` functions. The walk now covers the whole workspace with build output and dependencies excluded. Zero new orphans appeared as a result, so the forty were pure false positives: a gate that reports live entry-point calls as dead teaches its readers to ignore the list, which is the one outcome a debt ledger cannot survive.",
   "totals": {
     "exports": 448,
-    "withCaller": 171,
-    "orphaned": 277
+    "withCaller": 213,
+    "orphaned": 235
   },
   "groups": [
     {
@@ -28,7 +28,7 @@
     },
     {
       "category": "core-llm-node-surface",
-      "count": 65,
+      "count": 64,
       "rationale": "Library surface of cortex-core, cortex-llm and cortex-node. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-llm/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. Not triaged entry by entry.",
       "declarationSites": [
         "cortex-core: AccessRecord (packages/cortex-core/src/consolidation/consolidate.ts:21)",
@@ -87,7 +87,6 @@
         "cortex-llm: parseListwiseScores (packages/cortex-llm/src/rerank/llm-reranker.ts:90)",
         "cortex-llm: parseRerankResponse (packages/cortex-llm/src/rerank/rerank.ts:73)",
         "cortex-llm: parseRetryAfterMs (packages/cortex-llm/src/retry.ts:78)",
-        "cortex-llm: resetRetryStats (packages/cortex-llm/src/retry.ts:315)",
         "cortex-llm: retryableFetchWithStats (packages/cortex-llm/src/retry.ts:383)",
         "cortex-llm: sanitizePrompt (packages/cortex-llm/src/llm/openai-compatible.ts:121)",
         "cortex-llm: sleep (packages/cortex-llm/src/retry.ts:33)",
@@ -100,11 +99,9 @@
     },
     {
       "category": "ablation-and-diagnostic-surface",
-      "count": 79,
+      "count": 62,
       "rationale": "The ablation and diagnostic instrumentation. Roadmap-adjacent: the audit of AUDIT-B7-ANNOTATION-PRODUCER.md found that several of these features were built, tested and never wired, which is why they are orphans. They are recorded rather than deleted because the roadmap may still wire them; each must be adjudicated by a roadmap item, not by this ledger.",
       "declarationSites": [
-        "cortex-eval: ABLATION_SKIP_FILENAME (packages/cortex-eval/src/ablation-skip.ts:26)",
-        "cortex-eval: AblationSkipRecord (packages/cortex-eval/src/ablation-skip.ts:29)",
         "cortex-eval: ArmOutcome (packages/cortex-eval/src/b7-cohort.ts:299)",
         "cortex-eval: AttributeRecallGapOptions (packages/cortex-eval/src/retrieval-attribution.ts:182)",
         "cortex-eval: CANDIDATE_ANNOTATION_VERSION (packages/cortex-eval/src/candidate-context.ts:45)",
@@ -120,7 +117,6 @@
         "cortex-eval: CurveMembership (packages/cortex-eval/src/retrieval-attribution.ts:169)",
         "cortex-eval: CurveSummary (packages/cortex-eval/src/retrieval-attribution.ts:65)",
         "cortex-eval: DEFAULT_CURVE_CUTOFFS (packages/cortex-eval/src/recall-curve.ts:274)",
-        "cortex-eval: DiagnosticRecord (packages/cortex-eval/src/failure-census.ts:54)",
         "cortex-eval: DiscriminatedContext (packages/cortex-eval/src/candidate-context.ts:171)",
         "cortex-eval: DiscriminatedContextOptions (packages/cortex-eval/src/candidate-context.ts:145)",
         "cortex-eval: DistinguishingTokens (packages/cortex-eval/src/candidate-discrimination.ts:90)",
@@ -148,26 +144,14 @@
         "cortex-eval: TransportRetryScope (packages/cortex-eval/src/retrieval-diagnostics.ts:327)",
         "cortex-eval: VarianceStats (packages/cortex-eval/src/variance.ts:42)",
         "cortex-eval: VarianceSummary (packages/cortex-eval/src/variance.ts:64)",
-        "cortex-eval: adjudicateGroundedFailure (packages/cortex-eval/src/candidate-discrimination.ts:165)",
-        "cortex-eval: answerTokens (packages/cortex-eval/src/tr-failure-class.ts:193)",
-        "cortex-eval: attributeRecallGap (packages/cortex-eval/src/retrieval-attribution.ts:249)",
-        "cortex-eval: buildAblationSkipRecord (packages/cortex-eval/src/ablation-skip.ts:85)",
         "cortex-eval: candidateSpanCount (packages/cortex-eval/src/candidate-context.ts:192)",
-        "cortex-eval: checkEmbeddingDeterminism (packages/cortex-eval/src/retrieval-diagnostics.ts:92)",
         "cortex-eval: classifyCurveMembership (packages/cortex-eval/src/recall-curve.ts:220)",
         "cortex-eval: classifyExclusion (packages/cortex-eval/src/recall-curve.ts:302)",
-        "cortex-eval: classifyTrFailure (packages/cortex-eval/src/tr-failure-class.ts:249)",
-        "cortex-eval: classifyTrFailure (packages/cortex-eval/src/tr-failure-class.ts:250)",
-        "cortex-eval: classifyTrFailure (packages/cortex-eval/src/tr-failure-class.ts:254)",
-        "cortex-eval: computeRetrievalDiagnostics (packages/cortex-eval/src/retrieval-diagnostics.ts:143)",
-        "cortex-eval: computeSessionRetrievalDiagnostics (packages/cortex-eval/src/retrieval-diagnostics.ts:234)",
-        "cortex-eval: decomposeFailures (packages/cortex-eval/src/failure-census.ts:134)",
         "cortex-eval: discriminatingQuestionTerms (packages/cortex-eval/src/candidate-context.ts:254)",
         "cortex-eval: distinguishingTokens (packages/cortex-eval/src/candidate-discrimination.ts:120)",
         "cortex-eval: elapsedMonths (packages/cortex-eval/src/temporal-engine.ts:492)",
         "cortex-eval: elapsedWeeks (packages/cortex-eval/src/temporal-engine.ts:483)",
         "cortex-eval: flattenTurns (packages/cortex-eval/src/retrieval-diagnostics.ts:45)",
-        "cortex-eval: formatIdPreview (packages/cortex-eval/src/retrieval-diagnostics.ts:411)",
         "cortex-eval: hasSecondEventReference (packages/cortex-eval/src/temporal-engine.ts:140)",
         "cortex-eval: intervalDays (packages/cortex-eval/src/temporal-engine.ts:499)",
         "cortex-eval: isCandidateDiscriminationEnabled (packages/cortex-eval/src/candidate-context.ts:177)",
@@ -179,21 +163,18 @@
         "cortex-eval: rankOfFirstAnswer (packages/cortex-eval/src/recall-curve.ts:258)",
         "cortex-eval: rankingGapFailureCount (packages/cortex-eval/src/retrieval-attribution.ts:215)",
         "cortex-eval: resolveTemporalDate (packages/cortex-eval/src/temporal-engine.ts:257)",
-        "cortex-eval: serializeAblationSkips (packages/cortex-eval/src/ablation-skip.ts:107)",
-        "cortex-eval: sidesLandInDistinctClusters (packages/cortex-eval/src/b7-cohort.ts:212)",
-        "cortex-eval: transportRetryReport (packages/cortex-eval/src/retrieval-diagnostics.ts:377)"
+        "cortex-eval: sidesLandInDistinctClusters (packages/cortex-eval/src/b7-cohort.ts:212)"
       ]
     },
     {
       "category": "eval-harness-surface",
-      "count": 120,
-      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: 156 of the repository's 245 exported functions have no non-test caller, and most of them are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data), so both genuine orphans and false positives are expected. It was not triaged entry by entry; the gate's value is preventing growth, not certifying this snapshot.",
+      "count": 96,
+      "rationale": "Evaluation harness internals. TRIAGED, with a measured result rather than an estimate. Splitting every orphan by whether the DECLARING file uses the name elsewhere: 221 of the 277 orphans measured at triage time were referenced inside their own file (79%), and exactly ZERO were mentioned nowhere at all in any file. So there is no dead code hiding in this bucket -- what there is, is an unnecessary `export` keyword on work that runs. The remaining sites are reached from bench/run.ts, the CLI tools, or another package. The census cannot currently express 'used, but only locally' as a distinct state, which is why the number stays large while the defect count is zero.",
       "declarationSites": [
         "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:67)",
         "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:48)",
         "cortex-eval: AggregationKind (packages/cortex-eval/src/natural-language-memory.ts:2222)",
         "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:82)",
-        "cortex-eval: CONJUNCTION_ABS_COHORT (packages/cortex-eval/src/runner.ts:842)",
         "cortex-eval: CONJUNCTION_ABS_CONTROLS (packages/cortex-eval/src/runner.ts:832)",
         "cortex-eval: CONJUNCTION_ABS_TARGET (packages/cortex-eval/src/runner.ts:830)",
         "cortex-eval: ConservativeQaPromptOptions (packages/cortex-eval/src/natural-language-memory.ts:1659)",
@@ -212,7 +193,6 @@
         "cortex-eval: EmbedManyCachedOptions (packages/cortex-eval/src/retrieval.ts:79)",
         "cortex-eval: EmbeddingEnv (packages/cortex-eval/src/embedding-factory.ts:20)",
         "cortex-eval: EmbeddingMemorySystemOptions (packages/cortex-eval/src/embedding-memory.ts:14)",
-        "cortex-eval: EmbeddingProvenance (packages/cortex-eval/src/embedding-factory.ts:39)",
         "cortex-eval: EmbeddingSourceStats (packages/cortex-eval/src/retrieval.ts:150)",
         "cortex-eval: EmbeddingWithProvenance (packages/cortex-eval/src/embedding-factory.ts:51)",
         "cortex-eval: FactMemorySystem (packages/cortex-eval/src/fact-memory.ts:16)",
@@ -249,17 +229,11 @@
         "cortex-eval: clearJudgeCache (packages/cortex-eval/src/judge.ts:24)",
         "cortex-eval: countLexicalMatches (packages/cortex-eval/src/retrieval.ts:1200)",
         "cortex-eval: createEmbeddingFromEnv (packages/cortex-eval/src/embedding-factory.ts:104)",
-        "cortex-eval: createEmbeddingWithProvenanceFromEnv (packages/cortex-eval/src/embedding-factory.ts:65)",
-        "cortex-eval: createLlmFromEnv (packages/cortex-eval/src/llm-factory.ts:25)",
         "cortex-eval: createLongMemEvalMini (packages/cortex-eval/src/datasets/longmemeval-mini.ts:35)",
-        "cortex-eval: createRerankerFromEnv (packages/cortex-eval/src/rerank-factory.ts:69)",
-        "cortex-eval: deserializeEmbeddingCache (packages/cortex-eval/src/retrieval.ts:329)",
         "cortex-eval: detectBareAbstention (packages/cortex-eval/src/natural-language-memory.ts:2938)",
         "cortex-eval: embedManyCached (packages/cortex-eval/src/retrieval.ts:227)",
         "cortex-eval: embedOne (packages/cortex-eval/src/embedding.ts:28)",
         "cortex-eval: embedOneCached (packages/cortex-eval/src/retrieval.ts:268)",
-        "cortex-eval: embeddingBatchIntervalMs (packages/cortex-eval/src/retrieval.ts:126)",
-        "cortex-eval: embeddingSourceStats (packages/cortex-eval/src/retrieval.ts:183)",
         "cortex-eval: evaluate (packages/cortex-eval/src/benchmark.ts:79)",
         "cortex-eval: exactMatch (packages/cortex-eval/src/metrics.ts:27)",
         "cortex-eval: expandLexicalVariants (packages/cortex-eval/src/natural-language-memory.ts:2736)",
@@ -270,14 +244,12 @@
         "cortex-eval: flattenSessions (packages/cortex-eval/src/datasets/longmemeval-loader.ts:84)",
         "cortex-eval: formatStructuredContext (packages/cortex-eval/src/natural-language-memory.ts:1566)",
         "cortex-eval: generateSyntheticBenchmark (packages/cortex-eval/src/datasets/synthetic-benchmark.ts:75)",
-        "cortex-eval: hasDiagnosticRecord (packages/cortex-eval/src/datasets/longmemeval-loader.ts:69)",
         "cortex-eval: hashText (packages/cortex-eval/src/retrieval.ts:211)",
         "cortex-eval: isAssistantTurn (packages/cortex-eval/src/natural-language-memory.ts:2979)",
         "cortex-eval: isCountingQuestion (packages/cortex-eval/src/metrics.ts:159)",
         "cortex-eval: isTemporalQuestion (packages/cortex-eval/src/temporal.ts:10)",
         "cortex-eval: isUserTurn (packages/cortex-eval/src/natural-language-memory.ts:2967)",
         "cortex-eval: meanPool (packages/cortex-eval/src/retrieval.ts:676)",
-        "cortex-eval: mergeEmbeddingCache (packages/cortex-eval/src/retrieval.ts:202)",
         "cortex-eval: mulberry32 (packages/cortex-eval/src/datasets/synthetic-benchmark.ts:64)",
         "cortex-eval: normalizeAnswer (packages/cortex-eval/src/metrics.ts:21)",
         "cortex-eval: numericAnswerVerdict (packages/cortex-eval/src/metrics.ts:172)",
@@ -288,24 +260,10 @@
         "cortex-eval: parseRecommendationAnswer (packages/cortex-eval/src/natural-language-memory.ts:2798)",
         "cortex-eval: projectSessions (packages/cortex-eval/src/natural-language-memory.ts:2378)",
         "cortex-eval: readRerankFallbacks (packages/cortex-eval/src/runner.ts:61)",
-        "cortex-eval: rerankArmOptions (packages/cortex-eval/src/bench-arm-options.ts:48)",
-        "cortex-eval: resetEmbeddingSourceStats (packages/cortex-eval/src/retrieval.ts:169)",
         "cortex-eval: resolveTimeoutMs (packages/cortex-eval/src/llm-factory.ts:21)",
         "cortex-eval: retrieveTopK (packages/cortex-eval/src/retrieval.ts:429)",
-        "cortex-eval: runAbstentionRetryAblation (packages/cortex-eval/src/runner.ts:704)",
         "cortex-eval: runBenchmark (packages/cortex-eval/src/benchmark.ts:25)",
-        "cortex-eval: runBitemporalKnowledgeUpdateAblation (packages/cortex-eval/src/runner.ts:575)",
-        "cortex-eval: runDeterministicCoverageAblation (packages/cortex-eval/src/runner.ts:433)",
         "cortex-eval: runEmbeddingBenchmark (packages/cortex-eval/src/runner.ts:177)",
-        "cortex-eval: runMrAggregationAblation (packages/cortex-eval/src/runner.ts:289)",
-        "cortex-eval: runQueryExpansionDecompositionAblation (packages/cortex-eval/src/runner.ts:889)",
-        "cortex-eval: runRerankAblation (packages/cortex-eval/src/runner.ts:994)",
-        "cortex-eval: runTemporalEngineAblation (packages/cortex-eval/src/runner.ts:356)",
-        "cortex-eval: runTimeWindowAnnotationAblation (packages/cortex-eval/src/runner.ts:507)",
-        "cortex-eval: sampleInstances (packages/cortex-eval/src/datasets/sampling.ts:11)",
-        "cortex-eval: serializeEmbeddingCache (packages/cortex-eval/src/retrieval.ts:288)",
-        "cortex-eval: snapshotEmbeddingCache (packages/cortex-eval/src/retrieval.ts:193)",
-        "cortex-eval: tableEmbedding (packages/cortex-eval/src/__tests__/test-embedding.ts:16)",
         "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2432)",
         "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2352)"
@@ -358,9 +316,7 @@
     "cortex-core: sinkhorn",
     "cortex-core: squaredEuclideanCostMatrix",
     "cortex-core: studentTCdf",
-    "cortex-eval: ABLATION_SKIP_FILENAME",
     "cortex-eval: AblationReportOptions",
-    "cortex-eval: AblationSkipRecord",
     "cortex-eval: AbstainReason",
     "cortex-eval: AggregationKind",
     "cortex-eval: ArmOutcome",
@@ -368,7 +324,6 @@
     "cortex-eval: BenchmarkRunnerOptions",
     "cortex-eval: CANDIDATE_ANNOTATION_VERSION",
     "cortex-eval: CANDIDATE_RECORD_SCHEMA_KEY",
-    "cortex-eval: CONJUNCTION_ABS_COHORT",
     "cortex-eval: CONJUNCTION_ABS_CONTROLS",
     "cortex-eval: CONJUNCTION_ABS_TARGET",
     "cortex-eval: CandidateCluster",
@@ -395,7 +350,6 @@
     "cortex-eval: DEFAULT_ZHIPU_EMBEDDING_DIMENSIONS",
     "cortex-eval: DEFAULT_ZHIPU_EMBEDDING_MODEL",
     "cortex-eval: DIAGNOSED_CAPABILITIES",
-    "cortex-eval: DiagnosticRecord",
     "cortex-eval: DiscriminatedContext",
     "cortex-eval: DiscriminatedContextOptions",
     "cortex-eval: DistinguishingTokens",
@@ -403,7 +357,6 @@
     "cortex-eval: EmbeddingDeterminism",
     "cortex-eval: EmbeddingEnv",
     "cortex-eval: EmbeddingMemorySystemOptions",
-    "cortex-eval: EmbeddingProvenance",
     "cortex-eval: EmbeddingSourceStats",
     "cortex-eval: EmbeddingWithProvenance",
     "cortex-eval: FactMemorySystem",
@@ -446,10 +399,6 @@
     "cortex-eval: TransportRetryScope",
     "cortex-eval: VarianceStats",
     "cortex-eval: VarianceSummary",
-    "cortex-eval: adjudicateGroundedFailure",
-    "cortex-eval: answerTokens",
-    "cortex-eval: attributeRecallGap",
-    "cortex-eval: buildAblationSkipRecord",
     "cortex-eval: buildAggregationCritiquePrompt",
     "cortex-eval: buildDerivationQaPrompt",
     "cortex-eval: buildDerivationQueryExpansionPrompt",
@@ -464,22 +413,13 @@
     "cortex-eval: buildTemporalQaPrompt",
     "cortex-eval: buildTemporalQueryExpansionPrompt",
     "cortex-eval: candidateSpanCount",
-    "cortex-eval: checkEmbeddingDeterminism",
     "cortex-eval: classifyAggregationKind",
     "cortex-eval: classifyCurveMembership",
     "cortex-eval: classifyExclusion",
-    "cortex-eval: classifyTrFailure",
     "cortex-eval: clearJudgeCache",
-    "cortex-eval: computeRetrievalDiagnostics",
-    "cortex-eval: computeSessionRetrievalDiagnostics",
     "cortex-eval: countLexicalMatches",
     "cortex-eval: createEmbeddingFromEnv",
-    "cortex-eval: createEmbeddingWithProvenanceFromEnv",
-    "cortex-eval: createLlmFromEnv",
     "cortex-eval: createLongMemEvalMini",
-    "cortex-eval: createRerankerFromEnv",
-    "cortex-eval: decomposeFailures",
-    "cortex-eval: deserializeEmbeddingCache",
     "cortex-eval: detectBareAbstention",
     "cortex-eval: discriminatingQuestionTerms",
     "cortex-eval: distinguishingTokens",
@@ -488,8 +428,6 @@
     "cortex-eval: embedManyCached",
     "cortex-eval: embedOne",
     "cortex-eval: embedOneCached",
-    "cortex-eval: embeddingBatchIntervalMs",
-    "cortex-eval: embeddingSourceStats",
     "cortex-eval: evaluate",
     "cortex-eval: exactMatch",
     "cortex-eval: expandLexicalVariants",
@@ -499,10 +437,8 @@
     "cortex-eval: extractLexicalKeywords",
     "cortex-eval: flattenSessions",
     "cortex-eval: flattenTurns",
-    "cortex-eval: formatIdPreview",
     "cortex-eval: formatStructuredContext",
     "cortex-eval: generateSyntheticBenchmark",
-    "cortex-eval: hasDiagnosticRecord",
     "cortex-eval: hasSecondEventReference",
     "cortex-eval: hashText",
     "cortex-eval: intervalDays",
@@ -513,7 +449,6 @@
     "cortex-eval: isUserTurn",
     "cortex-eval: isValidDate",
     "cortex-eval: meanPool",
-    "cortex-eval: mergeEmbeddingCache",
     "cortex-eval: mulberry32",
     "cortex-eval: normalizeAnswer",
     "cortex-eval: numericAnswerVerdict",
@@ -530,29 +465,13 @@
     "cortex-eval: rankOfFirstAnswer",
     "cortex-eval: rankingGapFailureCount",
     "cortex-eval: readRerankFallbacks",
-    "cortex-eval: rerankArmOptions",
-    "cortex-eval: resetEmbeddingSourceStats",
     "cortex-eval: resolveTemporalDate",
     "cortex-eval: resolveTimeoutMs",
     "cortex-eval: retrieveTopK",
-    "cortex-eval: runAbstentionRetryAblation",
     "cortex-eval: runBenchmark",
-    "cortex-eval: runBitemporalKnowledgeUpdateAblation",
-    "cortex-eval: runDeterministicCoverageAblation",
     "cortex-eval: runEmbeddingBenchmark",
-    "cortex-eval: runMrAggregationAblation",
-    "cortex-eval: runQueryExpansionDecompositionAblation",
-    "cortex-eval: runRerankAblation",
-    "cortex-eval: runTemporalEngineAblation",
-    "cortex-eval: runTimeWindowAnnotationAblation",
-    "cortex-eval: sampleInstances",
-    "cortex-eval: serializeAblationSkips",
-    "cortex-eval: serializeEmbeddingCache",
     "cortex-eval: sidesLandInDistinctClusters",
-    "cortex-eval: snapshotEmbeddingCache",
-    "cortex-eval: tableEmbedding",
     "cortex-eval: timelineFor",
-    "cortex-eval: transportRetryReport",
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
     "cortex-llm: CrossEncoderRerankerOptions",
@@ -579,7 +498,6 @@
     "cortex-llm: parseListwiseScores",
     "cortex-llm: parseRerankResponse",
     "cortex-llm: parseRetryAfterMs",
-    "cortex-llm: resetRetryStats",
     "cortex-llm: retryableFetchWithStats",
     "cortex-llm: sanitizePrompt",
     "cortex-llm: sleep",
@@ -725,14 +643,8 @@
     "cortex-core: studentTCdf": [
       "packages/cortex-core/src/math/stats.ts:87"
     ],
-    "cortex-eval: ABLATION_SKIP_FILENAME": [
-      "packages/cortex-eval/src/ablation-skip.ts:26"
-    ],
     "cortex-eval: AblationReportOptions": [
       "packages/cortex-eval/src/report.ts:130"
-    ],
-    "cortex-eval: AblationSkipRecord": [
-      "packages/cortex-eval/src/ablation-skip.ts:29"
     ],
     "cortex-eval: AbstainReason": [
       "packages/cortex-eval/src/natural-language-memory.ts:54"
@@ -754,9 +666,6 @@
     ],
     "cortex-eval: CANDIDATE_RECORD_SCHEMA_KEY": [
       "packages/cortex-eval/src/candidate-context.ts:48"
-    ],
-    "cortex-eval: CONJUNCTION_ABS_COHORT": [
-      "packages/cortex-eval/src/runner.ts:992"
     ],
     "cortex-eval: CONJUNCTION_ABS_CONTROLS": [
       "packages/cortex-eval/src/runner.ts:982"
@@ -836,9 +745,6 @@
     "cortex-eval: DIAGNOSED_CAPABILITIES": [
       "packages/cortex-eval/src/datasets/longmemeval-loader.ts:66"
     ],
-    "cortex-eval: DiagnosticRecord": [
-      "packages/cortex-eval/src/failure-census.ts:54"
-    ],
     "cortex-eval: DiscriminatedContext": [
       "packages/cortex-eval/src/candidate-context.ts:186"
     ],
@@ -859,9 +765,6 @@
     ],
     "cortex-eval: EmbeddingMemorySystemOptions": [
       "packages/cortex-eval/src/embedding-memory.ts:14"
-    ],
-    "cortex-eval: EmbeddingProvenance": [
-      "packages/cortex-eval/src/embedding-factory.ts:39"
     ],
     "cortex-eval: EmbeddingSourceStats": [
       "packages/cortex-eval/src/retrieval.ts:150"
@@ -989,18 +892,6 @@
     "cortex-eval: VarianceSummary": [
       "packages/cortex-eval/src/variance.ts:64"
     ],
-    "cortex-eval: adjudicateGroundedFailure": [
-      "packages/cortex-eval/src/candidate-discrimination.ts:165"
-    ],
-    "cortex-eval: answerTokens": [
-      "packages/cortex-eval/src/tr-failure-class.ts:193"
-    ],
-    "cortex-eval: attributeRecallGap": [
-      "packages/cortex-eval/src/retrieval-attribution.ts:249"
-    ],
-    "cortex-eval: buildAblationSkipRecord": [
-      "packages/cortex-eval/src/ablation-skip.ts:85"
-    ],
     "cortex-eval: buildAggregationCritiquePrompt": [
       "packages/cortex-eval/src/natural-language-memory.ts:2242"
     ],
@@ -1043,9 +934,6 @@
     "cortex-eval: candidateSpanCount": [
       "packages/cortex-eval/src/candidate-context.ts:207"
     ],
-    "cortex-eval: checkEmbeddingDeterminism": [
-      "packages/cortex-eval/src/retrieval-diagnostics.ts:92"
-    ],
     "cortex-eval: classifyAggregationKind": [
       "packages/cortex-eval/src/natural-language-memory.ts:2329"
     ],
@@ -1055,19 +943,8 @@
     "cortex-eval: classifyExclusion": [
       "packages/cortex-eval/src/recall-curve.ts:302"
     ],
-    "cortex-eval: classifyTrFailure": [
-      "packages/cortex-eval/src/tr-failure-class.ts:249",
-      "packages/cortex-eval/src/tr-failure-class.ts:250",
-      "packages/cortex-eval/src/tr-failure-class.ts:254"
-    ],
     "cortex-eval: clearJudgeCache": [
       "packages/cortex-eval/src/judge.ts:24"
-    ],
-    "cortex-eval: computeRetrievalDiagnostics": [
-      "packages/cortex-eval/src/retrieval-diagnostics.ts:143"
-    ],
-    "cortex-eval: computeSessionRetrievalDiagnostics": [
-      "packages/cortex-eval/src/retrieval-diagnostics.ts:234"
     ],
     "cortex-eval: countLexicalMatches": [
       "packages/cortex-eval/src/retrieval.ts:1200"
@@ -1075,23 +952,8 @@
     "cortex-eval: createEmbeddingFromEnv": [
       "packages/cortex-eval/src/embedding-factory.ts:104"
     ],
-    "cortex-eval: createEmbeddingWithProvenanceFromEnv": [
-      "packages/cortex-eval/src/embedding-factory.ts:65"
-    ],
-    "cortex-eval: createLlmFromEnv": [
-      "packages/cortex-eval/src/llm-factory.ts:25"
-    ],
     "cortex-eval: createLongMemEvalMini": [
       "packages/cortex-eval/src/datasets/longmemeval-mini.ts:35"
-    ],
-    "cortex-eval: createRerankerFromEnv": [
-      "packages/cortex-eval/src/rerank-factory.ts:88"
-    ],
-    "cortex-eval: decomposeFailures": [
-      "packages/cortex-eval/src/failure-census.ts:134"
-    ],
-    "cortex-eval: deserializeEmbeddingCache": [
-      "packages/cortex-eval/src/retrieval.ts:329"
     ],
     "cortex-eval: detectBareAbstention": [
       "packages/cortex-eval/src/natural-language-memory.ts:3042"
@@ -1116,12 +978,6 @@
     ],
     "cortex-eval: embedOneCached": [
       "packages/cortex-eval/src/retrieval.ts:268"
-    ],
-    "cortex-eval: embeddingBatchIntervalMs": [
-      "packages/cortex-eval/src/retrieval.ts:126"
-    ],
-    "cortex-eval: embeddingSourceStats": [
-      "packages/cortex-eval/src/retrieval.ts:183"
     ],
     "cortex-eval: evaluate": [
       "packages/cortex-eval/src/benchmark.ts:79"
@@ -1150,17 +1006,11 @@
     "cortex-eval: flattenTurns": [
       "packages/cortex-eval/src/retrieval-diagnostics.ts:45"
     ],
-    "cortex-eval: formatIdPreview": [
-      "packages/cortex-eval/src/retrieval-diagnostics.ts:411"
-    ],
     "cortex-eval: formatStructuredContext": [
       "packages/cortex-eval/src/natural-language-memory.ts:1670"
     ],
     "cortex-eval: generateSyntheticBenchmark": [
       "packages/cortex-eval/src/datasets/synthetic-benchmark.ts:75"
-    ],
-    "cortex-eval: hasDiagnosticRecord": [
-      "packages/cortex-eval/src/datasets/longmemeval-loader.ts:69"
     ],
     "cortex-eval: hasSecondEventReference": [
       "packages/cortex-eval/src/temporal-engine.ts:140"
@@ -1191,9 +1041,6 @@
     ],
     "cortex-eval: meanPool": [
       "packages/cortex-eval/src/retrieval.ts:676"
-    ],
-    "cortex-eval: mergeEmbeddingCache": [
-      "packages/cortex-eval/src/retrieval.ts:202"
     ],
     "cortex-eval: mulberry32": [
       "packages/cortex-eval/src/datasets/synthetic-benchmark.ts:64"
@@ -1243,12 +1090,6 @@
     "cortex-eval: readRerankFallbacks": [
       "packages/cortex-eval/src/runner.ts:67"
     ],
-    "cortex-eval: rerankArmOptions": [
-      "packages/cortex-eval/src/bench-arm-options.ts:59"
-    ],
-    "cortex-eval: resetEmbeddingSourceStats": [
-      "packages/cortex-eval/src/retrieval.ts:169"
-    ],
     "cortex-eval: resolveTemporalDate": [
       "packages/cortex-eval/src/temporal-engine.ts:257"
     ],
@@ -1258,59 +1099,17 @@
     "cortex-eval: retrieveTopK": [
       "packages/cortex-eval/src/retrieval.ts:429"
     ],
-    "cortex-eval: runAbstentionRetryAblation": [
-      "packages/cortex-eval/src/runner.ts:854"
-    ],
     "cortex-eval: runBenchmark": [
       "packages/cortex-eval/src/benchmark.ts:25"
-    ],
-    "cortex-eval: runBitemporalKnowledgeUpdateAblation": [
-      "packages/cortex-eval/src/runner.ts:725"
-    ],
-    "cortex-eval: runDeterministicCoverageAblation": [
-      "packages/cortex-eval/src/runner.ts:583"
     ],
     "cortex-eval: runEmbeddingBenchmark": [
       "packages/cortex-eval/src/runner.ts:217"
     ],
-    "cortex-eval: runMrAggregationAblation": [
-      "packages/cortex-eval/src/runner.ts:439"
-    ],
-    "cortex-eval: runQueryExpansionDecompositionAblation": [
-      "packages/cortex-eval/src/runner.ts:1039"
-    ],
-    "cortex-eval: runRerankAblation": [
-      "packages/cortex-eval/src/runner.ts:1144"
-    ],
-    "cortex-eval: runTemporalEngineAblation": [
-      "packages/cortex-eval/src/runner.ts:506"
-    ],
-    "cortex-eval: runTimeWindowAnnotationAblation": [
-      "packages/cortex-eval/src/runner.ts:657"
-    ],
-    "cortex-eval: sampleInstances": [
-      "packages/cortex-eval/src/datasets/sampling.ts:11"
-    ],
-    "cortex-eval: serializeAblationSkips": [
-      "packages/cortex-eval/src/ablation-skip.ts:107"
-    ],
-    "cortex-eval: serializeEmbeddingCache": [
-      "packages/cortex-eval/src/retrieval.ts:288"
-    ],
     "cortex-eval: sidesLandInDistinctClusters": [
       "packages/cortex-eval/src/b7-cohort.ts:212"
     ],
-    "cortex-eval: snapshotEmbeddingCache": [
-      "packages/cortex-eval/src/retrieval.ts:193"
-    ],
-    "cortex-eval: tableEmbedding": [
-      "packages/cortex-eval/src/__tests__/test-embedding.ts:16"
-    ],
     "cortex-eval: timelineFor": [
       "packages/cortex-eval/src/fact-store.ts:25"
-    ],
-    "cortex-eval: transportRetryReport": [
-      "packages/cortex-eval/src/retrieval-diagnostics.ts:377"
     ],
     "cortex-eval: truncateSession": [
       "packages/cortex-eval/src/natural-language-memory.ts:2536"
@@ -1389,9 +1188,6 @@
     ],
     "cortex-llm: parseRetryAfterMs": [
       "packages/cortex-llm/src/retry.ts:78"
-    ],
-    "cortex-llm: resetRetryStats": [
-      "packages/cortex-llm/src/retry.ts:315"
     ],
     "cortex-llm: retryableFetchWithStats": [
       "packages/cortex-llm/src/retry.ts:383"

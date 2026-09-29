@@ -351,3 +351,66 @@ Both were fixed — the export is recorded in the ledger with the reason above, 
 
 > **Rule added here.** **A ledger with two parallel counts will drift, and the
 > drift is only visible because something asserts the two counts agree.**
+
+## 10. The census was blind to the benchmark's own entry point
+
+### 10.1 The triage, and what it found
+
+The `eval-harness-surface` group (119 sites) had never been triaged entry by entry
+— its rationale said so — and was described as "the one most likely to hold
+genuine defects". So it was triaged, by a mechanical question rather than a
+reading: **does the file that declares this name also use it somewhere else?**
+
+| classification | count | meaning |
+| -------------- | ----- | ------- |
+| referenced inside its own declaring file | 221 (79%) | an unnecessary `export` on code that runs |
+| referenced from `index.ts` only | 79 | public surface of a package |
+| has a non-test caller the census missed | 41 | **census blind spot** |
+| mentioned **nowhere** at all, any line, any file | **0** | — |
+
+**Zero.** There is no dead code in this bucket. What there is, is an `export`
+keyword on work that runs: 79% of the orphans are used a few lines below where
+they are declared.
+
+### 10.2 The 41 that the census missed
+
+`readAllSources` walked `packages/<pkg>/src` and `tools/*.mjs` **and nothing
+between them**. `packages/cortex-eval/bench/run.ts` — the benchmark's actual
+entry point, 1052 lines that name the export surface directly — is in neither.
+Neither walk saw it.
+
+Forty exports were therefore reported as orphans whose only production caller is
+that file, among them `createLlmFromEnv`, `createRerankerFromEnv`,
+`sampleInstances`, `tableEmbedding`, and **eight `run*Ablation` functions**.
+
+### 10.3 The fix, and its measured effect
+
+The walk now covers the whole workspace, with `dist`, `node_modules` and
+`__tests__` excluded.
+
+| metric | before | after |
+| ------ | ------ | ----- |
+| orphaned exports | 277 | **235** |
+| with a non-test caller | 171 | **213** |
+| ledger entries removed | — | **40** |
+| new orphans introduced | — | **0** |
+
+Zero new orphans appeared, so all forty were pure false positives. The ledger is
+one entry shorter per real caller, not per preference.
+
+### 10.4 Why this matters more than the count
+
+> **A gate that reports live entry-point calls as dead teaches its readers to
+> ignore the list, and that is the one outcome a debt ledger cannot survive.**
+
+The forty were not noise in a cosmetic sense. They were the gate asserting
+something false about the repository — that the benchmark entry point calls
+nothing — and doing so at 15% of its total output. A reader who checks three
+entries, finds three wrong, and stops reading has been made *less* likely to find
+the genuine orphan the gate exists to catch, which is the B7 defect that started
+this whole line of work.
+
+The census also cannot currently express "referenced, but only inside its own
+file" as a distinct state from "referenced by nothing". That distinction is why
+the number stays at 235 while the defect count is zero, and it is the next thing
+this measurement should learn to say.
