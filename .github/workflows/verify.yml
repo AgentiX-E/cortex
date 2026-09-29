@@ -1,0 +1,95 @@
+name: Verify
+
+# The library gate, run on every push and pull request.
+#
+# Until this workflow existed the repository had exactly one workflow, and it was
+# `workflow_dispatch` only. So `pnpm check` -- the command that runs the unit
+# tests, the coverage floors, the lint, the typecheck, the export census and the
+# formatting check -- ran on demand and never automatically. Every "CI is green"
+# in the delivery log was a run somebody dispatched, and a push that broke the
+# build produced no signal at all until the next dispatch.
+#
+# That is the defect this file fixes, and it is the same class as the ones the
+# delivery log keeps recording: a check that is not attached to the event it is
+# supposed to guard. A gate you have to remember to run is a gate that is not
+# running.
+#
+# Kept separate from `benchmark.yml` rather than added to its triggers, because
+# the two have opposite shapes. This one must run on every push and finish in
+# minutes; the benchmark needs the LongMemEval corpus, network model downloads
+# and up to four hours, and is dispatched deliberately. Triggering the second
+# from the first would either make every push a four-hour job or force the
+# benchmark to be disabled for pushes, and both end with the gate turned off.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A push that supersedes another makes the superseded run pointless: only the
+# newest commit's result is actionable, and letting the old ones finish spends
+# runner minutes on a verdict nobody will read.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  library:
+    name: Verify library
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The `tools/` Python scripts are part of the delivery path, not scratch
+      # work: one publishes to GitHub, one dispatches the benchmark, and one
+      # makes the resolver usable. `pnpm check` runs their tests, so the
+      # interpreter and pytest have to be present before it does. Without this
+      # step the run fails with an empty stdout, which is what happened the first
+      # time these tests reached CI.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --requirement tools/requirements-dev.txt
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify library
+        run: |
+          set -o pipefail
+          pnpm check 2>&1 | tee check-output.log
+
+      # The job log is served from a host the development sandbox cannot reach,
+      # so a failure otherwise reports only "the step exited non-zero". `tee`
+      # writes the transcript to the workspace and this uploads it, which is what
+      # makes a red run diagnosable without a second dispatch.
+      #
+      # `if: always()` because the artifact matters precisely when the step above
+      # failed. A `.gitattributes` rule marks `*.log` as binary so the size of a
+      # green transcript stays small in the artifact store.
+      - name: Upload check output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-output
+          path: check-output.log
+          if-no-files-found: ignore
