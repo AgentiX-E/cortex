@@ -70,7 +70,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 |---|---|---|
 | `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **not on the eval path** | The bench is served by `cortex-eval`'s own memory implementation |
 | Hebbian graph (`MemoryGraph`) | Implemented, tested, **not on the eval path** | Graph recall was trialled for temporal questions and reverted (see below) |
-| FSRS (`retrievability` / `review`) | Implemented, tested, **not on the eval path** | Used by `consolidate` only |
+| FSRS (`retrievability` / `review`) | Implemented, tested, **not on the eval path** | Used by `consolidate` only. Stability is in **days** and elapsed time in milliseconds; the two were once both milliseconds, which made `consolidate`'s defaults delete every memory on the first run. See [`docs/AUDIT-CONSOLIDATION-CLOCK.md`](docs/AUDIT-CONSOLIDATION-CLOCK.md) |
 | Bitemporal facts | Implemented, tested, **not on the eval path** | — |
 | Contradiction resolution | Implemented, tested, **not on the eval path** | — |
 | TD(λ) credit assignment | **Not implemented** | No eligibility traces exist in the codebase |

@@ -4,6 +4,9 @@ import { mean, variance, welchTTest } from '../math/stats.js';
 import { sinkhorn, squaredEuclideanCostMatrix } from '../math/ot.js';
 import { retrievability, review } from '../math/fsrs.js';
 
+/** One day in milliseconds; the unit `retrievability` converts its delay into. */
+const DAY_MS = 86_400_000;
+
 describe('vector', () => {
   it('computes dot product exactly for identical vectors', () => {
     const a = new Float64Array([1, 2, 3]);
@@ -90,7 +93,20 @@ describe('optimal transport (Sinkhorn)', () => {
 
 describe('FSRS', () => {
   it('retrievability decays to near zero after long delay', () => {
-    expect(retrievability(1_000_000_000, 1000)).toBeCloseTo(0, 12);
+    // Written in days of stability and days of delay, so the assertion describes a
+    // memory that was durable for a thousand days and untouched for a hundred
+    // thousand. It used to be `(1_000_000_000, 1000)` — a delay of 11.6 days
+    // against a stability of 1000 — which only "decayed to zero" because the old
+    // curve read stability as milliseconds. The literal was the defect in disguise:
+    // it looked like a large delay and was 11 days, which is why it survives now
+    // only at this scale.
+    expect(retrievability(100_000 * DAY_MS, 1000)).toBeCloseTo(0, 12);
+  });
+
+  it('decays by one stable interval to 1/e', () => {
+    // The definition of stability, asserted directly. Before the unit fix this was
+    // unstateable, because "one stable interval" was one millisecond.
+    expect(retrievability(DAY_MS, 1)).toBeCloseTo(Math.exp(-1), 12);
   });
 
   it('retrievability is 1 at zero delay', () => {
@@ -103,5 +119,16 @@ describe('FSRS', () => {
     expect(success.stability).toBeGreaterThan(s0.stability);
     const failure = review(s0, 'failure', 0.5);
     expect(failure.stability).toBeLessThan(s0.stability);
+  });
+
+  it('still strengthens a memory reviewed with no elapsed time', () => {
+    // The degenerate case the boost floor exists for: `R = 1` makes the
+    // spacing-proportional term vanish, and without a floor a success would leave
+    // the state exactly as it was. Consolidation would then do nothing for a
+    // freshly accessed memory, which is the common case, not a corner.
+    const s0 = { stability: 10, difficulty: 5 };
+    const success = review(s0, 'success', 1);
+    expect(success.stability).toBeGreaterThan(s0.stability);
+    expect(success.difficulty).toBe(s0.difficulty - 1);
   });
 });

@@ -36,6 +36,8 @@ export {
   retrievability,
   review,
   initialFsrsState,
+  MIN_STABILITY,
+  MAX_REVIEW_BOOST,
   type FsrsState,
   type ReviewOutcome,
 } from './math/fsrs.js';

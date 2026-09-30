@@ -1,4 +1,5 @@
 /** Core domain types for Cortex memory entries. */
+import { initialFsrsState } from '../math/fsrs.js';
 
 export type MemoryType = 'episodic' | 'semantic' | 'procedural';
 
@@ -22,7 +23,15 @@ export type MemoryValue = {
   createdAt: number;
   /** Epoch milliseconds of the last access; drives forgetting-curve decay. */
   lastAccessedAt: number;
-  /** FSRS-style stability (higher = more durable). */
+  /**
+   * FSRS-style stability in **days** (higher = more durable): the interval at
+   * which the memory decays to 1/e of its retrievability. Defaults to one day.
+   *
+   * The unit is stated because the default used to be `1` with the interval
+   * evaluated in milliseconds, which made a new memory expire five milliseconds
+   * after it was written and caused `consolidate` to delete the whole store. See
+   * `math/fsrs.ts` for the full account.
+   */
   stability: number;
   /** FSRS-style difficulty in [1, 10]. */
   difficulty: number;
@@ -32,6 +41,7 @@ export function createMemory(
   partial: Partial<MemoryValue> & Pick<MemoryValue, 'content'>,
 ): MemoryValue {
   const now = Date.now();
+  const fsrs = initialFsrsState();
   return {
     id: partial.id ?? crypto.randomUUID(),
     content: partial.content,
@@ -43,7 +53,10 @@ export function createMemory(
     tags: partial.tags ?? [],
     createdAt: partial.createdAt ?? now,
     lastAccessedAt: partial.lastAccessedAt ?? now,
-    stability: partial.stability ?? 1,
-    difficulty: partial.difficulty ?? 5,
+    // Derived, not restated. The default was a bare `1` here and a bare `1` in
+    // `initialFsrsState()`; two literals that had to agree and did, in the wrong
+    // unit. Reading the initial state removes the second place to be wrong.
+    stability: partial.stability ?? fsrs.stability,
+    difficulty: partial.difficulty ?? fsrs.difficulty,
   };
 }

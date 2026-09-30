@@ -29,12 +29,23 @@ export type AccessRecord = {
  * Apply one batch of access records: update FSRS stability/difficulty for each
  * memory, strengthen graph edges among co-activated memories, and drop memories
  * whose retrievability has fallen below a forgetting threshold.
+ *
+ * `forgettingThreshold` is a retrievability, so it lives in [0, 1] and `0.01`
+ * means "forget after roughly 4.6 stable intervals without an access". That
+ * default was unreachable while stability was measured in milliseconds — a
+ * constant of `1` meant the 4.6 intervals elapsed in 4.6 ms, so a store that
+ * consolidated once was empty. The threshold was never the problem: the unit it
+ * was compared against was. See `math/fsrs.ts`.
  */
 export function consolidate(
   memories: Map<string, MemoryValue>,
   graph: MemoryGraph,
   accesses: readonly AccessRecord[],
   options: {
+    /**
+     * Retrievability below which a memory is forgotten. Defaults to `0.01`, i.e.
+     * `exp(-4.6)` stable intervals since the last access.
+     */
     forgettingThreshold?: number;
     decay?: boolean;
   } = {},
@@ -50,7 +61,12 @@ export function consolidate(
       continue;
     }
     const state: FsrsState = { stability: mem.stability, difficulty: mem.difficulty };
-    const r = retrievability(now - mem.lastAccessedAt, state.stability);
+    // Measured against the access's own timestamp, not against `now`. A live
+    // caller replays a batch of accesses, and some of them are older than the
+    // batch; using `now` would credit them with decay they had already suffered.
+    // With the default state the two clocks agree (both give `exp(0)`), so this
+    // only diverges once stability has moved — which is exactly when it matters.
+    const r = retrievability(access.at - mem.lastAccessedAt, state.stability);
     const next = review(state, access.outcome, r);
     mem.stability = next.stability;
     mem.difficulty = next.difficulty;

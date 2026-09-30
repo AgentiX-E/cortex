@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate.",
   "totals": {
-    "exports": 429,
-    "withCaller": 216,
+    "exports": 431,
+    "withCaller": 218,
     "orphaned": 213,
-    "referencedLocally": 187,
-    "unreferenced": 26
+    "referencedLocally": 189,
+    "unreferenced": 24
   },
   "groups": [
     {
@@ -38,17 +38,18 @@
         "cortex-core: AccessRecord (packages/cortex-core/src/consolidation/consolidate.ts:21)",
         "cortex-core: ConsolidationStats (packages/cortex-core/src/consolidation/consolidate.ts:15)",
         "cortex-core: FuseRerankOptions (packages/cortex-core/src/retrieval/rerank.ts:62)",
+        "cortex-core: MAX_REVIEW_BOOST (packages/cortex-core/src/math/fsrs.ts:66)",
+        "cortex-core: MIN_STABILITY (packages/cortex-core/src/math/fsrs.ts:60)",
         "cortex-core: MemoryGraphOptions (packages/cortex-core/src/graph/memory-graph.ts:33)",
-        "cortex-core: MemoryType (packages/cortex-core/src/domain/memory.ts:3)",
+        "cortex-core: MemoryType (packages/cortex-core/src/domain/memory.ts:4)",
         "cortex-core: RerankCandidate (packages/cortex-core/src/retrieval/rerank.ts:41)",
         "cortex-core: Resolution (packages/cortex-core/src/contradiction/resolve.ts:8)",
         "cortex-core: RetrievalDecision (packages/cortex-core/src/value/value.ts:35)",
-        "cortex-core: ReviewOutcome (packages/cortex-core/src/math/fsrs.ts:16)",
+        "cortex-core: ReviewOutcome (packages/cortex-core/src/math/fsrs.ts:46)",
         "cortex-core: SinkhornResult (packages/cortex-core/src/math/ot.ts:8)",
         "cortex-core: ValueFunction (packages/cortex-core/src/value/value.ts:8)",
         "cortex-core: WriteDecision (packages/cortex-core/src/value/value.ts:21)",
-        "cortex-core: consolidate (packages/cortex-core/src/consolidation/consolidate.ts:33)",
-        "cortex-core: createMemory (packages/cortex-core/src/domain/memory.ts:31)",
+        "cortex-core: createMemory (packages/cortex-core/src/domain/memory.ts:40)",
         "cortex-core: currentFacts (packages/cortex-core/src/temporal/bitemporal.ts:9)",
         "cortex-core: currentValue (packages/cortex-core/src/temporal/bitemporal.ts:18)",
         "cortex-core: decideRetrieval (packages/cortex-core/src/value/value.ts:43)",
@@ -56,7 +57,6 @@
         "cortex-core: defaultValueFunction (packages/cortex-core/src/value/value.ts:14)",
         "cortex-core: dot (packages/cortex-core/src/math/vector.ts:7)",
         "cortex-core: findContradictions (packages/cortex-core/src/temporal/bitemporal.ts:40)",
-        "cortex-core: initialFsrsState (packages/cortex-core/src/math/fsrs.ts:53)",
         "cortex-core: l2Distance (packages/cortex-core/src/math/vector.ts:43)",
         "cortex-core: logGamma (packages/cortex-core/src/math/stats.ts:247)",
         "cortex-core: resolveContradiction (packages/cortex-core/src/contradiction/resolve.ts:21)",
@@ -257,6 +257,8 @@
     "cortex-core: ExportKind",
     "cortex-core: ExportedSymbol",
     "cortex-core: FuseRerankOptions",
+    "cortex-core: MAX_REVIEW_BOOST",
+    "cortex-core: MIN_STABILITY",
     "cortex-core: MemoryGraphOptions",
     "cortex-core: MemoryType",
     "cortex-core: PackageCensus",
@@ -269,7 +271,6 @@
     "cortex-core: ValueFunction",
     "cortex-core: WriteDecision",
     "cortex-core: bodyEndLine",
-    "cortex-core: consolidate",
     "cortex-core: countCallers",
     "cortex-core: createMemory",
     "cortex-core: currentFacts",
@@ -281,7 +282,6 @@
     "cortex-core: extractExportedSymbols",
     "cortex-core: findContradictions",
     "cortex-core: identifierPattern",
-    "cortex-core: initialFsrsState",
     "cortex-core: isBarrelFile",
     "cortex-core: isCallerOnlyFile",
     "cortex-core: isReferencedLocally",
@@ -472,6 +472,8 @@
     "cortex-core: ExportKind": "referenced-locally",
     "cortex-core: ExportedSymbol": "referenced-locally",
     "cortex-core: FuseRerankOptions": "referenced-locally",
+    "cortex-core: MAX_REVIEW_BOOST": "referenced-locally",
+    "cortex-core: MIN_STABILITY": "referenced-locally",
     "cortex-core: MemoryGraphOptions": "referenced-locally",
     "cortex-core: MemoryType": "referenced-locally",
     "cortex-core: PackageCensus": "referenced-locally",
@@ -484,7 +486,6 @@
     "cortex-core: ValueFunction": "referenced-locally",
     "cortex-core: WriteDecision": "referenced-locally",
     "cortex-core: bodyEndLine": "referenced-locally",
-    "cortex-core: consolidate": "unreferenced",
     "cortex-core: countCallers": "referenced-locally",
     "cortex-core: createMemory": "unreferenced",
     "cortex-core: currentFacts": "unreferenced",
@@ -496,7 +497,6 @@
     "cortex-core: extractExportedSymbols": "referenced-locally",
     "cortex-core: findContradictions": "unreferenced",
     "cortex-core: identifierPattern": "referenced-locally",
-    "cortex-core: initialFsrsState": "unreferenced",
     "cortex-core: isBarrelFile": "referenced-locally",
     "cortex-core: isCallerOnlyFile": "referenced-locally",
     "cortex-core: isReferencedLocally": "referenced-locally",
@@ -699,11 +699,17 @@
     "cortex-core: FuseRerankOptions": [
       "packages/cortex-core/src/retrieval/rerank.ts:62"
     ],
+    "cortex-core: MAX_REVIEW_BOOST": [
+      "packages/cortex-core/src/math/fsrs.ts:66"
+    ],
+    "cortex-core: MIN_STABILITY": [
+      "packages/cortex-core/src/math/fsrs.ts:60"
+    ],
     "cortex-core: MemoryGraphOptions": [
       "packages/cortex-core/src/graph/memory-graph.ts:33"
     ],
     "cortex-core: MemoryType": [
-      "packages/cortex-core/src/domain/memory.ts:3"
+      "packages/cortex-core/src/domain/memory.ts:4"
     ],
     "cortex-core: PackageCensus": [
       "packages/cortex-core/src/export-census.ts:97"
@@ -718,7 +724,7 @@
       "packages/cortex-core/src/value/value.ts:35"
     ],
     "cortex-core: ReviewOutcome": [
-      "packages/cortex-core/src/math/fsrs.ts:16"
+      "packages/cortex-core/src/math/fsrs.ts:46"
     ],
     "cortex-core: SinkhornResult": [
       "packages/cortex-core/src/math/ot.ts:8"
@@ -735,14 +741,11 @@
     "cortex-core: bodyEndLine": [
       "packages/cortex-core/src/export-census.ts:270"
     ],
-    "cortex-core: consolidate": [
-      "packages/cortex-core/src/consolidation/consolidate.ts:33"
-    ],
     "cortex-core: countCallers": [
       "packages/cortex-core/src/export-census.ts:374"
     ],
     "cortex-core: createMemory": [
-      "packages/cortex-core/src/domain/memory.ts:31"
+      "packages/cortex-core/src/domain/memory.ts:40"
     ],
     "cortex-core: currentFacts": [
       "packages/cortex-core/src/temporal/bitemporal.ts:9"
@@ -770,9 +773,6 @@
     ],
     "cortex-core: identifierPattern": [
       "packages/cortex-core/src/export-census.ts:419"
-    ],
-    "cortex-core: initialFsrsState": [
-      "packages/cortex-core/src/math/fsrs.ts:53"
     ],
     "cortex-core: isBarrelFile": [
       "packages/cortex-core/src/export-census.ts:202"

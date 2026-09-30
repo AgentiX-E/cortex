@@ -254,6 +254,15 @@ can report both the reference pipeline and the cognitive composition side by sid
 > **Ordering is deliberate.** Steps 1–3 establish whether the cognitive layer *helps or hurts*
 > before any further capability is built on top of it. Building more cognition onto an unmeasured
 > base would repeat the error this audit documents.
+>
+> **Amendment (step 2's precondition).** Scoping step 2 surfaced a defect that step 2 would have
+> hit on its first day: `consolidate`'s forgetting clock was in the wrong unit, so its shipped
+> defaults deleted **every** memory in the store, including ones created milliseconds earlier and
+> never accessed. Ten in, zero out. It survived because `consolidate` has no production caller —
+> which is precisely the absence step 2 removes — and because its tests drove the forgetting
+> mechanism while overriding both defaults. Fixed in `AUDIT-CONSOLIDATION-CLOCK.md`; `consolidate`
+> now leaves a fresh memory alive and still drops a year-old one. **Step 2 can be attempted now.
+> Nothing else in the ordered work changes.**
 
 ### 6.3 Pre-registration requirement
 
