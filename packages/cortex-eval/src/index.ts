@@ -145,7 +145,6 @@ export {
   contentTerms,
   discriminateContext,
   discriminatingQuestionTerms,
-  isCandidateDiscriminationEnabled,
   renderDiscriminatedContext,
   type CandidateCluster,
   type DiscriminatedContext,

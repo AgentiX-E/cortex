@@ -11,7 +11,6 @@ import {
   type DiscriminatedContextOptions,
   discriminateContext,
   discriminatingQuestionTerms,
-  isCandidateDiscriminationEnabled,
   renderDiscriminatedContext,
   type TurnLike,
 } from '../candidate-context.js';
@@ -36,17 +35,6 @@ const DATE = '2023/06/02';
 function turn(role: 'user' | 'assistant', content: string, date = DATE): string {
   return `[${date}] ${role}: ${content}`;
 }
-
-describe('isCandidateDiscriminationEnabled', () => {
-  it('is off by default and off for an explicit false', () => {
-    expect(isCandidateDiscriminationEnabled({})).toBe(false);
-    expect(isCandidateDiscriminationEnabled({ enableCandidateDiscrimination: false })).toBe(false);
-  });
-
-  it('is on only for an explicit true', () => {
-    expect(isCandidateDiscriminationEnabled({ enableCandidateDiscrimination: true })).toBe(true);
-  });
-});
 
 describe('candidateSpanCount', () => {
   it('reports one span for an empty answer list', () => {

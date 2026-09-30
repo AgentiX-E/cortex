@@ -193,7 +193,7 @@ is corrected to stop asserting a consumer that does not exist.
 | --- | --- | --- |
 | Superseded by a live implementation | **2** | **Delete** (with their 4 tests) |
 | Zero-referenced | 1 | Roadmap call (`ProvenanceNode`) — **resolved: deleted, superseded by `Fact`**. See `DECISION-PROVENANCE-NODE.md` |
-| Public surface, tested, correctly unwired | 27 | Keep; correct one docstring |
+| Public surface, tested, correctly unwired | 27 | Keep; correct one docstring — **re-examined by `AUDIT-UNREFERENCED-GROUPS.md`**: 26 confirmed as surface, **1 was a defect, not surface** (`isCandidateDiscriminationEnabled`, an inert switch; deleted) |
 
 `AUDIT-UNREFERENCED-EXPORTS.md` is **amended, not superseded**: its 29/2 split is a correct
 measurement. What changes is the reading of the 29 — one of them was never the B7 class at

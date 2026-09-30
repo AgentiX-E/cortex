@@ -175,3 +175,38 @@ assertion can see them.
   exists to make a mutation fail.
 - **`candidateDiscrimination` defaults off, so shipped behaviour is unchanged.**
   Nothing in this round alters any existing measurement.
+
+## 8. Amendment: the feature had a second switch, and it was fiction
+
+**Added by `AUDIT-UNREFERENCED-GROUPS.md`.** This audit fixed the *live* switch for
+candidate discrimination — the one this document's §1 table describes breaking in
+three places. It did not notice that the same feature carried a **second, inert
+switch**, and the reason is instructive about scope:
+
+    // candidate-context.ts, exported from the barrel
+    export function isCandidateDiscriminationEnabled(options: {
+      readonly enableCandidateDiscrimination?: boolean;
+    }): boolean {
+      return options.enableCandidateDiscrimination === true;
+    }
+
+Nothing sets `enableCandidateDiscrimination`; nothing reads it but this function; the
+function is called only by its own two tests. It survived an audit of the very feature
+it names because **this audit asked whether the live switch worked, and this one is not
+the live switch.** A symbol can be adjacent to a closed defect and invisible to the
+change that closed it.
+
+The near-synonym is the cost. `candidateDiscrimination` and
+`enableCandidateDiscrimination` are similar enough that a reader assumes they are one
+switch at two layers, and different enough that grepping for the obvious name finds the
+wrong one. The reader then infers the feature is off by construction, when it is driven
+by `CANDIDATE_DISCRIMINATION` and has been measured with ablation.
+
+It is now deleted, with a guard test asserting the shape that made it a defect rather
+than the symbol that embodied it — one switch name, bound to an env var at the entry
+point, read by the prompt builder. The second of those assertions reproduces this
+document's §1 break 3, where a three-parameter arrow type-checked while dropping the
+flag.
+
+**The §1 table above stands unchanged.** It measured the live switch and was right
+about it; this amendment adds a symbol it did not have in scope.

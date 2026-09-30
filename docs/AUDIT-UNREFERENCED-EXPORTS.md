@@ -188,7 +188,7 @@ is in use:
 | `flattenSessions`                 | cortex-eval  | 1          | 7 live                         |
 | `flattenTurns`                    | cortex-eval  | 1          | 6 live                         |
 | `generateSyntheticBenchmark`      | cortex-eval  | 1          | —                              |
-| `isCandidateDiscriminationEnabled` | cortex-eval | 1          | 8 live                         |
+| `isCandidateDiscriminationEnabled` | cortex-eval | 1          | 8 live — **deleted: an inert switch, §8 of `AUDIT-B7-DEAD-SWITCH.md`** |
 | `isTemporalQuestion`              | cortex-eval  | 1          | `daysBetween`                  |
 | `runEmbeddingBenchmark`           | cortex-eval  | 1          | 11 live                        |
 | `sidesLandInDistinctClusters`     | cortex-eval  | 1          | 5 live                         |

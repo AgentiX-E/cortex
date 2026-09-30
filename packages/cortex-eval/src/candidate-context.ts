@@ -189,12 +189,6 @@ export type DiscriminatedContext = {
   readonly annotated: boolean;
 };
 
-export function isCandidateDiscriminationEnabled(options: {
-  readonly enableCandidateDiscrimination?: boolean;
-}): boolean {
-  return options.enableCandidateDiscrimination === true;
-}
-
 /**
  * Count the value spans in an answer. This is a MEASUREMENT helper used to
  * decide whether an answer is an enumeration (several candidates in one answer)

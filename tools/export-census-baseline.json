@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate.",
   "totals": {
-    "exports": 430,
+    "exports": 429,
     "withCaller": 216,
-    "orphaned": 214,
+    "orphaned": 213,
     "referencedLocally": 187,
-    "unreferenced": 27
+    "unreferenced": 26
   },
   "groups": [
     {
@@ -100,7 +100,7 @@
     },
     {
       "category": "ablation-and-diagnostic-surface",
-      "count": 60,
+      "count": 59,
       "rationale": "The ablation and diagnostic instrumentation. Roadmap-adjacent: the audit of AUDIT-B7-ANNOTATION-PRODUCER.md found that several of these features were built, tested and never wired, which is why they are orphans. They are recorded rather than deleted because the roadmap may still wire them; each must be adjudicated by a roadmap item, not by this ledger.",
       "declarationSites": [
         "cortex-eval: ArmOutcome (packages/cortex-eval/src/b7-cohort.ts:312)",
@@ -143,17 +143,16 @@
         "cortex-eval: TransportRetryScope (packages/cortex-eval/src/retrieval-diagnostics.ts:339)",
         "cortex-eval: VarianceStats (packages/cortex-eval/src/variance.ts:54)",
         "cortex-eval: VarianceSummary (packages/cortex-eval/src/variance.ts:76)",
-        "cortex-eval: candidateSpanCount (packages/cortex-eval/src/candidate-context.ts:207)",
+        "cortex-eval: candidateSpanCount (packages/cortex-eval/src/candidate-context.ts:201)",
         "cortex-eval: classifyCurveMembership (packages/cortex-eval/src/recall-curve.ts:220)",
         "cortex-eval: classifyExclusion (packages/cortex-eval/src/recall-curve.ts:302)",
-        "cortex-eval: discriminatingQuestionTerms (packages/cortex-eval/src/candidate-context.ts:269)",
+        "cortex-eval: discriminatingQuestionTerms (packages/cortex-eval/src/candidate-context.ts:263)",
         "cortex-eval: distinguishingTokens (packages/cortex-eval/src/candidate-discrimination.ts:120)",
         "cortex-eval: elapsedMonths (packages/cortex-eval/src/temporal-engine.ts:492)",
         "cortex-eval: elapsedWeeks (packages/cortex-eval/src/temporal-engine.ts:483)",
         "cortex-eval: flattenTurns (packages/cortex-eval/src/retrieval-diagnostics.ts:57)",
         "cortex-eval: hasSecondEventReference (packages/cortex-eval/src/temporal-engine.ts:140)",
         "cortex-eval: intervalDays (packages/cortex-eval/src/temporal-engine.ts:499)",
-        "cortex-eval: isCandidateDiscriminationEnabled (packages/cortex-eval/src/candidate-context.ts:192)",
         "cortex-eval: isValidDate (packages/cortex-eval/src/temporal-engine.ts:174)",
         "cortex-eval: orderByDate (packages/cortex-eval/src/temporal-engine.ts:504)",
         "cortex-eval: parseMissingCohortMembers (packages/cortex-eval/src/ablation-skip.ts:60)",
@@ -405,7 +404,6 @@
     "cortex-eval: hashText",
     "cortex-eval: intervalDays",
     "cortex-eval: isAssistantTurn",
-    "cortex-eval: isCandidateDiscriminationEnabled",
     "cortex-eval: isCountingQuestion",
     "cortex-eval: isUserTurn",
     "cortex-eval: isValidDate",
@@ -621,7 +619,6 @@
     "cortex-eval: hashText": "referenced-locally",
     "cortex-eval: intervalDays": "referenced-locally",
     "cortex-eval: isAssistantTurn": "referenced-locally",
-    "cortex-eval: isCandidateDiscriminationEnabled": "unreferenced",
     "cortex-eval: isCountingQuestion": "referenced-locally",
     "cortex-eval: isUserTurn": "referenced-locally",
     "cortex-eval: isValidDate": "referenced-locally",
@@ -1057,7 +1054,7 @@
       "packages/cortex-eval/src/natural-language-memory.ts:2787"
     ],
     "cortex-eval: candidateSpanCount": [
-      "packages/cortex-eval/src/candidate-context.ts:207"
+      "packages/cortex-eval/src/candidate-context.ts:201"
     ],
     "cortex-eval: classifyAggregationKind": [
       "packages/cortex-eval/src/natural-language-memory.ts:2395"
@@ -1084,7 +1081,7 @@
       "packages/cortex-eval/src/natural-language-memory.ts:3108"
     ],
     "cortex-eval: discriminatingQuestionTerms": [
-      "packages/cortex-eval/src/candidate-context.ts:269"
+      "packages/cortex-eval/src/candidate-context.ts:263"
     ],
     "cortex-eval: distinguishingTokens": [
       "packages/cortex-eval/src/candidate-discrimination.ts:120"
@@ -1142,9 +1139,6 @@
     ],
     "cortex-eval: isAssistantTurn": [
       "packages/cortex-eval/src/natural-language-memory.ts:3149"
-    ],
-    "cortex-eval: isCandidateDiscriminationEnabled": [
-      "packages/cortex-eval/src/candidate-context.ts:192"
     ],
     "cortex-eval: isCountingQuestion": [
       "packages/cortex-eval/src/metrics.ts:159"
