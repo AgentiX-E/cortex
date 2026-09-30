@@ -9,7 +9,7 @@ Cortex follows a strict dependency-inversion layout modeled on `entity-resolver`
 ```
 cortex-core (contracts + pure algorithms, zero I/O, Node + browser)
   ├── interfaces/    Storage · VectorIndex · LLM · EmbeddingModel
-  ├── domain/        MemoryValue · Fact (bitemporal) · ProvenanceNode
+  ├── domain/        MemoryValue · Fact (bitemporal)
   ├── math/          vector · stats · optimal-transport · fsrs
   ├── graph/         associative MemoryGraph (Hebbian + spreading activation)
   ├── value/         value-driven write & abstention decisions
@@ -75,6 +75,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 | Contradiction resolution | Implemented, tested, **not on the eval path** | — |
 | TD(λ) credit assignment | **Not implemented** | No eligibility traces exist in the codebase |
 | Optimal-transport distillation | **Implemented but inert** | `sinkhorn` is exported; nothing calls it |
+| Fact derivation (provenance DAG) | **Not implemented** | `Fact` records origin (`source`), trust and both time axes, so origin, dual-clock timing and as-of reconstruction **are** delivered. What is missing is the *edge*: a fact derived from three retrieved memories is indistinguishable from one asserted directly, except by its `source` string. A speculative `ProvenanceNode` type once stood in for this and read no code; it was deleted rather than kept as a shape without a graph. The remedy is a `derivedFrom?: string[]` field on `Fact`, not a parallel table. See [`docs/DECISION-PROVENANCE-NODE.md`](docs/DECISION-PROVENANCE-NODE.md) |
 | Abstention confidence calibration (Platt / temperature) | **Not implemented** | Thresholds are fixed constants |
 | Cross-encoder reranking (`rerankHits` / `fuseRerank`) | **Implemented, wired, off by default** | On both retrieval paths of the eval pipeline; enabled via `CORTEX_RERANK`. See [`docs/MEASURE-B1-RERANKING.md`](docs/MEASURE-B1-RERANKING.md) |
 | Recall-curve diagnostic (`buildRecallCurve` / `computeRecallCurve`) | **Implemented, wired, measured** | Separates breadth from ordering; emits `benchmark-recall-curve.json`. First LongMemEval-S reading: ceiling 93.02%, gain 65.12%→2.33% across k=1→20. See [`docs/MEASURE-B2-RECALL-CURVE.md`](docs/MEASURE-B2-RECALL-CURVE.md) |

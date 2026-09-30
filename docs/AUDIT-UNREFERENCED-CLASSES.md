@@ -192,7 +192,7 @@ is corrected to stop asserting a consumer that does not exist.
 | Class | Count | Disposition |
 | --- | --- | --- |
 | Superseded by a live implementation | **2** | **Delete** (with their 4 tests) |
-| Zero-referenced | 1 | Roadmap call (`ProvenanceNode`) |
+| Zero-referenced | 1 | Roadmap call (`ProvenanceNode`) — **resolved: deleted, superseded by `Fact`**. See `DECISION-PROVENANCE-NODE.md` |
 | Public surface, tested, correctly unwired | 27 | Keep; correct one docstring |
 
 `AUDIT-UNREFERENCED-EXPORTS.md` is **amended, not superseded**: its 29/2 split is a correct

@@ -172,7 +172,7 @@ describes an intention, not the code beneath it.
 | Multimodal memory | No matches |
 | `pgvector` scale-out path | Only `PgStorage` (JSONB) in `cortex-node` |
 | CRDT multi-agent merge | No matches |
-| Provenance-DAG / immutable audit log | `provenance.ts` is a 552-byte type file |
+| Provenance-DAG / immutable audit log | Split, and the halves are not in the same state. The **log half is real** — `Fact` carries `source`, `sourceTrust` and both time axes, and `temporal/bitemporal.ts` implements `currentFacts` / `currentValue` / `findContradictions`, so origin and as-of reconstruction ship. The **DAG half is absent**: `ProvenanceNode` declared a `parents` edge that no code read, and has been deleted. See `DECISION-PROVENANCE-NODE.md` |
 | Memory-poisoning defence | `poison` appears only in a doc comment and an unrelated test |
 
 ---

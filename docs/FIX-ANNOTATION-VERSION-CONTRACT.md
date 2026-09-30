@@ -130,8 +130,17 @@ after    GONE: ['cortex-eval: CANDIDATE_ANNOTATION_VERSION']
 ```
 
 The `unreferenced` class shrank by exactly the one entry this document closes, and
-`ProvenanceNode` remains — correctly, because its remedy is a roadmap decision
+`ProvenanceNode` remained — correctly, because its remedy is a roadmap decision
 rather than a wiring fix.
+
+> **Amendment, `DECISION-PROVENANCE-NODE.md`.** That roadmap decision has since been
+> made, and `ProvenanceNode` is now also closed — so both entries of §3 in
+> `AUDIT-UNREFERENCED-EXPORTS.md` are resolved, and the class is at 27. The decision
+> was **not** to wire it: the bitemporal `Fact` layer already delivers what the type
+> described, and the one thing it added (`parents`) was read by nothing. The sentence
+> above still stands as written — this document closed a *wiring* question and
+> correctly left a *roadmap* question alone; the roadmap answer simply arrived later,
+> in a different document, with its own evidence.
 
 ## 6. What this does not claim
 

@@ -56,7 +56,12 @@ this repository has already paid for once.
 
 ## 3. The two that are genuinely unreferenced
 
-### 3.1 `cortex-core: ProvenanceNode` — `domain/provenance.ts:3`
+> **Both are now closed.** `ProvenanceNode` by deletion (§3.1) and
+> `CANDIDATE_ANNOTATION_VERSION` by wiring (§3.2, `FIX-ANNOTATION-VERSION-CONTRACT.md`).
+> The section is kept as written so the measurement that produced the two-entry list
+> stays reproducible.
+
+### 3.1 `cortex-core: ProvenanceNode` — `domain/provenance.ts:3` — **CLOSED, superseded**
 
 The only one of the 31 that is isolated on all three axes: no test, no caller, no
 local use, and no live sibling. It is the sole content of its file, which holds
@@ -92,6 +97,20 @@ gap elsewhere: the type is part of the described design and not part of what run
 **Disposition:** not a mechanical delete. It is either the seed of a roadmap item
 (provenance tracking) or a speculative type that should be removed with that
 decision recorded. **Requires a roadmap call, not a census call.**
+
+> **Resolved, `DECISION-PROVENANCE-NODE.md` — CLOSED, not as a seed.** The roadmap
+> call this paragraph defers was made, and the answer is a third option the two-way
+> phrasing above did not name: **superseded**. The capability it describes is already
+> delivered by the bitemporal `Fact` layer, which carries origin (`source`), trust,
+> and *two* time axes, with `bitemporal.ts` implementing as-of reconstruction. What
+> `ProvenanceNode` added beyond that was a `parents` DAG edge with **exactly one
+> occurrence in the repository — its own declaration**. The type is deleted; the real
+> gap it gestured at (a fact records *what* was concluded but not *from which prior
+> facts*) is recorded in `ARCHITECTURE.md`'s status table with the remedy attached to
+> `Fact` rather than to a parallel node type. This entry's own hedge — "requires a
+> roadmap call" — was right, and the call turned out to be cheaper than the hedge
+> implied once the question changed from "who should call this?" to "what does this
+> say that `Fact` does not?"
 
 ### 3.2 `cortex-eval: CANDIDATE_ANNOTATION_VERSION` — `candidate-context.ts:45` — **CLOSED**
 

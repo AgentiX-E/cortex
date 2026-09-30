@@ -27,16 +27,20 @@ by similarity). Cortex solves the "mind" problem:
   credits success/failure back to the responsible memories.
 - **Bitemporal facts** — every fact carries *valid time* and *system time*, making
   knowledge update, contradiction resolution, and audit native.
-- **Provenance & trust** — every memory records its source, trust, and derivation
-  history for poisoning defense and GDPR erasure.
+- **Provenance & trust** — every memory records its **source** and **source trust**,
+  and every fact carries both time axes, so origin, supersession and as-of
+  reconstruction are native and auditable. **Derivation history is not yet
+  recorded** — see the status note below.
 
 > **Status.** `cortex-core` is a validated library of cognitive contracts and pure
 > algorithms: it is fully unit-tested and holds ≥95% coverage on all four
 > dimensions. It is *not* yet the engine behind our published LongMemEval-S number
 > — the evaluation harness drives its own memory implementation and consumes only
-> statistics helpers and one vector index from core. Two documented capabilities
+> statistics helpers and one vector index from core. Three documented capabilities
 > are not yet wired: optimal-transport distillation (`sinkhorn`, exported but
-> uncalled) and TD(λ) credit assignment (not implemented). See
+> uncalled), TD(λ) credit assignment (not implemented), and fact **derivation**
+> history (not implemented — `Fact` carries origin, trust and both time axes, but
+> not *which prior facts* produced it). See
 > [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) for the full,
 > measured reconciliation.
 

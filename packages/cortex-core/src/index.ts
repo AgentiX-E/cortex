@@ -16,7 +16,6 @@ export type { MemoryValue, MemoryType } from './domain/memory.js';
 export { createMemory } from './domain/memory.js';
 export type { Fact } from './domain/fact.js';
 export { isFactCurrentAt } from './domain/fact.js';
-export type { ProvenanceNode } from './domain/provenance.js';
 
 // math
 export { dot, norm, normalize, cosineSimilarity, l2Distance } from './math/vector.js';

@@ -75,6 +75,15 @@ product with a compatibility cost, and it belongs to a roadmap call in the shape
 `ProvenanceNode` — not to a census-driven sweep. **Recorded here so the boundary of this change
 is explicit**: the barrels are unchanged, and a test asserts that (§5).
 
+> **That roadmap call has since been made, and it is instructive for this boundary.**
+> `DECISION-PROVENANCE-NODE.md` resolved the `ProvenanceNode` decision by deleting the
+> symbol — and the 182 barrel entries above are *not* the same situation, which is why
+> this paragraph keeps its own boundary. `ProvenanceNode` was one type in one file that
+> nothing read; the 182 are the published interface of four packages. The first was a
+> leftover with a duplicate mechanism behind it; the second is a surface with a
+> compatibility cost. A roadmap call that ends in "delete" for one of them says nothing
+> about the other.
+
 ### 2.2 The 5 are pinned because a mechanical sweep would break them
 
 ```

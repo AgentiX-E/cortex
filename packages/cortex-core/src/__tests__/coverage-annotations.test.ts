@@ -432,11 +432,18 @@ describe('the coverage-ignore annotation set is pinned', () => {
   });
 
   it('leaves the type-only files unannotated because they compile to no statements', () => {
-    // These six carried `/* istanbul ignore file */` and no longer do. The
+    // These five carried `/* istanbul ignore file */` and no longer do. The
     // reason they need no exemption is a property of the code, not of the
     // tooling, and this asserts it: each file consists solely of type-level
     // declarations, so there is no statement for a coverage provider to miss.
-    // `coverage-final.json` records `statementMap: {}` for all six.
+    // `coverage-final.json` records `statementMap: {}` for all five.
+    //
+    // This list was six. `packages/cortex-core/src/domain/provenance.ts` was the
+    // sixth and is deleted -- see `docs/DECISION-PROVENANCE-NODE.md`. Its removal
+    // is not a gap opening in this test: the assertion is "every file on this list
+    // compiles to no statements", and a deleted file cannot violate it. Dropping it
+    // from the list is the whole of the change, and it is recorded here rather than
+    // done silently so the count in this comment stays honest.
     //
     // The check parses the file and classifies top-level nodes, rather than
     // pattern-matching the text. The text version was written first and failed
@@ -446,7 +453,6 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // `math/stats.ts` section: a claim about the code cannot be verified by
     // matching how the code is spelled. The AST is the compiler's own answer.
     for (const rel of [
-      'packages/cortex-core/src/domain/provenance.ts',
       'packages/cortex-core/src/interfaces/embedding.ts',
       'packages/cortex-core/src/interfaces/llm.ts',
       'packages/cortex-core/src/interfaces/storage.ts',
