@@ -96,6 +96,27 @@ export type AblationReport = {
    * and `0`.
    */
   questions?: readonly QuestionRecord[] | undefined;
+  /**
+   * The candidate-annotation schema version this run rendered with, or `0` when
+   * the annotation was not applied.
+   *
+   * `CANDIDATE_ANNOTATION_VERSION` states its own contract: "two revisions that
+   * render the same context must be indistinguishable, so this is a schema version
+   * rather than a library version." The constant was exported and read by nothing,
+   * so no rendered context and no report carried the value, and the guarantee was
+   * unverifiable by construction — two artifacts produced by different annotation
+   * revisions were indistinguishable in exactly the way the docstring forbids.
+   *
+   * Carried in the report for the same reason `cohortCoverage` and `retryFires`
+   * are: it is not metadata about the result, it is what makes the result
+   * interpretable. An arm that ran with the annotation and an arm that did not can
+   * produce the same accuracy, and only this field separates them.
+   *
+   * `0` rather than absent when the annotation was off, because "off" is a
+   * statement about this run and absence is a statement about this artifact's age.
+   * Absent means the run predates the field.
+   */
+  candidateAnnotationVersion?: number | undefined;
 };
 
 /**
@@ -201,6 +222,24 @@ export function formatAblationReport(report: AblationReport): string {
         `- Feature config: ${entries.map(([k, v]) => `\`${k}=${v ? 'on' : 'off'}\``).join(', ')}`,
       );
     }
+  }
+
+  // The annotation version goes with the configuration, for the same reason: it
+  // is a property of how the run was set up, not of its outcome, and it changes
+  // what a comparison between two artifacts means.
+  //
+  // Rendered explicitly as "not applied" when zero rather than omitted. The
+  // reader's question is "was the candidate annotation on, and at which revision",
+  // and an absent line answers neither half. The line is only omitted when the
+  // field itself is absent, which marks an artifact older than the field.
+  const annotationVersion = report.candidateAnnotationVersion;
+  if (annotationVersion !== undefined) {
+    lines.push(
+      `- Annotation version: ` +
+        (annotationVersion === 0
+          ? '`not applied`'
+          : `\`${annotationVersion}\` (candidate labels were rendered this run)`),
+    );
   }
 
   // Cohort coverage goes ABOVE the results. A caveat printed below three tables

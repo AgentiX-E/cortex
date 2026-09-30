@@ -179,6 +179,64 @@ describe('the annotation producer is reached from the main path', () => {
     expect(on).not.toEqual(off);
   });
 
+  it('reports on every trace whether the annotation was actually applied', async () => {
+    // THE WIRING THE ANNOTATION VERSION DEPENDS ON. `CANDIDATE_ANNOTATION_VERSION`
+    // claims two contexts rendered by different revisions are indistinguishable,
+    // and that claim is only checkable against an artifact that says which
+    // revision rendered it. Before this the constant was exported and read by
+    // nothing, so the guarantee had no mechanism behind it.
+    //
+    // Asserted on BOTH arms, because the informative value is in the contrast: a
+    // flag that is always true and a flag that is always false are equally
+    // useless, and only both arms together show the flag tracks the switch.
+    async function annotationFlags(retrievalSides: boolean): Promise<boolean[]> {
+      const traces: DecisionTrace[] = [];
+      await runNaturalLanguageBenchmark(instances, new HashEmbedding(64), stubLlm(), {
+        runs: 1,
+        retrievalSides,
+        onDecision: (trace) => traces.push(trace),
+      });
+      return traces.map((trace) => trace.candidateAnnotationApplied === true);
+    }
+
+    const on = await annotationFlags(true);
+    const off = await annotationFlags(false);
+
+    // Recorded on every trace, not only the labelled ones: `undefined` would make
+    // "the annotation was off" indistinguishable from "this trace predates the
+    // field", which is the distinction the JSON round trip depends on.
+    expect(on.length).toBeGreaterThan(0);
+    expect(on.every((flag) => flag === true)).toBe(true);
+    expect(off.length).toBeGreaterThan(0);
+    expect(off.every((flag) => flag === false)).toBe(true);
+  });
+
+  it('reports the flag as false when the annotation declines on a question', async () => {
+    // The switch being on is not the same as the annotation applying. With a
+    // single-turn context there are never two sides to mark, so the producer
+    // declines -- and the flag must say so rather than inherit the switch's
+    // value. A run-level flag reading `retrievalSides === true` would claim labels
+    // were rendered on a question that has none.
+    const single: LongMemEvalInstance[] = [
+      {
+        question_id: 'q_single',
+        question_type: 'single-session-user',
+        question: 'What is the gate code?',
+        answer: '4172',
+        haystack_dates: ['2023/05/20 (Sat) 02:10'],
+        haystack_sessions: [[{ role: 'user', content: 'the gate code is 4172' }]],
+      },
+    ];
+    const traces: DecisionTrace[] = [];
+    await runNaturalLanguageBenchmark(single, new HashEmbedding(64), stubLlm(), {
+      runs: 1,
+      retrievalSides: true,
+      onDecision: (trace) => traces.push(trace),
+    });
+    expect(traces.length).toBeGreaterThan(0);
+    expect(traces.every((trace) => trace.candidateAnnotationApplied === false)).toBe(true);
+  });
+
   it('keeps the labels independent of the instruction', async () => {
     // `retrievalSides` without `candidateDiscrimination` must still annotate:
     // the labels and the instruction are separate switches so an ablation can

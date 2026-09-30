@@ -327,6 +327,52 @@ describe('formatAblationReport single deterministic run', () => {
 });
 
 describe('runNaturalLanguageBenchmark', () => {
+  it('records the annotation version, derived from what the run did and not what it asked for', async () => {
+    // THE END-TO-END WIRING for `CANDIDATE_ANNOTATION_VERSION`. The constant was
+    // exported and read by nothing, so its stated guarantee -- two contexts
+    // rendered by different annotation revisions are indistinguishable -- had no
+    // mechanism behind it.
+    //
+    // The version is derived from the traces rather than from the option, so a run
+    // that requested the annotation and annotated nothing records `0` instead of
+    // claiming a revision it never used. This fixture is exactly that case: the
+    // sessions are undated and single-turn, so no question ever offers two
+    // competing sides and the producer declines on every one.
+    const candidateEmbedding = new HashEmbedding(64);
+    const candidateLlm: LLM = {
+      complete: async () => 'blue',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report, markdown } = await runNaturalLanguageBenchmark(
+      instances,
+      candidateEmbedding,
+      candidateLlm,
+      { abstainThreshold: 0.5, runs: 1, retrievalSides: true },
+    );
+    expect(report.candidateAnnotationVersion).toBe(0);
+    expect(markdown).toContain('Annotation version');
+    expect(markdown).toContain('not applied');
+  });
+
+  it('omits the annotation line only when the field is absent, never for a zero version', async () => {
+    // `0` is a claim about the run ("the annotation was off"); an absent field is a
+    // claim about the artifact's age. Collapsing them would let a report that
+    // predates the field pass for a report that says the annotation was off.
+    const candidateEmbedding = new HashEmbedding(64);
+    const candidateLlm: LLM = {
+      complete: async () => 'blue',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const { report, markdown } = await runNaturalLanguageBenchmark(
+      instances,
+      candidateEmbedding,
+      candidateLlm,
+      { runs: 1 },
+    );
+    expect(report.candidateAnnotationVersion).toBe(0);
+    expect(markdown).toContain('not applied');
+  });
+
   const embedding = new HashEmbedding(64);
   const llm: LLM = {
     complete: async (prompt) => (prompt.includes('color') ? 'blue' : 'UNANSWERABLE'),

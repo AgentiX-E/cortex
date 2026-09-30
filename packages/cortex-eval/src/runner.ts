@@ -19,6 +19,7 @@ import {
   buildQueryExpansionPromptWith,
   NaturalLanguageMemorySystem,
 } from './natural-language-memory.js';
+import { CANDIDATE_ANNOTATION_VERSION } from './candidate-context.js';
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
 import {
@@ -410,9 +411,16 @@ export async function runNaturalLanguageBenchmark(
     ({ trace }) => trace !== undefined && trace.answer !== null && trace.answer !== undefined,
     featureConfig,
   );
+  // Derived from the traces, after the run, for the same reason `retryFires` is:
+  // the option records the request and the traces record the outcome, and only
+  // the second is a statement about the artifact. `retrievalSides: true` on a
+  // dataset where no question offers two competing sides annotates nothing, and a
+  // report claiming otherwise would be describing the configuration's intent
+  // rather than the run.
+  const candidateAnnotationVersion = annotationVersionOf(traces);
   return {
-    report: { ...report, questions },
-    markdown: formatAblationReport({ ...report, questions }),
+    report: { ...report, questions, candidateAnnotationVersion },
+    markdown: formatAblationReport({ ...report, questions, candidateAnnotationVersion }),
   };
 }
 
@@ -941,6 +949,30 @@ function countRetryFires(traces: readonly DecisionTrace[]): number {
     }
   }
   return fired.size;
+}
+
+/**
+ * The candidate-annotation schema version this run rendered with, or `0` if it did
+ * not render any.
+ *
+ * Derived from the traces rather than from the option, because the option says
+ * what was ASKED FOR and the traces say what HAPPENED. `retrievalSides: true` is
+ * perfectly compatible with a run that annotated nothing -- a question whose
+ * retrieval offers fewer than two competing sides has no labels to write, and the
+ * producer declines per question. Reporting the option would therefore claim the
+ * annotation was applied to contexts it silently skipped, which is the same
+ * reading error the retry-fire counters exist to prevent.
+ *
+ * `0` rather than omitting the field when nothing was annotated, so a reader can
+ * tell "this arm ran without the annotation" from "this artifact predates the
+ * field". That distinction is why the report type carries the field at all.
+ *
+ * @param traces every decision trace the feature arm emitted.
+ */
+function annotationVersionOf(traces: readonly DecisionTrace[]): number {
+  return traces.some((trace) => trace.candidateAnnotationApplied === true)
+    ? CANDIDATE_ANNOTATION_VERSION
+    : 0;
 }
 
 /**

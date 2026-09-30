@@ -78,6 +78,20 @@ export type DecisionTrace = {
    */
   retryArmed?: boolean;
   retryFired?: boolean;
+  /**
+   * Whether the candidate-cluster labels were actually applied to `retrieved`.
+   *
+   * `CANDIDATE_ANNOTATION_VERSION` claims that two contexts rendered by different
+   * annotation revisions are indistinguishable, and that claim needs this boolean
+   * to be checkable: an unlabelled context looks the same whether the annotation
+   * was off for the arm or declined for this question.
+   *
+   * Per question, not per run, because the annotation declines per question --
+   * fewer than two sides or no clusters means no labels, and that is a property of
+   * the retrieval, not of the arm. A run-level flag would assert the annotation
+   * was applied to questions it silently skipped.
+   */
+  candidateAnnotationApplied?: boolean;
 };
 
 export type NaturalLanguageMemorySystemOptions = {
@@ -1320,18 +1334,37 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
    * retrieval alone is enough -- measured, it separates a two-candidate
    * question into `cargo bike` and `racing bike` (docs/16).
    */
+  /**
+   * Apply the candidate-cluster labels, reporting whether they were applied.
+   *
+   * `CANDIDATE_ANNOTATION_VERSION` states its own contract -- "two revisions that
+   * render the same context must be indistinguishable" -- and nothing carried the
+   * value, so the guarantee was unverifiable by construction. The version is only
+   * meaningful if a reader can tell whether the annotation was applied at all,
+   * which is what the second element reports.
+   *
+   * Reported from the point where the decision is made, not inferred by the
+   * caller. There are four ways to decline -- the switch is off, no turns, fewer
+   * than two sides, no clusters -- and a caller recomputing any of them would be a
+   * second copy of this logic that drifts. Same reasoning as the retry-fire
+   * counter: only the fact that a mechanism RAN separates a feature that is inert
+   * on a dataset from one that was never wired.
+   */
   private annotateWithCandidateSides(
     retrieved: string,
     turns: readonly TurnLike[] | undefined,
-  ): string {
+  ): { context: string; applied: boolean } {
     if (this.options.retrievalSides !== true || turns === undefined || turns.length === 0) {
-      return retrieved;
+      return { context: retrieved, applied: false };
     }
     const sides = retrievalCandidateSides({ question: '', retrieved: turns });
-    if (sides.length < 2) return retrieved;
+    if (sides.length < 2) return { context: retrieved, applied: false };
     const { clusters } = discriminateContext(turns, { question: '', sidesOverride: sides });
-    if (clusters.length === 0) return retrieved;
-    return renderDiscriminatedContext(retrieved, clusters, { question: '' });
+    if (clusters.length === 0) return { context: retrieved, applied: false };
+    return {
+      context: renderDiscriminatedContext(retrieved, clusters, { question: '' }),
+      applied: true,
+    };
   }
 
   private async respondWith(
@@ -1408,7 +1441,10 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // no labels -- the instruction is then text the model must read and discard.
     // The two options are independent so an A/B can isolate the instruction from
     // the labels; see `annotateWithCandidateSides`.
-    const context = this.annotateWithCandidateSides(retrieved, turns);
+    const { context, applied: annotationApplied } = this.annotateWithCandidateSides(
+      retrieved,
+      turns,
+    );
     const prompt = promptBuilder(
       question,
       context,
@@ -1476,7 +1512,19 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     }
     // Threaded out of this method so the three `emitTrace` sites below can each
     // report the same retry state without recomputing it.
-    const retryState = retryEnabled ? { retryArmed: true, retryFired } : {};
+    //
+    // The annotation state joins it for the same reason, and with the same
+    // contract: `CANDIDATE_ANNOTATION_VERSION`'s guarantee is that two contexts
+    // rendered by different annotation revisions are indistinguishable, and that
+    // is only checkable if the artifact records which revision rendered it. The
+    // boolean here is what separates "this arm ran without the annotation" from
+    // "this arm's annotation declined on this question", which `retrieved` alone
+    // cannot say -- an unlabelled context and a labelled one look the same to a
+    // reader who does not know what to look for.
+    const retryState = {
+      ...(retryEnabled ? { retryArmed: true, retryFired } : {}),
+      candidateAnnotationApplied: annotationApplied,
+    };
 
     // Second pass (enumeration questions only): audit the ledger's membership
     // and re-ask the SAME prompt with the audit folded in. The first pass's
@@ -1541,6 +1589,16 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       expansionQueries?: string[];
       retryArmed?: boolean;
       retryFired?: boolean;
+      /**
+       * Whether the candidate-cluster labels were actually applied to `retrieved`.
+       *
+       * Recorded per question rather than once per run because the annotation
+       * declines per question: fewer than two sides or no clusters means no
+       * labels, and that is a property of the question's retrieval, not of the
+       * arm. A run-level flag would claim the annotation was on for questions it
+       * silently skipped.
+       */
+      candidateAnnotationApplied?: boolean;
     },
   ): void {
     this.options.onDecision?.({ question, top1Score, abstained, reason, ...extra });
