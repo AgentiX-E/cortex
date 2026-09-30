@@ -6,10 +6,22 @@
  * Edges carry Hebbian weights that strengthen on co-activation and decay over
  * time; a logistic significance function suppresses spurious co-occurrences.
  * Supports spreading activation for multi-hop retrieval and BFS shortest paths.
- */
-export type EdgeKind = 'cooccurrence' | 'temporal' | 'causal' | 'semantic';
+ 
 
-export type EdgeAttributes = {
+ *
+ * ## Module-private exports
+ *
+ * Some declarations below are deliberately not exported. They are used only inside
+ * this file, appear in no package barrel, and are referenced by no test or tool —
+ * so `export` would advertise a consumer that does not exist. The `export-census`
+ * tool reports them as `referenced-locally`, and
+ * `packages/cortex-eval/src/__tests__/export-surface.test.ts` pins the set from both
+ * sides. Restoring an `export` is a deliberate act: add it when a real caller
+ * appears, not in advance of one.
+*/
+type EdgeKind = 'cooccurrence' | 'temporal' | 'causal' | 'semantic';
+
+type EdgeAttributes = {
   weight: number;
   kind: EdgeKind;
   /** Number of observed co-activations (for significance testing). */

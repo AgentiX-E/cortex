@@ -6,7 +6,19 @@
  * score distributions and recall@k make threshold selection a data-driven
  * decision. A separate determinism probe verifies the embedding provider returns
  * stable vectors across repeated calls.
- */
+ 
+
+ *
+ * ## Module-private exports
+ *
+ * Some declarations below are deliberately not exported. They are used only inside
+ * this file, appear in no package barrel, and are referenced by no test or tool —
+ * so `export` would advertise a consumer that does not exist. The `export-census`
+ * tool reports them as `referenced-locally`, and
+ * `packages/cortex-eval/src/__tests__/export-surface.test.ts` pins the set from both
+ * sides. Restoring an `export` is a deliberate act: add it when a real caller
+ * appears, not in advance of one.
+*/
 import type { EmbeddingModel, LLM } from '@agentix-e/cortex-core';
 import {
   sessionsToContext,
@@ -109,7 +121,7 @@ export async function checkEmbeddingDeterminism(
 }
 
 /** Options controlling how the recall diagnostics perform retrieval. */
-export type RetrievalDiagnosticOptions = {
+type RetrievalDiagnosticOptions = {
   /**
    * LLM used to expand the question into concrete retrieval phrases. When
    * present, the diagnostics mirror the production expanded-query retrieval

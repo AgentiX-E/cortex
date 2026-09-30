@@ -1,7 +1,19 @@
 /**
  * LLM factory: resolves a DeepSeek LLM from environment variables. DeepSeek is
  * OpenAI-compatible, so the cortex-llm adapter is reused directly.
- */
+ 
+
+ *
+ * ## Module-private exports
+ *
+ * Some declarations below are deliberately not exported. They are used only inside
+ * this file, appear in no package barrel, and are referenced by no test or tool —
+ * so `export` would advertise a consumer that does not exist. The `export-census`
+ * tool reports them as `referenced-locally`, and
+ * `packages/cortex-eval/src/__tests__/export-surface.test.ts` pins the set from both
+ * sides. Restoring an `export` is a deliberate act: add it when a real caller
+ * appears, not in advance of one.
+*/
 import type { LLM } from '@agentix-e/cortex-core';
 import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-llm';
 
@@ -10,7 +22,7 @@ export type LlmEnv = Record<string, string | undefined>;
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
 /** Per-attempt deadline for thinking-mode calls; reasoning takes far longer. */
-export const THINKING_TIMEOUT_MS = 300_000;
+const THINKING_TIMEOUT_MS = 300_000;
 
 /**
  * Per-attempt request deadline for the given thinking mode. Thinking mode

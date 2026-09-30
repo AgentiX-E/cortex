@@ -7,7 +7,19 @@
  *
  * Retrieval and embedding are delegated to the shared `retrieval.ts` module so
  * the system and the diagnostics harness use identical logic.
- */
+ 
+
+ *
+ * ## Module-private exports
+ *
+ * Some declarations below are deliberately not exported. They are used only inside
+ * this file, appear in no package barrel, and are referenced by no test or tool —
+ * so `export` would advertise a consumer that does not exist. The `export-census`
+ * tool reports them as `referenced-locally`, and
+ * `packages/cortex-eval/src/__tests__/export-surface.test.ts` pins the set from both
+ * sides. Restoring an `export` is a deliberate act: add it when a real caller
+ * appears, not in advance of one.
+*/
 import type { EmbeddingModel, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { fuseRerank, type RerankScoreFn } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from './types.js';
@@ -1777,7 +1789,7 @@ function annotateTimeWindow(turnDate: string, window: TimeRange): string | undef
 }
 
 /** Build a grounded QA prompt with an explicit abstention instruction. */
-export type QaPromptOptions = {
+type QaPromptOptions = {
   /**
    * Add the candidate-discrimination instruction (default `false`).
    *
@@ -1818,7 +1830,7 @@ export function buildQaPrompt(
 /**
  * Options for `buildConservativeQaPrompt`.
  */
-export type ConservativeQaPromptOptions = {
+type ConservativeQaPromptOptions = {
   /**
    * Include the entity-identity sentence (default `true`).
    *
@@ -2297,11 +2309,7 @@ export function buildAggregationQaPrompt(
  *    contract (`Step 1` ledger + `Answer:`) is unchanged and a critique that
  *    finds nothing costs nothing.
  */
-export function buildAggregationCritiquePrompt(
-  question: string,
-  context: string,
-  ledger: string,
-): string {
+function buildAggregationCritiquePrompt(question: string, context: string, ledger: string): string {
   return [
     'You are auditing a draft answer for a question about multiple conversation sessions.',
     'A first attempt produced the item list below. Audit ONLY the membership of that list.',
@@ -2338,7 +2346,7 @@ export function buildAggregationCritiquePrompt(
  * the ledger format and the `Answer:` contract carry over unchanged and the
  * second pass cannot drift into a different output shape.
  */
-export function buildRevisedAggregationPrompt(prompt: string, critique: string): string {
+function buildRevisedAggregationPrompt(prompt: string, critique: string): string {
   return [
     prompt,
     '',
@@ -2359,7 +2367,7 @@ export function buildRevisedAggregationPrompt(prompt: string, critique: string):
  * response when no Step 1 heading is present, which is what the legacy
  * aggregation prompt produces.
  */
-export function extractAggregationLedger(raw: string): string {
+function extractAggregationLedger(raw: string): string {
   const start = raw.search(/step\s*1/i);
   const body = start === -1 ? raw : raw.slice(start);
   const end = body.search(/step\s*2/i);
@@ -2381,7 +2389,7 @@ export function extractAggregationLedger(raw: string): string {
  * wrong for a derivation question, where the model then looks for items to list,
  * finds none, and abstains.
  */
-export type AggregationKind = 'derivation' | 'enumeration';
+type AggregationKind = 'derivation' | 'enumeration';
 
 /** Decide which aggregation prompt a multi-session question should use. */
 export function classifyAggregationKind(question: string): AggregationKind {
@@ -2537,7 +2545,7 @@ export function truncateText(text: string, maxChars: number): string {
  * it degrades to the pre-existing neighbour expansion rather than mis-attributing
  * a turn.
  */
-export function projectSessions(
+function projectSessions(
   sessions: string[][] | undefined,
   options: { includeAssistant: boolean; maxTurnChars: number },
 ): string[][] {
@@ -2711,7 +2719,7 @@ export function buildQueryExpansionPrompt(question: string): string {
  * `buildQueryExpansionPromptWith` for what the instruction does and why it is
  * the intervention under test.
  */
-export type QueryExpansionOptions = {
+type QueryExpansionOptions = {
   /**
    * Instruct the model to emit one phrase per operand when the question conjoins
    * two or more (`X and Y`, `X or Y`, `X vs Y`).

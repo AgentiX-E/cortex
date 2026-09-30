@@ -17,7 +17,19 @@
  * `/rerank` client from cortex-llm, whose base URL and model are both
  * configurable, so the same switch serves Cohere, Jina, Voyage, or a
  * self-hosted bge-reranker behind a proxy. No provider is baked in.
- */
+ 
+
+ *
+ * ## Module-private exports
+ *
+ * Some declarations below are deliberately not exported. They are used only inside
+ * this file, appear in no package barrel, and are referenced by no test or tool —
+ * so `export` would advertise a consumer that does not exist. The `export-census`
+ * tool reports them as `referenced-locally`, and
+ * `packages/cortex-eval/src/__tests__/export-surface.test.ts` pins the set from both
+ * sides. Restoring an `export` is a deliberate act: add it when a real caller
+ * appears, not in advance of one.
+*/
 import {
   CrossEncoderReranker,
   LLMReranker,
@@ -39,11 +51,11 @@ export const DEFAULT_RERANK_MODEL = 'rerank-v3.5';
  * model that is actually a cross-encoder rather than a re-scored bi-encoder, so it
  * is the cheapest honest offline baseline. Override with `CORTEX_RERANK_MODEL`.
  */
-export const DEFAULT_LOCAL_RERANK_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
+const DEFAULT_LOCAL_RERANK_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 
 /** Chat-model defaults for the LLM backend, matching the benchmark's answerer. */
-export const DEFAULT_LLM_RERANK_BASE_URL = 'https://api.deepseek.com/v1';
-export const DEFAULT_LLM_RERANK_MODEL = 'deepseek-chat';
+const DEFAULT_LLM_RERANK_BASE_URL = 'https://api.deepseek.com/v1';
+const DEFAULT_LLM_RERANK_MODEL = 'deepseek-chat';
 
 /** Values of `CORTEX_RERANK` that turn the stage on. */
 const ENABLED_VALUES = new Set(['on', 'true', '1', 'yes', 'enabled']);
@@ -52,8 +64,8 @@ const ENABLED_VALUES = new Set(['on', 'true', '1', 'yes', 'enabled']);
 const DISABLED_VALUES = new Set(['', 'off', '0', 'false', 'no', 'disabled']);
 
 /** Backends `CORTEX_RERANK_PROVIDER` can select. */
-export const RERANK_PROVIDERS = ['openai', 'llm', 'local'] as const;
-export type RerankProvider = (typeof RERANK_PROVIDERS)[number];
+const RERANK_PROVIDERS = ['openai', 'llm', 'local'] as const;
+type RerankProvider = (typeof RERANK_PROVIDERS)[number];
 
 /**
  * Build the reranking stage, or return undefined when it is not enabled.

@@ -59,7 +59,7 @@ get read. The other direction would hide debt.
 
 | Class               | Count   | Meaning                                                     |
 | ------------------- | ------- | ----------------------------------------------------------- |
-| `referenced-locally` | **206** | live call site in its own file; the `export` is unnecessary |
+| `referenced-locally` | **206** | live call site in its own file; the `export` may be unnecessary — see the amendment at §6 |
 | `unreferenced`       | **31**  | nothing mentions it anywhere; a dead-code candidate         |
 | total               | **237** | the old undifferentiated number                             |
 
@@ -155,3 +155,13 @@ possible by producing the list on demand, which it could not do before.
 **The 206 unnecessary `export` keywords are not removed.** That is API-surface
 convergence, not defect repair, and it is the next P1 item. It is now mechanical:
 `listReferencedLocally` produces the worklist.
+
+> **Amendment, `AUDIT-REFERENCED-LOCALLY-CONVERGENCE.md`.** "It is now mechanical" and
+> "produces the worklist" were both wrong, and the error is the kind this document
+> exists to catch. `referenced-locally` says *where the references are*, not whether the
+> `export` is load-bearing — and for 187 of the 206 it is: **182 are re-exported from a
+> package barrel**, so the keyword **is** the published interface, and **5 are imported
+> by tests**, so removing it breaks the suite. The actual worklist was **19**. Turning a
+> classification into a worklist requires asking what each reference is *for*; that is
+> two commands per symbol, and skipping them nearly produced a committed plan to change
+> 206 declarations. The 19 are now converged and the class reads **187**.

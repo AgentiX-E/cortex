@@ -22,7 +22,19 @@
  *   at n=1 and inflated at n=4.
  * - Nothing here calls a model or reads a file; it is pure arithmetic over
  *   already-collected observations, so it is fully testable and cannot drift.
- */
+ 
+
+ *
+ * ## Module-private exports
+ *
+ * Some declarations below are deliberately not exported. They are used only inside
+ * this file, appear in no package barrel, and are referenced by no test or tool —
+ * so `export` would advertise a consumer that does not exist. The `export-census`
+ * tool reports them as `referenced-locally`, and
+ * `packages/cortex-eval/src/__tests__/export-surface.test.ts` pins the set from both
+ * sides. Restoring an `export` is a deliberate act: add it when a real caller
+ * appears, not in advance of one.
+*/
 
 import type { Capability } from './types.js';
 
@@ -148,7 +160,7 @@ export type CapabilityRequirement = {
  * builds `{ changed }` literals, which needs a declared shape rather than a
  * structural match it can already satisfy.
  */
-export type PairwiseMovement = {
+type PairwiseMovement = {
   /** Questions whose correctness differed between the pair -- `changed`. */
   changed: number;
 };
