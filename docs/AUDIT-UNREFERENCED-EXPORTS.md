@@ -44,6 +44,16 @@ a passing test and no production call site — which is not dead code, it is
 implemented-but-unwired code, the exact shape of the annotation-producer defect
 this repository has already paid for once.
 
+> **Amendment, `AUDIT-UNREFERENCED-CLASSES.md`.** "Nearly every member" was the right
+> hedge and the wrong resolution: the 29 are **not one class**. Re-reading them as four
+> (public surface / test instrument / built-but-unwired / **superseded**) finds two
+> members that a two-way split actively hid — `isTemporalQuestion` and `extractDate`
+> were not unwired at all, they were replaced by `classifyTemporalQuestion`, which
+> `natural-language-memory.ts:581` calls. Both are now deleted, moving the counts below
+> to **27 exercised, 1 not exercised, 28 total**. The measurement in this table stands;
+> what changed is that "has a test and no caller" turned out to be a question rather
+> than an answer.
+
 ## 3. The two that are genuinely unreferenced
 
 ### 3.1 `cortex-core: ProvenanceNode` — `domain/provenance.ts:3`

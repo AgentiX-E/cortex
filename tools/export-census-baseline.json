@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate.",
   "totals": {
-    "exports": 452,
+    "exports": 450,
     "withCaller": 216,
-    "orphaned": 236,
+    "orphaned": 234,
     "referencedLocally": 206,
-    "unreferenced": 30
+    "unreferenced": 28
   },
   "groups": [
     {
@@ -42,7 +42,7 @@
         "cortex-core: FuseRerankOptions (packages/cortex-core/src/retrieval/rerank.ts:62)",
         "cortex-core: MemoryGraphOptions (packages/cortex-core/src/graph/memory-graph.ts:21)",
         "cortex-core: MemoryType (packages/cortex-core/src/domain/memory.ts:3)",
-        "cortex-core: ProvenanceNode (packages/cortex-core/src/domain/provenance.ts:3)",
+        "cortex-core: ProvenanceNode (packages/cortex-core/src/domain/provenance.ts:2)",
         "cortex-core: RerankCandidate (packages/cortex-core/src/retrieval/rerank.ts:41)",
         "cortex-core: Resolution (packages/cortex-core/src/contradiction/resolve.ts:8)",
         "cortex-core: RetrievalDecision (packages/cortex-core/src/value/value.ts:35)",
@@ -172,7 +172,7 @@
     },
     {
       "category": "eval-harness-surface",
-      "count": 95,
+      "count": 93,
       "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot.",
       "declarationSites": [
         "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:151)",
@@ -201,7 +201,7 @@
         "cortex-eval: EmbeddingWithProvenance (packages/cortex-eval/src/embedding-factory.ts:51)",
         "cortex-eval: FactMemorySystem (packages/cortex-eval/src/fact-memory.ts:16)",
         "cortex-eval: FactMemorySystemOptions (packages/cortex-eval/src/fact-memory.ts:9)",
-        "cortex-eval: JudgeQuestionType (packages/cortex-eval/src/judge.ts:38)",
+        "cortex-eval: JudgeQuestionType (packages/cortex-eval/src/judge.ts:48)",
         "cortex-eval: LlmEnv (packages/cortex-eval/src/llm-factory.ts:8)",
         "cortex-eval: QaPromptOptions (packages/cortex-eval/src/natural-language-memory.ts:1780)",
         "cortex-eval: QueryExpansionOptions (packages/cortex-eval/src/natural-language-memory.ts:2714)",
@@ -219,7 +219,7 @@
         "cortex-eval: buildDerivationQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:2416)",
         "cortex-eval: buildDerivationQueryExpansionPrompt (packages/cortex-eval/src/natural-language-memory.ts:2827)",
         "cortex-eval: buildFactExtractionPrompt (packages/cortex-eval/src/natural-language-memory.ts:1996)",
-        "cortex-eval: buildJudgePrompt (packages/cortex-eval/src/judge.ts:156)",
+        "cortex-eval: buildJudgePrompt (packages/cortex-eval/src/judge.ts:166)",
         "cortex-eval: buildKnowledgeUpdatePrompt (packages/cortex-eval/src/natural-language-memory.ts:1952)",
         "cortex-eval: buildPreferencePrompt (packages/cortex-eval/src/natural-language-memory.ts:1908)",
         "cortex-eval: buildQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:1794)",
@@ -229,7 +229,7 @@
         "cortex-eval: buildTemporalQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:2027)",
         "cortex-eval: buildTemporalQueryExpansionPrompt (packages/cortex-eval/src/natural-language-memory.ts:2779)",
         "cortex-eval: classifyAggregationKind (packages/cortex-eval/src/natural-language-memory.ts:2387)",
-        "cortex-eval: clearJudgeCache (packages/cortex-eval/src/judge.ts:24)",
+        "cortex-eval: clearJudgeCache (packages/cortex-eval/src/judge.ts:34)",
         "cortex-eval: countLexicalMatches (packages/cortex-eval/src/retrieval.ts:1200)",
         "cortex-eval: createEmbeddingFromEnv (packages/cortex-eval/src/embedding-factory.ts:104)",
         "cortex-eval: createLongMemEvalMini (packages/cortex-eval/src/datasets/longmemeval-mini.ts:35)",
@@ -241,7 +241,6 @@
         "cortex-eval: exactMatch (packages/cortex-eval/src/metrics.ts:27)",
         "cortex-eval: expandLexicalVariants (packages/cortex-eval/src/natural-language-memory.ts:2898)",
         "cortex-eval: extractAggregationLedger (packages/cortex-eval/src/natural-language-memory.ts:2362)",
-        "cortex-eval: extractDate (packages/cortex-eval/src/temporal.ts:20)",
         "cortex-eval: extractLeadingNumber (packages/cortex-eval/src/metrics.ts:147)",
         "cortex-eval: extractLexicalKeywords (packages/cortex-eval/src/retrieval.ts:1177)",
         "cortex-eval: flattenSessions (packages/cortex-eval/src/datasets/longmemeval-loader.ts:84)",
@@ -250,7 +249,6 @@
         "cortex-eval: hashText (packages/cortex-eval/src/retrieval.ts:211)",
         "cortex-eval: isAssistantTurn (packages/cortex-eval/src/natural-language-memory.ts:3141)",
         "cortex-eval: isCountingQuestion (packages/cortex-eval/src/metrics.ts:159)",
-        "cortex-eval: isTemporalQuestion (packages/cortex-eval/src/temporal.ts:10)",
         "cortex-eval: isUserTurn (packages/cortex-eval/src/natural-language-memory.ts:3129)",
         "cortex-eval: meanPool (packages/cortex-eval/src/retrieval.ts:676)",
         "cortex-eval: mulberry32 (packages/cortex-eval/src/datasets/synthetic-benchmark.ts:64)",
@@ -258,7 +256,7 @@
         "cortex-eval: numericAnswerVerdict (packages/cortex-eval/src/metrics.ts:172)",
         "cortex-eval: overlapScore (packages/cortex-eval/src/fact-memory.ts:76)",
         "cortex-eval: parseAggregationAnswer (packages/cortex-eval/src/natural-language-memory.ts:3037)",
-        "cortex-eval: parseJudgeResponse (packages/cortex-eval/src/judge.ts:175)",
+        "cortex-eval: parseJudgeResponse (packages/cortex-eval/src/judge.ts:185)",
         "cortex-eval: parseQaAnswer (packages/cortex-eval/src/natural-language-memory.ts:2936)",
         "cortex-eval: parseRecommendationAnswer (packages/cortex-eval/src/natural-language-memory.ts:2960)",
         "cortex-eval: projectSessions (packages/cortex-eval/src/natural-language-memory.ts:2540)",
@@ -436,7 +434,6 @@
     "cortex-eval: exactMatch",
     "cortex-eval: expandLexicalVariants",
     "cortex-eval: extractAggregationLedger",
-    "cortex-eval: extractDate",
     "cortex-eval: extractLeadingNumber",
     "cortex-eval: extractLexicalKeywords",
     "cortex-eval: flattenSessions",
@@ -449,7 +446,6 @@
     "cortex-eval: isAssistantTurn",
     "cortex-eval: isCandidateDiscriminationEnabled",
     "cortex-eval: isCountingQuestion",
-    "cortex-eval: isTemporalQuestion",
     "cortex-eval: isUserTurn",
     "cortex-eval: isValidDate",
     "cortex-eval: meanPool",
@@ -674,7 +670,6 @@
     "cortex-eval: exactMatch": "referenced-locally",
     "cortex-eval: expandLexicalVariants": "referenced-locally",
     "cortex-eval: extractAggregationLedger": "referenced-locally",
-    "cortex-eval: extractDate": "unreferenced",
     "cortex-eval: extractLeadingNumber": "referenced-locally",
     "cortex-eval: extractLexicalKeywords": "referenced-locally",
     "cortex-eval: flattenSessions": "unreferenced",
@@ -687,7 +682,6 @@
     "cortex-eval: isAssistantTurn": "referenced-locally",
     "cortex-eval: isCandidateDiscriminationEnabled": "unreferenced",
     "cortex-eval: isCountingQuestion": "referenced-locally",
-    "cortex-eval: isTemporalQuestion": "unreferenced",
     "cortex-eval: isUserTurn": "referenced-locally",
     "cortex-eval: isValidDate": "referenced-locally",
     "cortex-eval: meanPool": "referenced-locally",
@@ -784,7 +778,7 @@
       "packages/cortex-core/src/export-census.ts:97"
     ],
     "cortex-core: ProvenanceNode": [
-      "packages/cortex-core/src/domain/provenance.ts:3"
+      "packages/cortex-core/src/domain/provenance.ts:2"
     ],
     "cortex-core: RerankCandidate": [
       "packages/cortex-core/src/retrieval/rerank.ts:41"
@@ -1027,7 +1021,7 @@
       "packages/cortex-eval/src/failure-census.ts:81"
     ],
     "cortex-eval: JudgeQuestionType": [
-      "packages/cortex-eval/src/judge.ts:38"
+      "packages/cortex-eval/src/judge.ts:48"
     ],
     "cortex-eval: LlmEnv": [
       "packages/cortex-eval/src/llm-factory.ts:8"
@@ -1150,7 +1144,7 @@
       "packages/cortex-eval/src/natural-language-memory.ts:1996"
     ],
     "cortex-eval: buildJudgePrompt": [
-      "packages/cortex-eval/src/judge.ts:156"
+      "packages/cortex-eval/src/judge.ts:166"
     ],
     "cortex-eval: buildKnowledgeUpdatePrompt": [
       "packages/cortex-eval/src/natural-language-memory.ts:1952"
@@ -1189,7 +1183,7 @@
       "packages/cortex-eval/src/recall-curve.ts:302"
     ],
     "cortex-eval: clearJudgeCache": [
-      "packages/cortex-eval/src/judge.ts:24"
+      "packages/cortex-eval/src/judge.ts:34"
     ],
     "cortex-eval: countLexicalMatches": [
       "packages/cortex-eval/src/retrieval.ts:1200"
@@ -1236,9 +1230,6 @@
     "cortex-eval: extractAggregationLedger": [
       "packages/cortex-eval/src/natural-language-memory.ts:2362"
     ],
-    "cortex-eval: extractDate": [
-      "packages/cortex-eval/src/temporal.ts:20"
-    ],
     "cortex-eval: extractLeadingNumber": [
       "packages/cortex-eval/src/metrics.ts:147"
     ],
@@ -1275,9 +1266,6 @@
     "cortex-eval: isCountingQuestion": [
       "packages/cortex-eval/src/metrics.ts:159"
     ],
-    "cortex-eval: isTemporalQuestion": [
-      "packages/cortex-eval/src/temporal.ts:10"
-    ],
     "cortex-eval: isUserTurn": [
       "packages/cortex-eval/src/natural-language-memory.ts:3129"
     ],
@@ -1306,7 +1294,7 @@
       "packages/cortex-eval/src/natural-language-memory.ts:3037"
     ],
     "cortex-eval: parseJudgeResponse": [
-      "packages/cortex-eval/src/judge.ts:175"
+      "packages/cortex-eval/src/judge.ts:185"
     ],
     "cortex-eval: parseMissingCohortMembers": [
       "packages/cortex-eval/src/ablation-skip.ts:60"

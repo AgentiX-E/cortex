@@ -235,7 +235,7 @@ export {
   type AbstainReason,
   type DecisionTrace,
 } from './natural-language-memory.js';
-export { isTemporalQuestion, extractDate, daysBetween } from './temporal.js';
+export { daysBetween } from './temporal.js';
 export {
   classifyTemporalQuestion,
   hasSecondEventReference,

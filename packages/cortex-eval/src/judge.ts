@@ -20,7 +20,17 @@ export type AnswerJudge = (
 
 const judgeCache = new Map<string, boolean>();
 
-/** Clear the shared judge-verdict cache (used by tests and long-running processes). */
+/**
+ * Clear the shared judge-verdict cache.
+ *
+ * Only tests call this today. The comment here previously read "used by tests and
+ * long-running processes", which named a production consumer that does not exist —
+ * the same claim-shape that `docs/AUDIT-UNREFERENCED-CLASSES.md` §3 removes from
+ * `temporal.ts`, though the consequence here is smaller: the function is correctly
+ * factored (a process that grades many runs in one lifetime genuinely wants it) and
+ * the sentence was a prediction rather than a description of a deleted caller. It is
+ * corrected because an unverified consumer claim is what made the other two survive.
+ */
 export function clearJudgeCache(): void {
   judgeCache.clear();
 }

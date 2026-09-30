@@ -1,26 +1,23 @@
 /**
- * Temporal-reasoning primitives for LongMemEval-style benchmarks. Temporal
- * questions require reasoning over turn timestamps: "how many days between X and
- * Y", "how many weeks ago did I do X", "which happened first". These helpers
- * extract the turn date, compute elapsed days, and detect the question shape so
- * the system can route temporal questions to a dedicated answering path.
+ * Calendar arithmetic for the temporal engine.
+ *
+ * This module is the **arithmetic half** of temporal reasoning, not the routing
+ * half. Question-shape detection lives in `temporal-engine.ts`
+ * (`classifyTemporalQuestion`), which imports `daysBetween` from here and is what
+ * `natural-language-memory.ts` calls to select an answering path.
+ *
+ * ## Why this file is named `temporal` and holds one function
+ *
+ * It previously held three. `isTemporalQuestion` and `extractDate` were a coarser
+ * classifier and its date reader, written before the engine existed; the engine
+ * replaced both, and they stayed as a second, divergent answer to questions the
+ * package had already answered. They were removed rather than deprecated, because
+ * an exported alias keeps the divergent answer reachable and tested — see
+ * `docs/AUDIT-UNREFERENCED-CLASSES.md` §3.
+ *
+ * `daysBetween` stayed because it was never superseded: the engine's date
+ * arithmetic is built on it, so what was deleted is two functions and not a module.
  */
-
-/** True when a question asks about relative/absolute time or event ordering. */
-export function isTemporalQuestion(question: string): boolean {
-  return /\b(how many (days|weeks|months|hours)|ago|before or after|happened first|which .* first|order from first)/i.test(
-    question,
-  );
-}
-
-/**
- * Extract the `[YYYY/MM/DD]` date from a `turnText`-rendered turn. Returns
- * `undefined` when the turn carries no date prefix.
- */
-export function extractDate(turn: string): string | undefined {
-  const match = turn.match(/^\s*\[(\d{4}\/\d{2}\/\d{2})/);
-  return match?.[1];
-}
 
 const MS_PER_DAY = 86_400_000;
 
