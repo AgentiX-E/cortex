@@ -25,6 +25,8 @@ import {
   censusPackage,
   buildCensusReport,
   listOrphans,
+  listReferencedLocally,
+  listUnreferenced,
 } from '../packages/cortex-core/dist/export-census.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -115,16 +117,25 @@ function main() {
 
   const report = buildCensusReport(readSources());
   const orphans = listOrphans(report);
+  const referencedLocally = listReferencedLocally(report);
+  const unreferenced = listUnreferenced(report);
 
   if (json) {
-    process.stdout.write(`${JSON.stringify({ report, orphans }, null, 2)}\n`);
+    // `orphans` keeps its exact shape and meaning: it is the union the gate
+    // reconciles against the baseline, and `rebuild-export-census-baseline.py`
+    // reads it. The split is additive so no existing consumer changes behavior.
+    process.stdout.write(
+      `${JSON.stringify({ report, orphans, referencedLocally, unreferenced }, null, 2)}\n`,
+    );
     return 0;
   }
 
   process.stdout.write(
     `export census: ${report.totalSymbols} exported symbols, ` +
       `${report.totalSymbols - report.orphanCount} with a non-test caller, ` +
-      `${report.orphanCount} orphaned\n`,
+      `${report.orphanCount} orphaned ` +
+      `(${report.referencedLocallyCount} used only in their own file, ` +
+      `${report.unreferencedCount} referenced nowhere)\n`,
   );
 
   if (orphans.length === 0) {
@@ -132,8 +143,17 @@ function main() {
     return 0;
   }
 
-  process.stdout.write(`\n${orphans.length} orphaned export(s):\n`);
-  for (const line of orphans) process.stdout.write(`  ${line}\n`);
+  process.stdout.write(
+    `\n${referencedLocally.length} orphaned export(s) still used inside their own file ` +
+      `(the \`export\` keyword is unnecessary; the code is not):\n`,
+  );
+  for (const line of referencedLocally) process.stdout.write(`  ${line}\n`);
+
+  process.stdout.write(
+    `\n${unreferenced.length} orphaned export(s) referenced nowhere at all ` +
+      `(dead-code candidates; nothing mentions them outside their own declaration):\n`,
+  );
+  for (const line of unreferenced) process.stdout.write(`  ${line}\n`);
 
   if (!check) {
     process.stdout.write('\n(report only; pass --check to enforce)\n');

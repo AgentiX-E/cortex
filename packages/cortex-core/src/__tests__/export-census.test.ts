@@ -16,8 +16,11 @@
  *      of them.
  *   5. It must search repository-wide, not per-package, or every cross-package
  *      use reads as an orphan.
+ *   6. It must separate "used only inside its own file" from "used nowhere at
+ *      all". 235 orphans and 0 defects were the same number until it did, and
+ *      the 31 names nothing refers to anywhere were invisible in both readings.
  *
- * Each of 1-5 is asserted against a concrete, minimal fixture rather than the
+ * Each of 1-6 is asserted against a concrete, minimal fixture rather than the
  * live repository, so a failure says which rule broke rather than which file
  * moved.
  */
@@ -33,6 +36,8 @@ import {
   censusPackage,
   buildCensusReport,
   listOrphans,
+  listReferencedLocally,
+  listUnreferenced,
   packageOf,
   type ExportedSymbol,
 } from '../export-census.js';
@@ -455,5 +460,326 @@ describe('assembling the report', () => {
     ]);
     expect(listOrphans(report)).toEqual([]);
     expect(report.orphanCount).toBe(0);
+  });
+});
+
+describe('separating a local reference from no reference at all', () => {
+  it('marks an orphan that is called from another function in its own file', () => {
+    // `logBeta` calls `logGamma`; the census saw no caller, but the symbol is
+    // very much alive. This is the 200-entry majority of the 235 orphans.
+    const entry = entryFor(
+      {
+        name: 'logGamma',
+        file: 'packages/cortex-core/src/math/stats.ts',
+        line: 1,
+        kind: 'function',
+      },
+      [
+        file(
+          'packages/cortex-core/src/math/stats.ts',
+          [
+            'export function logGamma(z: number): number {',
+            '  return finitePart(z);',
+            '}',
+            'export function logBeta(a: number, b: number): number {',
+            '  return logGamma(a) + logGamma(b) - logGamma(a + b);',
+            '}',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.callerCount).toBe(0);
+    expect(entry.referencedLocally).toBe(true);
+  });
+
+  it('does NOT treat a symbol declaration as a reference to itself', () => {
+    const entry = entryFor(
+      {
+        name: 'logGamma',
+        file: 'packages/cortex-core/src/math/stats.ts',
+        line: 1,
+        kind: 'function',
+      },
+      [
+        file(
+          'packages/cortex-core/src/math/stats.ts',
+          ['export function logGamma(z: number): number {', '  return z;', '}'].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(false);
+  });
+
+  it('does NOT treat self-recursion as a local reference', () => {
+    // The sentinel for the declaring-file rule: a recursive function calls
+    // itself, and a call to itself is not evidence that anything else wants it.
+    // Without the enclosing-body exclusion this reads as `true`.
+    const entry = entryFor(SUBJECT, [
+      file(SUBJECT.file, 'export function fuseRerank() { return fuseRerank(); }'),
+    ]);
+    expect(entry.callerCount).toBe(0);
+    expect(entry.referencedLocally).toBe(false);
+  });
+
+  it('does NOT treat a mention inside a string in its own body as a local reference', () => {
+    // `resolveContradiction` throws `'resolveContradiction: empty facts'`. That
+    // is the symbol's own body naming itself, not a caller asking for it.
+    const entry = entryFor(
+      {
+        name: 'resolveContradiction',
+        file: 'packages/cortex-core/src/contradiction/resolve.ts',
+        line: 1,
+        kind: 'function',
+      },
+      [
+        file(
+          'packages/cortex-core/src/contradiction/resolve.ts',
+          [
+            'export function resolveContradiction(facts: readonly Fact[]): Resolution {',
+            "  if (facts.length === 0) throw new Error('resolveContradiction: empty facts');",
+            '  return pick(facts);',
+            '}',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(false);
+  });
+
+  it('does NOT treat a comment naming the symbol as no reference — it is still a mention', () => {
+    // Deliberate trade-off: stripping comments would reclassify live symbols
+    // like `hashText` (called six times inside a template literal) as dead, and
+    // a census that cries wolf is one nobody reads. The cost is `retrieveTopK`,
+    // whose only mention anywhere is one comment line; it stays in this bucket.
+    const entry = entryFor(
+      {
+        name: 'retrieveTopK',
+        file: 'packages/cortex-eval/src/retrieval.ts',
+        line: 1,
+        kind: 'function',
+      },
+      [
+        file(
+          'packages/cortex-eval/src/retrieval.ts',
+          [
+            'export async function retrieveTopK(ctx: Context): Promise<Hit[]> {',
+            '  return ctx.hits;',
+            '}',
+            '// The cap keeps the injected context at the same size as a single-query `retrieveTopK`.',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(true);
+  });
+
+  it('finds a reference that appears before the declaration', () => {
+    // A `const` arrow used by a function declared above it must count; scanning
+    // only forward from the declaration line would miss it.
+    const entry = entryFor(
+      { name: 'floorAt', file: 'packages/cortex-core/src/x.ts', line: 4, kind: 'const' },
+      [
+        file(
+          'packages/cortex-core/src/x.ts',
+          [
+            'function clampAll(v: number[]): number[] {',
+            '  return v.map((n) => floorAt(n));',
+            '}',
+            'export const floorAt = (n: number): number => n;',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(true);
+  });
+
+  it('finds a reference on the declaration line when the body is not on it', () => {
+    // `export const defaultLimit = baseLimit + 1;` names `baseLimit` on the
+    // declaration line of a *different* symbol in the same file.
+    const entry = entryFor(
+      { name: 'baseLimit', file: 'packages/cortex-core/src/x.ts', line: 1, kind: 'const' },
+      [
+        file(
+          'packages/cortex-core/src/x.ts',
+          ['export const baseLimit = 10;', 'export const defaultLimit = baseLimit + 1;'].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(true);
+  });
+
+  it('reads a multi-line signature without mistaking it for the body', () => {
+    // The opening brace is on a later line than the declaration. A single-line
+    // check would treat the entire file as "inside the body" and find nothing.
+    const entry = entryFor(
+      { name: 'sinkhorn', file: 'packages/cortex-core/src/math/ot.ts', line: 1, kind: 'function' },
+      [
+        file(
+          'packages/cortex-core/src/math/ot.ts',
+          [
+            'export function sinkhorn(',
+            '  a: number[],',
+            '): SinkhornResult {',
+            '  return run(a);',
+            '}',
+            'export const transportCost = (a: number[]) => sinkhorn(a).cost;',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(true);
+  });
+
+  it('counts a docstring mention as a caller, which is why prose must not name orphans', () => {
+    // THE REGRESSION TEST for a defect this change introduced and then fixed.
+    // The docstring of `isReferencedLocally` named four real orphans as
+    // examples; the census matches whole-file text, so all four gained
+    // "caller: export-census.ts" and silently left the orphan list, while
+    // `--check` reported no new orphans and the baseline still listed them.
+    //
+    // The behavior itself is the documented over-count and is kept. What the
+    // test pins is that it is *real*: documenting it is not enough, because the
+    // failure mode is a clean run. A comment must not be able to retire a
+    // finding unseen.
+    const entry = entryFor(
+      { name: 'orphanedHelper', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+      [
+        file('packages/a/src/x.ts', 'export function orphanedHelper() {}'),
+        file('packages/b/src/doc.ts', '// see orphanedHelper for the example'),
+      ],
+    );
+    expect(entry.callerCount).toBe(1);
+    expect(entry.callers).toEqual(['packages/b/src/doc.ts']);
+  });
+
+  it('keeps the local-reference flag off symbols that already have a caller', () => {
+    // The flag only exists to explain an orphan. Setting it on called symbols
+    // would make it a second, redundant spelling of `callerCount > 0`.
+    const entry = entryFor(SUBJECT, [
+      file(SUBJECT.file, 'export function fuseRerank() { return fuseRerank(); }'),
+      file('packages/cortex-eval/src/use.ts', 'fuseRerank();'),
+    ]);
+    expect(entry.callerCount).toBe(1);
+    expect(entry.referencedLocally).toBeUndefined();
+  });
+
+  it('treats an unbalanced declaration as spanning to the end of the file', () => {
+    // A truncated or malformed file never closes its brace. Being generous with
+    // the span is the safe direction: it can only push a mention into the body,
+    // which under-reports local use, and the alternative — stopping at the
+    // declaration line — would claim the whole rest of the file is outside it.
+    const entry = entryFor(
+      { name: 'halfWritten', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+      [
+        file(
+          'packages/a/src/x.ts',
+          ['export function halfWritten() {', '  return halfWritten();'].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.callerCount).toBe(0);
+    // The only mention is inside the unterminated body, so it is self-reference.
+    expect(entry.referencedLocally).toBe(false);
+  });
+
+  it('leaves the flag unset when the declaring file was not supplied', () => {
+    // A hand-built call passes only the files it knows about. Nothing can be
+    // said about local use, and inventing `false` would report the symbol as
+    // dead; the report's own reading of an absent flag is what handles it.
+    const entry = entryFor(
+      { name: 'elsewhere', file: 'packages/a/src/absent.ts', line: 1, kind: 'function' },
+      [file('packages/b/src/other.ts', 'const x = 1;')],
+    );
+    expect(entry.callerCount).toBe(0);
+    expect(entry.referencedLocally).toBeUndefined();
+  });
+});
+
+describe('classifying the orphan debt', () => {
+  /** A report with one orphan of each class, hand-built to keep the equation exact. */
+  function mixedReport() {
+    return buildCensusReport([
+      {
+        packageName: 'a',
+        entries: [
+          {
+            symbol: { name: 'live', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+            callerCount: 0,
+            callers: [],
+            referencedLocally: true,
+          },
+          {
+            symbol: { name: 'dead', file: 'packages/a/src/x.ts', line: 2, kind: 'function' },
+            callerCount: 0,
+            callers: [],
+            referencedLocally: false,
+          },
+          {
+            symbol: { name: 'called', file: 'packages/a/src/x.ts', line: 3, kind: 'function' },
+            callerCount: 3,
+            callers: ['p', 'q', 'r'],
+          },
+        ],
+      },
+    ]);
+  }
+
+  it('counts the two orphan classes and keeps their sum equal to the orphan count', () => {
+    const report = mixedReport();
+    expect(report.orphanCount).toBe(2);
+    expect(report.referencedLocallyCount).toBe(1);
+    expect(report.unreferencedCount).toBe(1);
+    expect(report.referencedLocallyCount + report.unreferencedCount).toBe(report.orphanCount);
+  });
+
+  it('counts an orphan with no classification recorded as unreferenced', () => {
+    // Entries assembled by hand (or by an older reader) carry no flag. Reading
+    // an absent flag as "referenced" would hide debt; reading it as
+    // "unreferenced" over-reports it, which is the direction that gets checked.
+    const report = buildCensusReport([
+      {
+        packageName: 'a',
+        entries: [
+          {
+            symbol: { name: 'unknown', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+            callerCount: 0,
+            callers: [],
+          },
+        ],
+      },
+    ]);
+    expect(report.unreferencedCount).toBe(1);
+    expect(report.referencedLocallyCount).toBe(0);
+  });
+
+  it('lists the locally-referenced orphans as package-qualified locations, sorted', () => {
+    expect(listReferencedLocally(mixedReport())).toEqual(['a: live (packages/a/src/x.ts:1)']);
+  });
+
+  it('lists the unreferenced orphans as package-qualified locations, sorted', () => {
+    expect(listUnreferenced(mixedReport())).toEqual(['a: dead (packages/a/src/x.ts:2)']);
+  });
+
+  it('partitions the orphans, so no orphan is listed twice or dropped', () => {
+    const report = mixedReport();
+    const both = [...listReferencedLocally(report), ...listUnreferenced(report)].sort();
+    expect(both).toEqual(listOrphans(report));
+  });
+
+  it('returns nothing from the classifier lists when there is no orphan debt', () => {
+    const report = buildCensusReport([
+      {
+        packageName: 'a',
+        entries: [
+          {
+            symbol: { name: 'called', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+            callerCount: 1,
+            callers: ['one'],
+          },
+        ],
+      },
+    ]);
+    expect(listReferencedLocally(report)).toEqual([]);
+    expect(listUnreferenced(report)).toEqual([]);
   });
 });

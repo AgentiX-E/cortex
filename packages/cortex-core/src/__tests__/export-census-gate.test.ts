@@ -40,7 +40,15 @@ type Baseline = {
     readonly exports: number;
     readonly withCaller: number;
     readonly orphaned: number;
+    readonly referencedLocally: number;
+    readonly unreferenced: number;
   };
+  /**
+   * Each known orphan's class. Optional on the type so that a fixture written
+   * before the field existed still type-checks; the ledger itself always
+   * carries it, and the schema check below asserts that.
+   */
+  readonly orphanClass?: Readonly<Record<string, string>>;
 };
 
 /**
@@ -73,8 +81,20 @@ describe('the census CLI reports without enforcing by default', () => {
     // Either state is valid on a given tree; what matters is that the output is
     // never silent about which one it is.
     const clean = output.includes('no orphans: every exported symbol has a non-test caller');
-    const listed = /orphaned export\(s\):/.test(output);
+    const listed = /orphaned export\(s\)/.test(output);
     expect(clean || listed).toBe(true);
+  });
+
+  it('names the two orphan classes instead of reporting one undifferentiated number', () => {
+    // THE REGRESSION TEST for the conflation this change removes. Before it,
+    // "235 orphaned" was the whole report: a symbol used everywhere inside its
+    // own file and a symbol nothing mentions read identically, and the 31 dead
+    // ones could not be read out of the output at all.
+    const { output } = runCensus([]);
+    expect(output).toMatch(/used only in their own file/);
+    expect(output).toMatch(/referenced nowhere/);
+    expect(output).toMatch(/still used inside their own file/);
+    expect(output).toMatch(/referenced nowhere at all/);
   });
 
   it('emits parseable JSON on --json, containing the same orphan list', () => {
@@ -82,11 +102,21 @@ describe('the census CLI reports without enforcing by default', () => {
     expect(status).toBe(0);
     const parsed = JSON.parse(output) as {
       orphans: string[];
+      referencedLocally: string[];
+      unreferenced: string[];
       report: { totalSymbols: number; orphanCount: number };
     };
     expect(Array.isArray(parsed.orphans)).toBe(true);
     expect(parsed.orphans.length).toBe(parsed.report.orphanCount);
     expect(parsed.report.totalSymbols).toBeGreaterThan(0);
+
+    // The split is additive: `orphans` keeps its exact shape for existing
+    // consumers, and the two new lists partition it rather than replacing it.
+    expect([...parsed.referencedLocally, ...parsed.unreferenced].sort()).toEqual(
+      [...parsed.orphans].sort(),
+    );
+    expect(new Set(parsed.referencedLocally).size).toBe(parsed.referencedLocally.length);
+    expect(new Set(parsed.unreferenced).size).toBe(parsed.unreferenced.length);
   });
 
   it('produces a report that matches the committed baseline exactly', () => {
@@ -289,6 +319,32 @@ describe('the baseline is a ledger, not a rubber stamp', () => {
     expect(data.knownOrphans.length).toBeLessThanOrEqual(orphaned);
     const sites = Object.values(data.locations).reduce((total, list) => total + list.length, 0);
     expect(sites).toBe(orphaned);
+  });
+
+  it('splits every orphan into exactly one class, and the classes sum to the total', () => {
+    // THE INVARIANT THAT MAKES THE SPLIT USABLE. Two parallel counts over the
+    // same set drift unless something asserts they agree; this is that
+    // assertion. `referenced-locally` means the symbol still has a live call
+    // site and only its `export` keyword is unnecessary. `unreferenced` means
+    // nothing mentions it anywhere and it is the only kind that may be deleted.
+    const data = baseline();
+    const classes = data.orphanClass;
+    expect(classes).toBeDefined();
+
+    // Same key set both ways: a class entry with no orphan, or an orphan with no
+    // class, would mean the two lists had silently diverged.
+    expect(new Set(Object.keys(classes ?? {}))).toEqual(new Set(data.knownOrphans));
+
+    const values = Object.values(classes ?? {});
+    for (const value of values) {
+      expect(['referenced-locally', 'unreferenced']).toContain(value);
+    }
+
+    const referencedLocally = values.filter((v) => v === 'referenced-locally').length;
+    const unreferenced = values.filter((v) => v === 'unreferenced').length;
+    expect(referencedLocally + unreferenced).toBe(data.totals.orphaned);
+    expect(referencedLocally).toBe(data.totals.referencedLocally);
+    expect(unreferenced).toBe(data.totals.unreferenced);
   });
 });
 

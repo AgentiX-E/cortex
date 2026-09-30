@@ -29,10 +29,11 @@ RATIONALE = {
     ),
     "eval-harness-surface": (
         "Evaluation harness internals. This is the largest bucket and the one most likely to hold "
-        "genuine defects: 156 of the repository's 245 exported functions have no non-test caller, "
-        "and most of them are here. Some are reached only through indirection the census does not "
-        "follow (dynamic property access, options objects passed as data), so both genuine orphans "
-        "and false positives are expected. It was not triaged entry by entry; the gate's value is "
+        "genuine defects: most of the repository's orphaned exports are here. Some are reached only "
+        "through indirection the census does not follow (dynamic property access, options objects "
+        "passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own "
+        "declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead "
+        "code and its members are unnecessary `export` keywords, not deletions. The gate's value is "
         "preventing growth, not certifying this snapshot."
     ),
     "core-llm-node-surface": (
@@ -109,6 +110,7 @@ def main() -> int:
         payload = json.load(source)
     orphans = sorted(payload["orphans"], key=key)
     report = payload["report"]
+    unreferenced = {key(orphan) for orphan in payload["unreferenced"]}
 
     groups = defaultdict(list)
     for orphan in orphans:
@@ -138,15 +140,26 @@ def main() -> int:
             "`locations` maps each key to every file:line that declares it. "
             "`groups` carries the rationale, and its `declarationSites` are counted per site, so "
             "their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one "
-            "name, several declaration lines, one identity."
+            "name, several declaration lines, one identity. "
+            "`totals.referencedLocally` and `totals.unreferenced` split the orphan count by "
+            "whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. "
+            "`orphanClass` maps each key to its class: `referenced-locally` means the symbol has a "
+            "live call site and only the `export` keyword is unnecessary, `unreferenced` means "
+            "nothing mentions it anywhere and it is a dead-code candidate."
         ),
         "totals": {
             "exports": report["totalSymbols"],
             "withCaller": report["totalSymbols"] - report["orphanCount"],
             "orphaned": report["orphanCount"],
+            "referencedLocally": report["referencedLocallyCount"],
+            "unreferenced": report["unreferencedCount"],
         },
         "groups": ledger,
         "knownOrphans": sorted({key(orphan) for orphan in orphans}),
+        "orphanClass": {
+            name: ("unreferenced" if name in unreferenced else "referenced-locally")
+            for name in sorted({key(orphan) for orphan in orphans})
+        },
         "locations": _locations(orphans),
     }
 
