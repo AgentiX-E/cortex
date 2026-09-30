@@ -47,6 +47,33 @@
  *
  * See `docs/FIX-COVERAGE-GATE-NOISE.md` §5, §7 and §10.
  *
+ * ## The gate was scoped to one package and blind to one provider — both fixed
+ *
+ * This test used to scan `cortex-core/src` only, and its pattern recognised the
+ * `c8` and `v8` prefixes but not `istanbul`. Two consequences, both measured
+ * rather than argued, and both now closed:
+ *
+ * 1. **Scope.** The two `c8 ignore start` shims in `cortex-llm` (the optional
+ *    `@xenova/transformers` peer loaders) were outside the scanned directory, so
+ *    the file's central claim -- "the set is enumerated" -- was true of one
+ *    package and false of the repository.
+ * 2. **Prefix.** Six files carried `/* istanbul ignore file ... *\/` and the
+ *    pattern could not see any of them. Worse, `istanbul ignore file` is **not a
+ *    suppression that vitest's v8 provider honours**: deleting all five in
+ *    `cortex-core` left the reported figure bit-identical (raw counters
+ *    946/958 = 98.7474%, both before and after). The annotations were therefore
+ *    not hiding untested code -- they were hiding *nothing*, while reading as
+ *    though a decision had been made and reviewed. That is the same shape as a
+ *    feature flag that is set and never consumed: `docs/AUDIT-B7-DEAD-SWITCH.md`.
+ *
+ * The fix was to delete them, not to enumerate them. A pin on a no-op annotation
+ * would have preserved the appearance of review over an empty set of
+ * consequences, and the type-only files needed no exemption at all: they compile
+ * to zero statements, so `coverage-final.json` records `statementMap: {}` and the
+ * text report omits them. `hasNoRuntimeCode` below asserts that property
+ * directly, so the reason those files are absent from the report is checked
+ * rather than assumed.
+ *
  * ## What this test does NOT do
  *
  * It does not verify that each annotation's stated reason is true, and the
@@ -60,26 +87,93 @@
  * necessarily reaches a reviewer.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { studentTCdf } from '../math/stats.js';
 import { join, relative } from 'node:path';
-
-const SRC = join(__dirname, '..');
+import * as ts from 'typescript';
 
 /**
- * The expected annotation set, keyed by source file.
+ * True when a top-level statement emits no JavaScript.
+ *
+ * Used by the type-only-file test below. `export type X = ...`, `export interface
+ * X {}` and `import type` all disappear at compile time; a wrapped declaration is
+ * unwrapped rather than special-cased, so a future `export declare const` (which
+ * also emits nothing) is classified correctly instead of being reported as
+ * runtime code.
+ */
+function isTypeLevelExport(node: ts.Statement): boolean {
+  if (ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node)) {
+    return true;
+  }
+  if (ts.isImportDeclaration(node)) {
+    // `import type { X } from '...'` is erased; a value import is not, and it
+    // does emit an import statement even if nothing is used at runtime.
+    return node.importClause?.isTypeOnly === true;
+  }
+  if (ts.isExportDeclaration(node)) {
+    // `export { type X }` / `export type { X }` are erased; a plain re-export of
+    // values is not.
+    return node.isTypeOnly;
+  }
+  if (ts.isVariableStatement(node)) {
+    // `declare const X: T` is erased; `const X = 1` is not. TypeScript's flag for
+    // this is `NodeFlags.Ambient`, but it is marked internal in the published
+    // typings, so testing the modifier through the modifier list is what
+    // type-checks. `ts.NodeFlags.Declare` -- the spelling a comment would suggest
+    // -- does not exist at all, which the first version of this helper found out
+    // from the build rather than from reading.
+    return node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) === true;
+  }
+  return false;
+}
+
+/**
+ * Repository root, derived rather than configured.
+ *
+ * The annotation set is a property of the repository, not of this package, so the
+ * scan has to start above `packages/`. Walking up until `pnpm-workspace.yaml` is
+ * found keeps this correct if the test file moves, and fails loudly instead of
+ * silently scanning the wrong tree if the marker ever disappears.
+ */
+function repoRoot(): string {
+  let dir = join(__dirname, '..');
+  for (let i = 0; i < 8; i += 1) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) {
+      return dir;
+    }
+    const parent = join(dir, '..');
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  throw new Error(
+    'pnpm-workspace.yaml not found above this test; cannot scope the annotation scan',
+  );
+}
+
+const ROOT = repoRoot();
+
+/**
+ * The expected annotation set, keyed by `<package>: <path-relative-to-src>`.
  *
  * `count` is exact rather than a minimum: a *decrease* is also a change worth
  * reviewing, because removing an annotation raises coverage and may mean the
  * guard became reachable — which would be a real behavioural finding, not a
  * cleanup.
+ *
+ * The extra file-level spec is separate from the line-level one because the two
+ * make different claims: a `next` annotation asserts one statement is
+ * unreachable, a `start` block asserts an entire file's worth of statements is
+ * unreachable in every configuration the suite runs under. The second is a much
+ * stronger claim and is worth reviewing on its own.
  */
 const EXPECTED: Record<string, { count: number; reason: string }> = {
-  'graph/memory-graph.ts': {
+  'cortex-core: graph/memory-graph.ts': {
     count: 2,
     reason: 'Defensive guards on graph traversal invariants that the public API cannot violate.',
   },
-  'math/stats.ts': {
+  'cortex-core: math/stats.ts': {
     count: 6,
     // The stated reason "unreachable via valid inputs" was measured FALSE at the
     // time it was written: throwing sentinels placed in each of the five in-loop
@@ -109,10 +203,47 @@ const EXPECTED: Record<string, { count: number; reason: string }> = {
       'green, so the guards are now genuinely unreachable and the annotations ' +
       'are correct-by-accident. See docs/FIX-COVERAGE-GATE-NOISE.md §5 and §7.',
   },
+  'cortex-eval: fact-memory.ts': {
+    count: 1,
+    reason:
+      'A set-union length guard in FactMemorySystem, where both input sets are ' +
+      'non-empty by construction so the union cannot be empty. The single ' +
+      '`next` form is deliberate: the guard is one statement, and a `start` ' +
+      'block would also suppress the surrounding retrieval logic that the ' +
+      'suite does exercise.',
+  },
 };
 
-function tsFiles(dir: string): string[] {
-  const out: string[] = [];
+/**
+ * Whole-file and whole-block suppressions, keyed the same way.
+ *
+ * These are not merely a different count — they are a different *kind* of claim,
+ * and the file-level ones are the reason this list exists separately. A `start`
+ * block is the annotation equivalent of `|| true` at file scope: it removes
+ * statements from the denominator, so the reported percentage stops being a
+ * statement about the tested code and becomes a statement about what was
+ * excluded. Each one therefore needs to justify why the excluded code cannot be
+ * tested *in this environment* rather than merely being inconvenient.
+ */
+const EXPECTED_BLOCK: Record<string, { count: number; reason: string }> = {
+  'cortex-llm: embedding/transformers-pipeline.ts': {
+    count: 1,
+    reason:
+      'Optional-peer loading shim: the module dynamically imports ' +
+      '@xenova/transformers, which is an optionalDependency and absent in CI. ' +
+      'The tested path is the injectable pipelineFactory on ' +
+      'TransformersEmbedding; this file only supplies the default binding.',
+  },
+  'cortex-llm: rerank/transformers-rerank-pipeline.ts': {
+    count: 1,
+    reason:
+      'Optional-peer loading shim for the offline cross-encoder, same peer and ' +
+      'same reason as the embedding loader. The injectable pipeline on ' +
+      'CrossEncoderReranker is the tested path.',
+  },
+};
+
+function tsFiles(dir: string, into: string[]): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
@@ -121,47 +252,133 @@ function tsFiles(dir: string): string[] {
       if (entry === '__tests__') {
         continue;
       }
-      out.push(...tsFiles(full));
+      tsFiles(full, into);
       continue;
     }
     if (entry.endsWith('.ts') && !entry.endsWith('.d.ts')) {
-      out.push(full);
+      into.push(full);
     }
   }
-  return out;
+  return into;
 }
 
-const ANNOTATION = /(?:\/\/|\/\*)\s*(?:c8|v8)\s+ignore\b[^\n]*/g;
+/**
+ * Every `.ts` file with runtime code, across every workspace package.
+ *
+ * `dist` is skipped: it is build output, and an annotation there is a copy of one
+ * in `src` that this test would otherwise double-count. Reading `src` only also
+ * keeps the scan independent of whether a build has run.
+ */
+function sourceFiles(): string[] {
+  const packagesDir = join(ROOT, 'packages');
+  const out: string[] = [];
+  for (const pkg of readdirSync(packagesDir).sort()) {
+    const src = join(packagesDir, pkg, 'src');
+    if (!statSync(join(packagesDir, pkg)).isDirectory() || !existsSync(src)) {
+      continue;
+    }
+    tsFiles(src, out);
+  }
+  return out.sort();
+}
 
-function scan(): Map<string, string[]> {
-  const found = new Map<string, string[]>();
-  for (const file of tsFiles(SRC)) {
-    const matches = readFileSync(file, 'utf8').match(ANNOTATION);
-    if (matches && matches.length > 0) {
-      found.set(relative(SRC, file), matches);
+/**
+ * Any coverage-suppression hint, whichever provider prefix it uses.
+ *
+ * `istanbul` is included even though the v8 provider does not honour it. A
+ * pattern that only matches the prefixes known to work would be blind to exactly
+ * the annotations most likely to be mistaken -- which is how six of them sat
+ * unreviewed. Seeing more than the runtime honours is the safe direction: the
+ * extra matches reach the assertions below and have to be justified or removed.
+ */
+const ANNOTATION = /(?:\/\/|\/\*)\s*(?:c8|v8|istanbul)\s+ignore\b[^\n]*/g;
+
+/** The blanket forms: a whole file, or an explicitly opened block. */
+const BLANKET = /\bignore\s+(?:file|start)\b/;
+
+interface Scanned {
+  /** `<package>: <path>` -> the blanket annotations in that file. */
+  block: Map<string, string[]>;
+  /** `<package>: <path>` -> the line-scoped (`next`) annotations only. */
+  line: Map<string, string[]>;
+  /** `<package>: <path>` -> annotations carrying the `istanbul` prefix. */
+  istanbul: Map<string, string[]>;
+}
+
+function packageOf(file: string): string {
+  const rest = relative(join(ROOT, 'packages'), file);
+  return rest.split('/')[0]!;
+}
+
+function scan(): Scanned {
+  const block = new Map<string, string[]>();
+  const line = new Map<string, string[]>();
+  const istanbul = new Map<string, string[]>();
+  for (const file of sourceFiles()) {
+    const text = readFileSync(file, 'utf8');
+    const matches = text.match(ANNOTATION);
+    if (!matches || matches.length === 0) {
+      continue;
+    }
+    // Keyed from `packages/`, so the key does not change if the repository moves.
+    const key = `${packageOf(file)}: ${relative(join(ROOT, 'packages', packageOf(file), 'src'), file)}`;
+    const blanks = matches.filter((m) => BLANKET.test(m));
+    if (blanks.length > 0) {
+      block.set(key, blanks);
+    }
+    const scoped = matches.filter((m) => !BLANKET.test(m));
+    if (scoped.length > 0) {
+      line.set(key, scoped);
+    }
+    const foreign = matches.filter((m) => /\bistanbul\s+ignore\b/.test(m));
+    if (foreign.length > 0) {
+      istanbul.set(key, foreign);
     }
   }
-  return found;
+  return { block, line, istanbul };
+}
+
+function counts(map: Map<string, string[]>): Record<string, number> {
+  return Object.fromEntries([...map].map(([file, matches]) => [file, matches.length]));
+}
+
+function declaredCounts(spec: Record<string, { count: number }>): Record<string, number> {
+  return Object.fromEntries(Object.entries(spec).map(([file, s]) => [file, s.count]));
 }
 
 describe('the coverage-ignore annotation set is pinned', () => {
   it('contains exactly the declared files, with the declared counts', () => {
     const found = scan();
-    const foundCounts = Object.fromEntries(
-      [...found].map(([file, matches]) => [file, matches.length]),
-    );
-    const expectedCounts = Object.fromEntries(
-      Object.entries(EXPECTED).map(([file, spec]) => [file, spec.count]),
-    );
     // Compared as a whole object rather than file-by-file so a NEW file with an
-    // annotation fails as visibly as a changed count in a known one.
-    expect(foundCounts).toEqual(expectedCounts);
+    // annotation fails as visibly as a changed count in a known one. Both kinds
+    // are asserted, so a `next` annotation cannot be laundered into a `start`
+    // block without changing a pinned number.
+    expect(counts(found.line)).toEqual(declaredCounts(EXPECTED));
+    expect(counts(found.block)).toEqual(declaredCounts(EXPECTED_BLOCK));
+  });
+
+  it('scans every workspace package, not only the one this file lives in', () => {
+    // Guards the scope fix directly: if `sourceFiles` ever regresses to a single
+    // package, the two `cortex-llm` block annotations vanish from the scan and
+    // the assertion above would still pass against a smaller EXPECTED_BLOCK.
+    const packages = new Set(sourceFiles().map(packageOf));
+    expect([...packages].sort()).toEqual([
+      'cortex-core',
+      'cortex-eval',
+      'cortex-llm',
+      'cortex-node',
+    ]);
   });
 
   it('declares a reason for every file that carries an annotation', () => {
-    for (const file of scan().keys()) {
+    const found = scan();
+    for (const file of found.line.keys()) {
       expect(EXPECTED[file], `no declared reason for ${file}`).toBeDefined();
       expect(EXPECTED[file]!.reason.length).toBeGreaterThan(20);
+    }
+    for (const file of found.block.keys()) {
+      expect(EXPECTED_BLOCK[file], `no declared reason for ${file}`).toBeDefined();
+      expect(EXPECTED_BLOCK[file]!.reason.length).toBeGreaterThan(20);
     }
   });
 
@@ -170,27 +387,90 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // saying why, which is the annotation equivalent of a comment-less `|| true`.
     // Every one in this repository carries a `--` rationale; that is asserted
     // here so the convention cannot decay into bare suppressions.
-    for (const [file, matches] of scan()) {
+    const found = scan();
+    for (const [file, matches] of [...found.line, ...found.block]) {
       for (const annotation of matches) {
         expect(annotation, `${file}: annotation has no rationale: ${annotation}`).toMatch(/--/);
       }
     }
   });
 
-  it('does not suppress a whole file or block', () => {
-    // `c8 ignore file` / `c8 ignore start` suppress far more than a guard and
-    // would make the reported percentage a statement about what was excluded
-    // rather than about what was tested. Only `next`/`stop`-free forms are
-    // allowed, and this asserts that no blanket form has crept in.
-    for (const [file, matches] of scan()) {
-      for (const annotation of matches) {
-        expect(
-          annotation,
-          `${file}: blanket suppression is not allowed: ${annotation}`,
-        ).not.toMatch(/\bignore\s+(?:file|start)\b/);
-      }
+  it('uses no `istanbul` prefix, because the v8 provider does not honour it', () => {
+    // This is the assertion that closes the six-annotation hole. `istanbul ignore
+    // file` is read by nyc, not by vitest's v8 provider: all five instances in
+    // `cortex-core` were deleted and the reported figure did not move by a single
+    // counter (946/958 = 98.7474% before and after). An annotation whose effect
+    // on the measured number is exactly zero while its effect on a reader is
+    // "this was considered and exempted" is worse than no annotation.
+    //
+    // The assertion is an equality against an empty object rather than a
+    // `toBeEmpty` on the found map, so a reintroduction reports the offending
+    // file and text in the diff rather than just a count.
+    expect(counts(scan().istanbul)).toEqual({});
+  });
+
+  it('does not suppress a whole file or block without declaring it', () => {
+    // `c8 ignore file` / `c8 ignore start` suppress far more than a guard: they
+    // remove statements from the denominator, so the reported percentage becomes
+    // a statement about what was excluded rather than about what was tested.
+    //
+    // The blanket forms are therefore not banned outright -- the two optional-peer
+    // shims genuinely cannot be executed in CI -- but they are held to a stronger
+    // standard than a `next`: each one must appear in EXPECTED_BLOCK above with a
+    // reason, and this test fails on any that does not. That is the difference
+    // between a suppression and a reviewed suppression.
+    const found = scan();
+    for (const file of found.block.keys()) {
+      expect(
+        EXPECTED_BLOCK[file],
+        `${file}: blanket suppression is not allowed: ${found.block.get(file)!.join(', ')}`,
+      ).toBeDefined();
+    }
+    // And the converse: a declared blanket site that no longer carries one means
+    // the file became testable, which is a change worth reviewing too.
+    expect(counts(found.block)).toEqual(declaredCounts(EXPECTED_BLOCK));
+  });
+
+  it('leaves the type-only files unannotated because they compile to no statements', () => {
+    // These six carried `/* istanbul ignore file */` and no longer do. The
+    // reason they need no exemption is a property of the code, not of the
+    // tooling, and this asserts it: each file consists solely of type-level
+    // declarations, so there is no statement for a coverage provider to miss.
+    // `coverage-final.json` records `statementMap: {}` for all six.
+    //
+    // The check parses the file and classifies top-level nodes, rather than
+    // pattern-matching the text. The text version was written first and failed
+    // immediately -- on `answerTemporal?: (` in `cortex-eval/src/types.ts`, a
+    // multi-line function-type member of an interface, which any line-oriented
+    // rule reads as runtime code. That is the same lesson as this file's
+    // `math/stats.ts` section: a claim about the code cannot be verified by
+    // matching how the code is spelled. The AST is the compiler's own answer.
+    for (const rel of [
+      'packages/cortex-core/src/domain/provenance.ts',
+      'packages/cortex-core/src/interfaces/embedding.ts',
+      'packages/cortex-core/src/interfaces/llm.ts',
+      'packages/cortex-core/src/interfaces/storage.ts',
+      'packages/cortex-core/src/interfaces/vector.ts',
+      'packages/cortex-eval/src/types.ts',
+    ]) {
+      const path = join(ROOT, rel);
+      const source = ts.createSourceFile(
+        path,
+        readFileSync(path, 'utf8'),
+        ts.ScriptTarget.ESNext,
+        /* setParentNodes */ false,
+      );
+      // A type-level top-level node emits nothing. Anything else -- a variable,
+      // a function, a call, an export assignment -- emits code, and a file that
+      // emits code must be tested rather than exempted.
+      const runtime = source.statements.filter((node) => !isTypeLevelExport(node));
+      expect(
+        runtime.map((node) => ts.SyntaxKind[node.kind]),
+        `${rel}: declares runtime code, so it needs tests rather than an exemption`,
+      ).toEqual([]);
     }
   });
+
   it('records that the stats.ts guards are reachable, contradicting their stated reason', () => {
     // This is the one assertion in this file that pins BEHAVIOUR rather than the
     // annotation set, and it exists because the stated reason on those six

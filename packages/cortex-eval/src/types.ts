@@ -1,5 +1,3 @@
-/* istanbul ignore file -- type-only declarations, no runtime code */
-
 import type { ConfidenceInterval } from '@agentix-e/cortex-core';
 
 /** Core types for the Cortex scientific evaluation harness. */

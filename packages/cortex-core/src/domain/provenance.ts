@@ -1,4 +1,3 @@
-/* istanbul ignore file -- type-only declaration, no runtime code */
 /** Provenance node: records where a memory came from and how it was derived. */
 export type ProvenanceNode = {
   id: string;

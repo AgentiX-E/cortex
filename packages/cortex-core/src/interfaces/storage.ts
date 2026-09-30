@@ -1,4 +1,3 @@
-/* istanbul ignore file -- type-only declaration, no runtime code */
 /**
  * Storage abstraction: a table-oriented key/value primitive that can be backed by
  * embedded SQLite, a remote PostgreSQL database, or an in-memory/browser store.

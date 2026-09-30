@@ -1,4 +1,3 @@
-/* istanbul ignore file -- type-only declaration, no runtime code */
 /**
  * Vector index abstraction: approximate or exact nearest-neighbour search over
  * Float64Array vectors. Implementations: brute-force (exact, all environments),

@@ -49,14 +49,31 @@ this repository has already paid for once.
 ### 3.1 `cortex-core: ProvenanceNode` — `domain/provenance.ts:3`
 
 The only one of the 31 that is isolated on all three axes: no test, no caller, no
-local use, and no live sibling. It is the sole content of its file, and the file
-opens with
+local use, and no live sibling. It is the sole content of its file, which holds
+nothing but the type declaration:
 
 ```ts
-/* istanbul ignore file -- type-only declaration, no runtime code */
+export type ProvenanceNode = {
+  id: string;
+  memoryId: string;
+  kind: string;
+  timestamp: number;
+  parents: string[];
+  metadata?: Record<string, unknown>;
+};
 ```
 
-so it also carries a coverage exclusion. Nothing imports the module.
+Nothing imports the module.
+
+> **Amendment, `AUDIT-COVERAGE-ANNOTATION-BLIND-SPOT.md`.** This file opens with
+> `/* istanbul ignore file -- type-only declaration, no runtime code */`, and that
+> sentence was quoted here as evidence that the type "also carries a coverage
+> exclusion". **It did not.** The annotation was inert twice over: the file compiles
+> to zero statements, so there was nothing to suppress, and vitest's v8 provider does
+> not honour the `istanbul` prefix at all. Deleting it left the reported figure
+> bit-identical. The quotation is replaced above with the code itself, because the
+> conclusion in the paragraph below never rested on the annotation — the symbol is
+> unreferenced on the census evidence, which is what the audit measured.
 
 **Reading:** a domain type for memory provenance that was declared, exported from
 the barrel, and never built on. `AUDIT-CODE-VS-DOCS.md` records the same class of
