@@ -33,7 +33,23 @@ export type BenchmarkDataset = {
 /** A single answer: a string, or `null` to abstain. */
 export type Answer = string | null;
 
-/** A memory system under evaluation. */
+/**
+ * A memory system under evaluation.
+ *
+ * **The contract is wider than this type.** `runBenchmark` routes on the presence
+ * of the optional members declared by `SessionAwareMemorySystem` below, so a system
+ * must be conformant not only in shape but in behaviour: every optional path it
+ * declares will be called, with a particular argument shape, and must return
+ * `Answer`. `{ name, answer }` alone is fully conformant and receives every
+ * question.
+ *
+ * [`memory-system-conformance.test.ts`](./__tests__/memory-system-conformance.test.ts)
+ * asserts that routing contract executably — which member each question shape is
+ * routed to, in what order, and what happens when a member is absent. It is the
+ * suite an implementation of this type is verified against; see
+ * [`docs/AUDIT-EVAL-CONTRACTS.md`](../../../docs/AUDIT-EVAL-CONTRACTS.md) for why it
+ * did not exist until it was needed.
+ */
 export type MemorySystem = {
   name: string;
   /**

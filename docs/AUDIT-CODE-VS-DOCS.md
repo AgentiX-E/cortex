@@ -245,11 +245,22 @@ can report both the reference pipeline and the cognitive composition side by sid
 
 | # | Task | Why it is first | Verification |
 | --- | --- | --- | --- |
-| 1 | Extract the reference pipeline's contracts into `S`-compatible form | The instrument must be able to receive the product system | `cortex-memory` passes the existing `MemorySystem` conformance tests |
-| 2 | Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval` | Makes the cognitive layer *reachable* | ≥95% coverage per dimension, TDD, no mocks |
+| 1 | ~~Extract the reference pipeline's contracts into `S`-compatible form~~ | **Closed as already satisfied** — nothing was entangled and there was no `S` to bend into (`AUDIT-EVAL-CONTRACTS.md` §2, §4) | ~~`cortex-memory` passes the existing `MemorySystem` conformance tests~~ → **the suite did not exist; it does now** (`memory-system-conformance.test.ts`, 11 assertions over `runBenchmark`'s routing) |
+| 2 | Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval` | Makes the cognitive layer *reachable* | ≥95% coverage per dimension, TDD, no mocks; **and it passes `memory-system-conformance.test.ts`** |
 | 3 | Add a benchmark arm that supplies `cortex-memory` instead of the reference pipeline | Produces the first honest number for the cognitive layer | Paired same-instant A/B against the reference arm |
 | 4 | Enforce the ≥95% ceiling in `vitest.config.ts` (`thresholds`) | D4 — the rule is currently convention only | A deliberately under-covered commit must fail CI |
 | 5 | Re-measure LongMemEval-S at current `master` | D2 — replaces a 55-commit-stale number | Full N=500, 4 runs, Wilson intervals published |
+
+> **Step 1 closed, and it was not the work the row described.** It presumed an
+> entangled contract and an existing conformance suite; the contract was already
+> uncoupled (one required field, one required method, five in-repo callers, zero
+> orphans) and **`grep -rn conformance packages/` returned nothing**. So the row's
+> verification named a test nobody had written, and step 2 was one line away from
+> being built against it. The suite now exists, and step 2's verification cites it
+> directly. One export was deleted along the way (`evaluate`, a `runBenchmark` +
+> `computeMetrics` wrapper whose docstring was its implementation), which is why
+> `computeMetrics` is now `unreferenced`: it is an interface, kept. See
+> [`docs/AUDIT-EVAL-CONTRACTS.md`](docs/AUDIT-EVAL-CONTRACTS.md).
 
 > **Ordering is deliberate.** Steps 1–3 establish whether the cognitive layer *helps or hurts*
 > before any further capability is built on top of it. Building more cognition onto an unmeasured

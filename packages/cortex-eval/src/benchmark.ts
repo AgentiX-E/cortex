@@ -9,7 +9,6 @@ import type {
   SessionAwareMemorySystem,
 } from './types.js';
 import {
-  computeMetrics,
   computeMetricsAsync,
   scoreEvaluation,
   type AnswerScorer,
@@ -73,12 +72,6 @@ export async function runBenchmark(
     }
   }
   return answers;
-}
-
-/** Run a system and immediately evaluate against ground truth. */
-export async function evaluate(dataset: BenchmarkDataset, system: MemorySystem): Promise<Metrics> {
-  const answers = await runBenchmark(dataset, system);
-  return computeMetrics(dataset, answers);
 }
 
 /** Run a system and evaluate with an arbitrary (possibly async) scorer. */

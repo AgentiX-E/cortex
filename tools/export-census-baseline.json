@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate.",
   "totals": {
-    "exports": 431,
+    "exports": 430,
     "withCaller": 218,
-    "orphaned": 213,
-    "referencedLocally": 189,
-    "unreferenced": 24
+    "orphaned": 212,
+    "referencedLocally": 187,
+    "unreferenced": 25
   },
   "groups": [
     {
@@ -166,7 +166,7 @@
     },
     {
       "category": "eval-harness-surface",
-      "count": 78,
+      "count": 77,
       "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot.",
       "declarationSites": [
         "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:151)",
@@ -211,6 +211,7 @@
         "cortex-eval: buildTemporalQueryExpansionPrompt (packages/cortex-eval/src/natural-language-memory.ts:2787)",
         "cortex-eval: classifyAggregationKind (packages/cortex-eval/src/natural-language-memory.ts:2395)",
         "cortex-eval: clearJudgeCache (packages/cortex-eval/src/judge.ts:46)",
+        "cortex-eval: computeMetrics (packages/cortex-eval/src/metrics.ts:42)",
         "cortex-eval: countLexicalMatches (packages/cortex-eval/src/retrieval.ts:1200)",
         "cortex-eval: createEmbeddingFromEnv (packages/cortex-eval/src/embedding-factory.ts:104)",
         "cortex-eval: createLongMemEvalMini (packages/cortex-eval/src/datasets/longmemeval-mini.ts:35)",
@@ -218,7 +219,6 @@
         "cortex-eval: embedManyCached (packages/cortex-eval/src/retrieval.ts:227)",
         "cortex-eval: embedOne (packages/cortex-eval/src/embedding.ts:28)",
         "cortex-eval: embedOneCached (packages/cortex-eval/src/retrieval.ts:268)",
-        "cortex-eval: evaluate (packages/cortex-eval/src/benchmark.ts:79)",
         "cortex-eval: exactMatch (packages/cortex-eval/src/metrics.ts:27)",
         "cortex-eval: expandLexicalVariants (packages/cortex-eval/src/natural-language-memory.ts:2906)",
         "cortex-eval: extractLeadingNumber (packages/cortex-eval/src/metrics.ts:147)",
@@ -242,7 +242,6 @@
         "cortex-eval: readRerankFallbacks (packages/cortex-eval/src/runner.ts:68)",
         "cortex-eval: resolveTimeoutMs (packages/cortex-eval/src/llm-factory.ts:33)",
         "cortex-eval: retrieveTopK (packages/cortex-eval/src/retrieval.ts:429)",
-        "cortex-eval: runBenchmark (packages/cortex-eval/src/benchmark.ts:25)",
         "cortex-eval: runEmbeddingBenchmark (packages/cortex-eval/src/runner.ts:218)",
         "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2602)",
@@ -380,6 +379,7 @@
     "cortex-eval: classifyCurveMembership",
     "cortex-eval: classifyExclusion",
     "cortex-eval: clearJudgeCache",
+    "cortex-eval: computeMetrics",
     "cortex-eval: countLexicalMatches",
     "cortex-eval: createEmbeddingFromEnv",
     "cortex-eval: createLongMemEvalMini",
@@ -391,7 +391,6 @@
     "cortex-eval: embedManyCached",
     "cortex-eval: embedOne",
     "cortex-eval: embedOneCached",
-    "cortex-eval: evaluate",
     "cortex-eval: exactMatch",
     "cortex-eval: expandLexicalVariants",
     "cortex-eval: extractLeadingNumber",
@@ -426,7 +425,6 @@
     "cortex-eval: resolveTemporalDate",
     "cortex-eval: resolveTimeoutMs",
     "cortex-eval: retrieveTopK",
-    "cortex-eval: runBenchmark",
     "cortex-eval: runEmbeddingBenchmark",
     "cortex-eval: sidesLandInDistinctClusters",
     "cortex-eval: timelineFor",
@@ -595,6 +593,7 @@
     "cortex-eval: classifyCurveMembership": "referenced-locally",
     "cortex-eval: classifyExclusion": "referenced-locally",
     "cortex-eval: clearJudgeCache": "unreferenced",
+    "cortex-eval: computeMetrics": "unreferenced",
     "cortex-eval: countLexicalMatches": "referenced-locally",
     "cortex-eval: createEmbeddingFromEnv": "unreferenced",
     "cortex-eval: createLongMemEvalMini": "unreferenced",
@@ -606,7 +605,6 @@
     "cortex-eval: embedManyCached": "referenced-locally",
     "cortex-eval: embedOne": "referenced-locally",
     "cortex-eval: embedOneCached": "referenced-locally",
-    "cortex-eval: evaluate": "referenced-locally",
     "cortex-eval: exactMatch": "referenced-locally",
     "cortex-eval: expandLexicalVariants": "referenced-locally",
     "cortex-eval: extractLeadingNumber": "referenced-locally",
@@ -641,7 +639,6 @@
     "cortex-eval: resolveTemporalDate": "referenced-locally",
     "cortex-eval: resolveTimeoutMs": "referenced-locally",
     "cortex-eval: retrieveTopK": "referenced-locally",
-    "cortex-eval: runBenchmark": "referenced-locally",
     "cortex-eval: runEmbeddingBenchmark": "unreferenced",
     "cortex-eval: sidesLandInDistinctClusters": "unreferenced",
     "cortex-eval: timelineFor": "referenced-locally",
@@ -1068,6 +1065,9 @@
     "cortex-eval: clearJudgeCache": [
       "packages/cortex-eval/src/judge.ts:46"
     ],
+    "cortex-eval: computeMetrics": [
+      "packages/cortex-eval/src/metrics.ts:42"
+    ],
     "cortex-eval: countLexicalMatches": [
       "packages/cortex-eval/src/retrieval.ts:1200"
     ],
@@ -1100,9 +1100,6 @@
     ],
     "cortex-eval: embedOneCached": [
       "packages/cortex-eval/src/retrieval.ts:268"
-    ],
-    "cortex-eval: evaluate": [
-      "packages/cortex-eval/src/benchmark.ts:79"
     ],
     "cortex-eval: exactMatch": [
       "packages/cortex-eval/src/metrics.ts:27"
@@ -1205,9 +1202,6 @@
     ],
     "cortex-eval: retrieveTopK": [
       "packages/cortex-eval/src/retrieval.ts:429"
-    ],
-    "cortex-eval: runBenchmark": [
-      "packages/cortex-eval/src/benchmark.ts:25"
     ],
     "cortex-eval: runEmbeddingBenchmark": [
       "packages/cortex-eval/src/runner.ts:218"

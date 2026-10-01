@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { generateSyntheticBenchmark, mulberry32 } from '../datasets/synthetic-benchmark.js';
 import { HashEmbedding } from '../embedding.js';
 import { EmbeddingMemorySystem } from '../embedding-memory.js';
-import { evaluate } from '../benchmark.js';
+import { runBenchmark } from '../benchmark.js';
+import { computeMetrics } from '../metrics.js';
 
 describe('mulberry32', () => {
   it('is deterministic for a given seed', () => {
@@ -72,8 +73,11 @@ describe('generateSyntheticBenchmark', () => {
     const embedding = new HashEmbedding(256);
     const baseline = new EmbeddingMemorySystem('naive', { embedding, fallback: 'unknown' });
     const feature = new EmbeddingMemorySystem('abstain', { embedding, abstainThreshold: 0.5 });
-    const baseMetrics = await evaluate(ds, baseline);
-    const featMetrics = await evaluate(ds, feature);
+    // Spelled out rather than routed through a convenience wrapper: the wrapper
+    // was `runBenchmark` plus `computeMetrics` with no policy of its own, and it
+    // was reached only from tests. See docs/AUDIT-EVAL-CONTRACTS.md §5.
+    const baseMetrics = computeMetrics(ds, await runBenchmark(ds, baseline));
+    const featMetrics = computeMetrics(ds, await runBenchmark(ds, feature));
     // The abstaining feature must beat the naive baseline on abstention-aware accuracy.
     expect(featMetrics.abstentionAwareAccuracy).toBeGreaterThan(
       baseMetrics.abstentionAwareAccuracy,

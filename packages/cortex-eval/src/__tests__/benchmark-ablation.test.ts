@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { runBenchmark, evaluate } from '../benchmark.js';
+import { runBenchmark } from '../benchmark.js';
+import { computeMetrics } from '../metrics.js';
 import { runAblation } from '../ablation.js';
 import { FactMemorySystem } from '../fact-memory.js';
 import type { BenchmarkDataset, MemorySystem, Question } from '../types.js';
@@ -38,7 +39,7 @@ describe('runBenchmark', () => {
   it('evaluates a system against ground truth', async () => {
     const ds = makeDataset();
     const system = new FactMemorySystem('s');
-    const m = await evaluate(ds, system);
+    const m = computeMetrics(ds, await runBenchmark(ds, system));
     expect(m.total).toBe(3);
   });
 });
