@@ -361,11 +361,17 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // Guards the scope fix directly: if `sourceFiles` ever regresses to a single
     // package, the two `cortex-llm` block annotations vanish from the scan and
     // the assertion above would still pass against a smaller EXPECTED_BLOCK.
+    // The list is pinned rather than derived, and that is the point: adding a
+    // package must be a deliberate edit here. `cortex-memory` was added when it
+    // landed, and this test failed until it was — which is the guard working,
+    // not a nuisance. A derived list would let a new package's annotations go
+    // unscanned while every assertion above still passed.
     const packages = new Set(sourceFiles().map(packageOf));
     expect([...packages].sort()).toEqual([
       'cortex-core',
       'cortex-eval',
       'cortex-llm',
+      'cortex-memory',
       'cortex-node',
     ]);
   });

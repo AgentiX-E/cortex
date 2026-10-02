@@ -36,11 +36,15 @@ by similarity). Cortex solves the "mind" problem:
 > algorithms: it is fully unit-tested and holds ≥95% coverage on all four
 > dimensions. It is *not* yet the engine behind our published LongMemEval-S number
 > — the evaluation harness drives its own memory implementation and consumes only
-> statistics helpers and one vector index from core. Three documented capabilities
-> are not yet wired: optimal-transport distillation (`sinkhorn`, exported but
-> uncalled), TD(λ) credit assignment (not implemented), and fact **derivation**
-> history (not implemented — `Fact` carries origin, trust and both time axes, but
-> not *which prior facts* produced it). See
+> statistics helpers and one vector index from core. **`cortex-memory` now composes
+> core's value gates into a runnable `MemorySystem`** (129 tests, 100% coverage on
+> all four dimensions, passing the harness's conformance suite unmodified), so the
+> cognitive layer is *reachable*; whether it *helps* is an A/B that has not been run.
+> Three documented capabilities remain unwired: optimal-transport distillation
+> (`sinkhorn`, exported but uncalled), TD(λ) credit assignment (not implemented), and
+> fact **derivation** history (not implemented — `Fact` carries origin, trust and both
+> time axes, but not *which prior facts* produced it). See
+> [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) and
 > [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) for the full,
 > measured reconciliation.
 
@@ -51,6 +55,7 @@ by similarity). Cortex solves the "mind" problem:
 | `@agentix-e/cortex-core` | Contracts + pure algorithms, zero I/O, Node + browser |
 | `@agentix-e/cortex-node` | Embedded SQLite (`better-sqlite3`) and remote PostgreSQL backends |
 | `@agentix-e/cortex-llm` | Pluggable LLM and embedding adapters (OpenAI-compatible + local transformers.js) |
+| `@agentix-e/cortex-memory` | Composition layer: wires `cortex-core`'s value gates into one conformance-passing `MemorySystem` |
 | `@agentix-e/cortex-eval` | Scientific evaluation harness (metrics, t-test, ablation) + LongMemEval-style mini benchmark |
 
 ## Quick Start

@@ -246,9 +246,9 @@ can report both the reference pipeline and the cognitive composition side by sid
 | # | Task | Why it is first | Verification |
 | --- | --- | --- | --- |
 | 1 | ~~Extract the reference pipeline's contracts into `S`-compatible form~~ | **Closed as already satisfied** — nothing was entangled and there was no `S` to bend into (`AUDIT-EVAL-CONTRACTS.md` §2, §4) | ~~`cortex-memory` passes the existing `MemorySystem` conformance tests~~ → **the suite did not exist; it does now** (`memory-system-conformance.test.ts`, 11 assertions over `runBenchmark`'s routing) |
-| 2 | Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval` | Makes the cognitive layer *reachable* | ≥95% coverage per dimension, TDD, no mocks; **and it passes `memory-system-conformance.test.ts`** |
+| 2 | ~~Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval`~~ | **Done** — the cognitive layer is reachable; whether it *helps* is step 3 | ✅ **Delivered: 129 tests, 100/100/100/100 coverage, `memory-system-conformance.test.ts` passes unmodified.** See [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) |
 | 3 | Add a benchmark arm that supplies `cortex-memory` instead of the reference pipeline | Produces the first honest number for the cognitive layer | Paired same-instant A/B against the reference arm |
-| 4 | Enforce the ≥95% ceiling in `vitest.config.ts` (`thresholds`) | D4 — the rule is currently convention only | A deliberately under-covered commit must fail CI |
+| 4 | Enforce the ≥95% ceiling in `vitest.config.ts` (`thresholds`) | **Premise needs re-checking** — all five packages already carry `thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 }`, so the rule is *not* convention only. What is unverified is whether a deliberately under-covered commit actually fails CI, which is a different question from whether the config exists | A deliberately under-covered commit must fail CI |
 | 5 | Re-measure LongMemEval-S at current `master` | D2 — replaces a 55-commit-stale number | Full N=500, 4 runs, Wilson intervals published |
 
 > **Step 1 closed, and it was not the work the row described.** It presumed an

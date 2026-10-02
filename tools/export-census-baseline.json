@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate.",
   "totals": {
-    "exports": 430,
-    "withCaller": 218,
-    "orphaned": 212,
-    "referencedLocally": 187,
-    "unreferenced": 25
+    "exports": 451,
+    "withCaller": 244,
+    "orphaned": 207,
+    "referencedLocally": 191,
+    "unreferenced": 16
   },
   "groups": [
     {
@@ -32,8 +32,8 @@
     },
     {
       "category": "core-llm-node-surface",
-      "count": 61,
-      "rationale": "Library surface of cortex-core, cortex-llm and cortex-node. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-llm/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. Not triaged entry by entry.",
+      "count": 57,
+      "rationale": "Library surface of cortex-core, cortex-llm, cortex-node and cortex-memory. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-llm/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. Not triaged entry by entry. cortex-memory contributes 5, all `referenced-locally`: `formatEvidence`, `truncateCodePointSafe`, `DEFAULT_MAX_PROMPT_CHARS`, `PromptOptions` and `clockAwareValueFunction` are exported so each layer of the composition (prompt assembly, truncation, the clock-aware value function) can be driven directly by its own test instead of round-tripping through `CortexMemory`, which is the same rationale as `census-tool-public-api`. `CortexMemory`, `admitTurns`, `admitSessions`, `selectSessionBudget`, `parseAnswer` and `isAbstention` are NOT in this list because they have callers: the test suite calls them by name, which is the caller the census counts.",
       "declarationSites": [
         "cortex-core: AccessRecord (packages/cortex-core/src/consolidation/consolidate.ts:21)",
         "cortex-core: ConsolidationStats (packages/cortex-core/src/consolidation/consolidate.ts:15)",
@@ -47,19 +47,10 @@
         "cortex-core: RetrievalDecision (packages/cortex-core/src/value/value.ts:35)",
         "cortex-core: ReviewOutcome (packages/cortex-core/src/math/fsrs.ts:46)",
         "cortex-core: SinkhornResult (packages/cortex-core/src/math/ot.ts:8)",
-        "cortex-core: ValueFunction (packages/cortex-core/src/value/value.ts:8)",
         "cortex-core: WriteDecision (packages/cortex-core/src/value/value.ts:21)",
-        "cortex-core: createMemory (packages/cortex-core/src/domain/memory.ts:40)",
-        "cortex-core: currentFacts (packages/cortex-core/src/temporal/bitemporal.ts:9)",
-        "cortex-core: currentValue (packages/cortex-core/src/temporal/bitemporal.ts:18)",
-        "cortex-core: decideRetrieval (packages/cortex-core/src/value/value.ts:43)",
-        "cortex-core: decideWrite (packages/cortex-core/src/value/value.ts:24)",
-        "cortex-core: defaultValueFunction (packages/cortex-core/src/value/value.ts:14)",
         "cortex-core: dot (packages/cortex-core/src/math/vector.ts:7)",
-        "cortex-core: findContradictions (packages/cortex-core/src/temporal/bitemporal.ts:40)",
         "cortex-core: l2Distance (packages/cortex-core/src/math/vector.ts:43)",
         "cortex-core: logGamma (packages/cortex-core/src/math/stats.ts:247)",
-        "cortex-core: resolveContradiction (packages/cortex-core/src/contradiction/resolve.ts:21)",
         "cortex-core: significanceOf (packages/cortex-core/src/graph/memory-graph.ts:190)",
         "cortex-core: sinkhorn (packages/cortex-core/src/math/ot.ts:25)",
         "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
@@ -91,6 +82,11 @@
         "cortex-llm: retryableFetchWithStats (packages/cortex-llm/src/retry.ts:383)",
         "cortex-llm: sanitizePrompt (packages/cortex-llm/src/llm/openai-compatible.ts:121)",
         "cortex-llm: sleep (packages/cortex-llm/src/retry.ts:33)",
+        "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:30)",
+        "cortex-memory: PromptOptions (packages/cortex-memory/src/prompt.ts:22)",
+        "cortex-memory: clockAwareValueFunction (packages/cortex-memory/src/admission.ts:48)",
+        "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:95)",
+        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:259)",
         "cortex-node: PgStorage (packages/cortex-node/src/storage/pg.ts:18)",
         "cortex-node: PgStorageOptions (packages/cortex-node/src/storage/pg.ts:14)",
         "cortex-node: SqliteStorage (packages/cortex-node/src/storage/sqlite.ts:18)",
@@ -166,7 +162,7 @@
     },
     {
       "category": "eval-harness-surface",
-      "count": 77,
+      "count": 76,
       "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot.",
       "declarationSites": [
         "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:151)",
@@ -211,7 +207,6 @@
         "cortex-eval: buildTemporalQueryExpansionPrompt (packages/cortex-eval/src/natural-language-memory.ts:2787)",
         "cortex-eval: classifyAggregationKind (packages/cortex-eval/src/natural-language-memory.ts:2395)",
         "cortex-eval: clearJudgeCache (packages/cortex-eval/src/judge.ts:46)",
-        "cortex-eval: computeMetrics (packages/cortex-eval/src/metrics.ts:42)",
         "cortex-eval: countLexicalMatches (packages/cortex-eval/src/retrieval.ts:1200)",
         "cortex-eval: createEmbeddingFromEnv (packages/cortex-eval/src/embedding-factory.ts:104)",
         "cortex-eval: createLongMemEvalMini (packages/cortex-eval/src/datasets/longmemeval-mini.ts:35)",
@@ -267,19 +262,11 @@
     "cortex-core: ReviewOutcome",
     "cortex-core: SinkhornResult",
     "cortex-core: SymbolCensusEntry",
-    "cortex-core: ValueFunction",
     "cortex-core: WriteDecision",
     "cortex-core: bodyEndLine",
     "cortex-core: countCallers",
-    "cortex-core: createMemory",
-    "cortex-core: currentFacts",
-    "cortex-core: currentValue",
-    "cortex-core: decideRetrieval",
-    "cortex-core: decideWrite",
-    "cortex-core: defaultValueFunction",
     "cortex-core: dot",
     "cortex-core: extractExportedSymbols",
-    "cortex-core: findContradictions",
     "cortex-core: identifierPattern",
     "cortex-core: isBarrelFile",
     "cortex-core: isCallerOnlyFile",
@@ -289,7 +276,6 @@
     "cortex-core: l2Distance",
     "cortex-core: logGamma",
     "cortex-core: packageOf",
-    "cortex-core: resolveContradiction",
     "cortex-core: significanceOf",
     "cortex-core: sinkhorn",
     "cortex-core: squaredEuclideanCostMatrix",
@@ -379,7 +365,6 @@
     "cortex-eval: classifyCurveMembership",
     "cortex-eval: classifyExclusion",
     "cortex-eval: clearJudgeCache",
-    "cortex-eval: computeMetrics",
     "cortex-eval: countLexicalMatches",
     "cortex-eval: createEmbeddingFromEnv",
     "cortex-eval: createLongMemEvalMini",
@@ -457,6 +442,11 @@
     "cortex-llm: retryableFetchWithStats",
     "cortex-llm: sanitizePrompt",
     "cortex-llm: sleep",
+    "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
+    "cortex-memory: PromptOptions",
+    "cortex-memory: clockAwareValueFunction",
+    "cortex-memory: formatEvidence",
+    "cortex-memory: truncateCodePointSafe",
     "cortex-node: PgStorage",
     "cortex-node: PgStorageOptions",
     "cortex-node: SqliteStorage",
@@ -481,19 +471,11 @@
     "cortex-core: ReviewOutcome": "referenced-locally",
     "cortex-core: SinkhornResult": "referenced-locally",
     "cortex-core: SymbolCensusEntry": "referenced-locally",
-    "cortex-core: ValueFunction": "referenced-locally",
     "cortex-core: WriteDecision": "referenced-locally",
     "cortex-core: bodyEndLine": "referenced-locally",
     "cortex-core: countCallers": "referenced-locally",
-    "cortex-core: createMemory": "unreferenced",
-    "cortex-core: currentFacts": "unreferenced",
-    "cortex-core: currentValue": "unreferenced",
-    "cortex-core: decideRetrieval": "unreferenced",
-    "cortex-core: decideWrite": "unreferenced",
-    "cortex-core: defaultValueFunction": "unreferenced",
     "cortex-core: dot": "referenced-locally",
     "cortex-core: extractExportedSymbols": "referenced-locally",
-    "cortex-core: findContradictions": "unreferenced",
     "cortex-core: identifierPattern": "referenced-locally",
     "cortex-core: isBarrelFile": "referenced-locally",
     "cortex-core: isCallerOnlyFile": "referenced-locally",
@@ -503,7 +485,6 @@
     "cortex-core: l2Distance": "unreferenced",
     "cortex-core: logGamma": "referenced-locally",
     "cortex-core: packageOf": "referenced-locally",
-    "cortex-core: resolveContradiction": "unreferenced",
     "cortex-core: significanceOf": "referenced-locally",
     "cortex-core: sinkhorn": "referenced-locally",
     "cortex-core: squaredEuclideanCostMatrix": "unreferenced",
@@ -593,7 +574,6 @@
     "cortex-eval: classifyCurveMembership": "referenced-locally",
     "cortex-eval: classifyExclusion": "referenced-locally",
     "cortex-eval: clearJudgeCache": "unreferenced",
-    "cortex-eval: computeMetrics": "unreferenced",
     "cortex-eval: countLexicalMatches": "referenced-locally",
     "cortex-eval: createEmbeddingFromEnv": "unreferenced",
     "cortex-eval: createLongMemEvalMini": "unreferenced",
@@ -671,6 +651,11 @@
     "cortex-llm: retryableFetchWithStats": "referenced-locally",
     "cortex-llm: sanitizePrompt": "referenced-locally",
     "cortex-llm: sleep": "referenced-locally",
+    "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
+    "cortex-memory: PromptOptions": "referenced-locally",
+    "cortex-memory: clockAwareValueFunction": "referenced-locally",
+    "cortex-memory: formatEvidence": "referenced-locally",
+    "cortex-memory: truncateCodePointSafe": "referenced-locally",
     "cortex-node: PgStorage": "unreferenced",
     "cortex-node: PgStorageOptions": "referenced-locally",
     "cortex-node: SqliteStorage": "unreferenced",
@@ -729,9 +714,6 @@
     "cortex-core: SymbolCensusEntry": [
       "packages/cortex-core/src/export-census.ts:75"
     ],
-    "cortex-core: ValueFunction": [
-      "packages/cortex-core/src/value/value.ts:8"
-    ],
     "cortex-core: WriteDecision": [
       "packages/cortex-core/src/value/value.ts:21"
     ],
@@ -741,32 +723,11 @@
     "cortex-core: countCallers": [
       "packages/cortex-core/src/export-census.ts:374"
     ],
-    "cortex-core: createMemory": [
-      "packages/cortex-core/src/domain/memory.ts:40"
-    ],
-    "cortex-core: currentFacts": [
-      "packages/cortex-core/src/temporal/bitemporal.ts:9"
-    ],
-    "cortex-core: currentValue": [
-      "packages/cortex-core/src/temporal/bitemporal.ts:18"
-    ],
-    "cortex-core: decideRetrieval": [
-      "packages/cortex-core/src/value/value.ts:43"
-    ],
-    "cortex-core: decideWrite": [
-      "packages/cortex-core/src/value/value.ts:24"
-    ],
-    "cortex-core: defaultValueFunction": [
-      "packages/cortex-core/src/value/value.ts:14"
-    ],
     "cortex-core: dot": [
       "packages/cortex-core/src/math/vector.ts:7"
     ],
     "cortex-core: extractExportedSymbols": [
       "packages/cortex-core/src/export-census.ts:223"
-    ],
-    "cortex-core: findContradictions": [
-      "packages/cortex-core/src/temporal/bitemporal.ts:40"
     ],
     "cortex-core: identifierPattern": [
       "packages/cortex-core/src/export-census.ts:419"
@@ -794,9 +755,6 @@
     ],
     "cortex-core: packageOf": [
       "packages/cortex-core/src/export-census.ts:471"
-    ],
-    "cortex-core: resolveContradiction": [
-      "packages/cortex-core/src/contradiction/resolve.ts:21"
     ],
     "cortex-core: significanceOf": [
       "packages/cortex-core/src/graph/memory-graph.ts:190"
@@ -1065,9 +1023,6 @@
     "cortex-eval: clearJudgeCache": [
       "packages/cortex-eval/src/judge.ts:46"
     ],
-    "cortex-eval: computeMetrics": [
-      "packages/cortex-eval/src/metrics.ts:42"
-    ],
     "cortex-eval: countLexicalMatches": [
       "packages/cortex-eval/src/retrieval.ts:1200"
     ],
@@ -1298,6 +1253,21 @@
     ],
     "cortex-llm: sleep": [
       "packages/cortex-llm/src/retry.ts:33"
+    ],
+    "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
+      "packages/cortex-memory/src/prompt.ts:30"
+    ],
+    "cortex-memory: PromptOptions": [
+      "packages/cortex-memory/src/prompt.ts:22"
+    ],
+    "cortex-memory: clockAwareValueFunction": [
+      "packages/cortex-memory/src/admission.ts:48"
+    ],
+    "cortex-memory: formatEvidence": [
+      "packages/cortex-memory/src/prompt.ts:95"
+    ],
+    "cortex-memory: truncateCodePointSafe": [
+      "packages/cortex-memory/src/prompt.ts:259"
     ],
     "cortex-node: PgStorage": [
       "packages/cortex-node/src/storage/pg.ts:18"

@@ -1,0 +1,37 @@
+{
+  "name": "@agentix-e/cortex-memory",
+  "version": "0.1.0",
+  "description": "cortex-memory — composes cortex-core's value gates into a runnable, conformance-passing MemorySystem",
+  "license": "MIT",
+  "author": "Lambertyan",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo coverage"
+  },
+  "dependencies": {
+    "@agentix-e/cortex-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@agentix-e/cortex-eval": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  }
+}

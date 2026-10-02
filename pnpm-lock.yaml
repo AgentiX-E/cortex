@@ -106,6 +106,31 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@22.20.1)
 
+  packages/cortex-memory:
+    dependencies:
+      '@agentix-e/cortex-core':
+        specifier: workspace:*
+        version: link:../cortex-core
+    devDependencies:
+      '@agentix-e/cortex-eval':
+        specifier: workspace:*
+        version: link:../cortex-eval
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      '@vitest/coverage-v8':
+        specifier: ^2.0.0
+        version: 2.1.9(vitest@2.1.9(@types/node@22.20.1))
+      eslint:
+        specifier: ^9.0.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.20.1)
+
   packages/cortex-node:
     dependencies:
       '@agentix-e/cortex-core':

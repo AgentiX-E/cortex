@@ -17,6 +17,13 @@ cortex-core (contracts + pure algorithms, zero I/O, Node + browser)
   ├── contradiction/ Bayesian evidence fusion
   └── consolidation/ retrieval-as-consolidation orchestration
 
+cortex-memory (the composition layer: cortex-core's gates -> one MemorySystem)
+  ├── admission      value-gated write admission (first caller of decideWrite)
+  ├── sessionize     per-session admission + turn-budget selection
+  ├── prompt         one builder parameterised by an answer contract
+  ├── parse          raw model output -> Answer (null is an abstention)
+  └── memory         CortexMemory: the only async module
+
 cortex-node (Node.js backends)
   └── storage/       SqliteStorage (better-sqlite3) · PgStorage (PostgreSQL)
 
@@ -29,7 +36,9 @@ cortex-llm (pluggable adapters)
 
 1. **Contracts only in core.** Every backend (storage, vector, LLM, embedding) is an
    interface consumed by `cortex-core`; concrete engines live in `cortex-node` /
-   `cortex-llm`. This keeps core browser-safe and environment-agnostic.
+   `cortex-llm`. This keeps core browser-safe and environment-agnostic. The
+   *composition* of those contracts into a runnable system lives in `cortex-memory`,
+   which depends on none of the concrete engines.
 
 2. **Float64 everywhere.** Vectors are `Float64Array`; statistics use Kahan summation
    and Welford variance; SVD/eigendecomposition use `ml-matrix` (float64). No float32
@@ -68,10 +77,10 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 
 | Capability | Status | Note |
 |---|---|---|
-| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **not on the eval path** | The bench is served by `cortex-eval`'s own memory implementation |
+| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **now composed** | `cortex-memory` is their first production caller; `cortex-eval`'s own implementation remains the control arm. Whether the gated composition *helps* is step 3's measurement, not yet taken — see [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) |
 | Hebbian graph (`MemoryGraph`) | Implemented, tested, **not on the eval path** | Graph recall was trialled for temporal questions and reverted (see below) |
-| FSRS (`retrievability` / `review`) | Implemented, tested, **not on the eval path** | Used by `consolidate` only. Stability is in **days** and elapsed time in milliseconds; the two were once both milliseconds, which made `consolidate`'s defaults delete every memory on the first run. See [`docs/AUDIT-CONSOLIDATION-CLOCK.md`](docs/AUDIT-CONSOLIDATION-CLOCK.md) |
-| Bitemporal facts | Implemented, tested, **not on the eval path** | — |
+| FSRS (`retrievability` / `review`) | Implemented, tested, **reached through `consolidate`** | `consolidate` still has no caller, so FSRS is reachable only transitively. Stability is in **days** and elapsed time in milliseconds; the two were once both milliseconds, which made `consolidate`'s defaults delete every memory on the first run. See [`docs/AUDIT-CONSOLIDATION-CLOCK.md`](docs/AUDIT-CONSOLIDATION-CLOCK.md) |
+| Bitemporal facts | Implemented, tested, **now composed** | Backs `cortex-memory`'s `answerKnowledgeUpdate`, where a previous-vs-current question is a bitemporal query |
 | Contradiction resolution | Implemented, tested, **not on the eval path** | — |
 | TD(λ) credit assignment | **Not implemented** | No eligibility traces exist in the codebase |
 | Optimal-transport distillation | **Implemented but inert** | `sinkhorn` is exported; nothing calls it |
@@ -92,10 +101,14 @@ Two consequences worth stating explicitly:
    15 questions broken against 6 repaired, one-sided exact McNemar p = 0.039; `7780071`).
    It is closed, not pending.
 
-The root cause of (1) is a missing package, not a missing algorithm: nothing composes the
-cognitive layer into a runnable system. `docs/AUDIT-CODE-VS-DOCS.md` §6 specifies the required
-`cortex-memory` seam, the dependency direction that keeps `cortex-eval` an instrument rather than
-a participant, and the ordered work that closes the gap.
+The root cause of (1) was a missing package, not a missing algorithm: nothing composed the
+cognitive layer into a runnable system. **That package now exists** (`cortex-memory`, 129 tests,
+100/100/100/100 coverage, passing `cortex-eval`'s `MemorySystem` conformance suite unmodified),
+so the cognitive layer is reachable. It is not yet *measured*: `cortex-eval`'s own implementation
+remains the control arm, and the A/B that would say whether the gates help is
+`docs/AUDIT-CODE-VS-DOCS.md` §6.2 step 3 — which must be pre-registered before dispatch, per §6.3.
+The dependency direction that keeps `cortex-eval` an instrument rather than a participant is
+unchanged: `cortex-memory` imports it as a type-only devDependency.
 
 ## Dependencies
 
