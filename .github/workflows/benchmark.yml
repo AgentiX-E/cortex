@@ -88,6 +88,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_retrieval_threshold:
+        description: 'Retrieval threshold for the cortex-memory arm, in [0, 1] (empty = 0, answer whenever anything was admitted). Separate from cortex_memory_threshold because it gates a different decision: whether the admitted evidence is strong enough to ANSWER with, not whether a turn was worth keeping. Run 37094200823 published threshold=0 with an ungated abstention path and scored 6.40%, so the two are now recorded and set independently'
+        required: false
+        default: ''
+        type: string
       cortex_memory_session_budget:
         description: 'Turn budget across all presented sessions for the cortex-memory arm (empty = unbounded)'
         required: false
@@ -287,6 +292,7 @@ jobs:
           # dispatch script's `cortex_memory: '1'` is the single place that decides.
           CORTEX_MEMORY: ${{ github.event.inputs.cortex_memory }}
           CORTEX_MEMORY_THRESHOLD: ${{ github.event.inputs.cortex_memory_threshold }}
+          CORTEX_MEMORY_RETRIEVAL_THRESHOLD: ${{ github.event.inputs.cortex_memory_retrieval_threshold }}
           CORTEX_MEMORY_SESSION_BUDGET: ${{ github.event.inputs.cortex_memory_session_budget }}
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are

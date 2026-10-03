@@ -47,8 +47,17 @@ WORKFLOW = "benchmark.yml"
 # questions -- this arm's point estimate must be measured on the whole set, because
 # a 60-question sample gives a Wilson interval too wide to distinguish the null the
 # arm expects from the effect it is looking for.
+#
+# `cortex_memory_retrieval_threshold` is sent explicitly as the string `'0'`, not
+# left to the workflow default. The empty string GitHub substitutes for an unfilled
+# input also parses to `0` today, so omitting it would produce the same run -- but
+# it would produce it through the `''` -> `Number('')` path that §38 identified as
+# the source of two separate defects, and a configuration this run depends on
+# should not arrive via an accident that happens to land correctly. Sending the
+# literal value also makes the dispatch record state what the gate was.
 INPUTS = {
     "cortex_memory": "1",
+    "cortex_memory_retrieval_threshold": "0",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

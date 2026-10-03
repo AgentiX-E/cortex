@@ -73,11 +73,26 @@ export type CortexMemoryArmOptions = {
   enabled: boolean;
   /** Admission threshold handed to `decideWrite`. In `[0, 1]`. */
   threshold: number;
+  /**
+   * Retrieval threshold handed to `decideRetrieval`. In `[0, 1]`.
+   *
+   * Read from its own variable because it answers a different question from
+   * {@link threshold} and the arm's first measured run is the reason the
+   * distinction exists. That run left `threshold` at `0` (keep everything, the
+   * identity configuration) and there was no second knob, so the abstention path
+   * had no gate either: every abstention was the model's wording, and the arm
+   * scored 6.40% against the reference pipeline's 85.20%.
+   *
+   * Kept separate rather than derived, so a run can hold admission wide open and
+   * still gate answering -- which is the configuration this arm now needs.
+   */
+  retrievalThreshold: number;
   /** Turn budget across all presented sessions. A positive integer, or unbounded. */
   sessionBudget: number;
 };
 
 const THRESHOLD_VARIABLE = 'CORTEX_MEMORY_THRESHOLD';
+const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
 const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
 
 /**
@@ -106,11 +121,20 @@ const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
 export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryArmOptions {
   const enabled = readToggle(env, 'CORTEX_MEMORY');
   if (!enabled) {
-    return { enabled: false, threshold: 0, sessionBudget: Number.POSITIVE_INFINITY };
+    return {
+      enabled: false,
+      threshold: 0,
+      retrievalThreshold: 0,
+      sessionBudget: Number.POSITIVE_INFINITY,
+    };
   }
   return {
     enabled: true,
-    threshold: readThreshold(env[THRESHOLD_VARIABLE]),
+    threshold: readThreshold(THRESHOLD_VARIABLE, env[THRESHOLD_VARIABLE]),
+    retrievalThreshold: readThreshold(
+      RETRIEVAL_THRESHOLD_VARIABLE,
+      env[RETRIEVAL_THRESHOLD_VARIABLE],
+    ),
     sessionBudget: readSessionBudget(env[BUDGET_VARIABLE]),
   };
 }
@@ -137,13 +161,23 @@ function readNumeric(raw: string | undefined): number | undefined {
   return Number(raw);
 }
 
-function readThreshold(raw: string | undefined): number {
+/**
+ * Read a `[0, 1]` threshold, naming the variable that was wrong.
+ *
+ * `variable` is a parameter rather than each gate carrying its own copy: the two
+ * thresholds are compared against the same clamped `[0, 1]` utility and have the
+ * same three failure modes, so two functions would be one rule with a redundant
+ * copy -- and the copy is where the second one would eventually lose its guard.
+ * What must differ is the message, because a run that fails has to say *which*
+ * variable to fix.
+ */
+function readThreshold(variable: string, raw: string | undefined): number {
   const value = readNumeric(raw);
   if (value === undefined) return 0;
   if (!Number.isFinite(value) || value < 0 || value > 1) {
     throw new Error(
-      `${THRESHOLD_VARIABLE} must be a number in [0, 1], got ${JSON.stringify(raw)}. ` +
-        'DecideWrite admits on >= against a value bounded by 1, so a threshold above 1 ' +
+      `${variable} must be a number in [0, 1], got ${JSON.stringify(raw)}. ` +
+        'The gate compares it against a value bounded by 1, so a threshold above 1 ' +
         'admits nothing, a threshold below 0 admits everything, and NaN admits nothing — ' +
         'each of which completes a full run whose result describes the typo.',
     );
@@ -173,10 +207,19 @@ function readSessionBudget(raw: string | undefined): number {
  * in the same process still saw `Infinity` — the persisted form and the live form
  * would disagree, and only one of them is what a reader downloads. Stating `null`
  * on the way in makes the persisted form the only form.
+ *
+ * Both thresholds are projected verbatim. They are already validated `[0, 1]`
+ * numbers and have no unrepresentable value, so there is nothing to convert — and
+ * converting them would be the bug this field exists to close. The arm's
+ * `retrievalThreshold` reached the report only after run `37094200823` published a
+ * `6.40%` feature accuracy whose artifact described its configuration as
+ * `threshold=0`, i.e. as the identity gate, while the retrieval decision the
+ * docstring promised was not being made at all.
  */
 export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmConfig {
   return {
     threshold: options.threshold,
+    retrievalThreshold: options.retrievalThreshold,
     sessionBudget: Number.isFinite(options.sessionBudget) ? options.sessionBudget : null,
   };
 }

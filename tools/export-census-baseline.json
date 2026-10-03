@@ -1,10 +1,10 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate.",
   "totals": {
-    "exports": 459,
-    "withCaller": 248,
-    "orphaned": 211,
-    "referencedLocally": 195,
+    "exports": 462,
+    "withCaller": 252,
+    "orphaned": 210,
+    "referencedLocally": 194,
     "unreferenced": 16
   },
   "groups": [
@@ -32,7 +32,7 @@
     },
     {
       "category": "core-llm-node-surface",
-      "count": 57,
+      "count": 56,
       "rationale": "Library surface of cortex-core, cortex-llm and cortex-node. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-llm/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. Not triaged entry by entry.",
       "declarationSites": [
         "cortex-core: AccessRecord (packages/cortex-core/src/consolidation/consolidate.ts:21)",
@@ -84,7 +84,6 @@
         "cortex-llm: sleep (packages/cortex-llm/src/retry.ts:33)",
         "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:26)",
         "cortex-memory: PromptOptions (packages/cortex-memory/src/prompt.ts:18)",
-        "cortex-memory: clockAwareValueFunction (packages/cortex-memory/src/admission.ts:53)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:91)",
         "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:256)",
         "cortex-node: PgStorage (packages/cortex-node/src/storage/pg.ts:18)",
@@ -163,17 +162,17 @@
     {
       "category": "eval-harness-surface",
       "count": 80,
-      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot. The four `CortexMemoryArm*` types (step 3, docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md) are the arm's call surface and are added here by name so the decision is on the record. `CortexMemoryArmEnv` is a contract rather than a helper: it is `Readonly<Record<string, string | undefined>>` and exists so the parser can be tested against a literal instead of `process.env`, which is the defect `env-toggle.ts` documents and defect injection proved -- reading the wrong variable left every test green. `CortexMemoryArmOptions` is the parser's return type, `CortexMemoryArmRunOptions` the runner's input, `CortexMemoryArmResult` its output. All four are used in the signatures of three exported functions that ARE called (by `cortex-memory/bench/run-ablation.ts`), so none is dead; a `type` has no runtime reference site, which is why the census cannot see the use. They are named individually rather than waved through because the alternative -- `v8 ignore`-style blanket exemption -- is what AUDIT-COVERAGE-ANNOTATION-BLIND-SPOT.md records as the way a repository stops being able to answer this question at all.",
+      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot.",
       "declarationSites": [
-        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:202)",
+        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:221)",
         "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:66)",
         "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:89)",
         "cortex-eval: CONJUNCTION_ABS_CONTROLS (packages/cortex-eval/src/runner.ts:1011)",
         "cortex-eval: CONJUNCTION_ABS_TARGET (packages/cortex-eval/src/runner.ts:1009)",
-        "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:52)",
-        "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:63)",
-        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:189)",
-        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:155)",
+        "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:60)",
+        "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:71)",
+        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:348)",
+        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:314)",
         "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/llm-factory.ts:22)",
         "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/llm-factory.ts:23)",
         "cortex-eval: DEFAULT_HASH_DIMENSION (packages/cortex-eval/src/embedding-factory.ts:22)",
@@ -196,7 +195,7 @@
         "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:43)",
         "cortex-eval: RerankFallbackReport (packages/cortex-eval/src/runner.ts:51)",
         "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:781)",
-        "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:196)",
+        "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:215)",
         "cortex-eval: SyntheticBenchmarkOptions (packages/cortex-eval/src/datasets/synthetic-benchmark.ts:10)",
         "cortex-eval: buildDerivationQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:2424)",
         "cortex-eval: buildDerivationQueryExpansionPrompt (packages/cortex-eval/src/natural-language-memory.ts:2835)",
@@ -452,7 +451,6 @@
     "cortex-llm: sleep",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
     "cortex-memory: PromptOptions",
-    "cortex-memory: clockAwareValueFunction",
     "cortex-memory: formatEvidence",
     "cortex-memory: truncateCodePointSafe",
     "cortex-node: PgStorage",
@@ -665,7 +663,6 @@
     "cortex-llm: sleep": "referenced-locally",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
     "cortex-memory: PromptOptions": "referenced-locally",
-    "cortex-memory: clockAwareValueFunction": "referenced-locally",
     "cortex-memory: formatEvidence": "referenced-locally",
     "cortex-memory: truncateCodePointSafe": "referenced-locally",
     "cortex-node: PgStorage": "unreferenced",
@@ -781,7 +778,7 @@
       "packages/cortex-core/src/math/stats.ts:87"
     ],
     "cortex-eval: AblationReportOptions": [
-      "packages/cortex-eval/src/report.ts:202"
+      "packages/cortex-eval/src/report.ts:221"
     ],
     "cortex-eval: AbstainReason": [
       "packages/cortex-eval/src/natural-language-memory.ts:66"
@@ -826,16 +823,16 @@
       "packages/cortex-eval/src/b7-cohort.ts:229"
     ],
     "cortex-eval: CortexMemoryArmEnv": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:52"
+      "packages/cortex-eval/src/bench-memory-arm.ts:60"
     ],
     "cortex-eval: CortexMemoryArmOptions": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:63"
+      "packages/cortex-eval/src/bench-memory-arm.ts:71"
     ],
     "cortex-eval: CortexMemoryArmResult": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:189"
+      "packages/cortex-eval/src/bench-memory-arm.ts:348"
     ],
     "cortex-eval: CortexMemoryArmRunOptions": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:155"
+      "packages/cortex-eval/src/bench-memory-arm.ts:314"
     ],
     "cortex-eval: CriterionVerdict": [
       "packages/cortex-eval/src/b7-cohort.ts:291"
@@ -964,7 +961,7 @@
       "packages/cortex-eval/src/runner.ts:781"
     ],
     "cortex-eval: RetryFireCounts": [
-      "packages/cortex-eval/src/report.ts:196"
+      "packages/cortex-eval/src/report.ts:215"
     ],
     "cortex-eval: SessionRetrievalDiagnostic": [
       "packages/cortex-eval/src/retrieval-diagnostics.ts:228"
@@ -1283,9 +1280,6 @@
     ],
     "cortex-memory: PromptOptions": [
       "packages/cortex-memory/src/prompt.ts:18"
-    ],
-    "cortex-memory: clockAwareValueFunction": [
-      "packages/cortex-memory/src/admission.ts:53"
     ],
     "cortex-memory: formatEvidence": [
       "packages/cortex-memory/src/prompt.ts:91"

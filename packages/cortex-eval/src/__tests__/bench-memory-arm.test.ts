@@ -53,7 +53,7 @@ import {
   toMemoryArmConfig,
 } from '../bench-memory-arm.js';
 import { exactMatchScorer } from '../metrics.js';
-import { formatAblationReport } from '../report.js';
+import { formatAblationReport, type AblationReport } from '../report.js';
 import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } from '../types.js';
 
 /**
@@ -65,7 +65,86 @@ import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } 
  * a thinner report. These tests are the first callers, so they demonstrate the
  * obligation rather than being exempt from it.
  */
-const GATE = { threshold: 0, sessionBudget: null } as const;
+const GATE = { threshold: 0, retrievalThreshold: 0, sessionBudget: null } as const;
+
+/**
+ * Render an arm config through the real report renderer.
+ *
+ * Used by the retrieval-threshold tests to assert what the **artifact** will say,
+ * not what an interpolating helper would. A hand-written formatter in the test
+ * would agree with itself no matter what production printed, which is the
+ * class of assertion §37 caught passing on a deleted call.
+ *
+ * The surrounding report is assembled here rather than through `runAblationReport`
+ * because these tests are about the config LINE, and running a dataset would make
+ * them fail for unrelated reasons. It is still the real `formatAblationReport` that
+ * produces the string, so the line under assertion is production output.
+ */
+function formalizeArm(config: {
+  threshold: number;
+  retrievalThreshold: number;
+  sessionBudget: number;
+}): string {
+  const metrics = emptyMetrics();
+  return formatAblationReport({
+    dataset: 'fixture',
+    questionCount: 0,
+    baseline: { name: 'reference-pipeline', metrics },
+    feature: { name: 'cortex-memory', metrics },
+    ablation: emptyAblation('cortex-memory'),
+    generatedAt: '1970-01-01T00:00:00.000Z',
+    memoryArmConfig: toMemoryArmConfig({
+      enabled: true,
+      threshold: config.threshold,
+      retrievalThreshold: config.retrievalThreshold,
+      sessionBudget: config.sessionBudget,
+    }),
+  });
+}
+
+/**
+ * Run the arm for one question and hand back the persisted report.
+ *
+ * A real run through `runCortexMemoryArm`, not a synthesised object: the point is
+ * that a threshold set in the arm's options reaches `memoryArmConfig` in the
+ * artifact, and any shorter path would test the test rather than the wiring.
+ */
+async function runCortexMemoryArmReport(config: {
+  threshold: number;
+  retrievalThreshold: number;
+}): Promise<AblationReport> {
+  const dataset = {
+    name: 'fixture',
+    questions: [
+      {
+        id: 'q1',
+        capability: 'IE',
+        questionType: 'single-session-user',
+        question: 'Where?',
+        expected: 'Lisbon',
+        context: ['user: I went to Lisbon.'],
+        sessions: [['user: I went to Lisbon.']],
+      },
+    ],
+  } as unknown as BenchmarkDataset;
+
+  const { report } = await runCortexMemoryArm(
+    dataset,
+    constantSystem('reference-pipeline', 'Lisbon'),
+    constantSystem('cortex-memory', 'Lisbon'),
+    {
+      runs: 1,
+      scorer: exactMatchScorer,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        threshold: config.threshold,
+        retrievalThreshold: config.retrievalThreshold,
+        sessionBudget: null,
+      },
+    },
+  );
+  return report;
+}
 
 /** A system that answers a fixed string, so an arm's identity is observable. */
 function constantSystem(name: string, answer: Answer): MemorySystem {
@@ -332,10 +411,14 @@ describe('runCortexMemoryArm', () => {
         runs: 1,
         scorer: exactMatchScorer,
         generatedAt: '1970-01-01T00:00:00.000Z',
-        memoryArmConfig: { threshold: 0.25, sessionBudget: 8 },
+        memoryArmConfig: { threshold: 0.25, retrievalThreshold: 0.5, sessionBudget: 8 },
       },
     );
-    expect(result.report.memoryArmConfig).toEqual({ threshold: 0.25, sessionBudget: 8 });
+    expect(result.report.memoryArmConfig).toEqual({
+      threshold: 0.25,
+      retrievalThreshold: 0.5,
+      sessionBudget: 8,
+    });
   });
 
   it('renders the gate configuration into the Markdown, so the artifact carries it', () => {
@@ -351,10 +434,14 @@ describe('runCortexMemoryArm', () => {
       feature: { name: 'cortex-memory', metrics: emptyMetrics() },
       ablation: emptyAblation('cortex-memory'),
       generatedAt: '1970-01-01T00:00:00.000Z',
-      memoryArmConfig: { threshold: 0.35, sessionBudget: null },
+      memoryArmConfig: { threshold: 0.35, retrievalThreshold: 0.7, sessionBudget: null },
     });
     expect(markdown).toContain('Memory arm config');
     expect(markdown).toContain('threshold=0.35');
+    // Both thresholds are asserted, with DIFFERENT values, because the failure this
+    // guards against is a renderer that prints one number twice or drops one of
+    // them. Equal values would pass under either mistake.
+    expect(markdown).toContain('retrievalThreshold=0.7');
     // `null` renders as `unbounded` rather than as `null`, because "the budget is
     // not bounded" is the claim and `null` does not make it to a human reader.
     expect(markdown).toContain('sessionBudget=unbounded');
@@ -456,6 +543,7 @@ describe('runCortexMemoryArm', () => {
       const config = toMemoryArmConfig({
         enabled: true,
         threshold: 0,
+        retrievalThreshold: 0,
         sessionBudget: Number.POSITIVE_INFINITY,
       });
       expect(config.sessionBudget).toBeNull();
@@ -463,8 +551,13 @@ describe('runCortexMemoryArm', () => {
     });
 
     it('persists a finite budget as itself', () => {
-      const config = toMemoryArmConfig({ enabled: true, threshold: 0.5, sessionBudget: 12 });
-      expect(config).toEqual({ threshold: 0.5, sessionBudget: 12 });
+      const config = toMemoryArmConfig({
+        enabled: true,
+        threshold: 0.5,
+        retrievalThreshold: 0,
+        sessionBudget: 12,
+      });
+      expect(config).toEqual({ threshold: 0.5, retrievalThreshold: 0, sessionBudget: 12 });
     });
   });
 
@@ -649,11 +742,112 @@ describe('runCortexMemoryArm', () => {
  * applies to a blank credential. The tests below pin all four variables, because a
  * rule applied to three of them is a rule that will be forgotten on the fourth.
  */
+/**
+ * The retrieval gate, which the first measured dispatch proved was not wired.
+ *
+ * ## Why these exist as a group
+ *
+ * `37094200823` ran this arm and returned 6.40% against the reference pipeline's
+ * 85.20%, abstention 95.40%. The per-capability table showed ABS at 100% while
+ * IE/MR/KU/TR sat between 0.00% and 0.83% -- a system that declines everything.
+ *
+ * The cause was two-sided and only one side was in `cortex-memory`:
+ *
+ *   1. `decideRetrieval` had no call site there at all, so the abstention path
+ *      had a *wording* change and no mechanism;
+ *   2. this arm had no way to configure a retrieval threshold even if it had,
+ *      because `CortexMemoryArmOptions` carried only the write gate.
+ *
+ * Fixing (1) without (2) would leave the value stuck at whatever the default
+ * was, and the run would be unable to say which gate produced its number. So the
+ * arm parses it, projects it into the artifact, and asserts both here.
+ */
+describe('the retrieval threshold', () => {
+  it('parses CORTEX_MEMORY_RETRIEVAL_THRESHOLD', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0.25',
+    });
+    expect(options.retrievalThreshold).toBe(0.25);
+  });
+
+  it('keeps the two thresholds independent, because they answer different questions', () => {
+    // The configuration the dispatch needed and could not express: keep every
+    // turn (threshold 0) while still gating whether the kept evidence is good
+    // enough to answer from.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_THRESHOLD: '0',
+      CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0.5',
+    });
+    expect(options.threshold).toBe(0);
+    expect(options.retrievalThreshold).toBe(0.5);
+  });
+
+  it('defaults the retrieval threshold to 0, the identity configuration for that gate', () => {
+    // `0` here means "answer whenever anything was admitted", which is the
+    // honest first measurement: it changes nothing about which turns are kept
+    // and adds only the machine-derived decision the method documents.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.retrievalThreshold).toBe(0);
+  });
+
+  it('rejects a retrieval threshold outside [0, 1]', () => {
+    // The same guard the write threshold carries, for the same reason: the value
+    // is compared against a clamped [0, 1] utility, so `2` abstains on every
+    // question and `-1` abstains on none, and both complete a full run whose
+    // result describes the typo.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '2' }),
+    ).toThrow(/CORTEX_MEMORY_RETRIEVAL_THRESHOLD/);
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '-0.1' }),
+    ).toThrow(/CORTEX_MEMORY_RETRIEVAL_THRESHOLD/);
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RETRIEVAL_THRESHOLD: 'abc' }),
+    ).toThrow(/CORTEX_MEMORY_RETRIEVAL_THRESHOLD/);
+  });
+
+  it('reports the retrieval threshold as set, separately from the write threshold', () => {
+    // The controls that keep the two from being conflated. An arm that printed
+    // one number for both would make the artifact unable to say which gate the
+    // run used -- the §20 failure, where two artifacts differed and neither
+    // named its configuration.
+    const set = formalizeArm({ threshold: 0, retrievalThreshold: 0.4, sessionBudget: Infinity });
+    expect(set).toContain('retrievalThreshold=0.4');
+    expect(set).toContain('threshold=0');
+    // And zero is printed as a value, not omitted as a default.
+    const zero = formalizeArm({ threshold: 0, retrievalThreshold: 0, sessionBudget: Infinity });
+    expect(zero).toContain('retrievalThreshold=0');
+  });
+
+  it('carries the retrieval threshold into the persisted report', async () => {
+    const report = await runCortexMemoryArmReport({ threshold: 0, retrievalThreshold: 0.4 });
+    expect(report.memoryArmConfig).toEqual({
+      threshold: 0,
+      retrievalThreshold: 0.4,
+      sessionBudget: null,
+    });
+  });
+});
+
 describe('blank values from unfilled dispatch inputs', () => {
   it('treats a blank threshold as unset rather than as 0', () => {
     const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_THRESHOLD: '' });
     expect(options.enabled).toBe(true);
     expect(options.threshold).toBe(0);
+  });
+
+  it('treats a blank retrieval threshold as unset rather than as 0', () => {
+    // The same trap as the session budget, one variable over. `Number('')` is 0,
+    // which for this gate means "answer whenever anything was admitted" -- the
+    // identity configuration, so a blank input would silently *disable* the gate
+    // rather than leave it unset. Correct here by luck is not correct.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '',
+    });
+    expect(options.retrievalThreshold).toBe(0);
   });
 
   it('treats a blank session budget as UNBOUNDED, not as zero', () => {
@@ -722,6 +916,7 @@ describe('blank values from unfilled dispatch inputs', () => {
     expect(options).toEqual({
       enabled: false,
       threshold: 0,
+      retrievalThreshold: 0,
       sessionBudget: Number.POSITIVE_INFINITY,
     });
   });
@@ -735,6 +930,10 @@ describe('blank values from unfilled dispatch inputs', () => {
       CORTEX_MEMORY: '1',
       CORTEX_MEMORY_SESSION_BUDGET: '',
     });
-    expect(toMemoryArmConfig(options)).toEqual({ threshold: 0, sessionBudget: null });
+    expect(toMemoryArmConfig(options)).toEqual({
+      threshold: 0,
+      retrievalThreshold: 0,
+      sessionBudget: null,
+    });
   });
 });

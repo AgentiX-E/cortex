@@ -243,10 +243,12 @@ every existing artifact; the narrower field is the smaller blast radius.
 | Coverage, all four dimensions, on the new module | ✅ **70/70 statements, 5/5 functions, 0 uncovered branches, 100% lines** |
 | Package-level gate | ✅ 99.88 / 99.07 / 100 / 99.88, floor is 95 |
 | A deliberately under-covered commit fails | ✅ see defect injection below |
-| Defect injection, each caught by a named test | ✅ 5 injections in the arm (one escape, closed), plus 5 in the dispatch path (§7.3), none escaping |
+| Defect injection, each caught by a named test | ✅ 5 injections in the arm (one escape, closed), 5 in the dispatch path (§7.3), 5 in the retrieval gate (§7.4), none escaping |
 | No mocks | ✅ real `runAblationReport`, real `exactMatchScorer`, hand-written recording systems |
 | No `v8 ignore` | ✅ none added |
 | Blank dispatch inputs mean "not configured" | ✅ threshold 0, budget unbounded — and an explicit `'0'` still means zero (§7.3) |
+| The abstention path computes its decision before consulting the model | ✅ asserted on observed model calls, not source text (§7.4) |
+| Both thresholds recorded, set independently, and rendered into the artifact | ✅ `threshold` and `retrievalThreshold` on the config line and in the JSON (§7.4) |
 | `tsc` clean (`vitest` does not typecheck) | ✅ 3 errors caught by `tsc` that `vitest` reported green |
 
 ### 7.1 The escape, recorded because it is the useful part
@@ -338,9 +340,95 @@ that is what injection 5 below checks.
 Five injections, no escapes. The first is §7.1's failure mode in a new place — a restore
 that reads the file and discards it looks wired in the diff and reuses nothing.
 
+### 7.4 A fourth defect, found by reading the result
+
+Run `37094200823` completed green, and the numbers it produced are the reason this
+section exists:
+
+| Side | Accuracy (4 runs) | Abstention rate |
+| --- | --- | --- |
+| `reference-pipeline` | 84.20% / 85.05% / 85.40% / 85.30% | 9.2% |
+| `cortex-memory` | 6.40% / 6.50% / 6.60% / 6.50% | **95.40%** |
+
+Δ = −78.55 pp, McNemar p = 4.920e−117. Per capability the feature scored IE 0.67%
+(150), MR 0.83% (121), KU 0.00% (72), TR 0.00% (127), ABS 100% (30).
+
+Same LLM, same dataset, same scorer, one paired call. The artifact's config line read
+`threshold=0, sessionBudget=unbounded` — correct, and §7.3 is what made it correct — so
+the gate configuration was not the cause. The cause was in the code the config line
+describes:
+
+**`decideRetrieval` had no call site in `cortex-memory`.** `memory.ts`'s docstring on
+the abstention path stated that `decideRetrieval` returns `{retrieve: false,
+reason: 'below-threshold'}` and that "that is a machine-derived abstention". A grep for
+the identifier across the package returned the docstring and one barrel comment, and
+nothing else. The function was imported nowhere and called nowhere, so every abstention
+the arm produced came from the model's own wording. This is the exact defect class
+`AUDIT-CODE-VS-DOCS.md` exists to find — **a documented property that was never
+implemented** — and no test failed on it, because every existing test asked about the
+model side of the path ("does a token round-trip") and none asked about the machine side
+("was a decision computed before the model was consulted").
+
+The repair adds a second threshold, `retrievalThreshold`, threaded from
+`CORTEX_MEMORY_RETRIEVAL_THRESHOLD` through `GateOptions` to `decideRetrieval`. Two
+thresholds rather than one because they gate different decisions and `GateOptions`
+shares one `valueFunction` between them: `threshold` decides whether a turn is worth
+**keeping** and `retrievalThreshold` whether the kept evidence is strong enough to
+**answer with**. A single field cannot express "keep everything, answer only when the
+evidence is good", which is the configuration this arm needs in order to test the
+mechanism it claims.
+
+| Injection | Caught by |
+| --- | --- |
+| Delete the `#retrievalAdmitted` call from the abstention path | 2 tests: `returns null WITHOUT calling the model when the retrieval gate closes`, `confines the machine decision to the abstention path` |
+| Force the retrieval gate open (`decision.retrieve \|\| true`) | the same 2 tests |
+| Hardcode the threshold in the call, ignoring the configuration | the same 2 tests |
+| Project a constant into the artifact (`retrievalThreshold: 0`) | 1 test: `reports the retrieval threshold as set, separately from the write threshold` |
+| Drop the field from the Markdown renderer | 2 tests, incl. `renders the gate configuration into the Markdown, so the artifact carries it` |
+
+Five more injections, no escapes. The first was drafted wrong and caught itself: an
+earlier version set a single `threshold: 0.9` to "close retrieval", and 4 of 5 tests
+passed on unfixed code, because a high admission threshold empties the gate first and
+`turns.length === 0` returns early — masking the absent call. Separating the two
+thresholds (`threshold: 0` admits, `retrievalThreshold: 0.9` refuses) is what made the
+red light name the right failure. The assertion is on observed model calls, not on
+source text, because the string `decideRetrieval` was in the comment the whole time and
+a text assertion would have passed on the broken code.
+
+**On the boundary between repairing and tuning.** §4 forbids re-running for a better
+draw and forbids promoting a configuration after a null. Neither applies here, and the
+distinction is worth stating precisely rather than being left to look like a
+technicality. A re-run after this repair measures **a different program**: the thing
+that will be measured is the mechanism the document described and the arm claimed to
+test, and it did not previously exist. That is not a second draw from the same
+distribution, and no parameter of the experiment has been changed — the endpoint,
+the dataset, the sample size, the effect size, the stopping rule and the two gate values
+are all as registered. What changed is that the code now does what the registration says
+it does. §4's prohibition stands unchanged for any dispatch that would differ from
+`37094200823` in a knob rather than in the program, and the repair itself is required
+whether or not a re-run is ever dispatched — shipping a system whose comment describes a
+decision it does not make is the defect, independent of any measurement.
+
+The `6.40%` reading therefore stands as the **recorded outcome of the program as it
+was**, and is retained rather than superseded: it is the measurement that found the
+defect. Whether the repaired program closes the gap is a new question, and it is put to
+the endpoint in §3 without adjustment.
+
 ---
 
 ## 8. Reproducing the dispatch
+
+> **Dispatched.** Run [`37094200823`](https://github.com/AgentiX-E/cortex/actions/runs/37094200823)
+> at `master` = `23111689`, one invocation of the script below, `limit: 0`,
+> `ablation_runs: 4`, `temperature: 0`. Per §4 the dispatch is not repeated for a
+> better draw, and a failure for an infrastructure reason (quota, artifact loss) is
+> re-dispatched with that reason recorded rather than treated as a result.
+>
+> **Read, and it found a defect.** The run was green and its numbers are in §7.4; they
+> diagnosed an unimplemented `decideRetrieval`, now repaired. The reading is retained as
+> the outcome of the pre-repair program, and the re-run is a measurement of a different
+> program rather than a redraw — argued in §7.4.
+
 
 ```bash
 python3 tools/dispatch-cortex-memory-ab.py            # registers the arm

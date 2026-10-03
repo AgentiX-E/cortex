@@ -123,6 +123,7 @@ async function main(): Promise<void> {
     now: Date.now(),
     gate: {
       threshold: armOptions.threshold,
+      retrievalThreshold: armOptions.retrievalThreshold,
       sessionBudget: armOptions.sessionBudget,
     },
     name: 'cortex-memory',
@@ -131,8 +132,16 @@ async function main(): Promise<void> {
   // Stated before the numbers, not after. Every figure below is conditioned on this
   // configuration, and `threshold=0` (gates open) and a near-1 threshold produce two
   // artifacts that look identical and mean opposite things.
+  //
+  // Both thresholds are printed for the same reason, and run `37094200823` is why.
+  // That run logged `threshold=0` and published a `6.40%` accuracy with a `95.40%`
+  // abstention rate; the line described the admission gate correctly and said
+  // nothing about the retrieval decision, which did not exist. A reader with the
+  // log alone had no way to see that, so the log must name the second gate now
+  // that there is one.
   console.log(
     `cortex-memory gate: threshold=${armOptions.threshold}, ` +
+      `retrievalThreshold=${armOptions.retrievalThreshold}, ` +
       `sessionBudget=${Number.isFinite(armOptions.sessionBudget) ? armOptions.sessionBudget : 'unbounded'}`,
   );
 

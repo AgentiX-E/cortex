@@ -149,9 +149,9 @@ export type FeatureConfig = Readonly<Record<string, boolean>>;
  *
  * A separate field rather than more entries in `FeatureConfig`, because that type
  * is `Record<string, boolean>` and its renderer writes `` k=on ``/`` k=off ``.
- * `threshold` and `sessionBudget` are numbers, and a boolean projection of them
- * would destroy the value the reader needs: "the threshold was on" is true of every
- * threshold, including the one that admits nothing.
+ * `threshold`, `retrievalThreshold` and `sessionBudget` are numbers, and a boolean
+ * projection of them would destroy the value the reader needs: "the threshold was
+ * on" is true of every threshold, including the one that admits nothing.
  *
  * Widening `FeatureConfig` to `boolean | number` was the alternative. It was
  * rejected because its renderer would have to start formatting mixed types, which
@@ -173,6 +173,25 @@ export type FeatureConfig = Readonly<Record<string, boolean>>;
 export type MemoryArmConfig = {
   /** Admission threshold handed to `decideWrite`. In `[0, 1]`. */
   readonly threshold: number;
+  /**
+   * Retrieval threshold handed to `decideRetrieval`. In `[0, 1]`.
+   *
+   * Recorded as its own field rather than folded into `threshold`, because the two
+   * govern different decisions: `threshold` decides whether a turn is worth
+   * KEEPING, and this one decides whether the kept evidence is strong enough to
+   * ANSWER with. A single number cannot express the configuration that run
+   * `37094200823` actually ran under.
+   *
+   * That run is why this field exists. It produced a `6.40%` feature accuracy
+   * against an `85.20%` baseline, and the artifact's config line said only
+   * `threshold=0` -- which reads as the identity configuration and leaves a reader
+   * unable to tell whether the abstention path was gated, ungated, or absent. It
+   * was absent: `decideRetrieval` had no call site in `cortex-memory` at all, so
+   * the 95.40% abstention rate came from the prompt rather than from a decision.
+   * One number could not say that, and the artifact therefore recorded a
+   * configuration that no reader could act on.
+   */
+  readonly retrievalThreshold: number;
   /**
    * Turn budget across all presented sessions.
    *
@@ -284,10 +303,20 @@ export function formatAblationReport(report: AblationReport): string {
   // reader's question -- "how much evidence did the gate demand before admitting a
   // turn" -- is answered by the number and by nothing else. An arm whose artifact
   // omits it produces a delta that cannot be compared against another arm's.
+  //
+  // BOTH thresholds are rendered, on separate lines, because they answer two
+  // different reader questions and the run that motivated this field is the proof
+  // that one line is not enough. `threshold=0` alone is the identity configuration
+  // as far as a reader can tell, and run `37094200823` used exactly that line to
+  // describe a run whose abstention path did not exist. With both lines the third
+  // state is expressible: `retrievalThreshold` present and nonzero says the gate
+  // was armed, and its absence from an artifact says only that the artifact
+  // predates the field -- a distinction the single-line form could not draw at all.
   const memoryArm = report.memoryArmConfig;
   if (memoryArm !== undefined) {
     lines.push(
       `- Memory arm config: \`threshold=${memoryArm.threshold}\`` +
+        `, \`retrievalThreshold=${memoryArm.retrievalThreshold}\`` +
         `, \`sessionBudget=${memoryArm.sessionBudget === null ? 'unbounded' : memoryArm.sessionBudget}\``,
     );
   }

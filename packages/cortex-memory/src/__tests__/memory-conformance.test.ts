@@ -57,7 +57,7 @@ function options(llm: LLM, overrides: Partial<CortexMemoryOptions> = {}): Cortex
     now: NOW,
     // Permissive by default so a routed call is never skipped for the wrong
     // reason; the admission behaviour has its own file.
-    gate: { threshold: 0, sessionBudget: 100 },
+    gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 100 },
     ...overrides,
   };
 }
@@ -252,7 +252,9 @@ describe('CortexMemory behaviour under the gates', () => {
     // prevent; here the gate prevents it structurally, and the LLM is not
     // consulted at all.
     const llm = new RecordingLlm();
-    const system = new CortexMemory(options(llm, { gate: { threshold: 2, sessionBudget: 100 } }));
+    const system = new CortexMemory(
+      options(llm, { gate: { threshold: 2, retrievalThreshold: 0, sessionBudget: 100 } }),
+    );
 
     const answers = await runBenchmark(dataset(ROUTABLE), system);
 
@@ -262,7 +264,9 @@ describe('CortexMemory behaviour under the gates', () => {
 
   it('still calls the LLM when the gate admits exactly one turn', async () => {
     const llm = new RecordingLlm(() => 'from one turn');
-    const system = new CortexMemory(options(llm, { gate: { threshold: 0, sessionBudget: 100 } }));
+    const system = new CortexMemory(
+      options(llm, { gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 100 } }),
+    );
 
     const answers = await runBenchmark(
       dataset([
@@ -289,6 +293,10 @@ describe('CortexMemory behaviour under the gates', () => {
       options(llm, {
         gate: {
           threshold: 0,
+          // Identity retrieval gate: the conformance suite asserts routing, and
+          // a non-zero value here would turn some routed questions into
+          // abstentions the suite does not expect.
+          retrievalThreshold: 0,
           sessionBudget: 1,
           valueFunction: (memory) => (memory.content.includes('KEEP') ? 0.9 : 0.1),
         },

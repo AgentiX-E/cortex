@@ -47,7 +47,7 @@ describe('cortex-memory package exports', () => {
         complete: async () => 'ok',
         completeStructured: async <T>() => JSON.parse('{}') as T,
       },
-      gate: { threshold: 0, sessionBudget: 10 },
+      gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 10 },
     });
 
     expect(system.name).toBe('cortex-memory');

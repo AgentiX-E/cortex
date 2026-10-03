@@ -21,6 +21,27 @@ export type GateOptions = {
    */
   threshold: number;
   /**
+   * Answered when `decideRetrieval` values the best candidate at or above this.
+   *
+   * A separate field from {@link threshold} because the two decisions answer
+   * different questions and a run may legitimately want opposite settings:
+   *
+   *   `threshold`          -- is this turn worth *keeping*?
+   *   `retrievalThreshold` -- is the kept evidence good enough to *answer from*?
+   *
+   * Collapsing them was a real defect, found by dispatch `37094200823`. The arm
+   * ran with `threshold: 0` (keep everything -- the identity configuration), and
+   * with one shared field that also meant "answer from anything", so the
+   * abstention path had no gate and every abstention in the run was the model's
+   * wording rather than the layer's decision. The measured result was 6.40%
+   * against the reference pipeline's 85.20%, with a 95.40% abstention rate --
+   * the shape of a system that declines everything.
+   *
+   * Unlike {@link threshold}, `0` here means "answer whenever anything was
+   * admitted", which is the identity configuration for this gate.
+   */
+  retrievalThreshold: number;
+  /**
    * Upper bound on how many admitted turns may reach the prompt, counted across
    * all presented sessions. Bounding is the point — see
    * `selectSessionBudget` for why a session is admitted whole or not at all.

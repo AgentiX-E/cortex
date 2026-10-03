@@ -20,10 +20,16 @@
  * 2. **The contract is structural.** Plain object literals satisfy it, no class
  *    hierarchy is required, and `answerPreference` is deliberately absent.
  */
-import type { LLM } from '@agentix-e/cortex-core';
+import type { LLM, MemoryValue, ValueFunction } from '@agentix-e/cortex-core';
+import { decideRetrieval } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from '@agentix-e/cortex-eval';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
-import { admissionOptionsFrom, admitTurns, type AdmittedTurn } from './admission.js';
+import {
+  admissionOptionsFrom,
+  admitTurns,
+  clockAwareValueFunction,
+  type AdmittedTurn,
+} from './admission.js';
 import { buildPrompt, buildSessionPrompt, type PromptContract } from './prompt.js';
 import { parseAnswer } from './parse.js';
 import type { CortexMemoryOptions } from './types.js';
@@ -107,6 +113,29 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * declines before the model is consulted. When the gate does admit evidence
    * the conservative contract is still used, because the question may have no
    * answer even though related evidence exists.
+   *
+   * ## The docstring above described code that did not exist
+   *
+   * It is kept because it is still the intent, and rewritten below because for
+   * a measured period **it was not true**. `decideRetrieval` had no call site in
+   * this package -- grepping for it returned docstrings and one barrel comment --
+   * so this method abstained only on an empty admission, and every other
+   * abstention in a run was the model's response to the `INSUFFICIENT_EVIDENCE`
+   * instruction. The layer had a *wording* change and no mechanism.
+   *
+   * Dispatch `37094200823` is what made it visible, and only because the arm
+   * measured against a system that does have a mechanism: 6.40% against the
+   * reference pipeline's 85.20%, with abstention at 95.40% and the per-capability
+   * table showing ABS at 100% while IE, MR, KU and TR sat between 0.00% and
+   * 0.83%. A system that declines everything is indistinguishable from a system
+   * whose "abstention mechanism" is an instruction string.
+   *
+   * The tests in `abstention-decision.test.ts` assert the property that was
+   * missing -- the model is **not consulted** when the gate decides to abstain
+   * (`seen).toHaveLength(0)`) -- rather than that the name `decideRetrieval`
+   * appears in this file. That distinction is load-bearing here: the name
+   * appeared in the comments all along, so a textual assertion would have passed
+   * on the broken code.
    */
   async answerAbstention(
     question: string,
@@ -116,7 +145,39 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return null;
 
+    if (!this.#retrievalAdmitted(turns)) return null;
+
     return this.#prompt(question, turns, 'abstention');
+  }
+
+  /**
+   * The machine-derived decision, computed before the model is consulted.
+   *
+   * `decideRetrieval` takes the maximum over candidates, so one strong turn
+   * opens the gate for the whole context. That is deliberate and matches the
+   * reference pipeline's abstention boundary, which reads `hits[0].score`: a
+   * question with one reliable piece of evidence is answerable, and a mean-based
+   * aggregate would decline it.
+   *
+   * The candidates are the admitted turns rather than raw context, so the two
+   * gates compose in one direction only: a turn the write gate rejected can
+   * never be the evidence that opens the retrieval gate. Reversing that would
+   * make `threshold` decorative -- raising it would reject turns from the prompt
+   * while still letting them justify answering from the prompt.
+   */
+  #retrievalAdmitted(turns: readonly AdmittedTurn[]): boolean {
+    const candidates: MemoryValue[] = turns.map((turn) => ({ ...turn }));
+    const decision = decideRetrieval(
+      candidates,
+      this.#valueFunctionFor(),
+      this.#options.gate.retrievalThreshold,
+    );
+    return decision.retrieve;
+  }
+
+  /** The value function both gates read, so they can never disagree. */
+  #valueFunctionFor(): ValueFunction {
+    return this.#options.gate.valueFunction ?? clockAwareValueFunction(this.#now);
   }
 
   /** Single-session answering whose evidence may live in an assistant turn. */

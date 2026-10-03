@@ -38,7 +38,12 @@ class NoopLlm implements LLM {
 }
 
 function options(llm: LLM, overrides: Partial<CortexMemoryOptions> = {}): CortexMemoryOptions {
-  return { llm, now: NOW, gate: { threshold: 0, sessionBudget: 100 }, ...overrides };
+  return {
+    llm,
+    now: NOW,
+    gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 100 },
+    ...overrides,
+  };
 }
 
 /** A dense turn list with a hole punched in it. */
@@ -322,6 +327,9 @@ describe('CortexMemory option branches', () => {
       options(llm, {
         gate: {
           threshold: 0.5,
+          // Identity retrieval gate: this test is about admission and
+          // sessionizing, not about the abstention boundary.
+          retrievalThreshold: 0,
           sessionBudget: 10,
           valueFunction: (memory) => (memory.content === 'keep' ? 0.9 : 0.1),
         },
@@ -361,7 +369,9 @@ describe('CortexMemory option branches', () => {
 
   it('returns null when sessions admit nothing on a flat-only path', async () => {
     const llm = new NoopLlm();
-    const system = new CortexMemory(options(llm, { gate: { threshold: 2, sessionBudget: 10 } }));
+    const system = new CortexMemory(
+      options(llm, { gate: { threshold: 2, retrievalThreshold: 0, sessionBudget: 10 } }),
+    );
 
     expect(await system.answerAssistant('Q?', ['x'], [['y']])).toBeNull();
     expect(llm.prompts).toEqual([]);
