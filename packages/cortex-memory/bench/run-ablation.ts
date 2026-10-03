@@ -43,7 +43,10 @@ import {
   createLlmJudge,
   judgeScorer,
   loadLongMemEval,
+  cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
+  persistArmEmbeddingCache,
+  restoreArmEmbeddingCache,
   runCortexMemoryArm,
   sampleInstances,
   toMemoryArmConfig,
@@ -82,6 +85,23 @@ async function main(): Promise<void> {
     `Embedding backend: ${provenance.provider} (model=${provenance.model ?? 'n/a'}, ` +
       `dimensions=${provenance.dimensions})`,
   );
+
+  // Restore the persisted vector cache BEFORE either system touches a turn.
+  //
+  // This step runs in the same job as `bench/run.ts`, which writes the cache at
+  // its end, and the two are separate processes: the primary benchmark's
+  // in-process cache does not survive into this one. Without the restore, every
+  // haystack turn is re-embedded against the provider -- roughly 115k vectors --
+  // which on a quota that is already returning 429 is a guaranteed failure, and on
+  // a fresh quota is a second full bill for vectors that were already paid for.
+  //
+  // Both the path resolution and the restore are `cortex-eval` functions rather
+  // than inline code, for the reason this file's header gives: `bench/**` is
+  // excluded from coverage as an entry point, so a decision written here is a
+  // decision no test can reach. What remains here is the call.
+  const cachePath = cortexMemoryArmEmbeddingCachePath(process.env);
+  const restored = restoreArmEmbeddingCache(cachePath);
+  console.log(`Restored ${restored} embedding vectors from ${cachePath ?? '(no cache path)'}`);
 
   // One cache per system, plus a shared structured cache. Shared across the two
   // sides so an identical prompt is answered once: the endpoint is not reproducible
@@ -129,6 +149,8 @@ async function main(): Promise<void> {
     `${JSON.stringify(result.report, null, 2)}\n`,
   );
 
+  persistArmEmbeddingCache(cachePath);
+
   console.log('=== cortex-memory ablation ===');
   console.log(result.markdown);
 }
@@ -137,5 +159,15 @@ main().catch((error: unknown) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   writeFileSync('benchmark-error.log', `${message}\n`);
   console.error(message);
+  // Persist whatever was embedded before the failure, on the failure path too.
+  // `bench/run.ts` does the same, and the reason is the same: a run that dies at
+  // question 300 of 500 has still paid for its embeddings, and discarding them
+  // charges the next run for the same vectors. Best-effort, so it can never mask
+  // the original error.
+  try {
+    persistArmEmbeddingCache(cortexMemoryArmEmbeddingCachePath(process.env));
+  } catch {
+    // The console output and `benchmark-error.log` are the primary diagnostics.
+  }
   process.exitCode = 1;
 });

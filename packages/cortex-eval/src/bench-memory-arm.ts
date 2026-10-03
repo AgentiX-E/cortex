@@ -42,10 +42,18 @@
  * `coverage.include`. What stays in the CLI is the part that has no decision in
  * it: construct two systems, hand them over, write the file.
  */
+import { readFileSync, writeFileSync } from 'node:fs';
+
 import { readToggle } from './env-toggle.js';
 import type { AblationReport, MemoryArmConfig } from './report.js';
 import { formatAblationReport, runAblationReport, type FeatureConfig } from './report.js';
 import type { AnswerScorer } from './metrics.js';
+import {
+  deserializeEmbeddingCache,
+  mergeEmbeddingCache,
+  serializeEmbeddingCache,
+  snapshotEmbeddingCache,
+} from './retrieval.js';
 import type { BenchmarkDataset, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
@@ -107,9 +115,31 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
   };
 }
 
+/**
+ * The number a variable holds, or `undefined` when it holds no configuration.
+ *
+ * `''` and whitespace both collapse to `undefined` because that is what an
+ * unfilled `workflow_dispatch` input actually is. GitHub writes the empty string
+ * into the environment rather than omitting the variable, and `Number('')` is `0`
+ * -- so the "not configured" case would arrive as a perfectly valid zero.
+ *
+ * For the threshold that accident lands on the intended default, which is the more
+ * dangerous kind of bug: it passes review because the number is right. For the
+ * session budget it lands on `0` turns, which is the exact value the guard below
+ * was written to reject, and it is not rejected because the guard tests `< 0`.
+ *
+ * The blank check is `trim() === ''` rather than a falsy test, so an explicit `'0'`
+ * stays reachable. Turning "unset" into "the default" by making a real zero
+ * unexpressible would be the same defect mirrored.
+ */
+function readNumeric(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  return Number(raw);
+}
+
 function readThreshold(raw: string | undefined): number {
-  if (raw === undefined) return 0;
-  const value = Number(raw);
+  const value = readNumeric(raw);
+  if (value === undefined) return 0;
   if (!Number.isFinite(value) || value < 0 || value > 1) {
     throw new Error(
       `${THRESHOLD_VARIABLE} must be a number in [0, 1], got ${JSON.stringify(raw)}. ` +
@@ -122,8 +152,8 @@ function readThreshold(raw: string | undefined): number {
 }
 
 function readSessionBudget(raw: string | undefined): number {
-  if (raw === undefined) return Number.POSITIVE_INFINITY;
-  const value = Number(raw);
+  const value = readNumeric(raw);
+  if (value === undefined) return Number.POSITIVE_INFINITY;
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(
       `${BUDGET_VARIABLE} must be a non-negative integer or unset, got ${JSON.stringify(raw)}. ` +
@@ -149,6 +179,95 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     threshold: options.threshold,
     sessionBudget: Number.isFinite(options.sessionBudget) ? options.sessionBudget : null,
   };
+}
+
+/**
+ * Resolve the embedding-cache path the arm should use, treating blank as absent.
+ *
+ * `undefined` and `''` are collapsed into one answer deliberately. GitHub passes
+ * an unfilled `workflow_dispatch` input as the empty string rather than as an
+ * absent variable, and for a PATH the difference is not cosmetic: `''` resolves
+ * to the working directory, so a write to `''` is a failed stat on a directory
+ * and a write to `''` under a different cwd is a stray file nobody looks for. The
+ * read side has the mirror problem — `existsSync('')` is false, so a blank value
+ * silently disables the restore, which is the defect this module was written to
+ * close. Collapsing both spellings of "not configured" into `undefined` makes the
+ * behaviour independent of which one the caller happened to hand over.
+ *
+ * `firstNonEmpty` in `embedding-factory.ts` draws the same line for credentials
+ * and `readToggle` draws it for switches; this is the same rule applied to a path.
+ */
+export function cortexMemoryArmEmbeddingCachePath(env: CortexMemoryArmEnv): string | undefined {
+  const raw = env['EMBEDDING_CACHE_PATH'];
+  if (raw === undefined || raw.trim() === '') {
+    return undefined;
+  }
+  return raw;
+}
+
+/**
+ * Restore a persisted embedding cache into the process-wide cache the retrieval
+ * functions read, and report how many vectors were absorbed.
+ *
+ * Returns a COUNT rather than nothing, and returns `0` rather than throwing, for
+ * a reason specific to what this arm is: it exists to produce a report, and a
+ * cache it cannot read is not a reason to fail — re-embedding is the recovery
+ * path, not a failure mode. `deserializeEmbeddingCache` throws on a corrupt or
+ * incompatible buffer on purpose (a stale cache must never be silently trusted),
+ * so the decision to swallow that here has to live somewhere, and `cortex-eval`
+ * rather than the excluded CLI is where a decision can be tested.
+ *
+ * The count is what makes the restore observable. A silent restore that in fact
+ * did nothing is indistinguishable from a working one in every downstream number:
+ * both produce a valid report, and the difference between them is a few cents of
+ * embedding quota and a `429`. Recording the number lets the entry point say
+ * `Restored N embedding vectors` — the same line `bench/run.ts` logs — so a run
+ * whose cache did not load says `0` in its own log.
+ *
+ * `mergeEmbeddingCache` is what does the work, and its direction is load-bearing:
+ * entries already present win, so a stale file can never override a vector this
+ * process computed. Without that, an arm that restored at the wrong moment would
+ * grade its two sides against inconsistent evidence.
+ */
+export function restoreArmEmbeddingCache(path: string | undefined): number {
+  // The blank check is repeated here rather than left to the caller. These two
+  // functions accept a `string | undefined`, not a parsed environment, so a
+  // caller may hand over the raw variable. Every other "not configured" spelling
+  // was already collapsed by `cortexMemoryArmEmbeddingCachePath`, and `''` is not
+  // a path on any filesystem -- `readFileSync('')` throws ENOENT, which would
+  // make this return the right number for the wrong reason.
+  if (path === undefined || path.trim() === '') {
+    return 0;
+  }
+  try {
+    const persisted = deserializeEmbeddingCache(readFileSync(path));
+    mergeEmbeddingCache(persisted);
+    return persisted.size;
+  } catch {
+    // Deliberately both catch and read: `readFileSync` throws ENOENT for an
+    // absent file and `deserializeEmbeddingCache` throws for a foreign one, and
+    // both mean the same thing to this arm -- "start from an empty cache".
+    return 0;
+  }
+}
+
+/**
+ * Persist the process-wide embedding cache so a later run can skip the provider.
+ *
+ * Writing even when the cache is EMPTY is the intended behaviour, not an
+ * oversight. Skipping the write would leave the previous run's file in place, and
+ * the next run would restore vectors for haystack turns this run never saw —
+ * silently grading against another dataset's evidence. An empty file is a true
+ * statement ("this run embedded nothing"); a stale file is a false one.
+ *
+ * Symmetric with `restoreArmEmbeddingCache`, including the blank-path rule: an
+ * unconfigured path is a no-op rather than a write to `''`.
+ */
+export function persistArmEmbeddingCache(path: string | undefined): void {
+  if (path === undefined || path.trim() === '') {
+    return;
+  }
+  writeFileSync(path, serializeEmbeddingCache(snapshotEmbeddingCache()));
 }
 
 /** Options for {@link runCortexMemoryArm}. */

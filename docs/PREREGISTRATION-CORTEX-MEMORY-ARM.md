@@ -243,9 +243,10 @@ every existing artifact; the narrower field is the smaller blast radius.
 | Coverage, all four dimensions, on the new module | ✅ **70/70 statements, 5/5 functions, 0 uncovered branches, 100% lines** |
 | Package-level gate | ✅ 99.88 / 99.07 / 100 / 99.88, floor is 95 |
 | A deliberately under-covered commit fails | ✅ see defect injection below |
-| Defect injection, each caught by a named test | ✅ 5 injections, all caught after one real escape was closed |
+| Defect injection, each caught by a named test | ✅ 5 injections in the arm (one escape, closed), plus 5 in the dispatch path (§7.3), none escaping |
 | No mocks | ✅ real `runAblationReport`, real `exactMatchScorer`, hand-written recording systems |
 | No `v8 ignore` | ✅ none added |
+| Blank dispatch inputs mean "not configured" | ✅ threshold 0, budget unbounded — and an explicit `'0'` still means zero (§7.3) |
 | `tsc` clean (`vitest` does not typecheck) | ✅ 3 errors caught by `tsc` that `vitest` reported green |
 
 ### 7.1 The escape, recorded because it is the useful part
@@ -284,6 +285,59 @@ that is real — a fixture where each side is correct on a **different** questio
 the marginals agree, so an unpaired comparison would report `Δ = 0.00pp` while the
 paired one names both questions.
 
+### 7.3 Three defects in the dispatch path, found before the dispatch
+
+The arm was assembled and pushed with its numbers unmeasured, and the next step was
+to run it. Reading the wiring back — not a failing test, because nothing had run —
+turned up three defects that each make the artifact unusable in a different way.
+
+**The arm never touched `EMBEDDING_CACHE_PATH`.** `Run benchmark` and `Run
+cortex-memory A/B` are two steps of one job sharing one cache file, and they are
+separate processes: the first writes it at its end, the second started with an empty
+in-process cache. Every one of the ~115k haystack-turn vectors would have been
+re-embedded. Against a quota already returning 429 that is a guaranteed failure; against
+a fresh quota it is a second full bill for vectors already paid for. The write side was
+missing too, so no later dispatch could reuse them either. Both now go through
+`cortexMemoryArmEmbeddingCachePath` / `restoreArmEmbeddingCache` /
+`persistArmEmbeddingCache`, which live in `bench-memory-arm.ts` rather than in the CLI,
+for §7.1's reason: a decision written in `bench/**` is a decision no test can reach.
+
+**A blank dispatch input was read as a number.** GitHub passes an unfilled
+`workflow_dispatch` input as the empty string rather than omitting the variable, and
+`Number('')` is `0`. The threshold landed on its intended default by accident — the
+more dangerous kind of bug, because the number is right and review passes. The session
+budget landed on **zero turns**, which `selectSessionBudget` maps to `[]` and which
+abstains on every question — and `readSessionBudget`'s own guard, written specifically
+to reject "a budget <= 0 ... [that] abstains on every question for a reason no artifact
+records", missed it because the guard tests `value < 0`. The arm would have completed,
+written a report, and the report would have read as a real measurement of a memory
+system that admits nothing.
+
+**`CORTEX_MEMORY` was hardcoded to `'1'` while `if:` restated the same fact.** Two
+statements of one fact can disagree, and this arm's reader is strict (`readToggle`: only
+the literal `'1'` is on), so a disagreement would skip the arm inside a green run — the
+§13 failure, where two arms came out byte-identical and the verdict was about the
+dispatch. It is now derived from the input, which leaves the dispatch script as the
+single place that decides. `TEMPERATURE`, `DEEPSEEK_MODEL` and `DEEPSEEK_THINKING` were
+also missing from the step: omitting them runs the arm's two sides on a different reader
+from the primary benchmark's, which is the one comparison §3 pins.
+
+The fix for the second is a `trim()` test rather than a falsy test, so that blank means
+"not configured" **without** making an explicit `'0'` unreachable. Turning "unset" into
+"the default" by making a real zero inexpressible would be the same defect mirrored, and
+that is what injection 5 below checks.
+
+| Injection | Caught by |
+| --- | --- |
+| Drop the `mergeEmbeddingCache` call (reads the file, uses nothing) | 2 tests: `absorbs the provider calls a previous process already paid for`, `merges rather than replaces` |
+| Clear the cache before merging (restore wipes in-process vectors) | the same 2 tests |
+| Default `CORTEX_MEMORY` on | 3 tests, incl. `reports the arm as disabled when the toggle is off` |
+| Revert to the `undefined`-only blank check (the original defect) | 3 tests, incl. `treats a blank session budget as UNBOUNDED, not as zero` |
+| Falsy check instead of a blank check (explicit `0` becomes unreachable) | 1 test: `treats whitespace as blank, not as a number` |
+
+Five injections, no escapes. The first is §7.1's failure mode in a new place — a restore
+that reads the file and discards it looks wired in the diff and reuses nothing.
+
 ---
 
 ## 8. Reproducing the dispatch
@@ -291,7 +345,7 @@ paired one names both questions.
 ```bash
 python3 tools/dispatch-cortex-memory-ab.py            # registers the arm
 # The workflow runs both sides in one job, full N=500, 4 runs, temperature 0.
-# Read the artifact: packages/cortex-eval/benchmark-cortex-memory-ablation-report.json
+# Read the artifact: packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
 ```
 
 The script locks the ref (not the SHA) for the reason `dispatch-b7-ab.py` documents:

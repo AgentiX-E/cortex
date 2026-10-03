@@ -617,3 +617,124 @@ describe('runCortexMemoryArm', () => {
     });
   });
 });
+
+/**
+ * Blank values, which are what GitHub hands over for an unfilled dispatch input.
+ *
+ * ## The defect these tests were written against
+ *
+ * Every variable this arm reads is optional, and the repository's convention for
+ * "not configured" is ABSENCE (`bench-arm-options.ts`: "an always-present `false`
+ * or `undefined` would be read as configured and would make the option's default
+ * unreachable"). A `workflow_dispatch` input breaks that convention from the
+ * outside: an input the operator left empty arrives at the step as `''`, not as an
+ * absent variable, so the step's `${{ github.event.inputs.x }}` writes an empty
+ * string into the environment.
+ *
+ * For `CORTEX_MEMORY_THRESHOLD` that turned out to be harmless by accident, and
+ * for `CORTEX_MEMORY_SESSION_BUDGET` it was a silent zero:
+ *
+ *     Number('')      -> 0
+ *     readThreshold('')       -> 0        // gates open: the identity config, correct
+ *     readSessionBudget('')   -> 0        // budget of ZERO turns, not unbounded
+ *
+ * and `0` is exactly the value `readSessionBudget`'s own guard rejects as
+ * "abstains on every question for a reason no artifact records" -- except the
+ * guard tests `value < 0`, so `0` passes it. The arm then runs to completion,
+ * writes a report where every question was abstained on, and the report looks like
+ * a real measurement of a memory system that admits nothing.
+ *
+ * The fix is that a blank value means "not configured", the same rule
+ * `cortexMemoryArmEmbeddingCachePath` applies to a blank path and `firstNonEmpty`
+ * applies to a blank credential. The tests below pin all four variables, because a
+ * rule applied to three of them is a rule that will be forgotten on the fourth.
+ */
+describe('blank values from unfilled dispatch inputs', () => {
+  it('treats a blank threshold as unset rather than as 0', () => {
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_THRESHOLD: '' });
+    expect(options.enabled).toBe(true);
+    expect(options.threshold).toBe(0);
+  });
+
+  it('treats a blank session budget as UNBOUNDED, not as zero', () => {
+    // The assertion that fails without the fix -- and the one whose unfixed
+    // outcome is the most expensive, because it is the only one that produces a
+    // complete report with a plausible-looking number.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_SESSION_BUDGET: '',
+    });
+    expect(options.sessionBudget).toBe(Number.POSITIVE_INFINITY);
+    // Stated against the number, and not only against `Infinity`, so the failure
+    // message says which wrong answer was produced.
+    expect(options.sessionBudget).not.toBe(0);
+  });
+
+  it('treats whitespace as blank, not as a number', () => {
+    // `Number('  ')` is also `0`, so the same trap with a different spelling. An
+    // operator who clears a field in a UI that forwards a space hits it.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_THRESHOLD: '  ',
+      CORTEX_MEMORY_SESSION_BUDGET: '\t',
+    });
+    expect(options.threshold).toBe(0);
+    expect(options.sessionBudget).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('still accepts a real zero budget, because zero is a legitimate configuration', () => {
+    // The control for the tests above. A blank value must mean "unset" WITHOUT
+    // making the explicit `0` unreachable -- that is the same class of mistake in
+    // the opposite direction, and it is why the fix is a blank check rather than a
+    // falsy check.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_SESSION_BUDGET: '0',
+    });
+    expect(options.sessionBudget).toBe(0);
+  });
+
+  it('still accepts an explicit zero threshold', () => {
+    // Same control on the other variable. `0` is both the default AND a value an
+    // operator may set deliberately, so these two must not be conflated.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_THRESHOLD: '0' });
+    expect(options.threshold).toBe(0);
+  });
+
+  it('still rejects a non-numeric value rather than reading it as blank', () => {
+    // And the other boundary: relaxing blank must not relax everything. A typo
+    // still fails loudly, which is the property the strict guards exist for.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_THRESHOLD: 'abc' }),
+    ).toThrow(/CORTEX_MEMORY_THRESHOLD/);
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SESSION_BUDGET: '3.5' }),
+    ).toThrow(/CORTEX_MEMORY_SESSION_BUDGET/);
+  });
+
+  it('ignores blank numeric variables entirely when the arm is off', () => {
+    // The guard runs only when the arm is on, so an unrelated dispatch that
+    // happens to carry blank values cannot fail a run that is not this arm.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY_THRESHOLD: '',
+      CORTEX_MEMORY_SESSION_BUDGET: '',
+    });
+    expect(options).toEqual({
+      enabled: false,
+      threshold: 0,
+      sessionBudget: Number.POSITIVE_INFINITY,
+    });
+  });
+
+  it('projects an unbounded budget from a blank input as the persisted null', () => {
+    // End to end through both functions: the value a blank input produces must
+    // reach the artifact as `null` ("unbounded"), not as `0` ("abstain on
+    // everything"). `toMemoryArmConfig` is what turns `Infinity` into `null`, and
+    // `0` would survive it untouched.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_SESSION_BUDGET: '',
+    });
+    expect(toMemoryArmConfig(options)).toEqual({ threshold: 0, sessionBudget: null });
+  });
+});

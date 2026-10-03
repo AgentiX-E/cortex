@@ -77,7 +77,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 
 | Capability | Status | Note |
 |---|---|---|
-| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **now composed and armed** | `cortex-memory` is their first production caller; `cortex-eval`'s own implementation remains the control arm. The pre-registered A/B that measures whether the gated composition *helps* is assembled and awaiting dispatch — see [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md) |
+| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **now composed and armed** | `cortex-memory` is their first production caller; `cortex-eval`'s own implementation remains the control arm. The pre-registered A/B that measures whether the gated composition *helps* is assembled and wired for dispatch — see [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md) |
 | Hebbian graph (`MemoryGraph`) | Implemented, tested, **not on the eval path** | Graph recall was trialled for temporal questions and reverted (see below) |
 | FSRS (`retrievability` / `review`) | Implemented, tested, **reached through `consolidate`** | `consolidate` still has no caller, so FSRS is reachable only transitively. Stability is in **days** and elapsed time in milliseconds; the two were once both milliseconds, which made `consolidate`'s defaults delete every memory on the first run. See [`docs/AUDIT-CONSOLIDATION-CLOCK.md`](docs/AUDIT-CONSOLIDATION-CLOCK.md) |
 | Bitemporal facts | Implemented, tested, **now composed** | Backs `cortex-memory`'s `answerKnowledgeUpdate`, where a previous-vs-current question is a bitemporal query |

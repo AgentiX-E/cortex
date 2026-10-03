@@ -307,7 +307,10 @@ export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-options.js';
 
 export {
+  cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
+  persistArmEmbeddingCache,
+  restoreArmEmbeddingCache,
   runCortexMemoryArm,
   toMemoryArmConfig,
   type CortexMemoryArmEnv,

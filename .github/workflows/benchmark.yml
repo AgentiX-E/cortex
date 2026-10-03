@@ -271,15 +271,44 @@ jobs:
           EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          CORTEX_MEMORY: '1'
+          # Read from the input rather than hardcoded to '1'.
+          #
+          # The `if:` above and this variable are two statements of the same fact,
+          # and a duplicate statement is one that can disagree. Hardcoded, this line
+          # says "the arm is on" unconditionally; the arm's own reader is strict
+          # (`readToggle`: only the literal `'1'` is on, and a present-but-unrecognised
+          # value is OFF), so a future dispatch that flips the toggle's spelling or
+          # adds a second gate would have the step run while the arm silently
+          # skipped, printing `cortex-memory arm skipped` into a green run -- or the
+          # reverse, which is the §13 failure where two arms came out byte-identical
+          # and the verdict was about the dispatch rather than the feature.
+          #
+          # Forwarding it also keeps `CORTEX_MEMORY` reachable from `tools/`, so the
+          # dispatch script's `cortex_memory: '1'` is the single place that decides.
+          CORTEX_MEMORY: ${{ github.event.inputs.cortex_memory }}
           CORTEX_MEMORY_THRESHOLD: ${{ github.event.inputs.cortex_memory_threshold }}
           CORTEX_MEMORY_SESSION_BUDGET: ${{ github.event.inputs.cortex_memory_session_budget }}
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
           # read from the same dispatch inputs the job already carries, so a dispatch
           # that sets them at the workflow level cannot disagree with this step.
+          #
+          # RUNS is deliberately NOT forwarded. The arm reads `ABLATION_RUNS`, not
+          # `RUNS`: every ablation shares one answer cache across its two arms, so a
+          # second run replays the first run's cached answers and costs full
+          # wall-clock for a byte-identical report (`Run benchmark` above records the
+          # measurement: `runs: 8` issues the same 2 uncached calls as `runs: 1`).
+          # Forwarding RUNS would therefore be an input that looks like a scale knob
+          # and is inert.
           LIMIT: ${{ github.event.inputs.limit || '60' }}
           ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
+          TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
+          # The reader is shared by both sides, so the model and the thinking mode
+          # have to reach this step too. Omitting them would run the arm's two sides
+          # on a different reader from the primary benchmark's, which makes the two
+          # reports incomparable for the one reason the pre-registration pins.
+          DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
+          DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           EMBEDDING_BATCH_INTERVAL_MS: ${{ github.event.inputs.embedding_batch_interval_ms || '0' }}
         run: pnpm --filter @agentix-e/cortex-memory bench
 
@@ -300,8 +329,18 @@ jobs:
           # (it ran, but was never uploaded), which would have made an ablation
           # result unrecoverable had the run been the only record. Any new
           # `benchmark-*.md/json` report is now captured automatically.
+          #
+          # Both package roots are listed because the arm writes its artifacts from
+          # `cortex-memory`'s working directory while the primary benchmark writes
+          # from `cortex-eval`'s. Capturing only one root is the same mistake as the
+          # explicit-filename list this comment describes: the step succeeds, the
+          # artifact is absent, and nothing in the run says so. The §5 step is
+          # implemented BY this arm, so losing its report loses the measurement.
           path: |
             packages/cortex-eval/benchmark-*.md
             packages/cortex-eval/benchmark-*.json
             packages/cortex-eval/benchmark-error.log
+            packages/cortex-memory/benchmark-*.md
+            packages/cortex-memory/benchmark-*.json
+            packages/cortex-memory/benchmark-error.log
           retention-days: 30
