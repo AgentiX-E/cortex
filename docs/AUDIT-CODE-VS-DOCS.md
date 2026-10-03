@@ -247,9 +247,33 @@ can report both the reference pipeline and the cognitive composition side by sid
 | --- | --- | --- | --- |
 | 1 | ~~Extract the reference pipeline's contracts into `S`-compatible form~~ | **Closed as already satisfied** — nothing was entangled and there was no `S` to bend into (`AUDIT-EVAL-CONTRACTS.md` §2, §4) | ~~`cortex-memory` passes the existing `MemorySystem` conformance tests~~ → **the suite did not exist; it does now** (`memory-system-conformance.test.ts`, 11 assertions over `runBenchmark`'s routing) |
 | 2 | ~~Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval`~~ | **Done** — the cognitive layer is reachable; whether it *helps* is step 3 | ✅ **Delivered: 129 tests, 100/100/100/100 coverage, `memory-system-conformance.test.ts` passes unmodified.** See [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) |
-| 3 | Add a benchmark arm that supplies `cortex-memory` instead of the reference pipeline | Produces the first honest number for the cognitive layer | Paired same-instant A/B against the reference arm |
+| 3 | ~~Add a benchmark arm that supplies `cortex-memory` instead of the reference pipeline~~ | Produces the first honest number for the cognitive layer | **Arm assembled and pre-registered; the dispatch is the remaining step.** See [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md) |
 | 4 | Enforce the ≥95% ceiling in `vitest.config.ts` (`thresholds`) | **Premise needs re-checking** — all five packages already carry `thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 }`, so the rule is *not* convention only. What is unverified is whether a deliberately under-covered commit actually fails CI, which is a different question from whether the config exists | A deliberately under-covered commit must fail CI |
-| 5 | Re-measure LongMemEval-S at current `master` | D2 — replaces a 55-commit-stale number | Full N=500, 4 runs, Wilson intervals published |
+| 5 | Re-measure LongMemEval-S at current `master` | D2 — replaces a 55-commit-stale number. **Folded into step 3**: the arm's baseline side is this measurement, taken in the same dispatch under the same instrument, which is both cheaper and less confounded than a separate run | Full N=500, 4 runs, Wilson intervals published — from `benchmark-cortex-memory-ablation-report.json` |
+
+> **Step 3 required more than the row implied, and it changed step 5.** The row reads
+> like one arm added to a package that already has nine. It is the first arm whose two
+> sides are **different systems**, and `cortex-eval` has no path to `CortexMemory` — the
+> type-only devDependency that made `cortex-memory` conformant in step 2 is the same
+> edge that makes the arm impossible to build from the harness side. The assembly
+> therefore lives in `cortex-eval/src/bench-memory-arm.ts` (inside the coverage
+> boundary, tests injected rather than the class imported), the entry point that can
+> see both sides lives in `cortex-memory/bench/`, and the dependency graph is unchanged.
+>
+> The consequence for step 5 is that it **merges into step 3**. Step 5 wants a
+> re-measurement at current `master` with full N=500, 4 runs and Wilson intervals; the
+> arm's baseline side *is* that measurement, taken in the same dispatch under the same
+> instrument. A separate dispatch for step 5 would spend the same guarded quota to
+> answer the same question with a staler revision. Step 5's row is therefore re-pointed
+> at the arm's baseline artifact rather than at a run of its own.
+>
+> **Pre-registration was written before the dispatch**, per §6.3:
+> [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md)
+> fixes the point estimate (the baseline side of the same dispatch, **not** the
+> 55-commit-stale 83.55%), the effect size (two-sided exact McNemar, `p < 0.05`,
+> abstention-aware accuracy, overall), and the stopping rule (one dispatch, no peeking,
+> no re-running for a better draw). It also pre-commits to the expected **null** result
+> on IE/KU/TR, so a null cannot be reinterpreted afterwards as a surprise.
 
 > **Step 1 closed, and it was not the work the row described.** It presumed an
 > entangled contract and an existing conformance suite; the contract was already

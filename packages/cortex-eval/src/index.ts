@@ -46,6 +46,7 @@ export {
   type AblationReport,
   type AblationReportOptions,
   type FeatureConfig,
+  type MemoryArmConfig,
   type RetryFireCounts,
 } from './report.js';
 export {
@@ -304,6 +305,16 @@ export {
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
 export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-options.js';
+
+export {
+  cortextMemoryArmOptions,
+  runCortexMemoryArm,
+  toMemoryArmConfig,
+  type CortexMemoryArmEnv,
+  type CortexMemoryArmOptions,
+  type CortexMemoryArmResult,
+  type CortexMemoryArmRunOptions,
+} from './bench-memory-arm.js';
 
 export {
   computeTargetCohort,

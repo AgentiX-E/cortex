@@ -19,9 +19,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --coverage",
-    "lint": "eslint src/",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "rm -rf dist *.tsbuildinfo coverage"
+    "lint": "eslint src/ bench/",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.bench.json",
+    "clean": "rm -rf dist *.tsbuildinfo coverage",
+    "bench": "node --import tsx bench/run-ablation.ts"
   },
   "dependencies": {
     "@agentix-e/cortex-core": "workspace:*"
@@ -32,6 +33,7 @@
     "@vitest/coverage-v8": "^2.0.0",
     "eslint": "^9.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.0.0"
+    "vitest": "^2.0.0",
+    "tsx": "^4.23.0"
   }
 }

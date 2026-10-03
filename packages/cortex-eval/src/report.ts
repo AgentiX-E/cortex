@@ -117,6 +117,16 @@ export type AblationReport = {
    * Absent means the run predates the field.
    */
   candidateAnnotationVersion?: number | undefined;
+  /**
+   * The `cortex-memory` arm's gate configuration, when that arm produced this
+   * report.
+   *
+   * Present exactly when the cross-system arm ran, so its absence is itself the
+   * statement "this artifact was produced by a different arm" — which is what a
+   * reader comparing the reference pipeline's report against the cognitive layer's
+   * needs in order to know the comparison is valid.
+   */
+  memoryArmConfig?: MemoryArmConfig | undefined;
 };
 
 /**
@@ -133,6 +143,47 @@ export type AblationReport = {
  * switch", and those are different claims about the same file.
  */
 export type FeatureConfig = Readonly<Record<string, boolean>>;
+
+/**
+ * The `cortex-memory` arm's numeric gate configuration.
+ *
+ * A separate field rather than more entries in `FeatureConfig`, because that type
+ * is `Record<string, boolean>` and its renderer writes `` k=on ``/`` k=off ``.
+ * `threshold` and `sessionBudget` are numbers, and a boolean projection of them
+ * would destroy the value the reader needs: "the threshold was on" is true of every
+ * threshold, including the one that admits nothing.
+ *
+ * Widening `FeatureConfig` to `boolean | number` was the alternative. It was
+ * rejected because its renderer would have to start formatting mixed types, which
+ * changes the feature-config line of **every** existing artifact, and because a
+ * union type would make the boolean arms' `=== true` reads no longer exhaustive.
+ * The narrower change is this field, which only the arm that needs it emits.
+ *
+ * Carried in the report rather than returned beside it for the reason
+ * `cohortCoverage` (this file, above) and `retryFires` record at length: a value
+ * that reaches the JSON through a spread at the call site and the Markdown through
+ * a string concatenation is a value whose renderer can drop it silently. Here it
+ * would be worse than a dropped caveat — the numbers ARE the configuration, so an
+ * artifact without them cannot be compared against another artifact at all.
+ *
+ * Absent rather than defaulted for a run that is not this arm. `threshold: 0` is a
+ * real configuration ("gates open"), so a defaulted object would make "this arm did
+ * not run" indistinguishable from "this arm ran with the identity gate".
+ */
+export type MemoryArmConfig = {
+  /** Admission threshold handed to `decideWrite`. In `[0, 1]`. */
+  readonly threshold: number;
+  /**
+   * Turn budget across all presented sessions.
+   *
+   * `null` rather than `Infinity` when unbounded, because `Infinity` is not
+   * representable in JSON: `JSON.stringify` writes it as `null` anyway, so the
+   * round-tripped artifact would carry `null` while the in-memory report carried
+   * `Infinity`, and a comparison between a live report and a re-read one would
+   * disagree. Stating `null` up front makes the persisted form the only form.
+   */
+  readonly sessionBudget: number | null;
+};
 
 /**
  * Distinct questions on which each arm's retry actually re-queried.
@@ -164,6 +215,8 @@ export type AblationReportOptions = {
    * holds both, so it assembles the records and this function carries them.
    */
   questions?: readonly QuestionRecord[];
+  /** The `cortex-memory` arm's gate configuration, when it produced this report. */
+  memoryArmConfig?: MemoryArmConfig;
 };
 
 export async function runAblationReport(
@@ -196,6 +249,7 @@ export async function runAblationReport(
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     ...(options.questions === undefined ? {} : { questions: options.questions }),
+    ...(options.memoryArmConfig === undefined ? {} : { memoryArmConfig: options.memoryArmConfig }),
   };
 }
 
@@ -222,6 +276,20 @@ export function formatAblationReport(report: AblationReport): string {
         `- Feature config: ${entries.map(([k, v]) => `\`${k}=${v ? 'on' : 'off'}\``).join(', ')}`,
       );
     }
+  }
+
+  // The cross-system arm's numeric configuration. Rendered next to the boolean
+  // switches and for the same reason, but separately because it carries values
+  // rather than flags: `threshold=0.35` is not expressible as `on`/`off`, and the
+  // reader's question -- "how much evidence did the gate demand before admitting a
+  // turn" -- is answered by the number and by nothing else. An arm whose artifact
+  // omits it produces a delta that cannot be compared against another arm's.
+  const memoryArm = report.memoryArmConfig;
+  if (memoryArm !== undefined) {
+    lines.push(
+      `- Memory arm config: \`threshold=${memoryArm.threshold}\`` +
+        `, \`sessionBudget=${memoryArm.sessionBudget === null ? 'unbounded' : memoryArm.sessionBudget}\``,
+    );
   }
 
   // The annotation version goes with the configuration, for the same reason: it

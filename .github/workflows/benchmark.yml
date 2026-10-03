@@ -78,6 +78,21 @@ on:
         required: false
         default: '0'
         type: string
+      cortex_memory:
+        description: 'Run the cortex-memory A/B (roadmap step 3): 1 = run it, 0 = shipped behaviour. Both sides run in this one job through a single paired ablation call; the pre-registration in docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md fixes the endpoint, the effect size and the stopping rule'
+        required: false
+        default: '0'
+        type: string
+      cortex_memory_threshold:
+        description: 'Admission threshold for the cortex-memory arm, in [0, 1] (empty = 0, gates open). Above 1 admits nothing, below 0 admits everything, so the range is enforced rather than trusted'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_session_budget:
+        description: 'Turn budget across all presented sessions for the cortex-memory arm (empty = unbounded)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -233,6 +248,40 @@ jobs:
           # credential at all, so an empty secret does not block those two.
           RERANK_API_KEY: ${{ secrets.RERANK_API_KEY }}
         run: pnpm --filter @agentix-e/cortex-eval bench
+
+      # The cortex-memory A/B (roadmap step 3). A separate step rather than a branch
+      # inside the one above, because the two systems cannot be constructed by the
+      # same entry point: `cortex-eval` cannot see `CortexMemory`, and the arrow in
+      # the dependency graph runs the other way. `cortex-memory`'s own bench entry
+      # builds BOTH sides and calls `runCortexMemoryArm`, which is what keeps the pair
+      # inside a single `runAblationReport` call.
+      #
+      # Its own step also means a failure here cannot take the primary benchmark's
+      # artifacts down with it, and the uploaded glob below already captures
+      # `benchmark-cortex-memory-ablation-report.{md,json}` by pattern.
+      - name: Run cortex-memory A/B
+        # `always()` is deliberately NOT used. This arm must not run when the primary
+        # benchmark failed: both consume the same embedding cache, and a partial cache
+        # from a crashed run would make this arm's numbers depend on where the crash
+        # happened. The cost is that a primary failure also loses this arm, which is
+        # correct -- a comparison against an unmeasured baseline is not a comparison.
+        if: github.event.inputs.cortex_memory == '1'
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          CORTEX_MEMORY: '1'
+          CORTEX_MEMORY_THRESHOLD: ${{ github.event.inputs.cortex_memory_threshold }}
+          CORTEX_MEMORY_SESSION_BUDGET: ${{ github.event.inputs.cortex_memory_session_budget }}
+          # The pre-registered scale. `limit: 0` is the full 500 questions and
+          # `ablation_runs: 4` is the run count the pre-registration fixes; both are
+          # read from the same dispatch inputs the job already carries, so a dispatch
+          # that sets them at the workflow level cannot disagree with this step.
+          LIMIT: ${{ github.event.inputs.limit || '60' }}
+          ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
+          EMBEDDING_BATCH_INTERVAL_MS: ${{ github.event.inputs.embedding_batch_interval_ms || '0' }}
+        run: pnpm --filter @agentix-e/cortex-memory bench
 
       - name: Save embedding cache
         if: always()

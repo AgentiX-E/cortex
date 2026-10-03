@@ -77,7 +77,7 @@ capabilities are load-bearing today, so no reader infers more coverage than exis
 
 | Capability | Status | Note |
 |---|---|---|
-| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **now composed** | `cortex-memory` is their first production caller; `cortex-eval`'s own implementation remains the control arm. Whether the gated composition *helps* is step 3's measurement, not yet taken — see [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) |
+| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **now composed and armed** | `cortex-memory` is their first production caller; `cortex-eval`'s own implementation remains the control arm. The pre-registered A/B that measures whether the gated composition *helps* is assembled and awaiting dispatch — see [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md) |
 | Hebbian graph (`MemoryGraph`) | Implemented, tested, **not on the eval path** | Graph recall was trialled for temporal questions and reverted (see below) |
 | FSRS (`retrievability` / `review`) | Implemented, tested, **reached through `consolidate`** | `consolidate` still has no caller, so FSRS is reachable only transitively. Stability is in **days** and elapsed time in milliseconds; the two were once both milliseconds, which made `consolidate`'s defaults delete every memory on the first run. See [`docs/AUDIT-CONSOLIDATION-CLOCK.md`](docs/AUDIT-CONSOLIDATION-CLOCK.md) |
 | Bitemporal facts | Implemented, tested, **now composed** | Backs `cortex-memory`'s `answerKnowledgeUpdate`, where a previous-vs-current question is a bitemporal query |
@@ -104,11 +104,19 @@ Two consequences worth stating explicitly:
 The root cause of (1) was a missing package, not a missing algorithm: nothing composed the
 cognitive layer into a runnable system. **That package now exists** (`cortex-memory`, 129 tests,
 100/100/100/100 coverage, passing `cortex-eval`'s `MemorySystem` conformance suite unmodified),
-so the cognitive layer is reachable. It is not yet *measured*: `cortex-eval`'s own implementation
-remains the control arm, and the A/B that would say whether the gates help is
-`docs/AUDIT-CODE-VS-DOCS.md` §6.2 step 3 — which must be pre-registered before dispatch, per §6.3.
-The dependency direction that keeps `cortex-eval` an instrument rather than a participant is
-unchanged: `cortex-memory` imports it as a type-only devDependency.
+so the cognitive layer is reachable. It is now also **assembled into a measurable arm**: the
+pre-registered A/B in [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md)
+puts it against `cortex-eval`'s reference pipeline in one paired `runAblationReport` call, and
+the dispatch is the remaining step. It is still not *measured* — a pre-registration is a
+prediction, not a result.
+
+The arm needed one structural decision, because it is the first in the repository whose two
+sides are different systems. The assembly (`bench-memory-arm.ts`) lives in `cortex-eval/src/`
+and is handed both systems already constructed; the entry point that can see both packages lives
+in `cortex-memory/bench/`. **The dependency edge is unchanged** — `cortex-memory` still imports
+`cortex-eval` as a type-only devDependency and `cortex-eval` still cannot see the product — which
+is what keeps the harness an instrument rather than a participant, and the arm's suite asserts
+that no such dependency is declared.
 
 ## Dependencies
 

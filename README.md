@@ -39,7 +39,10 @@ by similarity). Cortex solves the "mind" problem:
 > statistics helpers and one vector index from core. **`cortex-memory` now composes
 > core's value gates into a runnable `MemorySystem`** (129 tests, 100% coverage on
 > all four dimensions, passing the harness's conformance suite unmodified), so the
-> cognitive layer is *reachable*; whether it *helps* is an A/B that has not been run.
+> cognitive layer is *reachable*, and the A/B that would say whether it *helps* is
+> now **assembled and pre-registered** — see
+> [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md).
+> The dispatch is the remaining step; a pre-registration is a prediction, not a result.
 > Three documented capabilities remain unwired: optimal-transport distillation
 > (`sinkhorn`, exported but uncalled), TD(λ) credit assignment (not implemented), and
 > fact **derivation** history (not implemented — `Fact` carries origin, trust and both
