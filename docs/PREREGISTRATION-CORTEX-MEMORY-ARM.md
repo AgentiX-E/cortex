@@ -428,6 +428,13 @@ the endpoint in §3 without adjustment.
 > diagnosed an unimplemented `decideRetrieval`, now repaired. The reading is retained as
 > the outcome of the pre-repair program, and the re-run is a measurement of a different
 > program rather than a redraw — argued in §7.4.
+>
+> **Re-dispatched after the repair.** Run
+> [`37110579101`](https://github.com/AgentiX-E/cortex/actions/runs/37110579101) at
+> `master` = `2e8ff640`, the repair commit. Same endpoint, dataset, `limit: 0`,
+> `ablation_runs: 4`, `temperature: 0`; the added input is
+> `cortex_memory_retrieval_threshold: '0'` (§7.4). This is the measurement of the
+> repaired program, not a second draw from the first one's distribution.
 
 
 ```bash
