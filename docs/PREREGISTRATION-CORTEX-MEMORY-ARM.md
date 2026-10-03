@@ -414,6 +414,74 @@ was**, and is retained rather than superseded: it is the measurement that found 
 defect. Whether the repaired program closes the gap is a new question, and it is put to
 the endpoint in §3 without adjustment.
 
+### 7.5 The repair ran, and changed nothing — because the threshold it was given was a no-op
+
+Run [`37110579101`](https://github.com/AgentiX-E/cortex/actions/runs/37110579101) at
+`master` = `2e8ff640` is the repaired program's first measurement. All 18 steps green,
+3h00m, `check-output` confirming on the runner that `abstention-decision.test.ts` ran and
+that `cortex-memory` reports `100/100/100/100`.
+
+| Side | Run `37094200823` (pre-repair) | Run `37110579101` (post-repair) |
+| --- | --- | --- |
+| `reference-pipeline` | 85.20% | 84.70% (84.60–84.80) |
+| `cortex-memory` | 6.40% | **6.45%** (6.40–6.60) |
+| Δ | −78.55 pp | **−78.25 pp** |
+| Abstention rate | 95.40% | **95.80%** |
+| McNemar p | 4.920e−117 | 3.906e−116 |
+
+**The repair did not move the number.** The artifact's config line is now
+`threshold=0, retrievalThreshold=0, sessionBudget=unbounded` — so the second gate was
+present, wired, and recorded, and the result is the same to within noise.
+
+The reason is not that the repair was wrong. It is that **`retrievalThreshold=0` cannot
+close a gate whose maximum observable value is `0.5`.** The measurement, taken locally
+against the real value function:
+
+```
+valueFunction(mem) = 0.5
+
+threshold=0     -> retrieve=true   confidence=0.5
+threshold=0.25  -> retrieve=true   confidence=0.5
+threshold=0.49  -> retrieve=true   confidence=0.5
+threshold=0.5   -> retrieve=true   confidence=0.5
+threshold=0.51  -> retrieve=false  confidence=0.5
+threshold=0.75  -> retrieve=false  confidence=0.5
+```
+
+The ceiling is `confidence(1) × sourceTrust(0.5) × (0.5 + 0.5 × recency(1.0))`, and
+`admission.ts` supplies `sourceTrust: 0.5` with `lastAccessedAt === now`, so recency is
+exactly `1`. `decideRetrieval` compares `confidence >= threshold`, so the reachable
+range for this arm is `[0, 0.5]`: every threshold at or below `0.5` is **always open**,
+and every threshold above it is **always closed**.
+
+This is the defect §7.4 fixed viewed from the other side. Before the repair there was no
+call site, so *no* threshold could have had an effect and the config line could not say
+so. After the repair there is a call site, and the config line says exactly what the
+gate was — which is how the no-op became visible in one comparison instead of after
+another three hours.
+
+**What this does not license.** Re-dispatching with a closed gate would be tuning a
+parameter toward a preferred outcome, which §4 forbids, and it would also be measuring
+something else: with the gate at `> 0.5` every question abstains by construction, so the
+score is `0%` by arithmetic rather than by experiment. The retrieval gate's *value* is
+not the variable this arm is registered to optimise.
+
+**What it does license, and what the registered endpoint now needs.** The arm's
+hypothesis was that composing the cognitive layer is not worse than the reference
+pipeline. That hypothesis was tested under a configuration where the cognitive layer's
+only distinctive mechanism — a machine-derived retrieval decision — was **bypassed in
+both runs**, once because it did not exist and once because it was handed a threshold it
+cannot act on. Neither run is evidence about the hypothesis. Establishing that the
+mechanism is reachable and observable was the prerequisite; choosing whether to arm it,
+and at what value, is a **new registration**, because it changes the question.
+
+The `0.5` ceiling itself is a finding about the arm rather than about the cognitive
+layer, and it is worth stating plainly: the admission path hardcodes `sourceTrust: 0.5`
+and pins `lastAccessedAt` to the injected clock, so a value function composed with it
+cannot exceed `0.5` no matter how confident the evidence. Every threshold in this arm's
+vocabulary therefore means half of what an intuitive `[0, 1]` reading suggests, which is
+the same "correct number, wrong units" shape §38.3 recorded.
+
 ---
 
 ## 8. Reproducing the dispatch
