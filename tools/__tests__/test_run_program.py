@@ -214,3 +214,82 @@ class TestStdin:
         monkeypatch.setattr('sys.stdin', io.StringIO("print('clean-stdin')\n"))
         assert runner.main(['prog', '--lang', 'py', '-']) == 0
         assert 'clean-stdin' in capfd.readouterr().out
+
+
+class TestKeep:
+    """`--keep FILE` preserves the program, which is what makes the safe path better.
+
+    ## Why this mode exists at all
+
+    The fifth recurrence of `Bad substitution` happened while a probe was being
+    improvised inline. Reading the four earlier attempts back shows they all added
+    *detection* -- a file scanner, a `--fragment` mode, a run-time refusal -- and a
+    detector only works if it is consulted. Every recurrence was a case where it was
+    not.
+
+    The asymmetry that produced five failures is a cost one: an inline one-liner is a
+    single call, while writing a probe to a file and running it is two, and under
+    improvisation the cheaper path wins. `--keep` inverts that. It is one call *and*
+    it does something the inline form cannot do at all -- an inline command cannot
+    preserve its own text, so a probe worth re-reading has to be retyped from
+    scrollback. A safe path that is also the more capable one is the only kind of fix
+    that holds when nobody is checking.
+    """
+
+    def test_writes_the_program_then_runs_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        kept = tmp_path / 'kept.mjs'
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log("kept-ran");\n'))
+        assert runner.main(['prog', '--lang', 'mjs', '--keep', str(kept), '-']) == 0
+        assert 'kept-ran' in capfd.readouterr().out
+        # The file must hold the program exactly, so it can be re-run and reviewed.
+        assert kept.read_text(encoding='utf-8') == 'console.log("kept-ran");\n'
+
+    def test_creates_missing_parent_directories(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A probe directory that does not exist yet must not be the reason an
+        # operator falls back to a one-liner.
+        kept = tmp_path / 'probe' / 'nested' / 'p.mjs'
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log(1);\n'))
+        assert runner.main(['prog', '--lang', 'mjs', '--keep', str(kept), '-']) == 0
+        assert kept.is_file()
+
+    def test_refuses_a_hazardous_program_without_writing_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # The refusal must happen BEFORE the write. A kept hazard would put the
+        # exact bytes that break delivery onto disk, where the next edit that
+        # touches the file inherits them -- the loop §4b describes.
+        kept = tmp_path / 'kept.sh'
+        monkeypatch.setattr('sys.stdin', io.StringIO('echo "' + HAZARD + '"\n'))
+        assert runner.main(['prog', '--lang', 'sh', '--keep', str(kept), '-']) == 1
+        assert 'h.join' in capfd.readouterr().err
+        assert not kept.exists()
+
+    def test_an_unwritable_destination_is_a_usage_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # A directory where a file belongs. The failure must be a diagnosed usage
+        # error rather than a traceback, so the operator learns the flag's shape.
+        #
+        # The assertion is on the *diagnosis*, and it has to name something only the
+        # implemented flag can say. With `--keep` unimplemented, this case already
+        # returned 2 -- the argument parsed as a filename that does not exist -- so
+        # asserting `== 2` alone would pass on the unfixed tool and report the mode
+        # as working while nothing had been written anywhere. `--keep` appears in
+        # the unimplemented message too (as the missing filename), which is why the
+        # check below is for the phrase the real implementation must use.
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log(1);\n'))
+        assert runner.main(['prog', '--lang', 'mjs', '--keep', str(tmp_path), '-']) == 2
+        assert 'is not a writable file path' in capfd.readouterr().err
+
+    def test_keep_requires_a_path(
+        self, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # Same reasoning as above: assert on the diagnosis, not only the code.
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log(1);\n'))
+        assert runner.main(['prog', '--lang', 'mjs', '--keep']) == 2
+        assert '--keep requires a path' in capfd.readouterr().err
+
+
+

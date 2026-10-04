@@ -230,6 +230,90 @@ clusters — the input needed to exercise `annotateWithCandidateSides`'s
 reachability question is still open and is resumed below; the probe is now a file
 rather than a command string.
 
+## 4d. The fifth recurrence: the mechanism already worked, and cost was the whole defect
+
+The class recurred once more, as `Bad substitution: String`, while a ceiling
+measurement was being improvised inline. §4c's conclusion held — no mechanism was
+missing — and this section records what was done differently, because "strengthen the
+rule again" had already been tried and had already failed.
+
+### What was verified before anything was changed
+
+Two candidate **push** mechanisms were tested rather than assumed, because §4b already
+established that a remedy nobody consults is documentation:
+
+| Candidate | Test | Result |
+| --- | --- | --- |
+| a `preexec` hook in `~/.zshrc` | installed a hook body that appends to a log, then ran `zsh -i -c 'echo hello'` | **no log written** — the hook does not fire for `-c`, which is how commands are actually run here |
+| git hooks | `ls .git/hooks/` | none installed, and hooks fire on git operations, not on arbitrary commands |
+
+So **no mechanism can intercept a command before it runs in this environment.** That
+finding is what makes the response different from a sixth detector, and it should be
+recorded as a negative result rather than rediscovered next time.
+
+The existing tooling was then verified end to end, and it already worked:
+
+```
+$ echo 'console.log("stdin path ok")' | python3 tools/run-program.py --lang js -
+stdin path ok                       # rc=0
+
+$ printf '%s\n' 'console.log("x" + "${String(t)}")' \
+      | python3 tools/run-program.py --lang js -
+rc=1                                # refused, correct message, NOTHING executed
+```
+
+### The actual defect: a cost asymmetry
+
+Every recurrence is a case where the safe path existed and was not taken. The reason is
+not forgetfulness in the ordinary sense. It is that the two paths have different prices:
+
+| Path | Cost |
+| --- | --- |
+| inline one-liner carrying the hazard | **one** call |
+| write a probe file, then run it | **two** calls |
+
+Under improvisation the cheaper path wins, and it won five times. Detection cannot fix
+that — a detector the operator does not consult has no effect on which path is chosen.
+
+### What was changed
+
+1. **`tools/run-program.py --keep FILE`** writes the program to a file and runs it in
+   **one** call, so the safe path is no longer more expensive than the hazard. It creates
+   parent directories, and it checks the program against the interpolation rule **before**
+   writing — a kept hazard would put the exact bytes that break delivery onto disk, where
+   the next edit inherits them, which is the loop §4b describes.
+2. **`pnpm probe`** as the short form: `python3 tools/run-program.py --lang mjs --keep
+   probe/latest.mjs -`.
+3. **`probe/` is git-ignored**, for the same reason the benchmark artifacts are: a probe
+   is evidence *for* a conclusion, not the conclusion, and a tracked probe would make a
+   discarded line of investigation look like a supported claim.
+
+The change is deliberately small. Adding a fourth detector would have repeated §4b's
+recorded failure mode — a verified fix against a failure it could not observe.
+
+### Why this is the fix that holds
+
+The new property is not that detection is better. It is that **the safe path is no longer
+more expensive than the hazard, and is strictly more capable.** An inline command cannot
+preserve its own text; `--keep` can, which means a probe worth re-reading survives the
+session instead of being retyped from scrollback. A remedy that is also an improvement has
+no reason to be bypassed, and that is the only kind that holds when nobody is checking.
+
+### What is not claimed
+
+**The class is not eliminated, and this document does not say it is.** No mechanism can
+intercept a command in this environment, so an operator who chooses the inline form can
+still lose an invocation. The honest claim is narrower and is the only one the evidence
+supports: the cost advantage that made the inline form rational has been removed, and a
+hazard routed through the new path is refused at run time with the guard's own message.
+
+The ceiling measurement that the interrupted probe was performing was re-run from a file
+and is recorded in [`PREREGISTRATION-CORTEX-MEMORY-ARM.md`](PREREGISTRATION-CORTEX-MEMORY-ARM.md)
+§7.5 and §40.2: the value function is pinned at exactly `0.5`, the ceiling is structural
+rather than incidental (releasing the recency pin still caps it at `0.5`), and the
+accessible boundary is `(0.5, 0.5000001]`. The rule in §3 turned a lost invocation into a
+deciding number for the third time.
+
 ## 5. The measurement that this document interrupted, for the record
 
 The probe above was measuring why a repair changed nothing. It was re-run from a

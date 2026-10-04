@@ -19,3 +19,12 @@ __pycache__/
 # A glob covers the whole family and, more importantly, covers the next artifact
 # too -- which is what an enumeration cannot do, and what went wrong here.
 benchmark-*
+# Probe scratch. `tools/run-program.py --keep` writes improvised programs here so a
+# probe survives the session that wrote it instead of living in scrollback.
+#
+# Ignored for the same reason as the benchmark artifacts, and for one more: a probe
+# is evidence *for* a conclusion, not the conclusion, so a tracked probe would make
+# a discarded line of investigation look like a supported claim. The directory is
+# named rather than globbed because probes are always written here and nowhere else.
+probe/
+

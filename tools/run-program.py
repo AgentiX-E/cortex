@@ -59,7 +59,7 @@ INTERPRETERS: dict[str, list[str]] = {
 
 def _usage() -> str:
     return (
-        'usage: run-program.py [--lang EXT] <file|-> [args...]\n'
+        'usage: run-program.py [--lang EXT] [--keep FILE] <file|-> [args...]\n'
         f'known extensions: {", ".join(sorted(INTERPRETERS))}'
     )
 
@@ -107,18 +107,46 @@ def _guard_path(path: str) -> str | None:
     return _render(violations) if violations else None
 
 
+def _write_kept(path_text: str, text: str) -> str | None:
+    """Write the program to `path_text`, creating parents. Return an error, or None.
+
+    Failing here is a usage error rather than a traceback: the caller learns the
+    flag's shape from the message, and an unwritable destination must not look like a
+    broken probe.
+    """
+    target = Path(path_text)
+    if target.is_dir():
+        return f'run-program: --keep {path_text} is not a writable file path'
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding='utf-8')
+    except OSError as error:
+        return f'run-program: --keep {path_text} is not a writable file path ({error})'
+    return None
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
     lang: str | None = None
+    keep: str | None = None
 
     # `--lang` exists for stdin, which has no extension to dispatch on. It is not
     # a way to bypass the file rule: the program still arrives as text from a
     # file or a pipe, never as a shell command line.
-    if args and args[0] == '--lang':
+    while args and args[0] in ('--lang', '--keep'):
+        flag = args[0]
         if len(args) < 2:
-            print(_usage(), file=sys.stderr)
+            print(
+                f'run-program: {flag} requires a path'
+                if flag == '--keep'
+                else f'run-program: {flag} requires a value',
+                file=sys.stderr,
+            )
             return 2
-        lang = args[1] if args[1].startswith('.') else f'.{args[1]}'
+        if flag == '--lang':
+            lang = args[1] if args[1].startswith('.') else f'.{args[1]}'
+        else:
+            keep = args[1]
         args = args[2:]
 
     if not args:
@@ -137,10 +165,20 @@ def main(argv: list[str]) -> int:
         # same rule as the file path. Leaving this out was a real hole: a hazard
         # piped in still reached the shell and still raised `Bad substitution`,
         # which is the failure the tool exists to prevent. A test caught it.
-        violations = _check_fragment_text(text, '<stdin>')
+        #
+        # It is also BEFORE the `--keep` write, and that order is load-bearing: a
+        # kept hazard would put the exact bytes that break delivery onto disk, where
+        # any later edit inherits them -- the loop `OPS-SHELL-INTERPOLATION.md` §4b
+        # describes.
+        violations = _check_fragment_text(text, keep or '<stdin>')
         if violations:
             sys.stderr.write(_render(violations))
             return 1
+        if keep is not None:
+            message = _write_kept(keep, text)
+            if message:
+                print(message, file=sys.stderr)
+                return 2
         # A temp file rather than `-`: some interpreters treat `-` as "read the
         # REPL's stdin", which would consume the passthrough arguments. Writing
         # the bytes to a file also means the shell still never sees them.
@@ -150,6 +188,7 @@ def main(argv: list[str]) -> int:
             handle.write(text)
             temp_path = Path(handle.name)
         program_args = [temp_path]
+
     else:
         temp_path = None
         program_path = Path(source)
