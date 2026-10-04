@@ -167,6 +167,44 @@ describe('PgStorage (pg-mem)', () => {
     await s.close();
   });
 
+  it('commits a transaction that does not throw', async () => {
+    // The `finally` arm of `PgStorage.transaction`, and the reason this test was
+    // missing is worth recording.
+    //
+    // The transaction test in the SqliteStorage block above — "runs a transaction
+    // with read and write" — looks like it covers this. It does not: it constructs
+    // `SqliteStorage`, so `PgStorage.transaction` was only ever entered by the
+    // failing test below. That covers `BEGIN` and `ROLLBACK` and never `COMMIT`, so
+    // the one path a production write actually takes was unexercised, while a
+    // passing suite and a 97.6% branch figure suggested otherwise. The uncovered
+    // counter was attributed to `} finally` on the closing brace, which is the arm
+    // v8 reports for "the block completed without throwing".
+    //
+    // `COMMIT` is load-bearing: without it, statements inside the transaction are
+    // discarded when the client returns to the pool, and the caller gets a value
+    // back that was never persisted. A test that only reads within the transaction
+    // cannot tell those apart, which is why this one writes and then reads back
+    // through a SEPARATE connection.
+    const db = newDb();
+    const pool = new (db.adapters.createPg().Pool)() as never;
+    await ensurePgSchema(pool as never);
+    const s = new PgStorage({ pool: pool as never });
+
+    const result = await s.transaction(async (tx) => {
+      await tx.put('mem', 'committed', { v: 42 });
+      return 'ok';
+    });
+    expect(result).toBe('ok');
+
+    // Read through a fresh storage instance so the assertion does not depend on the
+    // transaction's own client still holding the row.
+    const reader = new PgStorage({ pool: pool as never });
+    expect(await reader.get<{ v: number }>('mem', 'committed')).toEqual({ v: 42 });
+    await reader.close();
+    // `s` shares the pool, so closing it here would close the pool `reader` used.
+    // The pool is closed once, after both have finished with it.
+  });
+
   it('queries with key prefix and without tags', async () => {
     const db = newDb();
     const pool = new (db.adapters.createPg().Pool)() as never;

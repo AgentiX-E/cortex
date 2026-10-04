@@ -392,6 +392,15 @@ describe('cohensD and tTestPValue', () => {
     expect(cohensD([1, 1, 1], [0, 0, 0])).toBe(-Infinity);
   });
 
+  it('cohensD returns +Infinity for a perfect positive effect', () => {
+    // The mirror of the test above. Only the NEGATIVE direction had a test, so the
+    // `mb > ma ? Infinity` arm of the zero-pooled branch was never taken — and that
+    // arm is the one this function exists to report: a feature that wins on every
+    // single run has an unbounded effect size, not a large finite one. Reporting it
+    // as a number would understate it and imply a precision the data does not have.
+    expect(cohensD([0, 0, 0], [1, 1, 1])).toBe(Infinity);
+  });
+
   it('cohensD returns 0 for identical zero-variance samples', () => {
     expect(cohensD([1, 1, 1], [1, 1, 1])).toBe(0);
   });

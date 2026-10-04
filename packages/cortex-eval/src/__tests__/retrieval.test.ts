@@ -572,11 +572,78 @@ describe('expandContextWindowBySession', () => {
     expect([...lines].sort((x, y) => flat.indexOf(x) - flat.indexOf(y))).toEqual(lines);
   });
 
+  it('reaches the symmetric-expansion break in an odd-length session', () => {
+    // The `if (before < 0 && after >= owned.length) break;` in pass 1. Reaching it
+    // needs a session where a single distance overshoots BOTH ends at once, which
+    // requires the hit to sit exactly in the middle of an ODD-length session: for
+    // length 3 and the hit at offset 1, distance 2 gives `before = -1` and
+    // `after = 3 >= 3` in the same iteration.
+    //
+    // With an even-length session the two ends are passed on different iterations,
+    // so the loop exits on its own condition instead and the break never runs --
+    // which is why every other session fixture in this describe block (lengths 2
+    // and 6) misses it.
+    //
+    // The break is not merely an optimisation. Without it the next iteration would
+    // compute `before = -2, after = 4`, find both out of range, admit nothing, and
+    // continue until `distance` reached the length. The result would be the same
+    // set, so this is asserted on the OUTPUT rather than on iteration count: what
+    // is pinned is that a centred hit still admits its two neighbours and nothing
+    // beyond the session.
+    const odd = [['o0', 'o1', 'o2']];
+    const out = expandContextWindowBySession(odd.flat(), [1], odd, 0, 9);
+    expect(out.split('\n')).toEqual(['o0', 'o1', 'o2']);
+    // And the hit alone still returns the hit, so the break cannot be swallowing
+    // the first admission.
+    expect(expandContextWindowBySession(odd.flat(), [1], odd, 0, 1)).toBe('o1');
+  });
+
   it('falls back to neighbour expansion when no session boundary is known', () => {
     // An index with no session (a synthetic corpus flattened by the caller) must
     // still be served, so the session path is additive rather than a replacement.
     const out = expandContextWindowBySession(flat, [1], [], 1, 3);
     expect(out).toBe('s0a\ns0b\ns1a');
+  });
+
+  it('serves a hit that lies beyond the supplied session boundaries', () => {
+    // `sessions` describes the first two sessions only, so flat positions 4 and 5
+    // have no owner: `sessionOfPosition` returns `undefined` for them. The doc
+    // promises the behaviour "collapses to pure neighbour expansion" in that case,
+    // and this is the case that promise is about -- the `[]` test above covers
+    // `sessions` being absent entirely, which is a different input.
+    //
+    // This is reachable in production for a real reason rather than as a defensive
+    // exercise: the loader is what flattens sessions into `context`, and if the two
+    // ever disagree (a truncated `sessions`, a caller that appended turns to
+    // `context`) the unowned positions are exactly these. Falling back keeps the
+    // call useful instead of dropping the hit.
+    const partial = [['s0a', 's0b']];
+    // Hit 4 is unowned; radius 1 must still admit 3 and 5 around it.
+    const out = expandContextWindowBySession(flat, [4], partial, 1, 3);
+    expect(out.split('\n')).toEqual(['s1b', 's2a', 's2b']);
+  });
+
+  it('does not lose a hit whose recorded session no longer lists its position', () => {
+    // The `at < 0` guard. It fires when `sessionOfPosition` has a position but
+    // `positionsOfSession` for that session does not contain it, and the ordered
+    // construction makes that impossible -- so this asserts the OUTCOME the guard
+    // protects rather than pretending to drive it: the hit is still admitted, the
+    // call still returns, and no exception escapes.
+    //
+    // A boundary set that overlaps itself is what makes this concrete. `sessions`
+    // below lists turn 1 twice, once as the tail of session 0 and once as the head
+    // of session 1, so position 1 maps to session 0 by first-occurrence-wins while
+    // its own session's list starts at 2. The run must complete and must contain
+    // the hit.
+    const overlapping = [
+      ['s0a', 's0b'],
+      ['s0b', 's1a'],
+    ];
+    const out = expandContextWindowBySession(flat, [1], overlapping, 1, 3);
+    expect(out.split('\n')).toContain('s0b');
+    // Deterministic: the same input twice gives the same answer, so a silent
+    // inconsistency shows up as instability rather than as a flaky pass.
+    expect(expandContextWindowBySession(flat, [1], overlapping, 1, 3)).toBe(out);
   });
 
   it('handles hits in several sessions and respects the budget across them', () => {
@@ -700,6 +767,18 @@ describe('retrieveByQueries', () => {
     // RRF: a = 2/(60+2) > b = 1/(60+1) = c, so the cross-query agreement leads.
     expect(hits[0]!.sessionIndex).toBe(0);
     expect(hits.map((h) => h.sessionIndex).sort((x, y) => x - y)).toEqual([0, 1, 2]);
+    // The lookup is a non-null assertion rather than a `?? -1` fallback, so this
+    // pins what that assertion buys: every hit resolves to the index of the ONE
+    // session that actually contains it. A fallback would have made a
+    // mis-attributed hit indistinguishable from a real session 0.
+    const owners = new Map([
+      ['a', 0],
+      ['b', 1],
+      ['c', 2],
+    ]);
+    for (const hit of hits) {
+      expect(hit.sessionIndex).toBe(owners.get(hit.text));
+    }
   });
 });
 
@@ -802,6 +881,15 @@ describe('retrieveTopKByQueries', () => {
     expect(hits[0]!.score).toBeCloseTo(0.6, 6);
     const maxCosine = Math.max(...hits.map((h) => h.score));
     expect(maxCosine).toBeCloseTo(0.9, 6);
+    // Every returned score must be a REAL cosine from the map, never the `??`
+    // fallback that used to sit here. The fallback could only fire for an id that
+    // was never fed into `maxCosineById`, which the code cannot produce -- so if
+    // it ever did fire, the score would silently be the fusion-pool score and
+    // this assertion is what catches it.
+    for (const hit of hits) {
+      const own = hit.text === 'a' ? 0.6 : 0.9;
+      expect(hit.score).toBeCloseTo(own, 6);
+    }
   });
 });
 
@@ -834,6 +922,39 @@ describe('extractLexicalKeywords', () => {
     const keywords = extractLexicalKeywords(['go to the zoo']);
     // "go" and "to" are dropped (stopword / short), "zoo" is kept.
     expect(keywords).toEqual(['zoo']);
+  });
+
+  it('contributes no keywords for a query with no letters at all', () => {
+    // `match` returns `null` whenever the lower-cased query has no `[a-z]`
+    // character -- the empty string, but equally `'   '`, `'123'` or `'!!!'` --
+    // and iterating `null` throws, so this branch is load bearing rather than
+    // defensive noise. The input is reachable in production, not merely from
+    // outside the package: queries here are `[question, ...expansionQueries]`
+    // and `parseQueryExpansion` reproduces any comma-separated phrase the LLM
+    // returns, so an expansion of `'2'` reaches this loop verbatim.
+    //
+    // The assertion is on the RETURN, not on "no throw": the correct behaviour
+    // is that a letterless phrase simply votes for nothing, letting the other
+    // expansion phrases and the semantic channel carry the retrieval. An earlier
+    // version of this test asserted a `TypeError` because the code had been
+    // changed to dereference the `null`; running the full suite showed that
+    // change broke two ablation tests, which is how the reachability was found.
+    for (const query of ['', '   ', '123', '!!!']) {
+      expect(extractLexicalKeywords([query])).toEqual([]);
+    }
+    // It must not poison its siblings either: a letterless phrase in the middle
+    // of a real query list is skipped, not fatal.
+    expect(extractLexicalKeywords(['garden', '2', 'shed'])).toEqual(['garden', 'shed']);
+  });
+
+  it('returns an empty list for a letter-bearing query whose tokens are all dropped', () => {
+    // Positive control for the test above: these queries DO match the regex
+    // (unlike the four inputs there), so they traverse the loop body and are
+    // rejected by the length/stopword filters instead of by the null guard.
+    // Both routes end at `[]`, but only the first involves the `tokens === null`
+    // branch -- without this control, deleting the guard would still pass.
+    expect(extractLexicalKeywords(['a'])).toEqual([]);
+    expect(extractLexicalKeywords(['go to'])).toEqual([]);
   });
 });
 
@@ -1347,5 +1468,27 @@ describe('expandContextWindowBounded', () => {
     expect(expandContextWindowBounded(corpus, indices, 2, 100)).toBe(
       expandContextWindow(corpus, indices, 2),
     );
+  });
+
+  it('stops taking hits once the budget is spent, rather than taking fewer neighbours', () => {
+    // This is the Pass 1 `break`, and it is the whole point of the pass ordering.
+    // Three in-range hits with a budget of 2: the loop must stop after the second
+    // hit because the budget is gone. The competing design -- let the run push
+    // past the budget and clamp later -- would instead spend remaining capacity on
+    // hit 3's NEIGHBOURS, so the window would contain turn 4 and turn 6 but not
+    // turn 5. Asserting on set membership (not merely "no throw") is what
+    // distinguishes "fewer neighbours" from "fewer hits".
+    const out = expandContextWindowBounded(corpus, [1, 3, 5], 2, 2).split('\n');
+    expect(out).toEqual(['turn 1', 'turn 3']);
+    expect(out).not.toContain('turn 5');
+  });
+
+  it('does not break when the budget exactly covers the hits', () => {
+    // Positive control for the test above: same corpus, same radius, same hit
+    // order -- the ONLY change is `budget` rising to equal the in-range hit
+    // count. If the equality above were an artefact of something other than the
+    // budget, this pair could not differ.
+    const out = expandContextWindowBounded(corpus, [1, 3, 5], 0, 3).split('\n');
+    expect(out).toEqual(['turn 1', 'turn 3', 'turn 5']);
   });
 });

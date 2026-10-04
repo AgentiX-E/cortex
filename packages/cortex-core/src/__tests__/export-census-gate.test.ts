@@ -191,6 +191,65 @@ describe('the census gate enforces the baseline', () => {
     expect(status).toBe(0);
   });
 
+  it('detects a new orphan even when its name already appears in prose', () => {
+    // THE REGRESSION TEST for the comment-blind matcher, at gate level. This is
+    // the failure mode that mattered, because it is the one whose symptom is a
+    // clean run.
+    //
+    // The census used to match a symbol's name against each file's raw text, so a
+    // name written in a comment counted as a caller. The consequence: a genuinely
+    // orphaned export stopped being reported as an orphan as soon as anybody
+    // wrote its name in a sentence. Since documenting a symbol is what good
+    // practice looks like, the report was cleanest precisely where the most
+    // explanation had been written.
+    //
+    // The injection below reproduces that shape exactly. The new export is
+    // orphaned, AND a comment naming it is appended to a second file. Before the
+    // fix the gate exited 0 and named nothing; the assertion on `status` is
+    // therefore the whole test.
+    //
+    // The comment is appended to a *different* file than the declaration, because
+    // a comment in the declaring file would also have satisfied
+    // `isReferencedLocally` and moved the symbol between buckets instead of out
+    // of the report entirely.
+    const declarationSite = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+    const proseSite = resolve(REPO_ROOT, 'packages/cortex-core/src/math/fsrs.ts');
+    const originalDeclaration = readFileSync(declarationSite, 'utf8');
+    const originalProse = readFileSync(proseSite, 'utf8');
+    const marker = 'proseMentionedCensusGateProbe';
+    try {
+      writeFileSync(
+        declarationSite,
+        `${originalDeclaration}\nexport function ${marker}(): number {\n  return 0;\n}\n`,
+      );
+      writeFileSync(
+        proseSite,
+        `${originalProse}\n// See ${marker} for the extraction pattern this repo now uses.\n`,
+      );
+
+      // POSITIVE CONTROL first: with the prose removed the gate must fail, so a
+      // zero exit below cannot be blamed on the injection not taking effect.
+      writeFileSync(proseSite, originalProse);
+      const withoutProse = runCensus(['--check']);
+      expect(withoutProse.status, 'probe export was not detected at all').toBe(1);
+      expect(withoutProse.output).toContain(marker);
+
+      // Now the case under test: the same orphan, plus a prose mention of it.
+      writeFileSync(
+        proseSite,
+        `${originalProse}\n// See ${marker} for the extraction pattern this repo now uses.\n`,
+      );
+      const withProse = runCensus(['--check']);
+      expect(withProse.status, 'a comment naming the orphan suppressed the finding').toBe(1);
+      expect(withProse.output).toContain(marker);
+    } finally {
+      writeFileSync(declarationSite, originalDeclaration);
+      writeFileSync(proseSite, originalProse);
+      expect(readFileSync(declarationSite, 'utf8')).toBe(originalDeclaration);
+      expect(readFileSync(proseSite, 'utf8')).toBe(originalProse);
+    }
+  });
+
   describe('the injection harness leaves the tree as it found it', () => {
     /**
      * THE REGRESSION TEST for the restore above.

@@ -42,7 +42,18 @@ RATIONALE = {
         "library whose consumers would be external. This repository is private and publishes "
         "nothing, so a consumer outside it does not exist today; `cortex-llm/src/retry.ts` alone "
         "contributes 13, which suggests its helpers are used as building blocks internally rather "
-        "than called by name. Not triaged entry by entry."
+        "than called by name. NOT triaged entry by entry, with one exception recorded here so the "
+        "next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and "
+        "`cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` "
+        "and `welchTTest` in their own file, so they are live code; the `export` keyword exists only "
+        "so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That "
+        "matters because the census excludes test files from the caller count by design, so a "
+        "test-facing export is reported as an orphan no matter how well covered it is -- the "
+        "`referenced-locally` class it lands in does not distinguish a test caller from an in-file "
+        "one. They were extracted from six inline guards that carried `c8 ignore next` while still "
+        "counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by "
+        "`@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the "
+        "coverage honestly."
     ),
 }
 
@@ -145,7 +156,19 @@ def main() -> int:
             "whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. "
             "`orphanClass` maps each key to its class: `referenced-locally` means the symbol has a "
             "live call site and only the `export` keyword is unnecessary, `unreferenced` means "
-            "nothing mentions it anywhere and it is a dead-code candidate."
+            "nothing mentions it anywhere and it is a dead-code candidate. "
+            "The ledger was rebuilt once to correct the caller matcher, and the size of that "
+            "correction is the reason it is recorded here. The matcher used to test a symbol's "
+            "name against each file's raw text, so a name written in a comment counted as a call: "
+            "`referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered "
+            "the list the moment comments stopped counting. Every one of the 21 had ONLY comment "
+            "matches outside its declaring file -- verified by diffing raw-text matches against "
+            "comment-stripped matches for each. The worst part of the old behaviour was its "
+            "direction: documenting a symbol silently retired its finding, so the report looked "
+            "cleanest on the code someone had taken most trouble to explain. `stripComments` in "
+            "`export-census.ts` now blanks comments before matching while copying string and "
+            "template literals through verbatim, because template literals hold real calls "
+            "(`hashText` is called six times that way)."
         ),
         "totals": {
             "exports": report["totalSymbols"],

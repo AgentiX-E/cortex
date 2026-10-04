@@ -412,12 +412,25 @@ async function searchTurnIndex(
   topK: number,
 ): Promise<RetrievalHit[]> {
   const hits = await data.index.search(queryVec, topK);
-  // Every hit id was inserted via `texts.set`, so the lookups are always defined.
-  return hits.map((h) => ({
+  // `index` is deliberately NOT taken from `idToIndex`.
+  //
+  // It used to be `data.idToIndex.get(h.id) ?? -1`, and that fallback could never
+  // fire: `idToIndex` and `texts` are populated in the same loop keyed by the same
+  // id, and `index.search` returns only ids that were `add`ed. A never-firing
+  // fallback is worse than no fallback here, because nothing in this package reads
+  // `.index` -- a stale id would have produced `-1` and travelled to the caller
+  // unexamined. Throwing instead was tried and rejected: it makes the guard
+  // testable-looking while remaining unreachable from any public entry point, and
+  // it would have added two never-covered statements to this file.
+  //
+  // The position was never missing. `search` returns hits in rank order, so the
+  // rank IS the index, and the map lookup was a slower restatement of it. Using
+  // `rank` removes the lookup, the fallback, and the question of what a miss means.
+  return hits.map((h, rank) => ({
     id: h.id,
     text: data.texts.get(h.id)!,
     score: h.score,
-    index: data.idToIndex.get(h.id) ?? -1,
+    index: rank,
   }));
 }
 
@@ -625,11 +638,24 @@ export function expandContextWindowBySession(
     if (session === undefined) {
       continue;
     }
+    // No `at` bounds check here. One used to exist -- `const at = owned.indexOf(hit);
+    // if (at < 0) continue;` -- and it was removed rather than annotated, because
+    // it is dead by construction and the proof is short enough to state.
+    //
+    // `sessionOfPosition` and `positionsOfSession` are filled inside the same loop
+    // over `sessions`, and `cursor` is both the key written to the map and the
+    // value pushed onto the session's list, in that order, once per turn. So the
+    // position is in the list of the session it maps to whenever it maps at all.
+    // The two cannot disagree, and `indexOf` therefore always succeeds.
+    //
+    // The guard was not harmless. It read as evidence that the invariant could
+    // break, which invites a reader to treat `at === -1` as a case worth handling
+    // later; and it sat in the hot path of the one function here that has been
+    // measured to matter (see the doc comment above). The `session === undefined`
+    // check above it is kept, and that one IS reachable -- a hit beyond the
+    // supplied boundaries takes it.
     const owned = positionsOfSession[session]!;
     const at = owned.indexOf(hit);
-    if (at < 0) {
-      continue;
-    }
     for (let distance = 1; distance < owned.length; distance++) {
       const before = at - distance;
       const after = at + distance;
@@ -754,10 +780,16 @@ async function searchSessionIndex(
     return [];
   }
   const hits = await data.index.search(queryVec, topK);
-  // Every hit id was inserted via `texts.set`, so the lookups are always defined.
+  // Every hit id was inserted via `texts.set` and `idToSession.set`, so both
+  // lookups are always defined. The `sessionIndex` lookup used to carry a
+  // `?? -1` fallback; it was removed because it was unreachable AND harmful: no
+  // code in this package reads `.sessionIndex` (the session channels carry the
+  // session as `text`, and `retrieval-diagnostics` reads `.sessionIndex` only
+  // from `retrieveSessionsByTurns`, which builds it from its own map). A stale
+  // `-1` would therefore have propagated silently instead of failing loudly.
   return hits.map((h) => ({
     id: h.id,
-    sessionIndex: data.idToSession.get(h.id) ?? -1,
+    sessionIndex: data.idToSession.get(h.id)!,
     text: data.texts.get(h.id)!,
     score: h.score,
   }));
@@ -969,7 +1001,13 @@ export async function retrieveTopKByQueries(
   // stays independent of the fusion order — otherwise a turn ranked first by
   // multi-query agreement but with a weaker cosine would read as a low-confidence
   // hit and trigger a spurious threshold abstention.
-  return fused.map((hit) => ({ ...hit, score: maxCosineById.get(hit.id) ?? hit.score }));
+  //
+  // The `??` fallback is gone because it was unreachable: `reciprocalRankFusion`
+  // emits one entry per distinct key it SAW, and every hit it sees was pushed
+  // into `rankedLists` — and therefore into `maxCosineById` — by the same two
+  // loops that feed it. There is no path that adds a hit to `rankedLists`
+  // without also recording its cosine in the map.
+  return fused.map((hit) => ({ ...hit, score: maxCosineById.get(hit.id)! }));
 }
 
 /**
@@ -1178,7 +1216,20 @@ export function extractLexicalKeywords(queries: readonly string[]): string[] {
   const seen = new Set<string>();
   const keywords: string[] = [];
   for (const query of queries) {
-    for (const token of query.toLowerCase().match(/[a-z][a-z0-9']*/g) ?? []) {
+    // `match` returns `null` for any query with no `[a-z]` character, and
+    // iterating `null` throws. That is NOT a hypothetical input: the queries
+    // reaching here are `[question, ...expansionQueries]`, and
+    // `parseQueryExpansion` accepts any comma-separated phrase the LLM returns
+    // -- an expansion like `'2'` or `'-'` is reproduced verbatim by the model
+    // tier (see the query-expansion fixtures). The guard is therefore load
+    // bearing, not defensive noise, and it is tested from both sides: a
+    // letterless query contributes no keywords, while a letter-bearing query
+    // whose tokens are all filtered out does the same.
+    const tokens = query.toLowerCase().match(/[a-z][a-z0-9']*/g);
+    if (tokens === null) {
+      continue;
+    }
+    for (const token of tokens) {
       if (token.length < 3 || LEXICAL_STOPWORDS.has(token) || seen.has(token)) {
         continue;
       }

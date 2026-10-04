@@ -375,3 +375,82 @@ Two habits follow, and both are cheap:
    repository from evidence gathered in a fraction of it.
 2. **Match more than executes.** For a *policing* pattern, over-matching is the safe
    direction: a false positive reaches a human, a false negative reaches nobody.
+
+---
+
+## 9. Addendum: the blind spot moved from the annotations to the report itself
+
+This section extends the same audit after the annotation set reached zero. With no
+suppressions left to find, the remaining uncovered counters looked like a code problem.
+They were three different problems wearing the same `[0]`, and telling them apart required
+reading the provider's raw output rather than its table. See `09` §41 for the campaign; what
+belongs here is the mechanism, because it is the same lesson as §8 one level down.
+
+### 9.1 The report is a projection that loses the evidence
+
+`coverage-final.json` carries, per branch, a list of *locations*. Istanbul builds a branch
+by pairing the sub-ranges the v8 provider emits for a decision. When the provider emits
+**one** sub-range, the branch is built with **one** location — and a branch with one location
+has no second arm to take, so it can only ever read zero. The table renders that as a missing
+branch. Nothing in the table says "this counter was constructed from a single range".
+
+Measured, by reading `NODE_V8_COVERAGE` directly on minimal subjects:
+
+| construct | sub-ranges emitted | branch locations | readable count |
+| --- | --- | --- | --- |
+| `a?.[i]`, `a?.m()`, `a?.b` | 1 | 1 | always `[0]` |
+| `c ? x : y` | 2 | 2 | both arms |
+| `cond instanceof E ? a : b` | 2 | 2 | both arms |
+| one-line `if (c) return v;` | 1 | 1 | always `[0]` |
+| `try { } catch { } finally { }` | 1 (the `finally` line) | 1 | always `[0]` |
+| the same function without `try/finally` | 0 on that line | — | — |
+
+The last two rows are the control. The `finally` line emits one range with `count = 0` while
+the block demonstrably executes — the statement on the same line counts 5. Remove the
+`try/finally` and the line emits nothing at all. So the range exists *because of* the clause,
+and a one-location branch cannot be satisfied by any test.
+
+### 9.2 Depth is not a factor, and that inference was falsified
+
+An earlier hypothesis held that attribution degraded with distance from the function head, on
+the evidence that the open gaps sat 48, 77 and 641 lines below their heads while every
+correctly-attributed synthetic probe sat 1-3 lines below. A probe holding the expression
+constant and varying only the padding above it refuted this: the same ternary reported two
+arms at distances of 1, 6, 11 and 17 lines, and a variant with five loops and ninety padding
+lines still reported two. Distance was never the variable.
+
+### 9.3 One `[0]` was neither an artefact nor a test gap — it was dead code
+
+`truncateSession` ended with `return truncated ? marked : plain`, and the `plain` arm cannot
+be reached. Reaching the return at all requires `text.length > maxChars`, and every turn
+contributes to either `userChars` or the assistant guards, so a session that drops and clips
+nothing forces `textLength <= maxChars` — a contradiction with the premise. Summing the
+assistant guards telescopes to exactly that inequality, because the final turn has an empty
+suffix. Exhaustively confirming it: 1,225,156 over-budget sessions (up to eight turns, bodies
+0-8 characters, budgets 1-300) produced no counterexample. `tsc`'s `noUnusedLocals` supplied
+independent evidence by reporting the flag as assigned and never read.
+
+The disposition was to delete the arm, not to test it. **Writing a test for a dead arm
+promotes a defect into a contract** — and three attempts were made and discarded before this
+was accepted, one of which *passed* while returning at the early exit.
+
+### 9.4 What this adds to §8
+
+§8's finding was that a gate written in the object language inherits the object's blind
+spots. This section adds the corresponding rule for measurement:
+
+> **A coverage percentage is a summary of a summary.** The provider emits ranges; a
+> transformer derives branches from them; a reporter aggregates branches. A single `[0]` can
+> be a gap, an instrument defect, or dead code, and the aggregated table cannot distinguish
+> them. Attribution requires going down a level to the ranges, where the count and the number
+> of ranges are still separate facts.
+
+The operational form, since this was violated four times in one session:
+
+1. **Never conclude "unreachable" or "artefact" from the table.** Instrument the line, print a
+   counter, observe whether the arm runs.
+2. **A claim of unreachability needs a proof, not an argument.** Exhaustive search or a
+   telescoping argument, as in §9.3 — plus, where available, an independent check such as
+   `tsc`'s unused-local report.
+3. **A passing test is not evidence it reached the branch.** Assert against the execution
+   trace, not against the intent recorded in the comment.

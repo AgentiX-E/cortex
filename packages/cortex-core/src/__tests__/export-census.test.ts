@@ -33,6 +33,7 @@ import {
   extractExportedSymbols,
   countCallers,
   identifierPattern,
+  stripComments,
   censusPackage,
   buildCensusReport,
   listOrphans,
@@ -367,6 +368,170 @@ describe('whole-identifier matching', () => {
   });
 });
 
+describe('stripping comments before matching a name', () => {
+  // The census decides "has a caller" by matching a symbol's name against file
+  // text, so a name inside a comment used to count as a call. Measured on this
+  // repository: `clampAwayFromZero` was reported as called by
+  // `vitest.config.ts`, a file with no statement referencing it — the name
+  // appeared only in the prose explaining why the function exists. That hides
+  // dead code in the worst possible way, because the act of documenting a symbol
+  // is what makes it disappear from the orphan report.
+
+  it('blanks a line comment and everything after it', () => {
+    const stripped = stripComments('const a = 1; // mentions target here\nconst b = 2;');
+    expect(stripped).not.toContain('target');
+    // The code before and after survives, and the newline still separates them.
+    expect(stripped).toContain('const a = 1;');
+    expect(stripped).toContain('const b = 2;');
+    expect(stripped.split('\n')).toHaveLength(2);
+  });
+
+  it('blanks a block comment, including a multi-line one', () => {
+    const stripped = stripComments('const a = 1;\n/* target\n   target */\nconst b = 2;');
+    expect(stripped).not.toContain('target');
+    expect(stripped).toContain('const a = 1;');
+    expect(stripped).toContain('const b = 2;');
+  });
+
+  it('keeps every offset valid so a long comment cannot join two lines', () => {
+    // Deleting a comment rather than blanking it would splice the code on either
+    // side into one line, creating a match neither side has alone. Length is
+    // preserved exactly, which rules that out.
+    const source = 'const a = 1; /* long\ncomment\nspanning */ const b = 2;';
+    const stripped = stripComments(source);
+    expect(stripped).toHaveLength(source.length);
+    // `1;` and `const` must not become adjacent.
+    expect(stripped).not.toContain('1; const');
+  });
+
+  it('does not treat a comment marker inside a string literal as a comment', () => {
+    // `'// not a comment'` is a string, and a naive scanner would cut the rest of
+    // the file from it. The closing quote must survive for this to hold.
+    const stripped = stripComments("const url = 'https://example.com/target';\nconst b = 1;");
+    expect(stripped).toContain('target');
+    expect(stripped).toContain('const b = 1;');
+  });
+
+  it('does not let an apostrophe in a comment open a string', () => {
+    // The failure this guards: a scanner that skips strings without regard for
+    // comments reads `// don't` as an unterminated string and blanks the rest of
+    // the file, which would make every symbol look unreferenced.
+    const stripped = stripComments("// don't reference target\nconst b = 'kept';");
+    expect(stripped).not.toContain('target');
+    expect(stripped).toContain('kept');
+  });
+
+  it('keeps a template literal, which is where dynamic references live', () => {
+    const stripped = stripComments('const p = `./target.js`;');
+    expect(stripped).toContain('target');
+  });
+
+  it('is a fixed point when there are no comments', () => {
+    const source = 'export function f(a: number): number {\n  return a + 1;\n}';
+    expect(stripComments(source)).toBe(source);
+  });
+
+  it('survives a string whose escape runs off the end of the file', () => {
+    // The `?? ''` on the escape's second character. It is reachable: a file
+    // truncated mid-string ends with a lone backslash, and reading one past the
+    // end yields `undefined`. Without the fallback the push would emit the string
+    // "undefined" into the output and lengthen it, silently shifting every offset
+    // after the truncation point -- which is the one thing this function exists to
+    // keep stable.
+    //
+    // The input is a truncated literal rather than a complete one because a
+    // complete `'a\\'` consumes two characters and never reaches the boundary.
+    const truncated = "const s = 'unterminated\\";
+    const stripped = stripComments(truncated);
+    expect(stripped).toHaveLength(truncated.length);
+    expect(stripped).not.toContain('undefined');
+  });
+
+  it('classifies a name mentioned only in a comment as having no caller', () => {
+    // The end-to-end form of the defect, at the unit level.
+    const symbol: ExportedSymbol = {
+      name: 'extractedHelper',
+      file: 'packages/core/src/a.ts',
+      line: 1,
+      kind: 'function',
+    };
+    const entry = entryFor(symbol, [
+      file('packages/core/src/a.ts', 'export function extractedHelper() {}'),
+      file('packages/core/src/other.ts', '// extractedHelper is documented elsewhere\n'),
+    ]);
+    expect(entry.callerCount).toBe(0);
+    expect(entry.callers).toEqual([]);
+  });
+
+  it('still classifies a real call as a caller', () => {
+    // POSITIVE CONTROL for the assertion above. A matcher that stripped too much
+    // — or stripped the whole file — would report zero callers for everything and
+    // pass the previous test while making the census useless.
+    const symbol: ExportedSymbol = {
+      name: 'extractedHelper',
+      file: 'packages/core/src/a.ts',
+      line: 1,
+      kind: 'function',
+    };
+    const entry = entryFor(symbol, [
+      file('packages/core/src/a.ts', 'export function extractedHelper() {}'),
+      file('packages/core/src/other.ts', 'const x = extractedHelper();\n'),
+    ]);
+    expect(entry.callerCount).toBe(1);
+    expect(entry.callers).toEqual(['packages/core/src/other.ts']);
+  });
+
+  it('counts a real call even when the file also mentions the name in a comment', () => {
+    // The two must not cancel: a comment does not remove a genuine call, and a
+    // call does not license the comment. Both directions are asserted here rather
+    // than only in isolation, so a regression in either is caught.
+    const symbol: ExportedSymbol = {
+      name: 'extractedHelper',
+      file: 'packages/core/src/a.ts',
+      line: 1,
+      kind: 'function',
+    };
+    const entry = entryFor(symbol, [
+      file('packages/core/src/a.ts', 'export function extractedHelper() {}'),
+      file('packages/core/src/other.ts', '// see extractedHelper\nconst y = extractedHelper();\n'),
+    ]);
+    expect(entry.callerCount).toBe(1);
+  });
+
+  it('ignores a name in the declaring file\u2019s own doc comment for local use', () => {
+    // `referencedLocally` asks whether the symbol is used as code inside its own
+    // file. A doc comment that restates the name is not a use — otherwise
+    // extracting a guarded body into a helper and documenting it would mark the
+    // helper as locally referenced even when nothing called it.
+    const symbol: ExportedSymbol = {
+      name: 'clampAwayFromZero',
+      file: 'packages/core/src/math.ts',
+      line: 1,
+      kind: 'function',
+    };
+    const undocumentedUse = entryFor(symbol, [
+      file('packages/core/src/math.ts', 'export function clampAwayFromZero(v: number) {}\n'),
+    ]);
+    expect(undocumentedUse.referencedLocally).toBe(false);
+
+    const docOnly = entryFor(symbol, [
+      file(
+        'packages/core/src/math.ts',
+        '/* The clampAwayFromZero guard keeps d from underflowing. */\nexport function clampAwayFromZero(v: number) {}\n',
+      ),
+    ]);
+    expect(docOnly.referencedLocally).toBe(false);
+
+    const real = entryFor(symbol, [
+      file(
+        'packages/core/src/math.ts',
+        'export function clampAwayFromZero(v: number) { return v; }\nconst x = clampAwayFromZero(1);\n',
+      ),
+    ]);
+    expect(real.referencedLocally).toBe(true);
+  });
+});
+
 describe('assembling the report', () => {
   it('groups symbols by their declaring package', () => {
     const files = [
@@ -546,15 +711,29 @@ describe('separating a local reference from no reference at all', () => {
     expect(entry.referencedLocally).toBe(false);
   });
 
-  it('does NOT treat a comment naming the symbol as no reference — it is still a mention', () => {
-    // Deliberate trade-off: stripping comments would reclassify live symbols
-    // like `hashText` (called six times inside a template literal) as dead, and
-    // a census that cries wolf is one nobody reads. The cost is `retrieveTopK`,
-    // whose only mention anywhere is one comment line; it stays in this bucket.
+  it('does not treat a comment naming the symbol as a reference in its own file', () => {
+    // This test used to assert `true` and carry the justification for not
+    // stripping comments: doing so "would reclassify live symbols like `hashText`
+    // (called six times inside a template literal) as dead".
+    //
+    // That justification was wrong on its own terms, which is why it is worth
+    // recording rather than quietly flipping the assertion. `hashText` is called
+    // from *template literals*, not from comments — `\`t-${hashText(turn)}\`` — and
+    // `stripComments` copies string and template literals through verbatim. The
+    // feared regression never existed, so the conclusion drawn from it ("leave
+    // comments counted as references") was unsound. `hashText` is still
+    // `referencedLocally: true` today, for the right reason.
+    //
+    // `retrieveTopK` is the case that exposes the real cost. Its in-file mentions
+    // are a declaration at line 429 and four comments (lines 101, 866, 881, 939),
+    // so counting comments made it look locally used when nothing in the file
+    // calls it. The old test cited `retrieveTopK` as the acceptable price of the
+    // trade-off; it was in fact the false positive that the trade-off produced.
     const entry = entryFor(
       {
         name: 'retrieveTopK',
         file: 'packages/cortex-eval/src/retrieval.ts',
+        // 1, not the real file's 429: the coordinate is into the fixture below.
         line: 1,
         kind: 'function',
       },
@@ -566,6 +745,41 @@ describe('separating a local reference from no reference at all', () => {
             '  return ctx.hits;',
             '}',
             '// The cap keeps the injected context at the same size as a single-query `retrieveTopK`.',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.referencedLocally).toBe(false);
+  });
+
+  it('still counts a template-literal call as a local reference', () => {
+    // POSITIVE CONTROL for the case above, and the direct refutation of the old
+    // trade-off's premise. `hashText` is only ever called inside template
+    // literals, so if stripping broke these it would be reported as dead.
+    //
+    // The declaration is spread over several lines, as the real `hashText` is.
+    // A one-line body would put the calls inside `declarationSpanEnd`'s range and
+    // `isReferencedLocally` excludes a declaration's own body deliberately, so a
+    // single-line fixture would silently test the body-exclusion rule instead of
+    // the template-literal rule. `line` is the fixture's own 1-based coordinate,
+    // not the real file's: an out-of-range line makes the function return false
+    // without reading anything, which is a green-looking way to test nothing.
+    const entry = entryFor(
+      {
+        name: 'hashText',
+        file: 'packages/cortex-eval/src/retrieval.ts',
+        line: 1,
+        kind: 'function',
+      },
+      [
+        file(
+          'packages/cortex-eval/src/retrieval.ts',
+          [
+            'export function hashText(text: string): string {',
+            '  return text;',
+            '}',
+            'const id = `t-${hashText(turn)}`;',
+            'const other = `s-${hashText(session.join("\\n"))}`;',
           ].join('\n'),
         ),
       ],
@@ -630,17 +844,25 @@ describe('separating a local reference from no reference at all', () => {
     expect(entry.referencedLocally).toBe(true);
   });
 
-  it('counts a docstring mention as a caller, which is why prose must not name orphans', () => {
-    // THE REGRESSION TEST for a defect this change introduced and then fixed.
-    // The docstring of `isReferencedLocally` named four real orphans as
-    // examples; the census matches whole-file text, so all four gained
-    // "caller: export-census.ts" and silently left the orphan list, while
-    // `--check` reported no new orphans and the baseline still listed them.
+  it('does not count a docstring mention as a caller', () => {
+    // THE REGRESSION TEST for a defect that was found, mis-diagnosed as
+    // unavoidable, and worked around for a while.
     //
-    // The behavior itself is the documented over-count and is kept. What the
-    // test pins is that it is *real*: documenting it is not enough, because the
-    // failure mode is a clean run. A comment must not be able to retire a
-    // finding unseen.
+    // The first version of this test asserted the OPPOSITE — that a docstring
+    // mention *does* count as a caller — and was titled "which is why prose must
+    // not name orphans". The story behind it: the docstring of
+    // `isReferencedLocally` named four real orphans as examples, the census
+    // matched whole-file text, and all four gained `caller: export-census.ts`
+    // and silently left the orphan list while `--check` reported no new orphans.
+    //
+    // The conclusion drawn then was that the behaviour was inherent and the rule
+    // had to be "never write a symbol name in prose". That was wrong. The
+    // behaviour was a bug in the matcher, not a property of the problem, and the
+    // cost of the workaround was that the tool silently hid dead code whenever
+    // somebody documented it.
+    //
+    // `stripComments` fixes the cause, so the rule is withdrawn: prose may name a
+    // symbol freely, and this asserts that naming one does NOT retire a finding.
     const entry = entryFor(
       { name: 'orphanedHelper', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
       [
@@ -648,8 +870,32 @@ describe('separating a local reference from no reference at all', () => {
         file('packages/b/src/doc.ts', '// see orphanedHelper for the example'),
       ],
     );
-    expect(entry.callerCount).toBe(1);
-    expect(entry.callers).toEqual(['packages/b/src/doc.ts']);
+    expect(entry.callerCount).toBe(0);
+    expect(entry.callers).toEqual([]);
+  });
+
+  it('does not count a mention inside a block comment as a caller', () => {
+    // The multi-line form, which is where real documentation actually lives. The
+    // workaround this replaces was hardest to honour here: a JSDoc block on a
+    // neighbouring function is the natural place to cross-reference a sibling.
+    const entry = entryFor(
+      { name: 'orphanedHelper', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+      [
+        file('packages/a/src/x.ts', 'export function orphanedHelper() {}'),
+        file(
+          'packages/b/src/doc.ts',
+          [
+            '/**',
+            ' * Does the thing.',
+            ' *',
+            ' * Compare orphanedHelper, which does the other thing.',
+            ' */',
+            'export function unrelated() {}',
+          ].join('\n'),
+        ),
+      ],
+    );
+    expect(entry.callerCount).toBe(0);
   });
 
   it('keeps the local-reference flag off symbols that already have a caller', () => {

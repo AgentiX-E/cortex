@@ -1,6 +1,16 @@
 import type { ConfidenceInterval } from '@agentix-e/cortex-core';
 
-/** Core types for the Cortex scientific evaluation harness. */
+/**
+ * Core types for the Cortex scientific evaluation harness.
+ *
+ * Declaration-only: every export below is a `type` or an `interface`, and all of
+ * this module's import sites use `import type`. Nothing here produces a runtime
+ * value, which is why `vitest.config.ts` lists this exact path as excluded from
+ * coverage — an instrumented module with no executable code reports 0/0/0/0, and
+ * that number would describe the instrument rather than the code. Adding a
+ * runtime export to this file would silently void that exclusion, so a value
+ * belongs in its own module instead.
+ */
 
 /** LongMemEval-style capability tags. */
 export type Capability = 'IE' | 'MR' | 'KU' | 'TR' | 'ABS';

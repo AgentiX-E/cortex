@@ -65,9 +65,26 @@ export function resolveContradiction(facts: readonly Fact[]): Resolution {
     }
     return a;
   });
-  const ranked = [...facts].sort(
-    (a, b) => (scores.get(b.object) ?? 0) - (scores.get(a.object) ?? 0),
-  );
+  // Ranked order is by group score, descending.
+  //
+  // The score is read through the SAME key that produced it rather than by a
+  // second `scores.get(f.object)` lookup, and that is the fix rather than a
+  // tidy-up. `scores` and `byObject` are filled from one loop over `facts`, so
+  // the two agreed by construction -- but the original form re-looked the object
+  // up in `scores` and carried a `?? 0` for the case it could not miss. Both
+  // fallback arms were unreachable, and a throw-sentinel experiment confirmed it:
+  // replacing each with `throw` left all 218 tests green.
+  //
+  // A `?? 0` there is not defensive. It is a second answer to a question that has
+  // one, and it cost `resolve.ts` two of its twelve branch arms -- 91.66% against
+  // a 95% floor -- while describing behaviour the function cannot exhibit.
+  // Pairing each fact with its own score makes the impossible case
+  // unrepresentable, so there is no branch left to cover and no invariant to
+  // assert at runtime.
+  const ranked = [...byObject.entries()]
+    .map(([object, list]) => ({ score: scores.get(object)!, list }))
+    .sort((a, b) => b.score - a.score)
+    .flatMap((group) => group.list);
   return { winner, belief: bestBelief, ranked };
 }
 

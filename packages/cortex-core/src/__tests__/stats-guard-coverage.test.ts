@@ -3,7 +3,7 @@
  *
  * ## Why these tests exist
  *
- * Five guard bodies in `betaContinuedFraction` carry
+ * Five guard bodies in `betaContinuedFraction` once carried
  * `c8 ignore next -- defensive guard, unreachable via valid inputs`.
  * **That stated reason was measured and found to be false** — see
  * `docs/FIX-COVERAGE-GATE-NOISE.md` §5 and the throwing-sentinel table there:
@@ -16,15 +16,31 @@
  * fixed (`logGamma`'s reflection sign, `regularizedIncompleteBeta`'s missing
  * complementary branch). **The suite is now green with the sentinels in place**,
  * so at the current revision the guards are genuinely unreachable and the
- * annotations are correct — by accident, not by intent. Both measurements are
+ * annotations were correct — by accident, not by intent. Both measurements are
  * right; they were taken on different revisions. An annotation is a claim about
  * a specific revision, and the `c8 ignore` text here has not changed since it was
  * written, so it cannot distinguish the two states. See §5.1 of the same doc.
  *
- * This file is therefore a *characterisation* suite, not a gap-closer: it pins
- * the behaviour of the asymptotic path the guards sit on, so that if a future
- * change makes those guards load-bearing again, the change is visible here rather
- * than only in the coverage number.
+ * ## The annotations were then removed, because correct is not the same as useful
+ *
+ * Establishing that the guards are unreachable settled the question the
+ * annotations were *asked* and left the problem they were *supposed to solve*
+ * untouched: a guard the provider still counts. `@vitest/coverage-v8` honours
+ * neither `c8 ignore` nor `v8 ignore` — the two spellings produce byte-identical
+ * output — so the six arms stayed in the denominator and pinned the file at
+ * 93.29% against a 95% floor.
+ *
+ * The guards are now `clampAwayFromZero` and `degenerateDfPValue`, both exported
+ * and both driven directly by `stats-degenerate.test.ts`; `stats.ts` reports 100%
+ * on all four dimensions with no exclusions. That is the difference between
+ * *excluding* an arm and *earning* it, and it is why this file no longer carries
+ * annotations to characterise.
+ *
+ * This file remains a *characterisation* suite: it pins the behaviour of the
+ * asymptotic path the guards sit on, so that if a future change makes those
+ * guards load-bearing again, the change is visible here rather than only in the
+ * coverage number. The extracted functions are covered where they now live; what
+ * is covered here is the path that reaches them.
  *
  * ## What "driving the guard" actually requires
  *

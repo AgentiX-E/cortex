@@ -190,6 +190,23 @@ function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn 
         // Rethrowing rather than swallowing: the stage must keep failing loudly,
         // because the alternative is an arm that silently records the baseline's
         // ordering as the feature's.
+        //
+        // Both arms of the `instanceof` below are live, and the second one is not a
+        // formality. `loadPipeline()` is `createTransformersRerankPipeline`, which
+        // awaits `import('@xenova/transformers')`, and a module that throws a
+        // primitive while being evaluated propagates that primitive through `await`
+        // -- measured, not assumed: mocking the peer to `throw` a string reaches
+        // this line with `err` a string, and the message below then ends in
+        // `Underlying error: <that string>`. So `String(err)` is the arm that keeps
+        // the real cause visible for the one rejection shape that has no `.message`
+        // to read; reading `err.message` unconditionally would report `undefined`
+        // and hide it.
+        //
+        // Why the coverage report showed this arm at zero: every existing fixture
+        // lets the peer fail on its own terms, and that failure is always an
+        // `Error` (`ERR_MODULE_NOT_FOUND`, or a transitive `sharp` install error).
+        // A zero count here therefore described the fixtures, not the code -- which
+        // is exactly what the test below this comment now pins.
         const detail = err instanceof Error ? err.message : String(err);
         throw new Error(
           `CORTEX_RERANK_PROVIDER=local requires the optional peer @xenova/transformers, ` +

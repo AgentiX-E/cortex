@@ -78,15 +78,63 @@ SINGLE_QUOTE = "'"
 
 
 def _strip_single_quoted(text: str) -> str:
-    """Blank out single-quoted regions, where no expansion happens."""
+    """Blank out the regions where the shell does not perform an expansion.
+
+    Two constructs suppress expansion and must be erased before scanning:
+
+      1. single-quoted runs, from an opening `'` to the next `'`;
+      2. a backslash-escaped `$`, outside single quotes.
+
+    Both were verified against a real shell rather than reasoned about, because
+    the reasoning is easy to get wrong in both directions and this module's whole
+    value is that it is right about the boundary:
+
+        echo \\${X}      -> prints ${X}    (backslash escapes the dollar)
+        echo "\\${X}"    -> prints ${X}    (the escape works inside double quotes)
+        echo ${X}        -> expands
+        echo "${X}"      -> expands
+        echo '${X}'      -> prints ${X}    (single quotes)
+
+    A rule of "erase from `'` to the next `'`, and erase `\\$`" reproduces all
+    five lines above.
+
+    A per-character quote TOGGLE also reproduces them, which is why the original
+    version survived review -- including the escaped-quote case
+    `'it'\\''s ${X}'`, where a toggle and the shell agree that `${X}` is quoted
+    (the trailing `'` opens a run that swallows the expansion). Modelling the run
+    is still the better form: it states the shell's rule once instead of encoding
+    an accumulator whose correctness depends on the input being well-formed.
+    """
     out: list[str] = []
-    in_single = False
-    for ch in text:
-        if ch == SINGLE_QUOTE:
-            in_single = not in_single
-            out.append(' ')
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '\\' and i + 1 < n:
+            # Outside single quotes a backslash escapes the next character. When
+            # that character is `$` the shell does not expand, so the pair is
+            # blanked; otherwise the pair is copied and no state changes.
+            if text[i + 1] == '$':
+                out.append('  ')
+            else:
+                out.append(ch)
+                out.append(text[i + 1])
+            i += 2
             continue
-        out.append(' ' if in_single else ch)
+        if ch == SINGLE_QUOTE:
+            # Consume the whole quoted run, up to and including the closing quote.
+            # If the run is unterminated the rest of the line is quoted, which is
+            # what the shell would do too.
+            j = text.find(SINGLE_QUOTE, i + 1)
+            if j == -1:
+                out.append(' ' * (n - i))
+                i = n
+            else:
+                out.append(' ' * (j - i + 1))
+                i = j + 1
+            continue
+        out.append(ch)
+        i += 1
     return ''.join(out)
 
 
@@ -152,6 +200,65 @@ def _python_command_strings(path: Path) -> list[tuple[str, str]]:
     return results
 
 
+def scan_test_sources(root: Path) -> list[str]:
+    """Find a shell hazard stored as a *string literal* in a Python file.
+
+    ## Why this is a second, narrower rule
+
+    Four tool calls were lost to `Bad substitution` while the tests that check for
+    that failure were being written. The path was always the same: the hazard was
+    spelled literally inside a Python file, and the edit that would have written
+    that file was itself carried in a shell command -- so the command died before
+    the file existed, and the fix could never land. The tests were correct and
+    could not be delivered.
+
+    The rule that stops the loop is not "detect the hazard" (the rest of this
+    module does that) but "do not store the hazard as a literal". A test that needs
+    the sequence can build it from `chr(36) + chr(123)`, which is inert in every
+    carrier.
+
+    ## Scope, and why it is not "any occurrence"
+
+    The first version of this function flagged every line containing the sequence,
+    which failed on the guard's own documentation -- 69 violations, most of them
+    prose. That version would have to be deleted to be obeyed, which is the mark of
+    a rule that measures the wrong thing. Naming the hazard is how it gets
+    explained, and the docstring you are reading does exactly that.
+
+    What actually breaks a delivery is the hazard sitting inside a **string
+    literal** that will be written to a file or handed to an interpreter, because
+    such a literal is reproduced byte-for-byte into whatever carries it. So this
+    scans only the contents of string literals that contain `write_text`,
+    `write(`, or a heredoc-style program body -- not comments, not docstrings.
+    """
+    violations: list[str] = []
+    hazard = chr(36) + chr(123)
+    # A string literal that is an argument to a writer. Double- and single-quoted,
+    # non-greedy, on one line: multi-line program bodies are caught by `scan` when
+    # they are shell, and the hazard here is about a literal that survives a copy.
+    literal = re.compile(
+        r"""(?:write_text|\.write|writelines)\s*\(\s*(?P<q>["'])(?P<body>(?:\\.|(?!\1).)*)\1"""
+    )
+    for path in sorted(root.rglob('*.py')):
+        if '__pycache__' in path.parts:
+            continue
+        text = path.read_text(encoding='utf-8')
+        for lineno, line in enumerate(text.split('\n'), start=1):
+            stripped = line.strip()
+            # Comments and docstring prose may name the hazard; that is how it is
+            # documented. Only executable literals are checked.
+            if stripped.startswith('#'):
+                continue
+            for m in literal.finditer(line):
+                if hazard in m.group('body'):
+                    violations.append(
+                        f'{path}:{lineno}: a literal written to a file contains a shell '
+                        f'hazard; build it from chr(36) + chr(123) so an edit to this '
+                        f'file can be delivered'
+                    )
+    return violations
+
+
 def _markdown_shell_blocks(path: Path) -> list[tuple[str, str]]:
     """Extract fenced ```sh / ```bash blocks from a Markdown file."""
     text = path.read_text(encoding='utf-8')
@@ -162,6 +269,31 @@ def _markdown_shell_blocks(path: Path) -> list[tuple[str, str]]:
 
 
 def main(argv: list[str]) -> int:
+    # `--fragment FILE` (or `-` for stdin) checks ONE shell fragment instead of a
+    # tree. This is the mode that matters most, and the mode the first version
+    # lacked. The guard originally scanned only `tools/*.py` and `docs/*.md`, so a
+    # command typed directly into a shell ran unchecked -- and the second
+    # recurrence (`Bad substitution: lines[l-1].trim`) was exactly that: a probe
+    # held in the command string, never written to a file, invisible to a
+    # filesystem scan. A guard that inspects only what was committed cannot see the
+    # mistake at the moment it is made, which is the only moment it is cheap.
+    if len(argv) > 2 and argv[1] == '--fragment':
+        source = argv[2]
+        text = sys.stdin.read() if source == '-' else Path(source).read_text(encoding='utf-8')
+        violations = scan(text, source if source != '-' else '<stdin>')
+        if violations:
+            print(f"{len(violations)} shell-interpolation violation(s):", file=sys.stderr)
+            for v in violations:
+                print(f"  {v}", file=sys.stderr)
+            print(
+                "\nSee docs/OPS-SHELL-INTERPOLATION.md. Write the program to a file and "
+                "run the file, or quote the here-doc delimiter.",
+                file=sys.stderr,
+            )
+            return 1
+        print('shell-interpolation guard: 1 fragment(s) clean')
+        return 0
+
     root = Path(argv[1]) if len(argv) > 1 else Path('.')
     fragments: list[tuple[str, str]] = []
 
@@ -175,6 +307,7 @@ def main(argv: list[str]) -> int:
     violations: list[str] = []
     for origin, text in fragments:
         violations.extend(scan(text, origin))
+    violations.extend(scan_test_sources(root))
 
     if violations:
         print(f"{len(violations)} shell-interpolation violation(s):", file=sys.stderr)

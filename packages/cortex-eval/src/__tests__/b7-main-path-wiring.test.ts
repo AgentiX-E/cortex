@@ -397,3 +397,103 @@ describe('the ground truth is still not a side source, and must not become one',
     expect(result.clusters.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('the option-forwarding spreads tolerate an omitted option', () => {
+  // Every call elsewhere in this file passes an options object, so the ELSE arm of
+  // each `options.x !== undefined ? { x } : {}` spread is never taken. That arm
+  // looks trivial — it contributes `{}` — and it is not: it is the arm a caller
+  // takes when they do NOT configure the feature, which is the default path and
+  // therefore the one most production runs use.
+  //
+  // The spreads exist because these options are forwarded to the FEATURE system
+  // only. Spreading `{ x: undefined }` would set the key to `undefined` explicitly,
+  // and a downstream `'x' in options` check would then read as "the caller
+  // configured this" while the value says nothing. So the guard is load-bearing in
+  // the way the comment on the spread claims, and both arms need to be taken.
+  //
+  // One test covers four spreads in `runNaturalLanguageBenchmark` because they
+  // share the single condition "the caller omitted these"; splitting it per option
+  // would produce four tests that assert the same property.
+
+  it('runs with no optional retrieval options at all', async () => {
+    // Only `runs` is supplied, so `temperature`, `entityIdentityClause`,
+    // `reranker` and `rerankCandidatePool` all take their `{}` arms.
+    const traces: DecisionTrace[] = [];
+    const { report, markdown } = await runNaturalLanguageBenchmark(
+      instances,
+      new HashEmbedding(64),
+      stubLlm(),
+      {
+        runs: 1,
+        onDecision: (trace) => traces.push(trace),
+      },
+    );
+
+    // The run must produce a report with answers in it, which is what proves the
+    // system was constructed and actually asked a question rather than skipping on
+    // a half-built options object.
+    expect(report).toBeDefined();
+    expect(markdown.length).toBeGreaterThan(0);
+    // The decision trace is what proves a question reached the system.
+    expect(traces.length).toBeGreaterThan(0);
+  });
+
+  it('runs with an empty options object', async () => {
+    // The boundary of the previous case: `{}` rather than `{ runs: 1 }`, so every
+    // optional field including `onDecision` is absent. `onDecision` is called
+    // through `options.onDecision?.(trace)` on every decision, so this also covers
+    // the optional-call arm that cannot be reached when a callback is passed.
+    const { report, markdown } = await runNaturalLanguageBenchmark(
+      instances,
+      new HashEmbedding(64),
+      stubLlm(),
+      {},
+    );
+    expect(report).toBeDefined();
+    expect(markdown.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The other half of the spreads above: the arms that run when the caller DOES
+   * supply each option.
+   *
+   * The two tests above pin the `{}` arms, and together with this one both sides of
+   * every `!== undefined` guard in `runNaturalLanguageBenchmark` are taken. That
+   * pairing matters more here than it does for most option plumbing, because the
+   * guard's whole purpose is to distinguish "the caller omitted this" from "the
+   * caller set this", and a suite that only ever omits them cannot tell a working
+   * guard from a spread that was deleted -- the shape this file was written for.
+   *
+   * `rerankProtectedHead: 0` rather than a positive number, and `false` for
+   * `entityIdentityClause`, because those are the values that would be lost by a
+   * truthiness check written as `options.x ? ... : {}`: both are defined and both
+   * are falsy, so only an explicit `!== undefined` forwards them. A test using
+   * truthy values would pass against the broken guard too.
+   */
+  it('forwards the optional retrieval options when the caller supplies them', async () => {
+    const traces: DecisionTrace[] = [];
+    const reranker = async (
+      pairs: readonly { question: string; candidateId: string; text: string }[],
+    ): Promise<readonly number[]> => pairs.map(() => 0);
+
+    const { report, markdown } = await runNaturalLanguageBenchmark(
+      instances,
+      new HashEmbedding(64),
+      stubLlm(),
+      {
+        runs: 1,
+        entityIdentityClause: false,
+        reranker,
+        rerankCandidatePool: 0,
+        rerankProtectedHead: 0,
+        onDecision: (trace) => traces.push(trace),
+      },
+    );
+
+    // The run still completes and answers, which is what distinguishes "the options
+    // were forwarded" from "the constructor threw on a malformed options object".
+    expect(report).toBeDefined();
+    expect(markdown.length).toBeGreaterThan(0);
+    expect(traces.length).toBeGreaterThan(0);
+  });
+});

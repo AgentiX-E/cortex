@@ -81,10 +81,15 @@ export class SqliteStorage implements Storage {
   }
 
   async transaction<T>(fn: (tx: StorageTransaction) => Promise<T>): Promise<T> {
+    // The arrow parameters are annotated explicitly rather than left to be
+    // inferred from `StorageTransaction`. Contextual typing does not reach them
+    // here because the properties are assigned through an object literal whose
+    // own type is only checked afterwards, so every parameter would be an
+    // implicit `any` -- which this project's `noImplicitAny` rejects.
     const tx: StorageTransaction = {
-      put: (t, k, v, o) => this.put(t, k, v, o),
-      get: (t, k) => this.get(t, k),
-      del: (t, k) => this.del(t, k),
+      put: (t: string, k: string, v: unknown, o?: PutOptions) => this.put(t, k, v, o),
+      get: <U>(t: string, k: string) => this.get<U>(t, k),
+      del: (t: string, k: string) => this.del(t, k),
     };
     // better-sqlite3 is synchronous; provide a thin async wrapper.
     return fn(tx);

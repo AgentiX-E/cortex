@@ -34,6 +34,76 @@ describe('stats edge cases', () => {
     expect(welchTTest([2, 2, 2], [2, 2, 2])).toBe(1);
   });
 
+  it('welch t-test returns 1 for equal means with zero variance in both samples', () => {
+    // Two constant samples with the same value: `se2 === 0` so the standard error
+    // is undefined, and the function falls to the degenerate-case answer. The
+    // answer must be 1 -- identical constant samples are maximally consistent, and
+    // returning 0 here would report "certainly different" from data that shows no
+    // difference at all. Only the TRUE arm of `ma === mb ? 1 : 0` is taken, which
+    // the coverage report showed was never executed.
+    expect(welchTTest([7, 7], [7, 7])).toBe(1);
+    expect(welchTTest([0, 0, 0], [0, 0, 0])).toBe(1);
+    expect(welchTTest([-3.5, -3.5], [-3.5, -3.5])).toBe(1);
+  });
+
+  it('welch t-test returns 0 for differing means with zero variance in both samples', () => {
+    // The complement, and the reason the ternary exists: with no variance at all,
+    // any difference in mean is infinitely significant. Pinning both arms is what
+    // makes the pair meaningful -- a test for the 1 arm alone would pass on an
+    // implementation that always returned 1.
+    expect(welchTTest([1, 1], [2, 2])).toBe(0);
+    expect(welchTTest([0, 0], [1e-12, 1e-12])).toBe(0);
+  });
+
+  it('welch t-test returns 1 for equal denormal means at the underflow boundary', () => {
+    // Denormal variances square to exactly 0, so `va * va` underflows and the
+    // degrees-of-freedom denominator is 0. That is the second degenerate ternary in
+    // the function, and its equal-means arm was also never taken. The equal-means
+    // case must agree with the `se2 === 0` path above: the same input distribution
+    // cannot give 1 through one short-circuit and 0 through the other.
+    const tiny = 1e-200;
+    expect(welchTTest([tiny, tiny], [tiny, tiny])).toBe(1);
+  });
+
+  it('reaches the dfDenom guard with equal means and non-zero variance', () => {
+    // The case that makes the `ma === mb` arm of the dfDenom guard REACHABLE, and
+    // the reason it could not be dismissed as dead code.
+    //
+    // `[0, v, 2v]` and `[v, v, v]` share the mean `v` while having DIFFERENT
+    // samples, so the variance is non-zero and `se2` is non-zero -- the first
+    // short-circuit is passed. But the variances are of order 1e-200, so `va * va`
+    // is of order 1e-400 and underflows to 0, which makes `dfDenom` exactly 0 and
+    // enters the guard. The means are equal, so the taken arm is the `1`.
+    //
+    // An earlier reading of this code reasoned that equal means force equal
+    // variances and therefore `dfDenom === 0` implies `va === 0`, which would make
+    // the arm unreachable. Instrumenting the guard body disproved it: this input
+    // enters the body, and 884 exponent-pairs had already shown the neighbouring
+    // `df` guard to be genuinely dead. Reachability is not something to reason
+    // about here; floating-point underflow decides it.
+    for (const exponent of [100, 150, 160]) {
+      const v = Math.pow(10, -exponent);
+      const p = welchTTest([0, v, 2 * v], [v, v, v]);
+      expect(Number.isFinite(p), `exponent ${exponent}`).toBe(true);
+      expect(p, `equal means with underflowing variance, exponent ${exponent}`).toBe(1);
+    }
+  });
+
+  it('returns 1 for equal means reached through the second short-circuit', () => {
+    // The two-element spelling of the same case. `[-v, v]` has mean 0 and variance
+    // `v*v`, which underflows for the same reason; `[0, 0]` has mean 0 and zero
+    // variance, so `se2` is non-zero and the guard is entered on equal means.
+    for (const exponent of [100, 150, 160]) {
+      const v = Math.pow(10, -exponent);
+      expect(welchTTest([-v, v], [0, 0]), `exponent ${exponent}`).toBe(1);
+    }
+  });
+
+  it('welch t-test returns 0 for differing denormal means at the underflow boundary', () => {
+    const tiny = 1e-200;
+    expect(welchTTest([tiny, tiny], [2 * tiny, 2 * tiny])).toBe(0);
+  });
+
   it('studentTCdf with df <= 0 returns 0.5', () => {
     expect(studentTCdf(0, 0)).toBe(0.5);
   });

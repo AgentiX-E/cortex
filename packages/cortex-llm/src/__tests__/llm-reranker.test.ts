@@ -109,6 +109,48 @@ describe('parseListwiseScores', () => {
   it('accepts an empty expectation without consulting the text', () => {
     expect(parseListwiseScores('anything', 0)).toEqual([]);
   });
+
+  it('rejects an array that is an object member because of the closing brace', () => {
+    // The trailing-side guard, which the `{...}` test above does NOT reach: there
+    // the opening brace precedes the array, so the first guard returns before the
+    // second is evaluated. Here the array comes first and the object closes after
+    // it, which is the shape a model produces for `{"scores": [...]}` when the
+    // opening fence is lost to truncation.
+    //
+    // Both sides need their own case precisely because each is an early return:
+    // testing one can never execute the other, and a single test named after "the
+    // object-member guard" would leave one of the two branches uncovered while
+    // reading as though the rule were verified.
+    expect(parseListwiseScores('[0.9, 0.1]}', 2)).toBeNull();
+  });
+
+  it('rejects an opening brace anywhere in the prefix, not only immediately before', () => {
+    // The prefix check is on the whole slice before the array, so a brace from
+    // unrelated prose counts. Pinning that keeps a later "optimisation" that
+    // narrows the slice from silently accepting an object member.
+    expect(parseListwiseScores('{"a": 1, "b": [0.9, 0.1]}', 2)).toBeNull();
+  });
+
+  it('parses an array with no closing bracket by using the last one found', () => {
+    // `lastIndexOf(']')` rather than a match on a balanced pair: a truncated reply
+    // that still contains a complete array must not be discarded merely because
+    // text follows. This asserts the bracket search is index-based and that
+    // trailing prose is tolerated.
+    expect(parseListwiseScores('scores: [0.9, 0.1] (end)', 2)).toEqual([0.9, 0.1]);
+  });
+
+  it('returns null when the bracketed text is not valid JSON', () => {
+    // The `catch` around `JSON.parse`. The surrounding tests all pass text that
+    // parses, so this arm is reached only by content that is bracketed and
+    // malformed — which is not the same as absent. A model that emits
+    // `[0.9, 0.1, ]` or `[0.9 0.1]` produces a complete bracket pair that JSON
+    // rejects, and the difference matters: without the catch the throw would
+    // escape `parseListwiseScores` and abort the whole rerank rather than falling
+    // back for one bucket.
+    expect(parseListwiseScores('[0.9, 0.1, ]', 2)).toBeNull();
+    expect(parseListwiseScores('[0.9 0.1]', 2)).toBeNull();
+    expect(parseListwiseScores("[0.9, 'x']", 2)).toBeNull();
+  });
 });
 
 describe('LLMReranker', () => {

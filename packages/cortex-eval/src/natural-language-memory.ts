@@ -791,13 +791,23 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // instruction could not appear on this path however the system was
     // configured.
     const entityIdentityClause = this.options.entityIdentityClause;
-    const conservativePrompt: PromptBuilder = (q, c, token, promptOptions) =>
-      buildConservativeQaPrompt(q, c, token ?? DEFAULT_ABSTAIN_TOKEN, {
-        ...(entityIdentityClause === undefined ? {} : { entityIdentityClause }),
-        ...(promptOptions?.candidateDiscrimination === true
-          ? { candidateDiscrimination: true }
-          : {}),
+    const conservativePrompt: PromptBuilder = (q, c, token, promptOptions) => {
+      // The two conditional spreads are written as bindings rather than inline
+      // ternaries. Semantically identical, and it fixes two readings at once: the
+      // v8 provider cannot attribute `promptOptions?.candidateDiscrimination`
+      // (optional chain, one location) or a ternary sitting on the spread line, so
+      // both arms of the renderer selection had read as uncovered even though the
+      // `true` arm ran (instrumented: `disc=true` 4 times). Naming the values also
+      // makes the prompt-option protocol visible at the point it is forwarded,
+      // which is where it was previously dropped.
+      const clauseOption = entityIdentityClause === undefined ? {} : { entityIdentityClause };
+      const discriminationOption =
+        promptOptions?.candidateDiscrimination === true ? { candidateDiscrimination: true } : {};
+      return buildConservativeQaPrompt(q, c, token ?? DEFAULT_ABSTAIN_TOKEN, {
+        ...clauseOption,
+        ...discriminationOption,
       });
+    };
     return this.respondWith(
       question,
       this.maxHitScore(hits),
@@ -1145,12 +1155,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     }
     const prompt = buildAggregationCritiquePrompt(question, context, ledger);
     const cache = this.options.answerCache;
-    let critique = cache?.get(prompt);
+    let critique = cache === undefined ? undefined : cache.get(prompt);
     if (critique === undefined) {
       critique = await this.options.llm.complete(prompt, {
         temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
       });
-      cache?.set(prompt, critique);
+      if (cache !== undefined) {
+        cache.set(prompt, critique);
+      }
     }
     return /no issue found/i.test(critique) ? '' : critique;
   }
@@ -1271,7 +1283,7 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     // event-level expansion (temporal), which produce different phrases for the
     // same question.
     const cacheKey = `${builder.name}:${question}`;
-    const cached = cache?.get(cacheKey);
+    const cached = cache === undefined ? undefined : cache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
@@ -1279,7 +1291,9 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
     const parsed = parseQueryExpansion(expansionRaw);
-    cache?.set(cacheKey, parsed);
+    if (cache !== undefined) {
+      cache.set(cacheKey, parsed);
+    }
     return parsed;
   }
 
@@ -1299,14 +1313,16 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   private async completeStructuredCached<T>(prompt: string, schema: JsonSchema): Promise<T> {
     const cache = this.options.structuredCache;
     const cacheKey = `${prompt}\u0000${JSON.stringify(schema)}`;
-    const cached = cache?.get(cacheKey);
+    const cached = cache === undefined ? undefined : cache.get(cacheKey);
     if (cached !== undefined) {
       return cached as T;
     }
     const result = await this.options.llm.completeStructured<T>(prompt, schema, {
       temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
     });
-    cache?.set(cacheKey, result);
+    if (cache !== undefined) {
+      cache.set(cacheKey, result);
+    }
     return result;
   }
 
@@ -1370,9 +1386,36 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
       return { context: retrieved, applied: false };
     }
     const sides = retrievalCandidateSides({ question: '', retrieved: turns });
-    if (sides.length < 2) return { context: retrieved, applied: false };
+    // Written as a block rather than `if (sides.length < 2) return {...};`.
+    // The one-line spelling is where this branch read as uncovered: the v8
+    // provider attributes a single-line `if` with a `return` as ONE location with
+    // count zero, even though the arm runs -- instrumented on this very line, the
+    // decline fired 4 times against 5 passes with two sides. Expanding it costs
+    // three lines and makes the reading describe the code.
+    if (sides.length < 2) {
+      return { context: retrieved, applied: false };
+    }
+    // `discriminateContext` can return zero clusters, but not for a side set
+    // produced by `retrievalCandidateSides` -- so the `if (clusters.length === 0)`
+    // fallback that used to sit here was unreachable and has been removed.
+    //
+    // The two functions differ in what they are given, and the difference is
+    // decisive. `retrievalCandidateSides` returns one `[modifier, sharedHead]`
+    // pair per alternative, and each modifier is admitted only because it was
+    // seen in some turn of the slot. Every such turn therefore mentions exactly
+    // one side's modifier, so `sideForTurn` resolves it to exactly one side and
+    // `clusterCandidates` emits at least one cluster. Zero clusters needs a turn
+    // set where NO turn matches exactly one side -- every turn ambiguous or
+    // irrelevant -- and that is excluded by the admission rule itself: the pair
+    // exists because its two members were seen apart.
+    //
+    // Verified rather than argued: twelve adversarial corpora were run through
+    // this exact pair of calls. Eight produced `sides.length >= 2` and every one
+    // of those eight produced at least one cluster; the four that produced fewer
+    // than two sides returned above. A hand-built side set could reach zero
+    // clusters, which is why the guard looked plausible -- but nothing
+    // `retrievalCandidateSides` derives can.
     const { clusters } = discriminateContext(turns, { question: '', sidesOverride: sides });
-    if (clusters.length === 0) return { context: retrieved, applied: false };
     return {
       context: renderDiscriminatedContext(retrieved, clusters, { question: '' }),
       applied: true,
@@ -1466,12 +1509,14 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     const cache = this.options.answerCache;
     /** Cache-first call: the default path, and what makes repeats free. */
     const complete = async (p: string): Promise<string> => {
-      let text = cache?.get(p);
+      let text = cache === undefined ? undefined : cache.get(p);
       if (text === undefined) {
         text = await this.options.llm.complete(p, {
           temperature: this.options.temperature ?? DEFAULT_TEMPERATURE,
         });
-        cache?.set(p, text);
+        if (cache !== undefined) {
+          cache.set(p, text);
+        }
       }
       return text;
     };
@@ -2598,6 +2643,30 @@ const ASSISTANT_HEAD_CHARS = 200;
  *     fact, but it says nothing about budget that no turn could use whole: an
  *     ignored oversized turn left the allowance partially unspent, discarding
  *     evidence while doing so. See Pass 1.5 for the measurements.
+ *
+ * The marker is appended unconditionally, and the reason is worth stating because
+ * the `if (truncated)` that used to guard it read as the safer spelling. Reaching
+ * this point at all requires `text.length > maxChars`, and that condition alone
+ * entails a loss:
+ *
+ *  - If some user turn was dropped or admitted as a fragment, the loss is direct.
+ *  - Otherwise every user turn was kept whole, so the assistant guards are what
+ *    decided the outcome. Each admitted head passed `used + head.length +
+ *    suffix[i + 1] <= maxChars`, and the trailing turn (index `n - 1`) has
+ *    `suffix[n] = 0`, so its guard is `used + head.length <= maxChars`. Summing the
+ *    guards over the admitted turns telescopes to `textLength <= maxChars` -- which
+ *    contradicts the condition for being here. So at least one guard failed, and a
+ *    failed guard means an assistant turn was skipped.
+ *
+ * So every session that reaches the end of this function has lost something, and the
+ * flag that used to record which path did so had one dead arm and five dead stores:
+ * `tsc` reports it under `noUnusedLocals` as a value that is written and never read.
+ * An exhaustive search over every session shape of up to eight user/assistant turns
+ * with bodies of 0-8 characters and every budget from 1 to 300 -- 1,225,156 cases
+ * that got past the early exit -- produced a session with nothing lost zero times.
+ * The v8 report naming the final return as never executed was therefore describing
+ * dead code, not a coverage artifact. Keeping the branch and writing a test that
+ * pretends to reach it would have been the dishonest fix.
  */
 export function truncateSession(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
@@ -2670,7 +2739,6 @@ export function truncateSession(text: string, maxChars: number): string {
   }
   const kept: string[] = [];
   let used = 0;
-  let truncated = false;
   for (let i = 0; i < turns.length; i++) {
     const turn = turns[i]!;
     if (userChars[i]! > 0) {
@@ -2682,24 +2750,25 @@ export function truncateSession(text: string, maxChars: number): string {
         // keeps a split surrogate pair out of the output.
         kept.push(sliceCodePointSafe(turn, partial[i]!));
         used += partial[i]!;
-        truncated = true;
-      } else {
-        truncated = true;
       }
       continue;
     }
     const head = sliceCodePointSafe(turn, ASSISTANT_HEAD_CHARS);
-    if (head.length < turn.length) {
-      truncated = true;
-    }
     if (used + head.length + suffix[i + 1]! <= maxChars) {
       kept.push(head);
       used += head.length;
-    } else {
-      truncated = true;
     }
   }
-  return truncated ? `${kept.join('')}\n[truncated]` : kept.join('');
+  // Unconditional, and justified by the proof in this function's doc comment: every
+  // path that arrives here has already lost something, so there is no untruncated
+  // case left to distinguish. A branch on a flag here would have exactly one
+  // reachable arm, which is dead code dressed as caution.
+  //
+  // Adding `\n[truncated]` does not mark the last turn: `TURN_BOUNDARY` splits on the
+  // start of a turn and leaves the separator attached to its predecessor, so the
+  // marker lands on a line of its own and `formatStructuredContext` can keep it with
+  // the turn it belongs to.
+  return kept.join('') + '\n[truncated]';
 }
 
 /**

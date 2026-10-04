@@ -274,6 +274,68 @@ describe('computeRetrievalDiagnostics', () => {
     expect(embedded.some((t) => t === 'blue paint')).toBe(true);
     expect(embedded.some((t) => t === 'favorite color')).toBe(true);
   });
+
+  /**
+   * The date-prefix branch on the single-instance path.
+   *
+   * Every other fixture in this block omits `haystack_dates`, so the ternary that
+   * reads a session's date only ever took its `undefined` arm here -- measured by
+   * instrumenting the line and running this file: `dates === undefined` was true
+   * 11 times and false 0 times. The consequence was not a cosmetic coverage gap.
+   * The session counterpart (`computeSessionRetrievalDiagnostics`) DOES exercise a
+   * dated fixture, so the two diagnostics agreed on a scored context while only
+   * one of them had ever been shown to *build* a dated context. Since the date
+   * prefix changes the text that gets embedded, a regression that dropped it on
+   * this path alone would have changed retrieval while both functions still
+   * reported the same recall figure.
+   *
+   * The assertion is on the embedded text rather than on the diagnostic's output
+   * because the prefix's whole effect is on what the embedding model sees; a test
+   * that only checked recall would pass either way, since a hash embedding over a
+   * one-line haystack retrieves its only answerable turn regardless of prefix.
+   */
+  it('prefixes the context with the session date when the dataset supplies one', async () => {
+    const embedded: string[] = [];
+    const recording: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        embedded.push(...texts);
+        return texts.map(() => new Float64Array([0, 0, 0, 0]));
+      },
+    };
+    clearEmbeddingCache();
+    const instance: LongMemEvalInstance = {
+      question_id: 'q1',
+      question_type: 'single-session-user',
+      question: 'Where did I move?',
+      answer: 'Berlin',
+      haystack_dates: ['2023/05/15'],
+      haystack_sessions: [[{ role: 'user', content: 'I moved to Berlin.', has_answer: true }]],
+    };
+
+    await computeRetrievalDiagnostics([instance], recording, 5);
+
+    expect(embedded).toContain('[2023/05/15] user: I moved to Berlin.');
+    // And without the date the prefix is absent, which is the arm the rest of this
+    // block was already covering -- asserted here so the two arms are pinned
+    // together and a reader sees they are distinguishable.
+    const dateless: string[] = [];
+    const datelessRecording: EmbeddingModel = {
+      dimension: () => 4,
+      embed: async (texts) => {
+        dateless.push(...texts);
+        return texts.map(() => new Float64Array([0, 0, 0, 0]));
+      },
+    };
+    clearEmbeddingCache();
+    // The key is destructured OFF rather than set to `undefined`, because
+    // `exactOptionalPropertyTypes` distinguishes the two and only the absent key
+    // is the dataset shape the arm is written for.
+    const { haystack_dates: _omitted, ...withoutDates } = instance;
+    await computeRetrievalDiagnostics([withoutDates], datelessRecording, 5);
+    expect(dateless).toContain('user: I moved to Berlin.');
+    expect(dateless.some((t) => t.startsWith('['))).toBe(false);
+  });
 });
 
 describe('computeSessionRetrievalDiagnostics', () => {

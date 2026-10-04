@@ -38,6 +38,34 @@ packages/cortex-eval  Test Files 20 passed Tests 836 passed  99.84 | 98.68 | 100
                                          total 982 tests, 0 failures
 ```
 
+### 0.1 Coverage re-measured later: four of five packages are now 100 on all four dimensions
+
+The block above is kept as the audit's own snapshot at `31a3371`, not updated in place, so
+that the verdict table below stays tied to the revision it was formed at. Current readings,
+reproduced at `e6ea892`:
+
+```
+packages/cortex-core   Test Files 17 passed Tests  252 passed  100 | 100    | 100 | 100
+packages/cortex-llm    Test Files  4 passed Tests  138 passed  100 | 100    | 100 | 100
+packages/cortex-eval   Test Files 56 passed Tests 1604 passed  100 | 100    | 100 | 100
+packages/cortex-memory Test Files  8 passed Tests  135 passed  100 | 100    | 100 | 100
+packages/cortex-node   Test Files  1 passed Tests   17 passed  100 |  98.61 | 100 | 100
+                                        total 2146 tests, 0 failures
+```
+
+The one row that is not 100 is `cortex-node`'s branch column, and its 1.39 points sit entirely
+at `pg.ts:82:4` — the `} finally {` of `PgStorage.transaction`. It is a measured instrument
+defect, not a test gap: raw `NODE_V8_COVERAGE` shows that line carrying one sub-range with
+`count = 0` while the statement on the same line counts 5, and the same function without
+`try/finally` emits zero ranges there. A branch record with one location has no second arm, so
+no test can satisfy it. The rationale, with both control cases, is in
+`packages/cortex-node/vitest.config.ts`.
+
+**The gate itself did not move.** 95% on all four dimensions in all five packages, as
+`CONTRIBUTING.md` claims — and the `AUDIT-COVERAGE-ANNOTATION-BLIND-SPOT.md` addendum §9
+records why attributing a single `[0]` requires reading the provider's raw ranges rather than
+its aggregate.
+
 ---
 
 ## 1. The central finding — the cognitive layer is not on the benchmark path

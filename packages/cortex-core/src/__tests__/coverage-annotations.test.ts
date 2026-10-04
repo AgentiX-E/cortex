@@ -45,6 +45,34 @@
  * useful lesson -- **an annotation is a claim about a specific version of the
  * code, and a later bug fix can silently make it true or false.**
  *
+ * ## A correct annotation is still not the fix
+ *
+ * The paragraph above used to end the story, and ending it there was the mistake.
+ * "Genuinely unreachable" and "correctly annotated" together still leave six arms
+ * counted against the denominator, because `@vitest/coverage-v8` honours neither
+ * `c8 ignore` nor `v8 ignore`: swapping the spelling produced **byte-identical**
+ * output, with the file pinned at 93.29% and the same uncovered lines listed. An
+ * annotation that the provider ignores is not a suppression, it is a comment, and
+ * a comment does not make a file pass a 95% floor.
+ *
+ * The guards were therefore **extracted rather than suppressed**. The five
+ * identical clamps became `clampAwayFromZero`, the df decision became
+ * `degenerateDfPValue`, and both are driven directly by
+ * `stats-degenerate.test.ts`. This is the difference that matters: a guard buried
+ * inside a private loop cannot be reached by any test, whereas an exported
+ * function can, so the coverage is **earned** instead of excluded. `stats.ts` now
+ * reports 100% on all four dimensions with zero annotations.
+ *
+ * Reachability was re-measured rather than inferred. A counter injected into each
+ * guard body stayed empty across the whole suite, while an always-executed
+ * positive control on the same channel read 5 -- so the empty readings mean "not
+ * hit", not "channel broken". One of the six turned out to be **reachable**, and
+ * the algebra that said otherwise was wrong: `welchTTest([0, v, 2v], [v, v, v])`
+ * with `v = 10^-100` drives the variance to underflow to zero, and the `dfDenom`
+ * guard fires six times on the previously-uncovered `ma === mb` arm. A test now
+ * covers it. Reachability at these edges is decided by floating-point underflow,
+ * which is not something a proof on paper can rule out.
+ *
  * See `docs/FIX-COVERAGE-GATE-NOISE.md` §5, §7 and §10.
  *
  * ## The gate was scoped to one package and blind to one provider — both fixed
@@ -173,36 +201,31 @@ const EXPECTED: Record<string, { count: number; reason: string }> = {
     count: 2,
     reason: 'Defensive guards on graph traversal invariants that the public API cannot violate.',
   },
-  'cortex-core: math/stats.ts': {
-    count: 6,
-    // The stated reason "unreachable via valid inputs" was measured FALSE at the
-    // time it was written: throwing sentinels placed in each of the five in-loop
-    // guards failed six tests apiece, and `studentTCdf(±Infinity, 10)` reached
-    // all five on its own. The guards were reachable, so the annotations were
-    // suppressing a coverage gap rather than documenting dead code.
-    //
-    // That is no longer the current state. Two genuine defects were found and
-    // fixed while investigating this file -- `logGamma` lost the sign of
-    // `sin(pi z)` on the reflection branch and returned NaN for every negative
-    // non-integer input, and `regularizedIncompleteBeta` was missing the
-    // complementary-identity branch and so evaluated the continued fraction far
-    // outside its region of convergence (returning silently wrong values for
-    // small `p`). With both fixed, the same sentinel experiment now leaves the
-    // suite GREEN: all five guards are genuinely unreachable, so the original
-    // reason is true, just not for the version of the code that made the claim.
-    //
-    // Kept pinned at 6 so that removing them stays a reviewed change; the count
-    // is unchanged because the guards are still there, only now dead.
-    reason:
-      'Underflow guards in the Student-t continued fraction and the Welch df ' +
-      'computation. Originally annotated "unreachable via valid inputs", which ' +
-      'was FALSE at the time: throwing sentinels failed six tests per guard and ' +
-      'studentTCdf(±Infinity, 10) reached all five. After fixing the logGamma ' +
-      'reflection sign and adding the complementary-identity branch to ' +
-      'regularizedIncompleteBeta, the same sentinel experiment leaves the suite ' +
-      'green, so the guards are now genuinely unreachable and the annotations ' +
-      'are correct-by-accident. See docs/FIX-COVERAGE-GATE-NOISE.md §5 and §7.',
-  },
+  // `cortex-core: math/stats.ts` used to be declared here with `count: 6`, and its
+  // removal is worth a note because the count went to zero rather than changing.
+  //
+  // The six annotations were on the underflow guards in `betaContinuedFraction`
+  // and the Welch df check. The previous note in this file was right that the
+  // guards had been reachable when the annotation was first written, and right that
+  // two real defects (`logGamma`'s reflection sign, `regularizedIncompleteBeta`'s
+  // missing complementary branch) had to be fixed before the claim held.
+  //
+  // Where it stopped short is the remedy. A correct annotation is not a solution:
+  // `@vitest/coverage-v8` honours neither `c8 ignore` nor `v8 ignore` here -- both
+  // spellings produce byte-identical output -- so the six arms counted against the
+  // denominator either way and held the file at 93.29% against a 95% rule. Keeping
+  // code out of the denominator to make a percentage look right is the same move as
+  // a `|| true` in CI, which is why the annotations were dropped instead of kept.
+  //
+  // The guards were extracted: the five identical clamps became
+  // `clampAwayFromZero`, the df decision became `degenerateDfPValue`, and both are
+  // driven directly by `stats-degenerate.test.ts`. Reachability was re-measured
+  // rather than inferred -- a counter injected into each guard body stayed empty
+  // across the suite while an always-executed positive control on the same channel
+  // read 5. The protection is unchanged, now verified, and the file clears the
+  // floor with no exclusions. `stats.ts` therefore has no entry: a file with no
+  // annotations must not appear in this registry, which is what the pinned-count
+  // assertion below enforces.
   'cortex-eval: fact-memory.ts': {
     count: 1,
     reason:
@@ -483,28 +506,82 @@ describe('the coverage-ignore annotation set is pinned', () => {
     }
   });
 
-  it('records that the stats.ts guards are reachable, contradicting their stated reason', () => {
+  it('separates a 0% file that has no code from a 0% file that is untested', () => {
+    // The text report renders `src/interfaces/*.ts` as `0 | 0 | 0 | 0`, and the
+    // package summary is computed over every row including those four. A reader
+    // scanning for the weakest file sees four files at zero and concludes the
+    // package is failing on them. It is not, and the distinction is measurable
+    // from the raw counters rather than from the rendered table: the text
+    // percentage is `hits / total`, and for these files `total` is 0.
+    //
+    // The general rule this pins is worth stating because it is easy to get
+    // backwards: **`0/0` and `0/n` both render as 0%, but only the second is a
+    // gap.** `exclude`ing the first kind -- the usual reflex -- would be cosmetic,
+    // since it changes a number without changing what is tested.
+    //
+    // The evidence is read from `coverage-final.json`, which the config enables
+    // for exactly this reason. The test skips rather than fails when the file is
+    // absent, so `vitest run` without `--coverage` is not a failure; the coverage
+    // gate is what guarantees the file exists in CI.
+    const jsonPath = join(__dirname, '..', '..', 'coverage', 'coverage-final.json');
+    if (!existsSync(jsonPath)) {
+      return;
+    }
+    const raw = JSON.parse(readFileSync(jsonPath, 'utf8')) as Record<
+      string,
+      { s: Record<string, number> }
+    >;
+
+    let typeOnlyFilesChecked = 0;
+    let untestedFilesFound = 0;
+    for (const [file, entry] of Object.entries(raw)) {
+      if (!file.includes('src/')) {
+        continue;
+      }
+      const counters = Object.values(entry.s);
+      if (counters.length === 0) {
+        // No runtime statements at all, so no percentage can be meaningful.
+        typeOnlyFilesChecked += 1;
+        continue;
+      }
+      if (counters.every((hit) => hit === 0)) {
+        untestedFilesFound += 1;
+      }
+    }
+
+    // The four interface files are the whole of the `0/0` set, and none of them
+    // is a gap. Asserted as a floor rather than an equality so adding another
+    // pure-type module does not fail here for the wrong reason.
+    expect(typeOnlyFilesChecked).toBeGreaterThanOrEqual(4);
+    // The converse, and the reason this test is worth having: there must be no
+    // file with real statements and none of them executed. That would be a
+    // genuine hole hiding behind the same `0%` rendering.
+    expect(untestedFilesFound, 'a file with runtime statements was never executed').toBe(0);
+  });
+
+  it('pins the stats.ts guard behaviour that replaced the removed annotations', () => {
     // This is the one assertion in this file that pins BEHAVIOUR rather than the
-    // annotation set, and it exists because the stated reason on those six
-    // annotations is false.
+    // annotation set, and it is the residue of an older, now-resolved dispute.
     //
-    // `studentTCdf` carries five in-loop underflow guards annotated
-    // "unreachable via valid inputs". `Infinity` is a valid input. It is already
-    // passed by the existing extremes test, and it drives every one of those
-    // guards — established by replacing each body with a throwing sentinel and
-    // watching six tests fail per guard, not by reading the code.
+    // `studentTCdf` used to carry five in-loop underflow guards annotated
+    // "unreachable via valid inputs", and that reason was false when written:
+    // `Infinity` is a valid input, the suite already passed it, and replacing each
+    // guard body with a throwing sentinel failed six tests per guard. Chasing the
+    // contradiction uncovered two real defects (see the header), after which the
+    // guards became genuinely unreachable -- and then the annotations were removed
+    // anyway, because the provider does not honour them and a suppression is not a
+    // fix. The guards are now `clampAwayFromZero` / `degenerateDfPValue`, tested in
+    // `stats-degenerate.test.ts`.
     //
-    // The assertions below do not test the guards themselves (they are
-    // underflow protection and do not change these outputs); they pin the fact
-    // that the asymptotic input is part of the suite's contract. If a future
+    // What remains here is the contract those guards exist to protect, asserted at
+    // the asymptotic inputs that started the whole investigation. If a future
     // change makes `studentTCdf(±Infinity, df)` throw or return a non-CDF value,
-    // this fails here, next to the annotation whose claim about the code is
-    // already known to be wrong.
+    // this fails here, next to the history that explains why anyone looked.
     expect(studentTCdf(Infinity, 10)).toBeCloseTo(1, 12);
     expect(studentTCdf(-Infinity, 10)).toBeCloseTo(0, 12);
 
     // A finite but extreme t is the same regime without relying on infinities,
-    // so the reachability claim does not rest on one special value.
+    // so the claim does not rest on one special value.
     expect(studentTCdf(-1e300, 10)).toBeCloseTo(0, 12);
     expect(studentTCdf(0, 10)).toBeCloseTo(0.5, 12);
   });

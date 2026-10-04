@@ -314,20 +314,21 @@ function declarationSpanEnd(lines: readonly string[], declarationLine: number): 
  * itself and self-recursion does not count as a reference from outside. Every
  * other line, before or after the declaration, does count.
  *
- * A mention in a comment or a string counts. That is a deliberate over-count in
- * the safe direction, and it is load-bearing: the text-hashing helper in
- * cortex-eval is called six times inside template literals and the candidate
- * schema key twice, so stripping comments and strings would reclassify two live,
- * heavily-used symbols as dead. A census that reports live code as dead is one
- * its readers stop believing. The price is that a symbol whose only mention is a
- * comment stays in this class rather than moving to `unreferenced`.
+ * A mention in a comment does NOT count; a mention in a string or template
+ * literal does. Comments are blanked by `stripComments` before this runs, so
+ * documenting a symbol no longer retires its finding — the previous version of
+ * this function counted comments, which meant prose could silently change what
+ * the census measured. An earlier draft of this file named four orphans in its
+ * own documentation and made all four read as called, and the response at the
+ * time was a rule that prose must never name an orphan. That rule is withdrawn:
+ * it was a workaround for a matcher bug, and its cost was that the tool hid dead
+ * code exactly when somebody took the trouble to describe it.
  *
- * That paragraph deliberately describes those symbols instead of naming them.
- * The census matches whole-file text, comments included, so writing an
- * identifier in prose here registers as a caller and silently retires that
- * symbol's orphan entry — a comment must not be able to change what the census
- * measures. This was not hypothetical: an earlier draft of this file named four
- * orphans in its own documentation and made all four read as called.
+ * Strings and template literals are still counted, and that is deliberate
+ * rather than tolerated. The text-hashing helper in cortex-eval is called six
+ * times inside template literals, so treating those as unreferences would
+ * reclassify a live, heavily-used symbol as dead — and a census that reports
+ * live code as dead is one its readers stop believing.
  *
  * @param symbol the symbol to classify; `symbol.line` is 1-based.
  * @param declaringFileText the full text of the file that declares it.
@@ -355,11 +356,21 @@ export function isReferencedLocally(symbol: ExportedSymbol, declaringFileText: s
  * `\b` is not used directly because `$` is a valid identifier character that
  * `\b` would not treat as a word character.
  *
- * This deliberately does not parse imports. A symbol referenced only in a
- * comment or a string would be counted as called. That over-counts in the
- * safe direction: the tool's job is to find definitely-unused symbols, and a
- * false negative (missing a real orphan) is far less costly here than a false
- * positive (flagging live code), which would train its readers to ignore it.
+ * This deliberately does not parse imports, and it does not distinguish a call
+ * from any other mention. A symbol referenced only inside a string or template
+ * literal counts as called; a symbol named only in a comment does not, because
+ * comments are blanked first. The remaining over-count is in the safe direction
+ * *for a gate*: the tool's job is to find definitely-unused symbols, and a false
+ * positive (flagging live code) trains its readers to ignore it, whereas a false
+ * negative simply leaves one more symbol in the reported list where a reviewer
+ * can see it.
+ *
+ * The comment case was the exception, and it was not safe. It produced false
+ * **negatives** — the direction that hides a finding and reports a clean run —
+ * and it did so in response to the one action that ought to be encouraged:
+ * writing down what a symbol is for. Matching prose made a symbol disappear from
+ * the orphan report. `stripComments` closes that, and the design note on it
+ * records the measurement.
  *
  * A zero here is then split in two by `isReferencedLocally`, because "no caller"
  * conflates two very different findings — a symbol that is used but needlessly
@@ -375,12 +386,18 @@ export function countCallers(
   symbols: readonly ExportedSymbol[],
   files: readonly { readonly path: string; readonly text: string }[],
 ): readonly SymbolCensusEntry[] {
-  const countable = files.filter(
-    (file) =>
-      (isSourceFile(file.path) || isCallerOnlyFile(file.path)) &&
-      !isTestFile(file.path) &&
-      !isBarrelFile(file.path),
-  );
+  const countable = files
+    .filter(
+      (file) =>
+        (isSourceFile(file.path) || isCallerOnlyFile(file.path)) &&
+        !isTestFile(file.path) &&
+        !isBarrelFile(file.path),
+    )
+    // Comments are blanked before matching, so a symbol named in prose is not
+    // counted as called. See `stripComments` for the measurement that motivated
+    // this; the short version is that describing an export in a comment used to
+    // remove it from the orphan report.
+    .map((file) => ({ path: file.path, text: stripComments(file.text) }));
   return symbols.map((symbol) => {
     const pattern = identifierPattern(symbol.name);
     const callers = countable
@@ -401,7 +418,12 @@ export function countCallers(
       symbol,
       callerCount: callers.length,
       callers,
-      referencedLocally: isReferencedLocally(symbol, declaringFile.text),
+      // The declaring file is stripped for the same reason: `isReferencedLocally`
+      // asks whether the symbol is used *as code* inside its own file, and a
+      // doc comment restating the name is not a use. Without this, extracting a
+      // guarded body into a helper and documenting it would classify the helper
+      // as locally referenced even if nothing called it.
+      referencedLocally: isReferencedLocally(symbol, stripComments(declaringFile.text)),
     };
   });
 }
@@ -419,6 +441,98 @@ export function countCallers(
 export function identifierPattern(name: string): RegExp {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?<![A-Za-z0-9_$])${escaped}(?![A-Za-z0-9_$])`);
+}
+
+/**
+ * Replaces every comment with spaces, preserving offsets and string literals.
+ *
+ * The census decides whether a symbol has a caller by matching its name against
+ * a file's text. Matching the raw text counts a **mention in a comment** as a
+ * call, and that produces false negatives in the one direction the gate cannot
+ * afford: a symbol that is genuinely dead stops being reported as an orphan as
+ * soon as anyone writes its name in a sentence.
+ *
+ * This was not hypothetical. Adding two exports to `stats.ts` and describing them
+ * in `vitest.config.ts` made the census report them as *called*, with
+ * `vitest.config.ts` listed as the caller — a file that contains no statement
+ * referencing either name. Four of the five files matching `clampAwayFromZero` by
+ * raw text matched only in prose; one was real.
+ *
+ * ## Why spaces rather than deletion
+ *
+ * Comment bodies are replaced character-for-character with spaces instead of
+ * being removed, so every offset after a comment stays valid. A caller that
+ * reports a match can therefore still locate it in the original text, and a
+ * multi-line block comment does not merge the code on either side of it into a
+ * single line — which would be a new false *positive* (two identifiers joined
+ * across a removed comment would match a pattern neither of them matches alone).
+ *
+ * ## Why string literals are copied through
+ *
+ * A quoted string is not a comment and its contents are real. Copying them
+ * verbatim also keeps the scanner out of trouble on the two cases that break
+ * naive stripping: `'a // b'` is not a comment, and an apostrophe in a comment
+ * body (`// don't`) must not open a string. Handling strings *inside* comment
+ * skipping is what makes the second case safe.
+ *
+ * A consequence worth stating: a symbol named inside a string literal *is*
+ * counted as referenced. That is deliberate. Template literals are how this
+ * repository's tooling builds dynamic imports and prompt text, so refusing to
+ * look inside them would drop real references. The trade-off is that a name in a
+ * prompt string counts as a caller, which is the same conservative direction the
+ * rest of this census takes — an over-count hides dead code one symbol at a
+ * time, whereas an under-count floods the gate and gets it switched off.
+ *
+ * @param text the file's full text.
+ * @returns text of the same length with comments blanked out.
+ */
+export function stripComments(text: string): string {
+  const out: string[] = [];
+  let index = 0;
+  const length = text.length;
+  while (index < length) {
+    const ch = text[index]!;
+    const next = text[index + 1];
+    if (ch === '/' && next === '/') {
+      while (index < length && text[index] !== '\n') {
+        out.push(' ');
+        index += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      out.push('  ');
+      index += 2;
+      while (index < length && !(text[index] === '*' && text[index + 1] === '/')) {
+        out.push(' ');
+        index += 1;
+      }
+      // A block comment is blanked including its delimiters, so the slash that
+      // would otherwise start a fresh `//` inside the replacement cannot appear.
+      out.push('  ');
+      index += 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      out.push(ch);
+      index += 1;
+      while (index < length) {
+        const inner = text[index]!;
+        if (inner === '\\') {
+          out.push(inner, text[index + 1] ?? '');
+          index += 2;
+          continue;
+        }
+        out.push(inner);
+        index += 1;
+        if (inner === ch) break;
+      }
+      continue;
+    }
+    out.push(ch);
+    index += 1;
+  }
+  return out.join('');
 }
 
 /**

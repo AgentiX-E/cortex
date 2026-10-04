@@ -158,6 +158,52 @@ describe('OpenAICompatibleLLM (real local server)', () => {
     await expect(llm.complete('fail')).rejects.toThrow(/internal/);
   });
 
+  it('reports the status without a body detail when reading the body fails', async () => {
+    // Covers `res.text().catch(() => '')`, the arm from the previous test not
+    // reaching. The two cases look similar and are not:
+    //
+    //   - `emptyfail` returns a well-formed 400 with NO body, so `res.text()`
+    //     resolves to `''` and the `bodyText ? ... : ''` ternary takes its false
+    //     branch;
+    //   - here the response is received and then its BODY READ REJECTS, so the
+    //     catch fires and `.catch` is what supplies the empty string.
+    //
+    // This is tested through the `fetchFn` seam rather than the local server
+    // because a real socket cannot produce it. The first attempt did exactly that
+    // — the route declared `Content-Length: 500`, wrote a fragment and called
+    // `socket.destroy()` — and what came back was `fetch failed`, not a 400 with an
+    // unreadable body. Undici rejects the whole FETCH when the connection dies
+    // mid-response, so `res.ok` is never evaluated and the guard under test is
+    // never entered. Injecting a `Response` whose `text()` rejects is therefore not
+    // a convenience: it is the only way to reach a branch that the network path
+    // provably cannot. `new Response('{}')` is already the established form of this
+    // seam elsewhere in the suite.
+    //
+    // What is being asserted is that a body-read failure is DOWNGRADED to "no
+    // detail" rather than propagating. The status and statusText are the actionable
+    // information, and letting the read error escape would replace a diagnosable
+    // 400 with an opaque stream error.
+    const failingResponse = new Response(null, { status: 400, statusText: 'Bad Request' });
+    // `text()` is overridden on the instance rather than constructed: a `Response`
+    // body can be made to error, but only asynchronously and not portably across
+    // runtimes, and the property under test is the caller's handling of the
+    // rejection, not how a stream is broken.
+    Object.defineProperty(failingResponse, 'text', {
+      value: () => Promise.reject(new Error('stream closed')),
+    });
+
+    const llm = new OpenAICompatibleLLM({
+      baseUrl,
+      apiKey: 'test',
+      model: 'm',
+      fetchFn: (async () => failingResponse) as unknown as typeof fetch,
+    });
+
+    await expect(llm.complete('hi')).rejects.toThrow(/LLM request failed: 400 Bad Request/);
+    // The read error must not surface, and no detail segment may appear.
+    await expect(llm.complete('hi')).rejects.not.toThrow(/stream closed/);
+  });
+
   it('embeds text via a real HTTP server', async () => {
     const emb = new OpenAIEmbedding({ baseUrl, apiKey: 'test', model: 'm', dimensions: 3 });
     expect(emb.dimension()).toBe(3);
@@ -266,5 +312,56 @@ describe('TransformersEmbedding', () => {
     await emb.embed(['a']);
     await emb.embed(['b']);
     expect(factoryCalls).toBe(1);
+  });
+
+  it('falls back to the default pipeline factory when none is injected', async () => {
+    // Covers the `?? makeDefaultPipelineFactory(...)` arm in `getExtractor`, which
+    // every other test misses because every other test injects a factory.
+    //
+    // The assertion is a REJECTION, and the reason is worth stating precisely
+    // because the first version of this test got it wrong. It asserted a message
+    // matching /xenova|transformers/, on the assumption that the peer is absent so
+    // the dynamic import would fail with a module-resolution error. That is true in
+    // CI and false here: `@xenova/transformers` is installed in this environment,
+    // so the import succeeds and the failure comes from further in — `sharp`, its
+    // transitive native dependency, whose prebuilt binary does not load. The
+    // regex therefore passed locally for a reason unrelated to what it claimed and
+    // would have been pinned to one machine's node_modules layout.
+    //
+    // What is stable across both environments is that taking the fallback arm
+    // cannot SUCCEED, because the optional peer path is not guaranteed to be
+    // usable, and that the failure is an Error rather than a TypeError. A TypeError
+    // would mean the injection point was mis-wired and `embed` called something
+    // that is not a function; an Error from the loader means the branch ran and the
+    // loader reported its own problem. Distinguishing those two is the assertion's
+    // whole job, so it does not reach for a message it cannot own.
+    const emb = new TransformersEmbedding({ model: 'm', dimensions: 1 });
+    await expect(emb.embed(['hello'])).rejects.toBeInstanceOf(Error);
+    await expect(emb.embed(['hello'])).rejects.not.toBeInstanceOf(TypeError);
+  });
+
+  it('does not cache a failed extractor load', async () => {
+    // Whether the rejection above leaves `this.extractor` set decides whether a
+    // second call retries or reports a stale failure for ever. Retrying is the
+    // useful property: an optional peer can be installed while a process runs, and
+    // a permanently poisoned cache would turn that into a restart. The counter
+    // distinguishes the two, and the assertion is on the count rather than on the
+    // error, so it stays true whichever way the first call fails.
+    let attempts = 0;
+    const emb = new TransformersEmbedding({
+      model: 'm',
+      dimensions: 1,
+      pipelineFactory: async () => {
+        attempts++;
+        if (attempts === 1) throw new Error('peer not installed yet');
+        return async () => ({ tolist: () => [[1]] });
+      },
+    });
+
+    await expect(emb.embed(['a'])).rejects.toThrow('peer not installed yet');
+    // The factory is called again, so the failure was not cached.
+    const vectors = await emb.embed(['b']);
+    expect(attempts).toBe(2);
+    expect(vectors[0]![0]).toBeCloseTo(1, 12);
   });
 });

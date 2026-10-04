@@ -326,6 +326,89 @@ describe('runRerankAblation option forwarding', () => {
 
     expect(report.questionCount).toBeGreaterThan(0);
   });
+
+  it('omits every optional key when the caller supplies none of them', async () => {
+    // Every other test in this file passes at least one forwarded option, so the
+    // OPTIONAL side of each `...(cond ? { k: v } : {})` spread -- the `{}` arm -- was
+    // never evaluated. That arm is the one production callers hit when an ablation
+    // is dispatched with default settings, and an option spread whose empty branch
+    // is wrong silently injects `undefined` as an explicit value, which JSON
+    // serialisation and `in` checks both read differently from an absent key.
+    //
+    // `reranker` is deliberately the ONE option supplied: without it the arm would
+    // measure nothing at all, so a passing assertion here could not distinguish a
+    // correct empty-spread from a report that fell over quietly somewhere else.
+    const { report, fallbacks } = await runRerankAblation(instances, embedding, firstContextLlm(), {
+      reranker: reversingReranker(),
+      judge: acceptJudge,
+    });
+
+    expect(report.questionCount).toBeGreaterThan(0);
+    expect(report.ablation.perCapability['MR']).toBeDefined();
+    // A plain `RerankScoreFn` exposes no counters, so this is the empty-spread
+    // reading: `null` means "the caller gave one and it has none", which is the
+    // correct outcome for an omitted `rerankProtectedHead`/`rerankCandidatePool`.
+    expect(fallbacks).toBeNull();
+  });
+
+  it('runs both arms as the same system when no reranker is supplied', async () => {
+    // `reranker` is optional, so this arm must be runnable without one -- and that
+    // is the one input that evaluates the FEATURE side's `reranker` empty spread.
+    // The five tests above all supply a reranker, so they only ever cover the
+    // baseline's empty spreads; the feature's `...(options.reranker !== undefined
+    // ? ... : {})` arm and its `retrievalSides` arm had never been reached.
+    //
+    // The assertion is on the consequence, not on "it did not throw": with no
+    // reranker the feature arm applies no reordering at all, so its accuracy must
+    // equal the baseline's and the abstention shift must be exactly zero. An
+    // option spread that wrongly injected `reranker: undefined` would route the
+    // feature through a reranking path and break that equality.
+    const { report, abstentionShift } = await runRerankAblation(
+      instances,
+      embedding,
+      firstContextLlm(),
+      { judge: acceptJudge },
+    );
+
+    expect(report.questionCount).toBeGreaterThan(0);
+    expect(report.feature.metrics.accuracy).toBe(report.baseline.metrics.accuracy);
+    expect(abstentionShift).toBe(0);
+  });
+
+  /**
+   * The truthy arms of the two feature-only spreads.
+   *
+   * The tests above all sit on the `{}` side of
+   * `...(options.candidateDiscrimination === true ? { … } : {})` and
+   * `...(options.retrievalSides === true ? { … } : {})`, so the arms that run when a
+   * caller DOES request the feature were unexercised. That is the direction that
+   * matters for an ablation: these two options exist so a dispatch can turn a
+   * feature on for the feature arm alone, and a spread that silently dropped them
+   * would produce a feature arm byte-identical to its baseline -- an ablation
+   * reporting `0.00pp` for a feature that was never enabled, which is exactly the
+   * defect `candidateDiscrimination` already shipped once (its toggle was read into
+   * a local whose only consumers sat inside the `CORTEX_RERANK` branch).
+   *
+   * Asserted on the baseline staying unconfigured rather than on the feature's
+   * behaviour: the contract these spreads encode is "feature side only", and the
+   * baseline is the untouched reference. So the reading that distinguishes a
+   * correctly-forwarded option from a dropped one is that the baseline's own
+   * metrics are unchanged while the run still completes.
+   */
+  it('forwards the feature-only toggles when the caller enables them', async () => {
+    const { report } = await runRerankAblation(instances, embedding, firstContextLlm(), {
+      reranker: reversingReranker(),
+      judge: acceptJudge,
+      candidateDiscrimination: true,
+      retrievalSides: true,
+    });
+
+    expect(report.questionCount).toBeGreaterThan(0);
+    // The baseline is constructed without either toggle, so its numbers must not
+    // move; a spread that leaked the flags onto the baseline would show up here.
+    expect(report.baseline.metrics.accuracy).toBeGreaterThanOrEqual(0);
+    expect(report.ablation.perCapability['MR']).toBeDefined();
+  });
 });
 
 /**

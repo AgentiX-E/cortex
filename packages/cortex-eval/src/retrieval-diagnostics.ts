@@ -170,7 +170,21 @@ export async function computeRetrievalDiagnostics(
     const context: string[] = [];
     const answerTexts = new Set<string>();
     for (let i = 0; i < sessions.length; i++) {
-      const date = dates?.[i];
+      // `dates === undefined ? undefined : dates[i]` rather than `dates?.[i]`.
+      // Identical semantics, but the optional-chain spelling is invisible to the
+      // v8 coverage provider: it emits a single sub-range for `a?.[i]` -- the
+      // receiver, not the guard -- so the branch Istanbul derives from it carries
+      // one location and never increments. Measured two ways: on a synthetic
+      // `a?.[i]` that was called with both a defined and an undefined receiver,
+      // v8 still reported exactly one sub-range (whereas the sibling `a?.b` and a
+      // plain ternary both reported two); and on this very line, a dateless
+      // instance produced the prefix-free context text, proving the undefined
+      // path runs while its count stayed at zero.
+      //
+      // The explicit ternary also matches how the dateless case is reasoned about
+      // below, where "there is no date for this session" is a thing the code means
+      // rather than a null-safety reflex.
+      const date = dates === undefined ? undefined : dates[i];
       for (const turn of sessions[i]!) {
         // The single-session path filters assistant turns before retrieval, so
         // an assistant turn is never a candidate and embedding it is pure cost.

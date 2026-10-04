@@ -320,6 +320,24 @@ describe('buildConservativeQaPrompt', () => {
     expect(withoutSentence).toContain('no relevant information at all');
     expect(withoutSentence).toContain(context);
   });
+
+  it('adds the candidate-discrimination instruction only when asked', () => {
+    // This builder has its OWN switch, separate from `buildQaPrompt`'s. The rerank
+    // arm answers through `buildConservativeQaPrompt`, so a switch wired only into
+    // the other builder would be reachable on a path the arm never takes -- the two
+    // options exist independently for exactly that reason. Both arms are asserted,
+    // because "the instruction appears" alone cannot distinguish "the switch works"
+    // from "the instruction is unconditional".
+    const context = '[2023/01/08] user: I keep two bikes.';
+    const on = buildConservativeQaPrompt('Which bike is newer?', context, undefined, {
+      candidateDiscrimination: true,
+    });
+    const off = buildConservativeQaPrompt('Which bike is newer?', context);
+    expect(on).toContain('Pick the candidate that answers the question');
+    expect(off).not.toContain('Pick the candidate that answers the question');
+    // The instruction is additive: the conservative abstention contract stays.
+    expect(on).toContain('no relevant information at all');
+  });
 });
 
 describe('answerAbstention admission budget', () => {
@@ -1201,6 +1219,76 @@ describe('truncateText', () => {
 describe('truncateSession', () => {
   it('returns short text unchanged', () => {
     expect(truncateSession('short', 100)).toBe('short');
+  });
+
+  /**
+   * There is deliberately no "no marker when nothing was cut" test here.
+   *
+   * Such a test existed, and it was worthless in two different ways before it was
+   * deleted -- which is worth recording, because the second way is the instructive one.
+   *
+   * The first version passed a 35-character session against a budget of 500 and asserted
+   * the output was unchanged. It passed because `text.length <= maxChars` returned the
+   * text at the top of the function: the marker was never reached. An assertion whose
+   * comment claims it exercises a branch has to be checked against where execution
+   * actually went, and the coverage report said plainly that the early-return lines ran
+   * while the marker lines did not.
+   *
+   * The second version tried to satisfy both conditions at once -- longer than the budget,
+   * yet every turn intact -- and never found an input, because no such input exists. That
+   * is a property of the function, not a gap in the search: reaching the marker requires
+   * `text.length > maxChars`, and every turn contributes to either `userChars` or the
+   * assistant guards, so a session with nothing dropped and nothing clipped can only be
+   * one with `textLength <= maxChars`. The two conditions are contradictory. An exhaustive
+   * sweep of 1,225,156 over-budget sessions (up to eight turns, bodies 0-8 characters,
+   * budgets 1-300) produced no counterexample, and `tsc` independently reported the
+   * bookkeeping flag as written and never read.
+   *
+   * The marker is therefore unconditional in the implementation, and this test file does
+   * not pretend otherwise. The remaining cases below cover every reachable reason a
+   * session is marked.
+   */
+  it('marks a session whose user turn was dropped whole', () => {
+    // Reaching the marker at all means something was lost. Here it is a whole user turn:
+    // two 49-character turns against a budget of 60 leaves the second one out entirely,
+    // and its text must not appear even as a fragment.
+    const turn = (body: string): string => `[2023/02/15] user: ${body}`;
+    const text = [turn('a'.repeat(30)), turn('b'.repeat(30))].join('\n');
+    const result = truncateSession(text, 60);
+    expect(result).toContain('a'.repeat(30));
+    expect(result).toContain('[truncated]');
+    expect(result).not.toContain('b');
+  });
+
+  it('marks a session that was cut even when every surviving turn is whole', () => {
+    // The other half of the marker decision, and the harder half to reach. The
+    // tests above that assert a marker all reach it through a CLIPPED turn -- the
+    // assistant head or a user fragment -- so they would still pass if the marker
+    // were emitted from inside those branches. What they leave unexercised is a
+    // session where the cut is a whole DROPPED turn while every turn that survives
+    // is emitted intact: nothing in the output looks abbreviated, yet evidence was
+    // lost and the reader has to be told.
+    //
+    // The turn's own text is 49 characters -- `[2023/02/15] user: ` is 19 of them
+    // -- and the budget is 60, so the first turn fits whole with 11 characters over.
+    // The second turn of the same size cannot fit on what remains and is dropped
+    // whole; the trailing assistant turn has nothing left to spend. The budget is
+    // stated as a plain number rather than derived from the constant so that a
+    // change to the prefix has to be matched here deliberately.
+    const turn = (body: string): string => `[2023/02/15] user: ${body}`;
+    const text = [
+      turn('a'.repeat(30)),
+      turn('b'.repeat(30)),
+      `[2023/02/15] assistant: ${'c'.repeat(30)}`,
+    ].join('');
+    const result = truncateSession(text, 60);
+    // The surviving turn is whole -- proven by its 30 `a`s arriving intact, exactly
+    // as the turn supplied them.
+    expect(result).toContain('a'.repeat(30));
+    expect(result).toContain('[truncated]');
+    // The dropped turn left no fragment: a partial admission would be a different
+    // code path and would make this test pass for the wrong reason.
+    expect(result).not.toContain('b');
   });
 
   it('preserves user turns while capping verbose assistant turns', () => {
@@ -2174,6 +2262,90 @@ describe('NaturalLanguageMemorySystem', () => {
     const qaPrompt = prompts[prompts.length - 1]!;
     expect(qaPrompt).toContain('no relevant information at all');
     expect(qaPrompt).not.toContain('NOT a reason to abstain');
+  });
+
+  /**
+   * The entity-identity clause, forwarded through the abstention path.
+   *
+   * `answerAbstention` builds its QA prompt through a local `conservativePrompt`
+   * closure that spreads `{ entityIdentityClause }` only when the option is
+   * defined. Every other test reaches that closure with the option absent, so the
+   * spread's truthy arm -- the one that actually forwards the clause -- ran zero
+   * times across the whole suite (instrumented on the line: `defined=false` 50
+   * times, `defined=true` never).
+   *
+   * That mattered because this closure is where the switch previously died: it
+   * accepted three arguments and silently dropped the fourth, so the clause could
+   * not appear on this path however the system was configured. The unit test above
+   * covers `buildConservativeQaPrompt` given the option; this one covers the
+   * plumbing that has to hand it the option in the first place, which is the half
+   * that was broken.
+   */
+  it('forwards the entity-identity clause through the abstention prompt closure', async () => {
+    const prompts: string[] = [];
+    const llm: LLM = {
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return 'UNANSWERABLE';
+      },
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const system = new NaturalLanguageMemorySystem('s', {
+      embedding,
+      llm,
+      entityIdentityClause: true,
+    });
+    await system.answerAbstention('How often do I see Dr. Johnson?', [
+      '[2023/01/08] user: I see Dr. Smith every week.',
+    ]);
+    const qaPrompt = prompts[prompts.length - 1]!;
+    // The clause itself, not merely a flag: the sentence text is what the option
+    // controls, and asserting on `true` would pass even if the spread dropped it.
+    expect(qaPrompt).toContain('not the same');
+  });
+
+  it('forwards candidate discrimination through both abstention prompt layers', async () => {
+    // Two forwards, one test, because neither half is observable without the other.
+    // The outer half is `respondWith`, which reads `candidateDiscrimination` off
+    // the system's options and passes it to the builder -- a site where the option
+    // was previously not passed at all, so no configuration could reach it. The
+    // inner half is the `conservativePrompt` closure inside `answerAbstention`,
+    // which takes the options object and re-selects the flag before calling
+    // `buildConservativeQaPrompt`. A test that reached only one of them would still
+    // pass with the other severed; asserting on the instruction TEXT, rather than
+    // on the flag, is what makes the assertion sensitive to both hops.
+    //
+    // The on and off runs share everything except the flag, so the instruction is
+    // the only difference between the two prompts.
+    const collect = async (candidateDiscrimination: boolean): Promise<string> => {
+      const prompts: string[] = [];
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          return 'UNANSWERABLE';
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const system = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        candidateDiscrimination,
+      });
+      await system.answerAbstention('How often do I see Dr. Johnson?', [
+        '[2023/01/08] user: I see Dr. Smith every week.',
+      ]);
+      return prompts[prompts.length - 1]!;
+    };
+
+    const on = await collect(true);
+    const off = await collect(false);
+    // The instruction opens by telling the reader to prefer a labelled candidate
+    // over a merely related turn; that wording is what `candidateDiscrimination`
+    // adds, and it is asserted verbatim so a rewrite of the constant fails here.
+    expect(on).toContain('Pick the candidate that answers the question');
+    expect(off).not.toContain('Pick the candidate that answers the question');
+    // The rest of the conservative contract is untouched by the flag.
+    expect(off).toContain('no relevant information at all');
   });
 
   it('answerPreference generates a recommendation instead of abstaining', async () => {
@@ -3703,6 +3875,60 @@ describe('NaturalLanguageMemorySystem', () => {
       // With no issue reported there is no revision call at all, so a clean
       // audit costs exactly one extra LLM call and never a second answer.
       expect(prompts.some((p) => p.includes(REVISION_MARKER))).toBe(false);
+    });
+
+    it('returns an empty critique only once a real ledger reaches the audit', async () => {
+      // The test above does NOT exercise the no-issue branch, and asserting that
+      // it did would be false. Its first-pass response is the bare string
+      // `'Answer: 2'`, which contains neither a `Step 1` heading nor a `Step 2`
+      // one, so `extractAggregationLedger` first falls back to the whole response
+      // and then strips the `Answer:` line -- leaving the empty string. The ledger
+      // guard in `critiqueAggregationLedger` therefore returns early and the
+      // critique is never requested at all, which is why the arm that maps a
+      // "no issue" critique to `''` reported zero executions.
+      //
+      // This test supplies the missing precondition: a first pass that DOES carry
+      // a Step 1 ledger. The LLM is then genuinely asked to audit it and answers
+      // with the no-issue phrase, so the `''` arm runs and its consequence is
+      // observable -- no revision call, and the first pass's number survives.
+      const prompts: string[] = [];
+      const firstPass = [
+        'Step 1 — Enumerate every item matching the question',
+        '- navy blue blazer | pick up',
+        '- boots from Zara | pick up',
+        'Step 2 — Count the items',
+        'Answer: 2',
+      ].join('\n');
+      const llm: LLM = {
+        complete: async (prompt) => {
+          prompts.push(prompt);
+          if (prompt.includes('Specific activities:')) return 'pick up';
+          if (prompt.includes(CRITIQUE_MARKER)) return 'No issue found.';
+          if (prompt.includes(REVISION_MARKER)) return 'Answer: 99';
+          return firstPass;
+        },
+        completeStructured: async <T>() => ({}) as T,
+      };
+      const s = new NaturalLanguageMemorySystem('s', {
+        embedding,
+        llm,
+        enableAggregationCritique: true,
+      });
+      const answer = await s.answerSessions(
+        'How many items of clothing do I need to pick up or return?',
+        EVIDENCE,
+      );
+
+      // The critique WAS requested -- this is the precondition the sibling test
+      // lacks, and without it the rest of this test would be vacuous.
+      const critiquePrompts = prompts.filter((p) => p.includes(CRITIQUE_MARKER));
+      expect(critiquePrompts.length).toBeGreaterThan(0);
+      // It was shown the ledger items and not the first pass's number.
+      expect(critiquePrompts[0]).toContain('navy blue blazer');
+      expect(critiquePrompts[0]).not.toContain('Answer: 2');
+      // A no-issue critique must not become a revision, and the first pass stands.
+      expect(prompts.some((p) => p.includes(REVISION_MARKER))).toBe(false);
+      expect(answer).toBe('2');
     });
 
     it('does not critique a derivation question', async () => {

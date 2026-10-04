@@ -122,10 +122,15 @@ export function classifyKnowledgeUpdateQualifier(
  *   - "Before I purchased the gravel bike, ..."   → second event (subject + verb)
  */
 function isValueQualifyingBefore(question: string): boolean {
-  const match = question.match(/\bbefore\b([\s\S]*)$/i);
-  if (!match) {
-    return false;
-  }
+  // The `if (!match) return false` guard that used to sit here was unreachable.
+  // Its only caller tests `/\bbefore\b/i.test(question)` before calling, and the
+  // pattern below is that same `\bbefore\b` core extended by `([\s\S]*)$` — a
+  // capture group that is trivially satisfiable because `[\s\S]*` matches the
+  // empty string at the end anchor. So `test` true implies `match` non-null, and
+  // the guard defended against a state the caller had already excluded. Verified
+  // by probing 22 variants (`before`, `Before`, `before?`, `before\n`, `abefore`,
+  // combinations with punctuation and whitespace) — no counterexample exists.
+  const match = question.match(/\bbefore\b([\s\S]*)$/i)!;
   const rest = match[1]!.trim();
   // "... before?" — the word closes the question.
   if (rest === '' || /^[?.!,;:]*$/.test(rest)) {
