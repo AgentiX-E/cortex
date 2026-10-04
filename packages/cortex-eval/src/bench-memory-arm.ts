@@ -89,11 +89,41 @@ export type CortexMemoryArmOptions = {
   retrievalThreshold: number;
   /** Turn budget across all presented sessions. A positive integer, or unbounded. */
   sessionBudget: number;
+  /**
+   * Source trust stamped on every memory the composition layer admits. In `[0, 1]`.
+   *
+   * Defaults to `0.5`, which is what `admission.ts` hardcoded before the field
+   * existed. It is a knob rather than a constant because the value function is
+   * bounded by `confidence * sourceTrust * (0.5 + 0.5 * recency)`, so this number
+   * sets the ceiling: at `0.5` the write gate's upper half is unreachable and
+   * `retrievalThreshold` can only ever be always-open or always-closed. Run
+   * `37110579101` scored what run `37094200823` did for exactly that reason.
+   */
+  sourceTrust: number;
 };
 
 const THRESHOLD_VARIABLE = 'CORTEX_MEMORY_THRESHOLD';
 const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
 const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
+const SOURCE_TRUST_VARIABLE = 'CORTEX_MEMORY_SOURCE_TRUST';
+
+/**
+ * The source trust a run gets when it does not name one.
+ *
+ * `0.5`, and it is the *same* `0.5` `admission.ts` hardcoded before the field
+ * existed. Restating the literal here rather than importing it is deliberate and
+ * is the one place this package's independence from the product layer must not be
+ * traded away: `cortex-eval` is the measurement instrument, and an arm whose
+ * default moved because the product's default moved would silently stop comparing
+ * against the historical runs. `37110579101` and `37094200823` both ran under a
+ * ceiling of `0.5`; a default that drifted would make every later number
+ * incomparable to them without any artifact saying so.
+ *
+ * The reachable interval at this value is `[0, 0.5]`, so `retrievalThreshold` can
+ * only be always-open or always-closed -- see
+ * `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §9.3.
+ */
+const DEFAULT_SOURCE_TRUST = 0.5;
 
 /**
  * Parses the arm's configuration out of the environment.
@@ -126,6 +156,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: Number.POSITIVE_INFINITY,
+      sourceTrust: DEFAULT_SOURCE_TRUST,
     };
   }
   return {
@@ -136,6 +167,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       env[RETRIEVAL_THRESHOLD_VARIABLE],
     ),
     sessionBudget: readSessionBudget(env[BUDGET_VARIABLE]),
+    sourceTrust: readSourceTrust(env[SOURCE_TRUST_VARIABLE]),
   };
 }
 
@@ -199,6 +231,38 @@ function readSessionBudget(raw: string | undefined): number {
 }
 
 /**
+ * Read the ceiling of the value function, defaulting to the hardcoded `0.5`.
+ *
+ * The blank rule is `readNumeric`'s, so an unfilled dispatch input arrives as
+ * "not configured" and falls back to `DEFAULT_SOURCE_TRUST` -- the value every
+ * prior run effectively used. Blank is deliberately NOT read as `0`: `0` is a
+ * meaningful configuration ("trust nothing", which admits nothing and abstains on
+ * every question) and collapsing the two would make the historical default
+ * unreachable while looking identical to "left alone". `'0'` stays expressible,
+ * which is the mirrored-defect rule from `readNumeric`'s docstring.
+ *
+ * The range check matches the thresholds' and exists for the same three reasons,
+ * with one addition specific to this field: because the value function is
+ * `confidence * sourceTrust * (0.5 + 0.5 * recency)`, a `sourceTrust` above `1`
+ * makes the model's own ceiling `1` unattainable-but-exceedable, so the number in
+ * the artifact would no longer describe the bound the code enforced.
+ */
+function readSourceTrust(raw: string | undefined): number {
+  const value = readNumeric(raw);
+  if (value === undefined) return DEFAULT_SOURCE_TRUST;
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(
+      `${SOURCE_TRUST_VARIABLE} must be a number in [0, 1], got ${JSON.stringify(raw)}. ` +
+        'It scales the value function confidence * sourceTrust * (0.5 + 0.5 * recency), so it ' +
+        'sets the ceiling the thresholds are compared against: above 1 the model bound no longer ' +
+        'holds, below 0 or NaN admits nothing — each completing a full run whose result describes ' +
+        'the argument.',
+    );
+  }
+  return value;
+}
+
+/**
  * Projects the parsed options onto the persisted report field.
  *
  * `Infinity` becomes `null`, and the conversion happens here rather than at
@@ -215,12 +279,19 @@ function readSessionBudget(raw: string | undefined): number {
  * `6.40%` feature accuracy whose artifact described its configuration as
  * `threshold=0`, i.e. as the identity gate, while the retrieval decision the
  * docstring promised was not being made at all.
+ *
+ * `sourceTrust` is projected for the same reason, and it is emitted even when it
+ * holds the default. Omitting a defaulted field would make "this run left the
+ * ceiling alone" and "this artifact predates the field" the same bytes, which is
+ * precisely the ambiguity `37110579101` created when it reproduced `37094200823`'s
+ * number without either artifact naming the ceiling.
  */
 export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmConfig {
   return {
     threshold: options.threshold,
     retrievalThreshold: options.retrievalThreshold,
     sessionBudget: Number.isFinite(options.sessionBudget) ? options.sessionBudget : null,
+    sourceTrust: options.sourceTrust,
   };
 }
 

@@ -55,9 +55,20 @@ WORKFLOW = "benchmark.yml"
 # the source of two separate defects, and a configuration this run depends on
 # should not arrive via an accident that happens to land correctly. Sending the
 # literal value also makes the dispatch record state what the gate was.
+#
+# `cortex_memory_source_trust` is sent for the third reason: the variable did not
+# exist in `INPUTS` at all until now, and neither did the workflow input behind it.
+# A dispatch that names a threshold the arm cannot compare against is the §7.3
+# side-channel defect in its third form -- the run completes, and its artifact
+# describes the configuration the operator intended rather than the one the code
+# applied. `0.5` is the value `admission.ts` hardcoded before the field existed, so
+# stating it explicitly keeps this dispatch comparable to runs `37110579101` and
+# `37094200823` while making the ceiling a fact on the record instead of a property
+# of a literal someone has to go read.
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_retrieval_threshold": "0",
+    "cortex_memory_source_trust": "0.5",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

@@ -65,7 +65,12 @@ import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } 
  * a thinner report. These tests are the first callers, so they demonstrate the
  * obligation rather than being exempt from it.
  */
-const GATE = { threshold: 0, retrievalThreshold: 0, sessionBudget: null } as const;
+const GATE = {
+  threshold: 0,
+  retrievalThreshold: 0,
+  sessionBudget: null,
+  sourceTrust: 0.5,
+} as const;
 
 /**
  * Render an arm config through the real report renderer.
@@ -98,6 +103,7 @@ function formalizeArm(config: {
       threshold: config.threshold,
       retrievalThreshold: config.retrievalThreshold,
       sessionBudget: config.sessionBudget,
+      sourceTrust: 0.5,
     }),
   });
 }
@@ -140,6 +146,7 @@ async function runCortexMemoryArmReport(config: {
         threshold: config.threshold,
         retrievalThreshold: config.retrievalThreshold,
         sessionBudget: null,
+        sourceTrust: 0.5,
       },
     },
   );
@@ -348,8 +355,106 @@ describe('cortexMemoryArmOptions', () => {
     const options = cortextMemoryArmOptions({
       CORTEX_MEMORY_THRESHOLD: 'not-a-number',
       CORTEX_MEMORY_SESSION_BUDGET: '-5',
+      CORTEX_MEMORY_SOURCE_TRUST: 'also-not-a-number',
     });
     expect(options.enabled).toBe(false);
+  });
+
+  it('treats a blank source trust as unconfigured while keeping an explicit 0 expressible', () => {
+    // The mirrored-defect rule from the session budget: blank means "not
+    // configured" and must not be achieved by making a real `0` unreachable. A
+    // falsy test would do exactly that -- `sourceTrust: 0` is a meaningful
+    // configuration ("trust nothing"), and a guard that rejected it would narrow
+    // the domain this field exists to widen.
+    const blank = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_SOURCE_TRUST: '',
+    });
+    expect(blank.sourceTrust).toBe(0.5);
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SOURCE_TRUST: '  ' }).sourceTrust,
+    ).toBe(0.5);
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SOURCE_TRUST: '0' }).sourceTrust,
+    ).toBe(0);
+  });
+
+  it('reads a configured source trust, including the fully-trusted endpoint', () => {
+    // `1` is the value that raises the value ceiling to `1` and makes
+    // `threshold > 0.5` reachable. It is the point of the field, so it is asserted
+    // rather than left to the range check.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SOURCE_TRUST: '0.4' })
+        .sourceTrust,
+    ).toBe(0.4);
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SOURCE_TRUST: '1' }).sourceTrust,
+    ).toBe(1);
+  });
+
+  it('rejects a source trust outside [0, 1] or non-numeric, naming the variable', () => {
+    // Same three failure modes as the thresholds, and the same reason for being
+    // loud: each completes a full run whose artifact describes the argument rather
+    // than the system. `> 1` lifts the ceiling above the model's own bound, `< 0`
+    // and `NaN` admit nothing.
+    for (const bad of ['1.5', '-0.1', 'abc']) {
+      expect(() =>
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SOURCE_TRUST: bad }),
+      ).toThrow(/CORTEX_MEMORY_SOURCE_TRUST/);
+    }
+  });
+});
+
+describe('source trust reaches the artifact', () => {
+  it('projects the value into the memory arm config', () => {
+    // The §7.4 defect in its third form: a gate configuration the code applies but
+    // the artifact does not record produces two files that look identical and mean
+    // opposite things. `toMemoryArmConfig` is the single projection point, so it is
+    // asserted directly rather than only through a rendered string.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_THRESHOLD: '0.2',
+      CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0.25',
+      CORTEX_MEMORY_SOURCE_TRUST: '1',
+    });
+    expect(toMemoryArmConfig(options)).toEqual({
+      threshold: 0.2,
+      retrievalThreshold: 0.25,
+      sessionBudget: null,
+      sourceTrust: 1,
+    });
+  });
+
+  it('renders the value on the config line, beside the thresholds', async () => {
+    // A reader asking "was the value ceiling raised this run" is answered by this
+    // number and by nothing else, so it must be on the line rather than only in the
+    // JSON. Built through the real arm rather than a hand-made fixture: a fixture
+    // would assert the renderer against a shape the producer might never emit.
+    const result = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'one'),
+      constantSystem('cortex-memory', 'one'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        memoryArmConfig: { ...GATE, sourceTrust: 1 },
+      },
+    );
+
+    expect(result.markdown).toContain('sourceTrust=1');
+    // The default must render as itself too, so the line distinguishes "raised" from
+    // "left alone" rather than only printing one of the two states.
+    const plain = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'one'),
+      constantSystem('cortex-memory', 'one'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        memoryArmConfig: { ...GATE, sourceTrust: 0.5 },
+      },
+    );
+    expect(plain.markdown).toContain('sourceTrust=0.5');
   });
 });
 
@@ -411,13 +516,19 @@ describe('runCortexMemoryArm', () => {
         runs: 1,
         scorer: exactMatchScorer,
         generatedAt: '1970-01-01T00:00:00.000Z',
-        memoryArmConfig: { threshold: 0.25, retrievalThreshold: 0.5, sessionBudget: 8 },
+        memoryArmConfig: {
+          threshold: 0.25,
+          retrievalThreshold: 0.5,
+          sessionBudget: 8,
+          sourceTrust: 0.5,
+        },
       },
     );
     expect(result.report.memoryArmConfig).toEqual({
       threshold: 0.25,
       retrievalThreshold: 0.5,
       sessionBudget: 8,
+      sourceTrust: 0.5,
     });
   });
 
@@ -434,7 +545,12 @@ describe('runCortexMemoryArm', () => {
       feature: { name: 'cortex-memory', metrics: emptyMetrics() },
       ablation: emptyAblation('cortex-memory'),
       generatedAt: '1970-01-01T00:00:00.000Z',
-      memoryArmConfig: { threshold: 0.35, retrievalThreshold: 0.7, sessionBudget: null },
+      memoryArmConfig: {
+        threshold: 0.35,
+        retrievalThreshold: 0.7,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+      },
     });
     expect(markdown).toContain('Memory arm config');
     expect(markdown).toContain('threshold=0.35');
@@ -545,6 +661,7 @@ describe('runCortexMemoryArm', () => {
         threshold: 0,
         retrievalThreshold: 0,
         sessionBudget: Number.POSITIVE_INFINITY,
+        sourceTrust: 0.5,
       });
       expect(config.sessionBudget).toBeNull();
       expect(JSON.parse(JSON.stringify(config))).toEqual(config);
@@ -556,8 +673,14 @@ describe('runCortexMemoryArm', () => {
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
+        sourceTrust: 0.5,
       });
-      expect(config).toEqual({ threshold: 0.5, retrievalThreshold: 0, sessionBudget: 12 });
+      expect(config).toEqual({
+        threshold: 0.5,
+        retrievalThreshold: 0,
+        sessionBudget: 12,
+        sourceTrust: 0.5,
+      });
     });
   });
 
@@ -827,6 +950,7 @@ describe('the retrieval threshold', () => {
       threshold: 0,
       retrievalThreshold: 0.4,
       sessionBudget: null,
+      sourceTrust: 0.5,
     });
   });
 });
@@ -918,6 +1042,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: Number.POSITIVE_INFINITY,
+      sourceTrust: 0.5,
     });
   });
 
@@ -934,6 +1059,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,
+      sourceTrust: 0.5,
     });
   });
 });

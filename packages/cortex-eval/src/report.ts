@@ -193,6 +193,21 @@ export type MemoryArmConfig = {
    */
   readonly retrievalThreshold: number;
   /**
+   * Source trust stamped on every memory admission constructs. In `[0, 1]`.
+   *
+   * The ceiling of the value function is
+   * `confidence * sourceTrust * (0.5 + 0.5 * recency)`, so this number is what
+   * decides whether a threshold above `0.5` can ever admit anything. Recorded for
+   * the same reason the two thresholds are: a reader asking "could this run's gate
+   * close at all" is answered by this value and by nothing else, and two artifacts
+   * that differ only here would otherwise be indistinguishable.
+   *
+   * `admission.ts` passed `0.5` as a literal until the field was added, so every
+   * artifact that predates it carries `0.5` implicitly and a run that raises the
+   * ceiling is a different experiment.
+   */
+  readonly sourceTrust: number;
+  /**
    * Turn budget across all presented sessions.
    *
    * `null` rather than `Infinity` when unbounded, because `Infinity` is not
@@ -317,7 +332,12 @@ export function formatAblationReport(report: AblationReport): string {
     lines.push(
       `- Memory arm config: \`threshold=${memoryArm.threshold}\`` +
         `, \`retrievalThreshold=${memoryArm.retrievalThreshold}\`` +
-        `, \`sessionBudget=${memoryArm.sessionBudget === null ? 'unbounded' : memoryArm.sessionBudget}\``,
+        `, \`sessionBudget=${memoryArm.sessionBudget === null ? 'unbounded' : memoryArm.sessionBudget}\`` +
+        // Rendered even at its default. The reader's question is "was the value
+        // ceiling raised this run", and omitting the default would make "left
+        // alone" and "predates the field" look the same -- the distinction the two
+        // thresholds above already had to be taught to draw.
+        `, \`sourceTrust=${memoryArm.sourceTrust}\``,
     );
   }
 

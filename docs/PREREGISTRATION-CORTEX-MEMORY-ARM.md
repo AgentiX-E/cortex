@@ -584,3 +584,149 @@ because a registration that specifies a configuration the code cannot accept is 
 `7.5` failure with the sign flipped.
 
 ---
+
+## 10. The armed-gate registration
+
+**Status:** code + plumbing landed; **no dispatch accompanies it yet**, and §10.6 states
+the precondition that must hold first.
+
+### 10.1 Why this is a new registration rather than a continuation
+
+§9.4 said arming the gate is a new registration, and this is it. The reason is not
+ceremony: the arm now asks a *different question*. Through §7.5 the arm asked "does
+composing the cognitive layer move accuracy at all", with both gates at their identity
+settings so the only variable was composition. A run that sets a non-zero
+`retrievalThreshold` asks "does the machine-derived abstention decision help", which is a
+claim about a mechanism rather than about composition.
+
+Three things are therefore re-stated rather than inherited, because a rule carried over
+implicitly is a rule that was never decided for this question:
+
+| Element | §7.5 (composition) | §10 (armed gate) |
+| --- | --- | --- |
+| Point estimate | the baseline side of the same dispatch | **unchanged** |
+| Endpoint | overall abstention-aware accuracy, McNemar p < 0.05, N=500, 4 runs, T=0 | **unchanged** |
+| Stopping rule | one dispatch, no peeking, no redraw for a better draw | **unchanged** |
+| Gate settings | `threshold: 0`, `retrievalThreshold: 0` | **named in §10.3** |
+| Mechanism prediction | §3.3 (positive-leaning, with the null stated) | **new, §10.4, and it is falsifiable in the opposite direction** |
+
+The endpoint and the stopping rule are unchanged deliberately. If a mechanism claim were
+allowed to select its own endpoint, every arm would be judged by the metric it happens to
+move, and §3.4's argument against a one-sided test applies with more force to a bespoke
+one.
+
+### 10.2 What the plumbing required, and why it was not cosmetic
+
+`sourceTrust` existed in `cortex-memory` after §9 but could not be dispatched. The gap was
+in three layers at once:
+
+| Layer | Before | After |
+| --- | --- | --- |
+| `tools/dispatch-cortex-memory-ab.py` | no `cortex_memory_source_trust` key | sent explicitly as `'0.5'` |
+| `.github/workflows/benchmark.yml` | no input, no `env:` forward | input declared, forwarded as `CORTEX_MEMORY_SOURCE_TRUST` |
+| `packages/cortex-eval/src/bench-memory-arm.ts` | `CortexMemoryArmOptions` had no field | parses, validates, projects into `MemoryArmConfig` |
+| `packages/cortex-memory/bench/run-ablation.ts` | gate built from three fields | four, plus `sourceTrust=` on the logged line |
+
+This is §7.3's defect in its third form, and it is worth naming precisely because the
+symptom is invisible: a dispatch carrying an input the workflow never declared is accepted
+by the API, the run starts, the arm executes, and the artifact records the configuration
+the operator *intended*. Nothing in the run's output disagrees with anything else, because
+from the workflow's point of view nothing was wrong. §7.3 found this once in the workflow
+and once in the CLI; this is it again one layer further out.
+
+**The remedy is a test rather than a resolution to be careful.**
+`tools/__tests__/test_dispatch_inputs.py` asserts, in both directions, that every key a
+dispatch script sends is a declared `workflow_dispatch` input and that every arm input is
+forwarded into a step's `env`. Three injections were run against it:
+
+| Injection | Caught by |
+| --- | --- |
+| rename the dispatched key to an undeclared `cortex_memory_ceiling` | `test_every_dispatched_key_is_a_declared_workflow_input`, `test_source_trust_is_dispatched_and_forwarded` |
+| delete the `env:` forward, keep the input | `test_the_arm_inputs_have_an_env_forward` |
+| delete the input declaration, keep the dispatch key | both of the above |
+
+### 10.3 The configuration this registration names
+
+* `sourceTrust: 0.5` — **the default, sent explicitly rather than omitted.**
+* `threshold: 0` — unchanged from §7.5; every turn is admitted, so the only gate under
+  test is the retrieval one.
+* `retrievalThreshold: 0.25` — the midpoint of the interval the ceiling makes reachable.
+* `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
+
+`sourceTrust: 0.5` is sent rather than left blank for the reason §7.4 gives about
+`retrievalThreshold`: the blank path also lands on `0.5` today, but it lands there through
+`''` → `readNumeric` → default, and a value the experiment depends on should not arrive by
+an accident that happens to be correct. Sending it also makes the dispatch record name the
+ceiling, which is the fact whose absence made `37110579101` unable to explain why it
+reproduced `37094200823` to the digit.
+
+**Stated plainly: this registration is the weakest arming available, and that is the
+point.** At `sourceTrust: 0.5` the reachable interval is `[0, 0.5]`, so
+`retrievalThreshold: 0.25` is a genuinely discriminating value — but the gate it drives is
+still a **threshold on a quantity whose usable range is half the nominal one**. The
+configuration tests *that the gate is wired and that its midpoint does something*, not
+"the gate at its most expressive".
+
+### 10.4 The falsifiable prediction, stated before the run
+
+This is the part that differs in kind from §3.3, and it is the reason the section exists.
+
+**Prediction.** With `retrievalThreshold: 0.25` and the ceiling at `0.5`, the feature arm's
+**abstention rate falls** relative to `retrievalThreshold: 0` — the admission-side value
+distribution is bounded by `0.5`, so a `0.25` cut sits near the middle of the mass rather
+than at its top, and turns that previously produced an answer now fall below it.
+
+**The null we expect, and would accept.** No significant change on the endpoint. §3.3's
+reasoning for the composition arm applies unchanged here: the reference pipeline already
+abstains deliberately, and a second gate on the same evidence has no obviously-superior
+signal to add.
+
+**What would refute the mechanism claim.** Abstention rate **unchanged to the digit**
+across the two configurations. That is not a null result about the feature; it is evidence
+that `0.25` is not in the reachable mass at all, i.e. that the gate is still effectively
+binary — the §9.3 defect surviving in the arming layer. It would be reported as such and
+**would not be repaired by moving the threshold to `0.1`**, because that would be a redraw
+in the sense §4 forbids: a second configuration chosen after seeing the first one's number.
+
+**The pre-committed reading of each outcome:**
+
+| Observed | Verdict |
+| --- | --- |
+| abstention falls, endpoint significantly up | opened verdict: the machine-derived gate helps at the midpoint |
+| abstention falls, endpoint unchanged | the gate is live and the signal is neutral — a mechanism result, reported as such |
+| abstention unchanged to the digit | the arming is not in the reachable mass; the ceiling, not the threshold, is the binding constraint |
+| p < 0.05 with delta < 0 | the gate harms; reported as a refutation and reverted to `retrievalThreshold: 0` |
+
+The third row is the one worth having written down in advance. It is the outcome that
+distinguishes "the mechanism is wired" from "the mechanism is wired *and reachable*", and
+after §9 that distinction is exactly where this project's remaining uncertainty about the
+arm sits.
+
+### 10.5 What this registration does NOT claim
+
+1. It is not a claim that `0.25` is the right threshold. It is the *midpoint of the
+   reachable interval*, chosen before the data and defensible without it.
+2. It is not a claim about a raised ceiling. That is a separate registration; a run that
+   both raised the ceiling and armed the gate would confound two changes, and the whole
+   point of §10.4's prediction table is to separate them.
+3. It is not a sweep. §4 forbids one: a sweep is a search, and a search is a procedure
+   whose stopping point is chosen after seeing the data it stops on.
+
+### 10.6 The precondition, and what is still missing
+
+§7.5's lesson was that a registration can be dispatched before the code can honour it, and
+that the artifact then describes the intent. The same check applies here, and it now
+passes **at the level of the plumbing**: the value survives every layer from the dispatch
+input to `MemoryArmConfig`, asserted by `bench-memory-arm.test.ts` and
+`test_dispatch_inputs.py`.
+
+What is **not** yet true is that a dispatch has been observed end-to-end with this input.
+The four layers above were verified by reading and by test, not by a run, and §7.3 is
+precisely the case where reading the workflow was not enough. So the precondition for
+dispatching §10 is: one dispatch whose log line and artifact both name
+`sourceTrust=0.5`, checked before its numbers are read as a result.
+
+Until that check is done, §4's stopping rule stands unused — this section registers a
+configuration, it does not spend the dispatch.
+
+---

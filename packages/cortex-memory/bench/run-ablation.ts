@@ -125,6 +125,7 @@ async function main(): Promise<void> {
       threshold: armOptions.threshold,
       retrievalThreshold: armOptions.retrievalThreshold,
       sessionBudget: armOptions.sessionBudget,
+      sourceTrust: armOptions.sourceTrust,
     },
     name: 'cortex-memory',
   });
@@ -139,10 +140,17 @@ async function main(): Promise<void> {
   // nothing about the retrieval decision, which did not exist. A reader with the
   // log alone had no way to see that, so the log must name the second gate now
   // that there is one.
+  //
+  // `sourceTrust` is on the line because it is the ceiling the thresholds are compared
+  // against, and at its `0.5` default the reachable interval is `[0, 0.5]` -- so the
+  // same `retrievalThreshold=0.25` means "the gate opens" under the default and "the
+  // gate is near its midpoint" under a raised ceiling. `37110579101` reproduced
+  // `37094200823`'s number to the digit and neither log named the ceiling.
   console.log(
     `cortex-memory gate: threshold=${armOptions.threshold}, ` +
       `retrievalThreshold=${armOptions.retrievalThreshold}, ` +
-      `sessionBudget=${Number.isFinite(armOptions.sessionBudget) ? armOptions.sessionBudget : 'unbounded'}`,
+      `sessionBudget=${Number.isFinite(armOptions.sessionBudget) ? armOptions.sessionBudget : 'unbounded'}, ` +
+      `sourceTrust=${armOptions.sourceTrust}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

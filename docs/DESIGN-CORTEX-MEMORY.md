@@ -198,7 +198,7 @@ registration is a separate deliverable.
 
 ## 7. Defect injection
 
-Four injections, each expected to be caught by a *different* subset:
+Six injections, each expected to be caught by a *different* subset:
 
 | # | Injection | Caught by | Count |
 | --- | --- | --- | --- |
@@ -206,6 +206,8 @@ Four injections, each expected to be caught by a *different* subset:
 | 2 | Write threshold tightened by `1e-9` | `admission.test.ts` | **0 / 126 at first** → 2 / 129 after adding the equality test |
 | 3 | Session labels dropped from `formatEvidence` | `prompt.test.ts` + `branch-coverage.test.ts` | 2 / 129 |
 | 4 | `sourceTrust` field ignored, reverted to the literal `0.5` | `admission.test.ts` + `index.test.ts` | 4 / 144 |
+| 5 | `sourceTrust` hardcoded in `toMemoryArmConfig`, discarding the parsed value | `bench-memory-arm.test.ts` | 1 / 45 |
+| 6 | Dispatched key renamed so it no longer matches a declared workflow input | `test_dispatch_inputs.py` | 2 / 4 |
 
 Injection 2 is the instructive one. It passed every test in its first run,
 because every threshold assertion sat clearly on one side of the line and none
@@ -221,6 +223,21 @@ moves) and an end-to-end one (a gate setting reaches the admitted value through
 `admissionOptionsFrom`). Both were needed: the end-to-end case is what a unit test
 alone would have missed, and the injection is what proved the second file was
 contributing rather than duplicating.
+
+Injections 5 and 6 are the same defect at two different layers, and they are
+listed separately because they were caught in different packages by different
+kinds of test. #5 hardcodes the projection so an already-parsed value never
+reaches the artifact — a change that typechecks in every direction, which is why
+only one test catches it: the projection assertion, not the parsed-options ones.
+The count is deliberately reported as measured rather than rounded up; a first
+draft predicted 2 and the run said 1, because "the parser read it correctly" and
+"the parser's value reached the artifact" are two different properties and up to
+this point only one test held the second. #6 renames a dispatch input so it no
+longer matches the workflow's declaration, which GitHub accepts without error and
+silently drops. Neither is reachable by the other's test: #5 never touches the
+workflow, and #6 never touches `cortex-eval`. That is the property being asserted
+— the plumbing crosses two languages and three artifacts, so a suite that only
+guards its ends would report the middle wired while it is not.
 
 ## 8. What is deliberately absent
 
