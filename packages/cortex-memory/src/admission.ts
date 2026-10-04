@@ -35,7 +35,56 @@ export type AdmissionOptions = {
   threshold: number;
   /** Replaces {@link clockAwareValueFunction} when supplied. */
   valueFunction?: ValueFunction;
+  /**
+   * Source trust stamped on each constructed memory. In `[0, 1]`; defaults to
+   * `0.5`. See {@link GateOptions.sourceTrust} for why this is a field.
+   */
+  sourceTrust?: number;
 };
+
+/**
+ * The trust stamped on a memory when the caller supplies none.
+ *
+ * Not exported through the barrel. It earns its name inside this file -- the ceiling
+ * theorem is `confidence * DEFAULT_SOURCE_TRUST * (0.5 + 0.5 * recency)`, so a
+ * reader can evaluate it without leaving the module -- but making it public API
+ * would publish a number that no caller needs and that `createMemory` already
+ * owns. The census gate is what caught that: the constant was exported with no
+ * consumer, which is the shape of a symbol that will drift from its one real use.
+ */
+const DEFAULT_SOURCE_TRUST = 0.5;
+
+/**
+ * Validate a `[0, 1]` trust score, naming the offending value.
+ *
+ * The same guard the arm applies to its thresholds, for the same reason: all three
+ * failure modes complete a full run whose result describes the typo rather than the
+ * system. `> 1` makes the ceiling a lie about the model, `< 0` makes every value
+ * negative so the gate admits nothing, and `NaN` makes every `>=` false so the gate
+ * admits nothing -- and neither of the last two produces an error anywhere.
+ *
+ * Thrown rather than clamped. A clamp would silently reinterpret `1.5` as `1`, and
+ * a caller who typed a percentage instead of a fraction would get a plausible
+ * configuration and an uninterpretable result -- the shape the threshold guards
+ * already reject.
+ *
+ * The message renders the value with `String` rather than `JSON.stringify`, and the
+ * difference is not cosmetic: `JSON.stringify(NaN)` is `` null ``, so the offending
+ * argument would be reported as `` null `` -- a value the caller did not pass and
+ * cannot search for. A diagnostic that names something other than the input is the
+ * same defect as an artifact that describes a typo instead of a system.
+ */
+function validateSourceTrust(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(
+      `sourceTrust must be a number in [0, 1], got ${String(value)}. ` +
+        'It scales the value function confidence * sourceTrust * (0.5 + 0.5 * recency), ' +
+        'so a value above 1 makes the ceiling exceed the model, and a value below 0 or ' +
+        'NaN admits nothing -- each completing a run whose result describes the argument.',
+    );
+  }
+  return value;
+}
 
 /**
  * `cortex-core`'s `defaultValueFunction` reads the wall clock from inside — it
@@ -68,6 +117,7 @@ export function clockAwareValueFunction(now: number): ValueFunction {
  */
 export function admitTurns(turns: readonly string[], options: AdmissionOptions): AdmittedTurn[] {
   const valueFn = options.valueFunction ?? clockAwareValueFunction(options.now);
+  const sourceTrust = validateSourceTrust(options.sourceTrust ?? DEFAULT_SOURCE_TRUST);
   const admitted: AdmittedTurn[] = [];
 
   for (let ordinal = 0; ordinal < turns.length; ordinal += 1) {
@@ -82,7 +132,7 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
       createdAt: options.now,
       lastAccessedAt: options.now,
       source: 'unknown',
-      sourceTrust: 0.5,
+      sourceTrust,
       type: 'episodic',
     });
 
@@ -95,9 +145,23 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
   return admitted;
 }
 
-/** The gate configuration admission needs, narrowed from {@link GateOptions}. */
+/**
+ * The gate configuration admission needs, narrowed from {@link GateOptions}.
+ *
+ * The optional fields are copied only when present, so an unset `valueFunction`
+ * stays absent rather than becoming `undefined`. The distinction is small and it is
+ * kept for the reason the original single-field version kept it: `admissionOptionsFrom`
+ * is the one place a caller's gate becomes admission's options, and a reader
+ * comparing the two objects should see the same shape.
+ *
+ * Written as statements rather than a chain of conditional spreads. The spread form
+ * is shorter and produced two more branch sites than there are decisions, which the
+ * coverage gate reported as an uncovered line -- the code was harder to read and
+ * the measurement said so.
+ */
 export function admissionOptionsFrom(now: number, gate: GateOptions): AdmissionOptions {
-  return gate.valueFunction === undefined
-    ? { now, threshold: gate.threshold }
-    : { now, threshold: gate.threshold, valueFunction: gate.valueFunction };
+  const options: AdmissionOptions = { now, threshold: gate.threshold };
+  if (gate.valueFunction !== undefined) options.valueFunction = gate.valueFunction;
+  if (gate.sourceTrust !== undefined) options.sourceTrust = gate.sourceTrust;
+  return options;
 }

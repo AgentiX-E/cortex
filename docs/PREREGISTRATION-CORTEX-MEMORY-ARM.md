@@ -481,9 +481,6 @@ and pins `lastAccessedAt` to the injected clock, so a value function composed wi
 cannot exceed `0.5` no matter how confident the evidence. Every threshold in this arm's
 vocabulary therefore means half of what an intuitive `[0, 1]` reading suggests, which is
 the same "correct number, wrong units" shape §38.3 recorded.
-
----
-
 ## 8. Reproducing the dispatch
 
 > **Dispatched.** Run [`37094200823`](https://github.com/AgentiX-E/cortex/actions/runs/37094200823)
@@ -515,3 +512,75 @@ The script locks the ref (not the SHA) for the reason `dispatch-b7-ab.py` docume
 without an explicit `ref` the workflow picks up whatever `master` is at dispatch time,
 and two arms can land on different code — which is how the §13 run produced two
 byte-identical arms and a verdict about the dispatch.
+
+---
+
+## 9. The ceiling remedy: what changed, and why it is not a re-tuning
+
+**Status:** code remedy, landed after §7.5. **No dispatch accompanies it**, and this
+section exists to state why one does not.
+
+### 9.1 What changed
+
+`GateOptions` gained `sourceTrust?: number` (default `0.5`), threaded through
+`admissionOptionsFrom` → `admitTurns` → `createMemory`. Before it, `admission.ts`
+passed `sourceTrust: 0.5` as a literal with no way to pass anything else, so the
+composition layer could not express a fully-trusted memory.
+
+| Property | Before | After |
+| --- | --- | --- |
+| Reachable value range | `[0, 0.5]` | `[0, 1]` |
+| `threshold > 0.5` | admits nothing | discriminates |
+| Default behaviour | `sourceTrust = 0.5` | **unchanged** |
+
+Verified on the built packages: the default still yields `0.5`, `sourceTrust: 1` yields
+`1`, and at `threshold 0.6` a fully-trusted turn is admitted while a default one is not.
+
+### 9.2 Why this is a remedy rather than tuning toward a preferred outcome
+
+§4 forbids re-running for a better draw and forbids promoting a configuration after a
+null. Neither applies, and the distinction is stated as a test rather than asserted:
+
+| Test | Remedy | Tuning |
+| --- | --- | --- |
+| Are the registered parameters altered? | no | yes |
+| Does it change what the code can *express* or what it is *set to*? | can express | is set to |
+| Is the old behaviour wrong independent of any benchmark? | yes (§9.3) | no |
+| Would reverting it be defended on principle? | yes | no |
+| Does the default move? | **no** | usually yes |
+
+The last row is the decisive one for this repository's purposes. Because the default is
+unchanged, **every artifact produced before this field existed still describes the
+configuration it ran under** — the `6.40%` and `6.45%` readings remain interpretable in
+exactly the terms they were recorded in.
+
+### 9.3 The defect, independent of the benchmark
+
+`MemoryValue.sourceTrust` is documented as `[0, 1]`. The composition layer could only
+produce one value, so its domain was narrower than the model it composes. Measured
+consequences, each wrong regardless of what any arm scores:
+
+1. **The write gate's upper half was unreachable**, making it a two-state switch.
+   `decideWrite` accepts any `number`, so an unreachable threshold produces no error,
+   only always-false — §40.6's "the value range is part of the interface" in the concrete.
+2. **`selectSessionBudget`'s best-of ranking was dead in practice.** Three sessions with
+   deliberately different evidence quality all admitted at `0.5`, and a budget of `1`
+   selected index `1` via the tie-break alone. The function's documented distinction
+   between best-of and mean could not be observed through any input this arm constructs.
+3. **Contradiction resolution could not distinguish sources.** `resolve.ts` fuses on
+   `confidence * sourceTrust`, so a rumour and a first-hand observation carried the same
+   weight.
+
+### 9.4 What this does not license
+
+**Arming the gate in a dispatch is still a new registration.** §7.5 is unchanged: choosing
+a `sourceTrust` (or a `retrievalThreshold` that the new range makes meaningful) changes
+the question the arm asks, and it must be registered before it is dispatched. This section
+records a code change that widens what is expressible; it does not authorise a run, and
+§4's stopping rule stands.
+
+The order matters: the field had to exist before a registration could name a value for it,
+because a registration that specifies a configuration the code cannot accept is the
+`7.5` failure with the sign flipped.
+
+---

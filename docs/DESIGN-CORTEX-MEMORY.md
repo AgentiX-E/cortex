@@ -155,15 +155,57 @@ and `isAbstention` was exported so the blank-input case is asserted through the
 predicate instead of being an untestable arm inside a private helper. No `v8
 ignore` was used anywhere.
 
+### 6.4 The value ceiling, and why it was a defect
+
+`admission.ts` passed `sourceTrust: 0.5` explicitly to `createMemory`. Because the
+value function is `confidence * sourceTrust * (0.5 + 0.5 * recency)` and admission
+pins `lastAccessedAt` to the injected clock, `recency` is exactly `1` and the value
+of **every** admitted turn is exactly `0.5`. Measured: content lengths 1, 29 and
+10000 all give `0.5`; `threshold > 0.5` admits nothing.
+
+This was found by dispatch, not by review. `PREREGISTRATION-CORTEX-MEMORY-ARM.md`
+§7.5 records the reading — a repaired program scoring `6.45%` against `6.40%`,
+because `retrievalThreshold=0` cannot close a gate whose maximum observable value
+is `0.5`. §40.6 states the general form: **the value range is part of the
+interface, it is just not written in the signature.**
+
+`MemoryValue.sourceTrust` is documented as `[0, 1]`, so the composition layer had a
+narrower domain than the model it composes, and the shrinkage was invisible:
+`decideWrite` accepts any `number`, and an unreachable threshold produces no error,
+only always-false. Three consequences, each wrong independently of any benchmark:
+
+1. the write gate's upper half was unreachable, making it a two-state switch;
+2. `selectSessionBudget` ranks by the best admitted value, and every value was
+   identical — measured, three sessions with deliberately different evidence all
+   ranked `0.5`, so best-of collapsed to its tie-break;
+3. `contradiction/resolve.ts` fuses on `confidence * sourceTrust`, so a rumour and
+   a first-hand observation were indistinguishable.
+
+`GateOptions.sourceTrust?: number` fixes all three at once, and its **default does
+not move**. That is what separates the change from a re-tuning: a caller who sets
+nothing gets the previous behaviour, so every measurement taken before the field
+existed keeps its meaning, and only the *reachable* set grows. Verified after the
+change: `sourceTrust: 1` yields value `1`, a threshold of `0.6` admits a
+fully-trusted turn and rejects a default one.
+
+The validation rejects out-of-range and `NaN`, naming the value with `String` rather
+than `JSON.stringify` — the latter renders `NaN` as `null`, which reports an
+argument the caller never passed.
+
+**This does not license arming the gate in a dispatch.** Choosing a value changes
+the question, so it requires its own registration. The field is the remedy; the
+registration is a separate deliverable.
+
 ## 7. Defect injection
 
-Three injections, each expected to be caught by a *different* subset:
+Four injections, each expected to be caught by a *different* subset:
 
 | # | Injection | Caught by | Count |
 | --- | --- | --- | --- |
 | 1 | `answerTemporal` routed through the flat path, dropping `questionDate` | `memory-conformance.test.ts` | 2 / 126 |
 | 2 | Write threshold tightened by `1e-9` | `admission.test.ts` | **0 / 126 at first** → 2 / 129 after adding the equality test |
 | 3 | Session labels dropped from `formatEvidence` | `prompt.test.ts` + `branch-coverage.test.ts` | 2 / 129 |
+| 4 | `sourceTrust` field ignored, reverted to the literal `0.5` | `admission.test.ts` + `index.test.ts` | 4 / 144 |
 
 Injection 2 is the instructive one. It passed every test in its first run,
 because every threshold assertion sat clearly on one side of the line and none
@@ -171,6 +213,14 @@ of them exercised *equality*. `decideWrite` uses `>=`, so the boundary is a real
 behaviour with a real observable difference, and it was untested until the
 injection said so. The three equality tests added in response are the reason the
 table's third column changes between runs.
+
+Injection 4 restores the exact defect §6.4 describes, so it answers "would the
+suite have caught the ceiling if it had been written as a fix?". It is caught in
+two files rather than one because the ceiling has both a unit assertion (the value
+moves) and an end-to-end one (a gate setting reaches the admitted value through
+`admissionOptionsFrom`). Both were needed: the end-to-end case is what a unit test
+alone would have missed, and the injection is what proved the second file was
+contributing rather than duplicating.
 
 ## 8. What is deliberately absent
 

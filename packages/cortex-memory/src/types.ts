@@ -49,6 +49,26 @@ export type GateOptions = {
   sessionBudget: number;
   /** Replaces `cortex-core`'s `defaultValueFunction` when supplied. */
   valueFunction?: ValueFunction;
+  /**
+   * Source trust stamped on every memory admission constructs. In `[0, 1]`.
+   *
+   * Defaults to `0.5`, which is what `createMemory` establishes and what this
+   * layer passed unconditionally until the ceiling was measured. It is a field
+   * rather than a constant because the value function is bounded by
+   * `confidence * sourceTrust * (0.5 + 0.5 * recency)`, and with `sourceTrust`
+   * fixed the layer could not express a fully-trusted memory at all: the ceiling
+   * was `0.5`, so `threshold > 0.5` admitted nothing and the gate was a two-state
+   * switch. Dispatch `37110579101` is what made it visible -- a retrieval
+   * threshold of `0` could not close a gate whose maximum observable value was
+   * `0.5`, which is why the repaired program scored what the unrepaired one did.
+   *
+   * The field does not change the default, and that is deliberate rather than
+   * incidental: a caller that sets nothing gets exactly the previous behaviour, so
+   * every measurement taken before this field existed keeps its meaning. What
+   * grows is the reachable set, not the shipped configuration. See
+   * `docs/DESIGN-CORTEX-MEMORY.md` §6.4.
+   */
+  sourceTrust?: number;
 };
 
 /** Construction options for {@link CortexMemory}. */
