@@ -1,0 +1,185 @@
+/**
+ * The arm must record **why** the feature side abstained, not only that it did.
+ *
+ * ## The gap these tests close
+ *
+ * `CortexMemoryArmResult` carried a `delta` and nothing about its provenance. A
+ * `-37.20pp` delta is consistent with at least three different mechanisms:
+ *
+ * 1. the write gate admitted nothing, so the arm answered from no evidence;
+ * 2. the retrieval gate declined the evidence it had;
+ * 3. the model was consulted and declined.
+ *
+ * `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.10 records the cost of that
+ * ambiguity. Run `37313582403` armed `retrievalThreshold: 0.25`, abstention moved
+ * `+46.40pp`, and the movement was written up as the retrieval gate closing on the
+ * questions the baseline had answered. **The gate had never closed once.** At
+ * `sourceTrust: 0.5` with `lastAccessedAt === createdAt` the value is the
+ * constant `0.5`, so every threshold at or below it is always open; all `479`
+ * abstentions were the model's. Nothing in the artifact or the log could
+ * contradict the reading, so it stood until the gate was probed directly and the
+ * mechanism was established by hand.
+ *
+ * The reference CLI's report already carries a census (`decisionReasons`). The
+ * arm — the only place an arming change is ever *measured* — did not. These tests
+ * require the arm to carry it.
+ *
+ * ## Why the assertions are about absence as well as presence
+ *
+ * The census is read as an optional capability of the feature system, because
+ * `MemorySystem`'s conformant minimum is `{ name, answer }` and every test double
+ * in this repo relies on that. So half of the contract is that a system without
+ * the capability produces **no field at all** — not a zeroed one. A zeroed
+ * default would be indistinguishable from a run that genuinely abstained nowhere,
+ * which is precisely the shape that made §10.10's wrong reading possible.
+ */
+import { describe, expect, it, vi } from 'vitest';
+
+import { runCortexMemoryArm } from '../bench-memory-arm.js';
+import { exactMatchScorer } from '../metrics.js';
+import type { Answer, BenchmarkDataset, MemorySystem } from '../types.js';
+
+const GATE = {
+  threshold: 0,
+  retrievalThreshold: 0,
+  sessionBudget: null,
+  sourceTrust: 0.5,
+} as const;
+
+function dataset(): BenchmarkDataset {
+  return {
+    name: 'fixture',
+    questions: [
+      { id: 'q1', capability: 'IE', question: 'Question one?', expected: 'one', context: [] },
+    ],
+  };
+}
+
+function constantSystem(name: string, answer: Answer): MemorySystem {
+  return { name, answer: () => answer };
+}
+
+/** Run the arm with `feature` on the feature side, and hand back the result. */
+function run(feature: MemorySystem) {
+  return runCortexMemoryArm(dataset(), constantSystem('reference-pipeline', 'one'), feature, {
+    runs: 1,
+    scorer: exactMatchScorer,
+    generatedAt: '1970-01-01T00:00:00.000Z',
+    memoryArmConfig: { ...GATE },
+  });
+}
+
+/** A system that exposes the census capability with the given payload. */
+function systemWithCensus(payload: unknown, impl?: () => unknown): MemorySystem {
+  return {
+    name: 'cortex-memory',
+    answer: () => 'one',
+    abstentionReasons: impl ?? (() => payload),
+  } as unknown as MemorySystem;
+}
+
+describe('the arm records the feature side abstention census', () => {
+  it('carries the census through when the system exposes one', async () => {
+    const census = { empty: 1, threshold: 2, llm: 3, answered: 494 };
+    const result = await run(systemWithCensus(census));
+
+    expect(result.abstentionReasons).toEqual(census);
+  });
+
+  it('calls the census once, at read time, rather than caching it at construction', async () => {
+    // The count only means anything if it is read *after* the questions ran. A
+    // snapshot taken when the system was built would report the state before the
+    // arm -- all zeros -- which is exactly the reading that cannot distinguish
+    // "no abstentions" from "not measured".
+    const impl = vi.fn(() => ({ empty: 0, threshold: 0, llm: 1, answered: 0 }));
+    const result = await run(systemWithCensus(undefined, impl));
+
+    expect(impl).toHaveBeenCalled();
+    expect(result.abstentionReasons).toEqual({
+      empty: 0,
+      threshold: 0,
+      llm: 1,
+      answered: 0,
+    });
+  });
+
+  it('omits the field when the feature system has no census capability', async () => {
+    // The conformant-minimum control. `constantSystem` is `{ name, answer }`,
+    // which every other arm in this package uses, so this is the shape a
+    // census-less run actually has.
+    const result = await run(constantSystem('cortex-memory', 'one'));
+
+    expect(result.abstentionReasons).toBeUndefined();
+    expect('abstentionReasons' in result).toBe(false);
+  });
+
+  it('omits the field rather than fabricating one when the payload is malformed', async () => {
+    // Present-but-wrong is worse than absent. A malformed payload that reached
+    // the artifact would be indistinguishable from a real reading, and a reader
+    // would draw a conclusion from it -- the failure mode §10.10 documents.
+    const malformed: unknown[] = [
+      { empty: 0, threshold: 0, llm: 0 }, // missing key
+      { empty: 0, threshold: 0, llm: 0, answered: '4' }, // wrong type
+      { empty: 0, threshold: 0, llm: 0, answered: -1 }, // negative
+      { empty: 0, threshold: 0, llm: 0, answered: 1.5 }, // non-integer
+      { empty: 0, threshold: 0, llm: 0, answered: Number.NaN }, // NaN
+      { empty: 0, threshold: 0, llm: 0, answered: Number.POSITIVE_INFINITY }, // not finite
+      null,
+      'not an object',
+      42,
+    ];
+
+    for (const payload of malformed) {
+      const result = await run(systemWithCensus(payload));
+      expect(result.abstentionReasons).toBeUndefined();
+    }
+  });
+
+  it('still returns the measured delta when the census read throws', async () => {
+    // The endpoint is measured by the time the census is read, so a broken
+    // optional capability must not discard the arm's actual result. Asserted
+    // because the tempting implementation -- let the throw propagate -- would
+    // turn a reporting bug into a lost run, and a run here costs about an hour.
+    const result = await run(
+      systemWithCensus(undefined, () => {
+        throw new Error('census unavailable');
+      }),
+    );
+
+    expect(result.abstentionReasons).toBeUndefined();
+    expect(typeof result.delta).toBe('number');
+    expect(result.report.feature.name).toBe('cortex-memory');
+  });
+
+  it('does not put the baseline side census in the feature field', async () => {
+    // Both sides are `MemorySystem`s and either could expose the capability. The
+    // field is about the feature, so reading it from the baseline would attribute
+    // the feature's abstentions to the control's mechanism and invert the very
+    // conclusion §10.10 had to retract.
+    const baselineCensus = { empty: 99, threshold: 99, llm: 99, answered: 99 };
+    const baseline = {
+      name: 'reference-pipeline',
+      answer: () => 'one',
+      abstentionReasons: () => baselineCensus,
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(),
+      baseline,
+      systemWithCensus({ empty: 0, threshold: 0, llm: 1, answered: 0 }),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.abstentionReasons).toEqual({
+      empty: 0,
+      threshold: 0,
+      llm: 1,
+      answered: 0,
+    });
+  });
+});

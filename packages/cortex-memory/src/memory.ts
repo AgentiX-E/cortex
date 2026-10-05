@@ -50,11 +50,51 @@ export class CortexMemory implements SessionAwareMemorySystem {
   readonly #now: number;
   readonly #options: CortexMemoryOptions;
 
+  /**
+   * Why each abstention happened, accumulated across every question answered.
+   *
+   * The four keys name the four mutually exclusive outcomes of
+   * `answerAbstention`, and they cover every question it is asked exactly once.
+   * `empty` and `threshold` are machine-derived and consume no request; `llm` and
+   * `answered` are the model's two outcomes.
+   *
+   * It exists because those four outcomes were indistinguishable in every
+   * artifact this project has produced. `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`
+   * §10.10 records what that cost: an arm at `retrievalThreshold: 0.25` moved
+   * abstention `+46.40pp`, the movement was attributed to the retrieval gate, and
+   * the gate had never closed once — it could not have, because the value at that
+   * arming is the constant `0.5`. The `479` abstentions were all the model's. The
+   * run's own output could not contradict the wrong reading, so the reading
+   * survived until the gate was probed directly.
+   *
+   * `empty` is counted here rather than folded into `threshold` because the two
+   * are repaired differently: `threshold` means the arming chose to decline, while
+   * `empty` means the arm supplied no evidence to decline *from*, which is a
+   * dataset- or write-gate-level problem and not a retrieval-gate result.
+   */
+  readonly #reasons: { empty: number; threshold: number; llm: number; answered: number } = {
+    empty: 0,
+    threshold: 0,
+    llm: 0,
+    answered: 0,
+  };
+
   constructor(options: CortexMemoryOptions) {
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
     this.#now = options.now;
     this.#options = options;
+  }
+
+  /**
+   * The abstention census, as a copy.
+   *
+   * Returned by value so a consumer that mutates what it reads cannot alter the
+   * numbers a later reader sees. The benchmark arm serialises this straight into
+   * its artifact, so the returned object is the artifact's payload.
+   */
+  abstentionReasons(): { empty: number; threshold: number; llm: number; answered: number } {
+    return { ...this.#reasons };
   }
 
   /**
@@ -71,6 +111,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * Admission runs per session, then the turn budget decides which sessions are
    * presented. Both steps are what let the budget be spent on a session
    * retrieval already judged relevant instead of on scattered neighbours.
+   *
+   * The budget is applied by `#admit` rather than here, so this path and the
+   * abstention path cannot disagree about it. It used to be applied here only,
+   * which left every other session-taking path unbounded; see `#admit`.
    */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
     const admitted = admitSessions(sessions, admissionOptionsFrom(this.#now, this.#options.gate));
@@ -143,11 +187,24 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions?: string[][],
   ): Promise<Answer> {
     const turns = this.#admit(context, sessions);
-    if (turns.length === 0) return null;
+    if (turns.length === 0) {
+      this.#reasons.empty += 1;
+      return null;
+    }
 
-    if (!this.#retrievalAdmitted(turns)) return null;
+    if (!this.#retrievalAdmitted(turns)) {
+      this.#reasons.threshold += 1;
+      return null;
+    }
 
-    return this.#prompt(question, turns, 'abstention');
+    // Recorded as `llm` when the prompt comes back as a decline, and `answered`
+    // otherwise. The three non-`answered` outcomes are the ones a reader has to
+    // be able to separate; the distinction between "the model declined" and "the
+    // model answered" is what makes the tally a complete census of the path
+    // rather than a census of its failures only.
+    const answer = await this.#prompt(question, turns, 'abstention');
+    this.#reasons[answer === null ? 'llm' : 'answered'] += 1;
+    return answer;
   }
 
   /**
@@ -218,7 +275,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
     if (sessions !== undefined && sessions.length > 0) {
       // Sessions are admitted independently, then flattened, because the flat
       // paths receive no boundary information to present.
-      return admitSessions(sessions, admissionOptions).flatMap((session) => session.turns);
+      //
+      // The budget is applied HERE, before flattening, and not only in
+      // `answerSessions`. It used to be applied only there, and `selectSessionBudget`
+      // had exactly one call site -- so `answerAbstention`, which is the path an
+      // arm experiment exercises, ran with its budget silently unapplied while the
+      // artifact recorded the budget it believed it was running with. That is the
+      // same class of defect as the inert `retrievalThreshold` in
+      // `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.10: a recorded
+      // configuration value that does not reach the decision it names.
+      //
+      // Ranking is by session, so it must happen on `AdmittedSession[]` and not on
+      // the flattened turns; flattening first would lose the boundaries and make
+      // "admit a session whole" unexpressible.
+      return selectSessionBudget(
+        admitSessions(sessions, admissionOptions),
+        this.#options.gate.sessionBudget,
+      ).flatMap((session) => session.turns);
     }
     return admitTurns(context, admissionOptions);
   }

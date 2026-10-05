@@ -436,6 +436,51 @@ export type CortexMemoryArmResult = {
   markdown: string;
   /** Feature accuracy minus baseline accuracy, abstention-aware. */
   delta: number;
+  /**
+   * Why the feature side abstained, when it can say.
+   *
+   * `undefined` when the feature system does not expose an abstention census, so
+   * this is additive: an arm assembled over a system that cannot attribute its
+   * abstentions is unaffected, and its artifact simply lacks the field rather than
+   * carrying a fabricated one.
+   *
+   * It exists because a delta alone cannot distinguish the three mechanisms that
+   * produce an abstention. `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.10 is
+   * the cost: an arm at `retrievalThreshold: 0.25` moved abstention `+46.40pp`, the
+   * movement was written up as the retrieval gate closing, and the gate had never
+   * closed once -- the value at that arming is the constant `0.5`, so the cut was
+   * inert and all `479` abstentions were the model's. The run's own artifact could
+   * not contradict the reading. With this field it can: a census dominated by `llm`
+   * says the model declined, and one dominated by `threshold` says the gate did.
+   *
+   * The reference CLI's `benchmark-report.json` already carries an equivalent
+   * census as `decisionReasons`. This is the same shape under this arm's naming,
+   * produced by the system rather than reconstructed by the harness -- so the two
+   * bench entry points cannot disagree about the same run.
+   */
+  abstentionReasons?: AbstentionReasons;
+};
+
+/**
+ * The abstention census: one count per outcome, and the four cover every question.
+ *
+ * Not exported. Nothing outside this package consumes the type -- the arm CLI
+ * writes the census through `JSON.stringify` and reads it through
+ * `CortexMemoryArmResult.abstentionReasons`, both of which are structural -- so an
+ * export would be an orphan by the repository's own census. It stays a named type
+ * internally so the arm, the reader, and the result agree on the key set by
+ * construction: adding a fifth outcome becomes a type error at every producer
+ * rather than a silently absent key in a report.
+ */
+type AbstentionReasons = {
+  /** The write gate admitted nothing, so there was no evidence to decline from. */
+  empty: number;
+  /** The retrieval gate computed `retrieve: false`. */
+  threshold: number;
+  /** The model was consulted and declined. */
+  llm: number;
+  /** The model was consulted and answered. */
+  answered: number;
 };
 
 /**
@@ -500,5 +545,57 @@ export async function runCortexMemoryArm(
     // Read from the ablation's own aggregate rather than recomputed here, so the
     // returned value cannot disagree with the tables rendered beside it.
     delta: report.ablation.delta,
+    ...abstentionReasonsOf(feature),
+  };
+}
+
+/**
+ * Read the feature system's abstention census, if it exposes one.
+ *
+ * ## Why this is a structural read rather than a member of `MemorySystem`
+ *
+ * `MemorySystem` is the benchmark's *injection* contract: `{ name, answer }` plus
+ * optional routing members. It is deliberately wider than any single system, and
+ * `memory-system-conformance.test.ts` verifies that a bare `{ name, answer }`
+ * object receives every question. Adding a census to it would make every system
+ * -- including test doubles and the reference pipeline -- responsible for a field
+ * only a value-gated system can fill, and the conformant minimum would stop being
+ * conformant.
+ *
+ * So the census is read as an optional capability, the same way the router reads
+ * `answerSessions`. The validation is not decorative: a system could expose the
+ * name with a malformed value, and `{ ...payload }` would then put nonsense in the
+ * artifact. A field that is present but wrong is worse than one that is absent,
+ * because it is indistinguishable from a real reading -- so anything that is not
+ * four finite non-negative integers is treated as absent rather than reported.
+ */
+function abstentionReasonsOf(system: MemorySystem): { abstentionReasons?: AbstentionReasons } {
+  const candidate = (system as { abstentionReasons?: unknown }).abstentionReasons;
+  if (typeof candidate !== 'function') return {};
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    // A throwing accessor is a broken optional capability, not a failed run. The
+    // endpoint is already measured by this point, so discarding the census is the
+    // right trade against discarding the arm.
+    return {};
+  }
+
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  const keys = ['empty', 'threshold', 'llm', 'answered'] as const;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  return {
+    abstentionReasons: {
+      empty: record.empty as number,
+      threshold: record.threshold as number,
+      llm: record.llm as number,
+      answered: record.answered as number,
+    },
   };
 }

@@ -450,9 +450,18 @@ threshold=0.75  -> retrieve=false  confidence=0.5
 
 The ceiling is `confidence(1) × sourceTrust(0.5) × (0.5 + 0.5 × recency(1.0))`, and
 `admission.ts` supplies `sourceTrust: 0.5` with `lastAccessedAt === now`, so recency is
-exactly `1`. `decideRetrieval` compares `confidence >= threshold`, so the reachable
-range for this arm is `[0, 0.5]`: every threshold at or below `0.5` is **always open**,
-and every threshold above it is **always closed**.
+exactly `1`. `decideRetrieval` thresholds the **value function's output** — not the
+`confidence` field; see the correction in §10.10 — so the reachable range for this arm is
+`[0, 0.5]`: every threshold at or below `0.5` is **always open**, and every threshold above
+it is **always closed**.
+
+Because the three factors multiply to the constant `0.5` for *every* admitted turn, the
+reachable range is not merely bounded but **degenerate**: within `[0, 0.5]` the gate cannot
+distinguish one threshold from another, and `0.25` is a no-op. The distinction matters
+because it changes what a later comparison could have shown. A bounded-but-populated range
+would make a cut at the midpoint a real experiment; a single point makes every threshold in
+the range the same experiment, which is why §10.9's draw was read against the wrong
+hypothesis.
 
 This is the defect §7.4 fixed viewed from the other side. Before the repair there was no
 call site, so *no* threshold could have had an effect and the config line could not say
@@ -935,34 +944,101 @@ sides by construction. The feature's entire score, `30/500 = 6.00%`, is therefor
 **always-abstain floor** plus three questions: as armed, the arm is very nearly an
 unconditional abstainer.
 
-**The mechanism, as the numbers describe it.** A `0.5` ceiling bounds the admission scores
-*from above*. For the `0.25` retrieval cut to behave as §10.4 predicted, the bounded mass
-would have to sit largely **above** `0.25`. The observed behaviour is only consistent with
-the mass sitting largely **below** it, so the gate closes on the questions the baseline was
-answering instead of opening the ones it had declined. That is a concrete, falsifiable
-statement about the admission-score distribution which §10.4's prediction got backwards —
-and it is worth recording precisely because it was predicted in writing first. **The
-reading is §10.4's fourth row, not its middle row.**
+**The mechanism, as first written, was wrong — see §10.10.** The paragraph above was
+drafted from the two rates alone and attributed all `46.40pp` to the retrieval gate closing.
+That is arithmetically impossible at this arming: the admission value is the constant `0.5`,
+so `0.25 ≥ 0.5` is false and the gate never closed once. The `186` lost questions were
+declined by the **model**, not by the gate. The corrected account, and the reason the
+original reading was reachable at all, is in §10.10.
 
-**Verdict, per the pre-committed table.** §10.4's fourth row applies verbatim:
-
-> `p < 0.05 with delta < 0` → the gate harms; reported as a refutation and reverted to
-> `retrievalThreshold: 0`
-
-The gate is wired and reachable — abstention moved 46.40pp, so the third row ("unchanged to
-the digit") does not apply — and at this arming it is strictly harmful. The recovery is the
-revert §10.4 fixed before the number existed. It is executed as its own change, in §10.3
-and in `tools/dispatch-cortex-memory-ab.py`, so a refuted configuration is not left
-half-applied.
+**Verdict, per the pre-committed table.** Read literally, this run does not fit any row
+cleanly, and the honest report says so. Abstention did not fall, and it did not stay
+"unchanged to the digit" either — it moved `+46.40pp`. §10.10 establishes that the movement
+was produced by the model rather than by the gate, so the run discharged the *third* row's
+underlying proposition (the arming is not in the reachable mass) while arriving at it by a
+route the table did not enumerate. The table's fourth row was applied at the time, and §10.4
+requires a `delta < 0` with `p < 0.05` to be **reverted to `retrievalThreshold: 0`** — a
+requirement that holds regardless of which mechanism produced the negative delta, and which
+was executed as its own change, in §10.3 and in `tools/dispatch-cortex-memory-ab.py`, so a
+refuted configuration is not left half-applied.
 
 **What this does NOT claim.** It does not claim a machine-derived admission gate is
-impossible, and it does not license sliding the threshold to `0.1` to hunt for a better
-number — that is the redraw §4 forbids, and it is the specific temptation the third row of
-the §10.4 table was written to pre-empt. What is established is narrower and firmer: **at
-`retrievalThreshold: 0.25` with `sourceTrust: 0.5` and `threshold: 0`, this gate loses 186
-questions and wins none.** A future attempt must be a new registration carrying its own
-prediction, not a slide of this one's dial.
+impossible, and it does not claim the gate harms — §10.10 shows the run could not test the
+gate at all. It also does not license sliding the threshold to `0.1` to hunt for a better
+number, which is the redraw §4 forbids and the specific temptation the third row of the
+§10.4 table was written to pre-empt. What is established is narrower and firmer: **at
+`retrievalThreshold: 0.25` with `sourceTrust: 0.5` and `threshold: 0`, this arming produces
+a `6.60%` endpoint, 186 questions below the control and none above it — and §10.10 shows
+the gate was inert while that happened, so the deficit is attributable to the arm's
+composition, not to its retrieval cut.** A future attempt on the gate must be a new
+registration carrying its own prediction *and a reachable arming*, not a slide of this one's
+dial.
 
 **One thing the run re-confirmed.** The control side's own number is reproduced at full
 scale under the recharged key: `reference-pipeline` at **43.80%** abstention-aware accuracy
 on 500 questions, consistent with §10.7's composition-arm finding on the same dataset.
+
+### 10.10 Correction: the gate was inert, and §10.9 attributed the draw to it
+
+**What was wrong.** Two statements, one in this file and one downstream of it.
+
+1. §7.4-adjacent prose near the ceiling arithmetic said `decideRetrieval` compares
+   `confidence >= threshold`. It does not. It thresholds the value function's output:
+   `best = Math.max(best, clamp01(valueFn(m, queryContext)))` in
+   `packages/cortex-core/src/value/value.ts`, and the local variable is named `confidence`
+   only because it is the best value the loop found. The field named `confidence` on a
+   memory is one *input* to that value and is never the compared quantity.
+2. §10.9 therefore attributed the `+46.40pp` abstention movement to the retrieval gate
+   closing. It could not have. `admission.ts` passes `sourceTrust: 0.5` to `createMemory`,
+   sets `lastAccessedAt === createdAt === options.now`, and does not pass `confidence`, so
+   the default of `1` applies. The value is `1 × 0.5 × (0.5 + 0.5 × exp(0)) = 0.5` for every
+   admitted turn — a constant, not a distribution. `0.25 ≤ 0.5`, so `retrieve` was `true`
+   on every question. **The gate never closed once, and this ablation never tested it.**
+
+**How the correction was established.** Independently, not by re-reading:
+
+| Probe | Threshold | `retrieve` |
+| --- | --- | --- |
+| `admitTurns(..., { sourceTrust: 0.5 })` → value | — | `0.5`, `0.5` (constant) |
+| same candidates | `0` | `true` |
+| same candidates | `0.25` (registered) | `true` |
+| same candidates | `0.5` | `true` |
+| same candidates | `0.5 + 1e-9` | `false` |
+| same candidates | `0.51` | `false` |
+
+The boundary sits exactly at the ceiling, so the reachable range is `[0, 0.5]` for opening
+and `(0.5, 1]` for closing. The write gate is inert for the same reason: `threshold: 0` with
+`sessionBudget: unbounded` admits all three sessions and all nine turns.
+
+**Where the `95.80%` came from.** From the model. With both gates open, the only path to
+`answerAbstention` returning `null` that remains is the LLM emitting `UNANSWERABLE`
+(`reason: "llm"`). The feature arm is not an armed gate; it is a composition whose prompt
+makes the model decline. That is a legitimate finding about the composition and it is
+*not* a finding about the retrieval gate.
+
+**A diagnostic gap this exposed.** `decisionReasons` is produced only by
+`packages/cortex-eval/bench/run.ts` (the reference CLI). `cortex-memory/bench/run-ablation.ts`
+does not emit it, so the arm's artifact cannot say whether an abstention came from `empty`,
+`threshold`, or `llm`. The attribution above had to be reconstructed from source and a
+separate probe rather than read off the run's own output. Closing that gap is the
+prerequisite for any future arming registration: a gate experiment must be able to report
+whether the gate fired.
+
+**The lesson, which generalises past this arm.** Testing that a knob *has an effect* is not
+testing that the knob is *reachable*. `abstention-decision.test.ts` exercised `0.9` (closed)
+and `0.1` (open) and passed — but it varied the threshold and never the ceiling, and under
+the single-point hypothesis those two samples are entirely consistent with an inert knob. A
+parameter can be accepted, recorded in the artifact, echoed in the dispatch line, and still
+be inert, because the quantity it thresholds has a range the caller's *other* settings
+collapsed to a point. The guard is
+`packages/cortex-memory/src/__tests__/retrieval-reachable-range.test.ts`, which pins the
+constant, the boundary, and the widening — and which fails all four of its assertions if
+`sourceTrust` is dropped from the value function.
+
+**What is *not* being done about it.** §10.9's stats are untouched and remain correct as
+statistics; only their attribution changes. The revert of `retrievalThreshold` to `0`
+stands, and for a stronger reason than §10.9 gave: the arming was a no-op, so a new
+registration is required regardless. No threshold will be slid to `0.1` to search for a
+number — with a degenerate range, every value in `[0, 0.5]` is the same experiment, so the
+next step is to make the range *reachable* (raise the ceiling, or admit with varying
+`confidence`), then register a cut against a range that can respond to it.
