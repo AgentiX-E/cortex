@@ -48,6 +48,7 @@ import { readToggle } from './env-toggle.js';
 import type { AblationReport, MemoryArmConfig } from './report.js';
 import { formatAblationReport, runAblationReport, type FeatureConfig } from './report.js';
 import type { AnswerScorer } from './metrics.js';
+import type { BenchmarkProgressCallback } from './benchmark.js';
 import {
   deserializeEmbeddingCache,
   mergeEmbeddingCache,
@@ -416,6 +417,17 @@ export type CortexMemoryArmRunOptions = {
    * the feature."
    */
   memoryArmConfig: MemoryArmConfig;
+  /**
+   * Optional per-question progress sink, forwarded to the report runner.
+   *
+   * The arm is the longest-running thing this repository dispatches -- run
+   * `37281155088` spent ~52 minutes before an HTTP 402 ended it -- so the runner
+   * needs a way to say how far it got. Forwarded rather than consumed here for the
+   * same reason the arm delegates everything else: the question index only exists
+   * inside the benchmark loop, and a decision written in this file about it would
+   * have no test that could reach it.
+   */
+  onProgress?: BenchmarkProgressCallback;
 };
 
 /** What the arm returns: the report, its Markdown, and the delta it measured. */
@@ -479,6 +491,7 @@ export async function runCortexMemoryArm(
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     memoryArmConfig: options.memoryArmConfig,
+    ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
 
   return {

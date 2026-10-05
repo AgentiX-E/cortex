@@ -50,9 +50,56 @@ import {
   runCortexMemoryArm,
   sampleInstances,
   toMemoryArmConfig,
+  type BenchmarkProgress,
 } from '@agentix-e/cortex-eval';
 import { CortexMemory } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
+
+/**
+ * The last progress event seen, read by the failure handler.
+ *
+ * Module-level because the handler runs outside `main()`'s scope and after it has
+ * unwound. `null` means no question was ever started, which is itself a fact worth
+ * recording -- it distinguishes "died before the first call" from "died at
+ * question N" and both from a crash on startup.
+ *
+ * This exists because of run `37281155088`: the arm spent ~52 minutes in the LLM,
+ * died on an HTTP 402 when the account's balance ran out, and its
+ * `benchmark-error.log` carried a stack trace that named no question and no side.
+ * The embedding cache was already being persisted from the `catch` below, on the
+ * argument that "a run that dies at question 300 of 500 has still paid for its
+ * embeddings". The question of WHERE it died had no such record.
+ */
+let lastProgress: BenchmarkProgress | null = null;
+
+/**
+ * How often to print, in questions, per side and per run. `0` prints only the
+ * first and last of each.
+ *
+ * A 500-question dataset evaluated four times is 4000 events; one line each would
+ * bury the run's own report. The first and last always print because they are what
+ * a truncated log is read for -- the last one is the line a reader greps for.
+ */
+const PROGRESS_EVERY = Number(process.env['PROGRESS_EVERY'] ?? 25);
+
+/**
+ * The progress sink, printing to stdout so a live run is watchable.
+ *
+ * The printing policy lives here rather than in `cortex-eval` for the reason this
+ * file's header gives: `cortex-eval/src` emits nothing to a stream, and output
+ * policy is not a measurement decision.
+ */
+function onProgress(progress: BenchmarkProgress): void {
+  lastProgress = progress;
+  const isFirst = progress.index === 0;
+  const isLast = progress.index === progress.total - 1;
+  const atInterval = PROGRESS_EVERY > 0 && progress.index % PROGRESS_EVERY === 0;
+  if (!isFirst && !isLast && !atInterval) return;
+  console.log(
+    `[progress] ${progress.system} run=${progress.run} ` +
+      `q=${progress.index + 1}/${progress.total} id=${progress.questionId}`,
+  );
+}
 
 async function main(): Promise<void> {
   const dataPath = process.env['LONGMEMEVAL_PATH'];
@@ -158,6 +205,7 @@ async function main(): Promise<void> {
     scorer: judgeScorer(createLlmJudge(llm)),
     memoryArmConfig: toMemoryArmConfig(armOptions),
     featureConfig: { cortexMemory: true },
+    onProgress,
   });
 
   writeFileSync('benchmark-cortex-memory-ablation-report.md', result.markdown);
@@ -174,7 +222,19 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  writeFileSync('benchmark-error.log', `${message}\n`);
+  // Name the question the run died on, before the stack. This is the half of the
+  // failure record that run `37281155088` was missing: an HTTP 402 ended a
+  // ~52-minute arm and the only durable trace said nothing about how far it got,
+  // so the next attempt could not avoid repeating the spend up to an unknown
+  // point. The progress event fires BEFORE a question is answered, so this line
+  // names the question the throw happened inside -- not the one before it.
+  const where =
+    lastProgress === null
+      ? 'progress: no question was started before the failure'
+      : `progress: died on ${lastProgress.system} run=${lastProgress.run} ` +
+        `q=${lastProgress.index + 1}/${lastProgress.total} id=${lastProgress.questionId}`;
+  writeFileSync('benchmark-error.log', `${where}\n\n${message}\n`);
+  console.error(where);
   console.error(message);
   // Persist whatever was embedded before the failure, on the failure path too.
   // `bench/run.ts` does the same, and the reason is the same: a run that dies at

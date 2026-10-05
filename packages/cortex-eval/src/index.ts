@@ -30,7 +30,13 @@ export {
   type AnswerScorer,
   type ScoredEvaluation,
 } from './metrics.js';
-export { runBenchmark, evaluateWithScorer, evaluateWithScorerDetailed } from './benchmark.js';
+export {
+  runBenchmark,
+  evaluateWithScorer,
+  evaluateWithScorerDetailed,
+  type BenchmarkProgress,
+  type BenchmarkProgressCallback,
+} from './benchmark.js';
 export {
   createLlmJudge,
   buildJudgePrompt,

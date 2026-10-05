@@ -6,6 +6,7 @@ import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './
 import type { CohortCoverage } from './datasets/sampling.js';
 import type { QuestionRecord } from './question-record.js';
 import { runAblation, type AblationOptions } from './ablation.js';
+import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 
 export type AblationReport = {
@@ -251,6 +252,16 @@ export type AblationReportOptions = {
   questions?: readonly QuestionRecord[];
   /** The `cortex-memory` arm's gate configuration, when it produced this report. */
   memoryArmConfig?: MemoryArmConfig;
+  /**
+   * Optional per-question progress sink, forwarded to the ablation.
+   *
+   * Carried here rather than written into the returned report on purpose: the
+   * report is serialized to JSON, a function does not survive that, and
+   * `report-json-roundtrip.test.ts` asserts the round-trip. So the callback is an
+   * input and only an input -- `ablation-progress.test.ts` pins that it is absent
+   * from the output.
+   */
+  onProgress?: BenchmarkProgressCallback;
 };
 
 export async function runAblationReport(
@@ -269,6 +280,12 @@ export async function runAblationReport(
   }
   if (options.abstentionAware !== undefined) {
     ablationOptions.abstentionAware = options.abstentionAware;
+  }
+  // Conditional assignment, not a pass-through, for two reasons that both bite:
+  // `exactOptionalPropertyTypes` rejects an explicit `undefined` here, and the
+  // absent path is the one every pre-existing caller takes.
+  if (options.onProgress !== undefined) {
+    ablationOptions.onProgress = options.onProgress;
   }
   // The ablation already evaluates both systems once; reuse those metrics so the
   // report never re-evaluates them (which would double LLM cost and introduce

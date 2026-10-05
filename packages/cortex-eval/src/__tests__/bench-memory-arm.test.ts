@@ -788,6 +788,34 @@ describe('runCortexMemoryArm', () => {
       expect(order.sort()).toEqual(['cortex-memory', 'reference-pipeline']);
     });
 
+    it('forwards the progress sink so a long run can say where it died', async () => {
+      // The arm is the longest-running thing this repository dispatches -- run
+      // `37281155088` spent ~52 minutes before an HTTP 402 ended it and its log
+      // named no question. This asserts the wiring the entry point depends on:
+      // the callback reaches the benchmark loop and its events name the side.
+      const seen: string[] = [];
+      await runCortexMemoryArm(
+        twoQuestionDataset(),
+        constantSystem('reference-pipeline', 'one'),
+        constantSystem('cortex-memory', 'one'),
+        {
+          runs: 1,
+          scorer: exactMatchScorer,
+          memoryArmConfig: GATE,
+          generatedAt: '1970-01-01T00:00:00.000Z',
+          onProgress: (p) => seen.push(`${p.system}/${p.run}/${p.index}`),
+        },
+      );
+      // Two questions, two sides, one pass: the baseline side is reported in full
+      // before the feature begins, which is `runAblation`'s ordering.
+      expect(seen).toEqual([
+        'reference-pipeline/0/0',
+        'reference-pipeline/0/1',
+        'cortex-memory/0/0',
+        'cortex-memory/0/1',
+      ]);
+    });
+
     it('pairs the two sides question-by-question, which is what makes the delta attributable', async () => {
       // The property that a staggered comparison cannot provide. The fixture is
       // built so each system is correct on exactly one DIFFERENT question: the

@@ -20,13 +20,68 @@ function isSessionAware(system: MemorySystem): system is SessionAwareMemorySyste
   return 'answerSessions' in system;
 }
 
+/**
+ * One per-question progress event, emitted BEFORE that question is answered.
+ *
+ * ## Why before, and not after
+ *
+ * The failure this exists to localise happens *inside* the answer call -- run
+ * `37281155088`'s arm spent ~52 minutes in the LLM and then died on an HTTP 402
+ * when the account's balance ran out. A callback that fired on completion would
+ * leave the one question that died unrecorded, which is precisely the shape of
+ * the defect: that run's `benchmark-error.log` carried a stack trace and no
+ * question at all, so a 52-minute spend could not be localised and the next
+ * attempt would repeat it up to an unknown point.
+ *
+ * ## The fields
+ *
+ * - `system` — `MemorySystem.name` of the side about to run. An ablation has two
+ *   (`reference-pipeline` / `cortex-memory`), and which one died is not
+ *   inferable from a question index.
+ * - `index` — 0-based position in `dataset.questions`. 0-based so it is the same
+ *   number as the `correct[]` index the paired tests use; a reader adds one.
+ * - `total` — the dataset size, so `index` is readable as `index + 1 / total`
+ *   without the log having to carry the dataset too.
+ * - `run` — 0-based repetition ordinal. `runAblation` evaluates the SAME dataset
+ *   `runs` times, so `(system, run, index)` is the key of one attempt and a
+ *   record without `run` is ambiguous on any arm with `runs > 1`.
+ * - `questionId` — the question's stable id, so the record names the question
+ *   rather than only its position in a dataset that may be resampled.
+ */
+export type BenchmarkProgress = {
+  readonly system: string;
+  readonly index: number;
+  readonly total: number;
+  readonly run: number;
+  readonly questionId: string;
+};
+
+/**
+ * Optional per-question progress sink.
+ *
+ * A callback rather than a `console.log` for the reason this package holds
+ * throughout: `cortex-eval/src` emits nothing to a stream. Printing is the entry
+ * point's job (the `bench` directories of the packages that run one), and an
+ * instrument that wrote to stdout would put output policy inside the measurement.
+ */
+export type BenchmarkProgressCallback = (progress: BenchmarkProgress) => void;
+
 /** Run a system over every question, preserving question order. */
 export async function runBenchmark(
   dataset: BenchmarkDataset,
   system: MemorySystem,
+  progress?: BenchmarkProgressCallback,
+  run = 0,
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
-  for (const q of dataset.questions) {
+  const total = dataset.questions.length;
+  for (let index = 0; index < dataset.questions.length; index++) {
+    const q = dataset.questions[index]!;
+    // Before the answer call, so a throw inside it cannot skip the question it
+    // threw on. See `BenchmarkProgress`. `run` is a parameter rather than
+    // something read here, because a single pass over the dataset has no way to
+    // know which repetition it is serving.
+    progress?.({ system: system.name, index, total, run, questionId: q.id });
     if (isSessionAware(system) && q.capability === 'MR' && q.sessions && q.sessions.length > 0) {
       // Multi-session questions aggregate evidence across sessions.
       answers.push(await system.answerSessions(q.question, q.sessions));
@@ -79,8 +134,10 @@ export async function evaluateWithScorer(
   dataset: BenchmarkDataset,
   system: MemorySystem,
   scorer: AnswerScorer,
+  progress?: BenchmarkProgressCallback,
+  run = 0,
 ): Promise<Metrics> {
-  const answers = await runBenchmark(dataset, system);
+  const answers = await runBenchmark(dataset, system, progress, run);
   return computeMetricsAsync(dataset, answers, scorer);
 }
 
@@ -93,7 +150,9 @@ export async function evaluateWithScorerDetailed(
   dataset: BenchmarkDataset,
   system: MemorySystem,
   scorer: AnswerScorer,
+  progress?: BenchmarkProgressCallback,
+  run = 0,
 ): Promise<ScoredEvaluation> {
-  const answers = await runBenchmark(dataset, system);
+  const answers = await runBenchmark(dataset, system, progress, run);
   return scoreEvaluation(dataset, answers, scorer);
 }

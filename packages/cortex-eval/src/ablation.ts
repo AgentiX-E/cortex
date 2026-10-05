@@ -18,6 +18,7 @@ import type {
   PerCapabilityPairedStats,
 } from './types.js';
 import { evaluateWithScorer, evaluateWithScorerDetailed } from './benchmark.js';
+import type { BenchmarkProgressCallback } from './benchmark.js';
 import {
   aggregate,
   cohensD,
@@ -52,6 +53,17 @@ export type AblationOptions = {
   abstentionAware?: boolean;
   /** Answer scorer; defaults to exact match. */
   scorer?: AnswerScorer;
+  /**
+   * Optional per-question progress sink, forwarded to every evaluation.
+   *
+   * Each event carries the side (`system`) and the repetition (`run`), because an
+   * ablation runs the baseline in full, then the feature in full, then both again
+   * for each additional run -- so a record without either is ambiguous. The
+   * failure this exists to localise is a mid-run one: run `37281155088`'s arm died
+   * on the feature side after ~52 minutes and its log named no question and no
+   * side. See `BenchmarkProgress`.
+   */
+  onProgress?: BenchmarkProgressCallback;
 };
 
 /** Run a baseline vs feature ablation and report statistical significance. */
@@ -72,8 +84,25 @@ export async function runAblation(
   // The first evaluation captures per-question correctness so the paired McNemar
   // test and the Wilson intervals can be computed. These are question-level
   // statistics that a run-level t-test cannot provide for a deterministic system.
-  const baseFirst = await evaluateWithScorerDetailed(dataset, baseline, scorer);
-  const featFirst = await evaluateWithScorerDetailed(dataset, feature, scorer);
+  //
+  // Both sides carry `run: 0`. The baseline is evaluated to completion before the
+  // feature starts, so the progress stream reads as one side's questions, then the
+  // other's -- which is the same ordering the pairing argument depends on, and is
+  // asserted by `ablation-progress.test.ts` rather than assumed here.
+  const baseFirst = await evaluateWithScorerDetailed(
+    dataset,
+    baseline,
+    scorer,
+    options.onProgress,
+    0,
+  );
+  const featFirst = await evaluateWithScorerDetailed(
+    dataset,
+    feature,
+    scorer,
+    options.onProgress,
+    0,
+  );
 
   let baselineCorrectFeatureIncorrect = 0;
   let baselineIncorrectFeatureCorrect = 0;
@@ -134,8 +163,11 @@ export async function runAblation(
   const baselineScores = [toScore(baseFirst.metrics)];
   const featureScores = [toScore(featFirst.metrics)];
   for (let i = 1; i < runs; i++) {
-    const b = await evaluateWithScorer(dataset, baseline, scorer);
-    const f = await evaluateWithScorer(dataset, feature, scorer);
+    // `run: i` rather than the default, so a repeated pass is distinguishable in
+    // the progress stream from the first one. Both sides take the same ordinal:
+    // they are two systems measured in one repetition, not two repetitions.
+    const b = await evaluateWithScorer(dataset, baseline, scorer, options.onProgress, i);
+    const f = await evaluateWithScorer(dataset, feature, scorer, options.onProgress, i);
     baselineScores.push(toScore(b));
     featureScores.push(toScore(f));
   }
