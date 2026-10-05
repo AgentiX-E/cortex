@@ -764,4 +764,55 @@ fails if they stop agreeing.
 §4's stopping rule is now spent on this run. No redraw follows it, for a better draw or for
 any other reason.
 
+### 10.7 The dispatch did not produce a result, for a reason §8 already anticipated
+
+Run `37281155088` completed as a **failure**, in step 14 (`Run cortex-memory A/B`). The
+primary benchmark in step 13 succeeded and produced a full N=500 artifact; `pnpm check`
+in step 9 succeeded. The arm's `benchmark-error.log` carries:
+
+```
+Error: LLM request failed: 402 Payment Required —
+{"error":{"message":"Insufficient Balance", ...}}
+    at ... OpenAICompatibleLLM.post (.../openai-compatible.ts:78:13)
+    at ... NaturalLanguageMemorySystem.expandQuestion
+    at ... runAblationReport (.../report.ts:276:20)
+```
+
+This is the case §8 names: *"a failure for an infrastructure reason (quota, artifact loss)
+is re-dispatched with that reason recorded rather than treated as a result."* The LLM
+account's balance was exhausted **during** the arm — the primary benchmark had already
+completed at 08:33 and the arm ran until 09:25 before the first 402 — so this is not a
+fast failure and not a code defect.
+
+**It is not a result under §4, and it is not a redraw.** §4 forbids dispatching again for a
+better draw; this is the same run re-attempted because it never produced a draw at all.
+The distinction is the one §8 already draws, and it is recorded here rather than assumed.
+
+**The client is correct to reject 402 rather than retry it.** `isRetryableStatus` is
+`429 || status >= 500`, so a 402 is thrown on the first response and `retryableFetch`
+does not spend its budget on it. A balance that is empty stays empty through any number
+of attempts, so retrying would only delay the diagnostic.
+
+**What the failure did establish**, none of which needed the arm to complete:
+
+| Observation | Evidence |
+| --- | --- |
+| The dispatch carried all six §10.3 values | the dispatch log, and step 14 running at all |
+| The arm reached the LLM reader with them | the stack: `expandQuestion` → `complete` → `post` |
+| The failure is isolated to the arm, not the run | step 13 `success`, step 9 `success` |
+| The primary benchmark is unaffected | its own N=500 artifact, `38.80%` → `44.80%` |
+
+**Re-dispatch is gated on the account, not on the code.** Nothing in this repository
+needs to change first, and no re-run should be attempted until the balance is restored --
+a second attempt against an empty account would fail at a different question and record
+nothing new.
+
+**A gap worth naming, not yet repaired.** The error log carries a stack but no progress
+counter: the arm ran ~52 minutes and the report says neither how many questions it
+completed nor where it stopped. The embedding path already persists partial work on
+failure (`run-ablation.ts` writes the cache from the `catch`), so the asymmetry is
+deliberate for caches and absent for progress. Recorded here as an observation rather
+than fixed in this commit, because it is a diagnostic improvement rather than the defect
+this section is about.
+
 ---
