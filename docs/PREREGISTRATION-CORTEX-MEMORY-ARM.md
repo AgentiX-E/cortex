@@ -720,13 +720,48 @@ passes **at the level of the plumbing**: the value survives every layer from the
 input to `MemoryArmConfig`, asserted by `bench-memory-arm.test.ts` and
 `test_dispatch_inputs.py`.
 
-What is **not** yet true is that a dispatch has been observed end-to-end with this input.
-The four layers above were verified by reading and by test, not by a run, and §7.3 is
-precisely the case where reading the workflow was not enough. So the precondition for
-dispatching §10 is: one dispatch whose log line and artifact both name
-`sourceTrust=0.5`, checked before its numbers are read as a result.
+**Satisfied, and it found a fourth defect.** Run
+[`37280315123`](https://github.com/AgentiX-E/cortex/actions/runs/37280315123) at `master` =
+`b02aa5a7` was dispatched as a plumbing probe — the §10.3 configuration with `limit: 1`,
+`ablation_runs: 1`, its numbers read as wiring evidence and never as a result. It met both
+halves of the check:
 
-Until that check is done, §4's stopping rule stands unused — this section registers a
-configuration, it does not spend the dispatch.
+| Half | Observation |
+| --- | --- |
+| log line names `sourceTrust=0.5` | `cortex-memory gate: threshold=0, retrievalThreshold=0.25, sessionBudget=unbounded, sourceTrust=0.5` |
+| artifact names `sourceTrust=0.5` | JSON `memoryArmConfig.sourceTrust = 0.5`; the report header repeats the full line |
+
+Both were read **before** the probe's accuracy was looked at, as this section requires.
+
+The probe was dispatched from a script that was, at that moment, sending
+`cortex_memory_retrieval_threshold: '0'` — so its own log line disagreed with §10.3 in
+exactly the way §10.6 was not written to catch, and reading it is what exposed the fact.
+Two defects, one class:
+
+1. `cortex_memory_retrieval_threshold` sent `'0'` where this section registers `0.25`.
+2. `cortex_memory_threshold` was **not sent at all**; the workflow default lands on `0`,
+   which happens to equal the registered value — the `''` → `readNumeric` → default path
+   §7.4 rejects, applied to the other gate.
+
+Both are §7.3's side-channel in a fourth form: every layer works, the artifact records a
+configuration, and the value is not the registered one. Repaired in `46e7251` (dispatch
+sends `threshold: '0'` and `retrievalThreshold: '0.25'`), and guarded by
+`tools/__tests__/test_preregistration_config.py`, which reads §10.3 itself and compares it
+against the dispatch in both directions. `AUDIT-CODE-VS-DOCS.md` §6.4 carries the
+generalisable statement: a gate on a key's plumbing is not a gate on its value.
+
+**The precondition did its job**, and the job was larger than it was written to be. It
+asked whether the value reaches the artifact; the answer was yes, and the same observation
+showed that the value reaching it was the wrong one. A check that names one variable
+verifies that variable and incidentally reports on the rest.
+
+**Dispatched.** Run
+[`37281155088`](https://github.com/AgentiX-E/cortex/actions/runs/37281155088) at `master` =
+`ce7a0698`, one invocation of `tools/dispatch-cortex-memory-ab.py`, carrying all six §10.3
+values. The script and the registration now agree, and `test_preregistration_config.py`
+fails if they stop agreeing.
+
+§4's stopping rule is now spent on this run. No redraw follows it, for a better draw or for
+any other reason.
 
 ---

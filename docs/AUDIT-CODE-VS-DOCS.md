@@ -341,6 +341,51 @@ promising and measured **77.95% → 70.87%** (Δ −7.09pp, one-sided exact McNe
 (`7780071`) closes it. Pre-registration is what prevented that arm from being rationalised
 into the roadmap after the fact.
 
+### 6.4 Registration drift: the fourth side-channel, and the one a key-level check cannot see
+
+`tools/__tests__/test_dispatch_inputs.py` guards two directions — every key a dispatch
+script sends is a declared `workflow_dispatch` input, and every declared input has an
+`env:` forward. Both passed on 2026-10-05 while `tools/dispatch-cortex-memory-ab.py`
+sent `cortex_memory_retrieval_threshold: '0'` and
+`PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3 registered `retrievalThreshold: 0.25`.
+It also passed while that script sent **no** `cortex_memory_threshold` key at all,
+relying on the workflow default to land on the registered `threshold: 0`.
+
+Those are one defect in two shapes, and they extend §7.3's enumeration of the
+side-channel by one form:
+
+| Form | Wrong where | Caught by |
+| --- | --- | --- |
+| 1 | input not declared in the workflow | `test_dispatch_inputs.py` |
+| 2 | declared but not forwarded into `env` | `test_dispatch_inputs.py` |
+| 3 | forwarded but never read by the arm | `bench-memory-arm.test.ts` |
+| 4 | **read correctly, but the dispatch never sends the registered value** | `test_preregistration_config.py` |
+
+Form 4 is the one that survives every layer working. The run succeeds, the log line
+prints, the artifact records a configuration — a *plausible* one, and not the
+registered one. Form 2's symptom is an absent value; form 4's symptom is a wrong
+value, and a wrong value is harder to notice because it is not missing.
+
+**Why an earlier section cannot be relied on here.** §10.6's precondition names
+`sourceTrust=0.5` alone, so a run whose `retrievalThreshold` disagreed would satisfy
+it. A precondition phrased as "the log line names X" is only as strong as the set of
+things X covers, and the set was chosen before the second gate existed.
+
+**The guard is a comparison against the document, not a second copy of the number.**
+`tools/__tests__/test_preregistration_config.py` reads §10.3 out of the
+pre-registration, maps its concepts to `workflow_dispatch` input names through one
+explicit table, and asserts the dispatch sends exactly those values — in both
+directions. Amending the registration without the dispatch fails; amending the
+dispatch without the registration fails. A test that restated `0.25` in Python would
+be a third copy of the number and would be updated in whichever file the person
+happened to open first, which is the defect repeated. Three injections confirm the
+guard is not vacuous: reverting the value, deleting the key, and amending §10.3 alone
+are each caught.
+
+The generalisable statement: **a gate on a key's plumbing is not a gate on its
+value**, and for a pre-registered experiment the value is the part that carries the
+claim. The number of a registration has to be checked against the registration.
+
 ---
 
 ## 7. Method note
