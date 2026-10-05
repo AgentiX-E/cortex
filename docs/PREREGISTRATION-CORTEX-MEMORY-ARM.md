@@ -815,4 +815,53 @@ deliberate for caches and absent for progress. Recorded here as an observation r
 than fixed in this commit, because it is a diagnostic improvement rather than the defect
 this section is about.
 
+### 10.8 The gap in 10.7 is now closed, and the re-dispatch is unblocked
+
+§10.7's last paragraph named the missing progress counter and deliberately left it out of
+that change. It is repaired in `0db7a9b`, on its own, so that a diagnostic improvement is
+not smuggled in under an infrastructure failure's name.
+
+**What changed.** `runBenchmark` gained an optional progress sink, forwarded with
+conditional assignment through `evaluateWithScorer*` → `runAblation` → `runAblationReport`
+→ `runCortexMemoryArm`. The entry point prints it (first question, last question, and every
+`PROGRESS_EVERY`), and its failure handler now writes, above the stack:
+
+```
+progress: died on cortex-memory run=0 q=213/500 id=<question-id>
+```
+
+**Two design points are the whole value, and both are asserted by test.**
+
+1. **It fires BEFORE the answer call.** `progress-callback.test.ts` records the
+   interleaving (`progress:n` immediately precedes `answer:n`) and asserts that the
+   question which threw is in the record while the next one is not. A completion-time
+   callback would satisfy a "was it called" test and still leave the dying question
+   unnamed — which is exactly what `37281155088` did over 52 minutes.
+2. **It is an input and never an output.** The callback is a function, the report is
+   JSON, and `report-json-roundtrip.test.ts` asserts the round-trip. So the option is a
+   separate field rather than a pass-through of the options object, and
+   `ablation-progress.test.ts` pins `'onProgress' in report === false`.
+
+**Why the ordinal is a parameter.** `runAblation` evaluates the baseline to completion,
+then the feature, then both again per extra run, so `(system, run, index)` identifies one
+attempt. `run` is passed in by the loop that owns it rather than derived inside
+`runBenchmark`, which cannot know its repetition — and that also keeps the two evaluation
+wrappers free of a branch and a per-call closure, so there is no new branch to cover in
+the hot path.
+
+**Where the printing lives, and why.** In `packages/cortex-memory/bench/run-ablation.ts`,
+not in `cortex-eval`. `cortex-eval/src` emits nothing to a stream anywhere in the package,
+and an instrument that wrote to one would put output policy inside the measurement. The
+sink is a callback for the same reason.
+
+**Verification.** `pnpm check` `rc=0`; `cortex-eval` 1623 tests at `100/100/100/100` —
+branch coverage moved `99.95` → `100`, so every branch the change introduced is covered;
+census reports no new orphans (which is also why the new types are referenced by the entry
+point rather than only by the barrel); the other four packages are unchanged.
+
+**Unblocked.** With the balance restored and this in place, the §10.3 dispatch is
+re-attempted as the next action. It is the same configuration as `37281155088` — that run
+produced no draw, so this is the infrastructure re-dispatch §8 names, not a redraw — and
+if it fails again the log will now say where.
+
 ---
