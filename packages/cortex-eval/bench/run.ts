@@ -16,6 +16,7 @@ import {
   createLlmFromEnv,
   computeRecallCurve,
   createRerankerFromEnv,
+  type RerankFactoryOptions,
   deserializeEmbeddingCache,
   embeddingBatchIntervalMs,
   embeddingSourceStats,
@@ -216,7 +217,14 @@ async function main(): Promise<void> {
   // The cross-encoder reranking stage (roadmap measure B1). Off unless
   // CORTEX_RERANK is set, so an unset environment reproduces the pre-reranker
   // pipeline exactly and the two configurations form a clean A/B.
-  const reranker = createRerankerFromEnv(process.env);
+  //
+  // No `RerankFactoryOptions` is passed, and the annotation is the point: it names
+  // the type so that "this caller takes the production default" is a statement the
+  // type checker holds, rather than a code path this file never mentions. The
+  // alternative -- leaving the parameter untyped here -- is what let the option go
+  // unreferenced in the first place.
+  const rerankOptions: RerankFactoryOptions = {};
+  const reranker = createRerankerFromEnv(process.env, rerankOptions);
   // Candidate pool width. Defaults to the system's own topK, but reranking can
   // only promote what it is shown, so a real arm wants 3-10x the context width
   // here -- see `rerankCandidatePool`.

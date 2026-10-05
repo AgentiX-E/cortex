@@ -292,4 +292,123 @@ class TestKeep:
         assert '--keep requires a path' in capfd.readouterr().err
 
 
+class TestKeepInfersTheInterpreter:
+    """`--keep FILE` must not also require the caller to name the extension.
+
+    ## The sixth recurrence, and why this class exists
+
+    `Bad substitution: typeof` was lost while a diagnostic probe was being
+    improvised. `--keep` had already removed the two-call cost §4d identified, and
+    the guard already refused the hazard -- so neither of those was the gap. The
+    remaining friction was that `--keep` still needed `--lang` alongside it, and a
+    probe being improvised rarely knows its own extension in advance. The cheap path
+    was therefore still the inline one, at exactly the moment the safe path mattered.
+
+    These tests assert the friction is gone: one flag, no extension argument, and the
+    hazard still refused. The inference is deliberately narrow -- extension first,
+    shebang second, extensionless-name default last -- because a wrong guess that
+    silently ran the wrong interpreter would be worse than the requirement it
+    replaces.
+    """
+
+    def test_keep_alone_runs_a_javascript_program(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # No `--lang`. This is the call that would have been written inline.
+        kept = tmp_path / 'probe.mjs'
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log("inferred-mjs");\n'))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 0
+        assert 'inferred-mjs' in capfd.readouterr().out
+        assert kept.read_text(encoding='utf-8') == 'console.log("inferred-mjs");\n'
+
+    def test_keep_infers_python_from_the_extension(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        kept = tmp_path / 'probe.py'
+        monkeypatch.setattr('sys.stdin', io.StringIO("print('inferred-py')\n"))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 0
+        assert 'inferred-py' in capfd.readouterr().out
+
+    def test_a_shebang_decides_when_there_is_no_extension(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # A file named without an extension but starting with a shebang is the one
+        # shape where the text can be trusted over the name.
+        kept = tmp_path / 'probe'
+        monkeypatch.setattr('sys.stdin', io.StringIO("#!/usr/bin/env python3\nprint('via-shebang')\n"))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 0
+        assert 'via-shebang' in capfd.readouterr().out
+
+    def test_an_extensionless_name_defaults_to_javascript(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # The fallback, stated so it is a decision rather than an accident. A wrong
+        # guess here is a syntax error the caller sees, not a silent misread.
+        kept = tmp_path / 'probe'
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log("defaulted-js");\n'))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 0
+        assert 'defaulted-js' in capfd.readouterr().out
+
+    def test_a_known_extension_still_wins_over_the_shebang(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # Precedence, pinned: an explicit `.py` is honoured even when the first line
+        # claims otherwise. Otherwise a commented-out shebang in a JS file would
+        # change which interpreter runs it.
+        kept = tmp_path / 'probe.py'
+        monkeypatch.setattr('sys.stdin', io.StringIO("#!/usr/bin/env node\nprint('still-py')\n"))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 0
+        assert 'still-py' in capfd.readouterr().out
+
+    def test_the_hazard_is_still_refused_without_lang(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # The whole point: dropping the `--lang` requirement must not drop the check.
+        # Inference happens for the interpreter only; the guard runs on the text
+        # regardless, and before the write.
+        kept = tmp_path / 'probe.sh'
+        monkeypatch.setattr('sys.stdin', io.StringIO('echo "' + HAZARD + '"\n'))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 1
+        assert 'h.join' in capfd.readouterr().err
+        assert not kept.exists()
+
+    def test_an_unknown_extension_is_still_a_usage_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # Inference must not turn an unrecognised name into a confident guess. `.zig`
+        # is not inferable from the name and carries no shebang, so the tool says so
+        # instead of running it under node.
+        kept = tmp_path / 'probe.zig'
+        monkeypatch.setattr('sys.stdin', io.StringIO('// nothing\n'))
+        assert runner.main(['prog', '--keep', str(kept), '-']) == 2
+        assert 'no interpreter' in capfd.readouterr().err
+
+    def test_stdin_without_lang_or_keep_is_a_usage_error(
+        self, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        # With neither a flag nor a file name there is nothing to dispatch on, and
+        # the message must say which of the two would fix it.
+        monkeypatch.setattr('sys.stdin', io.StringIO('console.log(1);\n'))
+        assert runner.main(['prog', '-']) == 2
+        assert '--keep FILE' in capfd.readouterr().err
+
+    @pytest.mark.parametrize(
+        ('name', 'text', 'expected'),
+        [
+            ('p.mjs', 'x', '.mjs'),
+            ('p.py', 'x', '.py'),
+            ('p.sh', 'x', '.sh'),
+            ('p', '#!/usr/bin/env python3\nx', '.py'),
+            ('p', '#!/bin/sh\nx', '.sh'),
+            ('p', '#!/usr/bin/env node\nx', '.mjs'),
+            ('p', 'plain js', '.mjs'),
+            ('p.zig', 'plain', None),
+        ],
+    )
+    def test_inference_table(self, name: str, text: str, expected: str | None) -> None:
+        # The rule stated as a table, so precedence is reviewable in one place rather
+        # than inferred from the order of the branches above.
+        assert runner._infer_extension(name, text) == expected
+
+
 

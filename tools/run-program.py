@@ -60,8 +60,44 @@ INTERPRETERS: dict[str, list[str]] = {
 def _usage() -> str:
     return (
         'usage: run-program.py [--lang EXT] [--keep FILE] <file|-> [args...]\n'
+        '       run-program.py [--keep FILE] [args...]        # program on stdin\n'
         f'known extensions: {", ".join(sorted(INTERPRETERS))}'
     )
+
+
+def _infer_extension(keep: str, text: str) -> str | None:
+    """Pick an interpreter for a `--keep` program from its path, then its shape.
+
+    Added because the extension requirement was the last remaining reason to reach
+    for the inline form. `--keep FILE` was already one call, but a caller who did
+    not already know the file's extension still had to name `--lang` -- and the
+    sixth recurrence happened while a diagnostic probe was being improvised, i.e.
+    at exactly the moment neither was known in advance.
+
+    Inferring from the filename is free when the name is explicit. Inferring from
+    the text is what makes the flag safe by default: a shebang decides when there
+    is one, and JavaScript is the default for an extensionless name because this
+    project authors probes in JavaScript and a wrong guess is a syntax error the
+    caller can see -- the opposite of the quiet failure this tool exists to
+    prevent.
+    """
+    suffix = Path(keep).suffix
+    if suffix in INTERPRETERS:
+        return suffix
+    stripped = text.lstrip()
+    if stripped.startswith('#!'):
+        first_line = stripped.split('\n', 1)[0].lower()
+        for name, extension in (
+            ('node', '.mjs'),
+            ('python', '.py'),
+            ('bash', '.bash'),
+            ('sh', '.sh'),
+        ):
+            if name in first_line:
+                return extension
+    if suffix == '':
+        return '.mjs'
+    return None
 
 
 def _load_guard():
@@ -158,8 +194,29 @@ def main(argv: list[str]) -> int:
 
     if source == '-':
         text = sys.stdin.read()
+        # `--lang` is no longer required when `--keep` names a file: the extension
+        # is inferable, and demanding it was the one piece of friction left on the
+        # safe path. Without either, there is nothing to dispatch on.
+        #
+        # The two failures are diagnosed separately. A `--keep` whose name and text
+        # both fail to identify an interpreter is a different problem from passing
+        # neither flag, and collapsing them would send a caller who did name a file
+        # looking for a missing `--lang` that would not have helped.
+        if lang is None and keep is not None:
+            lang = _infer_extension(keep, text)
+            if lang is None:
+                print(
+                    f'run-program: no interpreter for {keep!r} inferred from the name or '
+                    'shebang; pass --lang',
+                    file=sys.stderr,
+                )
+                return 2
         if lang is None:
-            print('run-program: reading from stdin requires --lang', file=sys.stderr)
+            print(
+                'run-program: reading from stdin requires --lang, or --keep FILE to '
+                'infer it from the file name',
+                file=sys.stderr,
+            )
             return 2
         # Check BEFORE writing the temp file, so the stdin path is covered by the
         # same rule as the file path. Leaving this out was a real hole: a hazard
@@ -179,15 +236,26 @@ def main(argv: list[str]) -> int:
             if message:
                 print(message, file=sys.stderr)
                 return 2
-        # A temp file rather than `-`: some interpreters treat `-` as "read the
-        # REPL's stdin", which would consume the passthrough arguments. Writing
-        # the bytes to a file also means the shell still never sees them.
-        import tempfile
+            # Run the KEPT file rather than a temp copy. Found by running a probe
+            # that imported a workspace package: the temp file lives in `/tmp`, so
+            # node resolves `node_modules` from `/tmp` and every workspace import
+            # fails with ERR_MODULE_NOT_FOUND -- a program that runs fine from
+            # `probe/` could not run through the flag that had just been added to
+            # make it easy. The kept path is in the repository, so resolution works,
+            # and it is the same bytes that the caller can read afterwards.
+            program_args = [Path(keep)]
+            # A temp copy is still made below only when there is nothing to keep.
+            temp_path = None
+        else:
+            # A temp file rather than `-`: some interpreters treat `-` as "read the
+            # REPL's stdin", which would consume the passthrough arguments. Writing
+            # the bytes to a file also means the shell still never sees them.
+            import tempfile
 
-        with tempfile.NamedTemporaryFile('w', suffix=lang, delete=False) as handle:
-            handle.write(text)
-            temp_path = Path(handle.name)
-        program_args = [temp_path]
+            with tempfile.NamedTemporaryFile('w', suffix=lang, delete=False) as handle:
+                handle.write(text)
+                temp_path = Path(handle.name)
+            program_args = [temp_path]
 
     else:
         temp_path = None

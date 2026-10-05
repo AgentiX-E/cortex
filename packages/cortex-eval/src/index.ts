@@ -282,6 +282,7 @@ export {
   DEFAULT_RERANK_BASE_URL,
   DEFAULT_RERANK_MODEL,
   type RerankEnv,
+  type RerankFactoryOptions,
 } from './rerank-factory.js';
 export {
   compareQuestionVectors,

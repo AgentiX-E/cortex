@@ -314,7 +314,82 @@ rather than incidental (releasing the recency pin still caps it at `0.5`), and t
 accessible boundary is `(0.5, 0.5000001]`. The rule in §3 turned a lost invocation into a
 deciding number for the third time.
 
-## 5. The measurement that this document interrupted, for the record
+## 4e. The sixth recurrence: the safe path was cheap but not *reachable*
+
+The class recurred once more, as `Bad substitution: typeof`, while a diagnostic probe was
+being improvised around `node -e`. §4d's conclusion still holds and is worth restating,
+because it is now the third consecutive time it has held:
+
+| §4d remedy | status at the time of the failure |
+| --- | --- |
+| `tools/run-program.py` — run the program from a file | existed, verified working |
+| `tools/run-program.py --keep FILE` — one call, write and run | existed, verified working |
+| `pnpm probe` — the short form | existed |
+| Refusal at run time, with the guard's message | existed; the exact fragment returns `rc=1` |
+
+So the mechanism was present and the guard caught the fragment. What was missing was
+**reachability, not cost**. §4d removed the two-call penalty, but `--keep FILE` still
+required the caller to name the extension (`--lang mjs`) alongside the file. A probe being
+improvised does not know its own extension in advance — that is what "improvised" means —
+so at the moment of the failure the `--keep` form still had a decision in it that the
+inline form did not.
+
+The distinction is small and decides the response. §4d's diagnosis was *price*; this one is
+*preconditions*. A path can be cheaper than the hazard and still lose if it demands
+something the hazard does not, because the hazard's requirements are always satisfiable:
+`node -e "<anything>"` has exactly one argument, and it is always writable.
+
+### What was changed
+
+1. **`--keep` now infers the interpreter**, so the flag stands alone. Precedence is
+   explicit and pinned by a table-driven test: a known extension wins; otherwise a
+   shebang decides; otherwise an extensionless name is JavaScript. An unrecognised
+   extension with no shebang is a diagnosed usage error rather than a confident guess —
+   because a wrong guess that silently ran the wrong interpreter would be worse than the
+   requirement it replaces.
+2. **The two stdin failures are diagnosed separately.** Naming a `.zig` file and naming
+   nothing are different problems, and collapsing them would send a caller who did name a
+   file hunting for a missing `--lang` that would not have helped.
+3. **The guard's refusal names its own remedy.** It now ends with
+   `See docs/OPS-SHELL-INTERPOLATION.md. Write the program to a file and run the file, or
+   quote the here-doc delimiter.` A refusal that only says "this is wrong" leaves the
+   operator to rediscover the right form under exactly the time pressure that produced the
+   mistake; naming the next action makes the refusal self-correcting.
+
+### Verified end to end, on the fragment that actually failed
+
+```
+$ printf '%s\n' 'const e = new Error("x");' \
+      'console.log(`cause type: ${typeof e}, name: ${e.name}`);' \
+  | python3 tools/run-program.py --keep probe/latest.mjs -
+probe/latest.mjs:2: ${typeof e} is not a shell parameter expansion; ...
+probe/latest.mjs:2: ${e.name} is not a shell parameter expansion; ...
+rc=1                                    # nothing executed, nothing written
+
+$ python3 tools/run-program.py --keep probe/latest.mjs - < clean.txt
+cause type: object, name: Error       # rc=0, and probe/latest.mjs now holds the program
+```
+
+### What is not claimed, again
+
+**The class is still not eliminated**, and this document has said so since §4d. What is
+claimed is narrower and is what the two measurements above support: at the moment of this
+failure both a refusal (`rc=1`, nothing written) and a one-flag safe path (`rc=0`, program
+preserved) were reachable, and the friction that had made the inline form rational is now
+gone rather than merely reduced. A seventh recurrence would be evidence that the binding
+constraint is neither price nor preconditions, which is a different diagnosis than either
+of the last two — and it would be recorded as such rather than answered with a fifth
+mechanism.
+
+### The measurement this recurrence interrupted
+
+The probe was reading `typeof err` in the `rerank-factory` non-`Error` rejection arm,
+while reproducing a **CI-only** failure. That work is independent of this section and is
+recorded in the progress report; the tool failure cost one invocation and the finding was
+one this document's rule exists to protect, since the whole question was what type the
+rejection's cause actually has.
+
+
 
 The probe above was measuring why a repair changed nothing. It was re-run from a
 file and gave the answer, which is recorded in

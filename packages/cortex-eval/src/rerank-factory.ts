@@ -97,7 +97,78 @@ type RerankProvider = (typeof RERANK_PROVIDERS)[number];
  * out in `DISABLED_VALUES` precisely so that "this value was a deliberate
  * refusal" and "this value was not understood" stop being the same outcome.
  */
-export function createRerankerFromEnv(env: RerankEnv): RerankScoreFn | undefined {
+/**
+ * Default peer loader, re-exported so a caller can pass it explicitly.
+ *
+ * `cortex-eval`'s rerank arm wires the local provider through here. Having the
+ * default reachable by name is what keeps `RerankFactoryOptions.pipelineFactory`
+ * a *choice* rather than a test-only back door: the shipped entry point and the
+ * injectable one resolve to the same function, so the seam cannot change
+ * production behaviour without name-dropping it.
+ */
+export { makeDefaultRerankPipelineFactory };
+
+/**
+ * Options for {@link createRerankerFromEnv}.
+ *
+ * One field, and it exists for a reason established by a CI failure rather than by
+ * taste. The non-`Error` arm of the local provider's loader —
+ * `err instanceof Error ? err.message : String(err)` — has no deterministic trigger
+ * when the optional peer is absent, which is the state a clean install is in:
+ *
+ *   - `@xenova/transformers` is an *optional* dependency of `cortex-llm`. A clean
+ *     `pnpm install --frozen-lockfile` does not install it; a developer's
+ *     `node_modules` often has it.
+ *   - Reaching the arm with `vi.mock('@xenova/transformers', ...)` therefore makes
+ *     the test's outcome depend on which packages the machine happens to have: the
+ *     mock only intercepts a specifier that **resolves**, so with the peer absent it
+ *     silently does not apply, the real `import` runs, `sharp` fails, and that
+ *     failure is an `Error` — the other arm.
+ *
+ * That is the same shape as the fixtures this repository has already recorded as
+ * measuring their environment, and the remedy is the same: remove the dependence
+ * rather than widen the assertion. Injecting the loader lets the caller construct
+ * the failure, so the same code path runs whether or not the peer is installed.
+ */
+export type RerankFactoryOptions = {
+  /**
+   * Builds the peer-backed pipeline for a model name. Defaults to the real
+   * transformers.js loader.
+   *
+   * Overridable for the same reason `fetchFn` is overridable on the
+   * OpenAI-compatible reranker: a failure mode that only the network or an
+   * optional dependency can produce is otherwise untestable off the machine that
+   * has it.
+   */
+  pipelineFactory?: (model: string) => () => Promise<CrossEncoderPipeline>;
+};
+
+/**
+ * Build the configured reranker, or `undefined` when the stage is off.
+ *
+ * `off` is spelled out in `DISABLED_VALUES` precisely so that "this value was a
+ * deliberate refusal" and "this value was not understood" stop being the same
+ * outcome.
+ */
+export function createRerankerFromEnv(
+  env: RerankEnv,
+  options: RerankFactoryOptions = {},
+): RerankScoreFn | undefined {
+  return createReranker(env, options.pipelineFactory ?? makeDefaultRerankPipelineFactory);
+}
+
+/**
+ * The decision itself, with the loader required rather than defaulted.
+ *
+ * Internal: {@link createRerankerFromEnv} is the entry point, and it supplies the
+ * production loader when the caller does not. Keeping the resolution in one place
+ * means there is no path on which a missing option silently yields a reranker with
+ * no pipeline.
+ */
+function createReranker(
+  env: RerankEnv,
+  pipelineFactory: (model: string) => () => Promise<CrossEncoderPipeline>,
+): RerankScoreFn | undefined {
   const raw = env['CORTEX_RERANK'];
   const flag = (raw ?? '').trim().toLowerCase();
 
@@ -123,7 +194,7 @@ export function createRerankerFromEnv(env: RerankEnv): RerankScoreFn | undefined
     );
   }
 
-  return buildReranker(env, resolveProvider(env));
+  return buildReranker(env, resolveProvider(env), pipelineFactory);
 }
 
 /**
@@ -164,7 +235,11 @@ function withFallbackCounters(
   });
 }
 
-function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn {
+function buildReranker(
+  env: RerankEnv,
+  provider: RerankProvider,
+  pipelineFactory: (model: string) => () => Promise<CrossEncoderPipeline>,
+): RerankScoreFn {
   if (provider === 'local') {
     // No credential of any kind is consulted. This is the offline path, and it is
     // the reason the B1 A/B can run where no rerank provider is configured.
@@ -174,7 +249,7 @@ function buildReranker(env: RerankEnv, provider: RerankProvider): RerankScoreFn 
     // reranker stays synchronous — a factory that awaited here would turn this
     // function async and force every call site to handle startup failure.
     const model = env['CORTEX_RERANK_MODEL'] ?? DEFAULT_LOCAL_RERANK_MODEL;
-    const loadPipeline = makeDefaultRerankPipelineFactory(model);
+    const loadPipeline = pipelineFactory(model);
     let cached: Promise<CrossEncoderPipeline> | undefined;
     const pipeline: CrossEncoderPipeline = (texts, options) => {
       cached ??= loadPipeline().catch((err: unknown) => {
