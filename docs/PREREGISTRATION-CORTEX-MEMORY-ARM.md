@@ -650,8 +650,22 @@ forwarded into a step's `env`. Three injections were run against it:
 * `sourceTrust: 0.5` — **the default, sent explicitly rather than omitted.**
 * `threshold: 0` — unchanged from §7.5; every turn is admitted, so the only gate under
   test is the retrieval one.
-* `retrievalThreshold: 0.25` — the midpoint of the interval the ceiling makes reachable.
+* `retrievalThreshold: 0` — **amended from `0.25` by §10.9.** At `0.25` the gate abstained
+  on 479/500, lost 186 questions the baseline got right, and won none (McNemar
+  p = 2.039e-56). The pre-committed recovery for that outcome is the revert to `0`, so
+  until a replacement arming is registered with its own prediction, the registered value
+  is the control.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
+
+> **Amended by §10.9, in place rather than below.** The bullet list above is read by
+> `tools/__tests__/test_preregistration_config.py`, whose `registered()` stops at the
+> first blank line after the heading — so the amendment note belongs *after* the list,
+> not between the heading and it. The first draft of this amendment put a blockquote
+> directly under the heading and the guard's control test failed with `parsed []`, which
+> is the guard catching a document edit that would have silently disabled the check. The
+> `0.25` that was registered, and the prediction it was registered against, are not
+> deleted: they remain in §10.4 and §10.9, because a refuted prediction is a result and
+> removing it would destroy the evidence that it was stated in advance.
 
 `sourceTrust: 0.5` is sent rather than left blank for the reason §7.4 gives about
 `retrievalThreshold`: the blank path also lands on `0.5` today, but it lands there through
@@ -865,3 +879,90 @@ produced no draw, so this is the infrastructure re-dispatch §8 names, not a red
 if it fails again the log will now say where.
 
 ---
+
+### 10.9 The run produced a draw, and the draw refutes the gate
+
+**Run** `37313582403`, `success`, on `8831b264` — the commit the re-dispatch was sent
+against, now carrying §10.8's progress sink. Step 13 (`Run benchmark`, the reference
+baseline) and step 14 (`Run cortex-memory A/B`) both completed. This is the first draw
+this registration has produced: `37280315123` was the probe, `37280680006` was cancelled
+inside 30 seconds for the §10.6 configuration defect, and `37281155088` produced no draw
+at all (HTTP 402). No infrastructure reason applies here, so this is read as a result.
+
+**The configuration is read off the artifact, not off the dispatch's intent.** The report
+records `threshold=0`, `retrievalThreshold=0.25`, `sessionBudget=unbounded`,
+`sourceTrust=0.5` — the four values §10.3 registers, and the two that
+`test_preregistration_config.py` pins by parsing §10.3 itself. §10.6's precondition is
+therefore satisfied in the strong sense it asked for: the artifact names the arming.
+
+**The prediction was wrong, and the direction is the informative part.** §10.4 predicted
+abstention would **fall**, on the argument that a `0.25` cut sits near the middle of a
+mass bounded by the `0.5` ceiling. It did not fall. It moved almost the entire remaining
+range the other way:
+
+| Quantity | `reference-pipeline` (control) | `cortex-memory` (feature) | Δ |
+| --- | --- | --- | --- |
+| Abstention rate | 49.40% (247/500) | **95.80%** (479/500) | **+46.40pp** |
+| Abstention-aware accuracy | 43.80% | **6.60%** | **−37.20pp** |
+| Correct | 219 | 33 | −186 |
+| Aggregate avg, 4 runs | 43.75% | 6.50% | −37.25% |
+
+**Statistics.**
+
+- McNemar **p = 2.039e-56**; discordant pairs **186 baseline-correct/feature-wrong** and
+  **0 baseline-wrong/feature-correct**.
+- Welch t-test over the four stochastic runs **p = 4.462e-10**; Cohen's d **−190.26**.
+- Baseline Wilson CI **[39.51%, 48.18%]**; feature Wilson CI **[4.74%, 9.12%]** — the two
+  intervals are disjoint by a wide margin.
+
+A discordant split of 186 to 0 is the most extreme form this comparison can take. There is
+no subset of the dataset on which this arming helps.
+
+**Where the loss is, and what it says about the mechanism.** The damage is not diffuse. It
+sits exactly on the two capabilities the baseline solves, and abstention is what eats them:
+
+| Capability | Baseline abstained | Feature abstained | Baseline correct | Feature correct |
+| --- | --- | --- | --- | --- |
+| MR | 2 | 117 | 105 | 2 |
+| TR | 20 | 122 | 83 | 0 |
+| IE | 136 | 149 | 1 | 1 |
+| KU | 59 | 61 | 0 | 0 |
+| ABS | 30 | 30 | 30 | 30 |
+
+MR falls `86.78% → 1.65%` and TR falls `65.35% → 0.00%`, each at McNemar p < 1e-24. IE and
+KU are unchanged and were already near the floor before the arm; ABS is `30/30` on both
+sides by construction. The feature's entire score, `30/500 = 6.00%`, is therefore the
+**always-abstain floor** plus three questions: as armed, the arm is very nearly an
+unconditional abstainer.
+
+**The mechanism, as the numbers describe it.** A `0.5` ceiling bounds the admission scores
+*from above*. For the `0.25` retrieval cut to behave as §10.4 predicted, the bounded mass
+would have to sit largely **above** `0.25`. The observed behaviour is only consistent with
+the mass sitting largely **below** it, so the gate closes on the questions the baseline was
+answering instead of opening the ones it had declined. That is a concrete, falsifiable
+statement about the admission-score distribution which §10.4's prediction got backwards —
+and it is worth recording precisely because it was predicted in writing first. **The
+reading is §10.4's fourth row, not its middle row.**
+
+**Verdict, per the pre-committed table.** §10.4's fourth row applies verbatim:
+
+> `p < 0.05 with delta < 0` → the gate harms; reported as a refutation and reverted to
+> `retrievalThreshold: 0`
+
+The gate is wired and reachable — abstention moved 46.40pp, so the third row ("unchanged to
+the digit") does not apply — and at this arming it is strictly harmful. The recovery is the
+revert §10.4 fixed before the number existed. It is executed as its own change, in §10.3
+and in `tools/dispatch-cortex-memory-ab.py`, so a refuted configuration is not left
+half-applied.
+
+**What this does NOT claim.** It does not claim a machine-derived admission gate is
+impossible, and it does not license sliding the threshold to `0.1` to hunt for a better
+number — that is the redraw §4 forbids, and it is the specific temptation the third row of
+the §10.4 table was written to pre-empt. What is established is narrower and firmer: **at
+`retrievalThreshold: 0.25` with `sourceTrust: 0.5` and `threshold: 0`, this gate loses 186
+questions and wins none.** A future attempt must be a new registration carrying its own
+prediction, not a slide of this one's dial.
+
+**One thing the run re-confirmed.** The control side's own number is reproduced at full
+scale under the recharged key: `reference-pipeline` at **43.80%** abstention-aware accuracy
+on 500 questions, consistent with §10.7's composition-arm finding on the same dataset.

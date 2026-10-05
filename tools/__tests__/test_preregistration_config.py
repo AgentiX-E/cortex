@@ -171,5 +171,36 @@ class TestDispatchedConfigurationMatchesTheRegistration(unittest.TestCase):
         )
 
 
+    def test_the_refuted_arming_is_not_silently_restored(self) -> None:
+        """§10.9 refuted `retrievalThreshold: 0.25`; reinstating it is a re-registration.
+
+        The guard above keeps the dispatch and §10.3 in agreement, and after §10.9 both
+        say `0`. That is necessary but not sufficient: an edit that changed *both* back
+        to `0.25` would satisfy every assertion in this file while re-arming a
+        configuration that lost 186 questions and won none. The two documents agree with
+        each other either way -- what is missing is a check that the refutation is still
+        acknowledged, which is the one thing a symmetric-pair guard cannot see.
+
+        So this asserts the *reason* survives, not the number: §10.9 must exist and must
+        name the run that produced the refutation. A future re-registration is free to
+        choose `0.25` again, but it has to say so in a section of its own rather than
+        delete §10.9, and that is exactly the cost §4's no-redraw rule is meant to impose.
+        """
+        source = PREREGISTRATION.read_text(encoding="utf-8")
+        self.assertIn(
+            "### 10.9",
+            source,
+            "§10.9 records the refutation of `retrievalThreshold: 0.25`. If it is gone, "
+            "either the refutation was erased or the section was renumbered; a "
+            "re-registration must add a section, not remove the evidence.",
+        )
+        self.assertIn(
+            "37313582403",
+            source,
+            "§10.9 must name the run that produced the draw being read, so the refutation "
+            "is traceable to an artifact rather than to a claim about one.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

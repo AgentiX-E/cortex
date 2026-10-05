@@ -34,7 +34,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 import time
 import urllib.error
@@ -53,22 +52,25 @@ WORKFLOW = "benchmark.yml"
 # on the whole set, because a 60-question sample gives a Wilson interval too wide to
 # distinguish the null the arm expects from the effect it is looking for.
 #
-# `cortex_memory_retrieval_threshold` is sent explicitly as the string `'0.25'`, not
+# `cortex_memory_retrieval_threshold` is sent explicitly as the string `'0'`, not
 # left to the workflow default. The empty string GitHub substitutes for an unfilled
-# input parses to `0` today, so omitting it would produce a different run than the one
-# registered -- and it would arrive through the `''` -> `Number('')` path that §38
-# identified as the source of two separate defects. A configuration this run depends
-# on should not arrive via an accident.
+# input parses to `0` today, so omitting it would happen to match -- and it would
+# arrive through the `''` -> `Number('')` path that §38 identified as the source of
+# two separate defects. A configuration this run depends on should not arrive via an
+# accident, and an absent key cannot be shown to be wrong.
 #
-# The value is `0.25`, NOT the `0` this key carried through §7.5. §9 raised the
-# reachable ceiling by giving `sourceTrust` a caller, and §10 is the REGISTRATION that
-# spends that change: §10.3 names `retrievalThreshold: 0.25` as "the midpoint of the
-# interval the ceiling makes reachable". A dispatch that kept sending `0` would run
-# the §7.5 configuration while the registration named a different one -- §7.3's
-# side-channel defect in its fourth form, where the KEY is declared and forwarded
-# correctly and only the VALUE disagrees. §10.6's check names `sourceTrust` alone, so
-# it cannot catch this; the guard for it is `test_preregistration_config.py`, which
-# compares these values against §10.3 itself.
+# The value is `0`, REVERTED FROM `0.25` BY §10.9. The `0.25` was §10's registration,
+# chosen as "the midpoint of the interval the ceiling makes reachable". The run that
+# spent it (`37313582403`) refuted it: abstention rose 49.40% -> 95.80% instead of
+# falling as §10.4 predicted, accuracy fell 43.80% -> 6.60%, and the discordant split
+# was 186 lost to 0 won (McNemar p = 2.039e-56). That is §10.4's fourth row
+# (`p < 0.05 with delta < 0`), whose pre-committed recovery is exactly this revert --
+# so this line executes a decision taken before the number existed rather than one
+# taken after reading it. The alternative reading, `0.1`, is the redraw §4 forbids.
+#
+# §10.3 carries the same amendment, because `test_preregistration_config.py` compares
+# these values against §10.3 itself and a revert applied to only one side would fail
+# there -- which is the guard working, not an obstacle to it.
 #
 # `cortex_memory_source_trust` is sent for the third reason: the variable did not
 # exist in `INPUTS` at all until now, and neither did the workflow input behind it.
@@ -91,7 +93,7 @@ WORKFLOW = "benchmark.yml"
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_threshold": "0",
-    "cortex_memory_retrieval_threshold": "0.25",
+    "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "limit": "0",
     "ablation_runs": "4",
