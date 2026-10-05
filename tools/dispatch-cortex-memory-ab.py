@@ -43,18 +43,32 @@ import urllib.request
 REPO = "AgentiX-E/cortex"
 WORKFLOW = "benchmark.yml"
 
-# The pre-registered configuration, held constant. `limit: '0'` is the full 500
-# questions -- this arm's point estimate must be measured on the whole set, because
-# a 60-question sample gives a Wilson interval too wide to distinguish the null the
-# arm expects from the effect it is looking for.
+# The configuration registered in `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3,
+# held constant. These values are not free parameters of this script: §10 fixed them
+# before the run, and `tools/__tests__/test_preregistration_config.py` asserts that what
+# is sent here is what that section names. Changing a number here without amending §10
+# is the fourth form of the §7.3 defect -- the artifact would describe the intent.
 #
-# `cortex_memory_retrieval_threshold` is sent explicitly as the string `'0'`, not
+# `limit: '0'` is the full 500 questions -- this arm's point estimate must be measured
+# on the whole set, because a 60-question sample gives a Wilson interval too wide to
+# distinguish the null the arm expects from the effect it is looking for.
+#
+# `cortex_memory_retrieval_threshold` is sent explicitly as the string `'0.25'`, not
 # left to the workflow default. The empty string GitHub substitutes for an unfilled
-# input also parses to `0` today, so omitting it would produce the same run -- but
-# it would produce it through the `''` -> `Number('')` path that §38 identified as
-# the source of two separate defects, and a configuration this run depends on
-# should not arrive via an accident that happens to land correctly. Sending the
-# literal value also makes the dispatch record state what the gate was.
+# input parses to `0` today, so omitting it would produce a different run than the one
+# registered -- and it would arrive through the `''` -> `Number('')` path that §38
+# identified as the source of two separate defects. A configuration this run depends
+# on should not arrive via an accident.
+#
+# The value is `0.25`, NOT the `0` this key carried through §7.5. §9 raised the
+# reachable ceiling by giving `sourceTrust` a caller, and §10 is the REGISTRATION that
+# spends that change: §10.3 names `retrievalThreshold: 0.25` as "the midpoint of the
+# interval the ceiling makes reachable". A dispatch that kept sending `0` would run
+# the §7.5 configuration while the registration named a different one -- §7.3's
+# side-channel defect in its fourth form, where the KEY is declared and forwarded
+# correctly and only the VALUE disagrees. §10.6's check names `sourceTrust` alone, so
+# it cannot catch this; the guard for it is `test_preregistration_config.py`, which
+# compares these values against §10.3 itself.
 #
 # `cortex_memory_source_trust` is sent for the third reason: the variable did not
 # exist in `INPUTS` at all until now, and neither did the workflow input behind it.
@@ -65,9 +79,19 @@ WORKFLOW = "benchmark.yml"
 # stating it explicitly keeps this dispatch comparable to runs `37110579101` and
 # `37094200823` while making the ceiling a fact on the record instead of a property
 # of a literal someone has to go read.
+#
+# `cortex_memory_threshold` is sent as `'0'` for the reason above applied to the other
+# gate. §10.3 registers `threshold: 0`; this key was previously OMITTED, on the argument
+# that the workflow default also lands on `0`. That argument is the one the paragraph
+# above rejects: it lands there through `''` -> `readNumeric` -> default, and a
+# registered value should not arrive via an accident. The omission is also invisible --
+# an absent key cannot disagree with anything, so no artifact could show that the
+# registered `threshold` was never stated. `test_preregistration_config.py` found it by
+# comparing the dispatch against §10.3 rather than against the workflow's defaults.
 INPUTS = {
     "cortex_memory": "1",
-    "cortex_memory_retrieval_threshold": "0",
+    "cortex_memory_threshold": "0",
+    "cortex_memory_retrieval_threshold": "0.25",
     "cortex_memory_source_trust": "0.5",
     "limit": "0",
     "ablation_runs": "4",
