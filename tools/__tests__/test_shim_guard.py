@@ -87,8 +87,31 @@ def seq(body: str) -> str:
 
 
 def shim_is_installed() -> bool:
-    """Whether this host has the shim at its documented home, executable."""
-    return SHIM_HOME.exists() and bool(SHIM_HOME.stat().st_mode & 0o111)
+    """Whether this host has the shim at its documented home, executable.
+
+    ## Why every step is guarded
+
+    `Path.exists()` and `Path.stat()` both raise `PermissionError`, not `False`, when an
+    ANCESTOR directory is unreadable. On a GitHub runner `/root` exists but the runner
+    process cannot traverse it, so this predicate raised at COLLECTION time and took the
+    whole file down with `Interrupted: 1 error during collection` -- including the rule
+    tests that do not need the shim at all.
+
+    A gate is not allowed to fail; it is only allowed to say no. Returning `False` here
+    means "this host does not have the shim", which is exactly true and is what the
+    `skipif` reason already states. Letting the check raise would make an environment
+    difference indistinguishable from a broken test file, which is the whole class of
+    defect this file exists to catch.
+
+    `PermissionError` is caught alongside `OSError` (its parent) so a future filesystem
+    quirk lands in the same place rather than reopening this.
+    """
+    try:
+        if not SHIM_HOME.exists():
+            return False
+        return bool(SHIM_HOME.stat().st_mode & 0o111)
+    except OSError:
+        return False
 
 
 # The reason strings are the point of using skipif rather than a bare boolean: the log
