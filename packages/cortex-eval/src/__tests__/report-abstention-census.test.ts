@@ -121,6 +121,7 @@ function persistedCensusReport(
       sessionBudget: null,
       sourceTrust: 0.5,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     },
     abstentionReasons: census,
   };

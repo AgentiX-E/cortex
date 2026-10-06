@@ -90,11 +90,27 @@ WORKFLOW = "benchmark.yml"
 # an absent key cannot disagree with anything, so no artifact could show that the
 # registered `threshold` was never stated. `test_preregistration_config.py` found it by
 # comparing the dispatch against §10.3 rather than against the workflow's defaults.
+# §12.5's single variable. The gate inputs above are held at exactly the values §10.3
+# registers -- `threshold: 0`, `retrievalThreshold: 0` (reverted from `0.25` by §10.9),
+# `sourceTrust: 0.5` -- because §12.3 measured that no cut in the reachable range can carry
+# this arm: the hit and miss score distributions overlap almost completely (hits
+# `[0.5212, 0.7861]` against misses `[0.5165, 0.7944]`), and the best precision reachable
+# at full-ish recall is `0.466` against a base rate of `0.368`. A retrieval cut is
+# therefore not the mechanism, and moving one alongside the rendering would make a
+# non-zero MR/TR unattributable to either.
+#
+# What §12.4 leaves as the surviving hypothesis is what the arm PRESENTS. The feature side
+# repaired **not one question** on any capability (`b-f` repairs of `0` everywhere) while
+# abstaining at `95.8%` with every abstention attributed to the model (`reason: "llm"`),
+# not to the gate. So the model is reached and declines, and what reaches it is the
+# evidence rendering. This key is that variable, and it is the only difference between
+# this run and the one whose artifact §12.4's table was read from.
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_threshold": "0",
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
+    "cortex_memory_prompt_contract": "abstention-evidence-blocks",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

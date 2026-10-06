@@ -71,6 +71,7 @@ const GATE = {
   sessionBudget: null,
   sourceTrust: 0.5,
   confidenceSignal: 'none',
+  promptContract: 'abstention',
 } as const;
 
 /**
@@ -106,6 +107,7 @@ function formalizeArm(config: {
       sessionBudget: config.sessionBudget,
       sourceTrust: 0.5,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     }),
   });
 }
@@ -150,6 +152,7 @@ async function runCortexMemoryArmReport(config: {
         sessionBudget: null,
         sourceTrust: 0.5,
         confidenceSignal: 'none',
+        promptContract: 'abstention',
       },
     },
   );
@@ -473,6 +476,7 @@ describe('source trust reaches the artifact', () => {
       sessionBudget: null,
       sourceTrust: 1,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     });
   });
 
@@ -604,6 +608,7 @@ describe('runCortexMemoryArm', () => {
           sessionBudget: 8,
           sourceTrust: 0.5,
           confidenceSignal: 'none',
+          promptContract: 'abstention',
         },
       },
     );
@@ -613,6 +618,7 @@ describe('runCortexMemoryArm', () => {
       sessionBudget: 8,
       sourceTrust: 0.5,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     });
   });
 
@@ -635,6 +641,7 @@ describe('runCortexMemoryArm', () => {
         sessionBudget: null,
         sourceTrust: 0.5,
         confidenceSignal: 'none',
+        promptContract: 'abstention',
       },
     });
     expect(markdown).toContain('Memory arm config');
@@ -748,6 +755,7 @@ describe('runCortexMemoryArm', () => {
         sessionBudget: Number.POSITIVE_INFINITY,
         sourceTrust: 0.5,
         confidenceSignal: 'none',
+        promptContract: 'abstention',
       });
       expect(config.sessionBudget).toBeNull();
       expect(JSON.parse(JSON.stringify(config))).toEqual(config);
@@ -761,6 +769,7 @@ describe('runCortexMemoryArm', () => {
         sessionBudget: 12,
         sourceTrust: 0.5,
         confidenceSignal: 'none',
+        promptContract: 'abstention',
       });
       expect(config).toEqual({
         threshold: 0.5,
@@ -768,6 +777,7 @@ describe('runCortexMemoryArm', () => {
         sessionBudget: 12,
         sourceTrust: 0.5,
         confidenceSignal: 'none',
+        promptContract: 'abstention',
       });
     });
   });
@@ -1068,6 +1078,7 @@ describe('the retrieval threshold', () => {
       sessionBudget: null,
       sourceTrust: 0.5,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     });
   });
 });
@@ -1161,6 +1172,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       sessionBudget: Number.POSITIVE_INFINITY,
       sourceTrust: 0.5,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     });
   });
 
@@ -1179,6 +1191,143 @@ describe('blank values from unfilled dispatch inputs', () => {
       sessionBudget: null,
       sourceTrust: 0.5,
       confidenceSignal: 'none',
+      promptContract: 'abstention',
     });
+  });
+});
+
+describe('the prompt contract reaches the artifact', () => {
+  it('defaults to the baseline rendering', () => {
+    // The compatibility guarantee. Every run dispatched before this field existed used
+    // the baseline rendering, so "unset" has to mean exactly that or the historical
+    // numbers stop describing the prompt they were taken under.
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).promptContract).toBe('abstention');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_PROMPT_CONTRACT: '' })
+        .promptContract,
+    ).toBe('abstention');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_PROMPT_CONTRACT: '  ' })
+        .promptContract,
+    ).toBe('abstention');
+  });
+
+  it('accepts the §12.5 candidate contract', () => {
+    expect(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_PROMPT_CONTRACT: 'abstention-evidence-blocks',
+      }).promptContract,
+    ).toBe('abstention-evidence-blocks');
+    // Trimmed, so a trailing newline from a shell heredoc is not a typo.
+    expect(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_PROMPT_CONTRACT: 'abstention-evidence-blocks\n',
+      }).promptContract,
+    ).toBe('abstention-evidence-blocks');
+  });
+
+  it('rejects an unrecognised contract rather than falling back to the baseline', () => {
+    // The direction is the opposite of `readToggle`'s, and §12.5 is why: a run
+    // dispatched to test a different evidence rendering, silently falling back to the
+    // baseline, would publish a delta reading as evidence the rendering does not help.
+    // The delta would then be a fact about the typo rather than about the rendering.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_PROMPT_CONTRACT: 'blocks' }),
+    ).toThrow(/CORTEX_MEMORY_PROMPT_CONTRACT/);
+    // The message lists the accepted set, so the operator does not read the source.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_PROMPT_CONTRACT: 'nope' }),
+    ).toThrow(/"abstention-evidence-blocks"/);
+  });
+
+  it('projects the value into the memory arm config', () => {
+    // The §7.4 defect in its fourth form: a configuration the code applies but the
+    // artifact does not record. §12.5's whole design is that the two runs differ in
+    // EXACTLY this field and no other, so an artifact that omitted it would make the
+    // pair indistinguishable -- and the pair being distinguishable is the experiment.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_PROMPT_CONTRACT: 'abstention-evidence-blocks',
+    });
+    expect(toMemoryArmConfig(options).promptContract).toBe('abstention-evidence-blocks');
+  });
+
+  it('records the contract even when it holds the default', () => {
+    // Omitting a defaulted field makes "this run used the baseline" and "this artifact
+    // predates the field" the same bytes, and those are different claims.
+    expect(toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })).promptContract).toBe(
+      'abstention',
+    );
+  });
+
+  it('keeps the gate parameters untouched, which is what makes the experiment single-variable', () => {
+    // The falsifiability guard. §12.5 predicts MR and TR move off zero because the
+    // RENDERING changed. If this switch also moved a threshold, a non-zero result could
+    // not be attributed to either, and the run would answer neither question.
+    const baseline = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    const candidate = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_PROMPT_CONTRACT: 'abstention-evidence-blocks',
+    });
+    expect(candidate.threshold).toBe(baseline.threshold);
+    expect(candidate.retrievalThreshold).toBe(baseline.retrievalThreshold);
+    expect(candidate.sessionBudget).toBe(baseline.sessionBudget);
+    expect(candidate.sourceTrust).toBe(baseline.sourceTrust);
+    expect(candidate.confidenceSignal).toBe(baseline.confidenceSignal);
+  });
+});
+
+describe('the contract list agrees with the product layer', () => {
+  it('accepts exactly the contracts cortex-memory implements', () => {
+    // The duplication guard. `cortex-eval` cannot import from `cortex-memory`: the
+    // dependency runs the other way (memory is measured BY eval) and an import would be
+    // a cycle, so the accepted list is restated in the arm. Duplication that is merely
+    // asserted in a comment is the drift this repository keeps paying for, so it is
+    // checked instead -- a contract added or removed on the product side fails HERE
+    // rather than silently becoming an accepted-but-unimplemented value on the arm.
+    //
+    // The product's source is READ, not imported. Two earlier attempts imported it and
+    // failed: a package-name import is the very edge that must not exist, and a relative
+    // `.js` specifier does not resolve across package roots under this vitest config
+    // (`Failed to load url ../../cortex-memory/src/prompt.js`). Reading the file text
+    // avoids both and still fails when the lists diverge, which is the whole requirement.
+    const source = readFileSync(
+      new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+      'utf-8',
+    );
+
+    // The exported array literal, parsed out of the source rather than a regex over the
+    // whole file: a match anywhere would also catch the type union, which lists the same
+    // names and must not be confused with the runtime list the arm validates against.
+    const arrayMatch = /export const PROMPT_CONTRACTS = \[([^\]]*)\] as const;/.exec(source);
+    expect(arrayMatch, 'PROMPT_CONTRACTS not found in the product source').not.toBeNull();
+    // Narrowed through a local rather than a `!` inside the spread: the assertion above
+    // narrows `arrayMatch` for the checker only if it is read after the expect, and
+    // `arrayMatch![1]` inside a `[...]` spread re-widens it to `string | undefined`.
+    const arrayBody = arrayMatch?.[1] ?? '';
+    const productContracts = [...arrayBody.matchAll(/'([^']+)'/g)].map((m) => m[1] ?? '').sort();
+
+    const accepted: string[] = [];
+    for (const candidate of ['abstention', 'abstention-evidence-blocks']) {
+      accepted.push(
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_PROMPT_CONTRACT: candidate })
+          .promptContract,
+      );
+    }
+    expect(accepted.sort()).toEqual(productContracts);
+  });
+
+  it('defaults to the contract the product calls the default', () => {
+    const source = readFileSync(
+      new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+      'utf-8',
+    );
+    const defaultMatch = /export const DEFAULT_PROMPT_CONTRACT: PromptContract = '([^']+)';/.exec(
+      source,
+    );
+    expect(defaultMatch, 'DEFAULT_PROMPT_CONTRACT not found in the product source').not.toBeNull();
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).promptContract).toBe(defaultMatch![1]);
   });
 });

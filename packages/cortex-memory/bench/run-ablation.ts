@@ -52,7 +52,7 @@ import {
   toMemoryArmConfig,
   type BenchmarkProgress,
 } from '@agentix-e/cortex-eval';
-import { CortexMemory, confidenceFromLength } from '../src/index.js';
+import { CortexMemory, confidenceFromLength, type PromptContract } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 /**
@@ -180,6 +180,23 @@ async function main(): Promise<void> {
       ...(armOptions.confidenceSignal === 'length' ? { confidenceFor: confidenceFromLength } : {}),
     },
     name: 'cortex-memory',
+    // §12.5's single variable, spread conditionally for the same reason as
+    // `confidenceFor` above: an always-present key holding `undefined` reads as
+    // "configured" to a `!== undefined` check, and `memory.ts` uses exactly that check
+    // to decide whether to substitute the contract. The baseline contract is expressed
+    // by NOT passing the key, so a run that does not name one reproduces the previous
+    // prompt byte for byte.
+    //
+    // The cast is at this boundary rather than on the option's type. `cortex-eval` carries
+    // the contract as `string` because it cannot import this package's union (the
+    // dependency runs the other way), and it validates the string against the product's
+    // own list at parse time -- `readPromptContract` throws on anything unrecognised. So by
+    // the time execution reaches here the value IS one of the union's members, and the
+    // assertion states that rather than re-checking it. Widening the option to `string`
+    // would move the check to a place with no validation behind it.
+    ...(armOptions.promptContract === 'abstention'
+      ? {}
+      : { promptContract: armOptions.promptContract as PromptContract }),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this

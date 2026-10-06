@@ -261,6 +261,21 @@ export type MemoryArmConfig = {
    * itself is tested in the product layer.
    */
   readonly confidenceSignal: string;
+  /**
+   * The evidence rendering the abstention route used.
+   *
+   * Written even when it is the baseline, for the reason every other field here is:
+   * omitting a defaulted value makes "this run used the baseline rendering" and "this
+   * artifact predates the field" the same bytes, and those are different claims.
+   *
+   * It is on the report because §12.5's experiment turns on it and nothing else. A reader
+   * comparing this run against the dispatched one has to be able to see that the gate
+   * parameters are identical and the rendering is not, or a delta is unattributable to
+   * either. A `string` rather than an enum because the arm validates against the product's
+   * list at parse time; restating the union here would be a second definition to keep
+   * in step, which is the drift the arm's own constants avoid.
+   */
+  readonly promptContract: string;
 };
 
 /**
@@ -430,7 +445,13 @@ export function formatAblationReport(report: AblationReport): string {
         // every cut all-or-nothing, so a reader holding only the numbers would
         // read a `retrievalThreshold` of `0.25` as a working cut when it may have
         // had nothing to cut. `none` is the honest value and is written.
-        `, \`confidenceSignal=${memoryArm.confidenceSignal}\``,
+        `, \`confidenceSignal=${memoryArm.confidenceSignal}\`` +
+        // §12.5's single variable, rendered with the same always-present rule. It is
+        // the field that makes the experiment readable at all: the two runs this arm
+        // compares carry IDENTICAL `threshold`, `retrievalThreshold`, `sourceTrust` and
+        // `confidenceSignal`, so without this line their artifacts would be the same
+        // bytes and a reader would have no way to see which prompt produced which score.
+        `, \`promptContract=${memoryArm.promptContract}\``,
     );
   }
 

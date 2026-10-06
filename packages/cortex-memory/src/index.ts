@@ -36,6 +36,15 @@ export {
   formatEvidence,
   truncateCodePointSafe,
   DEFAULT_MAX_PROMPT_CHARS,
+  // `PROMPT_CONTRACTS` and `DEFAULT_PROMPT_CONTRACT` are exported so the measurement arm
+  // can validate a dispatch-supplied name against the same list the product layer
+  // implements. A second copy in `cortex-eval` is the drift the arm's own comment on
+  // `DEFAULT_SOURCE_TRUST` warns about, inverted: there the risk was a default moving with
+  // the product and breaking historical comparability, here it is a list that accepts a
+  // name `buildPrompt` does not implement, which would publish config for a run that used
+  // a different prompt.
+  PROMPT_CONTRACTS,
+  DEFAULT_PROMPT_CONTRACT,
   type PromptContract,
   type PromptOptions,
 } from './prompt.js';

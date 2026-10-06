@@ -665,6 +665,20 @@ forwarded into a step's `env`. Three injections were run against it:
   until a replacement arming is registered with its own prediction, the registered value
   is the control.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
+* `promptContract: abstention-evidence-blocks` — **added by §12.5**, and the only value in
+  this list that is not a gate parameter. §12.4 measured `b✓f✗`/`b✗f✓` for every
+  capability and found the feature side repaired **zero** questions while abstaining at
+  `95.8%` with every abstention attributed to the model rather than to the gate. §12.3
+  measured that no `retrievalThreshold` in the reachable range can carry the arm. What
+  survives both is a question about what the arm *presents*, so this field changes that and
+  nothing else — every gate parameter above is held at exactly the value §10.3 registers.
+
+> **Amended by §12.5, in place rather than below**, for the reason §10.9's note gives:
+> `registered()` reads the list and stops at the first blank line, so an amendment note
+> placed between the heading and the list would silently disable the guard. This entry is
+> the first that is not a gate knob, and that is deliberate — the registration is still a
+> registration of *the run's independent variable*, and §12.5 is where that variable
+> changed from a threshold to a rendering.
 
 > **Amended by §10.9, in place rather than below.** The bullet list above is read by
 > `tools/__tests__/test_preregistration_config.py`, whose `registered()` stops at the

@@ -309,7 +309,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
     turns: AdmittedTurn[],
     contract: PromptContract,
   ): Promise<Answer> {
-    const prompt = buildPrompt(question, turns, contract, this.#promptOptions());
+    // The abstention route is the one §12.5's experiment moves, and it is the only
+    // route the override is allowed to touch. Applying it to every contract would
+    // change the prompts of routes the registration does not name, which would make
+    // the run a test of the rendering across all capabilities rather than of the
+    // abstention path's evidence presentation.
+    const resolved =
+      contract === 'abstention' && this.#options.promptContract !== undefined
+        ? this.#options.promptContract
+        : contract;
+    const prompt = buildPrompt(question, turns, resolved, this.#promptOptions());
     const raw = await this.#llm.complete(prompt);
     return parseAnswer(raw);
   }

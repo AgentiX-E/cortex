@@ -8,6 +8,7 @@
  * else. See `docs/AUDIT-CODE-VS-DOCS.md` §6.
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
+import type { PromptContract } from './prompt.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -124,4 +125,24 @@ export type CortexMemoryOptions = {
   name?: string;
   /** Upper bound on prompt length in UTF-16 code units. */
   maxPromptChars?: number;
+  /**
+   * Overrides the contract the **abstention route** uses, without touching the others.
+   *
+   * Exists for §12.5's registered experiment. §12.4 measured that the feature side
+   * repaired no question at all (`b✗f✓ = 0`) while its abstentions were the model's
+   * (`reason: "llm"`), and §12.3 measured that no `retrievalThreshold` can carry the arm.
+   * The surviving hypothesis is therefore about what is *presented* to the model, and
+   * this field is the single variable that changes it.
+   *
+   * Named for the route rather than for the contract so that a caller cannot accidentally
+   * rewrite the extractive or temporal routes: those are separate arms' subjects and a
+   * rendering change there would be a second uncontrolled variable in a run whose whole
+   * value is that it has one. The route's own contract is what decides whether this
+   * applies, and a value that is not a known contract is rejected rather than defaulted
+   * -- a silently-ignored override would publish an artifact claiming a rendering the run
+   * never used, which is the §7.3 side-channel defect.
+   *
+   * Defaults to absent, so every prior artifact keeps its meaning.
+   */
+  promptContract?: PromptContract;
 };

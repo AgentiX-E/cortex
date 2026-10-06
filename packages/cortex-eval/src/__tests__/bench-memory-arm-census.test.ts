@@ -46,6 +46,7 @@ const GATE = {
   sessionBudget: null,
   sourceTrust: 0.5,
   confidenceSignal: 'none',
+  promptContract: 'abstention',
 } as const;
 
 function dataset(): BenchmarkDataset {

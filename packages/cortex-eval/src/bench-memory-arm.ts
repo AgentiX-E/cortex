@@ -126,6 +126,19 @@ export type CortexMemoryArmOptions = {
    * every prior artifact's meaning are unchanged.
    */
   confidenceSignal: string;
+  /**
+   * The evidence rendering the **abstention route** uses. §12.5's single variable.
+   *
+   * §12.4 localised the arm's loss to what the feature side presents: `b✗f✓ = 0` on every
+   * capability (not one question repaired) with abstention at 95.8% and every abstention
+   * attributed to the model. §12.3 then measured that the gate cannot carry the arm. So
+   * the surviving hypothesis is about presentation, and this is the knob that changes it
+   * while every gate parameter stays exactly as dispatched.
+   *
+   * Defaults to the baseline contract, so every prior run's configuration and every prior
+   * artifact's meaning are unchanged.
+   */
+  promptContract: string;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -144,6 +157,34 @@ const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
 const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
 const SOURCE_TRUST_VARIABLE = 'CORTEX_MEMORY_SOURCE_TRUST';
 const CONFIDENCE_VARIABLE = 'CORTEX_MEMORY_CONFIDENCE';
+/**
+ * The variable naming the §12.5 evidence-rendering experiment.
+ *
+ * Separate from `CONFIDENCE_VARIABLE` because the two answer different questions about
+ * different layers: confidence is an *admission* input (which turns survive the value
+ * gate) and the contract is a *presentation* input (what the surviving turns look like
+ * to the model). A run that moved both would confound §12.5 with §11's registration.
+ */
+const PROMPT_CONTRACT_VARIABLE = 'CORTEX_MEMORY_PROMPT_CONTRACT';
+
+/**
+ * The contract a run gets when it does not name one.
+ *
+ * A local literal, and this file's own boundary rule requires it: `cortex-eval` depends
+ * only on `cortex-core` and `cortex-llm`, while `cortex-memory` is the layer that depends
+ * on `cortex-core` and is measured *by* this package. Importing `PROMPT_CONTRACTS` from
+ * the product would reverse that direction and create a cycle.
+ *
+ * The first version of this comment claimed the import was safe because a renamed
+ * constant would fail to compile. That is true and irrelevant: there is no edge to fail
+ * to compile across. The duplication is real and it is the price of the acyclic layering,
+ * so it is guarded instead of assumed -- `bench-memory-arm.test.ts` asserts this literal
+ * is a member of the product's own list, which is a check that can actually run.
+ *
+ * The value is `abstention` because that is the contract the product hardcodes for this
+ * route, so a run that names nothing reproduces every prior artifact's prompt.
+ */
+const DEFAULT_PROMPT_CONTRACT: string = 'abstention';
 
 /**
  * The source trust a run gets when it does not name one.
@@ -196,6 +237,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       sessionBudget: Number.POSITIVE_INFINITY,
       sourceTrust: DEFAULT_SOURCE_TRUST,
       confidenceSignal: DEFAULT_CONFIDENCE_SIGNAL,
+      promptContract: DEFAULT_PROMPT_CONTRACT,
     };
   }
   return {
@@ -208,6 +250,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     sessionBudget: readSessionBudget(env[BUDGET_VARIABLE]),
     sourceTrust: readSourceTrust(env[SOURCE_TRUST_VARIABLE]),
     confidenceSignal: readConfidenceSignal(env[CONFIDENCE_VARIABLE]),
+    promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
   };
 }
 
@@ -260,6 +303,56 @@ function readConfidenceSignal(raw: string | undefined): string {
         'than defaulted to "none": a run dispatched to introduce per-turn confidence would ' +
         'otherwise run the constant behaviour and its artifact would read as evidence that ' +
         'variation does not help.',
+    );
+  }
+  return value;
+}
+
+/**
+ * The contract names `CORTEX_MEMORY_PROMPT_CONTRACT` accepts.
+ *
+ * The product's own list, restated here, for the layering reason
+ * {@link DEFAULT_PROMPT_CONTRACT} records. The duplication is checked rather than
+ * trusted: `bench-memory-arm.test.ts` asserts these are exactly the contracts
+ * `cortex-memory` exports, so a name added or removed on the product side fails a test
+ * here instead of silently becoming an accepted-but-unimplemented value.
+ */
+const PROMPT_CONTRACTS = {
+  /** The baseline rendering: numbered turns, blank-line separated. */
+  abstention: 'abstention',
+  /** §12.5's candidate: every turn labelled with the memory it came from. */
+  'abstention-evidence-blocks': 'abstention-evidence-blocks',
+} as const;
+
+/**
+ * Read the prompt-contract name, rejecting anything unrecognised.
+ *
+ * The same argument as {@link readConfidenceSignal}, applied to the §12.5 experiment.
+ * §12.4 measured `b✗f✓ = 0` on every capability with the feature side's abstentions
+ * attributed to the model (`reason: "llm"`), and §12.3 measured that no
+ * `retrievalThreshold` can carry the arm -- the best reachable precision is 0.466 against
+ * a base rate of 0.368. What remains is what the arm *presents* to the model, and this
+ * variable is the one thing that changes it.
+ *
+ * Defaulted rather than thrown on the blank case, because unset is a real configuration:
+ * every run before this one used the baseline rendering, and a blank input has to keep
+ * reproducing it. Thrown on an *unrecognised* value, because that case is different in
+ * kind -- a run dispatched to test a rendering, silently falling back to the baseline,
+ * would publish an artifact whose `b✗f✓` of zero reads as evidence that the rendering
+ * does not help. The delta would then be a fact about the typo.
+ */
+function readPromptContract(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_PROMPT_CONTRACT;
+
+  const value = raw.trim();
+  const known = Object.keys(PROMPT_CONTRACTS);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${PROMPT_CONTRACT_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised contract is rejected rather ` +
+        'than defaulted to the baseline: a run dispatched to test a different evidence ' +
+        'rendering would otherwise run the baseline and its artifact would read as evidence ' +
+        'that the rendering does not help.',
     );
   }
   return value;
@@ -365,6 +458,7 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     sessionBudget: Number.isFinite(options.sessionBudget) ? options.sessionBudget : null,
     sourceTrust: options.sourceTrust,
     confidenceSignal: options.confidenceSignal,
+    promptContract: options.promptContract,
   };
 }
 

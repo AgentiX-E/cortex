@@ -12,7 +12,30 @@ import { ABSTAIN_TOKEN } from './parse.js';
 
 /** The distinct asks `runBenchmark`'s routes correspond to. */
 export type PromptContract =
-  'extractive' | 'abstention' | 'temporal' | 'assistant' | 'knowledge-update';
+  | 'extractive'
+  | 'abstention'
+  | 'temporal'
+  | 'assistant'
+  | 'knowledge-update'
+  | 'abstention-evidence-blocks';
+
+/**
+ * The contracts a run may name, in the order they are worth reading.
+ *
+ * Enumerated here rather than at each call site so that adding one is a single edit and
+ * the arm's error message can list what exists. See
+ * `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §12.5.
+ */
+export const PROMPT_CONTRACTS = ['abstention', 'abstention-evidence-blocks'] as const;
+
+/**
+ * The contract a caller gets when it names none.
+ *
+ * `abstention`, because it is what the code hardcoded before the switch existed. §12.5's
+ * experiment changes exactly one thing, so the default has to reproduce every prior run's
+ * prompt byte for byte or the prior artifacts stop being comparable.
+ */
+export const DEFAULT_PROMPT_CONTRACT: PromptContract = 'abstention';
 
 /** Optional inputs to {@link buildPrompt}. */
 export type PromptOptions = {
@@ -42,6 +65,47 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
     ].join('\n'),
 
   abstention: () =>
+    [
+      'Answer the question using only the evidence above.',
+      'This question may have no answer in the evidence. That is expected and is a valid outcome.',
+      'Do not choose among candidates to produce something plausible.',
+      `If no evidence supports an answer, reply exactly ${ABSTAIN_TOKEN}.`,
+      `Otherwise reply with the answer alone.`,
+    ].join('\n'),
+
+  /**
+   * The §12.5 candidate: the same ask, a different rendering of the evidence.
+   *
+   * ## Why the ask is identical and only the evidence changes
+   *
+   * §12.4 measured `b✗f✓ = 0` on every capability while the feature side abstained at
+   * 95.8% with `reason: "llm"` -- the model declines, not the gate. Two readings fit
+   * that: the model is told to decline too forcefully, or the evidence reaches it in a
+   * form it cannot use. Changing both at once would not distinguish them.
+   *
+   * This contract holds the instruction block FIXED and changes only how the admitted
+   * turns are presented, which isolates the second reading. That is deliberate: the
+   * instruction text is already the conservative one the reference pipeline uses, so
+   * suspecting it is suspecting the thing most likely to be correct.
+   *
+   * ## What changes in the rendering, and why this shape
+   *
+   * The baseline numbers each turn and separates them with a blank line. Two properties
+   * of that are worth questioning for a *multi-session* question:
+   *
+   *   - a bare number is a position, not an identity, so nothing tells the model which
+   *     turns belong to the same conversation;
+   *   - the blank-line separator is the same whether the next turn is the next sentence
+   *     or the next session, so a boundary the admission layer carefully preserved is
+   *     flattened at the last step before the model sees it.
+   *
+   * `buildSessionPrompt` renders boundaries for the MR route already, so this is not a
+   * new idea -- it is the observation that the abstention route never got it. The
+   * rendering below labels each turn with its index and marks the block it came from,
+   * which makes the boundary visible on a route that previously implied it by position
+   * alone.
+   */
+  'abstention-evidence-blocks': () =>
     [
       'Answer the question using only the evidence above.',
       'This question may have no answer in the evidence. That is expected and is a valid outcome.',
@@ -102,6 +166,36 @@ export function formatEvidence(
 }
 
 /**
+ * Render admitted turns as numbered evidence, with each turn's origin labelled.
+ *
+ * The §12.5 candidate rendering. It differs from {@link formatEvidence} in exactly one
+ * respect -- every turn carries its source memory id beside its index -- and that is the
+ * whole independent variable of the registered experiment.
+ *
+ * A memory id is stable across a run and is not a position, so two turns from one session
+ * share a provenance the model can see, and the boundary between sessions stops being
+ * implied by a blank line that looks the same as every paragraph break.
+ *
+ * The id is emitted verbatim rather than prettified: it is an opaque handle, and a
+ * rendering step that renumbered or truncated it would introduce a second difference
+ * between the arms, which is the confound the registration exists to avoid. The `ordinal`
+ * field is deliberately NOT used for this: it is a position, and a position that happens
+ * to run 0,1,2 across a session is the same information the baseline already conveys
+ * through its numbering.
+ *
+ * Not exported, and that is the census's finding rather than a style choice: its only
+ * caller is `buildPrompt` in this file, so an `export` keyword here would advertise a
+ * public entry point that nothing outside reaches. `formatEvidence` is exported because
+ * callers and tests do use it; this one is reached through `buildPrompt`, which is the
+ * form the arm actually drives.
+ */
+function formatEvidenceWithSources(turns: readonly AdmittedTurn[]): string {
+  if (turns.length === 0) return '';
+
+  return turns.map((turn, i) => `${i + 1}. [${turn.id}] ${turn.content}`).join('\n\n');
+}
+
+/**
  * Build the prompt for one question.
  *
  * `options.questionDate` reaches only the temporal contract: handing a date to
@@ -117,7 +211,10 @@ export function buildPrompt(
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const date = contract === 'temporal' ? options.questionDate : undefined;
 
-  const evidence = formatEvidence(turns);
+  const evidence =
+    contract === 'abstention-evidence-blocks'
+      ? formatEvidenceWithSources(turns)
+      : formatEvidence(turns);
   const evidenceBlock =
     evidence.length === 0
       ? 'EVIDENCE:\n(no evidence was admitted for this question)'

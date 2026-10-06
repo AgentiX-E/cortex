@@ -108,6 +108,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_prompt_contract:
+        description: 'Evidence rendering the cortex-memory arm uses for the abstention route: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -329,6 +334,18 @@ jobs:
           # variation does not help -- the 7.3 side-channel defect, where the artifact
           # describes the intent rather than the code.
           CORTEX_MEMORY_CONFIDENCE: ${{ github.event.inputs.cortex_memory_confidence }}
+          # §12.5's single variable, forwarded for the same reason as every variable
+          # above: `readPromptContract` rejects an unrecognised value, so a dispatch that
+          # named a rendering while this line was absent would run the baseline, complete
+          # successfully, and publish a `b-to-f-repairs` of zero reading as evidence that
+          # the rendering does not help -- the 7.3 side-channel defect, where the artifact
+          # describes the intent rather than the code.
+          #
+          # It is the only variable that changes what the model is shown. The five above
+          # are held at their dispatched values on purpose: if this switch also moved a
+          # gate, a non-zero MR/TR could not be attributed to either change, and the run
+          # would answer neither question.
+          CORTEX_MEMORY_PROMPT_CONTRACT: ${{ github.event.inputs.cortex_memory_prompt_contract }}
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
           # read from the same dispatch inputs the job already carries, so a dispatch
