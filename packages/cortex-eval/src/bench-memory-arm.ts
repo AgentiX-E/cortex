@@ -45,7 +45,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 import { readToggle } from './env-toggle.js';
-import type { AblationReport, MemoryArmConfig } from './report.js';
+import type {
+  AblationReport,
+  AbstentionReasons as ReportAbstentionReasons,
+  MemoryArmConfig,
+} from './report.js';
 import { formatAblationReport, runAblationReport, type FeatureConfig } from './report.js';
 import type { AnswerScorer } from './metrics.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
@@ -464,24 +468,14 @@ export type CortexMemoryArmResult = {
 /**
  * The abstention census: one count per outcome, and the four cover every question.
  *
- * Not exported. Nothing outside this package consumes the type -- the arm CLI
- * writes the census through `JSON.stringify` and reads it through
- * `CortexMemoryArmResult.abstentionReasons`, both of which are structural -- so an
- * export would be an orphan by the repository's own census. It stays a named type
- * internally so the arm, the reader, and the result agree on the key set by
- * construction: adding a fifth outcome becomes a type error at every producer
- * rather than a silently absent key in a report.
+ * Imported from `report.ts` rather than redeclared, so the arm that produces it,
+ * the report that carries it, and the renderer that tables it cannot drift on the
+ * key set. Redeclaring the same four keys here would create a second place to be
+ * wrong about them, which is the defect `createMemory`'s `stability` field was
+ * fixed for (`domain/memory.ts`: "two literals that had to agree and did, in the
+ * wrong unit").
  */
-type AbstentionReasons = {
-  /** The write gate admitted nothing, so there was no evidence to decline from. */
-  empty: number;
-  /** The retrieval gate computed `retrieve: false`. */
-  threshold: number;
-  /** The model was consulted and declined. */
-  llm: number;
-  /** The model was consulted and answered. */
-  answered: number;
-};
+type AbstentionReasons = ReportAbstentionReasons;
 
 /**
  * Runs the paired same-instant A/B and returns an attributable artifact.
@@ -539,13 +533,31 @@ export async function runCortexMemoryArm(
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
 
+  // The census is read BEFORE the Markdown is rendered, and put into the report
+  // rather than returned beside it. That ordering is the whole point of this
+  // block: `formatAblationReport` can only render what the report carries, so a
+  // census produced after the render call would persist to JSON and be missing
+  // from the document a human reads -- which is `retryFires`' defect for the third
+  // time (`report-retry-fires.test.ts`), and exactly the gap §48.11.4 left open.
+  //
+  // Mutating the report object is safe here because `runAblationReport` just built
+  // it and nothing else holds a reference: the return value below is the first
+  // exposure. The alternative -- returning the census and having each caller
+  // remember to feed it back into a render -- is the side channel this repository
+  // has already removed twice.
+  const census = abstentionReasonsOf(feature);
+  const reported: AblationReport =
+    census.abstentionReasons === undefined
+      ? report
+      : { ...report, abstentionReasons: census.abstentionReasons };
+
   return {
-    report,
-    markdown: formatAblationReport(report),
+    report: reported,
+    markdown: formatAblationReport(reported),
     // Read from the ablation's own aggregate rather than recomputed here, so the
     // returned value cannot disagree with the tables rendered beside it.
     delta: report.ablation.delta,
-    ...abstentionReasonsOf(feature),
+    ...census,
   };
 }
 

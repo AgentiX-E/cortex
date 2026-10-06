@@ -208,26 +208,16 @@ async function main(): Promise<void> {
     onProgress,
   });
 
-  // The census is written beside the report rather than merged into it, so the
-  // report's own shape stays a function of `runAblationReport` and this file
-  // stays the thing that decides what an arm artifact contains. It is omitted
-  // entirely when the feature system could not supply one, rather than written as
-  // zeros: a zeroed census is indistinguishable from a run that abstained
-  // nowhere, which is the reading `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`
-  // §10.10 had to retract.
+  // The census is already inside `result.report` -- `runCortexMemoryArm` puts it
+  // there before rendering, so this file has nothing to merge. That is deliberate:
+  // a second merge site here is the side channel the report type exists to close
+  // (`report.ts`'s `abstentionReasons` doc, and `report-retry-fires.test.ts`).
+  // The JSON and the Markdown are therefore two renderings of one object and
+  // cannot disagree about whether the census is present.
   writeFileSync('benchmark-cortex-memory-ablation-report.md', result.markdown);
   writeFileSync(
     'benchmark-cortex-memory-ablation-report.json',
-    `${JSON.stringify(
-      {
-        ...result.report,
-        ...(result.abstentionReasons === undefined
-          ? {}
-          : { abstentionReasons: result.abstentionReasons }),
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(result.report, null, 2)}\n`,
   );
 
   persistArmEmbeddingCache(cachePath);
@@ -236,9 +226,11 @@ async function main(): Promise<void> {
   // the artifact is not collected, and `37281155088` lost a ~52-minute arm with no
   // trace of what it had measured. A census the reader must download to see is a
   // census that does not answer the question at the moment the question is asked.
-  if (result.abstentionReasons !== undefined) {
+  // Read back off the report rather than off `result`, so the printed value is the
+  // one the artifact carries.
+  if (result.report.abstentionReasons !== undefined) {
     console.log('=== cortex-memory abstention reasons ===');
-    console.log(JSON.stringify(result.abstentionReasons));
+    console.log(JSON.stringify(result.report.abstentionReasons));
   }
 
   console.log('=== cortex-memory ablation ===');

@@ -51,6 +51,30 @@ export type AblationReport = {
    */
   retryFires?: RetryFireCounts | undefined;
   /**
+   * Why the feature side abstained, when the system under test can say.
+   *
+   * Carried in the report for the third time and the same reason as
+   * `cohortCoverage` and `retryFires`: a value computed correctly, returned
+   * beside the report, and then lost on the path to the Markdown reader. Both
+   * earlier instances are documented in `retryFireLines`; this one was found by
+   * auditing for the pattern rather than by paying for it again.
+   *
+   * The evidential weight is specific and high. `docs/09-progress-and-delivery-report.md`
+   * §10.10 records a run armed at `retrievalThreshold: 0.25` whose abstention
+   * moved `+46.40pp`, read from the ablation tables alone as the retrieval gate
+   * closing on the questions the baseline answered. The gate had never closed
+   * once -- the value function returns the constant `0.5` at that arming, so the
+   * cut was inert and all `479` abstentions were the model's. **The tables could
+   * not contradict the reading**; only the census could, and it was not in the
+   * document a reader opens.
+   *
+   * Absent for systems with no census, so the section is conditional. A zeroed
+   * default is deliberately not used: it is indistinguishable from a run that
+   * genuinely abstained nowhere, which is the class of ambiguity this field
+   * exists to remove.
+   */
+  abstentionReasons?: AbstentionReasons | undefined;
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the
@@ -232,6 +256,31 @@ export type RetryFireCounts = {
   controlFires: number;
   treatmentFires: number;
   questions: number;
+};
+
+/**
+ * Why each abstention happened, as counted by the system under test.
+ *
+ * The four keys are mutually exclusive and cover every question the abstention
+ * path is asked exactly once, so their sum is the denominator of every share
+ * rendered below. Declared here rather than imported from `bench-memory-arm.ts`
+ * for the same reason as `RetryFireCounts`: the arm imports from this module, and
+ * closing the cycle would make the type unavailable during initialisation.
+ *
+ * `empty` and `threshold` are **machine-derived** and consume no request;
+ * `llm` and `answered` are the model's two outcomes. The split matters because
+ * only `threshold` is a statement about the gate -- reading `llm` as though the
+ * gate produced it is the error §10.10 had to retract.
+ */
+export type AbstentionReasons = {
+  /** The write gate admitted nothing, so there was no evidence to decline from. */
+  empty: number;
+  /** The retrieval gate computed `retrieve: false`. */
+  threshold: number;
+  /** The model was consulted and declined. */
+  llm: number;
+  /** The model was consulted and answered. */
+  answered: number;
 };
 
 export type AblationReportOptions = {
@@ -468,8 +517,92 @@ export function formatAblationReport(report: AblationReport): string {
   if (report.retryFires !== undefined) {
     lines.push(...retryFireLines(report.retryFires));
   }
+  // The census also goes BELOW the results, for the `retryFires` reason: it
+  // explains a delta's attribution rather than changing what the delta means, so
+  // it reads as a footnote. `report.memoryArmConfig` is passed alongside because
+  // the inert warning has to compare the census against the arming that was
+  // registered -- a zero `threshold` count means "never closed" only if the gate
+  // was configured to close.
+  if (report.abstentionReasons !== undefined) {
+    lines.push(...abstentionReasonLines(report.abstentionReasons, report.memoryArmConfig));
+  }
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * The abstention-census section, as lines.
+ *
+ * **Not exported**, unlike `retryFireLines` beside it. That one has a second
+ * caller -- `formatRetryFireSection` in `runner.ts` renders the same table for the
+ * retry arm -- so its export is earned. This one has exactly one caller,
+ * `formatAblationReport`, and exporting it would add an orphan by the repository's
+ * own census (`pnpm check`). If a second renderer ever needs it, export it then,
+ * at which point the export has a caller that justifies it.
+ *
+ * ## The warning branch, and why it is conditional rather than unconditional
+ *
+ * The section warns when the retrieval gate was **armed and never closed**: a
+ * `retrievalThreshold` above `0` with a `threshold` count of `0`. That is exactly
+ * the condition that produced §10.10's wrong write-up, and it is a fact a reader
+ * should not have to derive by cross-referencing the config line against the
+ * table.
+ *
+ * The condition is deliberately narrow in both directions:
+ *
+ * - **`retrievalThreshold: 0` is not inert**, it is the identity configuration
+ *   ("answer whenever anything was admitted"), so a zero count is expected. A
+ *   warning there would be a false positive, and a warning that fires when
+ *   nothing is wrong is a warning readers learn to skip.
+ * - **A non-zero count is not inert either**: the gate closed some questions, so
+ *   it demonstrably works at this arming.
+ *
+ * Only the intersection -- armed above zero, closed nothing -- is reported, which
+ * is why the tests exercise both controls alongside the true positive.
+ */
+function abstentionReasonLines(
+  reasons: AbstentionReasons,
+  config?: MemoryArmConfig | undefined,
+): string[] {
+  const total = reasons.empty + reasons.threshold + reasons.llm + reasons.answered;
+  const share = (n: number): string =>
+    total === 0 ? '0.00%' : `${((n / total) * 100).toFixed(2)}%`;
+
+  // The machine's share is `empty` plus `threshold`: both are decided before the
+  // model is consulted, and both cost no request. The model's share is `llm`.
+  // `answered` is neither -- it is the path that produced an answer.
+  const machineDerived = reasons.empty + reasons.threshold;
+
+  const lines = [
+    '',
+    '## Abstention reasons',
+    '',
+    '| Reason | Count | Share | Decided by |',
+    '|---|---|---|---|',
+    `| \`empty\` | ${reasons.empty} | ${share(reasons.empty)} | machine (no evidence admitted) |`,
+    `| \`threshold\` | ${reasons.threshold} | ${share(reasons.threshold)} | machine (retrieval gate closed) |`,
+    `| \`llm\` | ${reasons.llm} | ${share(reasons.llm)} | model (declined) |`,
+    `| \`answered\` | ${reasons.answered} | ${share(reasons.answered)} | model (answered) |`,
+    '',
+    `- Total: **${total}** questions through the abstention path`,
+    `- Machine-derived share (\`empty\` + \`threshold\`): **${share(machineDerived)}**`,
+    `- Model-side share (\`llm\`): **${share(reasons.llm)}**`,
+  ];
+
+  const armed = config !== undefined && config.retrievalThreshold > 0;
+  if (armed && reasons.threshold === 0) {
+    lines.push(
+      '',
+      `- **INERT GATE**: \`retrievalThreshold: ${config.retrievalThreshold}\` was armed, but the ` +
+        "gate closed on **0** questions. The abstentions above are not the gate's. This is the " +
+        'condition `docs/09-progress-and-delivery-report.md` §10.10 documents — a value function ' +
+        'whose reachable range collapsed to a point makes every threshold at or below the ' +
+        'ceiling permanently open, so the cut cannot discriminate and any delta measured here ' +
+        'is not attributable to it.',
+    );
+  }
+
+  return lines;
 }
 
 /**

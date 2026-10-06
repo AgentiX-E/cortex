@@ -36,6 +36,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { runCortexMemoryArm } from '../bench-memory-arm.js';
+import type { MemoryArmConfig } from '../report.js';
 import { exactMatchScorer } from '../metrics.js';
 import type { Answer, BenchmarkDataset, MemorySystem } from '../types.js';
 
@@ -59,13 +60,21 @@ function constantSystem(name: string, answer: Answer): MemorySystem {
   return { name, answer: () => answer };
 }
 
-/** Run the arm with `feature` on the feature side, and hand back the result. */
-function run(feature: MemorySystem) {
+/**
+ * Run the arm with `feature` on the feature side, and hand back the result.
+ *
+ * `gate` is typed as `MemoryArmConfig` rather than `typeof GATE` on purpose:
+ * `GATE` is `as const`, so its `retrievalThreshold` is the literal `0` and the
+ * inert-warning test -- which needs an armed gate -- would be a type error. The
+ * widening is the fix, not a cast, so no test can pass a value the config type
+ * does not accept.
+ */
+function run(feature: MemorySystem, gate: MemoryArmConfig = GATE) {
   return runCortexMemoryArm(dataset(), constantSystem('reference-pipeline', 'one'), feature, {
     runs: 1,
     scorer: exactMatchScorer,
     generatedAt: '1970-01-01T00:00:00.000Z',
-    memoryArmConfig: { ...GATE },
+    memoryArmConfig: { ...gate },
   });
 }
 
@@ -84,6 +93,40 @@ describe('the arm records the feature side abstention census', () => {
     const result = await run(systemWithCensus(census));
 
     expect(result.abstentionReasons).toEqual(census);
+  });
+
+  it('renders the census into the Markdown, not only into the field', async () => {
+    // The property §48.11.4 left open, and the reason it matters: a census in a
+    // JSON field nobody renders leaves the Markdown reader with a delta and no
+    // attribution -- which is the situation §10.10 was reached from. `retryFires`
+    // was lost this exact way, twice.
+    const census = { empty: 0, threshold: 0, llm: 479, answered: 21 };
+    // The gate must be ARMED for the inert warning to be the right output, so the
+    // fixture passes `retrievalThreshold: 0.25` -- the exact arming §10.10 shows
+    // was inert. The default `GATE` has the identity threshold (`0`), where a zero
+    // count is expected and the warning must stay silent.
+    const result = await run(systemWithCensus(census), {
+      ...GATE,
+      retrievalThreshold: 0.25,
+    });
+
+    expect(result.markdown).toContain('Abstention reasons');
+    expect(result.markdown).toMatch(/\|\s*`?llm`?\s*\|\s*479\s*\|/);
+    expect(result.markdown).toContain('INERT');
+  });
+
+  it('keeps the Markdown census and the returned census in agreement', async () => {
+    // The two must not be able to disagree, which is why the census is put into
+    // the report before rendering rather than returned beside it. A disagreement
+    // would be worse than an omission: the document and the field are both
+    // evidence, and a reader cannot tell which one is wrong.
+    const census = { empty: 7, threshold: 11, llm: 200, answered: 282 };
+    const result = await run(systemWithCensus(census));
+
+    expect(result.report.abstentionReasons).toEqual(census);
+    expect(result.abstentionReasons).toEqual(census);
+    expect(result.markdown).toMatch(/\|\s*`?threshold`?\s*\|\s*11\s*\|/);
+    expect(result.markdown).toMatch(/\|\s*`?empty`?\s*\|\s*7\s*\|/);
   });
 
   it('calls the census once, at read time, rather than caching it at construction', async () => {
