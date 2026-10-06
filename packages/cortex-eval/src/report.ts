@@ -242,6 +242,25 @@ export type MemoryArmConfig = {
    * disagree. Stating `null` up front makes the persisted form the only form.
    */
   readonly sessionBudget: number | null;
+  /**
+   * Which per-turn confidence signal admission ran under, or `none`.
+   *
+   * Recorded because the whole reason the field exists is that §49 separated the
+   * two repairs an earlier round had conflated: raising `sourceTrust` makes the
+   * retrieval gate *reachable*, and supplying per-turn confidence is what makes it
+   * *discriminating*. A reader comparing two artifacts that differ in
+   * `retrievalThreshold` needs to know whether either could have discriminated at
+   * all, and this string is the only thing in the artifact that says so.
+   *
+   * `none` is written rather than omitted when no signal ran, for the reason
+   * `sourceTrust` is emitted even at its default: omitting a defaulted field makes
+   * "this run supplied no variation" and "this artifact predates the field" the
+   * same bytes, and those are different claims about the same file. The string is
+   * a signal *name* rather than a number because the value it selects is a
+   * function, not a knob -- the arming is "variation or not", and the function
+   * itself is tested in the product layer.
+   */
+  readonly confidenceSignal: string;
 };
 
 /**
@@ -403,7 +422,15 @@ export function formatAblationReport(report: AblationReport): string {
         // ceiling raised this run", and omitting the default would make "left
         // alone" and "predates the field" look the same -- the distinction the two
         // thresholds above already had to be taught to draw.
-        `, \`sourceTrust=${memoryArm.sourceTrust}\``,
+        `, \`sourceTrust=${memoryArm.sourceTrust}\`` +
+        // Rendered on the same line and with the same "always present" rule. This
+        // one answers the question the two above cannot: whether the gate had any
+        // per-turn variation to threshold. §49's finding is that a raised ceiling
+        // puts `retrievalThreshold` in a set rather than a point and still leaves
+        // every cut all-or-nothing, so a reader holding only the numbers would
+        // read a `retrievalThreshold` of `0.25` as a working cut when it may have
+        // had nothing to cut. `none` is the honest value and is written.
+        `, \`confidenceSignal=${memoryArm.confidenceSignal}\``,
     );
   }
 

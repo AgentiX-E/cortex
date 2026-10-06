@@ -45,6 +45,7 @@ const GATE = {
   retrievalThreshold: 0,
   sessionBudget: null,
   sourceTrust: 0.5,
+  confidenceSignal: 'none',
 } as const;
 
 function dataset(): BenchmarkDataset {

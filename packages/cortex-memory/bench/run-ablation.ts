@@ -52,7 +52,7 @@ import {
   toMemoryArmConfig,
   type BenchmarkProgress,
 } from '@agentix-e/cortex-eval';
-import { CortexMemory } from '../src/index.js';
+import { CortexMemory, confidenceFromLength } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 /**
@@ -173,6 +173,11 @@ async function main(): Promise<void> {
       retrievalThreshold: armOptions.retrievalThreshold,
       sessionBudget: armOptions.sessionBudget,
       sourceTrust: armOptions.sourceTrust,
+      // Spread conditionally rather than passing `undefined`. The distinction is
+      // the config type's own rule (`bench-arm-options.ts`): an always-present key
+      // holding `undefined` reads as "configured" to a `!== undefined` check, and
+      // `admission.ts` uses exactly that check to decide whether the callback ran.
+      ...(armOptions.confidenceSignal === 'length' ? { confidenceFor: confidenceFromLength } : {}),
     },
     name: 'cortex-memory',
   });
@@ -193,11 +198,19 @@ async function main(): Promise<void> {
   // same `retrievalThreshold=0.25` means "the gate opens" under the default and "the
   // gate is near its midpoint" under a raised ceiling. `37110579101` reproduced
   // `37094200823`'s number to the digit and neither log named the ceiling.
+  //
+  // `confidenceSignal` is on the line because it is the other half of the same
+  // question, and §49 is what separated them: raising the ceiling makes the gate
+  // REACHABLE, and only per-turn confidence makes it DISCRIMINATING. A log naming
+  // the ceiling alone therefore still cannot say whether a `retrievalThreshold`
+  // in the reachable range had anything to cut -- which is precisely the reading
+  // §10.10 had to retract.
   console.log(
     `cortex-memory gate: threshold=${armOptions.threshold}, ` +
       `retrievalThreshold=${armOptions.retrievalThreshold}, ` +
       `sessionBudget=${Number.isFinite(armOptions.sessionBudget) ? armOptions.sessionBudget : 'unbounded'}, ` +
-      `sourceTrust=${armOptions.sourceTrust}`,
+      `sourceTrust=${armOptions.sourceTrust}, ` +
+      `confidenceSignal=${armOptions.confidenceSignal}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

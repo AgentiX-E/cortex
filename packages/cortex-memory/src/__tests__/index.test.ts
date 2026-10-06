@@ -61,6 +61,52 @@ describe('cortex-memory package exports', () => {
       valueFunction: valueFn,
     });
     expect(valueOnly).toEqual({ now: 7, threshold: 0.25, valueFunction: valueFn });
+
+    // The fourth field, and the reason this test's premise is worth restating:
+    // adding a field to a chain of conditional spreads silently produced an
+    // uncovered branch site the first time, so each `if` gets its own case rather
+    // than being covered incidentally by the "with everything" object above. A
+    // field that narrows correctly when it is one of five and is dropped when it
+    // is the only one would pass that shared case.
+    const confidenceFor = (turn: string): number => turn.length / 100;
+    const confidenceOnly = memory.admissionOptionsFrom(7, {
+      threshold: 0.25,
+      retrievalThreshold: 0.5,
+      sessionBudget: 4,
+      confidenceFor,
+    });
+    expect(confidenceOnly).toEqual({ now: 7, threshold: 0.25, confidenceFor });
+  });
+
+  it('carries confidenceFor end to end, so a gate setting reaches the admitted value', () => {
+    // The same composition path as the `sourceTrust` test below, for the same
+    // reason: narrowing correctly and then dropping the field before `admitTurns`
+    // would leave every unit assertion in `retrieval-discrimination.test.ts`
+    // passing -- they call `admitTurns` directly -- while the composed system still
+    // ran the constant behaviour. That is the gap this closes.
+    const gate = {
+      threshold: 0,
+      retrievalThreshold: 0,
+      sessionBudget: 10,
+      sourceTrust: 1,
+      confidenceFor: (turn: string): number => Math.min(1, turn.length / 40),
+    };
+    const options = memory.admissionOptionsFrom(1700000000000, gate);
+    const strong = `${'evidence '.repeat(5)}and it is unambiguous`;
+    // The fixture asserts its own premise rather than assuming it. The first draft
+    // used a 39-character string and expected saturation, so the assertion below
+    // failed on `0.975` -- the test was wrong, not the code. Deriving the
+    // expectation from the callback keeps the two from disagreeing again.
+    expect(gate.confidenceFor(strong)).toBe(1);
+
+    const admitted = memory.admitTurns(['short', strong], options);
+
+    // Two different values at one arming: the variation reached admission through
+    // the narrowing, which is what makes the retrieval gate discriminating.
+    expect(admitted[0]?.confidence).toBeLessThan(admitted[1]!.confidence);
+    expect(admitted[0]?.value).toBeCloseTo(admitted[0]!.confidence, 10);
+    expect(admitted[1]?.value).toBe(1);
+    expect(admitted[0]?.value).toBeLessThan(1);
   });
 
   it('carries sourceTrust end to end, so a gate setting reaches the admitted value', () => {

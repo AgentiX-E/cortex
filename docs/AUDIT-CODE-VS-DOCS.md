@@ -386,6 +386,93 @@ The generalisable statement: **a gate on a key's plumbing is not a gate on its
 value**, and for a pre-registered experiment the value is the part that carries the
 claim. The number of a registration has to be checked against the registration.
 
+### 6.5 Reachability and discrimination are different repairs, and only one was made
+
+§6.4 closed with the general form of its own finding — "the value range is part of the
+interface, it is just not written in the signature" — and the repair it drove widened the
+range from the point `{0.5}` to the set `[0, 1]`. The natural reading of that, and the one
+that was written into the roadmap as the next step, is that the gate was now usable.
+
+It was not, and the distinction that was missing is worth naming because two rounds were
+spent on one half of it:
+
+| Property | Question | Was it true after §6.4's fix |
+| --- | --- | --- |
+| **reachable** | can some threshold close the gate? | yes — `0.9` closes at `0.5` and opens at `1` |
+| **discriminating** | can the gate separate a strong turn from a weak one? | **no** — every turn still carried exactly `1` |
+
+The failure is not that the fix was wrong; it is that "the range is no longer a point" was
+read as "the gate now works". A gate whose *input* is constant is all-or-nothing at every
+armament, so the whole reachable range can be a set and every cut inside it can still be
+useless. Widening a range and introducing a distribution are two different operations, and
+only the first was performed. See `DESIGN-CORTEX-MEMORY.md` §6.5 and
+`09-progress-and-delivery-report.md` §49 for the measurement.
+
+**Why the earlier test could not see it.** `retrieval-reachable-range.test.ts` asserted the
+boundary, the constant at the boundary, and the widening — all four of its assertions were
+about the *range*. §49 added `retrieval-discrimination.test.ts`, whose assertions are about
+the *spread*, and that file is only a guard because it also asserts the property that was
+false. A suite that pins a range can be entirely green while the thing the range is for is
+absent.
+
+**The class of defect, stated so it is checkable.** §7.3's table enumerates side-channels
+where a value does not reach a decision. This one is adjacent and different:
+
+| Class | Shape | Detected by |
+| --- | --- | --- |
+| side-channel (four forms, §7.3 / §6.4) | a configured value never reaches the decision | comparing configuration against behaviour |
+| **under-specified remedy** (this section) | the configured value reaches the decision, and the decision still cannot use it | asking what the decision can *separate*, not what it can *reach* |
+
+The second is harder to notice because every intervening layer is working. The value is
+parsed, forwarded, applied, recorded in the artifact and printed in the log; the only thing
+wrong is that the quantity being compared is the same for every input. That is why §49's
+guard is written as an assertion about two different turns receiving two different values,
+rather than as another assertion about the threshold.
+
+### 6.6 The weakest defensible signal, and why the arm gets one at all
+
+§6.5 leaves an obvious question: if the composition layer owns only the mechanism and the
+signal is the caller's, what does the benchmark arm pass?
+
+An inline closure inside `bench/` would have been the smallest change and the wrong one.
+`bench/**` is excluded from coverage as an entry point, for the reason `bench-arm-options.ts`
+records — a decision written there is a decision no test can reach — so a variation supplied
+from there would be variation whose *correctness* nothing checks. The arm would then be
+comparing the baseline against a mechanism whose only evidence is that the run completed.
+
+So the signal is a module in `src/**`: `confidence.ts`, one function, `min(1, length / 2000)`.
+It is chosen for being the **weakest defensible** signal rather than the best one available,
+and the reasoning is worth recording because "weakest" is not the usual direction of a
+selection:
+
+- it needs no model, no vocabulary and no tuning corpus, so it cannot encode any knowledge
+  of the benchmark's answers;
+- it is deterministic and content-only, so an arm's delta cannot contain its noise and the
+  gate stays a statement about evidence rather than about turn ordering;
+- it is legible — a reader can verify by eye that a longer turn scores higher, which is not
+  true of a learned score.
+
+The better proxy considered was word overlap with the question. It was rejected here for a
+specific and temporary reason: admission's callback signature is `(turn) => number` with no
+question in scope, so overlap needs either a wider signature or a closed-over question, and
+neither belongs in the round that establishes the mechanism. A mechanism verified through a
+signal that has to reach outside its own interface is not yet verified.
+
+**The property that separates a real signal from a plausible one.** `min(1, length / 10_000)`
+is bounded, deterministic, content-only, and constant over every turn in LongMemEval — it
+satisfies every stated criterion and discriminates nothing. The general form:
+
+> A signal that varies only on inputs the run never contains is a constant signal in the
+> run it is graded on.
+
+This cannot be checked from a formula, only from a context. `confidence.test.ts` therefore
+asserts the spread against a context shaped like the benchmark's — short conversational
+turns, medium statements, long evidence — and asserts the degenerate variant against a
+filtered context where it *is* the constant it stands for. The first draft of that test used
+`min(1, length / 10_000)` against the unfiltered context, produced eight distinct values, and
+failed; the correction was to make the variant's claim about a context rather than about its
+own formula.
+
 ---
 
 ## 7. Method note

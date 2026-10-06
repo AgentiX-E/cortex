@@ -20,6 +20,12 @@ export {
   type AdmissionOptions,
 } from './admission.js';
 
+// confidence
+// `confidenceFromLength` is the signal the arm supplies; the saturation constant
+// beside it is asserted by `__tests__` and deliberately not re-exported, since a
+// barrel entry with no consumer is an orphan the census gate reports.
+export { confidenceFromLength } from './confidence.js';
+
 // sessionize
 export { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 

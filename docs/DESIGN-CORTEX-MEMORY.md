@@ -196,6 +196,71 @@ argument the caller never passed.
 the question, so it requires its own registration. The field is the remedy; the
 registration is a separate deliverable.
 
+### 6.5 Reachable is not discriminating: per-turn `confidence`
+
+§6.4 raised the ceiling and its last paragraph said the arming needed its own
+registration. It got one, the registration was dispatched, the gate did not close
+once, and investigating that produced a second defect with the same shape one
+level down.
+
+The measurement is in `docs/09-progress-and-delivery-report.md` §49 (mirrored as
+`07-sota-roadmap.md` §4.1.9): at `sourceTrust: 1` every admitted turn carries
+exactly `1`, so the reachable range is the **set** `[0, 1]` and yet every cut
+inside it is still all-or-nothing — `0.9999` admits everything, `1 + 1e-9` admits
+nothing. §6.4's fix moved the point; it did not turn the point into a
+distribution. **A gate whose input is constant cannot discriminate, whatever the
+range it is compared against.**
+
+The cause is structural, and `admitTurns` had fixed all three factors for every
+turn it constructs:
+
+| Factor | Value | Why it could not vary |
+| --- | --- | --- |
+| `confidence` | `1` | not passed, so `createMemory` defaulted it |
+| `sourceTrust` | one value | one value per admission by definition |
+| `recency` | `1` | `lastAccessedAt === createdAt === now`, so `exp(0)` |
+
+`GateOptions.confidenceFor?: (turn: string) => number` is the repair, and
+`confidence` is the only factor with room. It is a callback rather than a
+`number[]` aligned with the input because it is evaluated against the turn it is
+deciding: a parallel array could disagree with the input order and no type would
+notice.
+
+**The signal itself is deliberately not in this package.** A real quality estimate
+is lexical overlap, retrieval rank, or an embedding score, and none of those can
+be computed here — `cortex-memory` depends on `cortex-core` only and reads no
+embedding model, so measuring turn quality in the composition layer would make it
+depend on a retrieval mechanism it exists to sit above. This layer owns the
+*mechanism*; whoever has a *measurement* injects one. It is the same boundary
+`valueFunction` and `CortexMemoryOptions.llm` already use.
+
+`confidence.ts` ships one signal anyway — `confidenceFromLength`, monotone
+saturation over `min(1, length / 2000)` — and the reason is the arm: a
+registration whose variation is a private closure inside an excluded entry point
+is variation no test can reach and no reader can audit. It is chosen for being the
+*weakest* defensible signal: no model, no vocabulary, no tuning corpus, and
+legible enough that a reader can check it by eye. It is not a claim that length
+predicts relevance, and the arm's artifact records which signal ran.
+
+The property that separates a real signal from a plausible-looking one is worth
+stating because it is the one a formula cannot show: **a signal that varies only
+on inputs the run never contains is a constant signal in the run it is graded on.**
+`min(1, length / 10_000)` is bounded, deterministic, content-only, and constant
+over every turn in LongMemEval. `confidence.test.ts` therefore asserts variation
+against a realistically shaped context rather than against the formula.
+
+`admitTurns`' new `validateConfidence` rejects out-of-range and `NaN` values,
+naming the turn they were computed for — a callback is evaluated per turn, so
+"somewhere in this context" is not a location. `NaN` is the dangerous case for the
+same reason as in §6.4's guard, with one addition: it would also be stamped onto a
+memory that reaches `contradiction/resolve.ts`, where `confidence * sourceTrust` is
+read as a field.
+
+**The default does not move**, exactly as in §6.4 and for the same reason: an
+absent `confidenceFor` leaves `confidence` at `createMemory`'s `1`, so every
+measurement taken before the field existed was taken under this configuration and
+keeps its meaning.
+
 ## 7. Defect injection
 
 Six injections, each expected to be caught by a *different* subset:
@@ -208,6 +273,10 @@ Six injections, each expected to be caught by a *different* subset:
 | 4 | `sourceTrust` field ignored, reverted to the literal `0.5` | `admission.test.ts` + `index.test.ts` | 4 / 144 |
 | 5 | `sourceTrust` hardcoded in `toMemoryArmConfig`, discarding the parsed value | `bench-memory-arm.test.ts` | 1 / 45 |
 | 6 | Dispatched key renamed so it no longer matches a declared workflow input | `test_dispatch_inputs.py` | 2 / 4 |
+| 7 | `confidenceFor` ignored, so per-turn variation never reaches the value | `retrieval-discrimination.test.ts` | 6 / 8 |
+| 8 | `validateConfidence`'s range check relaxed to only `value < 0` | `retrieval-discrimination.test.ts` | 1 / 8 |
+| 9 | `confidenceFor` forwarding dropped from `admissionOptionsFrom` | `index.test.ts` | 2 / 9 |
+| 10 | `validateConfidence` clamped instead of throwing | `retrieval-discrimination.test.ts` | 1 / 8 |
 
 Injection 2 is the instructive one. It passed every test in its first run,
 because every threshold assertion sat clearly on one side of the line and none
@@ -238,6 +307,20 @@ silently drops. Neither is reachable by the other's test: #5 never touches the
 workflow, and #6 never touches `cortex-eval`. That is the property being asserted
 — the plumbing crosses two languages and three artifacts, so a suite that only
 guards its ends would report the middle wired while it is not.
+
+Injections 7-10 are §6.5's, and they come in two pairs that fail for different
+reasons. The first pair targets the mechanism and its guard: ignoring
+`confidenceFor` entirely is caught by six assertions, and relaxing the range check
+to `value < 0` — which keeps `1.5` and `NaN` alive — is caught by exactly one, the
+test that sweeps four out-of-range values. The second pair targets the plumbing:
+dropping the field in `admissionOptionsFrom` is caught in `index.test.ts` rather
+than in `retrieval-discrimination.test.ts`, and that is the point of having both —
+the discrimination suite calls `admitTurns` directly and stays green while the
+composed system runs the constant behaviour. Clamping instead of throwing is caught
+by one assertion and is listed separately because it is the shape a "more forgiving"
+review would wave through: silently reinterpreting `1.5` as `1` turns a caller's
+typo into an uninterpretable result, which is the same defect class as §6.4's
+validation note.
 
 ## 8. What is deliberately absent
 

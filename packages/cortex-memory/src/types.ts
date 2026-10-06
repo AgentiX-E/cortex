@@ -69,6 +69,38 @@ export type GateOptions = {
    * `docs/DESIGN-CORTEX-MEMORY.md` §6.4.
    */
   sourceTrust?: number;
+  /**
+   * Per-turn confidence for admission, as a function of the turn's content.
+   *
+   * Raises the ceiling without providing variation, and the two are separate
+   * repairs in a specific order. §49 measured the second one failing on its own:
+   * with `sourceTrust: 1` every admitted turn carries exactly `1`, so the
+   * reachable range is the set `[0, 1]` and yet every cut inside it is still
+   * all-or-nothing. The gate was reachable and useless.
+   *
+   * The reason is that this layer pinned all three value-function factors for
+   * every turn -- `confidence` left at `createMemory`'s default, `sourceTrust` one
+   * value per admission by construction, `recency` exactly `exp(0)` because
+   * `lastAccessedAt === createdAt` -- so there was no per-turn difference to
+   * threshold. `confidence` is the only factor with room, and this field is it.
+   *
+   * Supplied as a callback rather than a `number[]` so it is evaluated against the
+   * turn it is deciding: a parallel array could disagree with the input order
+   * without any type noticing, and admission is the last place that can notice.
+   *
+   * The signal itself is the caller's to own. A real quality estimate is lexical
+   * overlap, retrieval rank, or an embedding score, and **none of them live in
+   * this package** -- `cortex-memory` depends on `cortex-core` only and reads no
+   * embedding model, so measuring turn quality here would make the composition
+   * layer depend on a retrieval mechanism it is supposed to sit above. The layer
+   * owns the mechanism; whoever has a measurement injects one. That is the same
+   * boundary `valueFunction` and `CortexMemoryOptions.llm` already use.
+   *
+   * Defaults to absent, which leaves `confidence` at `createMemory`'s `1` and
+   * therefore reproduces the pre-existing constant behaviour exactly. See
+   * `docs/DESIGN-CORTEX-MEMORY.md` §6.5.
+   */
+  confidenceFor?: (turn: string) => number;
 };
 
 /** Construction options for {@link CortexMemory}. */

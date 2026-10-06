@@ -1042,3 +1042,66 @@ registration is required regardless. No threshold will be slid to `0.1` to searc
 number — with a degenerate range, every value in `[0, 0.5]` is the same experiment, so the
 next step is to make the range *reachable* (raise the ceiling, or admit with varying
 `confidence`), then register a cut against a range that can respond to it.
+
+## 11. The discriminating registration: what must exist before a cut is registered
+
+§10.10 ended with two candidate repairs — raise the ceiling, or admit with varying
+`confidence` — and left which one to a later round. §49 (`09-progress-and-delivery-report.md`)
+took the first and measured that it is **not sufficient**, which turns the second from an
+alternative into a prerequisite:
+
+| Ceiling | Reachable range | Can it separate a strong turn from a weak one |
+| --- | --- | --- |
+| `0.5` (default) | `[0, 0.5]`, a point | no (§10.10) |
+| `1` | `[0, 1]`, a set | **still no** |
+
+At `sourceTrust: 1` every admitted turn carries exactly `1`, so `0.9999` admits everything
+and `1 + 1e-9` admits nothing. The fix that §10.10 named makes the range reachable and
+leaves every cut inside it all-or-nothing.
+
+### 11.1 The prerequisite, delivered
+
+`GateOptions.confidenceFor?: (turn: string) => number`
+(`packages/cortex-memory/src/types.ts`) supplies the per-turn variation,
+`AdmissionOptions.confidenceFor` carries it into `admitTurns`, and
+`confidenceFromLength` (`packages/cortex-memory/src/confidence.ts`) is the signal the arm
+passes. `DESIGN-CORTEX-MEMORY.md` §6.5 records the design; the short form is:
+
+- **the mechanism is the composition layer's**, so the layer owns it and can test it;
+- **the signal is the caller's**, because a real quality estimate needs an embedding or a
+  lexical index and `cortex-memory` reads neither — measuring turn quality there would make
+  the composition layer depend on the retrieval mechanism it sits above;
+- **the default is absent**, so `confidence` stays at `createMemory`'s `1` and every run
+  whose artifact predates the field keeps its meaning.
+
+`min(1, length / 2000)` is the shipped signal. It is chosen for being the *weakest*
+defensible one — no model, no vocabulary, no tuning corpus — and it is not a claim that
+length predicts relevance. The artifact records which signal ran, so a later registration
+can replace it and compare.
+
+### 11.2 What a cut on top of it may and may not be
+
+The next registration may now name a `retrievalThreshold` inside `(0, S]` and a
+`confidenceSignal`, because the pair is what makes the cut *about* something. Two
+constraints carry over from §4 and are not relaxed by the mechanism arriving:
+
+1. **One dispatch, no threshold search.** The prediction is stated before the run and the
+   stop rule is unchanged. Bringing the range to life does not license sliding a cut
+   through it to find a number that wins — that is the sweep §4 exists to forbid, and it
+   would be hidden rather than healed by the fact that the numbers now differ.
+2. **The zero hypothesis is still the expected outcome** until a run says otherwise. §11.1
+   makes a discriminating cut *expressible*; it does not predict that any particular cut
+   helps, and the registration has to name its threshold and its prediction before dispatch.
+
+### 11.3 The defect this round would have shipped without the gate
+
+The first draft exported `ConfidenceFunction` and `CONFIDENCE_SATURATION_CHARS` through the
+barrel. Both had only test callers, so `pnpm check`'s export census reported them as new
+orphans and the check failed. The remedy was to narrow them, not to add them to
+`tools/export-census-baseline.json`: the baseline is a debt ledger, and an entry added for a
+symbol two hours old is a decision to keep an unused export forever.
+
+This is §10.10's diagnostic-gap lesson one level over. There, the artifact could not say
+which mechanism fired. Here, the *code* could not say which symbols have consumers — and
+both are the same failure: a claim nobody could check from the evidence present. The census
+gate is what made the second checkable before the commit rather than after a reader asked.

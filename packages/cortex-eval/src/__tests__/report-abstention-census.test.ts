@@ -120,6 +120,7 @@ function persistedCensusReport(
       retrievalThreshold,
       sessionBudget: null,
       sourceTrust: 0.5,
+      confidenceSignal: 'none',
     },
     abstentionReasons: census,
   };

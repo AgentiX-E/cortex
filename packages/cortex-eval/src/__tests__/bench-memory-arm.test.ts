@@ -70,6 +70,7 @@ const GATE = {
   retrievalThreshold: 0,
   sessionBudget: null,
   sourceTrust: 0.5,
+  confidenceSignal: 'none',
 } as const;
 
 /**
@@ -104,6 +105,7 @@ function formalizeArm(config: {
       retrievalThreshold: config.retrievalThreshold,
       sessionBudget: config.sessionBudget,
       sourceTrust: 0.5,
+      confidenceSignal: 'none',
     }),
   });
 }
@@ -147,6 +149,7 @@ async function runCortexMemoryArmReport(config: {
         retrievalThreshold: config.retrievalThreshold,
         sessionBudget: null,
         sourceTrust: 0.5,
+        confidenceSignal: 'none',
       },
     },
   );
@@ -403,6 +406,53 @@ describe('cortexMemoryArmOptions', () => {
       ).toThrow(/CORTEX_MEMORY_SOURCE_TRUST/);
     }
   });
+
+  it('defaults the confidence signal to none, which is the constant behaviour', () => {
+    // The compatibility guarantee. Every run dispatched before this field existed
+    // supplied no per-turn variation, so "unset" has to mean "no variation" or the
+    // historical numbers stop describing the configuration they were taken under.
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).confidenceSignal).toBe('none');
+    // Blank is the same as unset for every other variable here, and it is the
+    // spelling GitHub writes for an unfilled `workflow_dispatch` input.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_CONFIDENCE: '' })
+        .confidenceSignal,
+    ).toBe('none');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_CONFIDENCE: '  ' })
+        .confidenceSignal,
+    ).toBe('none');
+  });
+
+  it('accepts the length signal, which is the only variation this round ships', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_CONFIDENCE: 'length' })
+        .confidenceSignal,
+    ).toBe('length');
+    // Trimmed, so a trailing newline from a shell heredoc is not a typo.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_CONFIDENCE: 'length\n' })
+        .confidenceSignal,
+    ).toBe('length');
+  });
+
+  it('rejects an unrecognised signal rather than falling back to none', () => {
+    // This is the assertion that makes the field worth having, and the direction
+    // is the opposite of `readToggle`'s on purpose. An unrecognised *boolean*
+    // switch running the control arm is safe: the artifact's config line says so.
+    // Here it is not, because §49 established that a registration whose variation
+    // is missing reproduces §10.10's mistake -- so a run dispatched to introduce
+    // per-turn confidence, silently falling back to `none`, would publish a delta
+    // that reads as evidence variation does not help.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_CONFIDENCE: 'len' }),
+    ).toThrow(/CORTEX_MEMORY_CONFIDENCE/);
+    // The message names the accepted set, so the operator does not have to read
+    // the source to fix the typo.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_CONFIDENCE: 'nope' }),
+    ).toThrow(/"length"/);
+  });
 });
 
 describe('source trust reaches the artifact', () => {
@@ -422,6 +472,7 @@ describe('source trust reaches the artifact', () => {
       retrievalThreshold: 0.25,
       sessionBudget: null,
       sourceTrust: 1,
+      confidenceSignal: 'none',
     });
   });
 
@@ -455,6 +506,37 @@ describe('source trust reaches the artifact', () => {
       },
     );
     expect(plain.markdown).toContain('sourceTrust=0.5');
+  });
+
+  it('renders the confidence signal on the config line, at both of its values', async () => {
+    // §49 is why this line exists. A raised `sourceTrust` makes the retrieval gate
+    // REACHABLE and supplying per-turn confidence is what makes it DISCRIMINATING,
+    // so an artifact carrying the ceiling and a `retrievalThreshold` inside the
+    // reachable set still cannot say whether that threshold had anything to cut.
+    // The two states have to be distinguishable from the artifact alone, which is
+    // exactly what §10.10's retraction was needed for.
+    const base = {
+      runs: 1,
+      scorer: exactMatchScorer,
+    };
+    const withSignal = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'one'),
+      constantSystem('cortex-memory', 'one'),
+      { ...base, memoryArmConfig: { ...GATE, confidenceSignal: 'length' } },
+    );
+    const withoutSignal = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'one'),
+      constantSystem('cortex-memory', 'one'),
+      { ...base, memoryArmConfig: { ...GATE, confidenceSignal: 'none' } },
+    );
+
+    expect(withSignal.markdown).toContain('confidenceSignal=length');
+    // `none` is written rather than omitted, so "this run supplied no variation"
+    // cannot be confused with "this artifact predates the field" -- the same rule
+    // the ceiling above follows.
+    expect(withoutSignal.markdown).toContain('confidenceSignal=none');
   });
 });
 
@@ -521,6 +603,7 @@ describe('runCortexMemoryArm', () => {
           retrievalThreshold: 0.5,
           sessionBudget: 8,
           sourceTrust: 0.5,
+          confidenceSignal: 'none',
         },
       },
     );
@@ -529,6 +612,7 @@ describe('runCortexMemoryArm', () => {
       retrievalThreshold: 0.5,
       sessionBudget: 8,
       sourceTrust: 0.5,
+      confidenceSignal: 'none',
     });
   });
 
@@ -550,6 +634,7 @@ describe('runCortexMemoryArm', () => {
         retrievalThreshold: 0.7,
         sessionBudget: null,
         sourceTrust: 0.5,
+        confidenceSignal: 'none',
       },
     });
     expect(markdown).toContain('Memory arm config');
@@ -662,6 +747,7 @@ describe('runCortexMemoryArm', () => {
         retrievalThreshold: 0,
         sessionBudget: Number.POSITIVE_INFINITY,
         sourceTrust: 0.5,
+        confidenceSignal: 'none',
       });
       expect(config.sessionBudget).toBeNull();
       expect(JSON.parse(JSON.stringify(config))).toEqual(config);
@@ -674,12 +760,14 @@ describe('runCortexMemoryArm', () => {
         retrievalThreshold: 0,
         sessionBudget: 12,
         sourceTrust: 0.5,
+        confidenceSignal: 'none',
       });
       expect(config).toEqual({
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
         sourceTrust: 0.5,
+        confidenceSignal: 'none',
       });
     });
   });
@@ -979,6 +1067,7 @@ describe('the retrieval threshold', () => {
       retrievalThreshold: 0.4,
       sessionBudget: null,
       sourceTrust: 0.5,
+      confidenceSignal: 'none',
     });
   });
 });
@@ -1071,6 +1160,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       retrievalThreshold: 0,
       sessionBudget: Number.POSITIVE_INFINITY,
       sourceTrust: 0.5,
+      confidenceSignal: 'none',
     });
   });
 
@@ -1088,6 +1178,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       retrievalThreshold: 0,
       sessionBudget: null,
       sourceTrust: 0.5,
+      confidenceSignal: 'none',
     });
   });
 });

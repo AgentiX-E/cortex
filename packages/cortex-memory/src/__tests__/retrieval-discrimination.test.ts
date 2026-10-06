@@ -10,59 +10,77 @@
  * raise the ceiling so the range stops being a point.
  *
  * `GateOptions.sourceTrust` exists for exactly that and its docstring says so
- * ("What grows is the reachable set"). But *reachable* and *useful* are
- * different claims, and only the first has been tested:
+ * ("What grows is the reachable set"). But *reachable* and *discriminating* are
+ * different claims, and only the first was tested -- until §49 measured the
+ * second and found it false:
  *
- * - **Reachable**: some threshold now closes the gate. Already pinned by
+ * - **Reachable**: some threshold now closes the gate. Pinned by
  *   `retrieval-reachable-range.test.ts`.
- * - **Useful**: the gate can separate a strong candidate from a weak one, i.e.
- *   the value function produces *different* values for turns of different
+ * - **Discriminating**: the gate can separate a strong candidate from a weak one,
+ *   i.e. the value function produces *different* values for turns of different
  *   quality rather than a single constant scaled by `sourceTrust`.
  *
- * Those come apart in a way that matters. At `sourceTrust: 1` every admitted
- * turn scores exactly `1`, so the reachable range is `[0, 1]` — a *set* rather
- * than a point — but every cut inside it is still all-or-nothing: `0.99` admits
- * everything and `1.01` (conceptually) admits nothing. Widening `sourceTrust`
- * moves the point; it does not turn the point into a distribution.
+ * §49 found that raising the ceiling moves the point without turning it into a
+ * distribution. At `sourceTrust: 1` every admitted turn scored exactly `1`, so the
+ * reachable range was `[0, 1]` -- a *set* rather than a point -- while every cut
+ * inside it was still all-or-nothing. That file deliberately pinned the *absence*
+ * of variation so a future change could not introduce it unnoticed.
  *
- * The reason is structural, and it is the finding this file pins. The three
- * factors of the value function are `confidence`, `sourceTrust`, and `recency`,
- * and `admission.ts` fixes all three for every turn it constructs:
+ * ## This file is that future change, and it was rewritten rather than relaxed
  *
- * - `confidence` — not passed, so `createMemory` defaults it to `1`;
- * - `sourceTrust` — one value for the whole admission, by construction;
- * - `recency` — `lastAccessedAt === createdAt === now`, so `exp(0) = 1`.
+ * §49.1 wrote down the constraint the next registration had to satisfy:
  *
- * So the admission layer has **no per-turn variation to threshold**. A gate whose
- * input is constant cannot discriminate no matter where its cut is placed. The
- * next registration therefore cannot be "same arming, different threshold" — it
- * has to supply variation first. This file states that as an executable fact so a
- * future change that introduces per-turn `confidence` moves these tests rather
- * than silently invalidating the reasoning behind them.
+ * > the next registration **cannot** be "same wiring, different threshold" — it
+ * > has to supply variation first. `confidence` is the only factor with room.
  *
- * ## What is asserted
+ * A supplied `confidenceFor` is that variation. It is not a free parameter: the
+ * callback is a *function of the turn*, evaluated once per turn at admission, and
+ * the default is still "no callback ⇒ `confidence` 1", so every measurement taken
+ * before this field existed retains its meaning.
  *
- * 1. Raising `sourceTrust` does move the reachable boundary — the fix works as
- *    far as it goes.
- * 2. Every turn at one arming still carries the *same* value as every other:
- *    `sourceTrust` widens the range without introducing a distribution.
- * 3. Consequently the gate is still all-or-nothing at a raised ceiling: no
- *    interior threshold separates "some turn is good enough" from "none is".
- * 4. Per-turn `confidence` is what would supply separation, so the moment it
- *    varies the constant-ness asserted in (2) is expected to break — the test
- *    that would catch it is recorded here as the one to change.
+ * The constant-ness assertions that §49 added are **gone**, and that is the design
+ * working rather than a test being weakened: they asserted that the admission
+ * layer supplies no per-turn variation, which is precisely the fact this round
+ * changed. Leaving them in place would have made this file a claim about code that
+ * no longer exists. What replaces them asserts the property that was missing:
+ *
+ * 1. With a supplied `confidenceFor`, admitted values **differ** per turn.
+ * 2. An interior threshold now **separates**: a strong candidate opens the gate
+ *    where a weak one leaves it closed.
+ * 3. The gate still closes above the strongest admitted value, so "it
+ *    discriminates" did not become "it never closes".
+ * 4. Without the callback the old constant behaviour is **unmoved** -- the default
+ *    is the previous configuration, which is what keeps historical runs comparable.
+ *
+ * ## Why the variation is injected rather than derived here
+ *
+ * The signal that would populate `confidenceFor` in production is a quality
+ * estimate of the turn (lexical overlap with the question, retrieval rank, an
+ * embedding score). None of those live in this package: `cortex-memory` depends on
+ * `cortex-core` only and owns no embedding model, and reading one here would make
+ * the composition layer depend on a retrieval mechanism it is supposed to compose
+ * above. So this layer owns the *mechanism* -- per-turn confidence reaches the
+ * value function -- and the *measurement* of turn quality is injected by whoever
+ * has one. That is the same injection boundary the `LLM` and `ValueFunction`
+ * fields already use, and the same one `PREREGISTRATION` §4 relies on.
  */
 import { describe, expect, it } from 'vitest';
 import { decideRetrieval, createMemory } from '@agentix-e/cortex-core';
 import type { MemoryValue } from '@agentix-e/cortex-core';
 
-import { admitTurns, clockAwareValueFunction } from '../admission.js';
+import { admitTurns, clockAwareValueFunction, type AdmissionOptions } from '../admission.js';
 
 const NOW = 1_700_000_000_000;
 
 /** The value stamped on each admitted turn at a given ceiling. */
-function admittedValues(sourceTrust: number, turns: string[] = ['alpha', 'beta']): number[] {
-  return admitTurns(turns, { now: NOW, threshold: 0, sourceTrust }).map((turn) => turn.value);
+function admittedValues(
+  sourceTrust: number,
+  turns: string[] = ['alpha', 'beta'],
+  overrides: Partial<AdmissionOptions> = {},
+): number[] {
+  return admitTurns(turns, { now: NOW, threshold: 0, sourceTrust, ...overrides }).map(
+    (turn) => turn.value,
+  );
 }
 
 /** Probe the gate at `threshold` over candidates carrying `sourceTrust`. */
@@ -79,76 +97,207 @@ function retrieveAt(threshold: number, count: number, sourceTrust: number): bool
   return decideRetrieval(candidates, valueFn, threshold).retrieve;
 }
 
-describe('the retrieval gate is reachable at a raised ceiling but not yet discriminating', () => {
-  it('moves the reachable boundary when the ceiling is raised', () => {
-    // The fix §48.11.7 names, stated as behaviour. This is the property that was
-    // missing at the default ceiling: with `sourceTrust: 0.5` a cut at `0.9`
-    // closed and with `sourceTrust: 1` the same cut opens.
-    expect(retrieveAt(0.9, 2, 0.5)).toBe(false);
-    expect(retrieveAt(0.9, 2, 1)).toBe(true);
+/**
+ * A stand-in for a real turn-quality signal: longer turns are treated as stronger
+ * evidence. Deliberately trivial and monotone, because what is under test is the
+ * plumbing -- that a per-turn number reaches the value function and moves the
+ * decision -- not the quality model, which is the caller's business.
+ */
+function confidenceByLength(turn: string): number {
+  return Math.min(1, turn.length / 60);
+}
+
+describe('the retrieval gate discriminates once per-turn confidence varies', () => {
+  it('gives admitted turns different values, which is what a threshold needs', () => {
+    // The property §49 measured as absent. Two turns of different length now yield
+    // two different values at one arming, so the set of distinct values has more
+    // than one member -- the precondition for any interior cut to mean anything.
+    const values = admittedValues(1, ['alpha', 'a much longer turn with more substance in it'], {
+      confidenceFor: confidenceByLength,
+    });
+
+    expect(new Set(values).size).toBe(2);
+    expect(values[0]).toBeLessThan(values[1]!);
   });
 
-  it('gives every admitted turn the same value, at every ceiling', () => {
-    // The structural finding. `sourceTrust` scales the constant; it does not
-    // split it. Asserted across several ceilings so the test fails if any future
-    // change introduces variation at one of them but not another.
+  it('separates a strong candidate from a weak one at an interior threshold', () => {
+    // The capability the constant admission did not have: one cut, two outcomes,
+    // decided by the evidence rather than by the arming. This is the claim §49.1
+    // said the next registration had to be able to make.
+    const valueFn = clockAwareValueFunction(NOW);
+    const admitted = admitTurns(
+      ['alpha', 'a turn long enough to be the strongest candidate here'],
+      {
+        now: NOW,
+        threshold: 0,
+        sourceTrust: 1,
+        confidenceFor: confidenceByLength,
+      },
+    );
+    const [, strong] = admitted;
+
+    expect(admitted).toHaveLength(2);
+    expect(strong).toBeDefined();
+
+    const cut = valueFn(strong!) - 1e-9;
+    // At the cut, the strong candidate alone opens the gate...
+    expect(decideRetrieval([strong!], valueFn, cut).retrieve).toBe(true);
+    // ...and the weak one alone leaves it closed. Same threshold, different
+    // verdict, which is the entire content of "discriminating".
+    expect(decideRetrieval([admitted[0]!], valueFn, cut).retrieve).toBe(false);
+  });
+
+  it('still closes above the strongest admitted value, so it discriminates rather than never closes', () => {
+    // The control. A gate that always opens would satisfy the test above for the
+    // strongest candidate and fail only if something checked the top of the range.
+    // Without this, "it discriminates" and "it is stuck open" are the same
+    // observation, which is the failure mode `admission.test.ts` guards on the
+    // write side.
+    //
+    // The strongest turn is long enough for `confidenceByLength` to saturate at
+    // exactly `1` (it is a `min(1, len / 60)`, so anything past 60 characters
+    // pins there), and that saturation is asserted rather than assumed: the first
+    // version of this test used a 58-character turn, computed `0.883`, and the
+    // `toBeCloseTo(1)` below failed. The fix was to make the turn long enough, not
+    // to relax the constant -- a control that only checks "above the observed
+    // value" would pass while the ceiling silently sat below `sourceTrust`.
+    const strongest = `${'evidence '.repeat(8)}and it is unambiguous`;
+    expect(confidenceByLength(strongest)).toBe(1);
+
+    const admitted = admitTurns(['alpha', strongest], {
+      now: NOW,
+      threshold: 0,
+      sourceTrust: 1,
+      confidenceFor: confidenceByLength,
+    });
+    const [weak, strong] = admitted;
+    expect(weak).toBeDefined();
+    expect(strong).toBeDefined();
+
+    const valueFn = clockAwareValueFunction(NOW);
+    const aboveEverything = valueFn(strong!) + 1e-9;
+
+    expect(valueFn(strong!)).toBeCloseTo(1, 10);
+    expect(decideRetrieval([strong!, weak!], valueFn, aboveEverything).retrieve).toBe(false);
+    // And the strongest candidate is admitted at its own value, because the
+    // comparison is `>=`. Stated so the boundary is pinned and not merely implied.
+    expect(decideRetrieval([strong!], valueFn, valueFn(strong!)).retrieve).toBe(true);
+  });
+
+  it('leaves the constant behaviour untouched when no callback is supplied', () => {
+    // The half that must NOT move. `confidence` staying at `createMemory`'s `1`
+    // default means a caller who sets nothing gets exactly the pre-existing
+    // configuration, so every run measured before `confidenceFor` existed keeps
+    // its meaning and remains comparable. `sourceTrust`'s docstring makes the same
+    // promise for the same reason ("What grows is the reachable set, not the
+    // shipped configuration"), and both are asserted rather than assumed.
     for (const sourceTrust of [0.25, 0.5, 0.75, 1]) {
       const values = admittedValues(sourceTrust);
       expect(values).toEqual([sourceTrust, sourceTrust]);
-      // The set of distinct values has one member, which is the whole point.
       expect(new Set(values).size).toBe(1);
     }
-  });
 
-  it('is all-or-nothing at a raised ceiling: no interior threshold discriminates', () => {
-    // The consequence that blocks a "same arming, new threshold" registration.
-    // With every candidate at exactly `1`, a cut at `0.9999` admits everything
-    // and a cut at `1.0001` admits nothing -- there is no cut in between that
-    // "lets the good ones through", because there are no bad ones to exclude.
-    // A gate that cannot exclude anything cannot improve a ranking.
+    // And it is a constant *at the ceiling*, which is what makes the reachable
+    // range in `retrieval-reachable-range.test.ts` still exactly `[0, S]`.
     expect(retrieveAt(0.9999, 2, 1)).toBe(true);
     expect(retrieveAt(1, 2, 1)).toBe(true);
     expect(retrieveAt(1 + 1e-9, 2, 1)).toBe(false);
-
-    // And the same at the default ceiling, which is why §10.9's arm was inert.
-    expect(retrieveAt(0.4999, 2, 0.5)).toBe(true);
-    expect(retrieveAt(0.5, 2, 0.5)).toBe(true);
-    expect(retrieveAt(0.5 + 1e-9, 2, 0.5)).toBe(false);
   });
 
-  it('would discriminate only if per-turn confidence varied, since that is the unbound factor', () => {
-    // `recency` is pinned to 1 by the admission clock and `sourceTrust` is one
-    // value for the whole admission, so `confidence` is the only factor with
-    // room to carry per-turn quality. This test constructs the variation by hand
-    // to show (a) that it is what would make the gate discriminating and (b) that
-    // the fix does not require touching `decideRetrieval` or the value function.
-    //
-    // It is deliberately a *construction*, not a change to `admitTurns`: the
-    // admission layer supplies no per-turn confidence today, and this file exists
-    // to pin that rather than to paper over it.
-    const valueFn = clockAwareValueFunction(NOW);
-    const strong = createMemory({
-      content: 'strong',
-      createdAt: NOW,
-      lastAccessedAt: NOW,
-      sourceTrust: 1,
-      confidence: 1,
-    });
-    const weak = createMemory({
-      content: 'weak',
-      createdAt: NOW,
-      lastAccessedAt: NOW,
-      sourceTrust: 1,
-      confidence: 0.4,
+  it('reads the callback once per turn, on the turn it is deciding', () => {
+    // The callback is a function of the turn and must see each turn exactly once
+    // and in order. A version that read it once and reused the result -- or that
+    // passed the ordinal instead of the content -- would satisfy the separation
+    // test above (which only needs two distinct numbers) while silently making
+    // every turn's confidence a property of its position rather than its evidence.
+    const seen: string[] = [];
+    admitTurns(['alpha', 'beta', 'gamma'], {
+      now: NOW,
+      threshold: 0,
+      confidenceFor: (turn) => {
+        seen.push(turn);
+        return confidenceByLength(turn);
+      },
     });
 
-    // A cut between the two separates them -- which is the capability the
-    // constant admission does not have.
-    expect(decideRetrieval([strong, weak], valueFn, 0.7).retrieve).toBe(true);
-    expect(decideRetrieval([weak], valueFn, 0.7).retrieve).toBe(false);
+    expect(seen).toEqual(['alpha', 'beta', 'gamma']);
+  });
 
-    // And the values really do differ, at one arming.
-    expect(valueFn(strong)).toBeCloseTo(1, 10);
-    expect(valueFn(weak)).toBeCloseTo(0.4, 10);
+  it('valued a turn at zero confidence as unadmittable, since the gate is a product', () => {
+    // The boundary the new field makes expressible: `confidenceFor` returning `0`
+    // makes the value `0`, and `decideWrite` uses `>=`, so `threshold: 0` still
+    // admits it while any positive threshold rejects it. Worth pinning because a
+    // "no confidence" turn and an "unadmitted" turn are different states, and only
+    // the threshold can tell them apart.
+    const admitted = admitTurns(
+      ['nothing to say', 'a turn long enough to be strong evidence here'],
+      {
+        now: NOW,
+        threshold: 0,
+        sourceTrust: 1,
+        confidenceFor: (turn) => (turn.startsWith('nothing') ? 0 : confidenceByLength(turn)),
+      },
+    );
+
+    expect(admitted).toHaveLength(2);
+    expect(admitted[0]?.value).toBe(0);
+    expect(admitted[0]?.confidence).toBe(0);
+
+    const rejected = admitTurns(['nothing to say'], {
+      now: NOW,
+      threshold: 1e-9,
+      sourceTrust: 1,
+      confidenceFor: () => 0,
+    });
+    expect(rejected).toEqual([]);
+  });
+
+  it('stamps the confidence it computed onto the memory, not only into the value', () => {
+    // `resolveContradiction` fuses on `confidence * sourceTrust`, reading the
+    // FIELD rather than the value function's output. A version that varied the
+    // value without stamping the field would make the retrieval gate
+    // discriminating and leave contradiction resolution exactly as blind as
+    // before -- the same split `admitsTurns`' `sourceTrust` test guards against.
+    const admitted = admitTurns(['alpha', 'a turn long enough to be strong evidence here'], {
+      now: NOW,
+      threshold: 0,
+      sourceTrust: 1,
+      confidenceFor: confidenceByLength,
+    });
+
+    expect(admitted[0]?.confidence).toBeCloseTo(confidenceByLength('alpha'), 10);
+    expect(admitted[1]?.confidence).toBeCloseTo(
+      confidenceByLength('a turn long enough to be strong evidence here'),
+      10,
+    );
+    // And the field is what the value function read, so the two cannot disagree.
+    expect(admitted[1]?.value).toBeCloseTo(admitted[1]!.confidence * 1, 10);
+  });
+
+  it('rejects a callback that returns a value outside [0, 1], naming the turn', () => {
+    // Same three failure modes the thresholds and `sourceTrust` reject, and one
+    // more specific to this field: the callback is caller-supplied code, so it can
+    // return a percentage, a rank, or `NaN`. `NaN` is the dangerous one -- every
+    // `>=` against it is false, so the gate admits nothing, and `confidence` is
+    // then stamped as `NaN` on a memory that reaches contradiction resolution.
+    for (const bad of [1.5, -0.1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        admitTurns(['alpha'], {
+          now: NOW,
+          threshold: 0,
+          confidenceFor: () => bad,
+        }),
+      ).toThrow(/confidenceFor must return a number in \[0, 1\]/);
+    }
+
+    // The message names the offending turn, because a callback is evaluated per
+    // turn and "somewhere in this context" is not a location.
+    expect(() =>
+      admitTurns(['offending turn'], {
+        now: NOW,
+        threshold: 0,
+        confidenceFor: () => 2,
+      }),
+    ).toThrow(/offending turn/);
   });
 });

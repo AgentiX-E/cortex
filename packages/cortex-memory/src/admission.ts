@@ -40,6 +40,32 @@ export type AdmissionOptions = {
    * `0.5`. See {@link GateOptions.sourceTrust} for why this is a field.
    */
   sourceTrust?: number;
+  /**
+   * Per-turn confidence, evaluated once per turn. In `[0, 1]`; defaults to `1`,
+   * which is `createMemory`'s value and therefore the pre-existing behaviour.
+   *
+   * This is what makes the retrieval gate **discriminating** rather than merely
+   * reachable. §49 of `docs/09-progress-and-delivery-report.md` measured that
+   * raising `sourceTrust` moves the reachable range without turning it into a
+   * distribution: with all three value-function factors pinned per turn, every
+   * admitted turn carries the same value, so no interior threshold can separate a
+   * strong candidate from a weak one. `confidence` is the only factor with room,
+   * and this field is the room.
+   *
+   * A callback rather than a `number[]` aligned with `turns`, for two reasons. It
+   * is evaluated lazily on the turn being decided, so a caller cannot supply a
+   * list that silently disagrees with the input order; and it is the same shape
+   * as {@link valueFunction}, which keeps the two injections symmetric. The
+   * callback sees the turn's **content**, never its ordinal -- a confidence that
+   * depended on position would make the gate a statement about ordering rather
+   * than about evidence.
+   *
+   * The default is `1` and does not move, exactly as `sourceTrust`'s default does
+   * not move: every measurement taken before this field existed was taken with
+   * the constant behaviour, so the constant has to remain the unconfigured one for
+   * those numbers to keep their meaning.
+   */
+  confidenceFor?: (turn: string) => number;
 };
 
 /**
@@ -53,6 +79,34 @@ export type AdmissionOptions = {
  * consumer, which is the shape of a symbol that will drift from its one real use.
  */
 const DEFAULT_SOURCE_TRUST = 0.5;
+
+/**
+ * Validate a per-turn confidence, naming the turn it was computed for.
+ *
+ * The same guard the thresholds and `sourceTrust` apply, for the same three
+ * failure modes, plus one this field has and they do not: `confidenceFor` is
+ * caller-supplied **code**, so nothing bounds what it returns. `NaN` is the
+ * dangerous one -- every `>=` against it is false, so the gate admits nothing and
+ * completes a run whose result describes the callback -- and it would also be
+ * stamped onto a memory that reaches contradiction resolution, where
+ * `confidence * sourceTrust` is read directly.
+ *
+ * The message carries the turn because the callback is evaluated per turn:
+ * "somewhere in this context" is not a location, and a long context is exactly
+ * where the offending call is hard to find.
+ */
+function validateConfidence(turn: string, value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(
+      `confidenceFor must return a number in [0, 1], got ${String(value)} for turn ` +
+        `${JSON.stringify(turn)}. It is the confidence factor of ` +
+        'confidence * sourceTrust * (0.5 + 0.5 * recency), so a value above 1 makes the ' +
+        'ceiling exceed the model and a value below 0 or NaN admits nothing -- each ' +
+        'completing a run whose result describes the callback.',
+    );
+  }
+  return value;
+}
 
 /**
  * Validate a `[0, 1]` trust score, naming the offending value.
@@ -114,10 +168,28 @@ export function clockAwareValueFunction(now: number): ValueFunction {
  * untruncated: prompt budget is a property of prompt assembly, where the budget
  * is actually known, and truncating here would make the value decision depend
  * on a budget admission does not have.
+ *
+ * ## The two factors this function can vary, and why they are separate
+ *
+ * `sourceTrust` raises the **ceiling**: it decides whether a threshold above `0.5`
+ * can ever admit anything. `confidenceFor` introduces **variation**: it decides
+ * whether a threshold inside the reachable range can separate one turn from
+ * another. They are different repairs and §49 measured the first one working while
+ * the second was still absent -- at `sourceTrust: 1` every admitted turn carried
+ * exactly `1`, so the reachable range was the set `[0, 1]` and every cut in it was
+ * still all-or-nothing.
+ *
+ * `recency` is the third factor and it is deliberately fixed: admission sets
+ * `lastAccessedAt === createdAt === now`, so it is exactly `exp(0) = 1` for every
+ * turn of one admission. That is not an oversight to be repaired later -- a turn's
+ * age is a property of when it was recorded, and all turns of one context were
+ * recorded at the same instant by construction. A caller wanting age to matter
+ * supplies a `valueFunction`, which is what that field is for.
  */
 export function admitTurns(turns: readonly string[], options: AdmissionOptions): AdmittedTurn[] {
   const valueFn = options.valueFunction ?? clockAwareValueFunction(options.now);
   const sourceTrust = validateSourceTrust(options.sourceTrust ?? DEFAULT_SOURCE_TRUST);
+  const confidenceFor = options.confidenceFor;
   const admitted: AdmittedTurn[] = [];
 
   for (let ordinal = 0; ordinal < turns.length; ordinal += 1) {
@@ -127,6 +199,12 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
     // Built through `createMemory` so FSRS defaults stay owned in one place.
     // The consolidation-clock defect was two literals that had to agree; the
     // composition layer must not become a third.
+    //
+    // `confidence` is passed only when a callback was supplied. Spreading it in
+    // as `undefined` would be the same value by a different route today, but it
+    // would also put the key in the object literal and make the default reachable
+    // from two places -- and the default is the compatibility guarantee, so it has
+    // exactly one owner: `createMemory`.
     const memory = createMemory({
       content,
       createdAt: options.now,
@@ -134,6 +212,9 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
       source: 'unknown',
       sourceTrust,
       type: 'episodic',
+      ...(confidenceFor === undefined
+        ? {}
+        : { confidence: validateConfidence(content, confidenceFor(content)) }),
     });
 
     const decision = decideWrite(memory, valueFn, options.threshold);
@@ -163,5 +244,6 @@ export function admissionOptionsFrom(now: number, gate: GateOptions): AdmissionO
   const options: AdmissionOptions = { now, threshold: gate.threshold };
   if (gate.valueFunction !== undefined) options.valueFunction = gate.valueFunction;
   if (gate.sourceTrust !== undefined) options.sourceTrust = gate.sourceTrust;
+  if (gate.confidenceFor !== undefined) options.confidenceFor = gate.confidenceFor;
   return options;
 }

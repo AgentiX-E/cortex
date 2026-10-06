@@ -105,12 +105,45 @@ export type CortexMemoryArmOptions = {
    * `37110579101` scored what run `37094200823` did for exactly that reason.
    */
   sourceTrust: number;
+  /**
+   * Whether to supply per-turn confidence to admission, from the turn's length.
+   *
+   * A switch rather than a number because the value it selects is a *signal*, not
+   * a knob: the arming is "variation supplied or not", and the signal itself lives
+   * in the product layer (`cortex-memory/src/confidence.ts`) where it can be
+   * tested. An arm that took the signal as a parameter would need a caller to
+   * construct it, and the CLI is excluded from coverage -- which is the defect
+   * `bench-arm-options.ts` was extracted to fix.
+   *
+   * It exists because §49 measured that raising `sourceTrust` makes the retrieval
+   * gate *reachable* without making it *discriminating*: with all three value
+   * factors pinned per turn, every admitted turn carries the same value, so no
+   * interior `retrievalThreshold` separates a strong candidate from a weak one.
+   * A registration that changed only the threshold would therefore repeat §10.10's
+   * mistake in a new arming. See `docs/07-sota-roadmap.md` §4.1.10.
+   *
+   * Defaults to the empty string, i.e. off, so every prior run's configuration and
+   * every prior artifact's meaning are unchanged.
+   */
+  confidenceSignal: string;
 };
+
+/** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
+const CONFIDENCE_SIGNALS = {
+  /** No callback: `confidence` stays at `createMemory`'s `1`. The pre-§50 behaviour. */
+  none: 'none',
+  /** `min(1, turn.length / 2000)`, the only model-free signal this round ships. */
+  length: 'length',
+} as const;
+
+/** The signal a run gets when it does not name one. */
+const DEFAULT_CONFIDENCE_SIGNAL = CONFIDENCE_SIGNALS.none;
 
 const THRESHOLD_VARIABLE = 'CORTEX_MEMORY_THRESHOLD';
 const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
 const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
 const SOURCE_TRUST_VARIABLE = 'CORTEX_MEMORY_SOURCE_TRUST';
+const CONFIDENCE_VARIABLE = 'CORTEX_MEMORY_CONFIDENCE';
 
 /**
  * The source trust a run gets when it does not name one.
@@ -162,6 +195,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       retrievalThreshold: 0,
       sessionBudget: Number.POSITIVE_INFINITY,
       sourceTrust: DEFAULT_SOURCE_TRUST,
+      confidenceSignal: DEFAULT_CONFIDENCE_SIGNAL,
     };
   }
   return {
@@ -173,6 +207,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     ),
     sessionBudget: readSessionBudget(env[BUDGET_VARIABLE]),
     sourceTrust: readSourceTrust(env[SOURCE_TRUST_VARIABLE]),
+    confidenceSignal: readConfidenceSignal(env[CONFIDENCE_VARIABLE]),
   };
 }
 
@@ -196,6 +231,38 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
 function readNumeric(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === '') return undefined;
   return Number(raw);
+}
+
+/**
+ * Read the per-turn confidence signal name, rejecting anything unrecognised.
+ *
+ * Thrown rather than defaulted, and that is the whole point of this function.
+ * `readToggle` treats an unrecognised value as off, which is right for a boolean
+ * switch -- a typo runs the control arm, and the artifact's configuration line
+ * says so. Here it would be wrong in the direction that matters: §49 established
+ * that a registration whose variation is missing repeats §10.10's mistake, so a
+ * run dispatched to introduce per-turn confidence and silently falling back to
+ * *none* would produce an artifact claiming a mechanism it did not run. The delta
+ * would then be read as evidence that variation does not help.
+ *
+ * The accepted set is enumerated from `CONFIDENCE_SIGNALS`, so adding a signal is
+ * a deliberate edit in one place and the error message lists what does exist.
+ */
+function readConfidenceSignal(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_CONFIDENCE_SIGNAL;
+
+  const value = raw.trim();
+  const known = Object.keys(CONFIDENCE_SIGNALS);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${CONFIDENCE_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised signal is rejected rather ` +
+        'than defaulted to "none": a run dispatched to introduce per-turn confidence would ' +
+        'otherwise run the constant behaviour and its artifact would read as evidence that ' +
+        'variation does not help.',
+    );
+  }
+  return value;
 }
 
 /**
@@ -297,6 +364,7 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     retrievalThreshold: options.retrievalThreshold,
     sessionBudget: Number.isFinite(options.sessionBudget) ? options.sessionBudget : null,
     sourceTrust: options.sourceTrust,
+    confidenceSignal: options.confidenceSignal,
   };
 }
 
