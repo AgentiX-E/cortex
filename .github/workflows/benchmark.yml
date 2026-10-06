@@ -103,6 +103,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_confidence:
+        description: 'Per-turn confidence signal the cortex-memory arm admits with: empty or none = no callback, so every admitted turn carries confidence 1 and the value function is constant for a fixed source trust; length = min(1, turn.length / 2000). This is the input that makes the retrieval interval populated rather than degenerate: without it, source trust alone fixes every admitted turn to one value, so cortex_memory_retrieval_threshold can only ever be always-open or always-closed (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 11). An unrecognised value is REJECTED rather than defaulted to none, because a run dispatched to introduce per-turn variation that silently ran the constant behaviour would publish an artifact reading as evidence that variation does not help'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -308,6 +313,22 @@ jobs:
           # §7.3 side-channel defect -- the run completes and the artifact describes
           # the intent rather than the code.
           CORTEX_MEMORY_SOURCE_TRUST: ${{ github.event.inputs.cortex_memory_source_trust }}
+          # The per-turn confidence signal, and the reason the two variables above
+          # are not sufficient on their own. `sourceTrust` raises the CEILING of the
+          # value function; it does not vary the value, because a fixed source trust
+          # still multiplies a `confidence` of 1 for every admitted turn. The result
+          # is a reachable interval that is populated in appearance only -- every
+          # threshold inside it is the same experiment. This variable is what supplies
+          # the variation, and PREREGISTRATION-CORTEX-MEMORY-ARM.md 11 records that the
+          # pair together is what makes a cut mean anything.
+          #
+          # Forwarded rather than hardcoded, for the reason the toggle above is:
+          # `readConfidenceSignal` rejects an unrecognised value, so a dispatch that
+          # named a signal while this line was absent would run `none`, complete
+          # successfully, and publish an artifact that reads as evidence per-turn
+          # variation does not help -- the 7.3 side-channel defect, where the artifact
+          # describes the intent rather than the code.
+          CORTEX_MEMORY_CONFIDENCE: ${{ github.event.inputs.cortex_memory_confidence }}
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
           # read from the same dispatch inputs the job already carries, so a dispatch

@@ -403,3 +403,290 @@ The lesson and the measurement are one story: the tool failure cost one
 invocation, and re-running it from a file produced the decisive number
 immediately. The rule in §3 is not caution for its own sake — it is what made the
 next attempt answer the question.
+
+## 4f. The seventh recurrence: the diagnosis was wrong, and the guard was pointing away from the cause
+
+The class recurred once more, in two consecutive reported forms:
+
+```
+Failed to run function tools: Error: Bad substitution: String
+Failed to run function tools: Error: Bad substitution: cut.toFixed
+```
+
+§4e closed by predicting that a seventh recurrence would mean the binding constraint
+is **neither price nor preconditions**, and that it should be recorded as a different
+diagnosis rather than answered with a fifth mechanism. This section is that record,
+and the prediction was right in a way the table below makes concrete.
+
+### The root cause, measured rather than reasoned about
+
+**The failure is not the sandbox, not zsh, and not the tool layer.** It is the
+command itself: a `${...}` belonging to an inner language was written inside shell
+quoting, and the outer shell expanded it before the interpreter was reached. Seven
+occurrences, seven bodies:
+
+| # | Body | Interpreter | Shell quoting |
+| --- | --- | --- | --- |
+| 1 | `String(t).padEnd(5)` | node | double |
+| 2 | `lines[l-1].trim` | python3 | double |
+| 3 | `h.join` | node | double |
+| 4 | `JSON.stringify(x)` | node | double |
+| 5 | `label.padEnd(5)` | node | double |
+| 6 | `p.includes(x)` | node | double |
+| 7 | `cut.toFixed(3)` | python3 | **single** |
+
+Rows 1–6 are loud: the shell aborts and nothing runs. Row 7 is the one that exposed
+the real gap, because it is **silent**. Measured against a real shell:
+
+```
+$ python3 -c 'x = ${cut.toFixed(3)}'
+x = ${cut.toFixed(3)}          # the shell passed it through untouched
+```
+
+A single-quoted payload is not the shell's business, so the shipped guard was
+**correct** not to report it — and therefore reported nothing at all, while Python
+went on to fail with a `SyntaxError` about a token that had no business existing.
+The guard was pointing at the shell when the shell was innocent.
+
+### The three changes, each aimed at a different question
+
+1. **`scan_payload(text, origin, language)`** — a rule for a program whose shell has
+   already been resolved. `scan` derives a payload from a *command line* by anchoring
+   on an `-c` token; a payload handed to a shim has no such token, so running `scan`
+   over it reported `1 fragment(s) clean` about text Python then refused to parse.
+   That false clean is why the function exists, and the first probe of the shim
+   produced it.
+
+2. **`_is_shell_expansion_for_a_payload(body)`** — the discriminator, and it needed
+   two corrections because the first two attempts were confidently wrong:
+   - **Attempt one** reused `VALID_EXPANSION`, which accepts `${cut:.3f}`: `cut` is a
+     name, `:` opens an operator, `.3f` is the word. Lexically legal, empirically
+     broken.
+   - **Attempt two** required a digit anywhere in the tail, which reported
+     `${x:offset}` — a substring operation that bash and zsh perform. A guard that
+     fights correct shell gets deleted, so that was worse than missing the defect.
+
+   The rule that holds is measured against three shells, and the measurement is the
+   specification:
+
+   | body | bash | dash | zsh | verdict |
+   | --- | --- | --- | --- | --- |
+   | `${cut:.3f}` | syntax error | Bad substitution | bad math expression | **report** |
+   | `${v:2.3f}` | invalid arithmetic operand | Bad substitution | bad math expression | **report** |
+   | `${label:>5}` | syntax error | Bad substitution | bad math expression | **report** |
+   | `${d:%Y}` | syntax error | Bad substitution | bad math expression | **report** |
+   | `${x:offset}` | `yz` | Bad substitution | `yz` | quiet |
+   | `${a:1}` | `yz` | Bad substitution | `yz` | quiet |
+   | `${x:0:5}` | `abcde` | Bad substitution | `abcde` | quiet |
+
+   The split is not "valid vs invalid syntax" but **"does every shell fail on it"**.
+   A format mini-language carries a `.`, `%`, `<`, `>`, `^` or `=` where arithmetic
+   carries digits and signs, so the operand's indicator decides it. Note `${v:2.3f}`:
+   it *starts* with a digit and still fails everywhere, because a decimal point inside
+   a substring operand is a precision, not a number.
+
+3. **The `python3` shim** — the first mechanism in this document that sits in the path
+   of a *typed command*. Every prior remedy was pull-shaped and lost to whichever path
+   was cheaper or more reachable; this one is push-shaped and runs whether or not the
+   operator remembers. It is an **environment change**, so it is recorded here and
+   asserted by `tools/__tests__/test_shim_guard.py` — an unrecorded environment fix
+   disappears on the next re-image, and a missing net that reports nothing looks
+   exactly like a net that never fires.
+
+### The instrumentation bug this work found
+
+Adding the shim and its explanatory docstring made the guard report **four violations
+against its own documentation**. `_python_command_strings` was returning every
+`"""..."""` block — which is every module docstring, and a docstring that explains the
+hazard necessarily quotes it.
+
+Running the corpus answered the question the counts had been hiding:
+
+| Source | Blocks | Command-like |
+| --- | --- | --- |
+| Python `"""..."""` literals | 101 | **0** |
+| Markdown ```` ```sh ```` fences | 6 | 6 |
+
+The `105 fragment(s) clean` figure reported at earlier milestones was therefore
+**measuring documentation**. The extraction now requires a string's first line to
+begin with a word the shell would actually run, and to not read as a sentence. Prose
+detection runs only over the words *after* the command name and needs **two or more**
+matches, because a hazard body is full of short identifiers — `${a.b}` contains a
+standalone-looking `a`, and a one-match threshold rejected a real command.
+
+### What is claimed, and what is not
+
+**Not eliminated.** No mechanism can intercept a command before it runs in this
+environment (§4d's negative result stands), so an operator who writes the inline form
+can still lose an invocation.
+
+**What is claimed** is what was measured: the seventh recurrence now produces the
+guard's own message instead of a `SyntaxError`, on the payload that actually failed.
+
+```
+$ python3 -c 'x = 1.23456; print(${x:.3f})'
+1 shell-interpolation violation(s):
+  <c-payload>:1: ${x:.3f} sits inside a `python` payload. That language has no such
+  construct, so either it fails to parse or the text is taken literally; use the
+  language's own interpolation, or write the program to a file and run the file.
+refused: the -c payload carries a ${...} the shell does not treat as text.
+  Run it as a file instead, which removes the failure mode:
+    python3 tools/exec-python.py -            < program
+    python3 tools/exec-python.py program.py
+```
+
+and all seven historical bodies are still caught as shell hazards (7/7), with the
+previously-silent single-quoted door now reporting through the payload rule.
+
+## 4g. Adding a shim to this environment
+
+The shim is not in the repository, so this is the note that recreates it.
+
+**Where:** `/root/.pyenv/shims/python3`. It is the first `python3` on `PATH` and it is
+an editable bash script, which is what makes the insert possible at all.
+
+**Why there and nowhere else:** a `preexec` hook in `~/.zshrc` does not fire — measured
+in §4d, and non-interactive zsh does not read the rc file. Git hooks fire on git
+operations, not on commands. The pyenv shim is the only point on the path of a typed
+`python3`.
+
+**What it does:** if the first argument is `-c` and the payload contains `${`, it calls
+`tools/check-shell-interpolation.py --c-payload` before the real interpreter. The guard
+exits `1` on a payload whose sequence no language in the pipeline can evaluate, and the
+shim refuses with the message above. The payload is passed as an **argument**, never
+through a heredoc or here-string: a shim that itself feeds a hazard through a shell
+would be the thing it exists to prevent.
+
+**Failure is OPEN.** If the guard file or the real interpreter cannot be located, the
+interpreter runs. A net that blocks work when its own file is missing is a net people
+route around, and the cost of that exceeds the hazard it prevents.
+
+**Verification:** `python3 -m pytest tools/__tests__/test_shim_guard.py`. The tests
+assert the shim's presence, its position on `PATH`, its verdict on the seventh
+recurrence's exact shape, and — equally — that it stays quiet on the nine measured
+shapes that are real shell expansions. A shim that refuses those would be removed, and
+it would take the checks that work with it.
+
+**Companion tool:** `tools/exec-python.py` is what the refusal names. It runs a program
+from a file or stdin and warns if the text carries a sequence no shell would have
+expanded — the `SyntaxError` Python produces points at the token, while the warning
+points at the cause.
+
+## 4h. The eighth recurrence: the layer was never the shell, and detection cannot win
+
+The class recurred as `Bad substitution: q`. This section corrects the diagnosis the
+previous seven sections share, because the correction changes what the remedy must be.
+
+### The evidence, and why reasoning from the previous seven would have missed it
+
+Every earlier section assumed a shell was involved. For the eighth, the log says
+otherwise. From `.codebuddy/logs/2026-10-06`:
+
+```
+[ModelProvider] ... streamingToolName=Bash
+[ModelProvider] finish_reason="tool_calls" received, starting grace period
+[Interruption] Catch block entered, error: Failed to run function tools:
+               Error: Bad substitution: q
+[Interruption] functionCallItems count: 0
+```
+
+`functionCallItems count: 0` is decisive. The failing call was **never dispatched to a
+tool** — it died while the streamed `Bash` argument was still being assembled. No shell
+ran, so no shim in `PATH` could have prevented it, and the very same log line as the
+sandbox dispatch records `pythonShimPath=false`. §4g's shim is correct for the layer it
+targets and was simply not on this path.
+
+### The body inventory settles the strategy question
+
+Ten distinct bodies across every recorded failure, not eight:
+
+| Body | Tagged variants | Shape |
+| --- | --- | --- |
+| `String` | `String]`, `String'` | identifier |
+| `min.toFixed` | `min.toFixed]` | dotted call |
+| `cut.toFixed` | `cut.toFixed]` | dotted call |
+| `q` | `q]` | **bare name** |
+| `"` | — | a quote character |
+
+Two things follow.
+
+1. **The `]` and `'` variants show a body scan that stops at a delimiter.** The reporter
+   prints the prefix it accumulated, which is what a parameter-expansion parser does on
+   reaching a character its grammar does not accept.
+2. **`q` is the end of the road for detection.** Measured in this image:
+
+   | Sequence | bash | dash | zsh |
+   | --- | --- | --- | --- |
+   | `${q}` | `x=` (rc 0) | `x=` (rc 0) | `x=` (rc 0) |
+   | `${(s:...:)}` | bad substitution | **Bad substitution** | bad substitution |
+
+   The aborting shape is a zsh-only construct. `${q}` is valid POSIX and expands to the
+   empty string **silently** in all three. So the eighth failure is not "text the shell
+   rejects" — it is text the shell accepts and quietly destroys.
+
+As the reported bodies shrink from `JSON.stringify(x)` toward a bare `q`, a
+content-based detector's precision goes to zero, because the failing text becomes
+**textually identical to correct shell**. A rule that rejected `${q}` would reject
+correct shell everywhere, and §4g already records what happens to such a rule: it gets
+deleted, taking the checks that work with it.
+
+**Detection is the wrong strategy and always was.**
+
+### The diagnostic defect this exposed
+
+The eighth failure also showed the guard's message could be **false**. For a live
+payload the message read:
+
+> `${q}` is not a shell parameter expansion; the inner language's interpolation would
+> be consumed by the shell
+
+The second clause is backwards. The shell *recognises* `${q}` perfectly and replaces it
+with an empty string; there is no expansion failure to find. A reader sent looking for a
+syntax error would find valid shell and conclude the guard was wrong — and a guard that
+can be shown wrong is one people stop running. The message now distinguishes the two
+cases: outside a payload the old wording is exactly right (`${a.b}` really is invalid),
+and inside one it says what actually happens.
+
+### What was changed, and what it does not claim
+
+1. **`tools/probe.py`** — a probe runs from **stdin, never from an argument**, so the
+   program text never enters the path that failed eight times. The command contains a
+   path and a delimiter and nothing else:
+
+   ```sh
+   python3 tools/probe.py --lang python - <<'PROBE'
+   for q in (0.25, 0.5, 0.9):
+       print(f'{q:.3f}')
+   PROBE
+   ```
+
+   The heredoc delimiter must be **quoted**. It checks what it received and warns when
+   the text looks like a body the shell already expanded, because `<<PROBE` and
+   `<<'PROBE'` differ by two characters and the unquoted one is the default.
+2. **`--lang` is required and inference is refused.** A probe on stdin has no extension;
+   `run-program.py` already owns inference for real files, and one question with two
+   answers can disagree.
+3. **The argument form is refused, not treated as a path.** Silently reading a file named
+   by the first argument would make `probe.py --lang python 'x = 1'` look like it worked
+   and then do nothing.
+
+**What is not claimed.** The class is still not eliminated: the harness's argument
+assembly runs before any tool, so a `${...}` written directly into a `Bash` argument can
+still be destroyed. What is claimed is what the evidence supports — the strategy has
+changed from detecting the body to removing the precondition, and the bodies that used
+to be lost are now handled by construction because the program never enters the argument
+path.
+
+### The generalisation, which is the part worth keeping
+
+Seven sections diagnosed a shell problem and prescribed shell-shaped remedies. All seven
+were addressing the wrong layer, and each was plausible enough to survive review because
+each produced a passing test against a real reproduction. The eighth section is the one
+that read the log: the failure reported `functionCallItems count: 0`, and a call that was
+never dispatched cannot have been affected by anything on `PATH`.
+
+The rule for the next recurrence is therefore not another detector. It is: **read the
+dispatch log before choosing a layer.** A worked example is cheaper than a ninth
+mechanism.
+
+

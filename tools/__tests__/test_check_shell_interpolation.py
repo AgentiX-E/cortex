@@ -240,10 +240,235 @@ class TestFragmentMode:
         monkeypatch.setattr('sys.stdin', io.StringIO('echo "' + hazard('a.b') + '"\n'))
         assert guard.main(['prog', '--fragment', '-']) == 1
 
+    def test_from_command_checks_a_command_without_retyping_it(
+        self, tmp_path: Path
+    ) -> None:
+        # The mode exists so an author who has just lost a call can ask whether the
+        # line was safe without putting the line back on a command line. Same scan,
+        # different provenance -- and the report says which, so a reader is not left
+        # wondering why a file of prose was scanned as shell.
+        cmd = tmp_path / 'lost-command.sh'
+        cmd.write_text('python3 -c "x = ' + hazard('JSON.stringify(v)') + '"\n')
+        assert guard.main(['prog', '--from-command', str(cmd)]) == 1
+
+    def test_from_command_accepts_a_safe_command(self, tmp_path: Path) -> None:
+        cmd = tmp_path / 'safe-command.sh'
+        cmd.write_text("python3 -c 'print(1)'\n")
+        assert guard.main(['prog', '--from-command', str(cmd)]) == 0
+
     def test_accepts_a_clean_fragment(self, tmp_path: Path) -> None:
         frag = tmp_path / 'probe.sh'
         frag.write_text('echo "' + hazard('HOME') + '" "' + hazard('1:-x') + '"\n')
         assert guard.main(['prog', '--fragment', str(frag)]) == 0
+
+
+class TestInterpreterPayloads:
+    """A `-c` / `-e` payload is inner-language source, and is scanned as such.
+
+    This class exists because the guard was blind to two spellings that were both
+    live in this session, and blind for two different reasons.
+
+    **Blind spot 1: the payload was inside a single-quoted run, so it was erased.**
+    `scan` blanks each single-quoted run from its opening quote to the next one,
+    and in
+
+        python3 -c 'PROG'
+
+    the `-c` is *unquoted*, so the run starts and ends inside PROG and the whole
+    payload is discarded. The guard reported the fragment clean while a human
+    reading it would have hesitated.
+
+    **Blind spot 2: the fragment was scanned one line at a time.** Quote state was
+    recomputed for every line, so an unbalanced quote on one line silently inverted
+    the region on the next. A payload spanning lines therefore escaped whenever its
+    quoting only balanced across the whole command, which is the normal case for a
+    heredoc-free multi-line program.
+
+    The rule that closes both is one rule: resolve quoting over the fragment, and
+    treat the text after a `-c` / `-e` as source for a different language.
+    """
+
+    def test_a_single_quoted_payload_is_not_a_SHELL_violation(self) -> None:
+        # Verified against a real shell rather than reasoned about:
+        #
+        #     python3 -c 'print("${x}")'   ->  prints ${x}
+        #
+        # The shell expands nothing inside a single-quoted run, so the sequence
+        # reaches the interpreter as typed. That settles the SHELL question, and this
+        # is the shell rule, so it stays silent here.
+        #
+        # It does not settle the program question, and conflating the two is what the
+        # seventh recurrence cost. The same fragment is reported by
+        # `TestPayloadInterpolationIsStillInterpolation` -- not because the shell
+        # would mangle it, but because the body is written as JavaScript
+        # interpolation inside a Python program, where it is not a construct at all.
+        # Two rules, two reasons, one sequence.
+        fragment = "python3 -c 'const s = " + hazard('String(t).padEnd(5)') + "'\n"
+        messages = guard.scan(fragment, 'probe.sh')
+        assert len(messages) == 1
+        assert 'payload' in messages[0]
+        assert 'would be consumed by the shell' not in messages[0]
+
+    def test_a_double_quoted_payload_is_a_violation(self) -> None:
+        # The spelling that actually aborts the command: the shells expand `$`
+        # constructs before the interpreter runs, find contents that are not a
+        # parameter expansion, and stop. This is `Bad substitution: String`.
+        fragment = 'python3 -c "const s = ' + hazard('String(t).padEnd(5)') + '"\n'
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'padEnd' in violations[0]
+
+    def test_an_unquoted_payload_is_a_violation(self) -> None:
+        fragment = 'node -e const s = ' + hazard('String(t)') + '\n'
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'String(t)' in violations[0]
+
+    def test_the_live_payload_is_reported_exactly_once(self) -> None:
+        # Both passes can see this one: the payload pass reads the original text, and
+        # the ordinary pass reads the quote-resolved text where a double-quoted
+        # payload is still live. Counting it twice would make every count-based
+        # assertion in this file depend on which pass ran first.
+        fragment = 'python3 -c "a = ' + hazard('a.b') + '" "b = ' + hazard('c(d)') + '"\n'
+        assert len(guard.scan(fragment, 'probe.sh')) == 2
+
+    def test_a_payload_spanning_lines_is_covered_by_one_quote_resolution(self) -> None:
+        # Quote state used to be recomputed per line, so a payload opened on one line
+        # closed on the next was evaluated as unquoted. Resolving over the fragment is
+        # what makes the count one rather than zero or two -- here the single sequence
+        # is reported once, by the program rule, for one reason.
+        fragment = "python3 -c '\na = " + hazard('a.b') + "\n'\n"
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'payload' in violations[0]
+        live = 'python3 -c "\na = ' + hazard('a.b') + '\n"\n'
+        assert len(guard.scan(live, 'probe.sh')) == 1
+
+    def test_the_line_number_of_a_payload_violation_is_its_own_line(self) -> None:
+        fragment = 'echo start\npython3 -c "' + hazard('JSON.stringify(x)') + '"\n'
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert violations[0].startswith('probe.sh:2:')
+
+    def test_a_shell_expansion_before_the_payload_is_still_found(self) -> None:
+        # The payload rule must not swallow the shell text that precedes it.
+        fragment = 'echo "' + hazard('a.b') + '"\npython3 -c \'print(1)\'\n'
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'a.b' in violations[0]
+
+    def test_a_clean_payload_is_not_a_violation(self) -> None:
+        fragment = "python3 -c 'print(1)'\nnode -e 'console.log(2)'\n"
+        assert guard.scan(fragment, 'probe.sh') == []
+
+    def test_a_genuine_shell_expansion_in_a_payload_position_is_accepted(self) -> None:
+        # `${HOME}` is a real parameter expansion. It must not be rejected merely
+        # for sitting where a `-c` payload would sit.
+        fragment = 'echo "' + hazard('HOME') + '"\n'
+        assert guard.scan(fragment, 'probe.sh') == []
+
+    def test_a_comment_naming_an_interpreter_is_not_a_payload(self) -> None:
+        # Comment suppression is inherited by the payload scan, because the two now
+        # share a coordinate space. Without that, a comment explaining `python3 -c`
+        # would turn the text after it into a payload and the guard would report
+        # prose.
+        fragment = '# run: python3 -c "a = ' + hazard('a.b') + '"\necho ok\n'
+        assert guard.scan(fragment, 'probe.sh') == []
+
+    def test_a_url_fragment_is_not_a_comment(self) -> None:
+        # `#` only opens a comment at the start of a line or after whitespace.
+        # Treating every `#` as a comment would suppress a real hazard instead.
+        fragment = 'curl http://host/x#' + hazard('a.b') + '\n'
+        assert len(guard.scan(fragment, 'probe.sh')) == 1
+
+
+class TestPayloadInterpolationIsStillInterpolation:
+    """A `-c` / `-e` payload is another language's source, not shell text.
+
+    `TestInterpreterPayloads` above covers the case where the *shell* expands the
+    sequence and aborts. This class covers the case where the shell does not — the
+    payload is single quoted — and the sequence is nevertheless wrong, because it is
+    written as if it were shell text inside a language that has its own interpolation.
+
+    That distinction is what the seventh recurrence turned on. The guard was asked
+    "is this a valid parameter expansion", answered *no*, and — for a single-quoted
+    payload — suppressed the report, because suppressing it is right for the shell.
+    But the program being written was not shell: it was a Python program whose author
+    meant to interpolate a value the way one does in JavaScript. The shell was never
+    the failing party; the interpreter was.
+
+    So the rule has to be stated about the *payload's* language, and it has to be
+    careful in one direction the shell rule is not: `${HOME}` is a correct shell
+    expansion, so it is legitimate inside `sh -c '...'` — a payload that really is
+    shell — and must keep passing. Only a payload for a language with no such
+    expansion (`node -e`, `python3 -c`) makes the body's non-expansion-ness a
+    defect. Banning `${...}` in payloads outright would reject correct programs,
+    which is the overshoot that gets a guard deleted rather than obeyed.
+    """
+
+    def test_catches_the_seventh_recurrence(self) -> None:
+        # The literal body from the log, in the quoting that was actually used.
+        fragment = "python3 -c 'const c = " + hazard('cut.toFixed(3)') + "'\n"
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'cut.toFixed(3)' in violations[0]
+
+    @pytest.mark.parametrize(
+        'interpreter', ['node', 'python3', 'python3.11', 'deno', 'ruby', 'perl']
+    )
+    def test_catches_it_for_every_known_interpreter(self, interpreter: str) -> None:
+        # The rule keys off the interpreter list, so a payload that Python rejects
+        # must not slip through merely because it was addressed to node.
+        #
+        # Parametrised rather than looped: a loop reports one test name for six
+        # checks, so a failure says "the rule is broken" instead of which interpreter
+        # it is broken for. The list is written out rather than derived from
+        # `_INTERPRETER` because a test that reads the implementation's own table
+        # cannot notice the table losing an entry.
+        fragment = f"{interpreter} -e 'x = {hazard('a.b')}'\n"
+        assert len(guard.scan(fragment, 'probe.sh')) == 1
+
+    def test_catches_it_with_the_interpreter_path_qualified(self) -> None:
+        # `/usr/bin/python3 -c '...'` is how a real invocation is often written, and
+        # the rule anchors on a word boundary so this has to work.
+        fragment = "/usr/bin/python3 -c 'x = " + hazard('a.b') + "'\n"
+        assert len(guard.scan(fragment, 'probe.sh')) == 1
+
+    def test_a_real_expansion_in_a_shell_payload_is_accepted(self) -> None:
+        # `sh -c 'echo ${HOME}'` is correct: the payload IS shell, so its expansion
+        # is the same expansion the outer shell would have made. Reporting this
+        # would be the overshoot that makes the guard fight its user.
+        fragment = "sh -c 'echo " + hazard('HOME') + "'\n"
+        assert guard.scan(fragment, 'probe.sh') == []
+
+    def test_a_real_expansion_in_a_non_shell_payload_is_still_reported(self) -> None:
+        # `node -e 'x = ${HOME}'` is a defect with the opposite shape from the
+        # recurrence: the body happens to be a valid shell expansion, but node has
+        # no expansion at all, so this is not what the author meant. The inner
+        # language, not the shell, decides here.
+        fragment = "node -e 'x = " + hazard('HOME') + "'\n"
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'HOME' in violations[0]
+
+    def test_a_payload_spanning_lines_is_still_one_payload(self) -> None:
+        fragment = "python3 -c '\nx = " + hazard('cut.toFixed(3)') + "\n'\n"
+        assert len(guard.scan(fragment, 'probe.sh')) == 1
+
+    def test_prose_that_documents_the_rule_is_not_a_violation(self) -> None:
+        # The rule is explained in this file's own docstrings, and those are read by
+        # `_python_command_strings`. A guard that flags its own documentation cannot
+        # be kept accurate, and an inaccurate guard is one people stop reading.
+        fragment = "# python3 -c 'x = " + hazard('a.b') + "'\n"
+        assert guard.scan(fragment, 'probe.sh') == []
+
+    def test_the_report_names_the_payload_language_not_just_the_sequence(self) -> None:
+        # The reader has to know which decision to make. "not a shell parameter
+        # expansion" sends them looking for a shell bug that does not exist; the
+        # message must say the sequence sits in an interpreter payload.
+        fragment = "python3 -c 'x = " + hazard('cut.toFixed(3)') + "'\n"
+        message = guard.scan(fragment, 'probe.sh')[0]
+        assert 'payload' in message
 
 
 class TestDiscovery:
@@ -263,12 +488,33 @@ class TestDiscovery:
         doc.write_text('```ts\nconst x = `' + hazard('f(1)') + '`;\n```\n')
         assert guard._markdown_shell_blocks(doc) == []
 
-    def test_reads_docstrings_from_python(self, tmp_path: Path) -> None:
+    def test_reads_a_command_string_from_python(self, tmp_path: Path) -> None:
+        # A string literal whose first line is a COMMAND is a shell fragment and is
+        # scanned. The first line must start with a word the shell would run; a
+        # docstring's first line is a sentence and is excluded -- see the class below
+        # for why that distinction was added.
         src = tmp_path / 'a.py'
-        src.write_text('"""Doc.\n\n    bash -c "echo ' + hazard('a.b') + '"\n"""\n')
+        src.write_text('CMD = """bash -c "echo ' + hazard('a.b') + '"\n"""\n')
         found = guard._python_command_strings(src)
         assert len(found) == 1
         assert guard.scan(found[0][1], 'a.py') != []
+
+    def test_does_not_read_a_prose_docstring_as_a_command(self, tmp_path: Path) -> None:
+        # The extraction originally returned every `\"\"\"` block, which is every module
+        # docstring. Adding `tools/exec-python.py` -- whose docstring EXPLAINS the rule
+        # and therefore quotes the hazard -- produced four violations against the guard's
+        # own documentation. A guard that reports its own prose gets turned off, and it
+        # takes the checks that work with it. The failure is the same one
+        # `scan_test_sources` records, in the other scanner.
+        src = tmp_path / 'a.py'
+        src.write_text(
+            '"""Doc.\n\n'
+            'The first version scanned this prose and reported\n'
+            '    python3 -c "print(' + hazard('x:.3f') + ')"\n'
+            'as a defect, which is the documentation rather than the defect.\n'
+            '"""\n'
+        )
+        assert guard._python_command_strings(src) == []
 
 
 class TestStoredHazardRule:
