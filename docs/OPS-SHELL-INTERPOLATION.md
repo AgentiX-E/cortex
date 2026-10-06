@@ -542,8 +542,9 @@ previously-silent single-quoted door now reporting through the payload rule.
 
 The shim is not in the repository, so this is the note that recreates it.
 
-**Where:** `/root/.pyenv/shims/python3`. It is the first `python3` on `PATH` and it is
-an editable bash script, which is what makes the insert possible at all.
+**Where:** `/root/.pyenv/shims/python3`. It was added to a `python3` that is on `PATH`,
+which is what makes the insert possible at all — but see §4g.1, because "on `PATH`" and
+"the `python3` that runs" are not the same claim and the difference is load-bearing.
 
 **Why there and nowhere else:** a `preexec` hook in `~/.zshrc` does not fire — measured
 in §4d, and non-interactive zsh does not read the rc file. Git hooks fire on git
@@ -561,11 +562,42 @@ would be the thing it exists to prevent.
 interpreter runs. A net that blocks work when its own file is missing is a net people
 route around, and the cost of that exceeds the hazard it prevents.
 
+### 4g.1 A measured bypass: the shim loses the lookup in a login shell
+
+The shim does its job only if `python3` resolves to it, and **it does not always**. Measured
+in this image:
+
+```text
+bash -c  'command -v python3'   ->  /root/.pyenv/shims/python3
+bash -lc 'command -v python3'   ->  /root/.pyenv/versions/3.11.1/bin/python3
+```
+
+The `-l` path sources the profile, which runs pyenv's `rehash` (the environment exports
+`PYENV_SHELL=bash`), and the version's `bin` ends up **ahead of** `shims` in `PATH`. So an
+unqualified `python3` in a login shell reaches the real interpreter and the guard is not
+consulted at all.
+
+This matters for how the shim is used, not merely for how it is tested: any tool that
+spawns `bash -lc` — several in this repository do, to get a login environment — bypasses
+the net, and the bypass leaves no trace, because a script that skips the check behaves
+exactly like a script that passed it.
+
+**What is asserted, and what is not.** `test_shim_guard.py` asserts the intercept where the
+shim is reached (`bash -c`, and the absolute path), and asserts that this bypass is
+**written down** here — asserting the record rather than the behaviour, because the
+behaviour is wrong and a test that pinned it would lock it in. Fixing it means ordering
+`shims` ahead of the version `bin` in the profile, which is an environment change of the
+same kind as the shim itself and is left recorded rather than applied silently.
+
+**The general lesson, which is the reason this is a subsection and not a footnote.** A guard
+whose reach depends on how a shell was started has a reach that cannot be predicted from
+reading the guard. Every one of the nine recurrences in this document has the same shape:
+the mechanism was present and something about *where it sat* decided whether it applied.
+
 **Verification:** `python3 -m pytest tools/__tests__/test_shim_guard.py`. The tests
-assert the shim's presence, its position on `PATH`, its verdict on the seventh
-recurrence's exact shape, and — equally — that it stays quiet on the nine measured
-shapes that are real shell expansions. A shim that refuses those would be removed, and
-it would take the checks that work with it.
+assert the shim's presence, its interception of the seventh recurrence's exact shape, and —
+equally — that it stays quiet on the nine measured shapes that are real shell expansions.
+A shim that refuses those would be removed, and it would take the checks that work with it.
 
 **Companion tool:** `tools/exec-python.py` is what the refusal names. It runs a program
 from a file or stdin and warns if the text carries a sequence no shell would have
