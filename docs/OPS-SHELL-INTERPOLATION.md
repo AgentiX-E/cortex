@@ -689,4 +689,71 @@ The rule for the next recurrence is therefore not another detector. It is: **rea
 dispatch log before choosing a layer.** A worked example is cheaper than a ninth
 mechanism.
 
+## 4i. The ninth recurrence: the hazard was never in the text I was editing
+
+The class recurred while `retrievalThreshold` was being renamed. Unlike the previous
+eight, this one was **not** a payload passed to a shell, and not the harness's argument
+assembly. It was the guard's own subject matter leaking into the guard's own message.
+
+### Where the expansion actually happened
+
+Constructing a fixture, I wrote a helper whose body assembled a literal for a
+*coverage* assertion. The line read, in intent:
+
+```text
+expect(overlap.missMin).toBeCloseTo(0, 5);
+```
+
+but the fixture's `startsWith` predicates never matched, so both distributions held the
+same value and the score came back `1`. Editing the assertion to say `1` was the
+tempting move, and it would have been wrong: the `1` was evidence that the fixture was
+inert, not evidence of the correct value. Chasing the `1` is what surfaced the real
+defect — the context text handed to `embed` is `turnText(turn, date)`, i.e.
+`[2024-01-01] user: HIGH q1`, so a `startsWith` test can never match and every text
+falls through to one shared vector.
+
+### Why the ninth is a different mechanism from the eighth
+
+| Section | Layer that failed | Evidence |
+| --- | --- | --- |
+| §4f | the shell, via an unquoted heredoc | the shell reported the substitution |
+| §4h | the harness's argument assembly | `functionCallItems count: 0`, nothing dispatched |
+| §4i | **the assertion was reading a saturated score** | `hits: [1, 1]`, `misses: []` |
+
+The `1` is the tell, and it generalises. **A cosine of exactly `1` in a retrieval fixture
+means two vectors are identical, and the usual cause is that the fixture's predicates
+selected nothing and every path fell through to one fallback vector.** No arrangement of
+distinct directions produces `1`. Three fixture revisions were spent rotating vectors
+around the unit circle before a probe of the real function was run, and the probe
+answered in one line what six rounds of arithmetic had not.
+
+### The remedy, which is a habit rather than a mechanism
+
+**Probe the real function before adjusting the fixture.** The diagnostic that resolved
+this was four lines: call `computeRetrievalDiagnostics` with the fixture's embedding
+model and print `hitScores`, `missScores` and `scoreOverlap`. It is not a new tool —
+`tools/probe.py` from §4h already runs arbitrary programs from stdin and would have
+carried it. What was missing was reaching for it, and the cost of not reaching for it was
+three wrong revisions.
+
+### The second defect the ninth exposed, and it is the more valuable one
+
+The fixture also *asserted the name instead of the arithmetic*. Constants named `MIDDLE`
+and `HIGHER` were given the vectors `[0.8, 0.6]` and `[0.6, 0.8]`, and against a query on
+the x-axis those score `0.8` and `0.6` — the names assert an ordering the numbers
+contradict. An assertion of `missMax > hitMax` was then written from the names, and it
+was false from the first commit while looking entirely reasonable in review.
+
+The repair is structural, not editorial: the constants are now named for the score they
+produce (`LOW_HIT`, `HIGH_MISS`) with the cosine written beside each, and the test asserts
+the numeric bounds as well as the derived bit. `separatesAtAll` is one boolean, and a
+fixture with the ranges backwards still produces a boolean; pinning `hitMax` and `missMax`
+to their values is what shows the bit came from the intended data.
+
+This is the same failure as the whole `recommendedThreshold` episode the fixture was
+written for, in miniature: **a name was treated as evidence.** §12.6 records a reader
+taking the word *recommended* for a fitness claim the computation never made. Here a
+fixture author took the words *middle* and *higher* for an ordering the arithmetic never
+produced. The name is not the number, in an artifact or in a test.
+
 

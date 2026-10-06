@@ -49,8 +49,80 @@ export type RetrievalDiagnostic = {
   hitScores: number[];
   /** Top-1 cosine scores for questions whose answer turn was missed (ascending). */
   missScores: number[];
-  /** A data-driven abstention threshold: the 25th percentile of hit scores. */
-  recommendedThreshold: number;
+  /**
+   * The 25th percentile of `hitScores`: a COVERAGE cut, not an optimum.
+   *
+   * ## What this field was called, and what that cost
+   *
+   * It was `recommendedThreshold`. The word *recommended* asserts fitness for purpose
+   * that the computation does not establish: this is `percentile(sortedHits, 0.25)`,
+   * it never reads `missScores`, and it maximizes nothing. It is a coverage rule whose
+   * meaning is "admit roughly three quarters of the hits that exist".
+   *
+   * `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §12.6 records the consequence. A reader saw
+   * `0.6433` beside the word *recommended*, took it for a separating cut, carried it
+   * into the dispatch as `cortex_memory_retrieval_threshold`, and the arm then ran at
+   * `0.25` — below the minimum score in the entire dataset (0.5165), so the gate it
+   * was supposed to arm could admit everything and separate nothing.
+   *
+   * The behaviour was never wrong. The NAME was, and a name is what a reader consults.
+   *
+   * ## Why it is not deleted
+   *
+   * A coverage cut is genuinely useful for choosing a recall-oriented operating point,
+   * and removing it would remove a real capability to fix a labelling problem. The
+   * rename makes the label match the computation; `scoreOverlap` below supplies the
+   * fitness-for-separation evidence the old name wrongly implied.
+   */
+  hitPercentileThreshold: number;
+  /**
+   * How far apart the hit and miss score ranges are.
+   *
+   * ## Why this is computed at all
+   *
+   * Because its absence is what let `recommendedThreshold` be misread. A reader who
+   * saw a single number and no range had no way to tell a separating cut from a
+   * coverage cut, and on the real data the answer is not close: the LongMemEval-S
+   * diagnostic subset gives hits `[0.5212, 0.7861]` and misses `[0.5165, 0.7944]`,
+   * so **no cut separates at all** and the best reachable precision is 0.466.
+   *
+   * Publishing the overlap next to the threshold makes that visible in the artifact,
+   * where the decision is made, instead of only in prose about the artifact.
+   */
+  scoreOverlap: ScoreOverlap;
+};
+
+/**
+ * The reach of a score cut, as three intervals and one verdict.
+ *
+ * Reachable from outside only through `RetrievalDiagnostic.scoreOverlap`, and
+ * deliberately not exported itself: `export-census` reports an `export` with no caller as
+ * an orphan, and this type has none — every consumer reads the field, not the name. The
+ * declaration is public in effect because the field that carries it is, which is what a
+ * reader holding a diagnostic needs.
+ *
+ * `missMin`/`missMax` are `null` when there are no misses, and `separatesAtAll` is
+ * `null` with them. A vacuous truth ("nothing overlaps, so any cut works") and a real
+ * one are different facts, and a consumer that cannot tell them apart would read a
+ * perfect-separation result out of an empty distribution. The three-valued verdict is
+ * what keeps that unrepresentable.
+ */
+type ScoreOverlap = {
+  hitMin: number | null;
+  hitMax: number | null;
+  missMin: number | null;
+  missMax: number | null;
+  /**
+   * Whether any cut admits a hit without admitting a miss.
+   *
+   * The condition is `hitMax > missMin` with a gap: strict inequality on the ranges is
+   * not enough when a hit and a miss share a value, because a cut is `score >= t` and
+   * a shared value is admitted by every `t` that admits either. So the test is
+   * `hitMax > missMin` AND no value in `[missMin, hitMax]` is shared — which, since the
+   * arrays are score multisets, is exactly `hitMax > missMin` **and** the smallest hit
+   * exceeding every miss being reachable.
+   */
+  separatesAtAll: boolean | null;
 };
 
 /** Flatten all sessions into a single ordered turn list, preserving `has_answer`. */
@@ -228,15 +300,62 @@ export async function computeRetrievalDiagnostics(
   }
 
   const sortedHits = [...hitScores].sort((a, b) => a - b);
+  const sortedMisses = [...missScores].sort((a, b) => a - b);
   return {
     totalQuestions: instances.length,
     answerableQuestions: answerable,
     recallAt1: answerable === 0 ? 0 : recallAt1 / answerable,
     recallAt5: answerable === 0 ? 0 : recallAt5 / answerable,
     hitScores: sortedHits,
-    missScores: [...missScores].sort((a, b) => a - b),
-    recommendedThreshold: percentile(sortedHits, 0.25),
+    missScores: sortedMisses,
+    hitPercentileThreshold: percentile(sortedHits, 0.25),
+    scoreOverlap: computeScoreOverlap(sortedHits, sortedMisses),
   };
+}
+
+/**
+ * The reach of a score cut, derived from the two sorted distributions.
+ *
+ * Kept as a named function rather than inlined into the return above because the
+ * emptiness rule is the part that has to be right and it deserves one place to be
+ * read. Not exported: its only caller is `computeRetrievalDiagnostics` two definitions
+ * above, and `export-census` is right that an `export` with no consumer advertises a
+ * caller that does not exist. The evidence reaches a reader through the `scoreOverlap`
+ * field, which is public and asserted.
+ *
+ * The three cases:
+ *
+ *   * **no hits** -- `separatesAtAll` is `null`. Nothing to separate.
+ *   * **no misses** -- `null` as well, with `missMin`/`missMax` `null`. Every answerable
+ *     question was recalled, so the miss range is empty and "no overlap" would be a
+ *     vacuous truth. Reporting `true` here would let a consumer read perfect separation
+ *     out of an empty distribution.
+ *   * **both non-empty** -- the verdict is whether any cut admits a hit without admitting
+ *     a miss. With `sortedMisses` ascending, that is `hitMax > missMax`: a cut just above
+ *     the largest miss admits every hit larger than it, and there is at least one such
+ *     hit exactly when the largest hit exceeds the largest miss.
+ *
+ * The third case is worth stating in that form because the intuitive test --
+ * "do the ranges overlap?" -- is wrong for multisets. Hits `[0.5, 0.9]` and misses
+ * `[0.6]` overlap in the interval sense, yet a cut at `0.9` admits a hit and no miss.
+ * The question is not about intervals; it is whether the order statistics satisfy
+ * `max(hit) > max(miss)`.
+ */
+function computeScoreOverlap(
+  sortedHits: readonly number[],
+  sortedMisses: readonly number[],
+): ScoreOverlap {
+  const hitMin = sortedHits.length > 0 ? sortedHits[0]! : null;
+  const hitMax = sortedHits.length > 0 ? sortedHits[sortedHits.length - 1]! : null;
+  const missMin = sortedMisses.length > 0 ? sortedMisses[0]! : null;
+  const missMax = sortedMisses.length > 0 ? sortedMisses[sortedMisses.length - 1]! : null;
+
+  let separatesAtAll: boolean | null = null;
+  if (hitMax !== null && missMax !== null) {
+    separatesAtAll = hitMax > missMax;
+  }
+
+  return { hitMin, hitMax, missMin, missMax, separatesAtAll };
 }
 
 export type SessionRetrievalDiagnostic = {
@@ -248,7 +367,17 @@ export type SessionRetrievalDiagnostic = {
   recallAtK: number;
   hitScores: number[];
   missScores: number[];
-  recommendedThreshold: number;
+  /**
+   * The 25th percentile of `hitScores`: the same **coverage** cut as the turn-level
+   * field, and renamed for the same reason.
+   *
+   * It carried the name `recommendedThreshold` and inherited the whole defect described
+   * on {@link RetrievalDiagnostic.hitPercentileThreshold}: the word *recommended* asserted
+   * a separating quality that `percentile(sortedHits, 0.25)` does not have, and the name
+   * is what a reader consults. Fixing only the turn-level field would have left the
+   * identical misnomer live on this one, to be found by the next reader.
+   */
+  hitPercentileThreshold: number;
 };
 
 /**
@@ -335,7 +464,7 @@ export async function computeSessionRetrievalDiagnostics(
     recallAtK: answerable === 0 ? 0 : recallAtK / answerable,
     hitScores: sortedHits,
     missScores: [...missScores].sort((a, b) => a - b),
-    recommendedThreshold: percentile(sortedHits, 0.25),
+    hitPercentileThreshold: percentile(sortedHits, 0.25),
   };
 }
 

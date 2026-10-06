@@ -169,18 +169,18 @@ describe('computeRetrievalDiagnostics', () => {
     const diag = await computeRetrievalDiagnostics([abs], embedding, 5);
     expect(diag.answerableQuestions).toBe(0);
     expect(diag.recallAt1).toBe(0);
-    expect(diag.recommendedThreshold).toBe(0);
+    expect(diag.hitPercentileThreshold).toBe(0);
   });
 
-  it('computes a recommended threshold from hit-score percentiles', async () => {
+  it('computes a hit-percentile threshold from the hit-score distribution', async () => {
     const instances = [
       makeInstance('q1', 'What is the dog name?', 'My dog is named Rex.'),
       makeInstance('q2', 'What is the job?', 'I work as a manager.'),
     ];
     const diag = await computeRetrievalDiagnostics(instances, embedding, 5);
     expect(diag.answerableQuestions).toBe(2);
-    expect(diag.recommendedThreshold).toBeGreaterThanOrEqual(0);
-    expect(diag.recommendedThreshold).toBeLessThanOrEqual(1);
+    expect(diag.hitPercentileThreshold).toBeGreaterThanOrEqual(0);
+    expect(diag.hitPercentileThreshold).toBeLessThanOrEqual(1);
   });
 
   it('records a miss when the answer turn is not the top-1 turn', async () => {
@@ -388,7 +388,7 @@ describe('computeSessionRetrievalDiagnostics', () => {
     expect(diag.answerableQuestions).toBe(0);
     expect(diag.recallAt1).toBe(0);
     expect(diag.recallAtK).toBe(0);
-    expect(diag.recommendedThreshold).toBe(0);
+    expect(diag.hitPercentileThreshold).toBe(0);
   });
 
   it('records a miss when the answer session is not the top-1 session', async () => {
@@ -509,7 +509,18 @@ describe('retrieval diagnostics over degenerate instances', () => {
       recallAt5: 0,
       hitScores: [],
       missScores: [],
-      recommendedThreshold: 0,
+      hitPercentileThreshold: 0,
+      // The whole `scoreOverlap` is pinned here rather than only its verdict: an empty
+      // run has no hits and no misses, so all four bounds are `null` and the verdict is
+      // `null` with them. `toEqual` would otherwise accept a `separatesAtAll: false`
+      // that no range supports.
+      scoreOverlap: {
+        hitMin: null,
+        hitMax: null,
+        missMin: null,
+        missMax: null,
+        separatesAtAll: null,
+      },
     });
   });
 
@@ -584,7 +595,7 @@ describe('retrieval diagnostics over degenerate instances', () => {
       recallAtK: 0,
       hitScores: [],
       missScores: [],
-      recommendedThreshold: 0,
+      hitPercentileThreshold: 0,
     });
   });
 

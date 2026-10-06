@@ -1105,3 +1105,138 @@ This is §10.10's diagnostic-gap lesson one level over. There, the artifact coul
 which mechanism fired. Here, the *code* could not say which symbols have consumers — and
 both are the same failure: a claim nobody could check from the evidence present. The census
 gate is what made the second checkable before the commit rather than after a reader asked.
+
+## 12. The reachable-cut registration
+
+§11.2 permits a registration to name a `retrievalThreshold` inside `(0, S]` and a
+`confidenceSignal`. This is that registration, and the two quantities are named from
+measurement rather than from arithmetic — because the measurement says the arithmetic
+was answering the wrong question.
+
+### 12.1 What was measured, and where the numbers come from
+
+The dispatched run `37313582403` published a `longmemeval-s-report` artifact whose
+`benchmark-diagnostics.json` carries the embedding score distribution over the 100-question
+diagnostic subset. That distribution was read, not re-derived:
+
+| Quantity | Value |
+| --- | --- |
+| diagnostic questions | 100 (76 answerable) |
+| `recallAt1` | 0.368 |
+| `recallAt5` | 0.763 |
+| hit scores (`n=28`) | range **`[0.5212, 0.7861]`**, median 0.686 |
+| miss scores (`n=48`) | range **`[0.5165, 0.7944]`**, median 0.637 |
+| `recommendedThreshold` | **0.6433** |
+| minimum score over all 76 | **0.5165** |
+
+### 12.2 The first finding: the dispatched threshold was below every score
+
+The arm dispatched `retrievalThreshold: 0.25`. The minimum score in the dataset is
+**0.5165**. So the retrieval gate admitted **every candidate on every question** — not
+because the gate was inert in the §10.10 sense, but because the cut sat 0.267 below the
+lowest value the gate could ever see.
+
+§10.10 established one reason the gate could not close: `sourceTrust: 0.5` with no
+`confidenceFor` makes the value a constant `0.5`, so `0.25 ≤ 0.5` gives `retrieve = true`
+always. This adds a **second, independent** reason, present even after §11.1 makes the
+value vary: the cut is below the data's support. Two independent inerting causes, and
+§10.10 caught only the one visible from the code — the other is only visible from the
+artifact, which is why §11.2's "state the quantity before the run" is not enough on its
+own. The quantity also has to be **inside the range the data produces**, and that range
+has to be read from a prior run rather than assumed.
+
+### 12.3 The second finding: the cut cannot carry the arm
+
+This is the part that changes the plan rather than the parameters. Sweeping the threshold
+over the measured distributions:
+
+| cut | hits admitted | misses admitted | precision | hit recall |
+| --- | --- | --- | --- | --- |
+| 0.25 (dispatched) | 28/28 | 48/48 | **0.368** | 1.000 |
+| 0.50 | 28/28 | 48/48 | **0.368** | 1.000 |
+| 0.598 | 27/28 | 31/48 | 0.466 | 0.964 |
+| 0.6433 (recommended) | 22/28 | 21/48 | 0.512 | 0.786 |
+| 0.70 | 11/28 | 7/48 | 0.611 | 0.393 |
+
+The hit and miss distributions **overlap almost completely**: hits `[0.5212, 0.7861]`,
+misses `[0.5165, 0.7944]`. The best precision reachable at full-ish recall is **0.466**,
+and every cut that raises precision past `0.51` costs more than half the hits.
+
+A cut with precision `0.466` against a base rate of `28/76 = 0.368` is a lift of **1.27×**.
+That is a real but small effect, and it is nowhere near enough to move a benchmark whose
+feature side currently sits at `6.6%` while the baseline sits at `43.8%`. **A Δ of −37.25pp
+cannot be closed by a retrieval cut**, and registering one as the arm's mechanism would be
+choosing a knob because it is available rather than because the evidence points at it.
+
+**So this registration does not name a `retrievalThreshold`.** §11.2 permits one; the
+measurement shows it cannot bear the weight, and naming it anyway would produce a run that
+is expensive, falsifiable, and uninformative.
+
+### 12.4 What the evidence does point at
+
+The per-capability table in the same artifact localises the loss precisely:
+
+| Capability | Total | Baseline | Feature | b✓f✗ | b✗f✓ |
+| --- | --- | --- | --- | --- | --- |
+| IE | 150 | 0.67% | 0.67% | 0 | 0 |
+| MR | 121 | 86.78% | 1.65% | **103** | **0** |
+| KU | 72 | 0.00% | 0.00% | 0 | 0 |
+| TR | 127 | 65.35% | 0.00% | **83** | **0** |
+| ABS | 30 | 100% | 100% | 0 | 0 |
+
+Two facts, and they are the whole diagnosis:
+
+1. **The damage is entirely in MR and TR**, the two capabilities with real baseline
+   accuracy to lose. IE and KU are near-zero on both sides, and ABS is already perfect.
+2. **`b✗f✓ = 0` across every capability.** The feature side repaired **not one question**.
+   A gate that is merely mistuned produces some repairs and some breakages; zero repairs
+   with 186 breakages is the signature of a gate that is shut, not a gate set wrong.
+
+That contradicts the abstention reading. Feature abstention is `95.8%`, and §10.10 showed
+the abstentions are the model's (`reason: "llm"`), not the gate's. So the feature side is
+not declining to answer because evidence is filtered out — it is reaching the model, and
+the model declines. Combined with `b✗f✓ = 0`, the question is therefore **what the feature
+side sends to the model**, not what the cut admits.
+
+### 12.5 The registration
+
+**Hypothesis.** The `cortex-memory` feature side loses MR and TR because its prompt
+contract does not present evidence in a form the reader can use, and not because the value
+gate filters evidence out. The gate is a red herring for this arm.
+
+**Prediction, stated before the run.** Replacing the `abstention` prompt contract's
+evidence rendering — while leaving `threshold`, `retrievalThreshold`, `sessionBudget`,
+`sourceTrust` and `confidenceFor` **exactly as dispatched** — will move MR and TR off zero.
+In the same run:
+- MR and TR feature accuracy will each be **> 0%**, since `0/121` and `0/127` are the
+  numbers being explained;
+- `b✗f✓` will be **non-zero** for at least one of MR/TR, because a rendering fix that
+  repairs nothing is not a rendering fix;
+- and the overall feature accuracy will stay **below** the baseline. A prompt-contract fix
+  is not predicted to close a −37.25pp gap, and predicting that it would is the
+  overclaim this section exists to prevent.
+
+**What would falsify it.** If MR and TR stay at exactly 0% with `b✗f✓ = 0`, then the
+evidence never reaches the prompt at all and the loss is upstream of rendering — which
+would point at `#admit` returning nothing on those capabilities and make the next
+investigation a trace of admitted-turn counts per question rather than a prompt change.
+
+**What is explicitly NOT done.** No threshold is named. No sweep is performed: §4 forbids
+it, and §12.3 shows the sweep's answer before spending the quota. The `0.25` that was
+dispatched is recorded as a defect found, not repaired by sliding it to `0.598`.
+
+### 12.6 The naming defect found while reading
+
+`recommendedThreshold` is `percentile(sortedHits, 0.25)`
+(`packages/cortex-eval/src/retrieval-diagnostics.ts:241`). For 28 hits that is
+`sortedHits[6] = 0.6433` — the **25th percentile of the hit distribution**, a coverage
+heuristic meaning "admit roughly 75% of hits". It does **not** maximize precision, it does
+not consult the miss distribution at all, and its name asserts a recommendation it does
+not compute.
+
+A reader who saw `0.6433` and the word *recommended* pulled it into `INPUTS` as
+`cortex_memory_retrieval_threshold` — that is how the dispatch came to carry a number whose
+provenance was a percentile of the hits. The behaviour is defensible as a coverage rule;
+the name is what misled, and the name is a two-word fix. It is recorded here rather than
+silently renamed, so the next reader can see why the number in the artifact is `0.25` and
+not `0.6433`.
