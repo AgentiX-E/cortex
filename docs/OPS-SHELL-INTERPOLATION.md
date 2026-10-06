@@ -789,3 +789,114 @@ fixture author took the words *middle* and *higher* for an ordering the arithmet
 produced. The name is not the number, in an artifact or in a test.
 
 
+
+## 4j. The tenth recurrence: the failing layer is not a shell at all
+
+Sections 1 through 4i diagnose nine failures and prescribe nine remedies, and every one
+of them assumes a **shell** performs the expansion. The tenth was reproduced against the
+code that actually raises the error, and the assumption is false.
+
+### The layer, located rather than inferred
+
+```
+/root/.nvm/versions/node/*/lib/node_modules/@tencent-ai/codebuddy-code/dist/codebuddy.js
+  -> webpack module 47374        (vendored `shell-quote`: `ea.parse = es(47374)`)
+  -> function parseEnvVar()
+```
+
+`parseEnvVar` is a pure-JavaScript tokeniser. It runs **inside the Node process, before
+any tool is dispatched**, and it is the only producer of the string `Bad substitution` in
+this image:
+
+```js
+function parseEnvVar(){
+  el += 1;
+  var ei, ea, es = ec.charAt(el);
+  if ("{" === es) {
+    if (el += 1, "}" === ec.charAt(el))
+      throw Error("Bad substitution: " + ec.slice(el - 2, el + 1));   // branch B
+    if ((ei = ec.indexOf("}", el)) < 0)
+      throw Error("Bad substitution: " + ec.slice(el));               // branch A
+    ea = ec.slice(el, ei), el = ei;
+  } else if (/[*@#?$!_-]/.test(es)) ea = es, el += 1;
+  ...
+}
+```
+
+Measured, against the vendored module extracted from the bundle:
+
+| command | branch | reported body |
+| --- | --- | --- |
+| `echo ${q` | A | `q` |
+| `echo ${q,` | A | `q,` |
+| `echo ${min.toFixed` | A | `min.toFixed` |
+| `echo "${q"],"` | A | `q` |
+| `echo ${}` | B | `${}` |
+| `echo ${q}` | — | *no throw* |
+
+### What this settles that nine sections did not
+
+**The reported body is not an identifier and never was.** Branch A throws
+`ec.slice(el)` — from the character after `{` to the end of the *token*. So the "body" is
+a tail of whatever followed the unclosed brace. That is why the recorded bodies look
+arbitrary and why they kept changing while the underlying mistake did not:
+
+```
+Bad substitution: String         a tail
+Bad substitution: q"],           a tail -- of a JSON fragment the command contained
+Bad substitution: min.toFixed    a tail
+```
+
+Every earlier section tried to **classify the body**, on the assumption that the body was
+the defect. The body is where the parser stopped; it carries no information about what
+went wrong. Section 4h reached the right conclusion from the wrong premise — it argued
+that detection cannot win because the bodies were shrinking toward valid shell text, when
+in fact the bodies were never the signal at all.
+
+### Why detection IS the right strategy here, against 4h's own conclusion
+
+Section 4h's prohibition is sound about a **closed** expansion and it does not extend to
+an open one:
+
+* `${q}` is valid POSIX. It expands to the empty string silently in bash, dash and zsh,
+  and it is textually identical to correct shell. No rule can separate the harmful use
+  from the harmless one, so attempting it costs precision and nothing else.
+* A bare `${` with no closer is a **different question**. There is no correct command
+  containing one — the shell rejects it and so does the tokeniser. A rule against it
+  makes no precision trade, because it has no true-positive/false-positive frontier.
+
+So the tenth recurrence is caught by a rule, not by a habit, and the distinction is
+stated here because 4h explicitly forbade the category.
+
+### What was changed
+
+1. **`_unterminated_expansions`** in `tools/check-shell-interpolation.py`. It exists
+   because the existing pattern cannot see this case *by construction*: the loop matches
+   `\$\{([^}]*)\}`, and the closing brace is part of the match. **A scan built out of
+   matches is blind to the input that has no match** — which is why eight fixes, each
+   editing the body classifier and each leaving that pattern alone, could not catch it.
+2. **`_unterminated_expansion_violation`**, whose message names the mechanism and quotes
+   the opening pair rather than the body. Naming the body would repeat the error nine
+   rounds made: it sends the reader to text that is not the defect.
+3. **`scan_payload` also calls it**, so the `python3` shim refuses the shape too. The shim
+   holds the payload before anything else sees it, which makes it the earliest gate.
+4. **`tools/__tests__/test_shell_quote_parser.py`** — 21 tests. Five extract the vendored
+   parser from the bundle, run it, and pin the branch behaviour; the extraction is by
+   content so a changed bundle fails loudly instead of silently measuring a stale copy.
+   The rest assert the guard's contract and that the guard's verdict contains the
+   parser's, so no shape can fail at runtime and pass review.
+
+### The generalisation
+
+Nine sections reasoned about the failing layer from the error message. The tenth read the
+code that emits it and found the layer was a JavaScript tokeniser in the host process,
+reached from an assumption no one had tested. **The error string is a claim by the code
+that raised it; it is not a description of the system.** `Bad substitution` is a
+`shell-quote` message about its own parser, and it names `q"],` because that is where its
+index stopped.
+
+The rule for the next recurrence is the one 4h wrote, sharpened: **read the code that
+throws, not the message it throws.** 4h read the dispatch log and it was not enough,
+because `functionCallItems count: 0` localises the failure but does not identify the
+parser. Locating the literal string in the image took one `grep` and answered in full what
+ten rounds of shell experiments could not.

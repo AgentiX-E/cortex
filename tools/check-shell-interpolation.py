@@ -244,6 +244,15 @@ def scan_payload(text: str, origin: str, language: str = 'python') -> list[str]:
             # the "any occurrence" rule this module already deleted once.
             continue
         violations.append(_payload_language_violation(language, offset, origin, text, body))
+
+    # An unterminated `${` in a payload is the same defect as in a command line, and the
+    # shim sees it earlier than the harness tokeniser would -- the shim holds the payload
+    # before it is ever handed to anything. Reporting it here is what turns the shim from
+    # a reporter of this rule's existing shapes into a gate that also covers the shape
+    # that produced the tenth recurrence.
+    for offset, _ in _unterminated_expansions(text, scannable):
+        violations.append(_unterminated_expansion_violation(offset, origin, text))
+
     return violations
 
 
@@ -646,7 +655,102 @@ def scan(fragment: str, origin: str) -> list[str]:
             continue
         violations.append(_violation(stripped_heredocs, m.start(), origin, body))
 
+    # An unterminated `${`. This runs LAST, and it answers a question the match-based
+    # loop above structurally cannot: a regex whose pattern ends in `\}` never matches
+    # the input where the `}` is absent. A missing match is invisible to a scanner built
+    # out of matches, which is exactly why eight earlier fixes -- every one of which
+    # edited the body classifier and left this pattern alone -- could not catch the tenth
+    # recurrence that came through this gap.
+    #
+    # Appended alongside the others rather than instead of them: a fragment can carry both
+    # a closed expansion that is wrong and an unclosed one, and suppressing either would
+    # make the reported count depend on which pass happened to run first.
+    for offset, _ in _unterminated_expansions(stripped_heredocs, scannable):
+        violations.append(_unterminated_expansion_violation(offset, origin, stripped_heredocs))
+
     return violations
+
+
+def _unterminated_expansion_violation(offset: int, origin: str, original: str) -> str:
+    """Report a `${` that is never closed.
+
+    ## Why this rule exists, and why it is not the rule the other eight sections wrote
+
+    The tenth recurrence was reproduced against the parser that actually raises the
+    error. It is **not** a shell. It is a vendored JavaScript tokeniser
+    (`shell-quote`'s `parseEnvVar`, bundled into the harness) that runs inside the Node
+    process before any tool is dispatched. Its two failing branches are:
+
+        A. unclosed brace   the body it reports is THE ENTIRE REMAINDER OF THE COMMAND
+        B. empty braces     the body it reports is the three characters around the `}`
+
+    Branch A is the one that produced every confusing report, and it explains the thing
+    eight sections could not: **the reported body is not an identifier and never was.**
+    It is a tail of whatever followed the unclosed `${`. That is why the bodies look
+    arbitrary (`String`, `q"],`, `min.toFixed`) and why they kept changing while the
+    underlying mistake stayed the same. `q"],` is a JSON fragment from my own command.
+
+    So the input that is wrong is the unclosed `${` itself, and it is wrong regardless of
+    what follows it. Earlier sections tried to classify the body, which is an artefact of
+    where the parser stopped -- a category error, and the reason the class recurred.
+
+    ## Why detection is the right strategy HERE, after 4h said it was not
+
+    Section 4h concluded that a content-based detector cannot win, because as the bodies
+    shrank toward a bare name the failing text became textually identical to correct
+    shell. That argument is sound about a **closed** expansion: `${q}` is valid POSIX and
+    no rule can distinguish the version that hurts from the version that does not.
+
+    An **unterminated** expansion is a different question. There is no correct command
+    containing a bare `${` with no closer -- the shell itself rejects it, and so does the
+    tokeniser. So a rule against it has no true-positive/false-positive trade to make.
+    That is the whole difference, and it is why 4h's prohibition does not apply here.
+    """
+    return (
+        f"{origin}:{_line_of(original, offset)}: an unterminated `{DOLLAR}{OPEN_BRACE}` "
+        f"has no matching `{CLOSE_BRACE}`. The harness tokenises the command with a "
+        f"JavaScript shell parser before dispatching it, and an unclosed expansion makes "
+        f"that parser throw `Bad substitution` with the REST OF THE COMMAND as the "
+        f"reported body -- so the name in the error message is an artefact of where "
+        f"parsing stopped, not the thing that is wrong. Close the brace, or escape the "
+        f"sequence as `{DOLLAR}{OPEN_BRACE}{CLOSE_BRACE}` when it is a literal, or move "
+        f"the program to stdin with a quoted heredoc."
+    )
+
+
+def _unterminated_expansions(text: str, scannable: str) -> list[tuple[int, str]]:
+    """`(offset, text)` for each `${` in a live region that is never closed.
+
+    ## Why this is a scan of its own rather than a clause in the existing loop
+
+    The existing loop matches `\\$\\{([^}]*)\\}` -- a pattern that, by construction,
+    **cannot see an unterminated expansion**, because the closing brace is part of the
+    match. Every one of the eight earlier fixes left that pattern alone, and the pattern
+    is why they could not catch the tenth: the defect is precisely the case the regex
+    does not match. A missing match is invisible to a scanner built from matches.
+
+    ## Quoting
+
+    The search runs over the quote-resolved text, like every other pass, so a `${` inside
+    single quotes or after a `\\$` is exempt -- those are exactly the ways an author
+    writes the sequence on purpose. Only a brace that is live to the shell and live to
+    the tokeniser counts.
+    """
+    found: list[tuple[int, str]] = []
+    opener = DOLLAR + OPEN_BRACE
+    for m in re.finditer(re.escape(opener), scannable):
+        offset = m.start()
+        # A matching closer anywhere after this point makes it a closed expansion, which
+        # is the existing rule's business and not this one's -- except when the closer is
+        # itself suppressed, in which case the brace really is unterminated.
+        if CLOSE_BRACE in scannable[m.end():]:
+            continue
+        # `_line_of` and the report read the ORIGINAL fragment, never the blanked copy, so
+        # the offset must be validated against the text the reader will open.
+        if text[offset:offset + len(opener)] != opener:
+            continue
+        found.append((offset, text[offset:]))
+    return found
 
 
 def _python_command_strings(path: Path) -> list[tuple[str, str]]:
