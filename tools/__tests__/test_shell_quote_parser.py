@@ -350,3 +350,114 @@ class TestTheReconstructionIsFaithful:
         if BUNDLE is None:
             pytest.skip('no bundle on this host')
         assert _contains_parser(BUNDLE), 'the located bundle does not contain the parser'
+
+
+class TestTheEleventhRecurrenceTheCarrierRule:
+    """The rule that stops the eleventh recurrence: it is about the CARRIER, not the word.
+
+    ## What the eleventh recurrence was
+
+    The tenth was fixed (section 4j). The tenth fix taught the guard to flag an
+    unterminated expansion -- and the eleventh happened anyway, in the very command that
+    wrote up the tenth. The sequence was inside a heredoc body handed to `cat`:
+
+        cat > /tmp/road.py << 'PY'
+        ... a python source text containing an unterminated opener ...
+        PY
+
+    The heredoc delimiter was QUOTED, so no shell expanded it. The parsing was not done
+    by a shell. It was done by the host process tokeniser, which reads the WHOLE command
+    line -- heredoc body included, because the heredoc is part of the command.
+
+    ## Why the existing rule did not fire
+
+    The guard scans what is COMMITTED: `tools/*.py`, `docs/*.md`, and string literals
+    reaching a writer. The eleventh carrier was a temporary, uncommitted script. Nothing
+    scanned it, and nothing could have.
+
+    So the fix is not another word to blacklist. The fix is that the dangerous text is
+    never SPELLED -- it is assembled at runtime from inert pieces:
+
+        opener = chr(36) + chr(123)
+
+    A source text built that way is safe in EVERY carrier: heredoc, `-e`, `-c`, a commit
+    message, an editor buffer. The tests below pin both halves: the hazard is still
+    detected when spelled, and the assembled form is inert and still means the same thing.
+    """
+
+    @staticmethod
+    def _load():
+        spec = importlib.util.spec_from_file_location('guard_under_test', MODULE_PATH)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_assembled_opener_equals_the_spelled_one(self) -> None:
+        """The substitution must not change the value, only the carrier safety."""
+        assembled = DOLLAR + BRACE
+        assert assembled == chr(0x24) + chr(0x7B)
+
+    def test_a_quoted_heredoc_body_is_still_scanned_for_an_unterminated_opener(self) -> None:
+        """The carrier is a command line, so a spelled hazard in its body IS the hazard.
+
+        This is the fact the tenth fix missed. The correction is narrower than the first
+        draft of this test assumed, and MEASURING it changed the fix:
+
+          - A quoted delimiter genuinely suppresses SHELL expansion, so `${q}` in such a
+            body is legitimate and must stay clean. That half of the old behaviour was
+            right, and it is pinned by the test below.
+          - An UNTERMINATED opener is not an expansion at all. No shell and no tokeniser
+            can resolve it, so quoting cannot excuse it, and the body must be scanned for
+            exactly that one shape.
+
+        The first draft asserted the whole body must be scanned, which would have made
+        correct heredoc text a false positive -- the §4h defect. The measured requirement
+        is the conjunction: quoted body AND unterminated opener.
+        """
+        guard = self._load()
+        command = 'cat > /tmp/x.py << \'PY\'\nH = ' + DOLLAR + BRACE + 'q\nPY'
+        violations = guard.scan(command, 'probe (as a command)')
+        assert violations, (
+            'a quoted heredoc body with an unterminated opener must still be reported: '
+            'the delimiter stops the SHELL, and no shell is involved'
+        )
+
+    def test_a_quoted_heredoc_body_with_a_closed_expansion_stays_clean(self) -> None:
+        """The other half, so the rule cannot drift into rejecting correct text.
+
+        This is the false-positive side §4h forbids. A closed expansion in a quoted
+        heredoc is legitimate shell text that happens to be inert, and the guard has no
+        business in it.
+        """
+        guard = self._load()
+        command = (
+            'cat > /tmp/x.py << \'PY\'\n'
+            'value = ' + DOLLAR + BRACE + 'HOME' + CLOSE + '\n'
+            'PY'
+        )
+        assert guard.scan(command, 'probe') == [], (
+            'a quoted delimiter suppresses shell expansion; a closed expansion there is '
+            'correct text, not a hazard'
+        )
+
+    def test_the_assembled_form_is_inert_in_the_same_carrier(self) -> None:
+        """The remedy, checked in the same carrier that failed."""
+        guard = self._load()
+        command = (
+            'cat > /tmp/x.py << \'PY\'\n'
+            "H = chr(36) + chr(123)\n"
+            'print(H)\n'
+            'PY'
+        )
+        assert guard.scan(command, 'probe') == []
+
+    def test_the_rule_is_about_the_carrier_not_the_characters(self) -> None:
+        """A closed expansion is not a hazard in any carrier -- the rule stays narrow.
+
+        If this ever fails, the remedy has over-reached and started rejecting correct
+        text, which is the false-positive side section 4h forbids.
+        """
+        guard = self._load()
+        closed = DOLLAR + BRACE + 'HOME' + CLOSE
+        assert guard.scan('echo ' + closed, 'probe') == []

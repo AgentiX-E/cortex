@@ -504,16 +504,36 @@ def _strip_single_quoted(text: str) -> str:
     return ''.join(ch if keep else ' ' for ch, keep in zip(text, mask))
 
 
-def _strip_quoted_heredocs(text: str) -> list[str]:
-    """Drop bodies of heredocs whose delimiter is quoted.
+def _strip_quoted_heredocs(text: str) -> tuple[list[str], list[bool]]:
+    """Drop bodies of heredocs whose delimiter is quoted, and say WHICH positions were dropped.
 
     A quoted delimiter (`<<'EOF'`) suppresses all expansion inside the body, so
     the body may contain any `${...}` legitimately. An unquoted delimiter does
     expand, so its body is kept for scanning.
+
+    ## Why the mask is returned, not just the blanked text
+
+    This function used to return only the stripped text, and the eleventh recurrence
+    is the bill for that. The suppression is correct for every EXPANSION -- but an
+    unterminated opener is not an expansion, and the suppression was written as if
+    "no shell expansion happens here" meant "nothing here can fail". It does not:
+
+        `<<'PY'`  stops the SHELL from expanding the body.
+        It does not stop the HOST PROCESS TOKENISER, which reads the whole command
+        line before any shell exists, heredoc body included. That tokeniser throws on
+        an unterminated opener, and it does not care that the delimiter was quoted.
+
+    So the body stays suppressed for the expansion rules, and this mask tells the
+    unterminated-opener rule where the suppressed regions are, so it can look there
+    for the ONE shape that quoting cannot excuse. A closed expansion in the same
+    body remains clean, because that really is inert.
+
+    Returning a pair rather than a second pass over the text is deliberate: deriving
+    the regions twice is how the two readers drift, and the drift would be silent.
     """
-    # Mark regions belonging to quoted heredocs so they can be skipped.
     lines = text.split('\n')
     kept: list[str] = []
+    suppressed: list[bool] = []
     skip_until: str | None = None
     opener = re.compile(r"<<-?\s*'([A-Za-z_][A-Za-z0-9_]*)'|<<-?\s*\"([A-Za-z_][A-Za-z0-9_]*)\"")
 
@@ -522,17 +542,20 @@ def _strip_quoted_heredocs(text: str) -> list[str]:
             if line.strip() == skip_until:
                 skip_until = None
             kept.append('')
+            suppressed.append(line.strip() != skip_until and True)
             continue
         m = opener.search(line)
         if m and '<<' in line.split(m.group(0))[0] + m.group(0):
             skip_until = m.group(1) or m.group(2)
             kept.append('')
+            suppressed.append(False)
             continue
 
         # The `<<` must not be part of a shift or a redirection of another form;
         # a simple guard is that the opener appears outside quotes.
         kept.append(line)
-    return kept
+        suppressed.append(False)
+    return kept, suppressed
 
 
 def scan(fragment: str, origin: str) -> list[str]:
@@ -552,7 +575,8 @@ def scan(fragment: str, origin: str) -> list[str]:
     the command rather than of its lines.
     """
     violations: list[str] = []
-    stripped_heredocs = '\n'.join(_strip_quoted_heredocs(fragment))
+    stripped_lines, suppressed_lines = _strip_quoted_heredocs(fragment)
+    stripped_heredocs = '\n'.join(stripped_lines)
     mask = _single_quoted_mask(stripped_heredocs)
 
     # A comment line cannot execute, so nothing on it can be a hazard. The
@@ -571,6 +595,26 @@ def scan(fragment: str, origin: str) -> list[str]:
             comment_offsets.add(k)
 
     scannable = ''.join(ch if keep else ' ' for ch, keep in zip(stripped_heredocs, mask))
+
+    # The eleventh recurrence's view. `scannable` above is "text the SHELL would expand",
+    # and it is correct for every expansion rule. It is the wrong question for the
+    # unterminated opener, because that shape is refused by the host tokeniser before any
+    # shell runs -- so a quoted heredoc delimiter, which is exactly what makes a body
+    # single-quote-like, does not excuse it.
+    #
+    # Restoring the suppressed heredoc bodies here (and only here) keeps the two questions
+    # from contaminating each other: the expansion rules keep refusing to look inside a
+    # quoted body, and one narrower rule gets to look inside for one narrower shape.
+    #
+    # The offsets are shared, so a report from this view points at the same characters as
+    # a report from the other. Two views over one coordinate space, not two parses.
+    opener_lines = [
+        original if is_suppressed else stripped
+        for original, stripped, is_suppressed in zip(
+            fragment.split('\n'), stripped_lines, suppressed_lines
+        )
+    ]
+    opener_view = '\n'.join(opener_lines)
 
     # A payload's `${...}` is source for another language. Two cases, and they get
     # opposite verdicts, which is the whole reason this pass exists:
@@ -665,7 +709,25 @@ def scan(fragment: str, origin: str) -> list[str]:
     # Appended alongside the others rather than instead of them: a fragment can carry both
     # a closed expansion that is wrong and an unclosed one, and suppressing either would
     # make the reported count depend on which pass happened to run first.
+    #
+    # TWO views, and the second one is the eleventh recurrence's whole content. `scannable`
+    # is "what the shell expands", which excludes quoted heredoc bodies -- right for every
+    # expansion rule, wrong for this one. `opener_view` puts those bodies back, because the
+    # layer that refuses an unterminated opener is the host tokeniser, which never consults
+    # a shell and therefore never consults a heredoc delimiter.
+    #
+    # Deduplication is by offset, over one shared coordinate space. The identity test is
+    # exact rather than a comparison of rendered messages: matching on the message would
+    # couple this loop to the wording of `_unterminated_expansion_violation`, and the two
+    # would then drift silently the first time that wording changed.
+    reported_offsets: set[int] = set()
     for offset, _ in _unterminated_expansions(stripped_heredocs, scannable):
+        reported_offsets.add(offset)
+        violations.append(_unterminated_expansion_violation(offset, origin, stripped_heredocs))
+
+    for offset, _ in _unterminated_expansions(opener_view, opener_view):
+        if offset in reported_offsets:
+            continue
         violations.append(_unterminated_expansion_violation(offset, origin, stripped_heredocs))
 
     return violations
