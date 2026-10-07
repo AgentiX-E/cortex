@@ -122,6 +122,35 @@ export type AblationReport = {
    */
   questions?: readonly QuestionRecord[] | undefined;
   /**
+   * How many times each question was asked, as the report's own record of it.
+   *
+   * ## Why this had to become a field rather than stay an option
+   *
+   * It was an input only -- used to configure the ablation and then dropped -- and
+   * the §12.5 artifact shows what that cost. `CortexMemory.#reasons` counts CALLS,
+   * and the arm reuses one instance across all repetitions, so the census total is
+   * `questions x runs`. The renderer labelled that total "questions through the
+   * abstention path": a false statement about the artifact whenever `runs > 1`.
+   *
+   * §12.5 dispatched with `runs = 4` over a dataset whose `ABS` capability holds 30
+   * questions. The census reported `120`, the capability table reported `30`, and
+   * both numbers were correct and referred to one quantity -- but nothing in the
+   * document said which was which or how they reconciled. A reader comparing them
+   * would have had to invent the divisor.
+   *
+   * The divisor is not guessed at render time either. Deriving it from
+   * `questionCount` would assume every question was asked exactly `runs` times,
+   * which the census cannot confirm and which a partially-failed run falsifies.
+   * Publishing the count that was actually configured is the honest form: the
+   * reader divides, and can see that they are dividing by the run count rather
+   * than by a number the report invented.
+   *
+   * Absent when a caller did not configure one, matching `runs`' existing role as
+   * an optional ablation input. `1` would be a claim about a run that may not have
+   * been single-pass.
+   */
+  runs?: number | undefined;
+  /**
    * The candidate-annotation schema version this run rendered with, or `0` when
    * the annotation was not applied.
    *
@@ -384,6 +413,7 @@ export async function runAblationReport(
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     ...(options.questions === undefined ? {} : { questions: options.questions }),
     ...(options.memoryArmConfig === undefined ? {} : { memoryArmConfig: options.memoryArmConfig }),
+    ...(options.runs === undefined ? {} : { runs: options.runs }),
   };
 }
 
@@ -572,7 +602,9 @@ export function formatAblationReport(report: AblationReport): string {
   // registered -- a zero `threshold` count means "never closed" only if the gate
   // was configured to close.
   if (report.abstentionReasons !== undefined) {
-    lines.push(...abstentionReasonLines(report.abstentionReasons, report.memoryArmConfig));
+    lines.push(
+      ...abstentionReasonLines(report.abstentionReasons, report.memoryArmConfig, report.runs),
+    );
   }
   lines.push('');
   return lines.join('\n');
@@ -611,6 +643,7 @@ export function formatAblationReport(report: AblationReport): string {
 function abstentionReasonLines(
   reasons: AbstentionReasons,
   config?: MemoryArmConfig | undefined,
+  runs?: number | undefined,
 ): string[] {
   const total = reasons.empty + reasons.threshold + reasons.llm + reasons.answered;
   const share = (n: number): string =>
@@ -632,10 +665,34 @@ function abstentionReasonLines(
     `| \`llm\` | ${reasons.llm} | ${share(reasons.llm)} | model (declined) |`,
     `| \`answered\` | ${reasons.answered} | ${share(reasons.answered)} | model (answered) |`,
     '',
-    `- Total: **${total}** questions through the abstention path`,
+    // The counting unit is stated because getting it wrong is not hypothetical.
+    // `CortexMemory` tallies CALLS on an instance the arm reuses across every
+    // repetition, so this total is `questions x runs`. The first version of this
+    // line called it "questions through the abstention path", which was false by a
+    // factor of `runs` whenever `runs > 1` -- and §12.5 is exactly that case: 30
+    // `ABS` questions, `runs = 4`, a census total of `120`, and a capability table
+    // saying `30`, with nothing in the document reconciling them.
+    `- Total: **${total}** calls through the abstention path`,
+  ];
+
+  // The divisor, published rather than applied. Deriving it from `questionCount`
+  // would assert that every question was asked exactly `runs` times, which the
+  // census cannot confirm and which an interrupted run falsifies. Stating the
+  // configured count lets a reader divide and see what they divided by.
+  if (runs !== undefined && runs > 1) {
+    lines.push(
+      `- Accumulated over **${runs} runs** of ${total / runs === Math.floor(total / runs) ? `${total / runs}` : `~${(total / runs).toFixed(1)}`} ` +
+        'questions each, because the arm reuses one feature instance across repetitions',
+      `- Per-run counts, comparable against the capability table above: \`empty\` ${reasons.empty / runs}, ` +
+        `\`threshold\` ${reasons.threshold / runs}, \`llm\` ${reasons.llm / runs}, ` +
+        `\`answered\` ${reasons.answered / runs}`,
+    );
+  }
+
+  lines.push(
     `- Machine-derived share (\`empty\` + \`threshold\`): **${share(machineDerived)}**`,
     `- Model-side share (\`llm\`): **${share(reasons.llm)}**`,
-  ];
+  );
 
   const armed = config !== undefined && config.retrievalThreshold > 0;
   if (armed && reasons.threshold === 0) {

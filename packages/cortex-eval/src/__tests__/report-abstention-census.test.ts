@@ -83,6 +83,7 @@ function paired(total: number): PerCapabilityPairedStats {
 function persistedCensusReport(
   census: AbstentionReasons,
   retrievalThreshold = 0.25,
+  runs: number = FIXTURE_RUNS,
 ): AblationReport & { abstentionReasons: unknown } {
   const ablation: AblationResult = {
     feature: 'cortex-memory',
@@ -123,9 +124,20 @@ function persistedCensusReport(
       confidenceSignal: 'none',
       promptContract: 'abstention',
     },
+    runs,
     abstentionReasons: census,
   };
 }
+
+/**
+ * Runs the fixture was accumulated over.
+ *
+ * `4` is the arm's dispatched default and the value §12.5 ran with. It matters to
+ * the census assertions because the tally counts CALLS: `30` questions x `4` runs
+ * is the `120` the artifact published. A fixture that defaulted to `1` would make
+ * every multi-run assertion vacuous.
+ */
+const FIXTURE_RUNS = 4;
 
 describe('the abstention census survives into the rendered report', () => {
   it('renders the census table from the report object alone', () => {
@@ -233,7 +245,7 @@ describe('the abstention census survives into the rendered report', () => {
     expect(md).toContain('Abstention reasons');
     expect(md).toContain('0.00%');
     expect(md).not.toContain('NaN');
-    expect(md).toContain('Total: **0**');
+    expect(md).toContain('Total: **0** calls');
   });
 
   it('keeps the census below the ablation tables, since it explains them', () => {
@@ -247,5 +259,70 @@ describe('the abstention census survives into the rendered report', () => {
     const md = formatAblationReport(report);
 
     expect(md.indexOf('## Ablation')).toBeLessThan(md.indexOf('Abstention reasons'));
+  });
+});
+
+describe('the census counts CALLS, and the report must not call them questions', () => {
+  /**
+   * The defect this block closes, found by reading the §12.5 artifact against the
+   * code that produced it.
+   *
+   * `CortexMemory.#reasons` is an instance-level accumulator: it counts every call
+   * to `answerAbstention`. The arm reuses ONE instance across `runs` repetitions,
+   * so the tally is `questions x runs`, not `questions`. §12.5 dispatched with
+   * `ablation_runs = 4` over a dataset whose `ABS` capability holds 30 questions
+   * and the census reported **120** -- exactly `30 x 4`.
+   *
+   * The product-side semantics are correct and stay: a memory instance asked N
+   * times should count N. What was wrong is the RENDERER, which labelled the total
+   * "questions through the abstention path". In a multi-run arm that label is a
+   * false statement about the artifact -- the same class as §10.10, where the
+   * artifact could not contradict a wrong reading.
+   *
+   * The fix is not to divide. Dividing would need the renderer to know that every
+   * question was asked exactly `runs` times, which the census cannot verify and
+   * which stops being true the moment a run is interrupted. The fix is to name
+   * what the number is and to publish the divisor beside it, so a reader can do
+   * the division and can see which quantity each figure belongs to.
+   */
+
+  it('does not claim the census total is a question count', () => {
+    const report = JSON.parse(
+      JSON.stringify(persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 })),
+    ) as AblationReport;
+    const md = formatAblationReport(report);
+
+    expect(md).not.toContain('questions through the abstention path');
+  });
+
+  it('says the total is a call count, and names the runs it was accumulated over', () => {
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    expect(md).toMatch(/call/i);
+    expect(md).toMatch(/run/i);
+  });
+
+  it('reports the per-run figure so a reader can compare it against the capability table', () => {
+    // 30 ABS questions x 4 runs = the 120 the §12.5 artifact published. Dividing
+    // by the run count recovers the 30 that `perCapability.ABS.total` also says,
+    // and THAT agreement is what makes the census checkable against the tables
+    // rendered above it. Without the divisor a reader has two numbers (120 and 30)
+    // describing one thing and no way to reconcile them.
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('30');
+  });
+
+  it('states no per-run breakdown when the run count is one', () => {
+    // The control. With `runs = 1` the two quantities coincide, so a per-run block
+    // would restate every row of the table above it -- noise dressed as a caveat.
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 30, answered: 0 }, 0.25, 1);
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('Abstention reasons');
+    expect(md).toMatch(/\|\s*`?llm`?\s*\|\s*30\s*\|/);
+    expect(md).not.toContain('Accumulated over');
   });
 });
