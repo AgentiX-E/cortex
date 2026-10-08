@@ -20,8 +20,16 @@ section 60 records one layer down.
 label. Both facts are boundaries: a classifier that read the first line would
 call a deliberating model a bare responder, and a classifier that treated
 `Answer: X` as prose would lose the exact case `stripLabel` exists for. The tests
-below pin both, plus the two null states, which are distinct findings rather than
-one.
+below pin both.
+
+## Why the three absent states are tested
+
+`QuestionRecord.rawOutput` is declared `string | null | undefined`, and the three
+mean different things: `undefined` is a recording gap, `null` is a model that was
+not consulted, a string is what was captured. The first draft of the tool used
+`dict.get`, which maps a missing key and a JSON `null` to one value, and the tool
+would have reported a capture failure as reader behaviour. That is section 61's
+own defect class reappearing in the reader, so it is pinned here.
 
 ## Fixtures
 
@@ -32,6 +40,7 @@ fixtures must be assembled because they ARE the hazard.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -42,12 +51,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / 'tools' / 'classify-raw-outputs.py'
 
-sys.path.insert(0, str(REPO / 'tools'))
-
 
 def _load_module():
-    import importlib.util
-
     spec = importlib.util.spec_from_file_location('classify_raw', TOOL)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -55,7 +60,9 @@ def _load_module():
     return module
 
 
-classify = _load_module().classify
+_MODULE = _load_module()
+classify = _MODULE.classify
+MISSING = _MODULE.MISSING
 SUM = 'INSUFFICIENT_EVIDENCE'
 
 
@@ -115,11 +122,23 @@ class TestTheBoundariesParseAnswerUses:
         assert classify(raw) == 'labelled'
 
 
-class TestTheNullStatesAreDistinct:
-    """A capture gap and an unexpected answer are different findings."""
+class TestTheThreeAbsentStatesAreDistinct:
+    """A recording gap, a machine abstention, and an unexpected answer differ.
 
-    def test_a_null_raw_output_is_absent_not_other(self) -> None:
-        assert classify(None) == 'absent'
+    `QuestionRecord` declares `rawOutput?: string | null`, and section 61's own
+    docstring states the distinction: `undefined` is "nobody captured", `null` is
+    "the model was not consulted". Collapsing them is how a capture failure reads
+    as a change in model behaviour.
+    """
+
+    def test_a_missing_key_is_not_captured(self) -> None:
+        assert classify(MISSING) == 'not-captured'
+
+    def test_a_null_is_not_consulted(self) -> None:
+        assert classify(None) == 'not-consulted'
+
+    def test_the_two_are_different_buckets(self) -> None:
+        assert classify(MISSING) != classify(None)
 
     def test_an_empty_string_is_its_own_bucket(self) -> None:
         assert classify('') == 'empty'
@@ -139,6 +158,10 @@ class TestTheNullStatesAreDistinct:
         inflate the abstention count it is supposed to explain.
         """
         assert classify('Answer: Paris') == 'other'
+
+    def test_a_non_string_payload_is_named_rather_than_crashing(self) -> None:
+        """A malformed roster should be visible in the table, not a traceback."""
+        assert classify(42) == 'not-a-string'
 
 
 class TestTheRosterIsRead:
@@ -161,7 +184,7 @@ class TestTheRosterIsRead:
         path = self._report(
             tmp_path,
             'questions',
-            [{'dataset': 'MR', 'id': 'q1', 'rawOutput': SUM}],
+            [{'capability': 'MR', 'questionId': 'q1', 'rawOutput': SUM}],
         )
         r = self._run(path)
         assert r.returncode == 0, r.stderr
@@ -173,11 +196,29 @@ class TestTheRosterIsRead:
         path = self._report(
             tmp_path,
             'questionRecords',
-            [{'dataset': 'TR', 'id': 'q2', 'rawOutput': None}],
+            [{'capability': 'TR', 'questionId': 'q2', 'rawOutput': None}],
         )
         r = self._run(path)
         assert r.returncode == 0, r.stderr
-        assert 'absent' in r.stdout
+        assert 'not-consulted' in r.stdout
+
+    def test_a_missing_raw_output_key_is_reported_as_not_captured(self, tmp_path: Path) -> None:
+        """This is the assertion the first draft of the tool would have failed.
+
+        `dict.get('rawOutput')` returns `None` for an absent key, so a roster
+        whose capture never ran would have reported every question as a machine
+        abstention -- a full, plausible table describing a run that did not
+        happen.
+        """
+        path = self._report(
+            tmp_path,
+            'questions',
+            [{'capability': 'MR', 'questionId': 'q3'}],
+        )
+        r = self._run(path)
+        assert r.returncode == 0, r.stderr
+        assert 'not-captured' in r.stdout
+        assert 'not-consulted' not in r.stdout
 
     def test_a_report_with_no_roster_is_an_error_not_a_zero(self, tmp_path: Path) -> None:
         """exit 2, never a silent zero: an empty roster and a missing one differ."""
@@ -187,16 +228,16 @@ class TestTheRosterIsRead:
         assert r.returncode == 2
         assert 'no per-question roster' in r.stderr
 
-    def test_the_dataset_filter_excludes_the_others(self, tmp_path: Path) -> None:
+    def test_the_capability_filter_excludes_the_others(self, tmp_path: Path) -> None:
         path = self._report(
             tmp_path,
             'questions',
             [
-                {'dataset': 'MR', 'id': 'a', 'rawOutput': SUM},
-                {'dataset': 'CF', 'id': 'b', 'rawOutput': SUM},
+                {'capability': 'MR', 'questionId': 'a', 'rawOutput': SUM},
+                {'capability': 'CF', 'questionId': 'b', 'rawOutput': SUM},
             ],
         )
-        r = self._run(path, '--dataset', 'MR')
+        r = self._run(path, '--capability', 'MR')
         assert r.returncode == 0, r.stderr
         assert 'MR: 1 question(s)' in r.stdout
         assert 'CF: 1 question(s)' not in r.stdout
@@ -204,3 +245,14 @@ class TestTheRosterIsRead:
     def test_a_missing_file_is_an_error(self, tmp_path: Path) -> None:
         r = self._run(tmp_path / 'nope.json')
         assert r.returncode == 2
+
+    def test_the_per_question_detail_names_the_question_id(self, tmp_path: Path) -> None:
+        """`questionId`, not `id`: a wrong key would print `?` for every row and
+        the table would still look complete."""
+        path = self._report(
+            tmp_path,
+            'questions',
+            [{'capability': 'MR', 'questionId': '6a1b2c3d', 'rawOutput': SUM}],
+        )
+        r = self._run(path)
+        assert '6a1b2c3d' in r.stdout

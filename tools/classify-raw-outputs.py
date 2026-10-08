@@ -57,21 +57,33 @@ SENTINEL = 'insufficient_evidence'
 LABEL = re.compile(r'^answer\s*:\s*', re.IGNORECASE)
 
 
-def classify(raw: str | None) -> str:
-    """One of `bare`, `labelled`, `prose-then-token`, `other`, `absent`.
+def classify(raw: str | None | object) -> str:
+    """One of `bare`, `labelled`, `prose-then-token`, `other`, `absent`, `empty`.
 
     ## Why the buckets are what they are
 
-    `absent` is separated from `other` on purpose. A `null` rawOutput means the
-    capture did not run or the arm had no model -- a measurement gap. `other`
-    means a text was captured and does not end in the sentinel at all, which is a
+    `absent` is separated from `other` on purpose, and it is reached only for an
+    explicit `None`. A `null` rawOutput is a real statement -- the model was not
+    consulted, which is what a machine-derived abstention looks like. `other`
+    means a text WAS captured and does not end in the sentinel at all, which is a
     different finding: the model declined in words the parser does not know.
 
     Merging them would let a broken capture read as "the model answered
     differently", which is the substitution section 60 was written to prevent.
+
+    `MISSING` is the third state and it is not `absent`. `QuestionRecord` declares
+    `rawOutput?: string | null`, and `undefined` means nobody captured anything for
+    that question while `null` means the model was not consulted. The record
+    documents that distinction one field up for `answer`, and a classifier that
+    collapsed it would describe a recording gap as reader behaviour -- the exact
+    error section 61 was written to remove.
     """
+    if raw is MISSING:
+        return 'not-captured'
     if raw is None:
-        return 'absent'
+        return 'not-consulted'
+    if not isinstance(raw, str):
+        return 'not-a-string'
     lines = [line.strip() for line in raw.split('\n') if line.strip()]
     if not lines:
         return 'empty'
@@ -89,6 +101,16 @@ def classify(raw: str | None) -> str:
     # line is a secondary distinction, and it is kept because the repair differs
     # (stripLabel vs. instruction text).
     return 'prose-labelled' if stripped != last else 'prose-then-token'
+
+
+# The sentinel for "the key is absent", which is neither `None` nor a string.
+#
+# A module-level singleton rather than a keyword argument, because the call sites
+# need to distinguish three states and a default cannot be one of them. `dict.get`
+# with a two-argument form cannot express this at all: it maps both a missing key
+# and a JSON `null` to the same default, which is how a recording gap becomes a
+# reader behaviour in the first place.
+MISSING = object()
 
 
 def questions_of(report: dict) -> list[dict]:
@@ -112,21 +134,33 @@ def summarise(path: Path, dataset: str | None) -> int:
         print(f'{path}: no per-question roster found. Keys: {sorted(report)}', file=sys.stderr)
         return 2
 
-    selected = [q for q in questions if dataset is None or q.get('dataset') == dataset]
+    # `capability`, not `dataset`. The first draft of this tool grouped by a
+    # `dataset` key that `QuestionRecord` does not have, and every record would
+    # have landed in one `?` bucket while the tool reported success -- a plausible
+    # table computed from a field that does not exist. Section 61's own defect
+    # class, one layer up in the reading tool.
+    selected = [q for q in questions if dataset is None or q.get('capability') == dataset]
     if dataset is not None:
-        print(f'dataset filter: {dataset}')
+        print(f'capability filter: {dataset}')
 
     by_dataset: dict[str, Counter[str]] = {}
     for q in selected:
-        ds = str(q.get('dataset', '?'))
-        by_dataset.setdefault(ds, Counter())[classify(q.get('rawOutput'))] += 1
+        ds = str(q.get('capability', '?'))
+        # `.get` would map a missing key and a JSON `null` to the same value, and
+        # those are the two states the record declares separately. An explicit
+        # membership test keeps them apart.
+        raw = q['rawOutput'] if 'rawOutput' in q else MISSING
+        by_dataset.setdefault(ds, Counter())[classify(raw)] += 1
 
+    buckets = (
+        'bare', 'labelled', 'prose-then-token', 'prose-labelled', 'other',
+        'empty', 'not-captured', 'not-consulted', 'not-a-string',
+    )
     for ds in sorted(by_dataset):
         counts = by_dataset[ds]
         total = sum(counts.values())
         print(f'\n{ds}: {total} question(s)')
-        for bucket in ('bare', 'labelled', 'prose-then-token', 'prose-labelled',
-                       'other', 'empty', 'absent'):
+        for bucket in buckets:
             n = counts.get(bucket, 0)
             if n:
                 print(f'  {bucket:18} {n:4}  {n / total:6.2%}')
@@ -134,16 +168,19 @@ def summarise(path: Path, dataset: str | None) -> int:
     # The per-question detail is what makes this a measurement rather than a
     # count: the next intervention depends on WHICH questions landed where, and a
     # bucket total cannot supply that.
-    print('\nper-question detail (first 20 per dataset):')
+    print('\nper-question detail (first 20 per capability):')
     seen: Counter[str] = Counter()
     for q in selected:
-        ds = str(q.get('dataset', '?'))
+        ds = str(q.get('capability', '?'))
         seen[ds] += 1
         if seen[ds] > 20:
             continue
-        raw = q.get('rawOutput')
-        preview = '' if raw is None else raw.replace('\n', '\\n')[:90]
-        print(f'  {ds:3} {str(q.get("id", "?"))[:28]:30} {classify(raw):18} {preview}')
+        raw = q['rawOutput'] if 'rawOutput' in q else MISSING
+        preview = '' if not isinstance(raw, str) else raw.replace('\n', '\\n')[:90]
+        print(
+            f'  {ds:3} {str(q.get("questionId", "?"))[:28]:30} '
+            f'{classify(raw):18} {preview}'
+        )
     return 0
 
 
@@ -153,12 +190,12 @@ def main(argv: list[str]) -> int:
         description='Classify the raw model output behind each roster abstention.',
     )
     parser.add_argument('report', type=Path)
-    parser.add_argument('--dataset', help='restrict to one dataset code (e.g. MR, TR, CF)')
+    parser.add_argument('--capability', help='restrict to one capability code (e.g. MR, TR, ABS)')
     args = parser.parse_args(argv[1:])
     if not args.report.is_file():
         print(f'no such report: {args.report}', file=sys.stderr)
         return 2
-    return summarise(args.report, args.dataset)
+    return summarise(args.report, args.capability)
 
 
 if __name__ == '__main__':
