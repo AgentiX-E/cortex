@@ -72,6 +72,26 @@ export type QuestionRecord = {
    * behaviour.
    */
   readonly answer?: string | number | null;
+  /**
+   * The system's raw model output for this question, before it was parsed.
+   *
+   * ## Why `answer` above cannot stand in for it
+   *
+   * `answer` is the parsed value, and `Answer` is `string | null`. `parseAnswer`
+   * recognises a decline from the **last non-empty line only**, after stripping
+   * a label like `Answer:` and comparing case-insensitively, so the bare token,
+   * a labelled token and an explanation followed by the token all arrive as
+   * `null`. Dispatch `37792539133` carried the first real roster built from this
+   * shape and 115 of its 120 records read `null`; the 29 baseline-correct
+   * questions the read exists to explain were three behaviours collapsed into
+   * one value.
+   *
+   * `undefined` means nobody captured raw output for this question, `null` means
+   * the model was not consulted (a machine-derived abstention) or the system
+   * exposes none. The two are different statements, which is the same
+   * distinction `answer` above draws one field earlier.
+   */
+  readonly rawOutput?: string | null;
   /** The scorer's verdict for this question. */
   readonly correct: boolean;
   /**
@@ -102,6 +122,8 @@ export type QuestionRecordInput = {
   readonly capability: string;
   readonly groundTruth?: string | number | null;
   readonly answer?: string | number | null;
+  /** The system's raw model output, when a caller captured it. */
+  readonly rawOutput?: string | null;
   /** The caller's summary of the verdict; overridden by `correctness` if given. */
   readonly correct: boolean;
   readonly grounded: boolean;
@@ -170,6 +192,7 @@ export function buildQuestionRecords(
       capability: input.capability,
       ...(input.groundTruth === undefined ? {} : { groundTruth: input.groundTruth }),
       ...(input.answer === undefined ? {} : { answer: input.answer }),
+      ...(input.rawOutput === undefined ? {} : { rawOutput: input.rawOutput }),
       correct: correctness === undefined ? input.correct : correctness[i]!,
       grounded: input.grounded,
       turns: toTurns(input.retrieved),

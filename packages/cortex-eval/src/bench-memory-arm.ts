@@ -797,6 +797,19 @@ function buildArmRoster(
   featureConfig: FeatureConfig | undefined,
 ): readonly QuestionRecord[] {
   const answers = ablation.featureAnswers!;
+  // Captured per question inside the answer loop and carried alongside the
+  // answers. Reading `lastRawOutput()` here instead would report the LAST
+  // question's text for every record, because the accessor holds one slot and
+  // this runs after the whole pass -- the defect the capture hook exists to
+  // prevent.
+  //
+  // A `!` and not a `?? []` guard, for the reason the answer read above states:
+  // this arm is handed an `AblationResult` by the chain it called itself, and
+  // `runAblation` requests the capture on the line that evaluates the feature, so
+  // the vector is present on every path that reaches this function. A guard would
+  // be dead code that reads as a safety net and would file a capture that failed
+  // as a question whose model was never consulted.
+  const rawOutputs = ablation.featureRawOutputs!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -804,6 +817,7 @@ function buildArmRoster(
       capability: question.capability,
       groundTruth: question.expected,
       answer: answers[i]!,
+      rawOutput: rawOutputs[i]!,
       correct: ablation.featureCorrect[i]!,
       grounded: false,
       retrieved: '',

@@ -66,15 +66,75 @@ export type BenchmarkProgress = {
  */
 export type BenchmarkProgressCallback = (progress: BenchmarkProgress) => void;
 
+/**
+ * Optional per-question sink for the system's raw model output.
+ *
+ * ## Why this exists, and why it is a hook rather than a return field
+ *
+ * `parseAnswer` maps three distinct declines onto one value, because `Answer` is
+ * `string | null` and a decline is recognised from the last non-empty line only.
+ * Dispatch `37792539133` carried the first real roster and 115 of its 120
+ * records read `null`, so the text that names *which* decline happened was
+ * unrecoverable. `CortexMemory.lastRawOutput()` retains that text, one slot.
+ *
+ * A slot cannot build a roster: the roster is assembled after every question has
+ * been answered, and by then the slot holds only the last question's reply,
+ * which would attribute one question's wording to all of them. The capture has
+ * to happen where the answer is produced, so it happens here.
+ *
+ * ## Why not a member of `MemorySystem`
+ *
+ * `MemorySystem` is the injection contract, and `memory-system-conformance.test.ts`
+ * requires that a bare `{ name, answer }` object receive every question. A raw
+ * output is a capability only a value-gated system can offer, so it is read as
+ * an optional member -- the same treatment `answerSessions` and the abstention
+ * census get -- rather than added to the contract every system must satisfy.
+ *
+ * ## Why the hook is optional and its absence is not a degraded mode
+ *
+ * `runBenchmark` returns `Answer[]` and many call sites depend on that, so the
+ * hook is a trailing optional parameter rather than a return-type change. A run
+ * that omits it behaves exactly as before; nothing about the answers or the
+ * routing consults the hook.
+ *
+ * A system that does not expose `lastRawOutput` reports `null` for every
+ * question. That is the honest value: a machine-derived abstention never reaches
+ * the model, so there is no text, and `''` would claim a blank answer instead.
+ *
+ * A **throwing** accessor is deliberately not caught, which is the opposite of
+ * how `abstentionReasonsOf` treats one. There the endpoint is already measured
+ * and discarding a census beats discarding the arm; here the capture *is* the
+ * measurement, so a silent failure would be filed as "this system has no raw
+ * output" and be indistinguishable from a normal machine-derived abstention.
+ *
+ * Not exported. The only caller is this module's own loop, and
+ * `evaluateWithScorerDetailed` exposes the capture as a boolean rather than as a
+ * sink, so a public type would be an export nothing outside could use -- the
+ * `1 NEW orphan(s)` the census gate reports. `BenchmarkProgressCallback` above is
+ * exported because two other modules name it in their option types; this one has
+ * no such caller.
+ */
+type BenchmarkRawOutputCallback = (raw: string | null) => void;
+
 /** Run a system over every question, preserving question order. */
 export async function runBenchmark(
   dataset: BenchmarkDataset,
   system: MemorySystem,
   progress?: BenchmarkProgressCallback,
   run = 0,
+  onRawOutput?: BenchmarkRawOutputCallback,
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
   const total = dataset.questions.length;
+  // Resolved once rather than per question: the member either exists or it does
+  // not, and a lookup per question would call `in` 500 times to learn the same
+  // fact. The `bind` is what keeps `this` intact for the accessor.
+  const rawOutput =
+    onRawOutput === undefined
+      ? undefined
+      : 'lastRawOutput' in system
+        ? (system as { lastRawOutput: () => string | null }).lastRawOutput.bind(system)
+        : undefined;
   for (let index = 0; index < dataset.questions.length; index++) {
     const q = dataset.questions[index]!;
     // Before the answer call, so a throw inside it cannot skip the question it
@@ -125,6 +185,15 @@ export async function runBenchmark(
     } else {
       answers.push(await system.answer(q.question, q.context, q.sessions));
     }
+    // Captured HERE, at the end of the iteration that produced the answer, and
+    // not after the loop. Reading the accessor once at the end would report the
+    // last question's text for every question, which is the defect the capture
+    // exists to prevent. It is also after the `push` rather than inside each
+    // branch: seven branches is seven chances to forget one, and the routing
+    // above is not what this hook measures.
+    if (onRawOutput !== undefined) {
+      onRawOutput(rawOutput === undefined ? null : rawOutput());
+    }
   }
   return answers;
 }
@@ -145,6 +214,11 @@ export async function evaluateWithScorer(
  * Run a system and evaluate with an arbitrary scorer, returning per-question
  * correctness alongside the aggregate metrics. The correctness vector enables
  * paired tests (McNemar) that compare two systems on the SAME questions.
+ *
+ * `captureRawOutput` turns on the raw-output hook. It is off by default because
+ * the capture is opt-in: a caller that does not ask for it gets a
+ * `ScoredEvaluation` with no `rawOutputs` field rather than with an empty one,
+ * so "not requested" stays distinguishable from "no model was consulted".
  */
 export async function evaluateWithScorerDetailed(
   dataset: BenchmarkDataset,
@@ -152,7 +226,15 @@ export async function evaluateWithScorerDetailed(
   scorer: AnswerScorer,
   progress?: BenchmarkProgressCallback,
   run = 0,
+  captureRawOutput = false,
 ): Promise<ScoredEvaluation> {
-  const answers = await runBenchmark(dataset, system, progress, run);
-  return scoreEvaluation(dataset, answers, scorer);
+  const rawOutputs: (string | null)[] = [];
+  const answers = await runBenchmark(
+    dataset,
+    system,
+    progress,
+    run,
+    captureRawOutput ? (raw) => rawOutputs.push(raw) : undefined,
+  );
+  return scoreEvaluation(dataset, answers, scorer, captureRawOutput ? rawOutputs : undefined);
 }

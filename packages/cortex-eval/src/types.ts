@@ -263,6 +263,31 @@ export type AblationResult = {
    * actually produced, and requires them to agree with this vector.
    */
   featureAnswers?: Answer[];
+  /**
+   * The feature system's raw model output per question, in dataset question order.
+   *
+   * ## Why `featureAnswers` above is not enough to read
+   *
+   * `Answer` is `string | null`, and a decline is recognised from the last
+   * non-empty line only after a label like `Answer:` is stripped. So the bare
+   * token, a labelled token, and an explanation followed by the token all arrive
+   * as `null`. Dispatch `37792539133` is the measurement of what that costs: 115
+   * of its 120 roster records read `null`, and the 29 questions it exists to
+   * explain -- 13 baseline-correct MR and 16 TR -- cannot be told apart. The
+   * text that would tell them apart existed in the process and died at
+   * `parseAnswer`'s return.
+   *
+   * `null` here means the model was not consulted (a machine-derived abstention)
+   * or the feature exposes no raw output. Both are "no text", and neither is the
+   * empty string, which would claim the model replied with nothing.
+   *
+   * Optional for the same reason `featureAnswers` is: `AblationResult` is a
+   * report shape that tests build by hand from a correctness vector, and a
+   * required field would make every such fixture invent raw text to satisfy the
+   * type. The measurement's guarantee is asserted where it can be -- the arm's
+   * suite requires the records to be aligned with the answers they explain.
+   */
+  featureRawOutputs?: (string | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

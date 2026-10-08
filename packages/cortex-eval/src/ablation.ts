@@ -102,6 +102,12 @@ export async function runAblation(
     scorer,
     options.onProgress,
     0,
+    // The feature side is the one whose model output explains a loss, and the
+    // baseline is the reference pipeline whose abstention path is a different
+    // design. Capturing only this side keeps the artifact's raw-output vector
+    // aligned with `featureAnswers` and `featureCorrect`, which are the vectors
+    // the roster pairs it with.
+    true,
   );
 
   let baselineCorrectFeatureIncorrect = 0;
@@ -214,6 +220,17 @@ export async function runAblation(
     featureMetrics: featFirst.metrics,
     featureCorrect: featFirst.correct,
     featureAnswers: featFirst.answers,
+    // An assertion, not a fallback. This function is the only producer of an
+    // `AblationResult` and it requests the capture unconditionally on the line
+    // that evaluates the feature, so `rawOutputs` is present on every path that
+    // reaches here. A `=== undefined` branch would be unreachable code that reads
+    // as a safety net, which is what §57.6 removed one field over, and it would
+    // also make the raw vector silently absent for a run that asked for it --
+    // the artifact would then describe the capture as unavailable rather than as
+    // failed. The field stays optional on the type because `AblationResult` is a
+    // report shape that tests build by hand, which is the reason
+    // `featureAnswers` above is optional too.
+    featureRawOutputs: featFirst.rawOutputs!,
     perCapability,
   };
 }

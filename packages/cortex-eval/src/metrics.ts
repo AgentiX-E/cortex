@@ -128,6 +128,30 @@ export type ScoredEvaluation = {
    * callers keep the exact shape they were written against.
    */
   answers: Answer[];
+  /**
+   * The system's raw model output per question, aligned with `dataset.questions`.
+   *
+   * `null` means the model was not consulted for that question (a machine-derived
+   * abstention) or the system exposes no raw output at all. Either way there is no
+   * text; `''` would claim the model replied with nothing, which is a different
+   * statement and one this field must not make.
+   *
+   * ## Why the parsed `answers` above are not enough
+   *
+   * `Answer` is `string | null` and `parseAnswer` recognises a decline from the
+   * last non-empty line only, after stripping a label like `Answer:` and comparing
+   * case-insensitively. The bare token, a labelled token, and an explanation
+   * followed by the token therefore all arrive as `null`, and dispatch
+   * `37792539133` is the measurement: 115 of its 120 roster records read `null`,
+   * so which of the three shapes produced the 29 baseline-correct losses was
+   * unrecoverable. A boolean cannot be read for language and neither can the
+   * summary of the text it was derived from.
+   *
+   * Optional because a caller that does not ask for a capture has nothing to put
+   * here, and manufacturing an empty vector would make "not requested" and "no
+   * model was consulted" the same reading.
+   */
+  rawOutputs?: (string | null)[];
 };
 
 /**
@@ -280,6 +304,7 @@ export async function scoreEvaluation(
   dataset: BenchmarkDataset,
   answers: Answer[],
   scorer: AnswerScorer,
+  rawOutputs?: (string | null)[],
 ): Promise<ScoredEvaluation> {
   if (dataset.questions.length !== answers.length) {
     throw new Error(
@@ -343,6 +368,7 @@ export async function scoreEvaluation(
     },
     correct: correctPerQuestion,
     answers,
+    ...(rawOutputs === undefined ? {} : { rawOutputs }),
   };
 }
 
