@@ -244,6 +244,25 @@ export type AblationResult = {
   featureMetrics: Metrics;
   /** Per-question correctness of the feature system, in dataset question order. */
   featureCorrect: boolean[];
+  /**
+   * The feature system's answers, in dataset question order, when the run recorded them.
+   *
+   * `featureCorrect` says whether each answer was graded right; it does not say
+   * what the answer was. Every investigation that needs to read the model's
+   * actual output -- §55.4's "what do the 30 abstentions have in common?" above
+   * all -- was blocked on that gap: the vector recorded the verdict and the
+   * output itself was dropped in `scoreEvaluation` one layer below this result.
+   * An abstention appears here as `null`, which is a value and not a hole.
+   *
+   * Optional because `AblationResult` is a report shape that a dozen tests
+   * construct by hand from a correctness vector alone, and a required field would
+   * force every one of them to invent an answer list to satisfy the type --
+   * putting fabricated data into fixtures to satisfy a compiler. The guarantee
+   * that belongs to the measurement is asserted where it can be: the arm's suite
+   * requires the records it is built from to carry the answer each system
+   * actually produced, and requires them to agree with this vector.
+   */
+  featureAnswers?: Answer[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

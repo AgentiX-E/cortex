@@ -36,6 +36,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { runCortexMemoryArm } from '../bench-memory-arm.js';
+
 import type { MemoryArmConfig } from '../report.js';
 import { exactMatchScorer } from '../metrics.js';
 import type { Answer, BenchmarkDataset, MemorySystem } from '../types.js';
@@ -80,7 +81,13 @@ function run(feature: MemorySystem, gate: MemoryArmConfig = GATE) {
   });
 }
 
-/** A system that exposes the census capability with the given payload. */
+/**
+ * The docstring that was on `systemWithCensus`, restored with the function below.
+ *
+ * `MemorySystem`'s conformant minimum is `{ name, answer }`, so a system that
+ * cannot attribute its abstentions must still be gradable -- which is why the
+ * census is read as an optional capability rather than a required member.
+ */
 function systemWithCensus(payload: unknown, impl?: () => unknown): MemorySystem {
   return {
     name: 'cortex-memory',
@@ -226,5 +233,106 @@ describe('the arm records the feature side abstention census', () => {
       llm: 1,
       answered: 0,
     });
+  });
+});
+
+describe('the arm carries per-question records into the artifact', () => {
+  /**
+   * The field three downstream readers were blocked on, and it was never filled.
+   *
+   * `AblationReport.questions` is a declared, documented optional field whose own
+   * docstring names its consumers -- `tools/read-b7-criterion.mjs` cannot apply the
+   * pre-registered criterion without it, `compareQuestionVectors` needs two aligned
+   * correctness vectors, and a reader asking WHICH questions moved needs the ids.
+   * None of them could run, because `bench-memory-arm.ts` never supplied the field.
+   *
+   * The value was already computed and then dropped one layer down:
+   * `evaluateWithScorerDetailed` returns `{ metrics, correct }` and discards the
+   * `answers` array `runBenchmark` produced. So the model's actual output for every
+   * question existed during the run and was thrown away before anything could record
+   * it -- the same shape as the `runs` defect, one layer lower.
+   *
+   * This matters to the current investigation specifically. §55.4 named reading the
+   * abstention outputs as the cheapest next step, and the §12.5 artifact has no
+   * `questions` field at all: 30 ABS questions declined and not one of the 30 outputs
+   * survives. The fix is what makes that step possible.
+   */
+
+  it('writes a per-question record for every graded question', async () => {
+    const result = await run(constantSystem('cortex-memory', 'one'));
+    expect(result.report.questions).toHaveLength(1);
+    expect(result.report.questions?.[0]?.questionId).toBe('q1');
+  });
+
+  it('records the answer the model actually produced, not just whether it scored', async () => {
+    // The distinction the whole field exists for. A `correct` boolean cannot be read
+    // for language, and the current question -- why did 30 ABS questions decline --
+    // is a question about the model's TEXT. A record without `answer` would leave the
+    // investigation exactly where it was.
+    const result = await run(constantSystem('cortex-memory', 'Lisbon'));
+    expect(result.report.questions?.[0]?.answer).toBe('Lisbon');
+  });
+
+  it('records an abstention as null rather than as a missing answer', async () => {
+    // `null` is "the system abstained"; `undefined` is "nobody recorded an answer".
+    // Conflating them reports a recording gap as reader behaviour, which the record
+    // type's own docstring singles out.
+    const result = await run(constantSystem('cortex-memory', null));
+    const record = result.report.questions?.[0];
+    expect(record?.answer).toBeNull();
+  });
+
+  it('records the question text and its gold, so a record is readable alone', async () => {
+    const result = await run(constantSystem('cortex-memory', 'one'));
+    const record = result.report.questions?.[0];
+    expect(record?.question).toBe('Question one?');
+    expect(record?.groundTruth).toBe('one');
+    expect(record?.capability).toBe('IE');
+  });
+
+  it('agrees with the correctness vector the paired tables were built from', async () => {
+    // The record list and `featureCorrect` describe one run, so a reader must not be
+    // able to find them disagreeing. This is the alignment failure `buildQuestionRecords`
+    // throws on, asserted at the artifact level where a reader would meet it.
+    const result = await run(constantSystem('cortex-memory', 'one'));
+    const records = result.report.questions ?? [];
+    expect(records.map((q) => q.correct)).toEqual(
+      result.report.ablation.featureCorrect.slice(0, records.length),
+    );
+  });
+
+  it('keeps an abstention a value, not a hole, in the record it writes', async () => {
+    // `null` is "the system abstained"; a missing `answer` is "nobody recorded
+    // one". The record type's docstring draws that line and the criterion has a
+    // branch for the first and none for the second, so an arm that wrote
+    // `undefined` for an abstention would report the model's behaviour as a
+    // recording gap -- inverting the finding a reader is looking for.
+    const result = await run(constantSystem('cortex-memory', null));
+    const record = result.report.questions?.[0];
+    expect('answer' in (record ?? {})).toBe(true);
+    expect(record?.answer).toBeNull();
+  });
+
+  it('records the gold question text and capability, so a record reads alone', async () => {
+    // A record has to be interpretable without the dataset: §20 recorded an A/B whose
+    // two arms differed by two questions and whose artifacts could not name them, and a
+    // roster that carried only ids would leave a reader exactly as stuck.
+    const result = await run(constantSystem('cortex-memory', 'one'));
+    const record = result.report.questions?.[0];
+    expect(record?.question).toBe('Question one?');
+    expect(record?.groundTruth).toBe('one');
+    expect(record?.capability).toBe('IE');
+  });
+
+  it('reports the evidence it did not collect as absent rather than as grounded', async () => {
+    // `grounded` is a property of the retrieval trace, and this arm collects none.
+    // `false` is the honest value and it is load-bearing: B7 excludes an ungrounded
+    // question before clustering, so a fabricated `true` would admit a question no
+    // trace supports into the criterion's target set. `turns` is empty for the same
+    // reason -- an empty split is a statement, and it is the true one here.
+    const result = await run(constantSystem('cortex-memory', 'one'));
+    const record = result.report.questions?.[0];
+    expect(record?.grounded).toBe(false);
+    expect(record?.turns).toEqual([]);
   });
 });

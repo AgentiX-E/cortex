@@ -107,6 +107,27 @@ export type ScoredEvaluation = {
   metrics: Metrics;
   /** Correctness of each answer, aligned with `dataset.questions`. */
   correct: boolean[];
+  /**
+   * The answers themselves, aligned with `dataset.questions`.
+   *
+   * ## Why these are returned and not discarded
+   *
+   * They were discarded, and the cost was measured. `AblationReport.questions` -- the
+   * per-question record field three downstream readers were blocked on -- was never
+   * populated by the cortex-memory arm, and the reason traced back here: this function
+   * scored the answers and returned only the booleans, so the model's actual output for
+   * every question existed during the run and was dropped before any caller could
+   * record it.
+   *
+   * A `correct` boolean cannot be read for language, and the question §55.4 left open
+   * is precisely a question about the model's text: 30 abstention questions declined,
+   * and not one of the 30 outputs survived into any artifact. A record of what a system
+   * said is the only thing that can answer it.
+   *
+   * Kept as a third field rather than folded into `correct` so the existing vector
+   * callers keep the exact shape they were written against.
+   */
+  answers: Answer[];
 };
 
 /**
@@ -321,6 +342,7 @@ export async function scoreEvaluation(
       perCapability,
     },
     correct: correctPerQuestion,
+    answers,
   };
 }
 

@@ -50,6 +50,7 @@ import type {
   AbstentionReasons as ReportAbstentionReasons,
   MemoryArmConfig,
 } from './report.js';
+import { buildQuestionRecords, type QuestionRecord } from './question-record.js';
 import { formatAblationReport, runAblationReport, type FeatureConfig } from './report.js';
 import type { AnswerScorer } from './metrics.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
@@ -59,7 +60,7 @@ import {
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
 } from './retrieval.js';
-import type { BenchmarkDataset, MemorySystem } from './types.js';
+import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
 export type CortexMemoryArmEnv = Readonly<Record<string, string | undefined>>;
@@ -708,11 +709,14 @@ export async function runCortexMemoryArm(
   // remember to feed it back into a render -- is the side channel this repository
   // has already removed twice.
   const census = abstentionReasonsOf(feature);
-  const reported: AblationReport =
-    census.abstentionReasons === undefined
-      ? report
-      : { ...report, abstentionReasons: census.abstentionReasons };
-
+  const questions = buildArmRoster(dataset, report.ablation, options.featureConfig);
+  const reported: AblationReport = {
+    ...report,
+    ...(census.abstentionReasons === undefined
+      ? {}
+      : { abstentionReasons: census.abstentionReasons }),
+    questions,
+  };
   return {
     report: reported,
     markdown: formatAblationReport(reported),
@@ -721,6 +725,92 @@ export async function runCortexMemoryArm(
     delta: report.ablation.delta,
     ...census,
   };
+}
+
+/**
+ * Build this arm's per-question roster from its own ablation result.
+ *
+ * ## Why the arm was the gap
+ *
+ * `AblationReport.questions` is a declared, documented field whose own docstring
+ * names three consumers -- `tools/read-b7-criterion.mjs` executes the
+ * pre-registered criterion with it, `compareQuestionVectors` needs two aligned
+ * correctness vectors, and a reader asking *which* questions moved needs the ids
+ * -- and §12.5's artifact had none of them. The arm never supplied it, and
+ * nothing beneath it could: `evaluateWithScorerDetailed` returned `{ metrics,
+ * correct }` and discarded the `answers` array `runBenchmark` produced, so the
+ * model's output for every question existed during the run and was thrown away
+ * before any record could be written. That is the `runs` defect's shape one layer
+ * lower, and it is what blocked §55.4's cheapest next step: 30 ABS questions were
+ * declined and not one of the 30 outputs survived.
+ *
+ * ## Why the records are built here and not in `runAblationReport`
+ *
+ * `questions` is a caller-supplied field by contract: it is absent when nobody
+ * supplies one, because `[]` would claim "this run graded zero questions" while
+ * absence says "nobody recorded a roster". `runEmbeddingBenchmark` depends on
+ * that -- it runs a system with no decision tracing and its own test requires the
+ * roster to stay absent rather than be fabricated from an answer vector. So the
+ * roster is assembled by the caller that can observe the answers, which is this
+ * arm, and it is assembled AFTER the ablation because `featureAnswers` is the
+ * ablation's own output.
+ *
+ * ## Why there is no absent-answer branch
+ *
+ * This arm is handed an `AblationResult` it produced itself, one line above, by
+ * `runAblation` over `runBenchmark` over `scoreEvaluation`. That chain pushes
+ * exactly one answer per dataset question and now returns them, so
+ * `featureAnswers` is present on every path this function can be reached by. A
+ * `?? []` or `if (answers === undefined)` guard here would be dead code that
+ * reads as a safety net, which is the shape `report-runner.test.ts` calls out by
+ * name: a fallback that can only fire on a misalignment would silently file an
+ * unaligned question as abstained. The absent case is the report BUILDER's
+ * contract, where it is exercised by every caller that supplies no roster, and it
+ * is asserted there (`report-json-roundtrip.test.ts`, `report-runner.test.ts`)
+ * rather than duplicated as an unreachable branch here.
+ *
+ * The read below is therefore an assertion, not a fallback: `featureAnswers` is
+ * required to be present because the code path that reaches this function always
+ * produces it, and a `!` states that rather than hiding it behind a default.
+ *
+ * ## What the records can and cannot say
+ *
+ * `answer` is read from the answer vector rather than from a decision trace,
+ * because the answer is what this arm can observe with certainty: it is the value
+ * the system returned and the value the scorer graded, so a record built from it
+ * cannot disagree with the paired tables rendered beside it. It is carried
+ * through verbatim -- `null` stays `null`, which is "the system abstained" and is
+ * the finding §55.4 exists to explain; it is never collapsed to a missing field,
+ * which would say "nobody recorded an answer" and report the model's behaviour as
+ * a recording gap.
+ *
+ * `grounded` and `turns` are the parts this arm genuinely cannot report. Grounding
+ * is a property of the retrieval trace and the turn split is derived from the
+ * text a reader was shown; this arm collects neither, so the records say `false`
+ * and carry no turns rather than guessing. B7 excludes an ungrounded question
+ * before clustering, which is the right outcome for a run that did not record its
+ * evidence -- a fabricated `true` would admit a question no trace supports.
+ */
+function buildArmRoster(
+  dataset: BenchmarkDataset,
+  ablation: AblationResult,
+  featureConfig: FeatureConfig | undefined,
+): readonly QuestionRecord[] {
+  const answers = ablation.featureAnswers!;
+  return buildQuestionRecords(
+    dataset.questions.map((question, i) => ({
+      questionId: question.id,
+      question: question.question,
+      capability: question.capability,
+      groundTruth: question.expected,
+      answer: answers[i]!,
+      correct: ablation.featureCorrect[i]!,
+      grounded: false,
+      retrieved: '',
+    })),
+    featureConfig,
+    ablation.featureCorrect,
+  );
 }
 
 /**

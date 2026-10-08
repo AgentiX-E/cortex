@@ -213,6 +213,7 @@ export async function runAblation(
     baselineMetrics: baseFirst.metrics,
     featureMetrics: featFirst.metrics,
     featureCorrect: featFirst.correct,
+    featureAnswers: featFirst.answers,
     perCapability,
   };
 }
