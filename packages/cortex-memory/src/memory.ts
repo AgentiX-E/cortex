@@ -30,7 +30,13 @@ import {
   clockAwareValueFunction,
   type AdmittedTurn,
 } from './admission.js';
-import { buildPrompt, buildSessionPrompt, type PromptContract } from './prompt.js';
+import {
+  RENDERING_BY_CONTRACT,
+  buildPrompt,
+  buildSessionPrompt,
+  type EvidenceRendering,
+  type PromptContract,
+} from './prompt.js';
 import { parseAnswer } from './parse.js';
 import type { CortexMemoryOptions } from './types.js';
 
@@ -394,16 +400,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
     turns: AdmittedTurn[],
     contract: PromptContract,
   ): Promise<Answer> {
-    // The abstention route is the one §12.5's experiment moves, and it is the only
-    // route the override is allowed to touch. Applying it to every contract would
-    // change the prompts of routes the registration does not name, which would make
-    // the run a test of the rendering across all capabilities rather than of the
-    // abstention path's evidence presentation.
-    const resolved =
-      contract === 'abstention' && this.#options.promptContract !== undefined
-        ? this.#options.promptContract
-        : contract;
-    const prompt = buildPrompt(question, turns, resolved, this.#promptOptions());
+    // `contract` names this route's ASK and is not overridden. Overriding it here
+    // is what the first fix did, and §12.9 records why that was wrong: naming the
+    // abstention contract on the KU or flat route would replace their instruction
+    // block with one that tells the model to decline, which moves the ask and the
+    // evidence at once -- two variables in a run whose whole value is that it has
+    // one -- and on MR it would invite abstention on questions that must be
+    // answered. The rendering is resolved in `#promptOptions` instead, so every
+    // route keeps its own ask and only the evidence presentation moves.
+    const prompt = buildPrompt(question, turns, contract, this.#promptOptions());
     const raw = await this.#llm.complete(prompt);
     // Retained before the parse, not after: `parseAnswer` returns the summary
     // and the text it summarised is gone by then. See `#lastRawOutput`.
@@ -438,9 +443,37 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return parseAnswer(raw);
   }
 
-  #promptOptions(): { maxChars?: number } {
-    return this.#options.maxPromptChars === undefined
-      ? {}
-      : { maxChars: this.#options.maxPromptChars };
+  /**
+   * The prompt options every route shares, including the resolved rendering.
+   *
+   * The run names a **prompt contract** -- that is the published knob, and its
+   * name is what prior artifacts and the arm's CLI carry. What the run is
+   * actually varying is the **evidence rendering**, and this is the single place
+   * the former is translated into the latter. Resolving it here rather than at
+   * each call site is what makes the reachable set "every route" rather than
+   * "whichever route happens to funnel through one private method": MR and TR
+   * build their prompts outside `#prompt`, and previously received no rendering
+   * at all -- the 28-question loss at `bcf66463` was on exactly those two routes
+   * plus the two flat ones this reaches as well.
+   *
+   * The translation is total over `PROMPT_CONTRACTS`: every contract either names
+   * a rendering or deliberately does not, and the default reproduces the baseline
+   * byte for byte so prior artifacts stay comparable.
+   */
+  #promptOptions(): { maxChars?: number; rendering?: EvidenceRendering } {
+    // `promptContract` is absent on every pre-switch construction, and an absent
+    // contract means the baseline rendering -- which is the same answer as naming
+    // `abstention`. The lookup is guarded rather than defaulted so the record stays a
+    // partial map: defaulting here would make an unknown name resolve to
+    // `abstention`'s (absent) entry instead of failing loudly at the parse boundary,
+    // which is where `readPromptContract` already rejects it.
+    const named = this.#options.promptContract;
+    const rendering = named === undefined ? undefined : RENDERING_BY_CONTRACT[named];
+    return {
+      ...(this.#options.maxPromptChars === undefined
+        ? {}
+        : { maxChars: this.#options.maxPromptChars }),
+      ...(rendering === undefined ? {} : { rendering }),
+    };
   }
 }

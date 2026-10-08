@@ -291,20 +291,51 @@ export type MemoryArmConfig = {
    */
   readonly confidenceSignal: string;
   /**
-   * The evidence rendering the abstention route used.
+   * The prompt contract the run named, i.e. the knob that selects the rendering.
    *
    * Written even when it is the baseline, for the reason every other field here is:
    * omitting a defaulted value makes "this run used the baseline rendering" and "this
    * artifact predates the field" the same bytes, and those are different claims.
    *
-   * It is on the report because §12.5's experiment turns on it and nothing else. A reader
-   * comparing this run against the dispatched one has to be able to see that the gate
-   * parameters are identical and the rendering is not, or a delta is unattributable to
-   * either. A `string` rather than an enum because the arm validates against the product's
+   * ## What this field does NOT say, and why `renderingReach` exists
+   *
+   * This is the **name the run passed**, not the treatment the run administered, and
+   * the two were different at `bcf66463`. That artifact recorded
+   * `promptContract=abstention-evidence-blocks` while the rendering reached 17 of the
+   * 120 questions -- so a reader comparing runs would have attributed a 45→17 drop to
+   * a rendering that four of the five capabilities never received. §12.8 made the
+   * reachable set a reported property for exactly this reason; the field below is
+   * that property, and this one keeps its meaning as the input name.
+   *
+   * The docstring formerly read "the evidence rendering the abstention route used"
+   * and "§12.5's experiment turns on it and nothing else". Both stopped being true
+   * when the rendering was separated from the contract name (§12.9): the rendering is
+   * no longer abstention-specific, and this field no longer identifies it.
+   *
+   * A `string` rather than an enum because the arm validates against the product's
    * list at parse time; restating the union here would be a second definition to keep
    * in step, which is the drift the arm's own constants avoid.
    */
   readonly promptContract: string;
+  /**
+   * The routes the evidence rendering actually reached, measured from their prompts.
+   *
+   * A run that names a rendering and administers it to nothing is the failure this
+   * field is designed to make unreadable-as-success. It is a list of route names
+   * rather than a count, because "two routes" does not say whether the two were the
+   * ones that carried the loss.
+   *
+   * Empty when the run named no rendering, which is a real answer: the baseline arm
+   * administers nothing by construction and must not be reported as covering routes
+   * with the baseline rendering.
+   *
+   * Optional, and `undefined` is not the same claim as `[]`. Every artifact produced
+   * before §12.9 lacks this field, and those artifacts were produced by the code whose
+   * reach was wrong -- so a reader comparing against one needs to know the reach is
+   * unknown rather than zero. This is the distinction `sourceTrust` and
+   * `confidenceSignal` record at length in their own docs.
+   */
+  readonly renderingRoutes?: readonly string[] | undefined;
 };
 
 /**
@@ -483,6 +514,28 @@ export function formatAblationReport(report: AblationReport): string {
         // bytes and a reader would have no way to see which prompt produced which score.
         `, \`promptContract=${memoryArm.promptContract}\``,
     );
+
+    // The reachable set, rendered beside the name and for the reason §12.8 gives: the
+    // name is the input and this is the treatment. At `bcf66463` the line above said
+    // `promptContract=abstention-evidence-blocks` while the rendering reached 17 of 120
+    // questions, so the pair is what a reader needs and neither half is sufficient.
+    //
+    // `undefined` and `[]` are rendered differently on purpose. `[]` is the baseline's
+    // real answer -- it administers nothing -- and is a claim the control arm's numbers
+    // depend on. `undefined` means the artifact predates the field, and those artifacts
+    // were produced by the code whose reach was wrong, so calling that `none` would
+    // state as measured what is in fact unknown.
+    const reached = memoryArm.renderingRoutes;
+    if (reached === undefined) {
+      lines.push(`- Evidence rendering reach: \`not recorded\` (artifact predates the field)`);
+    } else if (reached.length === 0) {
+      lines.push(`- Evidence rendering reached: \`none\` (the baseline prompt is unchanged)`);
+    } else {
+      lines.push(
+        `- Evidence rendering reached: ${reached.length} route(s) — ` +
+          reached.map((route) => `\`${route}\``).join(', '),
+      );
+    }
   }
 
   // The annotation version goes with the configuration, for the same reason: it

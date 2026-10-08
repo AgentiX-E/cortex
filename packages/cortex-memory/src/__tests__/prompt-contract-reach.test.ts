@@ -1,7 +1,7 @@
 /**
- * Which routes does the §12.5 prompt contract actually reach?
+ * Which routes does the §12.5 evidence rendering actually reach?
  *
- * ## The measurement this file pins
+ * ## The measurement that made this file necessary
  *
  * Dispatch `37804673104` (master `bcf66463`, `limit=120`, `ablation_runs=1`) ran the
  * arm with `promptContract = 'abstention-evidence-blocks'` and produced the first
@@ -15,37 +15,33 @@
  *     ABS          17/17      17/17           0       0
  *     total            45          17          28       0
  *
- * `b-f+ = 0` on every capability, which is §12.4's finding reproduced exactly, and
- * now with the raw output attached: 116 of the 120 records carry a bare
- * `INSUFFICIENT_EVIDENCE` and 116 answers are `null`. The parse is faithful, the
- * model really declined, and the gate really admitted -- all three were measured
- * separately.
- *
- * ## What that leaves, and why this file exists
- *
- * The registration calls `abstention-evidence-blocks` "§12.5's single variable". A
- * variable is only independent if the arm it is supposed to move is the arm that
- * receives it, and `memory.ts` substitutes the contract on exactly one condition:
+ * `b-f+ = 0` on every capability, which is §12.4's finding reproduced exactly. The
+ * registration calls `abstention-evidence-blocks` "§12.5's single variable", but
+ * `memory.ts` resolved it on exactly one condition:
  *
  *     contract === 'abstention' && options.promptContract !== undefined
  *
- * `runBenchmark` dispatches `answerAbstention` for `capability === 'ABS'` only. So
- * the substitution reaches 17 of the 120 questions -- and ABS gold IS abstention,
- * which means the questions the variable can reach are the questions where
- * declining is the correct answer.
+ * and `runBenchmark` dispatches `answerAbstention` for `capability === 'ABS'` only.
+ * So the variable reached 17 of 120 questions -- and ABS gold IS abstention, which
+ * means the questions the variable could reach were the questions where declining is
+ * the correct answer. The 28-question loss is on MR, TR, IE and KU, none of which
+ * received the rendering.
  *
- * That is the reason `b-f+ = 0` above is not evidence about the variable. The
- * 28-question loss is on MR, TR, IE and KU, none of which contains the rendering
- * the experiment installed. These tests pin the reach so the next dispatch is
- * designed against it rather than discovering it after the fact.
+ * ## What replaced it, and why the first attempt was wrong
  *
- * ## Why this is asserted as behaviour and not as a comment
+ * The first fix widened the condition to more contract names. §12.9 records why that
+ * cannot work: `PromptContract` names an *instruction block*, and MR's ask is
+ * `extractive` while ABS's is the conservative one. Handing MR the abstention contract
+ * would move the instruction text AND the evidence rendering -- two variables where the
+ * registration authorises one, and the reason `abstention-evidence-blocks` was built to
+ * hold its ask fixed in the first place (§12.4 could not separate "the ask is too
+ * forceful" from "the evidence is unusable").
  *
- * The reach is a property of two files in different packages -- the substitution in
- * `memory.ts` and the dispatch in `benchmark.ts` -- and neither mentions the other.
- * A test that pinned the string `abstention-evidence-blocks` would pass on a broken
- * arm, because the name is in the source either way. These tests drive the paths and
- * read the prompt.
+ * So the variable is a **rendering mode**, not a contract: `evidenceRendering`, applied
+ * by every builder, leaving each route's instruction block exactly as it is. These tests
+ * drive all six routes and read the prompt, which is the only way to know the rendering
+ * arrived -- the alternative, asserting the name appears in `memory.ts`, would pass on
+ * an arm that never dispatched it.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -53,7 +49,7 @@ import { createMemory } from '@agentix-e/cortex-core';
 import type { LLM } from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
-import { PROMPT_CONTRACTS, buildPrompt } from '../prompt.js';
+import { PROMPT_CONTRACTS, RENDERING_BY_CONTRACT, buildPrompt } from '../prompt.js';
 import type { AdmittedTurn } from '../admission.js';
 
 const NOW = 1_759_470_000_000;
@@ -69,10 +65,12 @@ const ARM_GATE = {
 /** The contract the artifact records. */
 const ARM_CONTRACT = 'abstention-evidence-blocks' as const;
 
+const TEXT = 'I bought a 1/48 scale Spitfire kit.';
+
 function evidence(): AdmittedTurn[] {
   return [
     {
-      ...createMemory({ content: 'I bought a 1/48 scale Spitfire kit.' }),
+      ...createMemory({ content: TEXT }),
       ordinal: 0,
     },
   ];
@@ -97,14 +95,24 @@ function recorder(seen: string[], answer: string): LLM {
   };
 }
 
-function arm(seen: string[], answer = 'Spitfire'): CortexMemory {
+function build(seen: string[], options: { contract?: boolean } = {}): CortexMemory {
   return new CortexMemory({
-    llm: recorder(seen, answer),
+    llm: recorder(seen, 'Spitfire'),
     now: NOW,
     name: 'cortex-memory',
     gate: { ...ARM_GATE },
-    promptContract: ARM_CONTRACT,
+    ...(options.contract === false ? {} : { promptContract: ARM_CONTRACT }),
   });
+}
+
+/** The arm the artifact records: gate values plus the rendering contract. */
+function arm(seen: string[]): CortexMemory {
+  return build(seen);
+}
+
+/** The same arm with no rendering named, so each route emits its baseline prompt. */
+function unarmed(seen: string[]): CortexMemory {
+  return build(seen, { contract: false });
 }
 
 /**
@@ -118,10 +126,6 @@ function arm(seen: string[], answer = 'Spitfire'): CortexMemory {
  * would fail on a correctly working switch -- which is exactly what the first
  * draft did. The shape is what the renderer emits and what the baseline renderer
  * never emits, so it separates them without depending on identity.
- *
- * The instruction block is byte-identical between the two abstention contracts by
- * design (`prompt.ts`, "Why the ask is identical and only the evidence changes"),
- * so the evidence rendering is the only thing that can mark the substitution.
  */
 const SOURCE_RENDERING = /^\d+\. \[[0-9a-f-]{36}\] /m;
 
@@ -129,113 +133,142 @@ function hasSourceRendering(prompt: string): boolean {
   return SOURCE_RENDERING.test(prompt);
 }
 
-describe('the prompt-contract switch reaches exactly one route', () => {
-  it('reaches the abstention route', async () => {
-    const seen: string[] = [];
-    await arm(seen).answerAbstention('What is my passport number?', [
-      'I bought a 1/48 scale Spitfire kit.',
-    ]);
+/**
+ * The instruction block, taken as everything from the first instruction line on.
+ *
+ * The advisory `SESSION_NOTE` on the MR route sits *between* the evidence and the
+ * question, so slicing at the instruction text alone would compare the wrong span
+ * and let a change to the note pass unnoticed. Including everything after
+ * `QUESTION:` keeps the note out of the compared region deliberately -- the note is
+ * part of MR's ask and must not move -- while still catching any drift in the ask
+ * itself.
+ */
+function instructions(prompt: string): string {
+  const answerLine = prompt.indexOf('Answer the question');
+  return answerLine === -1 ? prompt : prompt.slice(answerLine);
+}
 
-    expect(seen).toHaveLength(1);
-    expect(hasSourceRendering(seen[0]!)).toBe(true);
-  });
+/**
+ * Every route `runBenchmark` can dispatch, driven through the public API.
+ *
+ * The list mirrors `benchmark.ts`'s branches minus `answerPreference`, which
+ * `CortexMemory` does not implement and which therefore falls through to `answer`.
+ * Each entry is (name, drive), so a new route is added in one place and the
+ * per-route assertions below cannot silently stop covering it.
+ */
+type Drive = (memory: CortexMemory) => Promise<unknown>;
 
-  it('does NOT reach the knowledge-update route', async () => {
-    // The route runs through the same `#prompt` private method the substitution
-    // lives in, and is still not substituted, because the condition also names
-    // `contract === 'abstention'`. This is the assertion that separates "the
-    // switch works" from "the switch works everywhere".
-    const seen: string[] = [];
-    await arm(seen).answerKnowledgeUpdate('How many kits do I own now?', [
-      'I bought a 1/48 scale Spitfire kit.',
-    ]);
+const ROUTES: ReadonlyArray<readonly [string, Drive]> = [
+  ['abstention (ABS)', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
+  ['multi-session (MR)', (m) => m.answerSessions('Which kit did I buy?', [[TEXT]])],
+  ['temporal (TR)', (m) => m.answerTemporal('How long ago did I buy it?', [TEXT], '2023/06/01')],
+  ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits do I own now?', [TEXT])],
+  ['assistant', (m) => m.answerAssistant('What did you tell me about the kit?', [TEXT])],
+  ['flat (IE and the rest)', (m) => m.answer('What did I buy?', [TEXT])],
+];
 
-    expect(seen).toHaveLength(1);
-    expect(hasSourceRendering(seen[0]!)).toBe(false);
-  });
+describe('the evidence rendering reaches every route that can carry it', () => {
+  for (const [name, drive] of ROUTES) {
+    it(`reaches the ${name} route`, async () => {
+      const seen: string[] = [];
+      await drive(arm(seen));
 
-  it('does NOT reach the temporal route', async () => {
-    const seen: string[] = [];
-    await arm(seen).answerTemporal(
-      'How long ago did I buy it?',
-      ['I bought a 1/48 scale Spitfire kit.'],
-      '2023/06/01',
-    );
+      expect(seen).toHaveLength(1);
+      expect(hasSourceRendering(seen[0]!)).toBe(true);
+    });
+  }
 
-    expect(seen).toHaveLength(1);
-    expect(hasSourceRendering(seen[0]!)).toBe(false);
-  });
-
-  it('does NOT reach the multi-session route', async () => {
-    // MR is the largest single-capability loss in the artifact (13 of the 28),
-    // so whether the rendering reaches this route is not academic.
-    const seen: string[] = [];
-    await arm(seen).answerSessions('Which kit did I buy?', [
-      ['I bought a 1/48 scale Spitfire kit.'],
-    ]);
-
-    expect(seen).toHaveLength(1);
-    expect(hasSourceRendering(seen[0]!)).toBe(false);
-  });
-
-  it('does NOT reach the assistant route', async () => {
-    const seen: string[] = [];
-    await arm(seen).answerAssistant('What did you tell me about the kit?', [
-      'I bought a 1/48 scale Spitfire kit.',
-    ]);
-
-    expect(seen).toHaveLength(1);
-    expect(hasSourceRendering(seen[0]!)).toBe(false);
-  });
-
-  it('does NOT reach the flat path', async () => {
-    const seen: string[] = [];
-    await arm(seen).answer('What did I buy?', ['I bought a 1/48 scale Spitfire kit.']);
-
-    expect(seen).toHaveLength(1);
-    expect(hasSourceRendering(seen[0]!)).toBe(false);
+  it('covers every route the dispatch table can select', () => {
+    // Guards the list above against the dispatch growing a branch nobody added
+    // here. `benchmark.ts` routes on capability and questionType; these are the
+    // six `CortexMemory` entry points it can reach, so a seventh would have to be
+    // added deliberately in both places.
+    expect(ROUTES).toHaveLength(6);
   });
 });
 
-describe('the rendering is the only difference between the two abstention contracts', () => {
-  it('the instruction blocks are byte-identical', () => {
-    // The registration depends on this. If the instruction text changed with the
-    // rendering, a movement in MR could not be attributed to the rendering, and
-    // the run would test two variables while naming one.
-    const withBaseline = buildPrompt('q', TURNS, 'abstention');
-    const withCandidate = buildPrompt('q', TURNS, ARM_CONTRACT);
+describe('the rendering is the only difference from the unarmed arm', () => {
+  for (const [name, drive] of ROUTES) {
+    it(`leaves the ${name} instruction block byte-identical when unarmed`, async () => {
+      // The registration depends on this. If the rendering changed the ask, a
+      // movement on that route could not be attributed to the rendering, and the
+      // run would test two variables while naming one. Driven per route because
+      // each route has its own ask -- MR's is `extractive` plus the session note,
+      // TR's carries the date, ABS's carries the abstention token.
+      const armed: string[] = [];
+      const plain: string[] = [];
+      await drive(arm(armed));
+      await drive(unarmed(plain));
 
-    const instructions = (prompt: string) => prompt.slice(prompt.indexOf('Answer the question'));
-    expect(instructions(withCandidate)).toBe(instructions(withBaseline));
+      expect(instructions(armed[0]!)).toBe(instructions(plain[0]!));
+    });
+  }
+
+  it('changes the evidence block on every route, not only the abstention one', async () => {
+    // The complement of the assertion above. Together they say the single variable
+    // is the evidence and only the evidence, on every route -- which is what the
+    // registration's §12.8 revision claims and what the limit=120 read showed was
+    // false of the previous implementation.
+    for (const [name, drive] of ROUTES) {
+      const armed: string[] = [];
+      const plain: string[] = [];
+      await drive(arm(armed));
+      await drive(unarmed(plain));
+
+      expect(armed[0], `route ${name}`).not.toBe(plain[0]);
+    }
+  });
+});
+
+describe('the rendering is a rendering, not a contract name', () => {
+  it('is applied on a route whose own ask is not the abstention ask', async () => {
+    // This is the regression that keying the rendering off `contract ===
+    // 'abstention'` would ship, and the reason §12.9 rewrote the decision. MR's
+    // ask is `extractive`; the rendering must arrive anyway, because it is
+    // selected as a rendering and not as an instruction block.
+    const seen: string[] = [];
+    await arm(seen).answerSessions('Which kit did I buy?', [[TEXT]]);
+
+    expect(hasSourceRendering(seen[0]!)).toBe(true);
+    // And the ask is still MR's own, so the rendering did not bring the
+    // abstention token to a route that must not decline.
+    expect(seen[0]!).toContain('Answer the question using only the evidence above.');
+    expect(seen[0]!).toContain('do not merge facts across sessions');
   });
 
-  it('the evidence blocks differ, and by the source id only', () => {
-    // These two call `buildPrompt` directly with the FIXTURE, so the fixture's
-    // own id is the right thing to look for here -- unlike the route tests above,
-    // where `admitTurns` mints a fresh id from the turn text.
-    const withBaseline = buildPrompt('q', TURNS, 'abstention');
-    const withCandidate = buildPrompt('q', TURNS, ARM_CONTRACT);
-
-    expect(withCandidate).not.toBe(withBaseline);
-    expect(withCandidate).toContain(`[${TURNS[0]!.id}]`);
-    expect(withBaseline).not.toContain(`[${TURNS[0]!.id}]`);
-    // The turn text is present in both, so the difference is provenance and not
-    // a second content change riding along with it.
-    expect(withBaseline).toContain(TURNS[0]!.content);
+  it('the candidate is still one of the declared contracts', () => {
+    // A name that is not in the product's own list would be rejected by
+    // `readPromptContract` at parse time in a real dispatch, so a test using it
+    // directly would be measuring an unreachable state.
+    expect(PROMPT_CONTRACTS).toContain(ARM_CONTRACT);
   });
 
   it('the candidate rendering has the shape the route tests look for', () => {
     // Ties the route-level shape check to the renderer that produces it, so a
     // change to the id format cannot make every route test pass by matching
     // nothing.
-    expect(hasSourceRendering(buildPrompt('q', TURNS, ARM_CONTRACT))).toBe(true);
+    //
+    // Driven through the rendering option rather than the contract name, because
+    // that is the actual variable since §12.9: the name selects the rendering via
+    // `RENDERING_BY_CONTRACT`, and a test that passed the name straight to a
+    // builder would be asserting a coupling the design deliberately removed.
+    expect(
+      hasSourceRendering(buildPrompt('q', TURNS, 'abstention', { rendering: 'sourced' })),
+    ).toBe(true);
     expect(hasSourceRendering(buildPrompt('q', TURNS, 'abstention'))).toBe(false);
+    expect(
+      hasSourceRendering(buildPrompt('q', TURNS, 'extractive', { rendering: 'sourced' })),
+    ).toBe(true);
   });
 
-  it('the candidate is one of the declared contracts', () => {
-    // A name that is not in the product's own list would be rejected by
-    // `readPromptContract` at parse time in a real dispatch, so a test using it
-    // directly would be measuring an unreachable state.
-    expect(PROMPT_CONTRACTS).toContain(ARM_CONTRACT);
+  it('maps the run-named contract to the rendering the run means', () => {
+    // The translation table is the one place the arm's published knob becomes the
+    // variable actually measured, so it is asserted rather than assumed. A
+    // contract with no entry must stay on the baseline rendering, which is what
+    // keeps prior artifacts comparable.
+    expect(RENDERING_BY_CONTRACT[ARM_CONTRACT]).toBe('sourced');
+    expect(RENDERING_BY_CONTRACT.abstention).toBeUndefined();
+    expect(RENDERING_BY_CONTRACT.extractive).toBeUndefined();
+    expect(RENDERING_BY_CONTRACT.temporal).toBeUndefined();
   });
 });

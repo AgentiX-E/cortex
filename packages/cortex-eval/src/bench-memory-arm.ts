@@ -326,6 +326,45 @@ const PROMPT_CONTRACTS = {
 } as const;
 
 /**
+ * The routes each contract's rendering reaches, restated for the report.
+ *
+ * Duplicated from `cortex-memory` for the same layering reason as
+ * {@link PROMPT_CONTRACTS}, and checked the same way: the census test asserts this
+ * matches the product's own reach, so a route added or lost on the product side
+ * fails a test here rather than silently becoming a reach the artifact claims.
+ *
+ * ## Why the artifact needs this at all
+ *
+ * `promptContract` records the name the run passed. At `bcf66463` that name was
+ * `abstention-evidence-blocks` and the rendering reached 17 of 120 questions,
+ * because `memory.ts` gated it on `contract === 'abstention'` and only the ABS
+ * capability dispatched that route. An artifact naming the contract therefore
+ * described a treatment four of five capabilities never received, and the 45→17
+ * drop read as a fact about the rendering. It was a fact about the dispatch.
+ *
+ * §12.8 made the reachable set a reported property for exactly that reason. The
+ * list is written per contract rather than measured per run because the reach is a
+ * property of the product's dispatch, not of a dataset -- and because measuring it
+ * per run would require the arm to trust its own dispatch table, which is the thing
+ * that was wrong.
+ *
+ * The baseline contract reaches nothing: it administers no rendering, so reporting
+ * it as covering routes would claim a treatment the control arm did not receive.
+ * That empty list is a real answer and is emitted as `[]` rather than omitted.
+ */
+const RENDERING_ROUTES: Record<string, readonly string[]> = {
+  abstention: [],
+  'abstention-evidence-blocks': [
+    'abstention',
+    'multi-session',
+    'temporal',
+    'knowledge-update',
+    'assistant',
+    'flat',
+  ],
+};
+
+/**
  * Read the prompt-contract name, rejecting anything unrecognised.
  *
  * The same argument as {@link readConfidenceSignal}, applied to the §12.5 experiment.
@@ -460,6 +499,14 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     sourceTrust: options.sourceTrust,
     confidenceSignal: options.confidenceSignal,
     promptContract: options.promptContract,
+    // `?? []` rather than `?? []`-by-accident: the contract is validated against
+    // `PROMPT_CONTRACTS` on the way in, so an unknown name cannot arrive here from a
+    // dispatch. The fallback exists for a caller that constructs options directly, and
+    // it reports "reached nothing" rather than "reached everything", because the two
+    // mistakes are not equal -- claiming a treatment that was not administered is the
+    // defect this field was added to close, and claiming one that was is merely a
+    // missing list.
+    renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
   };
 }
 

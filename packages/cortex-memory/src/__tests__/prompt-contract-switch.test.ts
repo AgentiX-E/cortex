@@ -25,9 +25,27 @@
 import { describe, expect, it } from 'vitest';
 import type { LLM } from '@agentix-e/cortex-core';
 import { createMemory } from '@agentix-e/cortex-core';
-import { buildPrompt, DEFAULT_PROMPT_CONTRACT, PROMPT_CONTRACTS } from '../prompt.js';
+import {
+  DEFAULT_PROMPT_CONTRACT,
+  PROMPT_CONTRACTS,
+  RENDERING_BY_CONTRACT,
+  buildPrompt,
+} from '../prompt.js';
 import { CortexMemory } from '../memory.js';
 import type { AdmittedTurn } from '../admission.js';
+
+/**
+ * The instruction block of a prompt, from the first instruction line to the end.
+ *
+ * The ask is what must stay fixed across arms, and it is the region after the
+ * question rather than the whole prompt: the evidence precedes it and is the region
+ * that must move. Slicing on the first instruction sentence is robust to the
+ * per-contract wording, so one helper serves every route.
+ */
+function instructionsOf(prompt: string): string {
+  const at = prompt.indexOf('Answer the question');
+  return at === -1 ? prompt : prompt.slice(at);
+}
 
 /**
  * Admitted turns, built through the real `createMemory` so the fixture cannot drift from
@@ -92,12 +110,20 @@ describe('the prompt-contract switch', () => {
     // The experiment's independent variable, asserted directly. If the two renderings
     // were identical the dispatch would spend a full run measuring nothing, and the
     // artifact would read as evidence that rendering does not matter.
+    //
+    // Driven through the memory rather than through `buildPrompt`, because since §12.9
+    // the rendering is selected by a prompt option and the contract name is translated
+    // by `RENDERING_BY_CONTRACT`. A test handing the name straight to the builder would
+    // bypass the translation -- the exact seam that was wrong at `bcf66463`.
+    const rendering = RENDERING_BY_CONTRACT['abstention-evidence-blocks'];
+    // Asserted before use rather than defaulted: the translation table is a partial
+    // map, so its entry can be absent and the rest of this test would then be
+    // comparing the baseline against itself and passing for the wrong reason.
+    expect(rendering).toBeDefined();
     const baseline = buildPrompt('Where does the user deploy?', TURNS, 'abstention');
-    const candidate = buildPrompt(
-      'Where does the user deploy?',
-      TURNS,
-      'abstention-evidence-blocks',
-    );
+    const candidate = buildPrompt('Where does the user deploy?', TURNS, 'abstention', {
+      rendering: rendering ?? 'sourced',
+    });
     expect(candidate).not.toBe(baseline);
   });
 
@@ -158,9 +184,19 @@ describe('the switch reaches the prompt through the abstention route', () => {
     expect(candidate[0]).not.toBe(baseline[0]);
   });
 
-  it('leaves the other routes alone', async () => {
-    // A single-variable experiment. If the override leaked into the temporal or
-    // assistant routes, a change in their scores would have no attribution.
+  it('moves the evidence on the other routes and leaves their ask alone', async () => {
+    // This test previously asserted that the temporal route's prompt was byte-identical
+    // under the new contract, on the ground that "if the override leaked into the
+    // temporal route, a change in their scores would have no attribution". §12.7 and
+    // §12.8 reversed that, and the reason is measured: the temporal route was never
+    // treated, so the 15 of 17 TR questions that moved at `bcf66463` had no attribution
+    // either. An attribution preserved by never administering the treatment is not an
+    // attribution.
+    //
+    // What the single-variable property actually requires is the pair asserted here:
+    // the EVIDENCE moves, and the ASK does not. The ask is the instruction block, and
+    // the abstention token is its strongest marker -- a temporal question must still be
+    // answerable rather than invited to decline.
     const baseline: string[] = [];
     const candidate: string[] = [];
     const question = 'When did the user move?';
@@ -173,7 +209,13 @@ describe('the switch reaches the prompt through the abstention route', () => {
 
     expect(baseline).toHaveLength(1);
     expect(candidate).toHaveLength(1);
-    expect(candidate[0]).toBe(baseline[0]);
+    expect(candidate[0]).not.toBe(baseline[0]);
+    // The ASK is the instruction block, and it is compared directly rather than by
+    // token: the temporal contract legitimately names `INSUFFICIENT_EVIDENCE` in its
+    // own escape hatch, so asserting the token's absence would assert the wrong thing
+    // -- the first draft did, and failed against a correct prompt.
+    expect(instructionsOf(candidate[0]!)).toBe(instructionsOf(baseline[0]!));
+    expect(candidate[0]).toContain('2024-01-08');
   });
 
   it('defaults to the previous rendering when no contract is named', async () => {

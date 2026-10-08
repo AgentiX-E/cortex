@@ -325,6 +325,39 @@ describe('the census counts CALLS, and the report must not call them questions',
     expect(md).toMatch(/\|\s*`?llm`?\s*\|\s*30\s*\|/);
     expect(md).not.toContain('Accumulated over');
   });
+
+  it('prints an exact per-run figure when the total divides evenly', () => {
+    // The census total is a CALL count accumulated across `runs`, and the per-run figure
+    // is how a reader reconciles it with the capability table. When the division is exact
+    // the number is stated plainly; when it is not, it is marked approximate with a `~`.
+    // Both branches of that choice are asserted, with different fixtures, because a
+    // renderer that always took one path would pass a test that only exercised the other.
+    const report = persistedCensusReport(
+      { empty: 0, threshold: 0, llm: 120, answered: 0 },
+      0.25,
+      4,
+    );
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('Accumulated over **4 runs** of 30 questions each');
+    // No `~` on an exact division: the tilde means "the run count does not divide the
+    // total", and printing it here would misreport a figure that is exact.
+    expect(md).not.toContain('~30');
+  });
+
+  it('marks the per-run figure approximate when the total does not divide evenly', () => {
+    // 121 calls over 4 runs is 30.25 per run. The `~` is the difference between a
+    // derived figure and a measured one, and a reader comparing it against the
+    // capability table needs to know which they have.
+    const report = persistedCensusReport(
+      { empty: 0, threshold: 0, llm: 121, answered: 0 },
+      0.25,
+      4,
+    );
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('~30.3');
+  });
 });
 
 describe('the census must state the one route it measures', () => {

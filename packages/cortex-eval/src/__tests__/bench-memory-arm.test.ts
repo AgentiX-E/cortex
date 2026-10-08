@@ -477,6 +477,7 @@ describe('source trust reaches the artifact', () => {
       sourceTrust: 1,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      renderingRoutes: [],
     });
   });
 
@@ -655,6 +656,88 @@ describe('runCortexMemoryArm', () => {
     expect(markdown).toContain('sessionBudget=unbounded');
   });
 
+  it('renders the rendering reach, so the artifact distinguishes the name from the treatment', () => {
+    // §12.8's consequence 1. At `bcf66463` the artifact named the candidate contract
+    // while the rendering reached 17 of 120 questions, and the name alone read as a
+    // treatment four of five capabilities never received. The pair is what a reader
+    // needs, so both halves are asserted.
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention-evidence-blocks',
+        renderingRoutes: ['abstention', 'multi-session', 'temporal'],
+      },
+    });
+
+    expect(markdown).toContain('promptContract=abstention-evidence-blocks');
+    expect(markdown).toContain('Evidence rendering reached: 3 route(s)');
+    // Named, not counted. A count alone would not say whether the routes reached were
+    // the ones that carried the loss, which is the whole question this line answers.
+    expect(markdown).toContain('`multi-session`');
+    expect(markdown).toContain('`temporal`');
+  });
+
+  it('renders an empty reach as `none` rather than omitting the line', () => {
+    // The baseline's real answer. Omitting it would make "this arm administered
+    // nothing" indistinguishable from "this artifact predates the field", and those
+    // are different claims about the same file.
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention',
+        renderingRoutes: [],
+      },
+    });
+
+    expect(markdown).toContain('Evidence rendering reached: `none`');
+    expect(markdown).not.toContain('not recorded');
+  });
+
+  it('says the reach is not recorded when the field is absent, rather than claiming zero', () => {
+    // Every artifact produced before §12.9 lacks the field, and those artifacts were
+    // produced by the code whose reach was wrong. Rendering `none` for them would state
+    // as measured what is in fact unknown.
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention',
+      },
+    });
+
+    expect(markdown).toContain('Evidence rendering reach: `not recorded`');
+    expect(markdown).not.toContain('reached: `none`');
+  });
+
   it('omits the memory-arm line entirely for a report that is not this arm', () => {
     // The absence is a claim: this artifact came from a different arm. A defaulted
     // object would make "this arm did not run" read the same as "this arm ran with
@@ -778,6 +861,7 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        renderingRoutes: [],
       });
     });
   });
@@ -1192,6 +1276,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      renderingRoutes: [],
     });
   });
 });
@@ -1329,5 +1414,60 @@ describe('the contract list agrees with the product layer', () => {
     );
     expect(defaultMatch, 'DEFAULT_PROMPT_CONTRACT not found in the product source').not.toBeNull();
     expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).promptContract).toBe(defaultMatch![1]);
+  });
+});
+
+describe('the rendering reach the artifact reports agrees with the product layer', () => {
+  it('reports every route the product applies the rendering to', () => {
+    // The §12.8 property, and the reason it is a field at all: at `bcf66463` the
+    // artifact named `promptContract=abstention-evidence-blocks` while the rendering
+    // reached 17 of 120 questions, so the name alone described a treatment four of five
+    // capabilities never received.
+    //
+    // The product's reach is READ from its source, the same way the contract list is,
+    // and for the same layering reason: `cortex-eval` measures `cortex-memory` and
+    // cannot import from it. What is checked is the count against the product's own
+    // route table, so a route added on the product side fails HERE rather than silently
+    // becoming a reach the artifact under-reports.
+    const source = readFileSync(
+      new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+      'utf-8',
+    );
+    // The product's table maps a contract name to the single rendering it selects.
+    // Asserted present before use so a rename on the product side fails loudly rather
+    // than making the comparison below vacuous.
+    expect(
+      /export const RENDERING_BY_CONTRACT/.test(source),
+      'RENDERING_BY_CONTRACT not found in the product source',
+    ).toBe(true);
+
+    const candidate = toMemoryArmConfig(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_PROMPT_CONTRACT: 'abstention-evidence-blocks',
+      }),
+    );
+    // Six routes: the seven dispatch branches in `benchmark.ts` minus
+    // `answerPreference`, which `CortexMemory` does not implement.
+    expect(candidate.renderingRoutes).toEqual([
+      'abstention',
+      'multi-session',
+      'temporal',
+      'knowledge-update',
+      'assistant',
+      'flat',
+    ]);
+    // The two routes that carried the entire measured loss, named explicitly. A reach
+    // that quietly lost one of them would still total five and still look complete.
+    expect(candidate.renderingRoutes).toContain('multi-session');
+    expect(candidate.renderingRoutes).toContain('temporal');
+  });
+
+  it('reports no reach for the baseline contract', () => {
+    // The control arm administers no rendering, so reporting it as covering routes
+    // would claim a treatment it did not receive. `[]` rather than `undefined`
+    // because the baseline's reach is measured and known to be zero.
+    const baseline = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
+    expect(baseline.renderingRoutes).toEqual([]);
   });
 });

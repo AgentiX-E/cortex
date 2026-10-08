@@ -37,12 +37,60 @@ export const PROMPT_CONTRACTS = ['abstention', 'abstention-evidence-blocks'] as 
  */
 export const DEFAULT_PROMPT_CONTRACT: PromptContract = 'abstention';
 
+/**
+ * Which rendering each contract selects, for the contracts that select one.
+ *
+ * A `Record` over a subset rather than over every contract, because "this
+ * contract does not move the rendering" is a real answer and has to be
+ * distinguishable from "this contract was forgotten". A total map would force
+ * every ask to name a rendering, and the two that must not (`extractive`,
+ * `temporal`) would acquire one the moment somebody filled in the gap.
+ *
+ * `abstention` is deliberately absent: it is the default and the baseline, so
+ * naming it must reproduce prior runs exactly. `abstention-evidence-blocks` is
+ * the one entry, and it is the §12.5 variable -- its name is historical (it was
+ * written as an abstention-route candidate), and §12.9 records that the name and
+ * the variable came apart.
+ */
+export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRendering>> = {
+  'abstention-evidence-blocks': 'sourced',
+};
+
+/**
+ * How admitted turns are presented to the model.
+ *
+ * ## Why this is an option and not a contract name
+ *
+ * `PromptContract` names an **instruction block**, and the two are not the same
+ * variable. §12.9 records the measurement that forced the separation: keying the
+ * §12.5 candidate rendering off a contract name binds it to that name's ask, so
+ * applying it to the MR route would have moved MR's instruction text from
+ * `extractive` to the abstention ask at the same time as it changed the evidence
+ * -- two variables in a run whose entire value is that it has one, and it would
+ * have broken MR by inviting it to decline on questions that must be answered.
+ *
+ * A rendering is therefore addressed on its own. Every builder renders evidence
+ * and every builder honours this, so the reachable set is "every route" rather
+ * than "whichever route happens to share the candidate's ask".
+ *
+ *   - `numbered`: the baseline. `` `1. text` ``, blank-line separated.
+ *   - `sourced`: the §12.5 candidate. `` `1. [id] text` ``, so a turn's origin is
+ *     visible and a session boundary is not merely a blank line that looks the
+ *     same as every paragraph break.
+ *
+ * Defaults to `numbered`, so every prior artifact keeps its meaning byte for
+ * byte.
+ */
+export type EvidenceRendering = 'numbered' | 'sourced';
+
 /** Optional inputs to {@link buildPrompt}. */
 export type PromptOptions = {
   /** Reference point for relative time; supplied only to the temporal contract. */
   questionDate?: string;
   /** Upper bound on prompt length in UTF-16 code units. */
   maxChars?: number;
+  /** How to present the admitted turns. Defaults to the baseline rendering. */
+  rendering?: EvidenceRendering;
 };
 
 /** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
@@ -151,16 +199,32 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
  * does not merge two turns into one statement. When `sessionIndex` is supplied
  * the turns are labelled with their session, which is what makes a boundary
  * visible to the model rather than merely implied by position.
+ *
+ * ## Why the rendering is a parameter here rather than two functions
+ *
+ * The two renderings are one decision with one difference, and splitting them
+ * into `formatEvidence` and a second session-aware variant would have produced
+ * four combinations for two routes. Threading it through this function means the
+ * session header and the source id compose, which is the case MR actually needs:
+ * a boundary rendered *and* the origin of each turn inside it.
+ *
+ * The label order is `Session N`, then the numbered turn. The header stays on its
+ * own line so the existing baseline output is byte-identical when `rendering` is
+ * absent -- every prior artifact was produced with this function and its
+ * numbering is part of those numbers' meaning.
  */
 export function formatEvidence(
   turns: readonly AdmittedTurn[],
-  options: { sessionIndex?: number } = {},
+  options: { sessionIndex?: number; rendering?: EvidenceRendering } = {},
 ): string {
   if (turns.length === 0) return '';
 
   const header = options.sessionIndex === undefined ? '' : `Session ${options.sessionIndex + 1}\n`;
 
-  const body = turns.map((turn, i) => `${i + 1}. ${turn.content}`).join('\n\n');
+  const body =
+    options.rendering === 'sourced'
+      ? formatEvidenceWithSources(turns)
+      : turns.map((turn, i) => `${i + 1}. ${turn.content}`).join('\n\n');
 
   return `${header}${body}`;
 }
@@ -184,14 +248,26 @@ export function formatEvidence(
  * through its numbering.
  *
  * Not exported, and that is the census's finding rather than a style choice: its only
- * caller is `buildPrompt` in this file, so an `export` keyword here would advertise a
+ * caller is `formatEvidence` in this file, so an `export` keyword here would advertise a
  * public entry point that nothing outside reaches. `formatEvidence` is exported because
- * callers and tests do use it; this one is reached through `buildPrompt`, which is the
- * form the arm actually drives.
+ * callers and tests do use it; this one is reached through it, which is the form the arm
+ * actually drives.
+ *
+ * ## It no longer guards empty input, and that removal is the point
+ *
+ * It carried `if (turns.length === 0) return '';` until §12.9, copied from the function
+ * above. That guard was unreachable from the moment `formatEvidence` began delegating to
+ * it: the caller already returns on empty input, so no route could reach the guard with
+ * `[]`. v8 branch coverage reported it as an uncovered branch at 98.41%, which is how it
+ * was found -- the honest reading of an uncovered branch is usually "there is no way to
+ * arrive here", not "a test is missing". Adding a test would have required exporting a
+ * private function to call it with an argument the only caller cannot supply.
+ *
+ * Removing it makes `turns.map` the single statement, which is also why `[]` in still
+ * yields `''` -- `[].join('\n\n')` is the empty string. The behaviour is identical and
+ * the unreachable path is gone rather than papered over.
  */
 function formatEvidenceWithSources(turns: readonly AdmittedTurn[]): string {
-  if (turns.length === 0) return '';
-
   return turns.map((turn, i) => `${i + 1}. [${turn.id}] ${turn.content}`).join('\n\n');
 }
 
@@ -211,10 +287,12 @@ export function buildPrompt(
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const date = contract === 'temporal' ? options.questionDate : undefined;
 
+  // Selected by the rendering, not by the contract name. §12.9 (b): the previous
+  // form compared `contract === 'abstention-evidence-blocks'`, which made the
+  // rendering unreachable on every route whose ask is something else -- including
+  // both of the routes that carried the measured loss.
   const evidence =
-    contract === 'abstention-evidence-blocks'
-      ? formatEvidenceWithSources(turns)
-      : formatEvidence(turns);
+    options.rendering === 'sourced' ? formatEvidenceWithSources(turns) : formatEvidence(turns);
   const evidenceBlock =
     evidence.length === 0
       ? 'EVIDENCE:\n(no evidence was admitted for this question)'
@@ -305,6 +383,22 @@ function fitToBudget(
  * the flat path only in provenance, and the measured gap this encodes — 52.4%
  * of the evidence session admitted for correct answers against 40.0% for
  * failures — would be unreachable.
+ *
+ * ## The rendering option reached this builder late, and the artifact shows it
+ *
+ * This is the route that carried 13 of the 28 questions lost at `bcf66463`, and
+ * until §12.9 it could not receive the §12.5 rendering at all: it takes no
+ * `contract`, so the substitution in `#prompt` had nothing to resolve here. That
+ * is the difference between a condition that is too narrow and one that does not
+ * exist, and it is why the fix had to be a rendering option rather than a wider
+ * contract comparison.
+ *
+ * The session header stays unconditional. It is this route's ask, not a
+ * rendering: the `SESSION_NOTE` tells the model the blocks are separate
+ * conversations, and dropping the header would leave the note referring to
+ * boundaries that are no longer drawn. What `sourced` adds is the turn's origin
+ * beside its index, which the baseline never draws here even though
+ * `AdmittedTurn` carries the id it would need.
  */
 export function buildSessionPrompt(
   question: string,
@@ -317,7 +411,12 @@ export function buildSessionPrompt(
     sessions.length === 0
       ? '(no evidence was admitted for this question)'
       : sessions
-          .map((session) => formatEvidence(session.turns, { sessionIndex: session.index }))
+          .map((session) =>
+            formatEvidence(session.turns, {
+              sessionIndex: session.index,
+              ...(options.rendering === undefined ? {} : { rendering: options.rendering }),
+            }),
+          )
           .join('\n\n');
 
   // One extra line over the flat builder: the note explaining that the blocks

@@ -66,6 +66,43 @@ describe('formatEvidence', () => {
     expect(formatEvidence([])).toBe('');
   });
 
+  it('returns an empty string for no turns under the sourced rendering too', () => {
+    // The empty guard sits at the top of this function and runs before the rendering
+    // split, so both renderings produce the empty string by the same early return.
+    // The sourced renderer's own guard was removed in §12.9 once this path was the
+    // only way to reach it -- the assertion is unchanged, which is what makes the
+    // removal safe.
+    expect(formatEvidence([], { rendering: 'sourced' })).toBe('');
+    expect(formatEvidence([], { sessionIndex: 0, rendering: 'sourced' })).toBe('');
+  });
+
+  it('labels the source of each turn under the sourced rendering', () => {
+    const turns = [admitted('alpha'), admitted('beta')];
+    const formatted = formatEvidence(turns, { rendering: 'sourced' });
+
+    for (const turn of turns) {
+      expect(formatted).toContain(`[${turn.id}]`);
+    }
+    // The numbering survives the addition, so the two renderings still agree on
+    // positions and differ only in provenance.
+    expect(formatted).toContain('1.');
+    expect(formatted).toContain('2.');
+    expect(formatEvidence(turns)).not.toContain(`[${turns[0]!.id}]`);
+  });
+
+  it('composes the session label with the sourced rendering', () => {
+    // The case MR actually needs, and the reason the rendering is a parameter of this
+    // function rather than two separate renderers: a boundary drawn *and* each turn's
+    // origin inside it. Splitting the renderers would have made this combination
+    // unexpressible.
+    const turn = admitted('a1');
+    const formatted = formatEvidence([turn], { sessionIndex: 0, rendering: 'sourced' });
+
+    expect(formatted).toContain('Session 1');
+    expect(formatted).toContain(`[${turn.id}]`);
+    expect(formatted.indexOf('Session 1')).toBeLessThan(formatted.indexOf(`[${turn.id}]`));
+  });
+
   it('separates turns with a blank line so the model does not merge them', () => {
     const formatted = formatEvidence([admitted('alpha'), admitted('beta')]);
 

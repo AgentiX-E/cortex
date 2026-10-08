@@ -1254,3 +1254,258 @@ provenance was a percentile of the hits. The behaviour is defensible as a covera
 the name is what misled, and the name is a two-word fix. It is recorded here rather than
 silently renamed, so the next reader can see why the number in the artifact is `0.25` and
 not `0.6433`.
+
+### 12.7 The falsification condition cannot be reached by this dispatch, and that was not visible before the read
+
+**Found while reading the artifact §12.5 was dispatched for.** This subsection does not
+move the hypothesis or the prediction; it records that one of §12.5's four stated
+outcomes was unreachable by construction, so the result below cannot be scored against
+it.
+
+#### What §12.5 said would falsify the hypothesis
+
+> If MR and TR stay at exactly 0% with `b✗f✓ = 0`, then the evidence never reaches the
+> prompt at all and the loss is upstream of rendering — which would point at `#admit`
+> returning nothing on those capabilities and make the next investigation a trace of
+> admitted-turn counts per question rather than a prompt change.
+
+#### What the run returned, and why it is none of the four
+
+`bcf66463`, `limit=120`, `ablation_runs=1`:
+
+| capability | baseline | feature | `b+f-` | `b-f+` |
+| --- | --- | --- | --- | --- |
+| MR | 13/17 | 0/17 | 13 | 0 |
+| TR | 15/17 | 0/17 | 15 | 0 |
+| IE | 0/52 | 0/52 | 0 | 0 |
+| KU | 0/17 | 0/17 | 0 | 0 |
+| ABS | 17/17 | 17/17 | 0 | 0 |
+| total | 45/120 | 17/120 | 28 | **0** |
+
+MR and TR are at exactly 0%, and `b-f+ = 0`. Read against §12.5 as written, that is the
+falsification: "the evidence never reaches the prompt at all".
+
+**It does reach the prompt**, and that was measured rather than argued. Under the gate
+values this artifact records (`threshold: 0`, `retrievalThreshold: 0`,
+`sessionBudget: infin`, `sourceTrust: 0.5`) and `promptContract:
+'abstention-evidence-blocks'`, an MR question's prompt carries both of its turns
+verbatim, the temporal prompt carries the date and the evidence, and the abstention
+prompt carries its context. The `#admit` trace §12.5 pointed at is not needed: 120 of
+120 roster records carry a populated `rawOutput`, and `#lastRawOutput` is written only
+after `#llm.complete` returns, so no gate returned early on any question.
+
+#### Why the condition was unreachable, and what it assumed
+
+`memory.ts` substitutes `promptContract` on one condition:
+
+```ts
+const resolved =
+  contract === 'abstention' && this.#options.promptContract !== undefined
+    ? this.#options.promptContract
+    : contract;
+```
+
+`runBenchmark` dispatches `answerAbstention` for `capability === 'ABS'` only. So
+`abstention-evidence-blocks` reaches **17 of 120 questions**, and ABS gold *is*
+abstention — the variable is installed on the questions where declining is correct.
+
+The falsification clause could therefore only ever fire on MR/TR, which never receive
+the rendering. Its inference was: *MR/TR at zero, therefore evidence is absent.* Two
+causes produce that antecedent, and the clause named one of them:
+
+1. `#admit` returns nothing → evidence absent;
+2. **the rendering the experiment installed never reaches these capabilities** → evidence
+   present, treatment not administered.
+
+The second is not a hypothetical. It is the arm's own shape, and it makes the clause a
+loop: it would have used a null result on the untouched capabilities to reject a
+hypothesis about the rendering — without the rendering ever having been applied there.
+
+This is `VERDICT-B7-NULL-WITHOUT-ADMINISTRATION.md`'s defect class, arrived at
+independently: **a treatment that was configured, logged, and never administered.** That
+document's version was a toggle whose only consumer sat inside an off branch. This one is
+a prompt contract whose only consumer sits on a route none of the lost questions takes.
+
+#### What is claimed, and what is not
+
+**Claimed.** The falsification clause as written is unreachable by any dispatch of this
+arm, because the substitution is gated on a route and the loss is on capabilities that
+route does not serve. `b-f+ = 0` at `bcf66463` is therefore **not evidence about the
+rendering**, in either direction.
+
+**Not claimed.** That the rendering is or is not useful. It was never applied to the
+capabilities whose movement §12.5 predicted, so this run contains no information about
+it. The hypothesis remains open and untested, and the next dispatch has to make it
+administered before it can be scored.
+
+**Not claimed either.** That §12.5's diagnosis was wrong. Its first clause — "the gate
+is a red herring for this arm" — is consistent with everything measured here, and the
+gate was already ruled out at `12.3`.
+
+#### What the next dispatch must change
+
+The `promptContract` substitution has to reach the routes whose loss is being explained,
+or the registration has to state that its reachable set is ABS. The first is a code
+change; the second is a registration change. Choosing between them is the P0 §4.1.21
+records, and it is deliberately not decided here: the point of a registration is that
+the choice is made before the run.
+
+### 12.8 The registration is revised, before the code that would test it
+
+**This subsection is a registration change and it is written before the code it
+authorises.** The order matters and §6.3 is the reason: a registration that is
+adjusted after the run can make any result look predicted, and the adjustment itself is
+the thing that has to be visible.
+
+#### What §12.4 and §12.5 said, and the contradiction inside the registration
+
+§12.4 diagnosed the arm correctly:
+
+> So the feature side is not declining to answer because evidence is filtered out — **it is
+> reaching the model, and the model declines.**
+
+§12.5's falsification clause then assumed the opposite:
+
+> If MR and TR stay at exactly 0% with `b✗f✓ = 0`, then **the evidence never reaches the
+> prompt at all** and the loss is upstream of rendering.
+
+Both cannot hold of the same zero. §12.4 says a zero means the model saw evidence and
+declined; §12.5 says a zero means the model saw nothing. The registration carried the
+correct diagnosis in one subsection and a clause that contradicts it in the next, and the
+`limit=120` read at `bcf66463` produced exactly the antecedent both describe — so the
+contradiction became load-bearing rather than academic.
+
+§12.7 records the measurement that separates them (the evidence reaches the prompt; the
+`#admit` trace §12.5 pointed at is not needed). What follows is the decision §12.7
+deferred.
+
+#### The decision
+
+**The `promptContract` substitution is extended to every route whose contract can carry
+an evidence rendering.** The alternative — narrowing the registration to declare ABS as
+the reachable set — is rejected, and the reason is not preference: the variable exists to
+test whether *evidence presentation* moves MR and TR, and ABS gold IS abstention, so a
+variable confined to ABS cannot test the hypothesis it was registered for. Narrowing the
+registration would make the arm honest and useless.
+
+Three consequences, stated before the code:
+
+1. **The reachable set becomes a property the run reports.** A dispatch that installs a
+   rendering must be able to show which routes received it, otherwise the next reader
+   re-derives 12.7 from scratch. The arm's artifact will carry the routes the substitution
+   applied to, not only the contract's name.
+2. **The single-variable property is preserved, and it is harder to keep.** Expanding the
+   substitution to more routes must not move any gate parameter. The guard that asserts
+   the gates are untouched (`prompt-contract-switch.test.ts`) applies unchanged, and the
+   new reach test applies to each added route.
+3. **The prediction is restated, and it is weaker than §12.5's.** §12.5 predicted MR and TR
+   each move off zero. With the rendering now actually administered to them, the
+   prediction is: **at least one of MR/TR moves off zero, or the rendering hypothesis is
+   dead.** A rendering that reaches MR/TR and still repairs nothing ends that line of
+   work, which is a real and useful outcome and is stated here so it cannot be read as a
+   near-miss afterwards.
+
+#### What is explicitly not changed
+
+The gate parameters, the dataset, `limit`, and `ablation_runs`. §4's prohibition on sweeps
+stands. §12.3's finding that no `retrievalThreshold` can carry the arm stands. And the
+`0.25` already dispatched is still recorded as a defect found rather than repaired by
+sliding it — §12.6 explains why the number was there.
+
+#### What would now falsify the hypothesis
+
+MR and TR both stay at exactly 0% with `b-f+ = 0` in a run whose artifact shows the
+rendering was administered to them. That is a reachable antecedent, unlike the one §12.5
+wrote, and reaching it retires the rendering line rather than deferring it.
+
+### 12.9 What §12.8 assumed, and the four things the code actually shows
+
+§12.8 was written from the failure and before reading the three prompt builders line by
+line. Writing it first was the point — a revision that follows the code it authorises is a
+description, not a registration. Reading the code afterwards produced four corrections,
+and one of them narrows §12.8's own decision rather than extending it.
+
+#### (a) The rendering machinery already exists; only the gate is narrow
+
+`buildPrompt` already branches on the contract name:
+
+```ts
+const evidence =
+  contract === 'abstention-evidence-blocks'
+    ? formatEvidenceWithSources(turns)
+    : formatEvidence(turns);
+```
+
+So §12.8's phrasing — "the substitution is extended to every route whose contract can
+carry an evidence rendering" — describes less work than it implies for the flat paths.
+`answer`, `answerAssistant`, `answerKnowledgeUpdate`, `answerPreference` and
+`answerAbstention` all funnel through `#prompt`, which is the only site that resolves the
+substitution. For those five, the change is the width of one condition. Nothing new has to
+be rendered; a renderer that was written, tested and never dispatched becomes dispatched.
+
+#### (b) Two routes do not pass through the substitution at all
+
+`#promptWithDate` (TR) and `#promptSessionAware` (MR) build their prompts by calling
+`buildPromptWithDate` and `buildSessionPrompt` directly. Neither takes a `contract`
+parameter, and neither consults `options.promptContract`. They are **not** "routes whose
+condition is too narrow" — they are routes the substitution cannot express. §12.8 treated
+all routes as one kind of thing. They are two kinds:
+
+| kind | routes | why the substitution does not reach | what it takes |
+|---|---|---|---|
+| condition-narrow | `answer`, `answerAssistant`, `answerKnowledgeUpdate`, `answerPreference`, `answerAbstention` | `#prompt` names `contract === 'abstention'` | widen one condition |
+| structurally-absent | `answerTemporal` (TR), `answerSessions` (MR) | their builders have no contract parameter | plumb a contract through the builder |
+
+The second kind is the kind that carries **28 of the 28 lost questions**. The routes that
+would be easiest to widen are the ones whose loss is zero or near it; the two that hold the
+entire measured loss require a signature change in `prompt.ts`.
+
+#### (c) MR has no rendering for its own contract to select
+
+There is nothing for a widened condition to do on the MR route as it stands. Its builder
+emits `CONTRACT_INSTRUCTIONS.extractive(undefined)` unconditionally, and it already renders
+session boundaries through `{ sessionIndex }` — the very boundary 12.5's docstring says the
+abstention route never got. So "extend the substitution to MR" cannot mean "let MR's
+contract pick a rendering", because MR pins its own.
+
+What MR *is* missing is the `formatEvidenceWithSources` treatment: it renders boundaries
+without source identity. `formatEvidence(turns, { sessionIndex })` is called with
+`session.turns` — and `AdmittedTurn` carries `id`, so the identity is available and unused.
+The MR extension is therefore a **rendering choice inside `buildSessionPrompt`**, selected
+by a new parameter, not a contract substitution arriving from `#prompt`.
+
+This is a real narrowing of §12.8. §12.8 said "the substitution is extended"; for MR the
+accurate statement is "the rendering is extended, and the substitution is what selects it".
+
+#### (d) MR and TR cannot share one contract name
+
+`abstention-evidence-blocks` is also its instruction block — the four-line conservative ask
+with the abstention token. Its own docstring explains why the ask must not change: §12.4
+could not separate "the ask is too forceful" from "the evidence is unusable", so the
+candidate holds the ask FIXED and moves only the evidence.
+
+That property dies if the same name is handed to MR, whose ask is `extractive` and whose
+prompt must keep the `SESSION_NOTE`. Naming `abstention-evidence-blocks` on the MR route
+would move the instruction text *and* the evidence rendering — two variables, in a run
+whose entire value is that it has one. §12.8's consequence 2 said the single-variable
+property "is harder to keep" and would be guarded by the reach test. The code shows it
+cannot be kept by that route at all: the name is not separable from its ask.
+
+#### What this changes in §12.8's decision
+
+§12.8 held. The predicate stays "not a sweep, one variable", and the direction stays
+"administer the rendering to the routes that carry the loss". Two details change:
+
+1. **The reachable set is declared per route, and the naming is per route.** A rendering
+   cannot be addressed by an abstention-named contract on a route whose ask is extractive.
+   The variable is therefore *"the evidence rendering, selected by the run, applied to the
+   routes whose contract can carry it"* — and for MR/TR the contract name that selects it
+   is new, with its own instruction block held byte-identical to what the route emits
+   today.
+2. **The reachable set is reported as rendered-or-not per route, measured from the
+   prompt.** §12.8's consequence 1 said the artifact reports "the routes the substitution
+   applied to". That is a claim about the dispatcher. The stronger and cheaper property —
+   and the one this round can actually assert — is that each route's prompt is inspected
+   for the rendering, which is what `prompt-contract-reach.test.ts` already does and what
+   the arm can log without trusting its own dispatch table.
+
