@@ -22,6 +22,7 @@
     "census:check": "node tools/export-census.mjs --check",
     "check": "pnpm test:tools && pnpm build && pnpm lint && pnpm typecheck && pnpm census:check && pnpm test && pnpm format",
     "test:tools": "python3 -m pytest tools/__tests__ -q && python3 tools/check-shell-interpolation.py .",
+    "classify:raw": "python3 tools/classify-raw-outputs.py",
     "guard:diagnose": "python3 tools/diagnose-bad-substitution.py",
     "guard:sh": "python3 tools/check-shell-interpolation.py --fragment -",
     "guard:shim": "python3 -m pytest tools/__tests__/test_shim_guard.py -q",
