@@ -900,3 +900,146 @@ throws, not the message it throws.** 4h read the dispatch log and it was not eno
 because `functionCallItems count: 0` localises the failure but does not identify the
 parser. Locating the literal string in the image took one `grep` and answered in full what
 ten rounds of shell experiments could not.
+
+## 4k. The eleventh recurrence: the tooling was correct, and the command that used it was not
+
+This section is written about the eleventh occurrence, and its conclusion is
+different in kind from the previous ten. Sections 4a through 4j each found a
+defect — in a rule, a message, a path, a layer — and each ended with the mechanism
+improved. The eleventh found **no defect in any mechanism**. Every component was
+measured working, one at a time, and the failure reproduced anyway.
+
+### What happened
+
+A probe command was assembled to write a TypeScript fixture:
+
+```
+Failed to run function tools: Error: Bad substitution: bc
+```
+
+The tail is `bc`, from a template literal `` `answer-${bc-1}` `` that was being
+written into a double-quoted shell argument. §4j already explains the tail: the
+host tokeniser consumed the rest of the token after the unclosed brace, and
+reported that tail. Nothing here is new, which is the point.
+
+### The measurement, in the order it was made
+
+Each component was checked **individually, with no shell between it and its
+input** — payloads assembled from `chr(36)` and passed through `subprocess`, not
+typed into a command line. The reason for that discipline is the finding itself,
+and it is stated at the end.
+
+| Component | Input | Result | Correct? |
+| --- | --- | --- | --- |
+| `check-shell-interpolation.py --fragment` | an unclosed opener | 1 violation, exit 1 | yes |
+| `scan_payload(payload, …, 'python')` | `f"{cut:.3f}"` | 1 violation | yes |
+| `check-shell-interpolation.py --c-payload` | the same bytes | 1 violation, exit 1 | yes |
+| `/root/.pyenv/shims/python3 -c` | the same bytes | refuses, exit 1, prints the repair | yes |
+| `/root/.pyenv/shims/python3 -c` | `print(1+1)` | runs, exit 0 | yes |
+| `diagnose-bad-substitution.py --message` | `Bad substitution: bc` | decodes to branch A | new |
+
+Every mechanism the document describes, in the state the previous ten sections
+left it, **works**. The shim is installed (`/root/.pyenv/shims/python3`, 2680
+bytes, carrying the guard call), the guard's 86 tests pass, the shim's 48 tests
+pass, and the classification table in 4h holds on measurement:
+
+```
+'cut:.3f'    is-a-shell-expansion=False    <- reported
+'v:2.3f'     is-a-shell-expansion=False    <- reported
+'x:offset'   is-a-shell-expansion=True     <- correctly exempt
+'a:1'        is-a-shell-expansion=True     <- correctly exempt
+```
+
+### The failure was in the verification command, twice
+
+The first attempt to measure the shim used a shell variable to hold the payload:
+
+```text
+payload_a="print(f\"${OPEN}cut:.3f${CLOSE}\")"
+"$SHIM" -c "$payload_a"
+```
+
+The shim reported clean, and the Python interpreter ran the payload far enough to
+raise `NameError: name 'cut' is not defined`. That looks like a shim failure. It
+is not: `$OPEN` and `$CLOSE` were expanded by the outer shell **before** the shim
+was invoked, `${OPEN}cut:.3f${CLOSE}` parsed as one parameter expansion, and what
+reached the shim was `print(f"cut:.3f")` — the braces gone. Measured directly:
+
+```text
+argv received:  'print(f"cut:.3f")'
+intended:       'print(f"${cut:.3f}")'
+violations:     []
+```
+
+The second attempt used `echo "exit=${PIPESTATUS[0]}"` alongside the measurement.
+zsh rejected it with `bad math expression: operator expected at 'f'` — again at
+the caller, again a `${...}` the verifier wrote about the hazard rather than a
+`${...}` in the hazard.
+
+**Two failures, in the act of investigating the failure, both in the same place,
+both avoidable only by knowing the answer already.** That is not a lapse of
+attention. It is the structure of the problem.
+
+### Why the tooling cannot be fixed to prevent this, and what can
+
+Every remedy in this document is a mechanism that inspects text. Every one of
+them must be **invoked**, and an invocation is a shell command. So the text under
+inspection and the command carrying it occupy the same token stream, and the
+outer shell resolves that stream first — which is §2's observation, arrived at
+again from the other end.
+
+Section 4e named this as a **cost asymmetry** and made the safe path cheap.
+Section 4g named the reach problem and installed the shim. Both were right and
+both hold. What neither could do is remove the requirement that the author's
+*first* command be safe, because the author does not yet know it is unsafe.
+
+Three things follow, and only the third is new work.
+
+1. **The guard stays as it is.** It is correct, and a rule aimed at a close-brace
+   sequence would flag `'${cut:.3f}'` — a legitimate literal in a Python program —
+   which is the rule §4h already proved must not exist.
+2. **The message stops being read.** `Bad substitution: bc` names a tail. Twelve
+   rounds were spent reading the name. `tools/diagnose-bad-substitution.py` maps
+   the message to the shape mechanically, so the diagnosis is a lookup and does
+   not depend on the reader recognising a tail for what it is. Its 9 tests use
+   fixtures assembled from `chr(36)`, so the file that documents the hazard is
+   still deliverable by a command that carries one.
+3. **The deliverable is a file, always.** The twelfth recurrence wrote a
+   TypeScript program through a heredoc. §4b's first rule was already "write the
+   program to a file"; what the eleventh recurrence shows is that the rule has to
+   apply to *the fixture being written*, not only to the program under study.
+   Every command in this section that succeeded got its payload from
+   `subprocess`, a file, or a variable assigned without a brace.
+
+### What is claimed, and what is not
+
+**Claimed.** The guard, the payload rule, the shim, and the classification table
+were each measured working at `bcf66463`, in isolation, with no shell in the path.
+The failure at that commit is not in any of them. `diagnose-bad-substitution.py`
+decodes the recorded message to branch A, and its tests fail if that mapping or
+the guard's verdict changes.
+
+**Not claimed.** That the class will not recur. Eleven occurrences, and the
+eleventh is distinguished by having no defect to fix — which means the mechanism
+is not the remaining exposure. The remaining exposure is that a command must be
+written before it can be checked, and the checking tool is reached by writing a
+command. `diagnose-bad-substitution.py` lowers the cost of the *second* step
+(recovery); it does not remove the first.
+
+This is the same shape as the ninth recurrence's conclusion (§4i: "the hazard was
+never in the text I was editing") and it extends it. The ninth found the hazard
+was in the carrier rather than the payload. The eleventh finds the same is true
+of the *tool that inspects the carrier*, and that no arrangement of the tool
+changes this, because the tool is reached through the thing it inspects.
+
+### The generalisation
+
+Section 4j's rule was "read the code that throws, not the message it throws."
+The eleventh sharpens it into something actionable:
+
+**A diagnosis produced by reading a message is only as reliable as the reader's
+state at that moment. When the message is decidable, decide it in code.**
+
+That is what `tools/diagnose-bad-substitution.py` is. It is small on purpose: the
+only durable part of eleven rounds of investigation is the mapping, which is
+seven lines, and everything else was the cost of arriving at it by hand.
