@@ -104,11 +104,71 @@ export class CortexMemory implements SessionAwareMemorySystem {
     answered: 0,
   };
 
+  /**
+   * The model's own output for the most recent call, before `parseAnswer`.
+   *
+   * ## Why the parsed answer is not enough
+   *
+   * Dispatch `37792539133` was the first real artifact to carry the
+   * per-question roster §57 built. The roster arrived -- 120 records, one per
+   * sampled question, with `answer` populated rather than uniformly absent --
+   * and the read it was dispatched for still came back empty, because 115 of
+   * those 120 records read `null`.
+   *
+   * `null` is correct and it is also the whole of the information. `Answer` is
+   * `string | null`, and `parseAnswer` decides a decline from the **last
+   * non-empty line only**, after stripping a label like `Answer:` and comparing
+   * case-insensitively. So three distinct model behaviours arrive at the scorer
+   * as one value: the bare token, a labelled token, and an explanation followed
+   * by the token. The MR route lost 13 baseline-correct questions and the TR
+   * route 16 in that run; which shape produced them is not recoverable, because
+   * the text that would say so was a local in `#prompt` and died at
+   * `parseAnswer`'s return.
+   *
+   * This is §57's defect one layer down, and §56's below that. §56: a value was
+   * computed and never reached the field. §57: a value was computed and
+   * discarded before the report layer saw it. Here: a value is computed and
+   * then **replaced by its own summary**. `parseAnswer` is not wrong; treating
+   * its output as a substitute for its input was.
+   *
+   * ## Why one slot rather than a list
+   *
+   * The benchmark asks one question at a time and reads this immediately after
+   * the call, so a slot is the whole requirement and an accumulating list would
+   * grow without bound on a 500-question run for a reader that never looks
+   * backwards. The scope is stated in the name: this describes the **most recent
+   * call**, not the run, and a caller that needs the run has to retain it the
+   * way the arm retains its answers.
+   *
+   * ## Why `null` and not `''`
+   *
+   * `''` is an answer in this package -- a blank, wrong one -- and not an
+   * abstention, which is the distinction `parse.ts` opens by naming. A default
+   * of `''` would therefore present "no call has happened" indistinguishably
+   * from "the model replied with nothing", on the one field whose purpose is to
+   * stop two different model behaviours from collapsing into one value.
+   */
+  #lastRawOutput: string | null = null;
+
   constructor(options: CortexMemoryOptions) {
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
     this.#now = options.now;
     this.#options = options;
+  }
+
+  /**
+   * The model output of the most recent call, or `null` if the model was not
+   * consulted for it.
+   *
+   * `null` covers two cases that a caller must not confuse, and the way to tell
+   * them apart is `abstentionReasons()` rather than this field: no call has
+   * happened yet, or the last question was declined by the machine before the
+   * model was reached. Both mean "there is no model text for the last question",
+   * which is what this field reports.
+   */
+  lastRawOutput(): string | null {
+    return this.#lastRawOutput;
   }
 
   /**
@@ -345,6 +405,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
         : contract;
     const prompt = buildPrompt(question, turns, resolved, this.#promptOptions());
     const raw = await this.#llm.complete(prompt);
+    // Retained before the parse, not after: `parseAnswer` returns the summary
+    // and the text it summarised is gone by then. See `#lastRawOutput`.
+    this.#lastRawOutput = raw;
     return parseAnswer(raw);
   }
 
@@ -360,6 +423,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...(questionDate === undefined ? {} : { questionDate }),
     });
     const raw = await this.#llm.complete(prompt);
+    this.#lastRawOutput = raw;
     return parseAnswer(raw);
   }
 
@@ -370,6 +434,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
   ): Promise<Answer> {
     const prompt = buildSessionPrompt(question, sessions, this.#promptOptions());
     const raw = await this.#llm.complete(prompt);
+    this.#lastRawOutput = raw;
     return parseAnswer(raw);
   }
 
