@@ -326,3 +326,63 @@ describe('the census counts CALLS, and the report must not call them questions',
     expect(md).not.toContain('Accumulated over');
   });
 });
+
+describe('the census must state the one route it measures', () => {
+  /**
+   * The table reads as a census of the run. It is a census of one route.
+   *
+   * `CortexMemory.#reasons` is written only inside `answerAbstention`, and
+   * `runBenchmark` dispatches `answerAbstention` only for `capability === 'ABS'`.
+   * A decline on the session, temporal, assistant, preference or knowledge-update
+   * route never reaches these counters.
+   *
+   * §55 read §12.5's `llm = 120` as "the model declined 120 times" and §55.4 made
+   * the next investigation "read the 30 ABS outputs for a common decline pattern".
+   * Both are wrong: `30 ABS questions x 4 runs = 120` exactly, ABS gold IS
+   * abstention, and ABS scored **30/30 correct**. The artifact's own capability
+   * table said `ABS: total=30 base=30 feat=30 b+f-=0`, so the 120 were the
+   * capability PASSING. The real loss -- 449 of 470 non-ABS questions abstained --
+   * is invisible to this table, and nothing in the document said so.
+   *
+   * The scope line is what stops the next reader from repeating it. It is asserted
+   * on the RENDERED output rather than on the source, because the reader meets the
+   * rendering: a comment in the renderer would not have helped §55 either.
+   */
+
+  it('names the abstention route as the scope, and says it is not the arm', () => {
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('Scope: the **abstention route only**');
+    expect(md).toContain('`answerAbstention`');
+    expect(md).toContain('`ABS`');
+    // The load-bearing half: a reader must not take this table for the arm.
+    expect(md).toContain('this table does not describe the arm');
+    // And a decline elsewhere must be stated as uncounted, not merely absent.
+    expect(md).toContain('**not** counted here');
+  });
+
+  it('puts the scope before the table, so it is read as a qualifier rather than a footnote', () => {
+    // A caveat below the numbers is read after the reader has already formed the
+    // wrong impression. The §55 misreading formed from the NUMBERS, so the
+    // qualifier has to precede them.
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    const scope = md.indexOf('Scope: the **abstention route only**');
+    const header = md.indexOf('| Reason | Count | Share | Decided by |');
+    expect(scope).toBeGreaterThan(-1);
+    expect(header).toBeGreaterThan(-1);
+    expect(scope).toBeLessThan(header);
+  });
+
+  it('points the reader at the capability row the numbers can actually be checked against', () => {
+    // The scope line is only useful if it says where to look instead. `ABS` is the
+    // row this census is commensurate with, and `30 x runs` is what its total
+    // should reproduce.
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('Read it against the `ABS` row of the capability table.');
+  });
+});

@@ -51,12 +51,37 @@ export class CortexMemory implements SessionAwareMemorySystem {
   readonly #options: CortexMemoryOptions;
 
   /**
-   * Why each abstention happened, accumulated across every question answered.
+   * Why each abstention happened, on the ABSTENTION ROUTE, accumulated across calls.
+   *
+   * ## The scope, which is narrower than the name suggests
    *
    * The four keys name the four mutually exclusive outcomes of
-   * `answerAbstention`, and they cover every question it is asked exactly once.
+   * `answerAbstention`, and they cover every call to it exactly once.
    * `empty` and `threshold` are machine-derived and consume no request; `llm` and
    * `answered` are the model's two outcomes.
+   *
+   * `#reasons` is written in that one method and nowhere else, and
+   * `runBenchmark` dispatches `answerAbstention` **only** for
+   * `capability === 'ABS'`. So this is a census of the abstention route, **not of
+   * the run**: a question declined on the session, temporal, assistant,
+   * preference or knowledge-update route is invisible here. Three tests in
+   * `abstention-reasons.test.ts` pin that boundary.
+   *
+   * ## Why the scope is written down
+   *
+   * It was misread, and the misreading cost a whole round. The §12.5 artifact
+   * carries `abstentionReasons.llm = 120`, and §55 read it as "the model declined
+   * 120 times". §55.4 then made the next investigation "read the 30 ABS outputs
+   * for a common decline pattern". Both readings are wrong in the same way:
+   * `30 ABS questions x 4 runs = exactly 120`, ABS gold **is** abstention, and ABS
+   * scored **30/30 correct** -- so those 120 calls are the capability passing, and
+   * the artifact's own per-capability table said so all along
+   * (`ABS: total=30 base=30 feat=30 b+f-=0`).
+   *
+   * Meanwhile the real loss is invisible to this field: 449 of 470 non-ABS
+   * questions abstained, and `answerAbstention` never ran for one of them. A
+   * counter that reads like a run-wide census while measuring one route is how a
+   * 95.5% non-ABS abstention rate came to be investigated as an ABS problem.
    *
    * It exists because those four outcomes were indistinguishable in every
    * artifact this project has produced. `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`

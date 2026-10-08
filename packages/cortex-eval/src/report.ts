@@ -658,6 +658,21 @@ function abstentionReasonLines(
     '',
     '## Abstention reasons',
     '',
+    // The ROUTE is stated before the table, because the table reads as though it
+    // covers the run and it does not. `CortexMemory.#reasons` is written only in
+    // `answerAbstention`, and `runBenchmark` dispatches that method only for
+    // `capability === 'ABS'`. So this census counts the abstention route alone.
+    //
+    // That was misread into a whole round of work. §12.5's `llm = 120` was read as
+    // "the model declined 120 times" and §55.4 opened an investigation into the 30
+    // ABS outputs -- but `30 x 4 runs = 120` exactly, ABS gold IS abstention, and
+    // ABS scored 30/30 correct. Those calls were the capability passing. The real
+    // loss (449 of 470 non-ABS questions abstained) never touches this table, and
+    // nothing here said so.
+    '> Scope: the **abstention route only** (`answerAbstention`, dispatched for `ABS` ' +
+      'questions). A decline on any other route is **not** counted here, so this table ' +
+      'does not describe the arm. Read it against the `ABS` row of the capability table.',
+    '',
     '| Reason | Count | Share | Decided by |',
     '|---|---|---|---|',
     `| \`empty\` | ${reasons.empty} | ${share(reasons.empty)} | machine (no evidence admitted) |`,

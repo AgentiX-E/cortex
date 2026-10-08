@@ -45,6 +45,7 @@ import { describe, expect, it } from 'vitest';
 import type { LLM, MemoryValue, ValueFunction } from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
+import { ABSTAIN_TOKEN } from '../parse.js';
 import type { CortexMemoryOptions } from '../types.js';
 
 const NOW = 1_759_470_000_000;
@@ -240,5 +241,118 @@ describe('the abstention path reports which mechanism declined', () => {
     first.answered = 999;
 
     expect(memory.abstentionReasons().answered).toBe(1);
+  });
+});
+
+describe('the census measures ONE route, and the artifact must not read it as the whole arm', () => {
+  /**
+   * The scope of the four counters, pinned because it was misread.
+   *
+   * `#reasons` is written in exactly one method, `answerAbstention`, and
+   * `runBenchmark` dispatches that method **only** for `capability === 'ABS'`.
+   * So the census is a census of the abstention route, not of the run.
+   *
+   * §55 read the §12.5 artifact's `abstentionReasons.llm = 120` as "the model
+   * declined 120 times" and §55.4 turned that into the next investigation:
+   * read the 30 ABS outputs for a common decline pattern. Both readings are
+   * wrong in the same way. 30 ABS questions x 4 runs = exactly 120, ABS gold IS
+   * abstention, and ABS scored **30/30 correct** -- so those 120 calls are the
+   * capability PASSING, and the artifact's own per-capability table already said
+   * so (`ABS: total=30 base=30 feat=30 b+f-=0`).
+   *
+   * The real loss is invisible to this field: 449 of 470 non-ABS questions
+   * abstained, and `answerAbstention` never ran for any of them. A field that
+   * looks like a run-wide census and reports one route is how a 95.5% non-ABS
+   * abstention rate came to be investigated as an ABS problem.
+   *
+   * These tests assert the SCOPE rather than a count, because the count is
+   * already covered and the scope is what was wrong.
+   */
+
+  it('counts nothing for a question answered on a non-abstention route', async () => {
+    // The decisive shape. `answerSessions` is the MR route, and it is not the
+    // abstention path, so a decline reached through it must leave the census at
+    // zero. If this ever tallies, the field has silently widened to the run and
+    // every prior artifact's numbers change meaning.
+    const memory = system({
+      llm: recordingLlm([], ABSTAIN_TOKEN),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(1),
+      },
+    });
+
+    const answer = await memory.answerSessions('How many trips did I take?', [
+      ['user: I went to Lisbon.', 'assistant: Noted.'],
+    ]);
+
+    expect(answer).toBeNull();
+    expect(memory.abstentionReasons()).toEqual({
+      empty: 0,
+      threshold: 0,
+      llm: 0,
+      answered: 0,
+    });
+  });
+
+  it('counts a decline on the temporal route as nothing, for the same reason', async () => {
+    // TR is the arm's largest single loss (84 questions the baseline answered and
+    // the feature did not) and it does not touch this census at all. Asserted
+    // separately from the session route rather than folded into it: the two are
+    // different methods, and a future edit could wire one to the counter without
+    // the other.
+    const memory = system({
+      llm: recordingLlm([], ABSTAIN_TOKEN),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(1),
+      },
+    });
+
+    const answer = await memory.answerTemporal(
+      'When did I go to Lisbon?',
+      ['user: I went to Lisbon.'],
+      '2024-01-01',
+      [['user: I went to Lisbon.']],
+    );
+
+    expect(answer).toBeNull();
+    expect(memory.abstentionReasons()).toEqual({
+      empty: 0,
+      threshold: 0,
+      llm: 0,
+      answered: 0,
+    });
+  });
+
+  it('tallies a decline on the abstention route, which is the route it measures', async () => {
+    // The positive control. Without it the two tests above would pass on a
+    // counter that never increments at all, which is the defect shape they are
+    // written to distinguish themselves from.
+    const memory = system({
+      llm: recordingLlm([], ABSTAIN_TOKEN),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(1),
+      },
+    });
+
+    const answer = await memory.answerAbstention('Where did I travel?', [
+      'user: I went to Lisbon.',
+    ]);
+
+    expect(answer).toBeNull();
+    expect(memory.abstentionReasons()).toEqual({
+      empty: 0,
+      threshold: 0,
+      llm: 1,
+      answered: 0,
+    });
   });
 });
