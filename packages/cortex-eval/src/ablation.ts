@@ -12,9 +12,11 @@
 import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
 import type {
   AblationResult,
+  Answer,
   BenchmarkDataset,
   Capability,
   MemorySystem,
+  PartialAblation,
   PerCapabilityPairedStats,
 } from './types.js';
 import { evaluateWithScorer, evaluateWithScorerDetailed } from './benchmark.js';
@@ -26,9 +28,57 @@ import {
   mcnemarPValue,
   tTestPValue,
   type AnswerScorer,
+  type ScoredEvaluation,
 } from './metrics.js';
 
 const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
+
+/**
+ * Attach what was measured to the error that ended the run, and rethrow it.
+ *
+ * ## Why the measurement is attached rather than returned
+ *
+ * An ablation that did not finish must not RESOLVE. A caller cannot tell a
+ * returned partial from a complete result by looking at it, and the number that
+ * would be fabricated is `delta` -- which is `featureAggregate.avg -
+ * baselineAggregate.avg` over the same index vector, so with one side short it is
+ * meaningful arithmetic over data that was never paired. `variance.ts` throws to
+ * prevent exactly that one layer down.
+ *
+ * ## Why it is attached rather than logged
+ *
+ * Run `37942775447` graded for ~40 minutes and left nothing: the answers lived in
+ * `runBenchmark`'s local array, which the stack unwound. A log line would have the
+ * same problem in a different medium -- it survives only if someone reads it, and
+ * the artifact is what a later run reads. Attaching the vectors to the error puts
+ * them in the caller's hands at the only moment they exist.
+ *
+ * ## Why the original error is preserved
+ *
+ * The cause that brought us here is a transport error, and its stack is the only
+ * evidence in the record that the loss was infrastructure rather than a defect in
+ * the arm (§13.11.7). Wrapping it in a new `Error` would replace that stack with
+ * one that says "the ablation failed", which is already known. So the field is set
+ * on the original and the original is rethrown -- a mutation, deliberately, since
+ * the alternative is losing the thing the diagnostic exists for.
+ *
+ * ## The no-measurement case
+ *
+ * Only when BOTH vectors are empty is nothing attached. The predicate is not
+ * `reached === 0`, because `reached` counts the side that was RUNNING when the
+ * error surfaced: a feature-side death at question 0 leaves `reached: 0` and a
+ * COMPLETE baseline, and discarding the baseline then would throw away the half of
+ * the measurement that finished. A `partial` of two empty vectors is the same
+ * bytes as a broken capture -- the `null` vs `''` distinction the evidence capture
+ * keeps one layer up -- so that is the case that attaches nothing.
+ */
+function attachPartial(error: unknown, partial: PartialAblation): unknown {
+  if (partial.reached === 0 && partial.baselineAnswers.length === 0) return error;
+  if (error !== null && typeof error === 'object') {
+    (error as { partial?: PartialAblation }).partial = partial;
+  }
+  return error;
+}
 
 function emptyPairedStats(): PerCapabilityPairedStats {
   return {
@@ -89,30 +139,65 @@ export async function runAblation(
   // feature starts, so the progress stream reads as one side's questions, then the
   // other's -- which is the same ordering the pairing argument depends on, and is
   // asserted by `ablation-progress.test.ts` rather than assumed here.
-  const baseFirst = await evaluateWithScorerDetailed(
-    dataset,
-    baseline,
-    scorer,
-    options.onProgress,
-    0,
-  );
-  const featFirst = await evaluateWithScorerDetailed(
-    dataset,
-    feature,
-    scorer,
-    options.onProgress,
-    0,
-    // The feature side is the one whose model output explains a loss, and the
-    // baseline is the reference pipeline whose abstention path is a different
-    // design. Capturing only this side keeps the artifact's raw-output vector
-    // aligned with `featureAnswers` and `featureCorrect`, which are the vectors
-    // the roster pairs it with.
-    true,
-    // The evidence, on the same side and for the same reason: §13's loss is the
-    // feature's, and the question it left open -- wrong evidence or no evidence --
-    // can only be asked of the side that lost.
-    true,
-  );
+  //
+  // Both sides accumulate their answers through a sink, so a throw leaves the
+  // measurement reachable rather than only inside a local array the stack is about
+  // to unwind. See `attachPartial` below for what is done with them and why a
+  // partial result must not report a delta.
+  const baselineAnswers: Answer[] = [];
+  const featureAnswers: Answer[] = [];
+  let baseFirst: ScoredEvaluation;
+  try {
+    baseFirst = await evaluateWithScorerDetailed(
+      dataset,
+      baseline,
+      scorer,
+      options.onProgress,
+      0,
+      false,
+      false,
+      (answer) => baselineAnswers.push(answer),
+    );
+  } catch (error) {
+    throw attachPartial(error, {
+      system: baseline.name,
+      reached: baselineAnswers.length,
+      total: dataset.questions.length,
+      run: 0,
+      baselineAnswers,
+      featureAnswers,
+    });
+  }
+  let featFirst: ScoredEvaluation;
+  try {
+    featFirst = await evaluateWithScorerDetailed(
+      dataset,
+      feature,
+      scorer,
+      options.onProgress,
+      0,
+      // The feature side is the one whose model output explains a loss, and the
+      // baseline is the reference pipeline whose abstention path is a different
+      // design. Capturing only this side keeps the artifact's raw-output vector
+      // aligned with `featureAnswers` and `featureCorrect`, which are the vectors
+      // the roster pairs it with.
+      true,
+      // The evidence, on the same side and for the same reason: §13's loss is the
+      // feature's, and the question it left open -- wrong evidence or no evidence --
+      // can only be asked of the side that lost.
+      true,
+      (answer) => featureAnswers.push(answer),
+    );
+  } catch (error) {
+    throw attachPartial(error, {
+      system: feature.name,
+      reached: featureAnswers.length,
+      total: dataset.questions.length,
+      run: 0,
+      baselineAnswers,
+      featureAnswers,
+    });
+  }
 
   let baselineCorrectFeatureIncorrect = 0;
   let baselineIncorrectFeatureCorrect = 0;

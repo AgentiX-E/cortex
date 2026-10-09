@@ -1900,3 +1900,72 @@ cannot, by itself, pick the ranker.
 is armed with `ask: extractive` held from §13.8 and `promptContract:
 abstention-evidence-blocks` held from §12.5, so the evidence vector is the only thing
 that differs from the run whose artifact §13.8 read.
+
+### 13.11.7 The dispatch failed on infrastructure, and the failure destroyed the measurement
+
+Run `37942775447` (`b4d19c54`) is a **failure** and it is not a result. The job reached
+`Run cortex-memory A/B` and died there:
+
+```
+progress: died on reference-pipeline run=2 q=157/500 id=a89d7624
+
+TypeError: terminated
+    at Fetch.onAborted (node:internal/deps/undici/undici:11472:53)
+```
+
+**§4.2 already covers this and the recovery is the one it names.** That rule anticipates
+exactly this case — "if the first dispatch fails for an infrastructure reason (quota,
+network, artifact loss), it is re-dispatched with the reason recorded. A failure is not a
+result." So the re-dispatch is pre-committed rather than chosen after the fact, and no
+endpoint moved.
+
+Two things about the failure are worth separating, because they have different repairs.
+
+**First, the transport retry was correctly configured and still lost.** The LLM adapter
+defaults to `maxRetries: 5`, `baseDelayMs: 1000`, `timeoutMs: 60000` and a
+`retryBudgetMs` of 120 s, and `isRetryableStatus` retries `429` and `>= 500`; a thrown
+transport error is also caught and retried. But the budget is a **wall-clock ceiling on
+the retry sequence**, checked *before* each sleep: once 120 s of backoff has been spent,
+the next retry is not made and the loop re-throws. Two minutes is deliberately larger than
+a throttle window measured in seconds — and still smaller than a connection that hangs for
+the full per-attempt deadline twice. The configuration is not obviously wrong; the budget
+is simply not the guarantee it reads as, because "retried five times with backoff" and
+"attempted for as long as two minutes" are different promises and only the weaker one is
+kept.
+
+**Second, and this is the defect this section adds: the failure destroyed everything the
+run had measured.** `bench/run-ablation.ts` writes
+`benchmark-cortex-memory-ablation-report.md` and `.json` **only after
+`runCortexMemoryArm` returns**, and the arm returns only on success. The failure path
+writes `benchmark-error.log` and persists the embedding cache — it saves the *vectors*,
+which are the cheapest thing the run paid for, and discards the *answers*, which are the
+only thing it was measuring. The artifact listing for the run says this without ambiguity:
+
+| Written | File | What it holds |
+| --- | --- | --- |
+| ✅ | `cortex-memory/benchmark-error.log` | the progress line and the stack |
+| ❌ | `cortex-memory/benchmark-cortex-memory-ablation-report.json` | **absent** |
+| ❌ | `cortex-memory/benchmark-cortex-memory-ablation-report.md` | **absent** |
+
+So the run spent ~40 minutes grading questions across six routes and two sides and left no
+record of a single answer. This is the §52.6 defect in a new place: there, a value reached
+the JSON and not the Markdown; here, a value reaches **neither**, and the failure is silent
+about it in exactly the way §12.8's unknown reach was silent. Worse, the answer cache is a
+plain in-process `Map` (`bench/run-ablation.ts`, constructed beside `structuredCache`), so
+it dies with the process. The embedding cache is persisted and the answer cache is not —
+which is the wrong way round: a re-embed is a repeat of a deterministic, already-paid
+computation, while a re-answer is a repeat of the measurement itself.
+
+**What this changes before the re-dispatch.** The re-dispatch is cheap only because the
+embedding cache survived (`Restore embedding cache` succeeded and the save step ran under
+`always()`), so the ~115k vectors are not re-billed. The answers are. That cost is paid
+again on the retry, and it would be paid a third time if the retry failed the same way —
+so the durability of the measurement is repaired **before** re-dispatching rather than
+after a second loss.
+
+### 13.11.8 Status
+
+**Registered, dispatched once, failed on infrastructure.** Per §4.2 the run is
+re-dispatched with the reason recorded here; the endpoint, the effect size and the
+stopping rule are unchanged. The measurement's durability is repaired first, so a second
+infrastructure failure cannot cost another 40 minutes of grading for no record.

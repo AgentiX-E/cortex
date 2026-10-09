@@ -304,6 +304,26 @@ main().catch((error: unknown) => {
       : `progress: died on ${lastProgress.system} run=${lastProgress.run} ` +
         `q=${lastProgress.index + 1}/${lastProgress.total} id=${lastProgress.questionId}`;
   writeFileSync('benchmark-error.log', `${where}\n\n${message}\n`);
+  // Write what the run MEASURED, not only what it embedded.
+  //
+  // Run `37942775447` is why this exists: ~40 minutes of grading across six routes
+  // and two sides, ended by `TypeError: terminated`, and the artifact held a stack
+  // trace and nothing else. The failure path persisted the embedding cache and not
+  // the answers -- the wrong way round, since a re-embed repeats a deterministic,
+  // already-paid computation while a re-answer repeats the measurement itself.
+  //
+  // What is written is the answer VECTORS and their extent, never `delta`, an
+  // aggregate or a per-capability table: every one of those is a function of both
+  // sides over the same index vector, so with one side short they would be
+  // arithmetic over data that was never paired and would read exactly like a real
+  // result. The `partial` field is attached by `runAblation` (`attachPartial`),
+  // which is where that rule lives and is tested -- this file only writes it out.
+  const partial = (error as { partial?: unknown }).partial;
+  if (partial !== undefined) {
+    writeFileSync('benchmark-cortex-memory-partial.json', `${JSON.stringify(partial, null, 2)}\n`);
+    console.log('=== cortex-memory partial measurement (INCOMPLETE, no delta) ===');
+    console.log(JSON.stringify(partial));
+  }
   console.error(where);
   console.error(message);
   // Persist whatever was embedded before the failure, on the failure path too.

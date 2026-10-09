@@ -155,6 +155,26 @@ type BenchmarkRawOutputCallback = (raw: string | null) => void;
  */
 type BenchmarkRetrievedCallback = (retrieved: string | null) => void;
 
+/**
+ * A sink for each answer as it is produced, so a throw does not erase the pass.
+ *
+ * ## Why the answer needs a sink when it is already accumulated
+ *
+ * `runBenchmark` builds its `answers` array locally and returns it, so a caller
+ * only sees the vector when the loop finishes. When the loop throws, that array
+ * -- and every answer in it -- is unreachable. Run `37942775447` is the cost: ~40
+ * minutes of grading, and the failure path could write nothing but a stack trace.
+ *
+ * The sink fires at the same point the answer is appended, so the caller holds
+ * the answers independently of whether the pass completed. `reached` is then the
+ * sink's own length rather than a value the loop has to remember to maintain.
+ *
+ * Not exported, for the reason `BenchmarkRetrievedCallback` is not: the only
+ * caller is this module's own loop, and an export nothing outside could use is
+ * the `1 NEW orphan(s)` the census gate reports.
+ */
+type BenchmarkAnswerCallback = (answer: Answer) => void;
+
 /** Run a system over every question, preserving question order. */
 export async function runBenchmark(
   dataset: BenchmarkDataset,
@@ -163,6 +183,7 @@ export async function runBenchmark(
   run = 0,
   onRawOutput?: BenchmarkRawOutputCallback,
   onRetrieved?: BenchmarkRetrievedCallback,
+  onAnswer?: BenchmarkAnswerCallback,
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
   const total = dataset.questions.length;
@@ -187,6 +208,16 @@ export async function runBenchmark(
             system,
           )
         : undefined;
+  // Every branch below routes through this, rather than calling `answers.push`
+  // itself. Seven branches are seven chances to forget the sink, and the routing
+  // is not what the sink measures -- it fires for every answer on every path by
+  // construction. The push happens first so that a sink which throws cannot
+  // produce an answer that is reported but not accumulated.
+  const record = (answer: Answer): Answer => {
+    answers.push(answer);
+    onAnswer?.(answer);
+    return answer;
+  };
   for (let index = 0; index < dataset.questions.length; index++) {
     const q = dataset.questions[index]!;
     // Before the answer call, so a throw inside it cannot skip the question it
@@ -196,17 +227,17 @@ export async function runBenchmark(
     progress?.({ system: system.name, index, total, run, questionId: q.id });
     if (isSessionAware(system) && q.capability === 'MR' && q.sessions && q.sessions.length > 0) {
       // Multi-session questions aggregate evidence across sessions.
-      answers.push(await system.answerSessions(q.question, q.sessions));
+      record(await system.answerSessions(q.question, q.sessions));
     } else if (isSessionAware(system) && q.capability === 'TR' && system.answerTemporal) {
       // Temporal questions need the question date as the reference point for
       // "how long ago" reasoning, plus a dedicated date-reading prompt.
-      answers.push(await system.answerTemporal(q.question, q.context, q.questionDate, q.sessions));
+      record(await system.answerTemporal(q.question, q.context, q.questionDate, q.sessions));
     } else if (isSessionAware(system) && q.capability === 'ABS' && system.answerAbstention) {
       // Abstention questions are answered with a conservative prompt so the
       // model recognizes the absence of an answer instead of being pushed to
       // choose a candidate. Routed before the assistant check because an ABS
       // question may carry a single-session-assistant type.
-      answers.push(await system.answerAbstention(q.question, q.context, q.sessions));
+      record(await system.answerAbstention(q.question, q.context, q.sessions));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'single-session-assistant' &&
@@ -214,7 +245,7 @@ export async function runBenchmark(
     ) {
       // The evidence for single-session-assistant questions lives in an
       // assistant turn, so route to a path that includes assistant turns.
-      answers.push(await system.answerAssistant(q.question, q.context, q.sessions));
+      record(await system.answerAssistant(q.question, q.context, q.sessions));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'single-session-preference' &&
@@ -224,7 +255,7 @@ export async function runBenchmark(
       // the user's stated preferences, not a single extracted fact. The
       // extractive answer path would abstain on them, so route to a generative
       // path instead.
-      answers.push(await system.answerPreference(q.question, q.context, q.sessions));
+      record(await system.answerPreference(q.question, q.context, q.sessions));
     } else if (
       isSessionAware(system) &&
       q.questionType === 'knowledge-update' &&
@@ -233,9 +264,9 @@ export async function runBenchmark(
       // Knowledge-update questions ask which value a time qualifier selects
       // (previous vs currently), which the generic extractive prompt does not
       // make explicit. Route to the time-qualifier-aware prompt instead.
-      answers.push(await system.answerKnowledgeUpdate(q.question, q.context, q.sessions));
+      record(await system.answerKnowledgeUpdate(q.question, q.context, q.sessions));
     } else {
-      answers.push(await system.answer(q.question, q.context, q.sessions));
+      record(await system.answer(q.question, q.context, q.sessions));
     }
     // Captured HERE, at the end of the iteration that produced the answer, and
     // not after the loop. Reading the accessor once at the end would report the
@@ -292,6 +323,7 @@ export async function evaluateWithScorerDetailed(
   run = 0,
   captureRawOutput = false,
   captureRetrievedContext = false,
+  onAnswer?: BenchmarkAnswerCallback,
 ): Promise<ScoredEvaluation> {
   const rawOutputs: (string | null)[] = [];
   const retrievedContexts: (string | null)[] = [];
@@ -302,6 +334,7 @@ export async function evaluateWithScorerDetailed(
     run,
     captureRawOutput ? (raw) => rawOutputs.push(raw) : undefined,
     captureRetrievedContext ? (retrieved) => retrievedContexts.push(retrieved) : undefined,
+    onAnswer,
   );
   return scoreEvaluation(
     dataset,

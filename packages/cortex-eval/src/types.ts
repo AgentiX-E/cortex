@@ -188,6 +188,53 @@ export type PerCapabilityPairedStats = {
   featureConfidence: ConfidenceInterval;
 };
 
+/**
+ * What an ablation had measured when it died, attached to the error it threw.
+ *
+ * ## Why this exists
+ *
+ * Run `37942775447` graded questions for ~40 minutes and then lost the connection.
+ * Its artifact held `benchmark-error.log` and no report at all, because
+ * `bench/run-ablation.ts` writes its report only after the arm RETURNS and the arm
+ * returns only on success. Every graded answer was discarded, and the answer cache
+ * that held them was a plain in-process `Map` that died with the process.
+ *
+ * The asymmetry that made this indefensible: the failure path persisted the
+ * EMBEDDING cache and not the answers. Re-embedding repeats a deterministic,
+ * already-paid computation; re-answering repeats the measurement itself.
+ *
+ * ## Why it is attached to the error rather than returned
+ *
+ * An ablation that did not finish must not resolve -- a caller cannot tell a
+ * returned partial from a complete result by looking at it, and `delta` is the
+ * specific number that would be fabricated if it tried. So the function still
+ * rejects, and the measurement travels on the error as `partial`.
+ *
+ * ## What it deliberately does NOT carry
+ *
+ * No `delta`, no `pValue`, no `perCapability`, no aggregate. Every one of those is
+ * a function of BOTH sides over the SAME index vector, so with one side short they
+ * are arithmetic over data that was never paired. A rate over an empty denominator
+ * is the shape §12.7 records as unreadable -- `0/0` renders identically to `0/121`
+ * in a table, so an unreached capability would read as a measured zero. The answer
+ * VECTORS are carried because they are the raw observation and cannot be misread
+ * as a comparison; the derived statistics are not, because they can.
+ */
+export type PartialAblation = {
+  /** The side that was running when the failure happened. */
+  system: string;
+  /** How many questions THAT side answered before it died. */
+  reached: number;
+  /** The dataset size, so `reached` is readable as `reached / total`. */
+  total: number;
+  /** The repetition ordinal, which disambiguates any arm with `runs > 1`. */
+  run: number;
+  /** The baseline's answers, in dataset order, up to wherever the baseline got. */
+  baselineAnswers: Answer[];
+  /** The feature's answers, in dataset order, up to wherever the feature got. */
+  featureAnswers: Answer[];
+};
+
 export type AblationResult = {
   feature: string;
   baselineAggregate: AggregateStats;
