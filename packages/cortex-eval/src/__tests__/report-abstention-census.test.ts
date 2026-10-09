@@ -245,7 +245,7 @@ describe('the abstention census survives into the rendered report', () => {
     expect(md).toContain('Abstention reasons');
     expect(md).toContain('0.00%');
     expect(md).not.toContain('NaN');
-    expect(md).toContain('Total: **0** calls');
+    expect(md).toContain('Total: **0** questions that reached a decision');
   });
 
   it('keeps the census below the ablation tables, since it explains them', () => {
@@ -360,62 +360,101 @@ describe('the census counts CALLS, and the report must not call them questions',
   });
 });
 
-describe('the census must state the one route it measures', () => {
+describe('the census must state the scope it measures, which is now the run', () => {
   /**
-   * The table reads as a census of the run. It is a census of one route.
+   * The table reads as a census of the run, and that is now true -- it was not.
    *
-   * `CortexMemory.#reasons` is written only inside `answerAbstention`, and
+   * `CortexMemory.#reasons` used to be written only inside `answerAbstention`, and
    * `runBenchmark` dispatches `answerAbstention` only for `capability === 'ABS'`.
    * A decline on the session, temporal, assistant, preference or knowledge-update
-   * route never reaches these counters.
+   * route never reached the counters.
    *
    * §55 read §12.5's `llm = 120` as "the model declined 120 times" and §55.4 made
    * the next investigation "read the 30 ABS outputs for a common decline pattern".
    * Both are wrong: `30 ABS questions x 4 runs = 120` exactly, ABS gold IS
    * abstention, and ABS scored **30/30 correct**. The artifact's own capability
    * table said `ABS: total=30 base=30 feat=30 b+f-=0`, so the 120 were the
-   * capability PASSING. The real loss -- 449 of 470 non-ABS questions abstained --
-   * is invisible to this table, and nothing in the document said so.
+   * capability PASSING.
    *
-   * The scope line is what stops the next reader from repeating it. It is asserted
-   * on the RENDERED output rather than on the source, because the reader meets the
-   * rendering: a comment in the renderer would not have helped §55 either.
+   * §58 fixed the READING by naming the narrow scope here, and deliberately left
+   * the counter alone. §13 is what made the narrow counter untenable: MR `13 -> 0`
+   * and TR `16 -> 0` with `b-f+ = 0`, every decline on a route the census did not
+   * cover, and no other field able to say which route declined. So the counter was
+   * widened and this line was rewritten to match it.
+   *
+   * The one thing that is still not run-wide is `threshold`, and it is named
+   * explicitly rather than left for the reader to infer from a `0` that means
+   * "no gate exists here" on six of the seven routes.
+   *
+   * The scope line is what stops the next reader from repeating §55. It is
+   * asserted on the RENDERED output rather than on the source, because the reader
+   * meets the rendering: a comment in the renderer would not have helped §55.
    */
 
-  it('names the abstention route as the scope, and says it is not the arm', () => {
+  it('names every route as the scope, and states the one key that is not run-wide', () => {
     const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
     const md = formatAblationReport(report);
 
-    expect(md).toContain('Scope: the **abstention route only**');
-    expect(md).toContain('`answerAbstention`');
-    expect(md).toContain('`ABS`');
-    // The load-bearing half: a reader must not take this table for the arm.
-    expect(md).toContain('this table does not describe the arm');
-    // And a decline elsewhere must be stated as uncounted, not merely absent.
-    expect(md).toContain('**not** counted here');
+    expect(md).toContain('Scope: **every route that can decline**');
+    // The routes, named rather than summarised, so a reader can map the table onto
+    // the capability table without guessing which ones were included.
+    expect(md).toContain('session');
+    expect(md).toContain('temporal');
+    expect(md).toContain('knowledge-update');
+    // The exception, which is the part a reader cannot infer. `threshold` is
+    // reachable only where the gate is called, and this says so.
+    expect(md).toContain('`threshold` is reachable only on the abstention route');
+    expect(md).toContain('not because the gate stayed open');
+    // And the history, because the line exists to stop that reading recurring.
+    expect(md).toContain('`llm =');
   });
 
   it('puts the scope before the table, so it is read as a qualifier rather than a footnote', () => {
     // A caveat below the numbers is read after the reader has already formed the
     // wrong impression. The §55 misreading formed from the NUMBERS, so the
-    // qualifier has to precede them.
+    // qualifier has to precede them. Rewriting the scope did not relax this.
     const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
     const md = formatAblationReport(report);
 
-    const scope = md.indexOf('Scope: the **abstention route only**');
+    const scope = md.indexOf('Scope: **every route that can decline**');
     const header = md.indexOf('| Reason | Count | Share | Decided by |');
     expect(scope).toBeGreaterThan(-1);
     expect(header).toBeGreaterThan(-1);
     expect(scope).toBeLessThan(header);
   });
 
-  it('points the reader at the capability row the numbers can actually be checked against', () => {
-    // The scope line is only useful if it says where to look instead. `ABS` is the
-    // row this census is commensurate with, and `30 x runs` is what its total
-    // should reproduce.
+  it('marks the one row whose count is not comparable across routes', () => {
+    // The `threshold` row carries the exception at the point of reading, so a
+    // reader comparing rows does not conclude the gate was open on six routes. The
+    // scope line states the rule; this states it where the number is.
     const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
     const md = formatAblationReport(report);
 
-    expect(md).toContain('Read it against the `ABS` row of the capability table.');
+    expect(md).toContain('retrieval gate closed; abstention route only');
+  });
+
+  it('calls the total a count of questions rather than of one path', () => {
+    // The unit used to read "calls through the abstention path", which named the
+    // population this census no longer measures. A unit that names the wrong
+    // population is the same defect one layer up from the count itself.
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    expect(md).toContain('questions that reached a decision');
+    expect(md).not.toContain('abstention path');
+  });
+
+  it('renders the widened scope as one line, so the section is still scannable', () => {
+    // The scope line carries more now than it did, and the failure mode of a long
+    // qualifier is that it stops being read at all. Pinned as a single quoted
+    // blockquote line immediately above the table rather than as prose: the extra
+    // content is the exception on `threshold`, and it has to stay legible enough
+    // that a reader still reads it.
+    const report = persistedCensusReport({ empty: 0, threshold: 0, llm: 120, answered: 0 });
+    const md = formatAblationReport(report);
+
+    const scopeLines = md.split('\n').filter((l) => l.startsWith('> Scope:'));
+    expect(scopeLines).toHaveLength(1);
+    expect(scopeLines[0]!.startsWith('> Scope: **every route that can decline**')).toBe(true);
   });
 });

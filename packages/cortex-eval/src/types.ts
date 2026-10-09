@@ -288,6 +288,29 @@ export type AblationResult = {
    * suite requires the records to be aligned with the answers they explain.
    */
   featureRawOutputs?: (string | null)[];
+  /**
+   * The evidence each question's feature-side reader was shown.
+   *
+   * One entry per question, holding the admitted turns joined by newlines, or
+   * `null` when the machine declined before a reader was shown anything.
+   *
+   * §13 measured MR `13 -> 0` and TR `16 -> 0` with `b-f+ = 0` on every
+   * capability. The next hypothesis is retrieval quality, and it cannot be asked
+   * without this: "the reader was shown the wrong turn" and "the reader was shown
+   * nothing" are repaired in different places, and before this vector existed the
+   * roster carried `turns: []` for every record, so the artifact reported both as
+   * the same absence.
+   *
+   * `null` and `''` are different statements. `null` is "no reader was shown
+   * anything", which is what a machine-derived abstention produces. `''` would
+   * claim a context was shown and happened to be blank, which this package treats
+   * as an answer rather than as an abstention.
+   *
+   * Optional for the reason `featureRawOutputs` is: a hand-built fixture that
+   * omits it yields records with `turns: []`, which is the honest reading of a
+   * fixture that never retrieved anything.
+   */
+  featureRetrievedContexts?: (string | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

@@ -751,25 +751,41 @@ function abstentionReasonLines(
     '',
     '## Abstention reasons',
     '',
-    // The ROUTE is stated before the table, because the table reads as though it
-    // covers the run and it does not. `CortexMemory.#reasons` is written only in
+    // The SCOPE is stated before the table, because the table reads as though it
+    // covers one thing and the honest answer changed. It used to count the
+    // abstention route alone: `CortexMemory.#reasons` was written only in
     // `answerAbstention`, and `runBenchmark` dispatches that method only for
-    // `capability === 'ABS'`. So this census counts the abstention route alone.
+    // `capability === 'ABS'`.
     //
     // That was misread into a whole round of work. §12.5's `llm = 120` was read as
     // "the model declined 120 times" and §55.4 opened an investigation into the 30
     // ABS outputs -- but `30 x 4 runs = 120` exactly, ABS gold IS abstention, and
-    // ABS scored 30/30 correct. Those calls were the capability passing. The real
-    // loss (449 of 470 non-ABS questions abstained) never touches this table, and
-    // nothing here said so.
-    '> Scope: the **abstention route only** (`answerAbstention`, dispatched for `ABS` ' +
-      'questions). A decline on any other route is **not** counted here, so this table ' +
-      'does not describe the arm. Read it against the `ABS` row of the capability table.',
+    // ABS scored 30/30 correct. Those calls were the capability passing.
+    //
+    // §58 fixed the reading by naming the narrow scope here rather than widening
+    // the counter, on the grounds that the misreading came from the number. §13 is
+    // what made that untenable: MR `13 -> 0` and TR `16 -> 0` with `b-f+ = 0`, all
+    // of it on routes the census did not cover, and no other field in the artifact
+    // could say which route declined.
+    //
+    // So the scope is now the run, and the one thing that is NOT run-wide is named
+    // explicitly: `threshold` is reachable only through `answerAbstention`, since
+    // that is the only caller of `#retrievalAdmitted`. Saying so matters because a
+    // reader who sees `threshold: 0` should know whether the gate was open or
+    // absent, and on every route but `ABS` it is absent.
+    '> Scope: **every route that can decline** (session, temporal, abstention, ' +
+      'knowledge-update, assistant, preference, flat). One exception, stated rather ' +
+      'than implied: `threshold` is reachable only on the abstention route, because ' +
+      'that is the only caller of the retrieval gate — on every other route the key ' +
+      'is `0` because no gate exists there, not because the gate stayed open. This ' +
+      "table used to count the abstention route alone, which is how §12.5's `llm = " +
+      '120` came to be read as the model declining 120 times when it was 30 `ABS` ' +
+      'questions passing across 4 runs.',
     '',
     '| Reason | Count | Share | Decided by |',
     '|---|---|---|---|',
     `| \`empty\` | ${reasons.empty} | ${share(reasons.empty)} | machine (no evidence admitted) |`,
-    `| \`threshold\` | ${reasons.threshold} | ${share(reasons.threshold)} | machine (retrieval gate closed) |`,
+    `| \`threshold\` | ${reasons.threshold} | ${share(reasons.threshold)} | machine (retrieval gate closed; abstention route only) |`,
     `| \`llm\` | ${reasons.llm} | ${share(reasons.llm)} | model (declined) |`,
     `| \`answered\` | ${reasons.answered} | ${share(reasons.answered)} | model (answered) |`,
     '',
@@ -780,7 +796,12 @@ function abstentionReasonLines(
     // factor of `runs` whenever `runs > 1` -- and §12.5 is exactly that case: 30
     // `ABS` questions, `runs = 4`, a census total of `120`, and a capability table
     // saying `30`, with nothing in the document reconciling them.
-    `- Total: **${total}** calls through the abstention path`,
+    //
+    // "questions that reached a decision" rather than "calls through the abstention
+    // path": the latter named one route and the census now covers seven, and a unit
+    // that names the wrong population is the same defect one layer up from the
+    // count itself.
+    `- Total: **${total}** questions that reached a decision`,
   ];
 
   // The divisor, published rather than applied. Deriving it from `questionCount`

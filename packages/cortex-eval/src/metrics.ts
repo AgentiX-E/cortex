@@ -152,6 +152,20 @@ export type ScoredEvaluation = {
    * model was consulted" the same reading.
    */
   rawOutputs?: (string | null)[];
+  /**
+   * The evidence each question's reader was shown, per question.
+   *
+   * §13 measured MR `13 -> 0` and TR `16 -> 0` with `b-f+ = 0` on every
+   * capability, and the artifact could not say whether retrieval returned the
+   * wrong evidence or none. Those are repaired in different places, and the
+   * roster carried `turns: []` for every record because this arm collected no
+   * retrieval text.
+   *
+   * Optional for the reason `rawOutputs` is: a caller that did not ask for the
+   * capture has nothing to put here, and an empty vector would make "not
+   * requested" and "the reader was shown nothing" the same reading.
+   */
+  retrievedContexts?: (string | null)[];
 };
 
 /**
@@ -305,6 +319,7 @@ export async function scoreEvaluation(
   answers: Answer[],
   scorer: AnswerScorer,
   rawOutputs?: (string | null)[],
+  retrievedContexts?: (string | null)[],
 ): Promise<ScoredEvaluation> {
   if (dataset.questions.length !== answers.length) {
     throw new Error(
@@ -369,6 +384,7 @@ export async function scoreEvaluation(
     correct: correctPerQuestion,
     answers,
     ...(rawOutputs === undefined ? {} : { rawOutputs }),
+    ...(retrievedContexts === undefined ? {} : { retrievedContexts }),
   };
 }
 

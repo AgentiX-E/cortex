@@ -244,36 +244,57 @@ describe('the abstention path reports which mechanism declined', () => {
   });
 });
 
-describe('the census measures ONE route, and the artifact must not read it as the whole arm', () => {
+describe('the census covers every route that can decline, not only the abstention route', () => {
   /**
-   * The scope of the four counters, pinned because it was misread.
+   * The scope of the four counters, which used to be one route and is now the run.
    *
-   * `#reasons` is written in exactly one method, `answerAbstention`, and
+   * `#reasons` was written in exactly one method, `answerAbstention`, and
    * `runBenchmark` dispatches that method **only** for `capability === 'ABS'`.
-   * So the census is a census of the abstention route, not of the run.
+   * So the census was a census of the abstention route, not of the run.
    *
    * §55 read the §12.5 artifact's `abstentionReasons.llm = 120` as "the model
-   * declined 120 times" and §55.4 turned that into the next investigation:
-   * read the 30 ABS outputs for a common decline pattern. Both readings are
-   * wrong in the same way. 30 ABS questions x 4 runs = exactly 120, ABS gold IS
+   * declined 120 times" and §55.4 turned that into the next investigation: read
+   * the 30 ABS outputs for a common decline pattern. Both readings are wrong in
+   * the same way. 30 ABS questions x 4 runs = exactly 120, ABS gold IS
    * abstention, and ABS scored **30/30 correct** -- so those 120 calls are the
    * capability PASSING, and the artifact's own per-capability table already said
    * so (`ABS: total=30 base=30 feat=30 b+f-=0`).
    *
-   * The real loss is invisible to this field: 449 of 470 non-ABS questions
+   * The real loss was invisible to this field: 449 of 470 non-ABS questions
    * abstained, and `answerAbstention` never ran for any of them. A field that
    * looks like a run-wide census and reports one route is how a 95.5% non-ABS
    * abstention rate came to be investigated as an ABS problem.
    *
+   * ## Why the scope moved rather than only being documented
+   *
+   * §58 fixed the reading and deliberately left the physics alone: it made the
+   * narrow scope legible in the artifact instead of widening the counter, on the
+   * grounds that the misreading came from the number and not from the field.
+   * That was right for the round it was written in, because nothing was yet
+   * measuring the loss the field could not see.
+   *
+   * §13 changed that. The ask experiment produced MR 13 -> 0 and TR 16 -> 0 with
+   * `b-f+ = 0` on every capability, and every one of those declines happened on
+   * a route this census did not cover. The reading could not say *which* route
+   * declined because the model declined, and neither could any other field in
+   * the artifact: `turns` is `[]` by design (this arm collects no retrieval
+   * trace) and `rawOutput` carries the text but not the decision. Widening the
+   * counter is what makes the next hypothesis -- retrieval quality -- testable at
+   * all.
+   *
+   * This is a pure instrumentation change. `threshold` is reachable only through
+   * `#retrievalAdmitted`, which only `answerAbstention` calls, so on every other
+   * route that key stays `0` and no behaviour moves. Every prior artifact's
+   * accuracy numbers keep their meaning.
+   *
    * These tests assert the SCOPE rather than a count, because the count is
-   * already covered and the scope is what was wrong.
+   * already covered and the scope is what changed.
    */
 
-  it('counts nothing for a question answered on a non-abstention route', async () => {
-    // The decisive shape. `answerSessions` is the MR route, and it is not the
-    // abstention path, so a decline reached through it must leave the census at
-    // zero. If this ever tallies, the field has silently widened to the run and
-    // every prior artifact's numbers change meaning.
+  it('counts a decline on the session route, which carries the arm largest loss', async () => {
+    // The shape that motivated the widening. `answerSessions` is the MR route and
+    // §13 measured it going 13 -> 0; before this change the census read zero while
+    // thirteen questions the baseline answered were being declined here.
     const memory = system({
       llm: recordingLlm([], ABSTAIN_TOKEN),
       gate: {
@@ -292,17 +313,15 @@ describe('the census measures ONE route, and the artifact must not read it as th
     expect(memory.abstentionReasons()).toEqual({
       empty: 0,
       threshold: 0,
-      llm: 0,
+      llm: 1,
       answered: 0,
     });
   });
 
-  it('counts a decline on the temporal route as nothing, for the same reason', async () => {
-    // TR is the arm's largest single loss (84 questions the baseline answered and
-    // the feature did not) and it does not touch this census at all. Asserted
-    // separately from the session route rather than folded into it: the two are
-    // different methods, and a future edit could wire one to the counter without
-    // the other.
+  it('counts a decline on the temporal route, for the same reason', async () => {
+    // Asserted separately from the session route rather than folded into it: the
+    // two are different methods, and a future edit could wire one to the counter
+    // without the other. TR is the other half of the §13 loss (16 -> 0).
     const memory = system({
       llm: recordingLlm([], ABSTAIN_TOKEN),
       gate: {
@@ -324,15 +343,39 @@ describe('the census measures ONE route, and the artifact must not read it as th
     expect(memory.abstentionReasons()).toEqual({
       empty: 0,
       threshold: 0,
-      llm: 0,
+      llm: 1,
       answered: 0,
     });
   });
 
-  it('tallies a decline on the abstention route, which is the route it measures', async () => {
-    // The positive control. Without it the two tests above would pass on a
-    // counter that never increments at all, which is the defect shape they are
-    // written to distinguish themselves from.
+  it('leaves threshold at zero on a route that has no retrieval gate', async () => {
+    // The other half of the claim, and the reason widening the counter is safe to
+    // read as instrumentation rather than as a behaviour change. `threshold` names
+    // a machine decision made by `#retrievalAdmitted`, and only `answerAbstention`
+    // calls it. A decline on the session route is the model's, so it lands in
+    // `llm` -- and a reader must not see `threshold` move here, because that would
+    // mean a gate was installed on a path that has none.
+    const memory = system({
+      llm: recordingLlm([], ABSTAIN_TOKEN),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0.99,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(0),
+      },
+    });
+
+    await memory.answerSessions('How many trips did I take?', [['user: I went to Lisbon.']]);
+
+    const census = memory.abstentionReasons();
+    expect(census.threshold).toBe(0);
+    expect(census.llm).toBe(1);
+  });
+
+  it('tallies a decline on the abstention route, which is where the gate lives', async () => {
+    // The positive control. Without it the tests above would pass on a counter
+    // that never increments at all, which is the defect shape they are written to
+    // distinguish themselves from.
     const memory = system({
       llm: recordingLlm([], ABSTAIN_TOKEN),
       gate: {
@@ -354,5 +397,88 @@ describe('the census measures ONE route, and the artifact must not read it as th
       llm: 1,
       answered: 0,
     });
+  });
+
+  it('does not double count the abstention route now that every route tallies', async () => {
+    // The regression the widening invites. `answerAbstention` already incremented
+    // its own counter before calling the model; if the shared `#prompt` path also
+    // tallied the model outcome, one decline on the abstention route would count
+    // twice and the census would overstate the route that was already correct.
+    const memory = system({
+      llm: recordingLlm([], ABSTAIN_TOKEN),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(1),
+      },
+    });
+
+    await memory.answerAbstention('Where did I travel?', ['user: I went to Lisbon.']);
+
+    const census = memory.abstentionReasons();
+    expect(census.llm).toBe(1);
+    expect(census.llm + census.answered + census.empty + census.threshold).toBe(1);
+  });
+
+  it('counts an answer on a non-abstention route, so the census is a census and not a failure list', async () => {
+    // The mirror of a decline. A counter that only tallies `null` would report the
+    // decline rate against the wrong denominator, and the artifact renders `llm`
+    // and `answered` as the model's two outcomes side by side.
+    const memory = system({
+      llm: recordingLlm([], 'Lisbon'),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(1),
+      },
+    });
+
+    const answer = await memory.answerTemporal(
+      'Where did I go?',
+      ['user: I went to Lisbon.'],
+      '2024-01-01',
+      [['user: I went to Lisbon.']],
+    );
+
+    expect(answer).toBe('Lisbon');
+    expect(memory.abstentionReasons()).toEqual({
+      empty: 0,
+      threshold: 0,
+      llm: 0,
+      answered: 1,
+    });
+  });
+
+  it('counts an empty admission on a non-abstention route as empty, not as a model decline', async () => {
+    // `empty` and `llm` are repaired differently -- `empty` means the arm supplied
+    // no evidence, `llm` means the model declined evidence it had. The abstention
+    // route has always separated them; the widened routes have to as well, or a
+    // write-gate problem on MR would be reported as a model behaviour.
+    const seen: string[] = [];
+    const memory = system({
+      llm: recordingLlm(seen, ABSTAIN_TOKEN),
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: constantValue(1),
+      },
+    });
+
+    const answer = await memory.answerTemporal('Where?', [], '2024-01-01', []);
+
+    expect(answer).toBeNull();
+    expect(memory.abstentionReasons()).toEqual({
+      empty: 1,
+      threshold: 0,
+      llm: 0,
+      answered: 0,
+    });
+    // And the model was never consulted, which is what makes `empty` a machine
+    // outcome rather than a naming choice. Without this the test would pass on a
+    // counter that charged every decline to `empty`.
+    expect(seen).toHaveLength(0);
   });
 });

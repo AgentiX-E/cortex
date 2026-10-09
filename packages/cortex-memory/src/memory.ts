@@ -58,26 +58,31 @@ export class CortexMemory implements SessionAwareMemorySystem {
   readonly #options: CortexMemoryOptions;
 
   /**
-   * Why each abstention happened, on the ABSTENTION ROUTE, accumulated across calls.
+   * Why each abstention happened, accumulated across every route that can decline.
    *
-   * ## The scope, which is narrower than the name suggests
+   * ## The four keys
    *
-   * The four keys name the four mutually exclusive outcomes of
-   * `answerAbstention`, and they cover every call to it exactly once.
+   * The four keys name four mutually exclusive outcomes of a declined question.
    * `empty` and `threshold` are machine-derived and consume no request; `llm` and
    * `answered` are the model's two outcomes.
    *
-   * `#reasons` is written in that one method and nowhere else, and
-   * `runBenchmark` dispatches `answerAbstention` **only** for
-   * `capability === 'ABS'`. So this is a census of the abstention route, **not of
-   * the run**: a question declined on the session, temporal, assistant,
-   * preference or knowledge-update route is invisible here. Three tests in
-   * `abstention-reasons.test.ts` pin that boundary.
+   * `threshold` is reachable **only** on the abstention route, because
+   * `#retrievalAdmitted` is called from `answerAbstention` and nowhere else. On
+   * every other route the key is present and stays `0`, which is a true statement
+   * about those routes rather than a missing measurement.
    *
-   * ## Why the scope is written down
+   * ## The scope, and why it changed
+   *
+   * This used to be a census of the **abstention route alone**:
+   * `runBenchmark` dispatches `answerAbstention` **only** for
+   * `capability === 'ABS'`, and `#reasons` was written in that one method. A
+   * question declined on the session, temporal, assistant, preference,
+   * knowledge-update or flat route was invisible here.
+   *
+   * ## What the narrow scope cost
    *
    * It was misread, and the misreading cost a whole round. The §12.5 artifact
-   * carries `abstentionReasons.llm = 120`, and §55 read it as "the model declined
+   * carried `abstentionReasons.llm = 120`, and §55 read it as "the model declined
    * 120 times". §55.4 then made the next investigation "read the 30 ABS outputs
    * for a common decline pattern". Both readings are wrong in the same way:
    * `30 ABS questions x 4 runs = exactly 120`, ABS gold **is** abstention, and ABS
@@ -85,7 +90,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * the artifact's own per-capability table said so all along
    * (`ABS: total=30 base=30 feat=30 b+f-=0`).
    *
-   * Meanwhile the real loss is invisible to this field: 449 of 470 non-ABS
+   * Meanwhile the real loss is invisible to the narrow field: 449 of 470 non-ABS
    * questions abstained, and `answerAbstention` never ran for one of them. A
    * counter that reads like a run-wide census while measuring one route is how a
    * 95.5% non-ABS abstention rate came to be investigated as an ABS problem.
@@ -99,10 +104,29 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * run's own output could not contradict the wrong reading, so the reading
    * survived until the gate was probed directly.
    *
-   * `empty` is counted here rather than folded into `threshold` because the two
-   * are repaired differently: `threshold` means the arming chose to decline, while
+   * ## Why the scope was widened rather than only documented
+   *
+   * §58 documented it: it made the narrow scope legible in the artifact and left
+   * the counter alone, because the misreading came from the number and widening a
+   * counter to fix a reading is how numbers get tuned. That was right for its
+   * round, because nothing was yet measuring the loss the field could not see.
+   *
+   * §13 is what changed the premise. The ask experiment produced MR `13 -> 0` and
+   * TR `16 -> 0` with `b-f+ = 0` on every capability, and every one of those
+   * declines happened on a route this census did not cover. The artifact could not
+   * say which route declined because the model declined: `turns` is `[]` by design
+   * (this arm collects no retrieval trace) and `rawOutput` carries the text but
+   * not the decision. Widening the counter is what makes the next hypothesis --
+   * retrieval quality -- testable at all.
+   *
+   * The widening is instrumentation and not a behaviour change: `threshold` stays
+   * `0` everywhere it did not already apply, no route gains or loses a gate, and
+   * every prior artifact's accuracy numbers keep their meaning.
+   *
+   * `empty` is separated from `llm` because the two are repaired differently:
    * `empty` means the arm supplied no evidence to decline *from*, which is a
-   * dataset- or write-gate-level problem and not a retrieval-gate result.
+   * dataset- or write-gate-level problem and not a retrieval- or model-level
+   * result.
    */
   readonly #reasons: { empty: number; threshold: number; llm: number; answered: number } = {
     empty: 0,
@@ -157,6 +181,34 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastRawOutput: string | null = null;
 
+  /**
+   * The evidence the reader was shown for the most recent call, or `null`.
+   *
+   * ## Why this exists
+   *
+   * §13 measured MR `13 -> 0` and TR `16 -> 0` with `b-f+ = 0` on every
+   * capability, and the artifact could not say whether retrieval returned the
+   * wrong evidence or none at all. Those are repaired in different places, and
+   * the next hypothesis -- retrieval quality -- is untestable while the two
+   * collapse into one reading. `QuestionRecord.turns` is `[]` on every record
+   * because the arm supplies `retrieved: ''`, which is honest and also the
+   * problem: the arm cannot report evidence nobody retained.
+   *
+   * ## Why one slot, and why `null` rather than `''`
+   *
+   * The benchmark asks one question at a time and reads this immediately after
+   * the call, so a slot is the whole requirement; a list would grow without bound
+   * on a 500-question run for a reader that never looks backwards. The scope is
+   * stated in the name: the most recent call, not the run.
+   *
+   * `''` is an answer in this package and not an abstention, and here it would be
+   * worse: an empty context is a real, diagnosable outcome -- it is what the
+   * census's `empty` counts -- so `''` would present "the reader was shown
+   * nothing" indistinguishably from "no call has happened". `null` says the
+   * latter only.
+   */
+  #lastRetrievedContext: string | null = null;
+
   constructor(options: CortexMemoryOptions) {
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
@@ -176,6 +228,52 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   lastRawOutput(): string | null {
     return this.#lastRawOutput;
+  }
+
+  /**
+   * The evidence the reader was shown for the most recent call, or `null`.
+   *
+   * One line per admitted turn, in admission order, joined with newlines -- the
+   * same shape the benchmark's roster splits back into turns, so a record built
+   * from this agrees with what the reader actually received rather than with a
+   * re-rendering of it.
+   *
+   * `null` means no call has happened, or the machine declined before a reader
+   * was shown anything. It does **not** mean an empty context was shown; that is
+   * the census's `empty`, and the two are different outcomes this accessor keeps
+   * apart.
+   */
+  lastRetrievedContext(): string | null {
+    return this.#lastRetrievedContext;
+  }
+
+  /**
+   * Record the evidence a reader is about to be shown.
+   *
+   * Called at every point a route hands admitted turns to a prompt builder, for
+   * the reason the model outcome is tallied in one place: the accessor is read as
+   * one answer, so a route that forgot to record would report the previous
+   * question's evidence as its own -- which is the exact defect
+   * `#lastRawOutput`'s docstring records for the capture hook that reads the
+   * accessor once after the loop.
+   *
+   * The value is the TURNS and not the prompt. A prompt carries the instruction
+   * block, the question and the evidence, and a reader trying to tell "the wrong
+   * turn was retrieved" from "no turn was retrieved" would have to parse the
+   * other two back out. The turns are the claim.
+   *
+   * `[]` cannot reach here, and the accessor does not pretend otherwise. All
+   * three call sites sit behind a `turns.length === 0` return that hands the
+   * decline to `#declinedEmpty`, so an empty list is a decline and never a
+   * recorded context. A `turns.length === 0 ? null : ...` guard here would be
+   * unreachable code that reads as a safety net -- the shape §57.6 removed one
+   * field over -- while leaving `null` and `''` indistinguishable to a reader of
+   * the source. The invariant is asserted where it can be reached:
+   * `retrieved-context.test.ts` requires an empty admission to report `null` and
+   * to never consult the model.
+   */
+  #recordEvidence(turns: readonly AdmittedTurn[]): void {
+    this.#lastRetrievedContext = turns.map((turn) => turn.content).join('\n');
   }
 
   /**
@@ -211,7 +309,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
     const admitted = admitSessions(sessions, admissionOptionsFrom(this.#now, this.#options.gate));
 
-    if (admitted.length === 0) return null;
+    if (admitted.length === 0) return this.#declinedEmpty();
 
     // `selectSessionBudget` never returns empty for a non-empty input: when no
     // session fits the budget it admits the highest-value one anyway, because
@@ -234,7 +332,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions?: string[][],
   ): Promise<Answer> {
     const turns = this.#admit(context, sessions);
-    if (turns.length === 0) return null;
+    if (turns.length === 0) return this.#declinedEmpty();
 
     return this.#promptWithDate(question, turns, 'temporal', questionDate);
   }
@@ -279,23 +377,28 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions?: string[][],
   ): Promise<Answer> {
     const turns = this.#admit(context, sessions);
-    if (turns.length === 0) {
-      this.#reasons.empty += 1;
-      return null;
-    }
+    if (turns.length === 0) return this.#declinedEmpty();
 
+    // The only `threshold` in this class, and the reason the key stays `0` on
+    // every other route: this is the one method `#retrievalAdmitted` is called
+    // from. A reader who sees `threshold` move on a route without a gate is
+    // looking at a bug, which is what the widened census's test pins.
     if (!this.#retrievalAdmitted(turns)) {
       this.#reasons.threshold += 1;
       return null;
     }
 
     // Recorded as `llm` when the prompt comes back as a decline, and `answered`
-    // otherwise. The three non-`answered` outcomes are the ones a reader has to
-    // be able to separate; the distinction between "the model declined" and "the
-    // model answered" is what makes the tally a complete census of the path
-    // rather than a census of its failures only.
+    // otherwise -- by `#consult`, which every route goes through. The three
+    // non-`answered` outcomes are the ones a reader has to be able to separate;
+    // the distinction between "the model declined" and "the model answered" is
+    // what makes the tally a complete census of the path rather than a census of
+    // its failures only.
+    //
+    // The model outcome is NOT tallied here. It was, and once `#consult` began
+    // tallying every route the abstention route counted each decline twice --
+    // overstating the one route that was already correct.
     const answer = await this.#prompt(question, turns, 'abstention');
-    this.#reasons[answer === null ? 'llm' : 'answered'] += 1;
     return answer;
   }
 
@@ -336,7 +439,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions?: string[][],
   ): Promise<Answer> {
     const turns = this.#admit(context, sessions);
-    if (turns.length === 0) return null;
+    if (turns.length === 0) return this.#declinedEmpty();
 
     return this.#prompt(question, turns, 'assistant');
   }
@@ -356,9 +459,29 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions?: string[][],
   ): Promise<Answer> {
     const turns = this.#admit(context, sessions);
-    if (turns.length === 0) return null;
+    if (turns.length === 0) return this.#declinedEmpty();
 
     return this.#prompt(question, turns, 'knowledge-update');
+  }
+
+  /**
+   * The machine declined before the model was consulted: nothing was admitted.
+   *
+   * A named method rather than six copies of `this.#reasons.empty += 1`, for the
+   * reason the three `#prompt*` methods share `#consult`: the census is read as
+   * one number, so every route that can produce `empty` has to produce it the
+   * same way. Six independent increments is six chances for one route to be
+   * added later and forgotten.
+   *
+   * `empty` is separated from `llm` because they are repaired differently --
+   * `empty` is a write-gate or dataset problem, `llm` is the model's own
+   * behaviour. Folding them would make a broken admission path read as a model
+   * that declines everything, which is the same collapse §10.10 records for the
+   * inert retrieval gate.
+   */
+  #declinedEmpty(): null {
+    this.#reasons.empty += 1;
+    return null;
   }
 
   /** Admit a flat context, or the flattened sessions when the caller supplied them. */
@@ -391,7 +514,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
   /** Admit a flat context and render it as one block. */
   async #respond(question: string, context: string[], contract: PromptContract): Promise<Answer> {
     const turns = this.#admit(context);
-    if (turns.length === 0) return null;
+    if (turns.length === 0) return this.#declinedEmpty();
 
     return this.#prompt(question, turns, contract);
   }
@@ -410,11 +533,8 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // answered. The rendering is resolved in `#promptOptions` instead, so every
     // route keeps its own ask and only the evidence presentation moves.
     const prompt = buildPrompt(question, turns, contract, this.#promptOptions());
-    const raw = await this.#llm.complete(prompt);
-    // Retained before the parse, not after: `parseAnswer` returns the summary
-    // and the text it summarised is gone by then. See `#lastRawOutput`.
-    this.#lastRawOutput = raw;
-    return parseAnswer(raw);
+    this.#recordEvidence(turns);
+    return this.#consult(prompt);
   }
 
   async #promptWithDate(
@@ -428,9 +548,8 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...base,
       ...(questionDate === undefined ? {} : { questionDate }),
     });
-    const raw = await this.#llm.complete(prompt);
-    this.#lastRawOutput = raw;
-    return parseAnswer(raw);
+    this.#recordEvidence(turns);
+    return this.#consult(prompt);
   }
 
   /** Render selected sessions with their boundaries intact. */
@@ -439,9 +558,47 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
     const prompt = buildSessionPrompt(question, sessions, this.#promptOptions());
+    // Flattened for the accessor while the prompt keeps its boundaries. The
+    // question the accessor answers is "which turns reached the reader", and the
+    // boundary is presentation; a reader comparing this against `turns` on the
+    // roster wants the same turns the prompt carried, in the same order.
+    this.#recordEvidence(sessions.flatMap((session) => session.turns));
+    return this.#consult(prompt);
+  }
+
+  /**
+   * Ask the model, retain its text, and tally which of its two outcomes it was.
+   *
+   * The single place a model outcome is recorded, for the reason `#promptOptions`
+   * resolves the rendering in one place: three copies of the `llm` / `answered`
+   * branch is three chances for two routes to disagree about the same model
+   * behaviour, and the census is only readable if one decline counts once.
+   *
+   * ## Why this is here and not in `answerAbstention`
+   *
+   * It was in `answerAbstention` alone, and `runBenchmark` dispatches that method
+   * only for `capability === 'ABS'`. So the census covered one route, and the
+   * sustained loss this arm exists to explain -- MR and TR, 13 -> 0 and 16 -> 0 in
+   * §13 -- never entered it. §58 made that scope legible in the artifact and
+   * deliberately left the counter narrow; §13 is what made narrowing untenable,
+   * because no other field in the artifact could say which route declined.
+   *
+   * ## Why `answerAbstention` no longer tallies the model outcome itself
+   *
+   * It still tallies `empty` and `threshold`, which are decisions made *before*
+   * this call and that no other route can reach. Its own `llm` / `answered`
+   * branch was removed rather than left in place, because with this method
+   * tallying every route the abstention route would otherwise count one decline
+   * twice -- and it would overstate exactly the route that was already correct.
+   */
+  async #consult(prompt: string): Promise<Answer> {
     const raw = await this.#llm.complete(prompt);
+    // Retained before the parse, not after: `parseAnswer` returns the summary
+    // and the text it summarised is gone by then. See `#lastRawOutput`.
     this.#lastRawOutput = raw;
-    return parseAnswer(raw);
+    const answer = parseAnswer(raw);
+    this.#reasons[answer === null ? 'llm' : 'answered'] += 1;
+    return answer;
   }
 
   /**

@@ -908,12 +908,23 @@ export async function runCortexMemoryArm(
  * which would say "nobody recorded an answer" and report the model's behaviour as
  * a recording gap.
  *
- * `grounded` and `turns` are the parts this arm genuinely cannot report. Grounding
- * is a property of the retrieval trace and the turn split is derived from the
- * text a reader was shown; this arm collects neither, so the records say `false`
- * and carry no turns rather than guessing. B7 excludes an ungrounded question
- * before clustering, which is the right outcome for a run that did not record its
- * evidence -- a fabricated `true` would admit a question no trace supports.
+ * `turns` is now reportable and no longer an absence. The evidence each reader was
+ * shown is captured per question through the benchmark's retrieval hook, so a
+ * record carries the turns that reached the model rather than an empty list. This
+ * is what makes the question §13 left open askable: "the reader was shown the
+ * wrong turn" and "the reader was shown nothing" reach the artifact as different
+ * records instead of as the same `turns: []`.
+ *
+ * A record still reads `turns: []` when the machine declined before a reader was
+ * shown anything, which is a true statement about that question and is the same
+ * outcome the abstention census files at `empty`.
+ *
+ * `grounded` remains the part this arm genuinely cannot report. Grounding is a
+ * property of the upstream failure classifier, and this arm collects no
+ * classification, so the records say `false` rather than guessing. B7 excludes an
+ * ungrounded question before clustering, which is the right outcome for a run
+ * that did not record its classification -- a fabricated `true` would admit a
+ * question no trace supports.
  */
 function buildArmRoster(
   dataset: BenchmarkDataset,
@@ -934,6 +945,14 @@ function buildArmRoster(
   // be dead code that reads as a safety net and would file a capture that failed
   // as a question whose model was never consulted.
   const rawOutputs = ablation.featureRawOutputs!;
+  // The evidence vector, read the same way and for the same reason. Declared
+  // optional on `AblationResult` because hand-built fixtures omit it, so unlike
+  // the raw-output read above this one takes a `?? []` -- and that fallback is
+  // not a safety net hiding a broken capture, it is the correct value for a
+  // fixture that recorded no retrieval. A fixture that DID record it and lost it
+  // would show up as `turns: []` on records whose `rawOutput` is present, which
+  // is the pairing `arm-roster-retrieval.test.ts` pins.
+  const retrievedContexts = ablation.featureRetrievedContexts ?? [];
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -944,7 +963,12 @@ function buildArmRoster(
       rawOutput: rawOutputs[i]!,
       correct: ablation.featureCorrect[i]!,
       grounded: false,
-      retrieved: '',
+      // `null` becomes `''`, because `QuestionRecordInput.retrieved` is a string
+      // and `splitRetrievedTurns` drops blank turns -- so "no reader was shown
+      // anything" reaches the record as `turns: []`, which is the same statement
+      // made in the shape the record can hold. `null` is not collapsed into `''`
+      // in the VECTOR, where the distinction is still expressible.
+      retrieved: retrievedContexts[i] ?? '',
     })),
     featureConfig,
     ablation.featureCorrect,
@@ -953,6 +977,21 @@ function buildArmRoster(
 
 /**
  * Read the feature system's abstention census, if it exposes one.
+ *
+ * ## What it counts, which used to be one route
+ *
+ * The census covers every route that can decline. It used to cover only
+ * `answerAbstention` -- which `runBenchmark` dispatches for `capability === 'ABS'`
+ * alone -- so the arm's sustained loss (MR and TR) never entered it. §13 measured
+ * MR `13 -> 0` and TR `16 -> 0` with `b-f+ = 0` on every capability, and no field
+ * in the artifact could say which route those declines came from: `turns` is `[]`
+ * by design and `rawOutput` carries the text but not the decision. Widening the
+ * counter is what makes the retrieval hypothesis testable.
+ *
+ * `threshold` remains reachable on the abstention route only, because
+ * `#retrievalAdmitted` is called from `answerAbstention` and nowhere else. The
+ * four-key shape is unchanged, so this reader and every artifact already written
+ * keep working; what changed is which declines the four keys are counting.
  *
  * ## Why this is a structural read rather than a member of `MemorySystem`
  *

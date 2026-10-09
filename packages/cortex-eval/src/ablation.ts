@@ -108,6 +108,10 @@ export async function runAblation(
     // aligned with `featureAnswers` and `featureCorrect`, which are the vectors
     // the roster pairs it with.
     true,
+    // The evidence, on the same side and for the same reason: §13's loss is the
+    // feature's, and the question it left open -- wrong evidence or no evidence --
+    // can only be asked of the side that lost.
+    true,
   );
 
   let baselineCorrectFeatureIncorrect = 0;
@@ -231,6 +235,18 @@ export async function runAblation(
     // report shape that tests build by hand, which is the reason
     // `featureAnswers` above is optional too.
     featureRawOutputs: featFirst.rawOutputs!,
+    // Requested on the same call as the raw-output capture, and present for the
+    // same reason: this function is the only producer of an `AblationResult` and
+    // it asks for both unconditionally, so a `=== undefined` branch here would be
+    // the unreachable-code-reads-as-a-safety-net shape §57.6 removed one field
+    // over.
+    //
+    // It is declared optional on the type because `AblationResult` is a report
+    // shape tests build by hand -- and unlike `featureAnswers`, whose absence
+    // would silently unbuild the roster, a hand-built fixture that omits this
+    // vector produces records with `turns: []`, which is the honest reading of a
+    // fixture that never retrieved anything.
+    featureRetrievedContexts: featFirst.retrievedContexts!,
     perCapability,
   };
 }

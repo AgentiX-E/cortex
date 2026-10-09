@@ -1704,3 +1704,103 @@ being over-read.
 **Registered. Not yet implemented.** The knob, the reach field and the tests are the
 next round's work; this section exists so that work has a falsifiable target rather than
 a direction.
+
+### 13.8 Verdict: the falsifier fired
+
+**The prediction is dead.** `37871576339` (commit `58865a1`, `limit=120`,
+`ablation_runs=1`, `cortex_memory_ask=extractive`) completed success, and the artifact
+establishes every premise the falsifier required — and then meets it.
+
+#### The premise: the ask WAS administered
+
+This is the half that had to be checked before the number could be read, because §13's
+own trap is that MR's ask is already `extractive` and a run could therefore report a
+treatment it never applied. The artifact from `58865a1` carries the reach, and the
+second axis is what makes it legible:
+
+```
+- Memory arm config: `threshold=0`, `retrievalThreshold=0`, `sessionBudget=unbounded`,
+  `sourceTrust=0.5`, `confidenceSignal=none`, `promptContract=abstention`
+- Evidence rendering reached: `none` (the baseline prompt is unchanged)
+- Evidence ask: `extractive`
+- Evidence ask reached: 4 route(s) — `abstention`, `temporal`, `knowledge-update`, `assistant`
+```
+
+Two things are proved by these four lines, and the second is new:
+
+1. **The ask reached TR.** `temporal` is in the reach list, and TR is the capability the
+   ask was predicted to repair. The rendering line reads `none` while the ask line reads
+   four routes — so `renderingRoutes: []` and `askRoutes: [4 routes]` coexist in one
+   artifact, which is the independence §13.2 required, demonstrated rather than asserted.
+2. **The ask did not reach MR** — `multi-session` is correctly absent from the list, for
+   the reason §13.5 recorded before the code existed: MR's own ask IS `extractive`, so the
+   option is a byte-identical no-op there. The artifact says so rather than implying a
+   treatment. A run without `askRoutes` would have published `ask: extractive` and let a
+   reader assume MR was treated.
+
+#### The reading
+
+| Capability | n | baseline | feature (ask=extractive) | `b-f+` | `b+f-` |
+| --- | --- | --- | --- | --- | --- |
+| MR | 17 | 13 | **0** | 0 | 13 |
+| TR | 17 | 16 | **0** | 0 | 16 |
+| IE | 52 | 0 | 0 | 0 | 0 |
+| KU | 17 | 0 | 0 | 0 | 0 |
+| ABS | 17 | 17 | **17** | 0 | 0 |
+| **total** | 120 | 46 | **17** | **0** | 29 |
+
+`delta = -0.2417`; `pValue = null`; `significant = false`. Abstention rate 63.33% →
+**94.17%**. **`b-f+ = 0` on every capability and MR/TR are both 0/17, which is below the
+registered 4/17.** The falsifier fired.
+
+#### What the mechanism was, since the falsifier alone does not say
+
+The output census is the part worth keeping. Of 120 feature outputs:
+
+| Shape | Count |
+| --- | --- |
+| bare `INSUFFICIENT_EVIDENCE` | **113** |
+| engaged (produced text that was not the token) | 7 |
+| empty | 0 |
+
+and the abstention census reads `{"empty": 0, "threshold": 0, "llm": 17, "answered": 0}`.
+
+Two sources of abstention, and separating them matters:
+
+- **`threshold: 0`** — the retrieval gate never abstained. `retrievalThreshold: 0` is the
+  identity configuration, so the gate admitted everything. No evidence was withheld
+  upstream of the model.
+- **`llm: 17`** — the model's own abstentions, as counted by the arm's census.
+
+So the 113 bare-token outputs are not a plumbing failure — the evidence was admitted,
+the model was consulted, and it emitted the abstention token anyway. **Removing the
+sentence that calls declining "expected and is a valid outcome" did not stop the model
+from declining.** The invitation was not what was holding MR and TR down.
+
+ABS is the control and it holds: 17/17 both sides, `b-f+ = 0` on ABS too. A run that
+had broken the abstention capability would show it here, and this one does not. The ask
+change is therefore not a global regression that merely happened to spare ABS — it is
+specifically inert on the two capabilities it was aimed at.
+
+#### The candidate space, restated honestly
+
+§13.6 registered that a positive result would identify the ask as *sufficient to move
+the number*, not as *the whole difference*. The negative result has the mirror
+obligation: it retires the ask as the cause of the MR/TR gap but does not, by itself,
+promote any other candidate to the top. §13.5 named the two that remain — **retrieval
+quality on these two capabilities, and the scorer's treatment of a short answer** — and
+those are now the live hypotheses rather than asides.
+
+One further observation belongs here because it constrains what "retrieval quality"
+can mean. The arm reports `turns: []` for all 120 questions, which is deliberate: this
+arm collects no retrieval trace, so it carries no turns rather than guessing (the
+rationale is on `buildArmRoster`). That means **the artifact cannot currently distinguish
+"retrieval returned the wrong evidence" from "retrieval returned nothing"** — and those
+are different next steps. Resolving that is a prerequisite for testing the retrieval
+candidate, not part of it.
+
+### 13.9 Status
+
+**Falsified.** The endpoint was registered in §13.4/§13.5 before the knob existed, the
+knob was built to make the falsifier reachable only by measurement (§13.5's note; an
+unrecognised ask is rejected rather than defaulted), and the run met it.
