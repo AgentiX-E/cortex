@@ -103,14 +103,35 @@ WORKFLOW = "benchmark.yml"
 # repaired **not one question** on any capability (`b-f` repairs of `0` everywhere) while
 # abstaining at `95.8%` with every abstention attributed to the model (`reason: "llm"`),
 # not to the gate. So the model is reached and declines, and what reaches it is the
-# evidence rendering. This key is that variable, and it is the only difference between
-# this run and the one whose artifact §12.4's table was read from.
+# evidence rendering. `cortex_memory_prompt_contract` is that variable.
+#
+# §13 then tested the OTHER axis of "what reaches it" -- the instruction block rather than
+# the rendering -- and §13.8 falsified it. With `cortex_memory_ask: 'extractive'` the
+# feature side's MR went `13 -> 0` and TR `16 -> 0`, so `b✓f✗` rose by exactly what `b✗f✓`
+# fell: a swap, not a repair. §13.9 retired the line. Crucially the same artifact showed
+# `renderingRoutes: []` and `askRoutes: [4 routes]`, which is §13.2's independence
+# requirement satisfied in one file, and 113 of the 120 outputs were the bare
+# `INSUFFICIENT_EVIDENCE` token with `retrievalThreshold: 0` -- the gate never closed, so
+# the model SAW evidence and declined anyway.
+#
+# That is the question §13.11 registers, and it is why both fields are sent together
+# rather than one replacing the other. The loss is unexplained by how the arm asks, so
+# what remains is the evidence itself: "the reader was shown the wrong turn" and "the
+# reader was shown nothing" are repaired in different places, and until `QuestionRecord.turns`
+# was wired the artifact reported both as the same absence -- `turns: []` on all 120 records
+# of the §13 dispatch, because `buildArmRoster` passed `retrieved: ''` unconditionally.
+# This run is the first whose artifact can tell the two apart.
+#
+# `cortex_memory_ask` is therefore held at §13's value rather than reverted to the shipped
+# per-route blocks. Reverting it would move a second variable alongside the capture and
+# make a non-empty `turns` on MR unattributable to either.
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_threshold": "0",
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
+    "cortex_memory_ask": "extractive",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

@@ -665,13 +665,21 @@ forwarded into a step's `env`. Three injections were run against it:
   until a replacement arming is registered with its own prediction, the registered value
   is the control.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
-* `promptContract: abstention-evidence-blocks` — **added by §12.5**, and the only value in
-  this list that is not a gate parameter. §12.4 measured `b✓f✗`/`b✗f✓` for every
-  capability and found the feature side repaired **zero** questions while abstaining at
-  `95.8%` with every abstention attributed to the model rather than to the gate. §12.3
-  measured that no `retrievalThreshold` in the reachable range can carry the arm. What
-  survives both is a question about what the arm *presents*, so this field changes that and
-  nothing else — every gate parameter above is held at exactly the value §10.3 registers.
+* `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
+  reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
+  ask moved and the rendering did not, so a run that dropped back to the baseline
+  rendering as well would move both at once and attribute the result to neither.
+* `ask: extractive` — **added by §13.11.** §13.8 falsified the ask hypothesis: with
+  `ask: extractive` the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
+  `b✓f✗` rose by exactly the amount `b✗f✓` fell — a swap, not a repair — and §13.9
+  marked the line dead. What §13.11 asks instead is a question about the evidence
+  rather than about how it is asked: `QuestionRecord.turns` was `[]` on all 120
+  records of the §13 dispatch, so "the reader was shown the wrong turn" and "the
+  reader was shown nothing" were the same absence in the artifact. That capture is
+  now wired end to end, and this registration names the run that exploits it. The
+  ask is held at §13's value rather than reverted, because reverting it would restore
+  the shipped per-route blocks and change the surface the evidence capture is being
+  read from.
 
 > **Amended by §12.5, in place rather than below**, for the reason §10.9's note gives:
 > `registered()` reads the list and stops at the first blank line, so an amendment note
@@ -1804,3 +1812,91 @@ candidate, not part of it.
 **Falsified.** The endpoint was registered in §13.4/§13.5 before the knob existed, the
 knob was built to make the falsifier reachable only by measurement (§13.5's note; an
 unrecognised ask is rejected rather than defaulted), and the run met it.
+
+## 13.11 The evidence experiment: was the reader shown the wrong turn, or nothing?
+
+§13.9 retires the ask and §13.8 names what remains. The paragraph at the end of §13.8
+is the reason this section exists rather than being a footnote to the next plan: the
+artifact could not distinguish the two surviving readings, because `turns: []` was a
+**constant** on every record rather than a measurement. A hypothesis that cannot be
+falsified by the artifact being read is not registered, it is asserted. This section
+registers the run that makes it falsifiable.
+
+### 13.11.1 The defect the previous runs could not see past
+
+`buildArmRoster` passed `retrieved: ''` unconditionally. The arm collects no retrieval
+trace, so the honest refusal to guess was the right *value* and the wrong *state*: with
+the field hardcoded, "the reader was shown the wrong turn" and "the reader was shown
+nothing" collapse into one absence on all 120 records, and the §13 dispatch could not
+tell them apart even in principle.
+
+This is the §12.8 defect one layer down. There, a run recorded the *name* of a
+rendering while the rendering reached 17 of 120 questions, so a reader would have
+attributed a 45→17 drop to a treatment four capabilities never received. Here, the
+artifact recorded an *absence* that was the same bytes whether the arm retrieved badly
+or retrieved nothing — and unlike §12.8's name, an empty list reads as a finding
+("retrieval found nothing on MR") rather than as a gap.
+
+### 13.11.2 The single variable, stated exactly
+
+**The arm now captures, per question, the evidence its feature-side reader was shown.**
+One entry per question: the admitted turns joined by newlines, or `null` when the
+machine declined before a reader was shown anything.
+
+* `null` and `''` are different statements and the code keeps them apart. `null` is "no
+  reader was shown anything", which is what a machine decline produces. `''` would
+  claim a context was shown and happened to be blank.
+* The value is the **turns** and not the prompt. A prompt also carries the instruction
+  block and the question, so a reader trying to separate the two hypotheses would have
+  to parse the other two back out. The turns are the claim.
+* Capture is an **observer**, not a participant: the answers are bit-identical with and
+  without the sink, which `benchmark-retrieval-capture.test.ts` pins by running both.
+
+The four transfers that could each drop the value independently are wired and each is
+asserted at its own layer: `CortexMemory.#recordEvidence` →
+`runBenchmark`'s `onRetrieved` → `ScoredEvaluation.retrievedContexts` →
+`AblationResult.featureRetrievedContexts` → `QuestionRecord.turns`.
+
+The last transfer is the one with a trap in it, and it is the same trap the raw-output
+transfer has: the roster is built **after** the ablation finishes, so an implementation
+that read the single-slot accessor at that point would give every record the *final*
+question's evidence. `arm-roster-retrieval.test.ts` asserts per-record, with distinct
+fixture values, so that shortcut cannot pass.
+
+### 13.11.3 The prediction
+
+On the §13.11 dispatch (same configuration as §13.8's run, plus the capture):
+
+1. **MR and TR records carry non-empty `turns`.** The loss is 29 questions the baseline
+   answered correctly; if retrieval returned nothing for them, `turns` is `[]` and the
+   retrieval-quality hypothesis is refuted before any ranking work is done.
+2. **The abstained records are not uniformly empty.** `retrievalThreshold: 0` means the
+   gate never closed, so a record with `turns: []` was admitted nothing by the write
+   gate and a record with `turns: [...]` reached the model and was declined. §13.8's
+   mechanism claim ("the model saw evidence and declined") predicts the second shape
+   dominates. If the first dominates instead, §13.8's mechanism reading is wrong and
+   the loss is upstream of the model.
+
+### 13.11.4 The falsifier, which is reachable
+
+**If MR and TR records carry `turns: []` at the same rate as the whole set**, then
+retrieval returned nothing for the lost questions and the surviving hypothesis in §13.8
+is refuted. The pre-committed recovery is **not** another prompt or ask knob: it is a
+look at `admission.ts`, because producing no evidence for a question whose context
+demonstrably contains the answer is a write-gate defect, and the previous two rounds
+have now moved every presentation variable without touching admission once.
+
+### 13.11.5 What would still not be known afterwards
+
+A non-empty `turns` on a lost question identifies the evidence as *present*, not as
+*correct*. Whether the right turn was in it is a question about ranking, and it needs a
+gold-turn attribution the dataset does not carry on this arm. §13.11 can therefore move
+the candidate from "retrieval quality" to "ranking within a correct-length context" and
+cannot, by itself, pick the ranker.
+
+### 13.11.6 Status
+
+**Registered.** The capture is implemented and asserted at every transfer; the dispatch
+is armed with `ask: extractive` held from §13.8 and `promptContract:
+abstention-evidence-blocks` held from §12.5, so the evidence vector is the only thing
+that differs from the run whose artifact §13.8 read.
