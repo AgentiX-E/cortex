@@ -108,6 +108,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_ask:
+        description: 'Instruction block the cortex-memory arm asks every route with: empty or route = each route own block (shipped behaviour); extractive = the reference pipeline two-line block applied everywhere, which still names the abstention token but never calls declining "expected and valid" (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13). This is section 13 single variable and a SEPARATE axis from cortex_memory_prompt_contract: a contract selects a rendering, an ask selects an instruction block, and the experiment requires them to move independently. Two routes are deliberately unaffected and the artifact says so: multi-session and the flat path already ask with the extractive block, so this option is a byte-identical no-op on them -- which matters because section 13 headline prediction is about multi-session. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to widen the ask that silently ran the shipped one would publish an unchanged result reading as evidence the ask does not matter'
+        required: false
+        default: ''
+        type: string
       cortex_memory_prompt_contract:
         description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
         required: false
@@ -346,6 +351,13 @@ jobs:
           # gate, a non-zero MR/TR could not be attributed to either change, and the run
           # would answer neither question.
           CORTEX_MEMORY_PROMPT_CONTRACT: ${{ github.event.inputs.cortex_memory_prompt_contract }}
+          # Section 13's variable, passed the same way. It is a second axis rather than a
+          # value of the contract above: the contract selects a rendering, this selects an
+          # instruction block, and the ask experiment holds the rendering at whatever the
+          # dispatch names. Passed unconditionally because the product defaults a blank to
+          # `route`, and defaulting here instead would put the same default in two places
+          # -- which is how the two would eventually disagree.
+          CORTEX_MEMORY_ASK: ${{ github.event.inputs.cortex_memory_ask }}
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
           # read from the same dispatch inputs the job already carries, so a dispatch

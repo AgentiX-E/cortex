@@ -57,6 +57,29 @@ export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRende
 };
 
 /**
+ * The ask names a run may set, and which routes each one actually changes.
+ *
+ * The reach is part of the type rather than a comment because §13's whole experiment
+ * turns on it: MR's own ask IS `extractive` (`buildSessionPrompt` hardcodes it), so
+ * dispatching `ask: 'extractive'` leaves MR byte-identical. A run that reported only
+ * the name would read as a treatment MR never received -- the `bcf66463` failure, on a
+ * new axis. `toMemoryArmConfig` reports it as the artifact's `askRoutes`, and this
+ * table is its source.
+ *
+ * `route` reaches nothing by definition: it IS the shipped behaviour, so reporting it
+ * as covering routes would claim a treatment the control did not receive.
+ *
+ * The flat route (`answer`) is absent even though its contract is `extractive`, and
+ * that is the interesting entry. Its OWN ask is already `extractive`, so the option is
+ * a no-op there too -- the same reason MR is absent. Listing it would overstate the
+ * reach in the direction that matters least but is still a false claim.
+ */
+export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
+  route: [],
+  extractive: ['abstention', 'temporal', 'knowledge-update', 'assistant'],
+};
+
+/**
  * How admitted turns are presented to the model.
  *
  * ## Why this is an option and not a contract name
@@ -83,6 +106,29 @@ export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRende
  */
 export type EvidenceRendering = 'numbered' | 'sourced';
 
+/**
+ * How hard the prompt asks the model to answer rather than to decline.
+ *
+ * ## Why this is a second option and not a third `PromptContract`
+ *
+ * A contract names an instruction block *and* is the existing knob, so adding a ninth
+ * contract would make the ask look like a rendering choice and the rendering look like
+ * an ask choice — which is the confusion §12.9 records in four parts. Rendering and ask
+ * are two independent decisions, and §13.2 requires them to move separately: the ask
+ * experiment holds the rendering fixed at the run's value.
+ *
+ *   - `route`: each route's own instruction block, i.e. the shipped behaviour. MR, TR,
+ *     KU and the flat path carry a multi-line block; the abstention route's is the
+ *     conservative one that calls declining "expected and valid".
+ *   - `extractive`: the reference pipeline's two-line block, applied to every route.
+ *     It still names the abstention token, so a model that genuinely cannot answer can
+ *     still decline — what it does not do is tell the model that declining is expected.
+ *     This is §13's candidate.
+ *
+ * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
+ */
+export type EvidenceAsk = 'route' | 'extractive';
+
 /** Optional inputs to {@link buildPrompt}. */
 export type PromptOptions = {
   /** Reference point for relative time; supplied only to the temporal contract. */
@@ -91,6 +137,8 @@ export type PromptOptions = {
   maxChars?: number;
   /** How to present the admitted turns. Defaults to the baseline rendering. */
   rendering?: EvidenceRendering;
+  /** Which instruction block to use. Defaults to the route's own. */
+  ask?: EvidenceAsk;
 };
 
 /** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
@@ -132,9 +180,29 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
    * form it cannot use. Changing both at once would not distinguish them.
    *
    * This contract holds the instruction block FIXED and changes only how the admitted
-   * turns are presented, which isolates the second reading. That is deliberate: the
-   * instruction text is already the conservative one the reference pipeline uses, so
-   * suspecting it is suspecting the thing most likely to be correct.
+   * turns are presented, which isolates the second reading.
+   *
+   * ## The second reading was tested and it lost
+   *
+   * §12.10 records the outcome: dispatch `37827496757` administered this rendering to
+   * all six routes (the artifact's `renderingRoutes` lists them) and MR stayed at 0/17
+   * and TR at 0/17, `b-f+ = 0` on every capability. So the evidence *is* reaching the
+   * model -- `retrievalThreshold = 0` and all 17 MR and 17 TR records carrying a
+   * non-null `rawOutput` prove it -- and a more legible rendering does not change what
+   * the model does with it.
+   *
+   * The draft of this docstring ended the paragraph above with: *"the instruction text
+   * is already the conservative one the reference pipeline uses, so suspecting it is
+   * suspecting the thing most likely to be correct."* That sentence was the wrong
+   * suspicion, and it is kept here as the record of it. The measured gap is exactly in
+   * the ask -- this arm abstains at 95.8% where the reference pipeline abstains at
+   * 63.3% on the same evidence -- so the hypothesis this contract was built to protect
+   * is the one the run retires, and the one it set aside is what remains.
+   *
+   * The rendering is not removed. It is a working feature, it is now correctly
+   * addressed, and it is what `RENDERING_BY_CONTRACT` exists to select; a later
+   * experiment can pair it with a different ask. What is retired is only the claim that
+   * it, by itself, repairs MR or TR.
    *
    * ## What changes in the rendering, and why this shape
    *
@@ -191,6 +259,30 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
       `If the evidence does not contain the answer, reply exactly ${ABSTAIN_TOKEN}.`,
     ].join('\n'),
 };
+
+/**
+ * The instruction block a route emits, honouring the run's ask.
+ *
+ * The one place `EvidenceAsk` is resolved, called by every builder, for the reason
+ * `#promptOptions` resolves the rendering in one place: a resolution duplicated per
+ * builder is a resolution that can disagree between routes, and the reach report would
+ * then describe the dispatcher rather than the prompt.
+ *
+ * `extractive` deliberately does NOT receive the date parameter. Its block has no
+ * relative-time line, and passing the date would silently reintroduce TR's own ask --
+ * which is the route most likely to be dispatched under §13, so a quiet revert there
+ * would make the experiment measure the shipped behaviour and call it a treatment.
+ */
+function instructionsFor(
+  contract: PromptContract,
+  date: string | undefined,
+  ask: EvidenceAsk | undefined,
+): string {
+  if (ask === 'extractive') {
+    return CONTRACT_INSTRUCTIONS.extractive(undefined);
+  }
+  return CONTRACT_INSTRUCTIONS[contract](date);
+}
 
 /**
  * Render admitted turns as numbered evidence.
@@ -303,14 +395,14 @@ export function buildPrompt(
     '',
     `QUESTION: ${question}`,
     '',
-    CONTRACT_INSTRUCTIONS[contract](date),
+    instructionsFor(contract, date, options.ask),
   ].join('\n');
 
   if (prompt.length <= maxChars) return prompt;
 
   // Over budget: shrink the evidence, never the question, and never the
   // instruction block that names the abstention token.
-  return fitToBudget(question, evidence, contract, date, maxChars, 'EVIDENCE:\n');
+  return fitToBudget(question, evidence, contract, date, options.ask, maxChars, 'EVIDENCE:\n');
 }
 
 /**
@@ -342,6 +434,7 @@ function fitToBudget(
   evidenceText: string,
   contract: PromptContract,
   date: string | undefined,
+  ask: EvidenceAsk | undefined,
   maxChars: number,
   header: string,
 ): string {
@@ -352,7 +445,12 @@ function fitToBudget(
   // within budget by construction and no final clip is needed. A final clip is
   // what made the two earlier versions wrong — it is applied after the
   // priorities were already spent, so it can only violate them.
-  const instruction = truncateCodePointSafe(CONTRACT_INSTRUCTIONS[contract](date), maxChars);
+  //
+  // The ask is threaded through rather than read from a closure so that a budget
+  // large enough to skip truncation and one small enough to need it produce the
+  // SAME instruction block. The two earlier versions of this function disagreed
+  // between their branches; a second axis is a second chance to reintroduce that.
+  const instruction = truncateCodePointSafe(instructionsFor(contract, date, ask), maxChars);
   if (instruction.length === 0) return '';
 
   let remaining = maxChars - instruction.length;
@@ -428,13 +526,19 @@ export function buildSessionPrompt(
     `EVIDENCE:\n${body}`,
     SESSION_NOTE,
     `QUESTION: ${question}`,
-    CONTRACT_INSTRUCTIONS.extractive(undefined),
+    // MR's own ask IS `extractive`, so the ask option is a no-op on this route by
+    // construction -- and that is worth stating rather than leaving to be rediscovered,
+    // because §13 dispatches the ask change precisely to MR and TR. A no-op here means
+    // MR's prompt under `ask: 'extractive'` is byte-identical to its shipped prompt, so
+    // a movement on MR cannot be attributed to the ask. The reach report records which
+    // routes the ask actually changed for exactly this reason.
+    instructionsFor('extractive', undefined, options.ask),
   ];
 
   const full = sections.join('\n\n');
   if (full.length <= maxChars) return full;
 
-  return fitToBudget(question, body, 'extractive', undefined, maxChars, 'EVIDENCE:\n');
+  return fitToBudget(question, body, 'extractive', undefined, options.ask, maxChars, 'EVIDENCE:\n');
 }
 
 /** Tells the model that the blocks are separate conversations. */

@@ -336,6 +336,27 @@ export type MemoryArmConfig = {
    * `confidenceSignal` record at length in their own docs.
    */
   readonly renderingRoutes?: readonly string[] | undefined;
+  /**
+   * The instruction block the run asked with. §13's single variable.
+   *
+   * Recorded for the same reason `promptContract` is: the two runs §13 compares carry
+   * identical gate parameters and differ here, so an artifact without it would make the
+   * pair the same bytes.
+   */
+  readonly ask?: string | undefined;
+  /**
+   * The routes the ask actually changed, measured from their prompts.
+   *
+   * This field is not symmetry with `renderingRoutes` -- it is the whole reason §13 can
+   * be read at all. MR's own ask IS `extractive`, so dispatching `ask: 'extractive'`
+   * leaves MR's prompt byte-identical, and §13's headline prediction is about MR. A run
+   * reporting only the ask's name would claim a treatment MR never received, which is
+   * the `bcf66463` failure on a new axis.
+   *
+   * Absent rather than `[]` when the field predates the reader, the same distinction
+   * `renderingRoutes` draws and for the same reason.
+   */
+  readonly askRoutes?: readonly string[] | undefined;
 };
 
 /**
@@ -534,6 +555,25 @@ export function formatAblationReport(report: AblationReport): string {
       lines.push(
         `- Evidence rendering reached: ${reached.length} route(s) — ` +
           reached.map((route) => `\`${route}\``).join(', '),
+      );
+    }
+
+    // §13's axis, rendered with its reach for the same reason and one more: the ask's
+    // reach is the difference between a readable result and a misleading one. MR's own
+    // ask IS the candidate, so an artifact naming `extractive` without saying that MR
+    // was unchanged would let an unchanged MR be read as evidence the ask does not work.
+    if (memoryArm.ask !== undefined) {
+      lines.push(`- Evidence ask: \`${memoryArm.ask}\``);
+    }
+    const askReached = memoryArm.askRoutes;
+    if (askReached === undefined) {
+      lines.push(`- Evidence ask reach: \`not recorded\` (artifact predates the field)`);
+    } else if (askReached.length === 0) {
+      lines.push(`- Evidence ask reached: \`none\` (each route's own instruction block)`);
+    } else {
+      lines.push(
+        `- Evidence ask reached: ${askReached.length} route(s) — ` +
+          askReached.map((route) => `\`${route}\``).join(', '),
       );
     }
   }

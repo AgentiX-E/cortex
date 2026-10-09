@@ -52,7 +52,12 @@ import {
   toMemoryArmConfig,
   type BenchmarkProgress,
 } from '@agentix-e/cortex-eval';
-import { CortexMemory, confidenceFromLength, type PromptContract } from '../src/index.js';
+import {
+  CortexMemory,
+  confidenceFromLength,
+  type EvidenceAsk,
+  type PromptContract,
+} from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 /**
@@ -197,6 +202,19 @@ async function main(): Promise<void> {
     ...(armOptions.promptContract === 'abstention'
       ? {}
       : { promptContract: armOptions.promptContract as PromptContract }),
+    // §13's single variable, on its own axis and spread conditionally for the same
+    // reason: `route` IS the shipped behaviour and is expressed by NOT passing the key,
+    // so a run that does not name an ask reproduces the previous prompt byte for byte.
+    // Passing `'route'` explicitly would read as "configured" to the `!== undefined`
+    // check in `#promptOptions` and take a different branch to the same result -- which
+    // is harmless today and is exactly the kind of harmless-until-it-is-not that the
+    // conditional spreads above exist to avoid.
+    //
+    // The cast is at this boundary for the same reason as `promptContract`: `cortex-eval`
+    // carries the ask as `string` because the dependency runs the other way, and
+    // `readAsk` validates it against the product's own list at parse time, throwing on
+    // anything unrecognised. So the value IS one of the union's members here.
+    ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this
@@ -227,7 +245,12 @@ async function main(): Promise<void> {
       `retrievalThreshold=${armOptions.retrievalThreshold}, ` +
       `sessionBudget=${Number.isFinite(armOptions.sessionBudget) ? armOptions.sessionBudget : 'unbounded'}, ` +
       `sourceTrust=${armOptions.sourceTrust}, ` +
-      `confidenceSignal=${armOptions.confidenceSignal}`,
+      `confidenceSignal=${armOptions.confidenceSignal}, ` +
+      // On the same line and for the same reason as the rest: it is a prompt input that
+      // changes what every number below means. §13 dispatches the ask change to the
+      // routes that carry the loss, and a reader with the log alone has to be able to
+      // tell an ask change from a gate change.
+      `ask=${armOptions.ask}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

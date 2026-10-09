@@ -140,6 +140,18 @@ export type CortexMemoryArmOptions = {
    * artifact's meaning are unchanged.
    */
   promptContract: string;
+  /**
+   * The instruction block the arm asks with. §13's single variable.
+   *
+   * A separate field from `promptContract` because §12.9 established they are separate
+   * axes: a contract selects a rendering, an ask selects an instruction block. §12.10
+   * retired the rendering hypothesis by measuring it, which leaves the ask as the
+   * candidate §13 registers.
+   *
+   * Defaults to `route`, i.e. each route's own block, so every prior artifact keeps its
+   * meaning.
+   */
+  ask: string;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -167,6 +179,9 @@ const CONFIDENCE_VARIABLE = 'CORTEX_MEMORY_CONFIDENCE';
  * to the model). A run that moved both would confound §12.5 with §11's registration.
  */
 const PROMPT_CONTRACT_VARIABLE = 'CORTEX_MEMORY_PROMPT_CONTRACT';
+
+/** Names the instruction block the arm asks with (§13). */
+const ASK_VARIABLE = 'CORTEX_MEMORY_ASK';
 
 /**
  * The contract a run gets when it does not name one.
@@ -239,6 +254,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       sourceTrust: DEFAULT_SOURCE_TRUST,
       confidenceSignal: DEFAULT_CONFIDENCE_SIGNAL,
       promptContract: DEFAULT_PROMPT_CONTRACT,
+      ask: DEFAULT_ASK,
     };
   }
   return {
@@ -252,6 +268,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     sourceTrust: readSourceTrust(env[SOURCE_TRUST_VARIABLE]),
     confidenceSignal: readConfidenceSignal(env[CONFIDENCE_VARIABLE]),
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
+    ask: readAsk(env[ASK_VARIABLE]),
   };
 }
 
@@ -365,6 +382,25 @@ const RENDERING_ROUTES: Record<string, readonly string[]> = {
 };
 
 /**
+ * The routes each ask reaches, restated for the report.
+ *
+ * Checked rather than trusted, like the table above, and the check is the census test's
+ * job. The trap this exists to make unreadable-as-success is specific and measured:
+ *
+ *   **MR's own ask IS `extractive`.** `buildSessionPrompt` hardcodes it, so an
+ *   `ask: 'extractive'` run leaves MR's prompt byte-identical -- and §13's headline
+ *   prediction is `MR >= 7/17`. A run that reported only the ask's name would claim a
+ *   treatment MR never received, in the experiment written to learn from exactly that
+ *   mistake.
+ *
+ * `route` reaches nothing by definition: it IS the shipped behaviour.
+ */
+const ASK_ROUTES: Record<string, readonly string[]> = {
+  route: [],
+  extractive: ['abstention', 'temporal', 'knowledge-update', 'assistant'],
+};
+
+/**
  * Read the prompt-contract name, rejecting anything unrecognised.
  *
  * The same argument as {@link readConfidenceSignal}, applied to the §12.5 experiment.
@@ -393,6 +429,45 @@ function readPromptContract(raw: string | undefined): string {
         'than defaulted to the baseline: a run dispatched to test a different evidence ' +
         'rendering would otherwise run the baseline and its artifact would read as evidence ' +
         'that the rendering does not help.',
+    );
+  }
+  return value;
+}
+
+/**
+ * The ask a run gets when it names none: each route's own instruction block.
+ *
+ * The same shape as {@link DEFAULT_PROMPT_CONTRACT} and for the same reason -- every
+ * prior run used the shipped block, so a blank input has to keep reproducing it or the
+ * historical artifacts stop being comparable.
+ */
+const DEFAULT_ASK = 'route';
+
+/**
+ * Read the ask name, rejecting anything unrecognised.
+ *
+ * The same rule {@link readPromptContract} applies, on the second axis. A run dispatched
+ * to change the ask and silently falling back to the shipped block would publish an
+ * artifact whose unchanged MR/TR read as evidence that the ASK does not matter -- when
+ * in fact the ask was never administered. That is precisely the reading §13.5 registers
+ * as its falsifier, so a typo must not be able to produce it.
+ *
+ * Blank is defaulted rather than rejected: unset is a real configuration (every run
+ * before §13), and the shipped block is what it means.
+ */
+function readAsk(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_ASK;
+
+  const value = raw.trim();
+  const known = Object.keys(ASK_ROUTES);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${ASK_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised ask is rejected rather than ` +
+        'defaulted, because a run dispatched to widen the instruction block would otherwise ' +
+        'run the shipped one and its artifact would read as evidence that the ask does not ' +
+        'matter -- which is the falsifier §13.5 registers, reached by a typo instead of by ' +
+        'measurement.',
     );
   }
   return value;
@@ -507,6 +582,8 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     // defect this field was added to close, and claiming one that was is merely a
     // missing list.
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
+    ask: options.ask,
+    askRoutes: ASK_ROUTES[options.ask] ?? [],
   };
 }
 

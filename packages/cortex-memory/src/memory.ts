@@ -34,6 +34,7 @@ import {
   RENDERING_BY_CONTRACT,
   buildPrompt,
   buildSessionPrompt,
+  type EvidenceAsk,
   type EvidenceRendering,
   type PromptContract,
 } from './prompt.js';
@@ -460,7 +461,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * a rendering or deliberately does not, and the default reproduces the baseline
    * byte for byte so prior artifacts stay comparable.
    */
-  #promptOptions(): { maxChars?: number; rendering?: EvidenceRendering } {
+  #promptOptions(): { maxChars?: number; rendering?: EvidenceRendering; ask?: EvidenceAsk } {
     // `promptContract` is absent on every pre-switch construction, and an absent
     // contract means the baseline rendering -- which is the same answer as naming
     // `abstention`. The lookup is guarded rather than defaulted so the record stays a
@@ -469,11 +470,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // which is where `readPromptContract` already rejects it.
     const named = this.#options.promptContract;
     const rendering = named === undefined ? undefined : RENDERING_BY_CONTRACT[named];
+    // The ask is a second, independent axis and is resolved the same way, in the same
+    // place, for the same reason. §13 requires them to move separately: the ask
+    // experiment holds the rendering at whatever the run named.
+    const ask = this.#options.ask;
     return {
       ...(this.#options.maxPromptChars === undefined
         ? {}
         : { maxChars: this.#options.maxPromptChars }),
       ...(rendering === undefined ? {} : { rendering }),
+      ...(ask === undefined ? {} : { ask }),
     };
   }
 }

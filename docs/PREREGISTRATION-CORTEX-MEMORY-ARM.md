@@ -1509,3 +1509,198 @@ cannot be kept by that route at all: the name is not separable from its ask.
    for the rendering, which is what `prompt-contract-reach.test.ts` already does and what
    the arm can log without trusting its own dispatch table.
 
+
+### 12.10 The prediction was tested and it failed; the rendering line is retired
+
+§12.9 wrote its falsifier before the code existed, and it was reachable this time:
+*"MR and TR both stay at exactly 0% with `b-f+ = 0` in a run whose artifact shows the
+rendering was administered to them."* Dispatch `37827496757` (`6000f5ab`, `limit=120`,
+`ablation_runs=1`, `cortex_memory_prompt_contract=abstention-evidence-blocks`) produced
+exactly that antecedent. The line is retired here rather than deferred.
+
+#### The artifact first, because the reach is what makes the zero legible
+
+```json
+"memoryArmConfig": {
+  "threshold": 0, "retrievalThreshold": 0, "sessionBudget": null,
+  "sourceTrust": 0.5, "confidenceSignal": "none",
+  "promptContract": "abstention-evidence-blocks",
+  "renderingRoutes": ["abstention", "multi-session", "temporal",
+                      "knowledge-update", "assistant", "flat"]
+}
+```
+
+Six of six. This is the field §12.8 asked for and it did its job on its first run: the
+previous artifact could not have said this, which is why the previous zero was
+uninterpretable.
+
+#### The numbers
+
+| capability | baseline | feature | b+f− | b−f+ |
+|---|---|---|---|---|
+| MR | 14/17 | **0/17** | 14 | 0 |
+| TR | 15/17 | **0/17** | 15 | 0 |
+| IE | 0/52 | 0/52 | 0 | 0 |
+| KU | 0/17 | 0/17 | 0 | 0 |
+| ABS | 17/17 | 17/17 | 0 | 0 |
+| **total** | **46/120** | **17/120** | **29** | **0** |
+
+`delta = -0.2417`, `feature.abstentionRate = 0.9583` against the baseline's `0.6333`,
+`abstentionReasons = {empty: 0, threshold: 0, llm: 17, answered: 0}`.
+
+#### The confound that is not present
+
+A zero on MR/TR is only about rendering if the evidence reached them. It did, and both
+halves are measured rather than assumed:
+
+- `retrievalThreshold = 0`, so `decideRetrieval` cannot close the gate — the
+  `threshold` counter is `0`.
+- `#lastRawOutput` is written only after `#llm.complete` returns, and all 17 MR and all
+  17 TR records carry a non-null `rawOutput`. The model was consulted 17/17 on each.
+
+So the treatment was configured, logged, administered, and reached the model. The zero
+is a model behaviour, not a plumbing failure.
+
+#### The output distribution, which is where the real finding is
+
+| capability | bare token | engaged (prose) |
+|---|---|---|
+| MR | 16 | 1 (`"2"`) |
+| TR | 17 | 0 |
+| IE | 52 | 0 |
+| KU | 13 | 4 (`"No."`, `"Thursday"`, `"200"`, a prose summary) |
+| ABS | 17 | 0 |
+
+116 of 120 outputs are a bare `INSUFFICIENT_EVIDENCE`, and every one of them is `null`
+after the parse — the §60.2 finding reproduced. The four that engaged answered
+**substantively and wrongly** (or unscored): one gave a bare `"2"`, three gave short
+answers. The model is not struggling to *read* the evidence; it is declining to try,
+and when it does try it is not finding the answer.
+
+#### What this retires, stated precisely
+
+It retires the **evidence-presentation** hypothesis: labelling each turn's origin, on
+all six routes, does not move MR or TR off zero. Rendering the boundary more legibly
+was the last remaining candidate after §12.4 (gate) and §12.3 (threshold) were excluded,
+and it is now excluded by measurement.
+
+It does **not** retire the abstention contract, and the distinction matters. Within this
+ablation the feature abstains at 95.8% against the baseline's 63.3% — the feature is
+*far more* willing to decline than the pipeline it is measured against, on the same
+evidence, with the gate open. (These are the two figures inside
+`benchmark-cortex-memory-ablation-report.json`'s `ablation` block. The main
+`benchmark-report.json` shows the reference pipeline at `abstentionRate 0` because that
+arm answers without the abstention contract at all — a different arm, not a
+contradiction, and naming which file each number comes from is the difference between a
+readable claim and an unreadable one.) That gap is the `abstention` vs `extractive`
+**ask**, and no rendering change addresses it. §12.9(d) already recorded that the ask is
+not separable from the contract name; the run shows that this separateness is exactly
+what is needed next.
+
+#### What this opens
+
+The next variable is the **ask**, not the rendering — and it is a different experiment
+with a different single variable. It is not started here. Recording the constraint
+before any code: an ask change on MR/TR cannot be gated by
+`RENDERING_BY_CONTRACT` (that maps to a rendering), so it needs its own knob and its own
+reach report, for the same reason this round needed one.
+
+The baseline is the existence proof that an ask which does not over-decline scores
+14/17 and 15/17 on these two capabilities with the same admission and the same dataset.
+So the capability is reachable; what is not reachable is the feature's current
+willingness to answer.
+
+---
+
+## 13. The ask experiment: does REMOVING the invitation to decline repair MR and TR?
+
+§12.10 retires the rendering and leaves one excluded candidate: the instruction block.
+This section registers the experiment that tests it, written before the code, with its
+prediction and its falsifier stated in advance.
+
+### 13.1 The measurement the hypothesis rests on
+
+Within `37827496757`'s ablation block, on the same dataset, the same admission
+(`threshold = 0`, `retrievalThreshold = 0`, `sessionBudget = null`), and the same
+evidence:
+
+| arm | abstentionRate | accuracy |
+|---|---|---|
+| feature (`cortex-memory`, abstention ask) | **95.8%** | 14.2% |
+| baseline (reference pipeline) | **63.3%** | 38.3% |
+
+The baseline abstains 32.5 points less and scores 24.1 points higher. It has no
+mechanism this arm lacks -- §12.4 established the gate is not what is declining. What
+it does not have is the four-line instruction block that tells the model, twice, that
+this question may have no answer, that declining is expected and valid, and that
+choosing among candidates is wrong.
+
+That is the variable. It is the one §12.5's docstring explicitly set aside, on the
+grounds that "suspecting it is suspecting the thing most likely to be correct". The run
+shows the grounds were wrong.
+
+### 13.2 The single variable, stated exactly
+
+The candidate ask is the `extractive` instruction block applied to every route — the
+two lines the reference pipeline's contract uses:
+
+```
+Answer the question using only the evidence above.
+Reply with the answer alone. If the evidence does not contain the answer, reply exactly
+INSUFFICIENT_EVIDENCE.
+```
+
+Two things are held fixed on purpose, and each is a separate rejection:
+
+1. **The evidence rendering does not move.** It stays whatever the run names, defaulting
+   to `numbered`. The previous round showed rendering does not carry the effect, so
+   pairing the two would confound a known-null variable with an untested one.
+2. **The gate does not move.** `threshold`, `retrievalThreshold`, `sessionBudget`,
+   `sourceTrust` and `confidenceSignal` keep the values §12.3 and §12.4 reached. §4's
+   prohibition on sweeps stands.
+
+### 13.3 Why this needs its own knob, and why it is not `promptContract`
+
+`RENDERING_BY_CONTRACT` maps a contract name to a **rendering**. An ask is not a
+rendering, so reusing the table would break its meaning — the same error §12.9(a)–(d)
+records, reached from the other side. The ask needs its own input, and it needs its own
+reach report for the same reason the rendering did: an artifact that names an ask it
+never administered is unreadable, and `37827496757` is the proof that the field pays for
+itself on its first use.
+
+### 13.4 The prediction
+
+**MR and TR together recover at least half the gap to the baseline.** Concretely, on a
+`limit=120`, `ablation_runs=1` run: `MR >= 7/17` and `TR >= 8/17`, with `b-f+ > 0` on at
+least one of them.
+
+The threshold is half the baseline rather than the baseline itself because the ask is
+the largest remaining candidate but not the only difference between the arms, and
+predicting parity would make a partial repair read as a failure. Half is a real
+repair — it is the difference between "the abstention contract is the problem" and "the
+abstention contract is one problem among several", and those are different next steps.
+
+### 13.5 The falsifier, which is reachable
+
+**MR and TR both stay below 4/17 with `b-f+ = 0`** in a run whose artifact shows the
+extractive ask was administered to them. Then the ask is not the cause either, and the
+remaining candidates are the ones this project has not yet separated — retrieval
+quality on these two capabilities, and the scorer's treatment of a short answer.
+
+Reachability is asserted rather than hoped: the reach report is a field, the artifact is
+downloaded before the verdict is written, and the previous round is the worked example of
+a falsifier that could actually fire.
+
+### 13.6 What would still not be known afterwards
+
+Whether the reference pipeline's advantage is its ask or its retrieval. The baseline
+differs from this arm in the instruction block AND in how it produces candidates, so a
+recovery under this experiment identifies the ask as *sufficient to move the number*,
+not as *the whole difference*. Stating this here prevents the result, if positive, from
+being over-read.
+
+### 13.7 Status
+
+**Registered. Not yet implemented.** The knob, the reach field and the tests are the
+next round's work; this section exists so that work has a falsifiable target rather than
+a direction.

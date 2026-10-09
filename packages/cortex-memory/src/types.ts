@@ -8,7 +8,7 @@
  * else. See `docs/AUDIT-CODE-VS-DOCS.md` §6.
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
-import type { PromptContract } from './prompt.js';
+import type { EvidenceAsk, PromptContract } from './prompt.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -145,4 +145,16 @@ export type CortexMemoryOptions = {
    * Defaults to absent, so every prior artifact keeps its meaning.
    */
   promptContract?: PromptContract;
+  /**
+   * Which instruction block every route asks with. §13's single variable.
+   *
+   * A separate field from `promptContract` because they are separate axes: a contract
+   * selects a *rendering*, an ask selects an *instruction block*, and §13.2 requires
+   * them to be movable independently. Reusing `promptContract` for both would repeat
+   * the §12.9 error from the other side -- one name carrying two variables.
+   *
+   * Absent means each route uses its own block, which is the shipped behaviour and what
+   * every prior artifact was produced with.
+   */
+  ask?: EvidenceAsk;
 };

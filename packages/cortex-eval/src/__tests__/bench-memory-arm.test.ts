@@ -108,6 +108,7 @@ function formalizeArm(config: {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      ask: 'route',
     }),
   });
 }
@@ -153,6 +154,9 @@ async function runCortexMemoryArmReport(config: {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        renderingRoutes: [],
+        ask: 'route',
+        askRoutes: [],
       },
     },
   );
@@ -478,6 +482,8 @@ describe('source trust reaches the artifact', () => {
       confidenceSignal: 'none',
       promptContract: 'abstention',
       renderingRoutes: [],
+      ask: 'route',
+      askRoutes: [],
     });
   });
 
@@ -610,6 +616,9 @@ describe('runCortexMemoryArm', () => {
           sourceTrust: 0.5,
           confidenceSignal: 'none',
           promptContract: 'abstention',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
         },
       },
     );
@@ -620,6 +629,9 @@ describe('runCortexMemoryArm', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      renderingRoutes: [],
+      ask: 'route',
+      askRoutes: [],
     });
   });
 
@@ -706,6 +718,8 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         renderingRoutes: [],
+        ask: 'route',
+        askRoutes: [],
       },
     });
 
@@ -827,6 +841,44 @@ describe('runCortexMemoryArm', () => {
   });
 
   describe('toMemoryArmConfig', () => {
+    it('reports an unknown ask as reaching nothing, not as reaching everything', () => {
+      // The fallback exists for a caller that builds options by hand, since a dispatch
+      // cannot get past `readAsk`. The two possible defaults are not equal: claiming an
+      // ask that was not administered is the defect the reach field exists to close,
+      // while claiming one that was is a missing list. So the fallback has to lean
+      // toward `[]`, and this is the assertion that holds it there.
+      const config = toMemoryArmConfig({
+        enabled: true,
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention',
+        ask: 'not-a-real-ask',
+      });
+      expect(config.askRoutes).toEqual([]);
+    });
+
+    it('reports an unknown contract as reaching nothing, not as reaching everything', () => {
+      // The same asymmetry on the rendering axis, and it is the axis the §12.10 reading
+      // turned on: an artifact that named a contract reaching six routes while the run
+      // administered none is exactly the `bcf66463` defect. A hand-built options object
+      // is the only way to reach this fallback -- `readPromptContract` rejects an
+      // unrecognised name -- so the test builds one directly.
+      const config = toMemoryArmConfig({
+        enabled: true,
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'not-a-real-contract',
+        ask: 'route',
+      });
+      expect(config.renderingRoutes).toEqual([]);
+    });
+
     it('persists an unbounded budget as null rather than Infinity', () => {
       // `JSON.stringify(Infinity)` is `null`, so an in-memory `Infinity` and a
       // re-read artifact would disagree about the same run. Converting on the way
@@ -839,6 +891,7 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        ask: 'route',
       });
       expect(config.sessionBudget).toBeNull();
       expect(JSON.parse(JSON.stringify(config))).toEqual(config);
@@ -853,6 +906,7 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        ask: 'route',
       });
       expect(config).toEqual({
         threshold: 0.5,
@@ -862,6 +916,8 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         renderingRoutes: [],
+        ask: 'route',
+        askRoutes: [],
       });
     });
   });
@@ -1163,6 +1219,9 @@ describe('the retrieval threshold', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      renderingRoutes: [],
+      ask: 'route',
+      askRoutes: [],
     });
   });
 });
@@ -1257,6 +1316,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      ask: 'route',
     });
   });
 
@@ -1277,6 +1337,8 @@ describe('blank values from unfilled dispatch inputs', () => {
       confidenceSignal: 'none',
       promptContract: 'abstention',
       renderingRoutes: [],
+      ask: 'route',
+      askRoutes: [],
     });
   });
 });
@@ -1469,5 +1531,168 @@ describe('the rendering reach the artifact reports agrees with the product layer
     // because the baseline's reach is measured and known to be zero.
     const baseline = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
     expect(baseline.renderingRoutes).toEqual([]);
+  });
+});
+
+describe('the evidence ask, which is the second axis and not the rendering', () => {
+  it('defaults to the shipped ask, which is the arm every run before §13 ran', () => {
+    // Unset is a real configuration, not an error: every artifact produced before this
+    // variable existed ran the shipped instruction block, so the default has to be that
+    // one rather than a null that would read as "not recorded".
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.ask).toBe('route');
+  });
+
+  it('reads the widened ask, which is the one §13 registers the experiment for', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_ASK: 'extractive',
+    });
+    expect(options.ask).toBe('extractive');
+  });
+
+  it('treats a blank ask as unset rather than as its own value', () => {
+    // GitHub passes an unfilled `workflow_dispatch` input as `''`, not as an absent
+    // variable. Blank must mean the shipped ask for the same reason it means the
+    // default everywhere else in this module.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: '' });
+    expect(options.ask).toBe('route');
+  });
+
+  it('rejects an unrecognised ask rather than defaulting it, because the default fakes the reading', () => {
+    // This is the load-bearing guard of §13. A typo that fell back to the shipped ask
+    // would run a valid experiment on the wrong axis and publish an artifact whose
+    // unchanged MR/TR read as evidence that the ask does not matter -- exactly the
+    // falsifier §13.5 registers, reached by a typo instead of by measurement. The
+    // rejection is what keeps the falsifier reachable only by measurement.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: 'extract' }),
+    ).toThrow(/CORTEX_MEMORY_ASK/);
+    // And it names what it would have accepted, so the failure is actionable.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: 'extract' }),
+    ).toThrow(/extractive/);
+  });
+
+  it('reports the ask it was administered, not the ask it was named', () => {
+    const widened = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: 'extractive' }),
+    );
+    expect(widened.ask).toBe('extractive');
+    // The reach is the measured answer to "which routes actually received this ask",
+    // and it is not derivable from the name: `multi-session` and `flat` hardcode the
+    // shipped block and are structurally out of this variable's reach, so reporting
+    // all six would claim a treatment two of them cannot receive.
+    expect(widened.askRoutes).not.toContain('multi-session');
+    expect(widened.askRoutes).not.toContain('flat');
+    expect(widened.askRoutes).toContain('abstention');
+  });
+
+  it('agrees with the product layer on which routes the widened ask can reach', () => {
+    // Read from the product source for the same layering reason the rendering reach is:
+    // `cortex-eval` measures `cortex-memory` and cannot import from it. The local copy of
+    // the table exists so the artifact can carry the reach; this is what stops the copy
+    // from drifting away from the thing it is a copy of.
+    const source = readFileSync(
+      new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+      'utf-8',
+    );
+    expect(
+      /export const ASK_ROUTES/.test(source),
+      'ASK_ROUTES not found in the product source',
+    ).toBe(true);
+
+    // `multi-session` is the one route whose builder does not take the instruction
+    // block at all -- the structural gap §12.9 records, which is why the two axes had
+    // to be separated. `temporal`'s builder DOES take it, which is why the ask can
+    // reach a route the rendering reaches for a different reason, and the assertion
+    // is one-sided so it says only what is actually true.
+    const product = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: 'extractive' }),
+    );
+    expect(
+      product.askRoutes,
+      'multi-session receives its instruction block from its own builder, not from this variable',
+    ).not.toContain('multi-session');
+    expect(product.askRoutes).toContain('temporal');
+  });
+});
+
+describe('the ask reaches the artifacts, in both renderings', () => {
+  it('carries the ask into the persisted JSON, so a comparison can interpret itself', () => {
+    const config = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: 'extractive' }),
+    );
+    expect(config.ask).toBe('extractive');
+    expect(config.askRoutes).toEqual(['abstention', 'temporal', 'knowledge-update', 'assistant']);
+  });
+
+  it('renders the ask and its reach into the Markdown, naming the routes', () => {
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: 'extractive' }),
+      ),
+    });
+    expect(markdown).toContain('- Evidence ask: `extractive`');
+    expect(markdown).toContain('Evidence ask reached: 4 route(s)');
+    // Named, not counted, for the reason the rendering reach is named.
+    expect(markdown).toContain('`abstention`');
+    expect(markdown).toContain('`temporal`');
+  });
+
+  it('renders a widened-name-with-no-reach as `none` rather than omitting the line', () => {
+    // The three-state rendering. An empty list is a real answer -- the ask was
+    // administered and reached nothing -- and it must not render the same way as a
+    // field that was never written.
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention',
+        renderingRoutes: [],
+        ask: 'extractive',
+        askRoutes: [],
+      },
+    });
+    expect(markdown).toContain('- Evidence ask reached: `none`');
+  });
+
+  it('says the ask reach is not recorded when the field is absent', () => {
+    // An artifact that predates §13 is not an artifact whose ask reached nothing, and
+    // the two must not render the same bytes.
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention',
+        renderingRoutes: [],
+        ask: 'route',
+      },
+    });
+    expect(markdown).toContain('- Evidence ask reach: `not recorded`');
   });
 });

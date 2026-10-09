@@ -45,6 +45,13 @@ export {
   // a different prompt.
   PROMPT_CONTRACTS,
   DEFAULT_PROMPT_CONTRACT,
+  // `ASK_ROUTES` exists for the same reason as the list above and is exported for the
+  // same consumer: the arm reports which routes an ask actually reached, and it cannot
+  // read that from the product without this. §13's headline prediction is about MR,
+  // which the extractive ask does NOT change, so the reach is the difference between a
+  // readable result and a misleading one.
+  ASK_ROUTES,
+  type EvidenceAsk,
   type PromptContract,
   type PromptOptions,
 } from './prompt.js';
