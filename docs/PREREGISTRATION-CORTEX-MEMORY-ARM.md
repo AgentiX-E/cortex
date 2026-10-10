@@ -2177,3 +2177,82 @@ artifact.
 ### 13.12.8 Status
 
 Registered before the next dispatch. Predictions in §13.12.5, falsification in §13.12.6.
+
+## 13.13 What the reader was shown is not what the artifact records
+
+Registered because run `38044858147` was read against the §13.11.3 predictions and
+the reading was wrong in the direction that matters: it overstated what reached the
+model, and it turned a correct verdict into a hedged one.
+
+### 13.13.1 The defect
+
+`memory.ts` captures the evidence and then builds the prompt from the same list:
+
+```ts
+const prompt = buildPrompt(question, turns, contract, this.#promptOptions());
+this.#recordEvidence(turns);          // memory.ts:535-536
+```
+
+`#recordEvidence` stores `turns.map((t) => t.content).join('\n')`, which is what
+`lastRetrievedContext` returns and therefore what
+`ablation.featureRetrievedContexts` and `QuestionRecord.retrieved` are built from.
+
+`buildPrompt` does not necessarily carry those turns. When the assembled prompt
+exceeds `maxChars` it calls `fitToBudget`, which spends the budget in priority
+order -- instructions, then question, then **evidence truncated to whatever is
+left**. The arm never sets `maxPromptChars`, so `maxChars` is
+`DEFAULT_MAX_PROMPT_CHARS` = **24,000** on every question, and the run's evidence
+averaged **506,338 characters** per question. Every question in the run was over
+budget.
+
+So the artifact's `evidenceTurns` (3,016-4,528) counts turns that were *offered*
+to `buildPrompt`, while the model received at most 24,000 characters -- on the
+run's own ratio of 144 characters per turn, roughly 150-160 turns. The
+overstatement is about twenty times.
+
+`#recordEvidence`'s own docstring says the accessor answers *"which turns reached
+the reader"* and that a reader comparing it against the roster *"wants the same
+turns the prompt carried, in the same order"*. Both sentences are false whenever
+the prompt is over budget, and `QuestionRecord.evidenceTurns` was documented as
+*"how many turns the reader was shown"*, inheriting the error. Those docstrings
+are corrected as of this section; the measurement is not, which is what §13.13
+registers.
+
+### 13.13.2 Why this is not a documentation problem
+
+`§13.11.5` hands the next round a single question: **was the gold turn inside what
+the model saw?** That question is unanswerable from an artifact whose evidence
+record stops at the truncation boundary -- the boundary is precisely where the
+interesting turns stop. And it is not a small correction to the ranking problem:
+the budget is 24,000 characters, not "all of it", so a ranker that leaves the gold
+turn at position 200 loses the question no matter how complete retrieval was.
+
+### 13.13.3 The two predictions this registers, so the repair is falsifiable
+
+On the next arm run with the measurement in place:
+
+1. **The prompt-carried evidence is strictly smaller than the admitted evidence on
+   every question of this dataset**, since every question exceeds the budget. If
+   the two are equal, the budget is not being reached and the defect is not the
+   one this section describes.
+2. **The prompt-carried size is bounded by `maxChars` minus the instruction and
+   question blocks, and is the same bound on every route.** A per-route difference
+   would mean the budget is being spent differently per contract, which would make
+   prompt-carried size a function of the route rather than of the budget.
+
+### 13.13.4 What would still not be known afterwards
+
+Whether the gold turn is in the carried prefix. That needs gold-turn attribution,
+which the dataset does not carry on this arm -- the same limit `§13.11.5` states.
+Measuring the carried size is what makes that question askable; it does not answer
+it.
+
+### 13.13.5 Status
+
+**Registered**, with the defect open. The measurement's shape is not yet fixed:
+carrying the prompt-carried evidence instead of the admitted context would make
+`§13.11.5`'s question askable but would change what `§13.11.3`'s two predictions
+are read from; carrying both adds a field and a capture path. Either way the
+decision belongs in `cortex-eval`, not in `bench/**`, for the reason
+`report-write.ts` records: a decision in an entry point is a decision no test can
+reach.

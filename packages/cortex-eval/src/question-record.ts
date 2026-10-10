@@ -103,7 +103,7 @@ export type QuestionRecord = {
   /** The retrieved context the reader was shown, split into admission order. */
   readonly turns: readonly TurnLike[];
   /**
-   * How many turns the reader was shown, before any bound was applied.
+   * How many turns were **admitted** for this question, before any bound.
    *
    * ## Why this is not `turns.length`
    *
@@ -124,10 +124,27 @@ export type QuestionRecord = {
    * vector -- is decided by `evidenceTurns > 0`, so it survives any bound. The
    * second, that abstention records are not uniformly empty, is decided by
    * comparing this field against the population, and survives likewise.
+   *
+   * ## Why "admitted" and not "shown to the reader", which is what this said
+   *
+   * This field counts the turns of the captured context -- `lastRetrievedContext`,
+   * which is what was **passed to** `buildPrompt`. It is not what the prompt
+   * carried: `buildPrompt` calls `fitToBudget` when the assembled prompt exceeds
+   * `maxChars`, and that truncates the evidence. The arm never sets
+   * `maxPromptChars`, so the budget is `DEFAULT_MAX_PROMPT_CHARS` (24,000) on
+   * every question, while run `38044858147` averaged 506,338 characters of
+   * evidence per question.
+   *
+   * So on that run this field reports 3,016-4,528 while the model received at most
+   * 24,000 characters -- roughly 150-160 turns, an overstatement of about twenty
+   * times. The number is still the right one for `§13.11.3`, whose two predictions
+   * ask whether retrieval *produced* evidence. It is the wrong one for
+   * `§13.11.5`'s ranking question, which asks whether the gold turn reached the
+   * model, and that question needs a measurement this artifact does not carry.
    */
   readonly evidenceTurns: number;
   /**
-   * The size in characters of the evidence the reader was shown, un-reduced.
+   * The size in characters of the admitted evidence, un-reduced.
    *
    * Carried beside `evidenceTurns` because the two fail differently: a question
    * can be shown one enormous turn or a thousand small ones, and a bound chosen
@@ -135,7 +152,10 @@ export type QuestionRecord = {
    * whether the bound engaged needs both, and a reader auditing the bound's cost
    * needs `evidenceChars`.
    *
-   * Measured, never reduced, for the reason `evidenceTurns` states.
+   * Measured, never reduced, for the reason `evidenceTurns` states -- and admitted
+   * rather than prompt-carried, for the reason stated there too. This is the field
+   * that makes the gap measurable at all: 506,338 against a 24,000-character
+   * budget is the whole of it.
    */
   readonly evidenceChars: number;
   /**
