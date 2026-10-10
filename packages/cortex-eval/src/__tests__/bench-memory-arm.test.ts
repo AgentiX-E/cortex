@@ -1910,5 +1910,21 @@ describe('a bounded run reports what the bound dropped', () => {
     expect(reduction!.turnsCarried).toBeLessThan(6);
     expect(reduction!.reducedQuestionIds).toEqual(['q1']);
     expect(reduction!.charsMeasured).toBe(retrieved.length);
+
+    // ## The second copy, which is the half that made the artifact 258 MB
+    //
+    // The arm persists the evidence twice, and run `38044858147` measured what
+    // happens when the bound reaches only one of them: 256 MB of 258 MB was this
+    // vector, whole, while every record was down to seventeen turns. The claim
+    // asserted here is stronger than a size bound -- the two copies must describe
+    // the *same* evidence, so the vector's entry splits into exactly the record's
+    // turns. A bound that truncated them differently would pass a size check.
+    const vector = report.ablation.featureRetrievedContexts;
+    expect(vector).toBeDefined();
+    const record = report.questions![0]!;
+    expect(vector![0]!.split('\n')).toEqual(record.turns.map((turn) => turn.text));
+    // And the measurement is still whole beside it: the bound reduced what is
+    // carried, never what was measured.
+    expect(record.evidenceTurns).toBe(6);
   });
 });

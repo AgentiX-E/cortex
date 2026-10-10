@@ -51,6 +51,7 @@ import type {
   MemoryArmConfig,
 } from './report.js';
 import {
+  boundRetrievedContexts,
   buildQuestionRecords,
   evidenceReductionOf,
   type EvidenceBoundOptions,
@@ -963,6 +964,25 @@ export async function runCortexMemoryArm(
   const evidenceReduction = evidenceReductionOf(questions);
   const reported: AblationReport = {
     ...report,
+    // The evidence is carried twice, and the registered bound has to reach both
+    // copies. `buildArmRoster` above bounded `questions[].turns`; this is the
+    // other copy, and run `38044858147` measured what leaving it alone costs --
+    // a 258 MB artifact in which the records were down to seventeen turns each
+    // while 256 MB of it was this vector, untruncated. Carrying one copy whole is
+    // not a bound: it keeps the artifact one order of magnitude from V8's 537 MB
+    // string limit, and it makes the writer's own reducer unable to make room
+    // (`report-write.ts`'s `withBoundedAblationEvidence` records that failure).
+    //
+    // Bounded through the same function the records use, so the two copies cannot
+    // describe different evidence: the vector's `i`-th entry splits into exactly
+    // `questions[i].turns`.
+    ablation: {
+      ...report.ablation,
+      featureRetrievedContexts: boundRetrievedContexts(
+        report.ablation.featureRetrievedContexts!,
+        options.evidenceBound,
+      ),
+    },
     ...(census.abstentionReasons === undefined
       ? {}
       : { abstentionReasons: census.abstentionReasons }),

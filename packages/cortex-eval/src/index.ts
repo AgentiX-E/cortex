@@ -303,6 +303,7 @@ export {
   type VarianceSummary,
 } from './variance.js';
 export {
+  boundRetrievedContexts,
   buildRecordsFromDataset,
   correctnessVector,
   evidenceReductionOf,

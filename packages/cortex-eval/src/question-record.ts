@@ -213,6 +213,34 @@ export type EvidenceBoundOptions = {
 };
 
 /**
+ * The floor below which a bound stops.
+ *
+ * One turn is the smallest amount of evidence that is still evidence: a record
+ * carrying zero turns while reporting `evidenceTurns > 0` is exactly the
+ * "reduced reads as absent" confusion `EvidenceBoundOptions` exists to prevent.
+ */
+const MIN_TURNS_PER_RECORD = 1;
+
+/**
+ * Reject a bound that would carry no evidence at all.
+ *
+ * Shared by both places a bound is applied, so the two cannot drift into
+ * disagreeing about which bounds are legal -- a bound the record builder rejects
+ * but the context bound silently clamps would put the two copies of the evidence
+ * in different states.
+ */
+function requireValidBound(bound: EvidenceBoundOptions): void {
+  if (bound.maxTurnsPerRecord < MIN_TURNS_PER_RECORD) {
+    throw new Error(
+      `maxTurnsPerRecord must be at least ${MIN_TURNS_PER_RECORD}, got ` +
+        `${String(bound.maxTurnsPerRecord)}. A bound of 0 would carry no evidence while ` +
+        'still reporting evidenceTurns > 0, which makes a reduced record read as one whose ' +
+        'reader was shown nothing.',
+    );
+  }
+}
+
+/**
  * Split retrieved context into ordered turns.
  *
  * Blank lines are dropped rather than emitted as empty turns: a blank turn
@@ -243,6 +271,51 @@ function toTurns(retrieved: string, bound?: EvidenceBoundOptions): TurnLike[] {
 }
 
 /**
+ * The same bound, applied to the ablation's own copy of the evidence.
+ *
+ * ## Why this has to exist
+ *
+ * The arm persists the evidence twice: this vector and `questions[].turns`. §69
+ * bounded the first and left this one alone, and run `38044858147` measured the
+ * result -- a 258 MB artifact in which the records were down to seventeen turns
+ * each while **256 MB** of it was the untruncated ablation vector. A bound that
+ * reaches one of two copies is not a bound: the artifact is still one order of
+ * magnitude from V8's 537 MB string limit, and a larger dataset or a longer
+ * question set puts it back over.
+ *
+ * ## Why it reuses `toTurns` rather than re-splitting
+ *
+ * The two copies must describe the same thing. Splitting here with a second
+ * implementation -- a `slice` on the raw lines, say -- would keep a different
+ * prefix whenever the text has blank lines, because `toTurns` drops blanks before
+ * counting. The caller-visible invariant is that
+ * `boundRetrievedContexts(texts, b)[i].split('\n')` equals
+ * `records[i].turns.map((t) => t.text)`, and going through one function is what
+ * makes that true by construction rather than by coincidence.
+ *
+ * `null` passes through: it is "no reader was consulted", which a bound has
+ * nothing to say about, and collapsing it to `''` would erase the distinction in
+ * the one place the vector still expresses it.
+ *
+ * @returns The input array itself when no bound is given, so an unbounded caller
+ * keeps exactly the data it passed rather than a copy of it.
+ */
+export function boundRetrievedContexts(
+  contexts: readonly (string | null)[],
+  bound?: EvidenceBoundOptions,
+): readonly (string | null)[] {
+  if (bound === undefined) return contexts;
+  requireValidBound(bound);
+  return contexts.map((text) =>
+    text === null
+      ? null
+      : toTurns(text, bound)
+          .map((turn) => turn.text)
+          .join('\n'),
+  );
+}
+
+/**
  * Assemble the per-question records for one arm.
  *
  * `correctness`, when supplied, is the authority for `correct` and must align
@@ -269,13 +342,7 @@ export function buildQuestionRecords(
       `correctness vector length ${correctness.length} is not ${inputs.length}, the number of question records`,
     );
   }
-  if (evidenceBound !== undefined && evidenceBound.maxTurnsPerRecord < 1) {
-    throw new Error(
-      `maxTurnsPerRecord must be at least 1, got ${String(evidenceBound.maxTurnsPerRecord)}. ` +
-        'A bound of 0 would carry no evidence while still reporting evidenceTurns > 0, which ' +
-        'makes a reduced record read as one whose reader was shown nothing.',
-    );
-  }
+  if (evidenceBound !== undefined) requireValidBound(evidenceBound);
 
   const seen = new Set<string>();
   const records: QuestionRecord[] = [];

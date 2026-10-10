@@ -40,7 +40,9 @@
  */
 
 import type { AblationReport } from './report.js';
+import type { AblationResult } from './types.js';
 import {
+  boundRetrievedContexts,
   buildQuestionRecords,
   evidenceReductionOf,
   type EvidenceReduction,
@@ -324,6 +326,9 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
 
   return {
     ...report,
+    // The evidence is carried twice, so the bound has to reach both copies. See
+    // `withBoundedAblationEvidence` for what leaving this one alone costs.
+    ablation: withBoundedAblationEvidence(report.ablation, bound),
     questions: buildQuestionRecords(
       records.map((record) => ({
         questionId: record.questionId,
@@ -343,6 +348,39 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
       records.map((record) => record.correct),
       { maxTurnsPerRecord: bound },
     ),
+  };
+}
+
+/**
+ * The ablation's own copy of the evidence, bounded by the same bound.
+ *
+ * ## Why the reduction has to reach this field, and why omitting it broke the net
+ *
+ * A report carries the reader's evidence twice: as `questions[].turns` and as
+ * `ablation.featureRetrievedContexts`. Run `38044858147` published a **258 MB**
+ * artifact in which every record was down to seventeen turns while **256 MB** of
+ * it was this field, untruncated -- the §69 bound never reached it.
+ *
+ * That was survivable at 253 MB, which sits below V8's 537 MB string limit. What
+ * is not survivable is the consequence for *this* module: a reduction that bounds
+ * only `questions` cannot make the artifact fit, so the loop tightens to the floor
+ * and throws `describeFailure` -- "the report could not be serialized at any
+ * evidence bound" -- **while a writable artifact plainly exists**, one bounded
+ * copy short. The safety net that exists so a measurement is never destroyed
+ * would have destroyed it, and reported the run as a report defect.
+ *
+ * `featureRetrievedContexts` is optional on `AblationResult`, so an absent field
+ * is returned as-is: a report that never captured the vector must reduce without
+ * inventing it, or the artifact would claim a measurement the run did not make.
+ * The same object is returned when there is nothing to bound, so the common case
+ * allocates nothing.
+ */
+function withBoundedAblationEvidence(ablation: AblationResult, bound: number): AblationResult {
+  const contexts = ablation.featureRetrievedContexts;
+  if (contexts === undefined) return ablation;
+  return {
+    ...ablation,
+    featureRetrievedContexts: boundRetrievedContexts(contexts, { maxTurnsPerRecord: bound }),
   };
 }
 

@@ -591,4 +591,63 @@ describe('serializeReportOrReduce', () => {
     // The measurement survives: every record still says how much it was shown.
     expect(parsed.questions!.map((q) => q.evidenceTurns)).toEqual([5, 5]);
   });
+
+  it('bounds the ablation evidence vector too, or the reduction cannot make room', () => {
+    // ## The defect this pins
+    //
+    // A report carries the evidence twice: `questions[].turns` and the ablation's
+    // own `featureRetrievedContexts`. A reducer that bounds only the first cannot
+    // make the artifact fit, because the second copy is still whole -- which is
+    // exactly the state run `38044858147` published: 258 MB, of which 256 MB was
+    // the untruncated ablation vector while every record was already down to
+    // seventeen turns.
+    //
+    // The serializer below refuses any text still containing the last turn, so
+    // the writer can only succeed if BOTH copies were bounded. Before the fix the
+    // loop tightened to the floor and threw, because bounding `questions` never
+    // removed the turn from the vector.
+    const retrieved = Array.from({ length: 5 }, (_, i) => `turn ${i}`).join('\n');
+    const report = {
+      ...reportWithEvidence(5, 2),
+      ablation: { featureRetrievedContexts: [retrieved, retrieved] },
+    } as unknown as AblationReport;
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('turn 4')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(report, exploding, { maxTurnsPerRecord: 2 });
+
+    expect(result.reduced).toBe(true);
+    const parsed = JSON.parse(result.json) as {
+      ablation: { featureRetrievedContexts: (string | null)[] };
+    };
+    // Both copies bounded: the dropped turn is gone from the vector as well.
+    for (const text of parsed.ablation.featureRetrievedContexts) {
+      expect(text).not.toContain('turn 4');
+    }
+  });
+
+  it('leaves the ablation vector alone when the report carries none', () => {
+    // `featureRetrievedContexts` is optional on `AblationResult`. A report that
+    // never captured it must reduce without inventing the field, or the artifact
+    // would claim a measurement the run did not make.
+    const report = reportWithEvidence(5, 1);
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 4"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(report, exploding, { maxTurnsPerRecord: 2 });
+
+    expect(result.reduced).toBe(true);
+    const parsed = JSON.parse(result.json) as { ablation: Record<string, unknown> };
+    expect('featureRetrievedContexts' in parsed.ablation).toBe(false);
+  });
 });

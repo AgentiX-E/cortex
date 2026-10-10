@@ -26,6 +26,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  boundRetrievedContexts,
   buildQuestionRecords,
   evidenceReductionOf,
   REDUCED_TURNS_MARKER,
@@ -240,5 +241,87 @@ describe('the bound is a record-level bound, applied per record', () => {
     expect(() =>
       buildQuestionRecords([input()], undefined, undefined, { maxTurnsPerRecord: 0 }),
     ).toThrow(/maxTurnsPerRecord/);
+  });
+});
+
+describe('boundRetrievedContexts keeps the second evidence copy in step', () => {
+  /**
+   * ## Why the evidence has to be bound twice
+   *
+   * The arm persists the same evidence in two places: `questions[].turns[].text`
+   * and `ablation.featureRetrievedContexts`. §69 registered a bound for the first
+   * and left the second alone, and run `38044858147` measured the consequence --
+   * a **258 MB** artifact whose records were down to seventeen turns each while
+   * 256 MB of it was the untruncated second copy. The artifact survived only
+   * because 253 MB happens to sit below V8's 537 MB string limit; a larger
+   * dataset puts it back over.
+   *
+   * A reduction that reaches one copy and not the other is therefore not a
+   * cosmetic defect: it is a bound that does not bound, and the two copies
+   * disagree about what the reader was shown.
+   */
+  it('returns the input array itself when no bound is given', () => {
+    // Identity, not equality: unbounded is the pre-existing behaviour, and a
+    // caller that passes no bound must get exactly its own data back rather
+    // than a copy that merely compares equal.
+    const contexts = ['a\nb', null, 'c'];
+    expect(boundRetrievedContexts(contexts, undefined)).toBe(contexts);
+  });
+
+  it('bounds each context into exactly the turns the matching record carries', () => {
+    // The invariant, stated as an equality between the two copies rather than as
+    // a size assertion: whatever the reader is shown per the record must be what
+    // the ablation vector says they were shown. Sizes would pass for a bound that
+    // truncated the two copies differently.
+    const contexts = ['t0\nt1\nt2\nt3\nt4', 'x0\nx1', 'only'];
+    const bound = { maxTurnsPerRecord: 2 };
+    const bounded = boundRetrievedContexts(contexts, bound);
+    const records = buildQuestionRecords(
+      contexts.map((retrieved, i) => input({ questionId: `q${i}`, retrieved })),
+      undefined,
+      undefined,
+      bound,
+    );
+
+    for (let i = 0; i < contexts.length; i++) {
+      expect(bounded[i]!.split('\n')).toEqual(records[i]!.turns.map((turn) => turn.text));
+    }
+  });
+
+  it('preserves null as null, which is not the same fact as empty', () => {
+    // `null` is "no reader was consulted"; `''` is "a reader was consulted and
+    // shown nothing". The records keep the distinction (`retrievedContexts[i] ??
+    // ''` collapses it only at the point of record construction, where the shape
+    // forces it), so collapsing it in the persisted vector would erase it in the
+    // one place it is still expressible.
+    const bounded = boundRetrievedContexts([null, ''], { maxTurnsPerRecord: 2 });
+    expect(bounded[0]).toBeNull();
+    expect(bounded[1]).toBe('');
+  });
+
+  it('carries the marker so a bounded copy cannot read as a short one', () => {
+    // The same disclosure the record's `turns` carries, for the same reason: a
+    // reader holding only this vector must be able to tell "shown three turns"
+    // from "shown one of three".
+    const bounded = boundRetrievedContexts(['t0\nt1\nt2'], { maxTurnsPerRecord: 1 });
+    expect(bounded[0]).toContain(REDUCED_TURNS_MARKER);
+    expect(bounded[0]).toContain('2 of 3 turns not carried');
+  });
+
+  it('drops blank lines exactly as the record builder does', () => {
+    // `toTurns` drops blanks before counting, so a bound applied to a different
+    // splitting of the same text would keep a different prefix. Both copies go
+    // through the one function that owns the rule.
+    const bounded = boundRetrievedContexts(['a\n\nb\n\nc'], { maxTurnsPerRecord: 1 });
+    expect(bounded[0]!.split('\n')).toEqual([
+      'a',
+      `${REDUCED_TURNS_MARKER} 2 of 3 turns not carried]`,
+    ]);
+  });
+
+  it('rejects a bound below one for the same reason the builder does', () => {
+    expect(() => boundRetrievedContexts(['a'], { maxTurnsPerRecord: 0 })).toThrow(
+      /maxTurnsPerRecord/,
+    );
   });
 });

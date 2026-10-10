@@ -356,8 +356,16 @@ export type AblationResult = {
    * Optional for the reason `featureRawOutputs` is: a hand-built fixture that
    * omits it yields records with `turns: []`, which is the honest reading of a
    * fixture that never retrieved anything.
+   *
+   * ## Why this is `readonly`, and why that is not cosmetic
+   *
+   * Every writer that bounds this vector (`boundRetrievedContexts`) returns a
+   * fresh array it does not hand out for mutation, and the type says so. Declaring
+   * it mutable forced the bound to be applied through a widening cast, which is
+   * the shape that lets a later writer mutate evidence some other reader is still
+   * holding. Read-only here makes the bounded copy assignable without one.
    */
-  featureRetrievedContexts?: (string | null)[];
+  featureRetrievedContexts?: readonly (string | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };
