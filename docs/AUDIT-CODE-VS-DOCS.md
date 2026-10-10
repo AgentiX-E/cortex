@@ -341,6 +341,50 @@ promising and measured **77.95% → 70.87%** (Δ −7.09pp, one-sided exact McNe
 (`7780071`) closes it. Pre-registration is what prevented that arm from being rationalised
 into the roadmap after the fact.
 
+### 6.3.1 The artifact contract: every arm declares what a failure leaves behind
+
+An arm that dies produces **less** than an arm that completes, and the difference is where a
+result goes missing. Run `37942775447` is the worked example: ~40 minutes of grading across
+two sides, ended by `TypeError: terminated`, and the artifact held a stack trace and nothing
+else — `benchmark-cortex-memory-ablation-report.{md,json}` were both absent, because
+`runCortexMemoryArm` **only returns on success** and the writer sits after the `await`.
+
+What makes that a contract rather than an accident is the asymmetry inside the same `catch`:
+the **embedding cache** was already being persisted on the failure path, while the **answers**
+were not. The cache is the cheapest thing in the run — fully deterministic, and already paid
+for — and the answers are the only thing being measured. A failure path that keeps the former
+and drops the latter has the priority backwards.
+
+So an arm registered under §6.3 declares three artifact sets, and the third is not optional:
+
+| Set | Named | Written when |
+| --- | --- | --- |
+| Complete | `benchmark-cortex-memory-ablation-report.{md,json}` | the arm returns |
+| Diagnostic | `benchmark-error.log` | any throw, after the stack |
+| **Partial** | `benchmark-cortex-memory-partial.json` | any throw, **if the run measured anything** |
+
+**The partial set carries no `delta`, no aggregate and no per-capability table**, and that
+omission is the contract rather than a gap. Every one of those is a function of *both* sides
+over the *same* index vector; with one side short they are arithmetic over data that was never
+paired, and `0/0` renders in a table exactly like `0/121`. What the partial set carries is the
+answer vectors and their extent — `system`, `reached`, `total`, `run` — which is what a reader
+needs to decide whether the next attempt is a re-dispatch or a design change.
+
+Two consequences worth stating, because both were live defects until fixed:
+
+- **The predicate for "measured anything" is not `reached === 0`.** `reached` counts only the
+  side that was running, so a feature side dying at question 0 reports `reached: 0` while the
+  baseline vector is *complete* — and the first version of that predicate discarded it. The
+  condition is `reached === 0 && baselineAnswers.length === 0`.
+- **The partial file must match the upload glob.** The workflow's `path:` captures
+  `packages/cortex-memory/benchmark-*.{md,json}` by pattern rather than by an explicit filename
+  list, which is why adding a third artifact name needed no workflow change. An explicit list
+  here would have produced a run whose fix worked and whose artifact was absent anyway.
+
+`tools/export-census-baseline.json` has a related rule for the code side: the callback type
+that feeds the partial set is deliberately **not exported**, because it has no consumer outside
+its own module and the census rejects unreferenced top-level exports.
+
 ### 6.4 Registration drift: the fourth side-channel, and the one a key-level check cannot see
 
 `tools/__tests__/test_dispatch_inputs.py` guards two directions — every key a dispatch

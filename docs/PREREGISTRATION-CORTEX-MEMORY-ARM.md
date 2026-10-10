@@ -1969,3 +1969,30 @@ after a second loss.
 re-dispatched with the reason recorded here; the endpoint, the effect size and the
 stopping rule are unchanged. The measurement's durability is repaired first, so a second
 infrastructure failure cannot cost another 40 minutes of grading for no record.
+
+### 13.11.9 The artifact contract this registration now carries
+
+§13.11.7 recorded that run `37942775447` died and left no measurement. §6.3.1 of
+`AUDIT-CODE-VS-DOCS.md` turns that into a rule for every arm from here: a registered arm
+declares what a **failure** leaves behind, not only what a success does. For this arm the
+three sets are:
+
+| Set | File | Written when |
+| --- | --- | --- |
+| Complete | `benchmark-cortex-memory-ablation-report.{md,json}` | `runCortexMemoryArm` returns |
+| Diagnostic | `benchmark-error.log` | any throw |
+| Partial | `benchmark-cortex-memory-partial.json` | any throw, if either side measured anything |
+
+**What the partial set deliberately does not carry** — `delta`, any aggregate, any
+per-capability table. Each is a function of both sides over one index vector; with a side
+short they are arithmetic over data that was never paired, and `0/0` renders exactly like
+`0/121` (§12.7). The set carries `system`, `reached`, `total`, `run` and the two answer
+vectors, which is what decides whether the next move is a re-dispatch or a design change.
+
+**Reading rule for this registration's outcome.** When this run's artifact is read, check
+for `benchmark-cortex-memory-partial.json` **before** reading the complete set, and treat
+its presence as "the arm did not finish" rather than as a smaller result. `reached`/`total`
+says how far it got, and §4.2's pre-commitment to re-dispatch an infrastructure failure
+applies — but the two predictions in §13.11.3 are **not** read off a partial set, because
+they are statements about MR/TR versus the full population, and a truncated population
+cannot falsify them.
