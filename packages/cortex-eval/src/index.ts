@@ -305,9 +305,15 @@ export {
 export {
   buildRecordsFromDataset,
   correctnessVector,
+  evidenceReductionOf,
   recordIds,
+  REDUCED_TURNS_MARKER,
+  type EvidenceBoundOptions,
+  type EvidenceReduction,
   type QuestionRecord,
 } from './question-record.js';
+
+export { serializeReportOrReduce } from './report-write.js';
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 

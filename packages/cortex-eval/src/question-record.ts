@@ -103,6 +103,42 @@ export type QuestionRecord = {
   /** The retrieved context the reader was shown, split into admission order. */
   readonly turns: readonly TurnLike[];
   /**
+   * How many turns the reader was shown, before any bound was applied.
+   *
+   * ## Why this is not `turns.length`
+   *
+   * Run `38003036421` completed all four runs of all five hundred questions and
+   * then died writing the JSON with `RangeError: Invalid string length`: the
+   * memory arm carries the evidence **unbounded**, and carries it twice -- once
+   * in `ablation.featureRetrievedContexts`, once as `turns[].text` here. The
+   * report that would have documented the run could not be written, and the
+   * artifact could not distinguish a measurement that failed to serialize from a
+   * run that never measured.
+   *
+   * The fix is to bound what is carried without bounding what is measured. This
+   * field is the measurement: it is the true count and is **never** reduced.
+   * `turns` may be, and when it is, `turns.length !== evidenceTurns` is the
+   * signal.
+   *
+   * `§13.11.3`'s first prediction -- MR/TR records carry a non-empty evidence
+   * vector -- is decided by `evidenceTurns > 0`, so it survives any bound. The
+   * second, that abstention records are not uniformly empty, is decided by
+   * comparing this field against the population, and survives likewise.
+   */
+  readonly evidenceTurns: number;
+  /**
+   * The size in characters of the evidence the reader was shown, un-reduced.
+   *
+   * Carried beside `evidenceTurns` because the two fail differently: a question
+   * can be shown one enormous turn or a thousand small ones, and a bound chosen
+   * on turn count alone would be defeated by the first. A reader deciding
+   * whether the bound engaged needs both, and a reader auditing the bound's cost
+   * needs `evidenceChars`.
+   *
+   * Measured, never reduced, for the reason `evidenceTurns` states.
+   */
+  readonly evidenceChars: number;
+  /**
    * The switches this record was produced under, stamped per record.
    *
    * Per record rather than once beside the array: a reader handed one record out
@@ -132,6 +168,51 @@ export type QuestionRecordInput = {
 };
 
 /**
+ * The marker appended as a final turn when a record's evidence was reduced.
+ *
+ * ## Why a marker rather than a flag
+ *
+ * A boolean field would say "this was reduced" and leave a reader unable to see
+ * *how much* -- and the `turns` array would then read as a complete record whose
+ * `turns` happened to be short. The marker travels inside the array it describes,
+ * so it cannot be separated from the thing it is a statement about: a reader who
+ * filters or diffs `turns` carries the disclosure with them.
+ *
+ * It is deliberately not a valid turn: `commit` boundaries and the clustering
+ * criterion both treat it as text, and a marker that could be mistaken for
+ * evidence would let a reduction enlarge the target set.
+ *
+ * The three states this distinguishes, per `§13.11.2`'s requirement that an
+ * absence must never render as a value:
+ *
+ * | State | `turns` | `evidenceTurns` |
+ * | --- | --- | --- |
+ * | reader shown nothing | `[]` | `0` |
+ * | shown, carried in full | complete | `turns.length` |
+ * | shown, reduced | prefix + this marker | the true count |
+ */
+export const REDUCED_TURNS_MARKER = '[evidence reduced:';
+
+/**
+ * How much of each record's evidence to carry, when a bound is wanted.
+ *
+ * Absent means carry everything -- the pre-existing behaviour, kept as the
+ * default so no existing caller changes meaning. Present bounds `turns` only;
+ * `evidenceTurns` and `evidenceChars` are never reduced.
+ */
+export type EvidenceBoundOptions = {
+  /**
+   * The maximum number of real turns to carry per record, before the marker.
+   *
+   * Must be at least 1. A bound of `0` would carry no evidence at all while
+   * still reporting `evidenceTurns > 0`, which is the "reduced reads as absent"
+   * confusion this type exists to prevent -- so it is rejected rather than
+   * silently clamped.
+   */
+  readonly maxTurnsPerRecord: number;
+};
+
+/**
  * Split retrieved context into ordered turns.
  *
  * Blank lines are dropped rather than emitted as empty turns: a blank turn
@@ -141,13 +222,24 @@ export type QuestionRecordInput = {
  * record is a faithful transcription of what the reader saw and not a
  * reconstruction of the hits list.
  */
-function toTurns(retrieved: string): TurnLike[] {
+function toTurns(retrieved: string, bound?: EvidenceBoundOptions): TurnLike[] {
   const turns: TurnLike[] = [];
   for (const line of retrieved.split('\n')) {
     if (line.trim().length === 0) continue;
     turns.push({ index: turns.length, text: line });
   }
-  return turns;
+  if (bound === undefined || turns.length <= bound.maxTurnsPerRecord) {
+    return turns;
+  }
+  const dropped = turns.length - bound.maxTurnsPerRecord;
+  const kept = turns.slice(0, bound.maxTurnsPerRecord);
+  // The marker is the LAST turn, so a reader who reads `turns` in order sees the
+  // disclosure after the evidence it qualifies rather than before it.
+  kept.push({
+    index: kept.length,
+    text: `${REDUCED_TURNS_MARKER} ${dropped} of ${turns.length} turns not carried]`,
+  });
+  return kept;
 }
 
 /**
@@ -170,10 +262,18 @@ export function buildQuestionRecords(
   inputs: readonly QuestionRecordInput[],
   featureConfig?: FeatureConfig,
   correctness?: readonly boolean[],
+  evidenceBound?: EvidenceBoundOptions,
 ): QuestionRecord[] {
   if (correctness !== undefined && correctness.length !== inputs.length) {
     throw new Error(
       `correctness vector length ${correctness.length} is not ${inputs.length}, the number of question records`,
+    );
+  }
+  if (evidenceBound !== undefined && evidenceBound.maxTurnsPerRecord < 1) {
+    throw new Error(
+      `maxTurnsPerRecord must be at least 1, got ${String(evidenceBound.maxTurnsPerRecord)}. ` +
+        'A bound of 0 would carry no evidence while still reporting evidenceTurns > 0, which ' +
+        'makes a reduced record read as one whose reader was shown nothing.',
     );
   }
 
@@ -186,6 +286,9 @@ export function buildQuestionRecords(
     }
     seen.add(input.questionId);
 
+    // Measured before the bound is applied, which is the whole point: these two
+    // fields are the evidence, and `turns` is what is carried of it.
+    const measuredTurns = toTurns(input.retrieved);
     records.push({
       questionId: input.questionId,
       question: input.question,
@@ -195,11 +298,52 @@ export function buildQuestionRecords(
       ...(input.rawOutput === undefined ? {} : { rawOutput: input.rawOutput }),
       correct: correctness === undefined ? input.correct : correctness[i]!,
       grounded: input.grounded,
-      turns: toTurns(input.retrieved),
+      turns: toTurns(input.retrieved, evidenceBound),
+      evidenceTurns: measuredTurns.length,
+      evidenceChars: input.retrieved.length,
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });
   }
   return records;
+}
+
+/**
+ * What a bound did to a record set, or `null` when it did nothing.
+ *
+ * ## Why this is derived rather than tallied during construction
+ *
+ * A caller that incremented counters while building would hold a second source
+ * for what the records already say, and the two could disagree -- `§12.7`'s
+ * shape, where a value is reported one way and stored another. Deriving it from
+ * the records means a report's reduction manifest and its records cannot
+ * contradict each other, and it lets the manifest be computed after the fact by
+ * a reader that was handed only the artifact.
+ *
+ * `null` rather than a zero-valued object, because "no bound was applied" and "a
+ * bound was applied and dropped nothing" are different facts about a run, and a
+ * manifest that renders them identically would make a decorative bound look like
+ * a working one. `§13.12.5` predicts the reducible set is non-empty; this is what
+ * makes that prediction falsifiable.
+ */
+export function evidenceReductionOf(records: readonly QuestionRecord[]): EvidenceReduction | null {
+  const reduced = records.filter((record) => record.turns.length !== record.evidenceTurns);
+  if (reduced.length === 0) return null;
+
+  let turnsCarried = 0;
+  let turnsMeasured = 0;
+  let charsMeasured = 0;
+  for (const record of records) {
+    turnsCarried += record.turns.length;
+    turnsMeasured += record.evidenceTurns;
+    charsMeasured += record.evidenceChars;
+  }
+  return {
+    reducedQuestionIds: reduced.map((record) => record.questionId),
+    turnsCarried,
+    turnsMeasured,
+    charsMeasured,
+    maxTurnsPerRecord: Math.max(...reduced.map((record) => record.turns.length - 1)),
+  };
 }
 
 /**
@@ -217,6 +361,25 @@ export function correctnessVector(records: readonly QuestionRecord[]): boolean[]
 export function recordIds(records: readonly QuestionRecord[]): string[] {
   return records.map((record) => record.questionId);
 }
+
+/**
+ * What an evidence bound did to a record set.
+ *
+ * Present only when something was actually dropped -- see
+ * {@link evidenceReductionOf} for why absence is `null` rather than zeros.
+ */
+export type EvidenceReduction = {
+  /** Ids of the records whose `turns` is shorter than `evidenceTurns`. */
+  readonly reducedQuestionIds: readonly string[];
+  /** The number of turns actually carried across all records, after the bound. */
+  readonly turnsCarried: number;
+  /** The number of turns measured across all records, before the bound. */
+  readonly turnsMeasured: number;
+  /** The characters of evidence measured across all records, before the bound. */
+  readonly charsMeasured: number;
+  /** The largest number of real turns any reduced record carries. */
+  readonly maxTurnsPerRecord: number;
+};
 
 /**
  * The minimum a question must expose for a record to be built from it.

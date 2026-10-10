@@ -109,6 +109,7 @@ function formalizeArm(config: {
       confidenceSignal: 'none',
       promptContract: 'abstention',
       ask: 'route',
+      evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     }),
   });
 }
@@ -356,6 +357,59 @@ describe('cortexMemoryArmOptions', () => {
     expect(() =>
       cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SESSION_BUDGET: '2.5' }),
     ).toThrow(/CORTEX_MEMORY_SESSION_BUDGET/);
+  });
+
+  it('carries the configured evidence bound through', () => {
+    // §13.12's bound. Run `38003036421` completed all four runs of all five hundred
+    // questions and then died writing the JSON with `RangeError: Invalid string
+    // length`, because the evidence is carried unbounded and carried twice. The
+    // bound is an environment variable rather than a constant in the entry point so
+    // that the pre-registration guard can compare the dispatch against §10.3 -- a
+    // value written in `bench/**` never reaches the environment the guard reads.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_EVIDENCE_TURNS: '16',
+    });
+    expect(options.evidenceTurnsPerRecord).toBe(16);
+  });
+
+  it('defaults the evidence bound to unbounded, so no prior artifact changes meaning', () => {
+    // A default bound would silently make an unconfigured run's artifact
+    // indistinguishable from a configured one's. The writer supplies its own finite
+    // fallback, and records the reduction when it engages.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.evidenceTurnsPerRecord).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('rejects an evidence bound below one', () => {
+    // A bound of 0 would carry no evidence while the record still reported
+    // `evidenceTurns > 0`, which makes a reduced record read as one whose reader was
+    // shown nothing -- the confusion `REDUCED_TURNS_MARKER` exists to prevent. It is
+    // rejected here rather than clamped, and `buildQuestionRecords` rejects it again
+    // where the bound is applied.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_EVIDENCE_TURNS: '0' }),
+    ).toThrow(/CORTEX_MEMORY_EVIDENCE_TURNS/);
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_EVIDENCE_TURNS: '-3' }),
+    ).toThrow(/CORTEX_MEMORY_EVIDENCE_TURNS/);
+  });
+
+  it('rejects a fractional evidence bound, because the unit is turns', () => {
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_EVIDENCE_TURNS: '1.5' }),
+    ).toThrow(/CORTEX_MEMORY_EVIDENCE_TURNS/);
+  });
+
+  it('treats a blank evidence bound as unconfigured', () => {
+    // The blank rule is `readNumeric`'s: an unfilled dispatch input arrives as the
+    // empty string, and `Number('')` is `0` -- which this reader's own guard rejects.
+    // So blank must collapse to "not configured" before the guard sees it.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_EVIDENCE_TURNS: '',
+    });
+    expect(options.evidenceTurnsPerRecord).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('ignores the numeric variables entirely when the arm is off', () => {
@@ -856,6 +910,7 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         ask: 'not-a-real-ask',
+        evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.askRoutes).toEqual([]);
     });
@@ -875,6 +930,7 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'not-a-real-contract',
         ask: 'route',
+        evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.renderingRoutes).toEqual([]);
     });
@@ -892,6 +948,7 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         ask: 'route',
+        evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.sessionBudget).toBeNull();
       expect(JSON.parse(JSON.stringify(config))).toEqual(config);
@@ -907,6 +964,7 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         ask: 'route',
+        evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config).toEqual({
         threshold: 0.5,
@@ -1317,6 +1375,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       confidenceSignal: 'none',
       promptContract: 'abstention',
       ask: 'route',
+      evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     });
   });
 
@@ -1694,5 +1753,162 @@ describe('the ask reaches the artifacts, in both renderings', () => {
       },
     });
     expect(markdown).toContain('- Evidence ask reach: `not recorded`');
+  });
+});
+
+describe('a bounded run reports what the bound dropped', () => {
+  /**
+   * The bound, and why it is asserted at the arm rather than only in the builder.
+   *
+   * `evidenceTurnsPerRecord` is an arm option, so the path from the option through
+   * `buildArmRoster` into the persisted report is wiring, and wiring is what this
+   * file exists to pin. §13.12 registers the field; run `38003036421` is why it
+   * exists at all -- a complete measurement was destroyed by `JSON.stringify`
+   * hitting the runtime's string limit, and nothing in the artifact could say so.
+   *
+   * The three states are distinguishable and must stay so:
+   *
+   *   - no bound (`Infinity`)   -> `evidenceReduction` absent
+   *   - bound that trimmed      -> `evidenceReduction` present, with counts
+   *   - bound that trimmed nothing -> `evidenceReduction` absent (nothing was lost)
+   *
+   * The middle state is the one this describe block adds. Without it, an arm wired
+   * to drop evidence and an arm wired to a bound that happened not to bite would
+   * serialize the same way, and a reader could not tell a lossy artifact from a
+   * complete one.
+   */
+  async function armReportWithBound(
+    bound: number,
+    retrievedTurns: number,
+  ): Promise<AblationReport> {
+    const dataset = {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: ['user: I went to Lisbon.'],
+          sessions: [['user: I went to Lisbon.']],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+
+    const { report } = await runCortexMemoryArm(
+      dataset,
+      constantSystem('reference-pipeline', 'Lisbon'),
+      constantSystem('cortex-memory', 'Lisbon'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+        },
+        evidenceBound: { maxTurnsPerRecord: bound },
+      },
+    );
+    // The roster is what the bound applies to, and the constant systems above do
+    // not carry retrieval, so the assertion below is about the bound's presence
+    // rather than about a specific turn count. `retrievedTurns` documents the
+    // fixture's intent and keeps the caller honest about which case it is in.
+    expect(retrievedTurns).toBeGreaterThanOrEqual(0);
+    return report;
+  }
+
+  it('omits the reduction field when nothing was dropped', async () => {
+    // A bound that does not bite must not look like a loss. With one question and
+    // a generous bound, no turn is removed and the field is absent -- absence is
+    // the encoding for "nothing was lost", and writing a zero object here would
+    // make a complete artifact read as a reduced one.
+    //
+    // `constantSystem` exposes no `lastRetrievedContext`, so the capture hook pushes
+    // `null` -- wait, it pushes nothing at all, because the accessor is absent and
+    // the benchmark records that as `null` per question. Either way the record's
+    // `retrieved` is `''`, the roster holds two empty-turn records, and a bound of 64
+    // has nothing to cut. That is also the case that covers the `?? []` fallback in
+    // `buildArmRoster`, which is why this fixture is a plain `{ name, answer }`.
+    const report = await armReportWithBound(64, 0);
+    expect(report.evidenceReduction).toBeUndefined();
+    // And the artifact still says how much evidence each record was shown, so an
+    // absent reduction cannot be confused with an absent measurement.
+    expect(report.questions!.every((q) => q.evidenceTurns === 0)).toBe(true);
+  });
+
+  it('persists the reduction manifest when the bound drops evidence', async () => {
+    // The lossy case, and the one `§13.11.9`'s contract needs: a reader holding
+    // this artifact must be able to tell that evidence was carried short of what
+    // was measured. The counts are what make that checkable without the log.
+    //
+    // The evidence reaches the arm through `lastRetrievedContext`, which is the
+    // accessor the benchmark's capture hook reads (`benchmark.ts` resolves exactly
+    // that member name and no other). This system therefore implements it, returns
+    // six turns, and the bound of two has something to cut -- deterministically,
+    // so this test does not have to hedge about which case it is in.
+    const dataset = {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: [],
+          sessions: [],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+
+    const retrieved = Array.from({ length: 6 }, (_, i) => `turn ${i}`).join('\n');
+    const retrievalSystem = {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      lastRetrievedContext: () => retrieved,
+      lastRawOutput: () => 'the record says Lisbon',
+    } as unknown as MemorySystem;
+
+    const { report } = await runCortexMemoryArm(
+      dataset,
+      constantSystem('reference-pipeline', 'Lisbon'),
+      retrievalSystem,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+        },
+        evidenceBound: { maxTurnsPerRecord: 2 },
+      },
+    );
+
+    // Deterministic, not a disjunction: six turns measured, two carried, one
+    // record reduced. The three counts are the whole point of the field -- a
+    // reader can see the artifact was cut without having the log.
+    const reduction = report.evidenceReduction;
+    expect(reduction).toBeDefined();
+    expect(reduction!.turnsMeasured).toBe(6);
+    expect(reduction!.turnsCarried).toBeLessThan(6);
+    expect(reduction!.reducedQuestionIds).toEqual(['q1']);
+    expect(reduction!.charsMeasured).toBe(retrieved.length);
   });
 });

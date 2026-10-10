@@ -62,6 +62,7 @@ CONCEPT_TO_INPUT = {
     "retrievalThreshold": "cortex_memory_retrieval_threshold",
     "promptContract": "cortex_memory_prompt_contract",
     "ask": "cortex_memory_ask",
+    "evidenceTurnsPerRecord": "cortex_memory_evidence_turns",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
     "temperature": "temperature",

@@ -62,6 +62,10 @@ function record(id: string, correct: boolean, capability = 'IE'): QuestionRecord
     correct,
     grounded: true,
     turns: [{ index: 0, text: 'the record says 85' }],
+    // One turn, carried in full: these two must agree with `turns` or the record
+    // claims a reduction that never happened.
+    evidenceTurns: 1,
+    evidenceChars: 'the record says 85'.length,
   };
 }
 

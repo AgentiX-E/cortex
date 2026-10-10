@@ -59,6 +59,24 @@ import {
   type PromptContract,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { REDUCED_TURNS_MARKER, serializeReportOrReduce } from '@agentix-e/cortex-eval';
+
+/**
+ * The evidence bound used when the dispatch did not name one.
+ *
+ * `§13.12` registers `CORTEX_MEMORY_EVIDENCE_TURNS` as the dispatch input, and a
+ * configured run takes its value from the parsed arm options. This constant is the
+ * FALLBACK, and it exists because the arm's own default is `unbounded` while the
+ * writer needs a finite number to reduce toward.
+ *
+ * The asymmetry is deliberate rather than an oversight: an unconfigured run should
+ * carry everything, and an unconfigured run must still produce an artifact. So the
+ * arm is handed no bound (carry everything) and the writer is handed this one (so
+ * that a report which cannot be written is reduced rather than lost). When the
+ * fallback engages, the artifact's `evidenceReduction` field records it -- a
+ * reduced report is never silently reduced.
+ */
+const EVIDENCE_TURNS_PER_RECORD = 16;
 
 /**
  * The last progress event seen, read by the failure handler.
@@ -258,6 +276,17 @@ async function main(): Promise<void> {
     scorer: judgeScorer(createLlmJudge(llm)),
     memoryArmConfig: toMemoryArmConfig(armOptions),
     featureConfig: { cortexMemory: true },
+    // Read from the parsed arm options, not decided here: §13.12 registers the
+    // bound, and a value written in this file would never appear in the
+    // environment the pre-registration guard compares against `§10.3`.
+    //
+    // The `undefined` branch omits the key rather than assigning `undefined` to
+    // it: the workspace runs `exactOptionalPropertyTypes`, under which "no bound"
+    // and "a bound of undefined" are different types, and only the omission means
+    // what this branch means.
+    ...(Number.isFinite(armOptions.evidenceTurnsPerRecord)
+      ? { evidenceBound: { maxTurnsPerRecord: armOptions.evidenceTurnsPerRecord } }
+      : {}),
     onProgress,
   });
 
@@ -267,11 +296,47 @@ async function main(): Promise<void> {
   // (`report.ts`'s `abstentionReasons` doc, and `report-retry-fires.test.ts`).
   // The JSON and the Markdown are therefore two renderings of one object and
   // cannot disagree about whether the census is present.
+  // The JSON is written through `serializeReportOrReduce` rather than by calling
+  // `JSON.stringify` here, and the reason is run `38003036421`: the arm completed
+  // all four runs of all five hundred questions and then died on this line with
+  // `RangeError: Invalid string length`. A complete measurement -- about forty
+  // minutes of grading -- was destroyed by a serialization limit, and the artifact
+  // could not distinguish "measured and un-writable" from "never measured". The
+  // decision of what to do when the report does not fit lives in `cortex-eval`
+  // (`report-write.ts`) because `bench/**` is outside the coverage boundary and a
+  // decision written here is a decision no test can reach.
+  //
+  // The Markdown stays the plain write it was. It renders the same object, it is
+  // three orders of magnitude smaller, and routing it through the reducer would
+  // imply it can be too large, which would be a claim about a document that has
+  // never been near a limit.
   writeFileSync('benchmark-cortex-memory-ablation-report.md', result.markdown);
-  writeFileSync(
-    'benchmark-cortex-memory-ablation-report.json',
-    `${JSON.stringify(result.report, null, 2)}\n`,
+  const written = serializeReportOrReduce(
+    result.report,
+    { serialize: (value) => JSON.stringify(value, null, 2) },
+    {
+      // The fallback is the §13.12 bound, used only when the dispatch did not name
+      // one. `Infinity` is the arm option's "carry everything" default, and this
+      // writer cannot express that -- so an unconfigured run still gets a bound it
+      // can write, and the artifact's `evidenceReduction` field says so. A bound of
+      // at least 1 is required by the reducer itself.
+      maxTurnsPerRecord: Number.isFinite(armOptions.evidenceTurnsPerRecord)
+        ? armOptions.evidenceTurnsPerRecord
+        : EVIDENCE_TURNS_PER_RECORD,
+    },
   );
+  writeFileSync('benchmark-cortex-memory-ablation-report.json', `${written.json}\n`);
+
+  // Stated on the console as well as in the artifact, for §10.8's reason: the log
+  // is what survives when the artifact is not collected, and a reader of the log
+  // alone must not conclude that a reduced report is a complete one. The marker
+  // constant comes from `cortex-eval` rather than being respelled here, so the
+  // console line and the `turns` entries it describes can never disagree about
+  // what a reduction looks like.
+  if (written.reduced && written.manifest !== null) {
+    console.log(`=== cortex-memory report REDUCED (${REDUCED_TURNS_MARKER} ...]) ===`);
+    console.log(JSON.stringify(written.manifest));
+  }
 
   persistArmEmbeddingCache(cachePath);
 

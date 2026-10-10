@@ -246,6 +246,11 @@ describe('a QuestionRecord is what the B7 cohort reader needs', () => {
     // groundTruth / answer / turns / grounded` and passes them to
     // `computeTargetCohort`, so a record missing any of them yields a vacuous
     // verdict rather than an error.
+    //
+    // `evidenceTurns` and `evidenceChars` are in the list for the reason §13.12
+    // registers: they are what §13.11.3's two predictions are read from, and a
+    // reader holding a reduced report needs them present on every record to tell
+    // "shown nothing" from "shown less than measured".
     const [record]: QuestionRecord[] = buildQuestionRecords([
       input({ retrieved: 'the record says 85\nthe note says 240' }),
     ]);
@@ -254,6 +259,8 @@ describe('a QuestionRecord is what the B7 cohort reader needs', () => {
         'answer',
         'capability',
         'correct',
+        'evidenceChars',
+        'evidenceTurns',
         'groundTruth',
         'grounded',
         'question',

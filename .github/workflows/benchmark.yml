@@ -113,6 +113,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_evidence_turns:
+        description: 'Turns of evidence each per-question record carries before reduction (section 13.12): empty = unbounded, i.e. carry everything, which is the pre-13.12 behaviour; a positive integer = carry at most that many turns per record and mark the reduction. Run 38003036421 completed all four runs of all five hundred questions and then died writing the JSON with RangeError: Invalid string length, because the evidence is carried unbounded and carried twice -- once in ablation.featureRetrievedContexts and once as questions[].turns[].text. The bound reduces what is CARRIED and never what is MEASURED: evidenceTurns and evidenceChars are recorded unreduced on every record, so section 13.11.3 two predictions survive any bound. Off by default so no prior artifact changes meaning, and a value below 1 is REJECTED rather than clamped, because a bound of 0 would carry no evidence while the record still reported evidenceTurns > 0 -- making a reduced record read as one whose reader was shown nothing'
+        required: false
+        default: ''
+        type: string
       cortex_memory_prompt_contract:
         description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
         required: false
@@ -358,6 +363,14 @@ jobs:
           # `route`, and defaulting here instead would put the same default in two places
           # -- which is how the two would eventually disagree.
           CORTEX_MEMORY_ASK: ${{ github.event.inputs.cortex_memory_ask }}
+          # Section 13.12's bound, passed the same way. It is what keeps the run from
+          # dying at the JSON write: run 38003036421 graded all four runs of all five
+          # hundred questions and then lost the whole measurement to
+          # `RangeError: Invalid string length`. Passed unconditionally because the arm
+          # defaults a blank to unbounded, and defaulting here instead would put the
+          # same default in two places -- which is how the two would eventually
+          # disagree about whether a run had bounded its evidence.
+          CORTEX_MEMORY_EVIDENCE_TURNS: ${{ github.event.inputs.cortex_memory_evidence_turns }}
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
           # read from the same dispatch inputs the job already carries, so a dispatch

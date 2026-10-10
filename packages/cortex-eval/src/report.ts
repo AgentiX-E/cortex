@@ -4,7 +4,7 @@
  */
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
 import type { CohortCoverage } from './datasets/sampling.js';
-import type { QuestionRecord } from './question-record.js';
+import type { EvidenceReduction, QuestionRecord } from './question-record.js';
 import { runAblation, type AblationOptions } from './ablation.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
@@ -121,6 +121,25 @@ export type AblationReport = {
    * and `0`.
    */
   questions?: readonly QuestionRecord[] | undefined;
+  /**
+   * What the evidence bound did to this report's records, when it did anything.
+   *
+   * ## Why a run must state its own reduction
+   *
+   * Run `38003036421` completed all four runs of all five hundred questions and
+   * then died writing the JSON with `RangeError: Invalid string length`. The
+   * measurement was complete and could not be written down, and the artifact
+   * could not distinguish that from a run that never measured anything. `§13.12`
+   * bounds what is carried so the artifact can always be written; this field is
+   * how the bound is disclosed rather than hidden.
+   *
+   * Absent when no record was reduced -- not an object full of zeros, because
+   * "no bound was applied" and "a bound was applied and dropped nothing" are
+   * different facts about a run, and a manifest that renders them identically
+   * would make a decorative bound read as a working one. This is the same
+   * `null`-versus-`0` rule the retry-fire counters draw one field over.
+   */
+  evidenceReduction?: EvidenceReduction | undefined;
   /**
    * How many times each question was asked, as the report's own record of it.
    *

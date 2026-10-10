@@ -50,7 +50,12 @@ import type {
   AbstentionReasons as ReportAbstentionReasons,
   MemoryArmConfig,
 } from './report.js';
-import { buildQuestionRecords, type QuestionRecord } from './question-record.js';
+import {
+  buildQuestionRecords,
+  evidenceReductionOf,
+  type EvidenceBoundOptions,
+  type QuestionRecord,
+} from './question-record.js';
 import { formatAblationReport, runAblationReport, type FeatureConfig } from './report.js';
 import type { AnswerScorer } from './metrics.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
@@ -152,6 +157,35 @@ export type CortexMemoryArmOptions = {
    * meaning.
    */
   ask: string;
+  /**
+   * How many turns of evidence each roster record carries. `§13.12`'s bound.
+   *
+   * ## Why this is an option rather than a constant in the entry point
+   *
+   * It started as a constant in `bench/run-ablation.ts`, and that is the defect
+   * `bench-arm-options.ts` was extracted to fix: `bench/**` is excluded from
+   * coverage, so a decision written there is a decision no test can reach. Worse,
+   * the pre-registration guard (`tools/__tests__/test_preregistration_config.py`)
+   * compares the dispatch against `§10.3` by parsing the environment the runner is
+   * given -- and a value baked into the entry point never appears in that
+   * environment, so the guard could not see it and no artifact could show that the
+   * registered bound was the applied one.
+   *
+   * ## Why the bound exists
+   *
+   * Run `38003036421` completed all four runs of all five hundred questions and
+   * then died writing the JSON with `RangeError: Invalid string length`. The memory
+   * arm carries the evidence unbounded -- `admission.ts` declines to truncate, and
+   * this arm runs at `sessionBudget: unbounded` -- and carries it **twice**, once
+   * in `ablation.featureRetrievedContexts` and once as `questions[].turns[].text`.
+   *
+   * `evidenceTurns` and `evidenceChars` are **never** reduced, so the measurement
+   * `§13.11.3` reads survives any bound; only the carried text is bounded.
+   *
+   * Defaults to `Number.POSITIVE_INFINITY`, i.e. carry everything, so every prior
+   * run's behaviour is unchanged and a caller must opt into a bound.
+   */
+  evidenceTurnsPerRecord: number;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -170,6 +204,16 @@ const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
 const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
 const SOURCE_TRUST_VARIABLE = 'CORTEX_MEMORY_SOURCE_TRUST';
 const CONFIDENCE_VARIABLE = 'CORTEX_MEMORY_CONFIDENCE';
+/**
+ * The variable naming how many turns of evidence each record carries.
+ *
+ * `§13.12`'s bound. It is an environment variable rather than a constant in the
+ * entry point because the pre-registration guard compares the DISPATCH against
+ * `§10.3`, and a value that never reaches the environment is a value the guard
+ * cannot see -- so a run could apply a bound the registration does not name and
+ * no artifact would show it. See `CortexMemoryArmOptions.evidenceTurnsPerRecord`.
+ */
+const EVIDENCE_BOUND_VARIABLE = 'CORTEX_MEMORY_EVIDENCE_TURNS';
 /**
  * The variable naming the §12.5 evidence-rendering experiment.
  *
@@ -255,6 +299,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       confidenceSignal: DEFAULT_CONFIDENCE_SIGNAL,
       promptContract: DEFAULT_PROMPT_CONTRACT,
       ask: DEFAULT_ASK,
+      evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     };
   }
   return {
@@ -269,6 +314,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     confidenceSignal: readConfidenceSignal(env[CONFIDENCE_VARIABLE]),
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
+    evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
   };
 }
 
@@ -497,6 +543,50 @@ function readThreshold(variable: string, raw: string | undefined): number {
   return value;
 }
 
+/**
+ * Read the evidence bound, defaulting to unbounded.
+ *
+ * ## Why the default is unbounded rather than a number
+ *
+ * A default bound would silently change what every prior artifact means. `§13.12`
+ * registers the bound as a dispatch input precisely so that the run which applies
+ * one says so, and so the pre-registration guard can compare it against `§10.3`.
+ * A default of, say, `16` would make an unconfigured run look identical to a
+ * configured one in every artifact.
+ *
+ * ## Why at least one
+ *
+ * A bound of `0` would carry no evidence while the record still reported
+ * `evidenceTurns > 0` — making a reduced record read as one whose reader was shown
+ * nothing. That is the confusion `REDUCED_TURNS_MARKER` exists to prevent, so the
+ * value is rejected here rather than clamped, and `buildQuestionRecords` rejects it
+ * again at the point where the bound is applied.
+ *
+ * Non-integers are rejected for the same class of reason as the session budget's:
+ * the unit is turns, and a fractional bound has no meaning the artifact could
+ * report.
+ */
+function readEvidenceBound(raw: string | undefined): number {
+  const value = readNumeric(raw);
+  if (value === undefined) return Number.POSITIVE_INFINITY;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${EVIDENCE_BOUND_VARIABLE} must be a positive integer or unset, got ${JSON.stringify(raw)}. ` +
+        'The unit is turns per record; a bound of 0 would carry no evidence while the record ' +
+        'still reported evidenceTurns > 0, making a reduced record indistinguishable from one ' +
+        'whose reader was shown nothing.',
+    );
+  }
+  return value;
+}
+
+/**
+ * Read how many turns a session budget admits, defaulting to unbounded.
+ *
+ * The blank rule is `readNumeric`'s; `Infinity` is the honest default because
+ * `selectSessionBudget` returns every session that fits and the identity
+ * configuration presents all of them.
+ */
 function readSessionBudget(raw: string | undefined): number {
   const value = readNumeric(raw);
   if (value === undefined) return Number.POSITIVE_INFINITY;
@@ -719,6 +809,32 @@ export type CortexMemoryArmRunOptions = {
    * have no test that could reach it.
    */
   onProgress?: BenchmarkProgressCallback;
+  /**
+   * How much of each record's evidence to carry in the artifact.
+   *
+   * ## Why a bound exists at all
+   *
+   * Run `38003036421` completed all four runs of all five hundred questions and
+   * then died on the last line of the happy path:
+   *
+   *     RangeError: Invalid string length
+   *         at JSON.stringify
+   *
+   * A complete measurement, destroyed by a serialization limit. The memory arm
+   * carries the evidence unbounded -- `admission.ts` declines to truncate, and
+   * this run set `sessionBudget: unbounded`, so every turn that clears the write
+   * gate reaches the prompt -- and it carries the evidence **twice**, once in
+   * `ablation.featureRetrievedContexts` and once as `questions[].turns[].text`.
+   *
+   * `§13.11.3`'s predictions need to know *whether* evidence reached a reader and
+   * *how much*, not the text of every turn. `§13.12` therefore bounds what is
+   * carried while leaving what is measured untouched: `evidenceTurns` and
+   * `evidenceChars` are always the unreduced truth, and a reduction is stated
+   * with a marker rather than rendered as a shorter context.
+   *
+   * Absent means carry everything, which is the pre-existing behaviour.
+   */
+  evidenceBound?: EvidenceBoundOptions;
 };
 
 /** What the arm returns: the report, its Markdown, and the delta it measured. */
@@ -833,13 +949,25 @@ export async function runCortexMemoryArm(
   // remember to feed it back into a render -- is the side channel this repository
   // has already removed twice.
   const census = abstentionReasonsOf(feature);
-  const questions = buildArmRoster(dataset, report.ablation, options.featureConfig);
+  const questions = buildArmRoster(
+    dataset,
+    report.ablation,
+    options.featureConfig,
+    options.evidenceBound,
+  );
+  // Derived from the records rather than tallied while building them, so the
+  // manifest and the records it describes cannot disagree (`evidenceReductionOf`).
+  // `null` means no record was reduced, which is a different fact from "a bound
+  // was applied and dropped nothing" -- `§13.12.5` predicts the reducible set is
+  // non-empty, and this field is what makes that prediction falsifiable.
+  const evidenceReduction = evidenceReductionOf(questions);
   const reported: AblationReport = {
     ...report,
     ...(census.abstentionReasons === undefined
       ? {}
       : { abstentionReasons: census.abstentionReasons }),
     questions,
+    ...(evidenceReduction === null ? {} : { evidenceReduction }),
   };
   return {
     report: reported,
@@ -930,6 +1058,7 @@ function buildArmRoster(
   dataset: BenchmarkDataset,
   ablation: AblationResult,
   featureConfig: FeatureConfig | undefined,
+  evidenceBound?: EvidenceBoundOptions,
 ): readonly QuestionRecord[] {
   const answers = ablation.featureAnswers!;
   // Captured per question inside the answer loop and carried alongside the
@@ -945,14 +1074,18 @@ function buildArmRoster(
   // be dead code that reads as a safety net and would file a capture that failed
   // as a question whose model was never consulted.
   const rawOutputs = ablation.featureRawOutputs!;
-  // The evidence vector, read the same way and for the same reason. Declared
-  // optional on `AblationResult` because hand-built fixtures omit it, so unlike
-  // the raw-output read above this one takes a `?? []` -- and that fallback is
-  // not a safety net hiding a broken capture, it is the correct value for a
-  // fixture that recorded no retrieval. A fixture that DID record it and lost it
-  // would show up as `turns: []` on records whose `rawOutput` is present, which
-  // is the pairing `arm-roster-retrieval.test.ts` pins.
-  const retrievedContexts = ablation.featureRetrievedContexts ?? [];
+  // The evidence vector, read the same way as the raw-output vector above and for
+  // the same reason: this arm is handed an `AblationResult` by the chain it called
+  // itself, and `runAblation` requests both captures on the same line with no
+  // condition. So the vector is present on every path that reaches this function,
+  // and a `?? []` guard here would be the "unreachable code that reads as a safety
+  // net" shape -- one that would file a capture that FAILED as a fixture that never
+  // retrieved anything.
+  //
+  // The type still declares it optional, because `AblationResult` is also a report
+  // shape tests build by hand; that is a statement about the type, not licence for a
+  // branch here. A hand-built `AblationResult` never reaches this function.
+  const retrievedContexts = ablation.featureRetrievedContexts!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -972,6 +1105,7 @@ function buildArmRoster(
     })),
     featureConfig,
     ablation.featureCorrect,
+    evidenceBound,
   );
 }
 

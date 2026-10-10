@@ -415,6 +415,11 @@ describe('the report carries the per-question roster through runAblationReport',
       correct: i % 2 === 0,
       grounded: true,
       turns: [],
+      // Zero turns and zero chars: this fixture never retrieved anything, so the
+      // measurement and the carried evidence agree at empty rather than claiming
+      // a reduction.
+      evidenceTurns: 0,
+      evidenceChars: 0,
     }));
     const with_ = await runAblationReport(ds, baseline, feature, { runs: 1, questions: roster });
     expect(with_.questions).toHaveLength(roster.length);

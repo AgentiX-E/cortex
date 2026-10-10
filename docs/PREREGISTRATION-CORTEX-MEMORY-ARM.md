@@ -680,6 +680,17 @@ forwarded into a step's `env`. Three injections were run against it:
   ask is held at §13's value rather than reverted, because reverting it would restore
   the shipped per-route blocks and change the surface the evidence capture is being
   read from.
+* `evidenceTurnsPerRecord: 16` — **added by §13.12.** Track `b✗f✓`. Run `38003036421`
+  completed all four runs of all five hundred questions and then died writing the JSON
+  with `Invalid string length` (§13.11.10). The evidence is carried
+  unbounded — `admission.ts` declines to truncate and the arm admits every session — and
+  carried **twice**, once in `ablation.featureRetrievedContexts` and once as
+  `questions[].turns[].text`. This bounds what is **carried** and never what is
+  **measured**: `evidenceTurns` and `evidenceChars` are recorded unreduced on every
+  record, so §13.11.3's two predictions survive any bound. It is registered rather than
+  discovered, because a bound that decides what the artifact contains is a measurement
+  decision, and a measurement decision taken after the fact is what pre-registration
+  exists to prevent.
 
 > **Amended by §12.5, in place rather than below**, for the reason §10.9's note gives:
 > `registered()` reads the list and stops at the first blank line, so an amendment note
@@ -1996,3 +2007,173 @@ says how far it got, and §4.2's pre-commitment to re-dispatch an infrastructure
 applies — but the two predictions in §13.11.3 are **not** read off a partial set, because
 they are statements about MR/TR versus the full population, and a truncated population
 cannot falsify them.
+
+### 13.11.10 Run `38003036421` failed at serialization, not at measurement
+
+The re-dispatch ran at `16520439` and **failed in step `Run cortex-memory A/B`**. It is a
+different failure from §13.11.7 and it is more informative.
+
+```
+progress: died on cortex-memory run=3 q=500/500 id=778164c6
+
+RangeError: Invalid string length
+    at JSON.stringify (<anonymous>)
+    at main (.../packages/cortex-memory/bench/run-ablation.ts:273:13)
+```
+
+**The measurement completed.** All four runs of all five hundred questions finished; the
+throw is on the last line of the happy path, writing the JSON, *after* the Markdown had
+already been written (5636 bytes on disk).
+
+#### What the artifact holds
+
+| File | Present |
+| --- | --- |
+| `benchmark-cortex-memory-ablation-report.md` | yes, 5636 bytes |
+| `benchmark-cortex-memory-ablation-report.json` | **no** -- the throw |
+| `benchmark-cortex-memory-partial.json` | **no** -- and correctly so, see below |
+| `benchmark-error.log` | yes, 312 bytes |
+
+**`attachPartial` did not fire, and that is not a bug in it.** It attaches to a thrown
+*error object* from `runAblation`; here the ablation **returned**. The throw is downstream,
+in the arm's own writer, so there was no error to attach to. That is exactly why §13.11.9
+does not claim the partial set covers every failure: it covers a failure *of the ablation*.
+
+#### The mechanism: `JSON.stringify` has a hard ceiling
+
+`Invalid string length` is thrown when the **result** would exceed V8's maximum string
+length, `2**29 - 24` = 536,870,888 characters. Measured on this runtime:
+
+```
+400000 chunks -> ok      401.2 MB
+530000 chunks -> ok      531.6 MB
+536000 chunks -> THREW
+```
+
+#### Why this report crosses it, and why the primary benchmark does not
+
+The primary benchmark's roster in the same artifact is **bounded**, and measurably so:
+
+| | Primary benchmark roster |
+| --- | --- |
+| turns per question | median 53, max 262 |
+| chars per question | median 11,771, max 28,194 |
+| 500-record roster total | 6.98 MB, of which `turns` is 98% |
+
+**The memory arm has no such bound.** Two independent reasons:
+
+1. `admission.ts` declines to truncate, and says so in its own docstring -- *"Content is passed
+   through untruncated: prompt budget is a property of prompt assembly"*.
+2. This run set `sessionBudget = unbounded`, which the report header records. `selectSessionBudget`
+   is the only capacity control on the session path, and `#retrievalAdmitted` is a **boolean**
+   gate that decides *whether* to answer and never trims `turns`. With `threshold: 0` every
+   turn clears the write gate, and with `retrievalThreshold: 0` the retrieval gate never closes.
+
+The report carries the evidence **twice** -- once in `ablation.featureRetrievedContexts`, once
+as `questions[].turns[].text`. At the measured 182.4 bytes per turn, that puts the per-question
+budget at **536,871 chars, or ~2943 turns** -- about **19x** the primary benchmark's worst case.
+
+#### The one thing this run does establish
+
+The predictions of §13.11.3 concern MR/TR records against the full population, and both need
+only **whether evidence existed and how much**. Neither needs the full text of every turn. So
+the evidence can be carried in full for a bounded cohort and by size for the rest without
+weakening either prediction -- which is the repair, registered as §13.12.
+
+#### Registering the bound rather than discovering it
+
+Consistent with §6.3, the bound is a **pre-registered decision**, not an emergent property of
+what the harness happened to do. §13.12 is written before the next dispatch, and
+`test_preregistration_config.py` is extended to compare the dispatch against it.
+
+---
+
+## 13.12 Evidence is carried as a bounded measurement, registered before dispatch
+
+### 13.12.1 The single variable
+
+§13.11 established that the evidence each reader was shown is a measurement. §13.11.10 then
+established that carrying it **unbounded** makes the artifact unwritable, and that a complete
+measurement with no artifact is indistinguishable from no measurement.
+
+§13.12 changes **one thing**: the evidence is carried **in full for a declared cohort** and
+**by size elsewhere**, with the reduction stated in the artifact. Everything else -- the
+rendering (`abstention-evidence-blocks`), the ask (`extractive`), the gates
+(`threshold: 0`, `retrievalThreshold: 0`, `sourceTrust: 0.5`) -- is held from §13.11.
+
+### 13.12.2 The cohort, and why it is the right set to carry in full
+
+The cohort is the **discordant identity set**: questions the baseline answered correctly and
+the feature answered incorrectly, plus the reverse. It is declared by the artifact itself
+(`discordantQuestions`), so the cohort is a fact about the run rather than a parameter.
+
+That set is the right one for three reasons:
+
+1. **It is where every mechanism question lives.** §12.4/§13's loss is entirely inside
+   `b-f+`; a question both sides answered the same way cannot distinguish anything.
+2. **It is bounded and small.** The §13 dispatch's `b-f+` was 190 ids; a cohort of that size
+   at 28 KB per question is ~5 MB, two orders of magnitude under the ceiling.
+3. **It is not chosen by looking at the outcome.** The cohort is a function of the correctness
+   vectors, which are the primary result and are read either way. Selecting on them does not
+   bias the evidence measurement, because the measurement being taken is *"what did this
+   question's reader see"* -- a question about a record that is already in the set.
+
+### 13.12.3 What every record carries regardless of cohort
+
+| Field | Meaning |
+| --- | --- |
+| `turns` | in full for cohort members; for others, the first `k` turns plus a reduction marker |
+| `evidenceTurns` | how many turns the reader was shown -- **always**, never reduced |
+| `evidenceChars` | the size of the evidence -- **always**, never reduced |
+
+`evidenceTurns` and `evidenceChars` are the measurement that survives any bound. Prediction 1
+of §13.11.3 ("MR/TR records carry non-empty `turns`") is decided by `evidenceTurns > 0` and
+is unaffected by truncation. Prediction 2 (abstention records are not uniformly empty) is
+decided by comparing `evidenceTurns` against the population -- also unaffected.
+
+### 13.12.4 The reduction must never read as absence
+
+A truncated record and a record whose reader was shown nothing must not render the same. The
+marker distinguishes three states, matching the `null`/`''` discipline the rest of the
+artifact uses:
+
+| State | `turns` | `evidenceTurns` |
+| --- | --- | --- |
+| reader shown nothing | `[]` | `0` |
+| shown and carried in full | complete | `turns.length` |
+| shown and reduced | prefix + marker | the true count |
+
+A test fails if any two of the last three columns ever render identically. This is the
+`§57.6` / `§13.11.2` shape again: an absence that reads as a value is worse than an error.
+
+### 13.12.5 Prediction
+
+**The reducible set is non-empty.** If every question's evidence were already small enough to
+carry, this change would be a no-op and the bound would be decorative. Measured expectation:
+the memory arm admits far more than 2943 turns on at least one question, since the
+primary benchmark's bounded roster already reaches 262.
+
+### 13.12.6 Falsification
+
+If the artifact reports `evidenceTurns` equal to `turns.length` on **every** record, the bound
+never engaged and §13.12.5 is falsified -- which would itself be a finding, because it would
+mean §13.11.10's mechanism is not the one that crossed the ceiling. In that case the search
+returns to what else in the report is unbounded, and the answer is recorded before another
+dispatch.
+
+### 13.12.7 The artifact contract this adds
+
+§6.3.1 requires a registered arm to declare what a **failure** leaves behind. §13.11.10 showed
+that a throw *after a complete measurement* is a case the partial set does not cover. §13.12
+adds the fourth clause:
+
+> **An artifact declares its own size bound, and a reduction is a recorded fact.**
+
+Concretely: the JSON writer must not be able to destroy a measurement. If serialization would
+exceed the runtime's limit, the arm writes a reduced report **plus a manifest naming exactly
+what was reduced and by how much**. A run never ends with a complete measurement and no
+artifact.
+
+### 13.12.8 Status
+
+Registered before the next dispatch. Predictions in §13.12.5, falsification in §13.12.6.
