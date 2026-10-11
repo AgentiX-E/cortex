@@ -366,6 +366,23 @@ export type AblationResult = {
    * holding. Read-only here makes the bounded copy assignable without one.
    */
   featureRetrievedContexts?: readonly (string | null)[];
+  /**
+   * The evidence characters the feature side's prompts actually carried, per
+   * question.
+   *
+   * The second half of the same fact as `featureRetrievedContexts`, and the half
+   * that keeps it from being misleading. The captured context is what the reader
+   * was shown; this is how much of it survived the prompt builder's character
+   * budget. Run `38044858147` met that budget on every question -- 506,338
+   * characters of evidence against 24,000 -- so the context vector overstates
+   * what the model received by about twenty times, and `§13.11.5`'s ranking
+   * question needs this one.
+   *
+   * Optional for the same reason, and `readonly` for the same reason: it is the
+   * measurement rather than the thing measured, and a writer that mutated it in
+   * place would be editing evidence another reader holds.
+   */
+  featurePromptEvidenceChars?: readonly (number | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

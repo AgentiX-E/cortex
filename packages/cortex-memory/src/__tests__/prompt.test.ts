@@ -112,13 +112,13 @@ describe('formatEvidence', () => {
 
 describe('buildPrompt', () => {
   it('includes the question verbatim', () => {
-    const prompt = buildPrompt('What did the user say?', [admitted('alpha')], 'extractive');
+    const prompt = buildPrompt('What did the user say?', [admitted('alpha')], 'extractive').prompt;
 
     expect(prompt).toContain('What did the user say?');
   });
 
   it('includes the formatted evidence', () => {
-    const prompt = buildPrompt('Q?', [admitted('the unique token')], 'extractive');
+    const prompt = buildPrompt('Q?', [admitted('the unique token')], 'extractive').prompt;
 
     expect(prompt).toContain('the unique token');
   });
@@ -128,18 +128,18 @@ describe('buildPrompt', () => {
     // prompt were identical for all of them, the routing decision would be
     // inert and `runBenchmark`'s per-capability arms would measure nothing.
     const evidence = [admitted('alpha')];
-    const extractive = buildPrompt('Q?', evidence, 'extractive');
-    const abstention = buildPrompt('Q?', evidence, 'abstention');
-    const temporal = buildPrompt('Q?', evidence, 'temporal');
-    const knowledgeUpdate = buildPrompt('Q?', evidence, 'knowledge-update');
-    const assistant = buildPrompt('Q?', evidence, 'assistant');
+    const extractive = buildPrompt('Q?', evidence, 'extractive').prompt;
+    const abstention = buildPrompt('Q?', evidence, 'abstention').prompt;
+    const temporal = buildPrompt('Q?', evidence, 'temporal').prompt;
+    const knowledgeUpdate = buildPrompt('Q?', evidence, 'knowledge-update').prompt;
+    const assistant = buildPrompt('Q?', evidence, 'assistant').prompt;
 
     const distinct = new Set([extractive, abstention, temporal, knowledgeUpdate, assistant]);
     expect(distinct.size).toBe(5);
   });
 
   it('states the abstention contract explicitly, because that is its purpose', () => {
-    const prompt = buildPrompt('Q?', [admitted('alpha')], 'abstention');
+    const prompt = buildPrompt('Q?', [admitted('alpha')], 'abstention').prompt;
 
     // The reference pipeline uses a "conservative" wording so the model
     // recognizes the absence of an answer instead of being pushed to choose a
@@ -151,8 +151,10 @@ describe('buildPrompt', () => {
 
   it('passes the question date to the temporal contract only', () => {
     const evidence = [admitted('alpha')];
-    const temporal = buildPrompt('Q?', evidence, 'temporal', { questionDate: '2023-05-01' });
-    const extractive = buildPrompt('Q?', evidence, 'extractive', { questionDate: '2023-05-01' });
+    const temporal = buildPrompt('Q?', evidence, 'temporal', { questionDate: '2023-05-01' }).prompt;
+    const extractive = buildPrompt('Q?', evidence, 'extractive', {
+      questionDate: '2023-05-01',
+    }).prompt;
 
     expect(temporal).toContain('2023-05-01');
     // Handing a date to the extractive path would be a routing leak: the flat
@@ -161,26 +163,26 @@ describe('buildPrompt', () => {
   });
 
   it('omits the date placeholder entirely when no date is known', () => {
-    const prompt = buildPrompt('Q?', [admitted('alpha')], 'temporal');
+    const prompt = buildPrompt('Q?', [admitted('alpha')], 'temporal').prompt;
 
     expect(prompt).not.toContain('undefined');
     expect(prompt).not.toContain('null');
   });
 
   it('states the assistant-turn contract so an assistant turn is not read as user speech', () => {
-    const prompt = buildPrompt('Q?', [admitted('alpha')], 'assistant');
+    const prompt = buildPrompt('Q?', [admitted('alpha')], 'assistant').prompt;
 
     expect(prompt.toLowerCase()).toContain('assistant');
   });
 
   it('states the knowledge-update contract so a time qualifier is resolved', () => {
-    const prompt = buildPrompt('Q?', [admitted('alpha')], 'knowledge-update');
+    const prompt = buildPrompt('Q?', [admitted('alpha')], 'knowledge-update').prompt;
 
     expect(prompt.toLowerCase()).toMatch(/previous|current|most recent/);
   });
 
   it('carries the no-evidence case without inventing evidence', () => {
-    const prompt = buildPrompt('Q?', [], 'extractive');
+    const prompt = buildPrompt('Q?', [], 'extractive').prompt;
 
     expect(prompt).toContain('Q?');
     // An empty evidence block must be visibly empty. A prompt that silently
@@ -191,7 +193,7 @@ describe('buildPrompt', () => {
 
   it('respects a character budget by truncating evidence, not the question', () => {
     const long = admitted('x'.repeat(10_000));
-    const prompt = buildPrompt('Q?', [long], 'extractive', { maxChars: 500 });
+    const prompt = buildPrompt('Q?', [long], 'extractive', { maxChars: 500 }).prompt;
 
     expect(prompt.length).toBeLessThanOrEqual(500);
     expect(prompt).toContain('Q?');
@@ -207,7 +209,7 @@ describe('buildPrompt', () => {
     ];
 
     for (const contract of contracts) {
-      expect(buildPrompt('Q?', [admitted('a')], contract)).toBeTypeOf('string');
+      expect(buildPrompt('Q?', [admitted('a')], contract).prompt).toBeTypeOf('string');
     }
   });
 });

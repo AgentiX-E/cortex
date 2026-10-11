@@ -339,6 +339,36 @@ describe('serializeReportOrReduce', () => {
     );
   });
 
+  it('carries the prompt-carried evidence size through a reduction', () => {
+    // `withEvidenceBound` rebuilds every record through `buildQuestionRecords`, so
+    // a field it does not forward is a field a reduction silently drops -- the
+    // defect this function already carried once for `featureConfig`. This one is
+    // the prompt's own evidence size: losing it would leave a reduced artifact
+    // reporting an offered context with no statement of what the prompt carried,
+    // which is the reading `§13.11.5` cannot use.
+    const base = reportWithEvidence(5, 2);
+    const withPromptChars = {
+      ...base,
+      questions: base.questions!.map((record) => ({ ...record, promptChars: 4242 })),
+    } as unknown as AblationReport;
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 4"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(withPromptChars, exploding, { maxTurnsPerRecord: 2 });
+    const parsed = JSON.parse(result.json) as AblationReport;
+
+    expect(result.reduced).toBe(true);
+    expect(parsed.questions!.map((q) => q.promptChars)).toEqual([4242, 4242]);
+    // And the reduction still happened beside it, so this is not passing by
+    // leaving the report untouched.
+    expect(parsed.questions![0]!.turns.length).toBeLessThan(parsed.questions![0]!.evidenceTurns);
+  });
+
   it('states a report defect rather than an empty run when the bound cannot change the outcome', () => {
     // The case: the full report fails to serialize, but bounding the evidence
     // does not change the text at all -- so a reduced attempt succeeds only

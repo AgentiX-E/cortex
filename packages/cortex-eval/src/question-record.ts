@@ -159,6 +159,27 @@ export type QuestionRecord = {
    */
   readonly evidenceChars: number;
   /**
+   * The characters of evidence the prompt actually carried, when it is known.
+   *
+   * ## Why this is beside `evidenceChars` rather than replacing it
+   *
+   * `evidenceChars` is the **offer**: the admitted context, which is what
+   * `§13.11.3`'s two predictions are read from. This is the **delivery**: what
+   * survived the prompt builder's character budget, which is what `§13.11.5`'s
+   * ranking question needs. They are different questions about the same run, and a
+   * single field cannot answer both.
+   *
+   * Run `38044858147` is why the second one had to exist. Its `evidenceChars`
+   * averages 506,338 against a 24,000-character budget, so the artifact described
+   * a model that saw twenty times more evidence than it did -- and the field it
+   * was read from is documented as "how many turns the reader was shown".
+   *
+   * Absent when the system under test exposes no such accessor. Absent is not
+   * zero: a system that cannot report it has not reported a prompt that carried
+   * nothing, and the two must not render the same way.
+   */
+  readonly promptChars?: number | undefined;
+  /**
    * The switches this record was produced under, stamped per record.
    *
    * Per record rather than once beside the array: a reader handed one record out
@@ -185,6 +206,15 @@ export type QuestionRecordInput = {
   readonly grounded: boolean;
   /** The retrieved context as the reader received it, one turn per line. */
   readonly retrieved: string;
+  /**
+   * The evidence characters the prompt carried, when the caller can report it.
+   *
+   * `null` is treated as absent rather than as zero: it means the system exposes
+   * no such accessor, which is not the same statement as a prompt that carried
+   * nothing. Absent either way, so a reader cannot see a `null` where a number
+   * belongs.
+   */
+  readonly promptChars?: number | null | undefined;
 };
 
 /**
@@ -388,6 +418,11 @@ export function buildQuestionRecords(
       turns: toTurns(input.retrieved, evidenceBound),
       evidenceTurns: measuredTurns.length,
       evidenceChars: input.retrieved.length,
+      // `null` is the caller saying "this system cannot report it", which is not a
+      // prompt that carried nothing -- so it is omitted rather than written.
+      ...(input.promptChars === undefined || input.promptChars === null
+        ? {}
+        : { promptChars: input.promptChars }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });
   }

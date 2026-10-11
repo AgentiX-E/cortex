@@ -343,6 +343,12 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // reduction operates on the same text the record holds and cannot
         // introduce evidence the original record did not have.
         retrieved: record.turns.map((turn) => turn.text).join('\n'),
+        // Forwarded for the reason `featureConfig` above is: a field the rebuild
+        // does not carry is a field a reduction silently drops. This one is the
+        // prompt's own evidence size, so losing it would leave a reduced artifact
+        // claiming the reader was shown evidence the prompt never carried --
+        // exactly the confusion the field exists to end.
+        ...(record.promptChars === undefined ? {} : { promptChars: record.promptChars }),
       })),
       featureConfig,
       records.map((record) => record.correct),

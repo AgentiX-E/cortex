@@ -253,11 +253,11 @@ describe('the rendering is a rendering, not a contract name', () => {
     // `RENDERING_BY_CONTRACT`, and a test that passed the name straight to a
     // builder would be asserting a coupling the design deliberately removed.
     expect(
-      hasSourceRendering(buildPrompt('q', TURNS, 'abstention', { rendering: 'sourced' })),
+      hasSourceRendering(buildPrompt('q', TURNS, 'abstention', { rendering: 'sourced' }).prompt),
     ).toBe(true);
-    expect(hasSourceRendering(buildPrompt('q', TURNS, 'abstention'))).toBe(false);
+    expect(hasSourceRendering(buildPrompt('q', TURNS, 'abstention').prompt)).toBe(false);
     expect(
-      hasSourceRendering(buildPrompt('q', TURNS, 'extractive', { rendering: 'sourced' })),
+      hasSourceRendering(buildPrompt('q', TURNS, 'extractive', { rendering: 'sourced' }).prompt),
     ).toBe(true);
   });
 

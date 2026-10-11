@@ -166,6 +166,22 @@ export type ScoredEvaluation = {
    * requested" and "the reader was shown nothing" the same reading.
    */
   retrievedContexts?: (string | null)[];
+  /**
+   * The evidence characters each question's prompt actually carried, per question.
+   *
+   * Captured with `retrievedContexts` and never without it, because the two answer
+   * one question between them: the context is what the reader was shown and this
+   * is how much of it survived the prompt builder's character budget.
+   *
+   * Run `38044858147` met that budget on every question -- 506,338 characters of
+   * evidence against 24,000 -- so the context vector alone overstated what the
+   * model received by about twenty times, and `§13.11.5`'s ranking question cannot
+   * be asked of an artifact that stops at the truncation boundary.
+   *
+   * `null` per question means the system exposes no such accessor, which is a
+   * different statement from a prompt that carried nothing.
+   */
+  promptEvidenceChars?: (number | null)[];
 };
 
 /**
@@ -320,6 +336,7 @@ export async function scoreEvaluation(
   scorer: AnswerScorer,
   rawOutputs?: (string | null)[],
   retrievedContexts?: (string | null)[],
+  promptEvidenceChars?: (number | null)[],
 ): Promise<ScoredEvaluation> {
   if (dataset.questions.length !== answers.length) {
     throw new Error(
@@ -385,6 +402,7 @@ export async function scoreEvaluation(
     answers,
     ...(rawOutputs === undefined ? {} : { rawOutputs }),
     ...(retrievedContexts === undefined ? {} : { retrievedContexts }),
+    ...(promptEvidenceChars === undefined ? {} : { promptEvidenceChars }),
   };
 }
 

@@ -332,6 +332,12 @@ export async function runAblation(
     // vector produces records with `turns: []`, which is the honest reading of a
     // fixture that never retrieved anything.
     featureRetrievedContexts: featFirst.retrievedContexts!,
+    // Beside the context vector and from the same capture, because the two are one
+    // fact: the context is what the reader was shown, this is how much of it
+    // reached the prompt. Carrying only the first is what let `38044858147`'s
+    // artifact report 3,016-4,528 turns of evidence for a model that received
+    // roughly 150-160.
+    featurePromptEvidenceChars: featFirst.promptEvidenceChars!,
     perCapability,
   };
 }

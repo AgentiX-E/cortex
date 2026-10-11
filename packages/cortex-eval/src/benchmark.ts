@@ -149,11 +149,26 @@ type BenchmarkRawOutputCallback = (raw: string | null) => void;
  * question, the same treatment `lastRawOutput` gets. `null` is the honest value:
  * a system that cannot say what it retrieved has not retrieved nothing.
  *
+ * ## Why two values and one callback
+ *
+ * `promptChars` is the second one, and it is not optional company. The context is
+ * what the reader was **shown**; the characters are how much of it reached the
+ * **prompt**, after the prompt builder's character budget was spent. Run
+ * `38044858147` met that budget on every question -- 506,338 characters of
+ * evidence against 24,000 -- so a capture carrying only the first would report
+ * 3,016-4,528 turns of evidence for a model that received roughly 150-160. The two
+ * are always wanted together because neither is interpretable alone: a reader
+ * cannot tell a retrieval failure from a truncation without both.
+ *
+ * `null` for the characters means the system does not expose the second accessor,
+ * which is a different statement from "the prompt carried nothing" and must not
+ * be collapsed into a zero.
+ *
  * Not exported, for the reason `BenchmarkRawOutputCallback` is not: the only
  * caller is this module's own loop, and an export nothing outside could use is
  * the `1 NEW orphan(s)` the census gate reports.
  */
-type BenchmarkRetrievedCallback = (retrieved: string | null) => void;
+type BenchmarkRetrievedCallback = (retrieved: string | null, promptChars: number | null) => void;
 
 /**
  * A sink for each answer as it is produced, so a throw does not erase the pass.
@@ -205,6 +220,19 @@ export async function runBenchmark(
       ? undefined
       : 'lastRetrievedContext' in system
         ? (system as { lastRetrievedContext: () => string | null }).lastRetrievedContext.bind(
+            system,
+          )
+        : undefined;
+  // The carried-evidence size, resolved alongside it because the two are captured
+  // together: `retrievedContext` is what the reader was shown and this is how much
+  // of it survived the prompt builder's character budget. Resolved only when the
+  // capture is wanted, so a system that does not expose the accessor costs nothing
+  // and reports `null` rather than a fabricated zero.
+  const promptEvidence =
+    onRetrieved === undefined
+      ? undefined
+      : 'lastPromptEvidenceChars' in system
+        ? (system as { lastPromptEvidenceChars: () => number | null }).lastPromptEvidenceChars.bind(
             system,
           )
         : undefined;
@@ -283,7 +311,10 @@ export async function runBenchmark(
     // than folded into the block above so that a run wanting only one of the two
     // captures does not pay for the other.
     if (onRetrieved !== undefined) {
-      onRetrieved(retrievedContext === undefined ? null : retrievedContext());
+      onRetrieved(
+        retrievedContext === undefined ? null : retrievedContext(),
+        promptEvidence === undefined ? null : promptEvidence(),
+      );
     }
   }
   return answers;
@@ -314,6 +345,11 @@ export async function evaluateWithScorer(
  * `captureRetrievedContext` turns on the evidence hook, under the same rule. The
  * two are separate flags rather than one, because a run measuring what the model
  * was shown does not necessarily need what it said about it, and the reverse.
+ *
+ * That one hook yields **two** vectors, and they are not two flags because they
+ * are never wanted apart: the captured context is what the reader was shown and
+ * `promptEvidenceChars` is how much of it reached the prompt. See
+ * `BenchmarkRetrievedCallback` for why neither is interpretable alone.
  */
 export async function evaluateWithScorerDetailed(
   dataset: BenchmarkDataset,
@@ -327,13 +363,19 @@ export async function evaluateWithScorerDetailed(
 ): Promise<ScoredEvaluation> {
   const rawOutputs: (string | null)[] = [];
   const retrievedContexts: (string | null)[] = [];
+  const promptEvidenceChars: (number | null)[] = [];
   const answers = await runBenchmark(
     dataset,
     system,
     progress,
     run,
     captureRawOutput ? (raw) => rawOutputs.push(raw) : undefined,
-    captureRetrievedContext ? (retrieved) => retrievedContexts.push(retrieved) : undefined,
+    captureRetrievedContext
+      ? (retrieved, chars) => {
+          retrievedContexts.push(retrieved);
+          promptEvidenceChars.push(chars);
+        }
+      : undefined,
     onAnswer,
   );
   return scoreEvaluation(
@@ -342,5 +384,6 @@ export async function evaluateWithScorerDetailed(
     scorer,
     captureRawOutput ? rawOutputs : undefined,
     captureRetrievedContext ? retrievedContexts : undefined,
+    captureRetrievedContext ? promptEvidenceChars : undefined,
   );
 }

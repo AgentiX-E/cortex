@@ -37,6 +37,7 @@ import {
   type EvidenceAsk,
   type EvidenceRendering,
   type PromptContract,
+  type AssembledPrompt,
 } from './prompt.js';
 import { parseAnswer } from './parse.js';
 import type { CortexMemoryOptions } from './types.js';
@@ -209,6 +210,28 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastRetrievedContext: string | null = null;
 
+  /**
+   * The evidence characters the most recent prompt carried, or `null`.
+   *
+   * ## Why this is not `#lastRetrievedContext.length`
+   *
+   * It is the size of what the prompt **carried**, after `fitToBudget` cut the
+   * evidence to fit `maxChars`. The captured context is what was **offered** to
+   * the builder, and the two differ whenever the budget binds -- which it did on
+   * every question of run `38044858147`, where 506,338 characters of evidence met
+   * a 24,000-character budget.
+   *
+   * So the artifact's `evidenceTurns` reports the offer and this reports the
+   * delivery, and a reader who has only the first will overstate what the model
+   * saw by whatever the budget removed. `§13.11.5`'s ranking question -- was the
+   * gold turn inside what the model saw -- is asked of this field, not that one.
+   *
+   * `null` means no prompt has been built, for the same reason and with the same
+   * distinction as `lastRetrievedContext`: a decline before the reader is reached
+   * is not a prompt that carried nothing.
+   */
+  #lastPromptEvidenceChars: number | null = null;
+
   constructor(options: CortexMemoryOptions) {
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
@@ -248,6 +271,19 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * The evidence characters the most recent prompt carried, or `null`.
+   *
+   * Exactly the field `§13.11.5` needs and `lastRetrievedContext` cannot supply:
+   * the size of the evidence the model was actually given, after the prompt
+   * builder's character budget was spent. Read alongside
+   * `lastRetrievedContext().length`, it makes the budget's cost measurable per
+   * question instead of inferred from a constant.
+   */
+  lastPromptEvidenceChars(): number | null {
+    return this.#lastPromptEvidenceChars;
+  }
+
+  /**
    * Record the evidence a reader is about to be shown.
    *
    * Called at every point a route hands admitted turns to a prompt builder, for
@@ -262,6 +298,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * turn was retrieved" from "no turn was retrieved" would have to parse the
    * other two back out. The turns are the claim.
    *
+   * `promptEvidenceChars` is recorded beside them in the same call, because the
+   * turns are what the reader was **offered** and this is what the prompt
+   * **carried**. Recording them apart would let a route update one and not the
+   * other, and the artifact would then report a delivery for an offer that never
+   * happened -- the shape `#consult` exists to prevent on the model-outcome axis.
+   *
    * `[]` cannot reach here, and the accessor does not pretend otherwise. All
    * three call sites sit behind a `turns.length === 0` return that hands the
    * decline to `#declinedEmpty`, so an empty list is a decline and never a
@@ -272,8 +314,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * `retrieved-context.test.ts` requires an empty admission to report `null` and
    * to never consult the model.
    */
-  #recordEvidence(turns: readonly AdmittedTurn[]): void {
+  #recordEvidence(
+    turns: readonly AdmittedTurn[],
+    assembled: Pick<AssembledPrompt, 'evidenceChars'>,
+  ): void {
     this.#lastRetrievedContext = turns.map((turn) => turn.content).join('\n');
+    this.#lastPromptEvidenceChars = assembled.evidenceChars;
   }
 
   /**
@@ -532,9 +578,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // one -- and on MR it would invite abstention on questions that must be
     // answered. The rendering is resolved in `#promptOptions` instead, so every
     // route keeps its own ask and only the evidence presentation moves.
-    const prompt = buildPrompt(question, turns, contract, this.#promptOptions());
-    this.#recordEvidence(turns);
-    return this.#consult(prompt);
+    const assembled = buildPrompt(question, turns, contract, this.#promptOptions());
+    this.#recordEvidence(turns, assembled);
+    return this.#consult(assembled.prompt);
   }
 
   async #promptWithDate(
@@ -544,12 +590,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     questionDate: string | undefined,
   ): Promise<Answer> {
     const base = this.#promptOptions();
-    const prompt = buildPrompt(question, turns, contract, {
+    const assembled = buildPrompt(question, turns, contract, {
       ...base,
       ...(questionDate === undefined ? {} : { questionDate }),
     });
-    this.#recordEvidence(turns);
-    return this.#consult(prompt);
+    this.#recordEvidence(turns, assembled);
+    return this.#consult(assembled.prompt);
   }
 
   /** Render selected sessions with their boundaries intact. */
@@ -557,13 +603,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
-    const prompt = buildSessionPrompt(question, sessions, this.#promptOptions());
+    const assembled = buildSessionPrompt(question, sessions, this.#promptOptions());
     // Flattened for the accessor while the prompt keeps its boundaries. The
     // question the accessor answers is "which turns reached the reader", and the
     // boundary is presentation; a reader comparing this against `turns` on the
-    // roster wants the same turns the prompt carried, in the same order.
-    this.#recordEvidence(sessions.flatMap((session) => session.turns));
-    return this.#consult(prompt);
+    // roster wants the same turns the prompt carried, in the same order -- up to
+    // the budget, which `evidenceChars` is what reports.
+    this.#recordEvidence(
+      sessions.flatMap((session) => session.turns),
+      assembled,
+    );
+    return this.#consult(assembled.prompt);
   }
 
   /**

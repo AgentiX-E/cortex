@@ -370,12 +370,45 @@ function formatEvidenceWithSources(turns: readonly AdmittedTurn[]): string {
  * the flat path would be a routing leak, because the flat path is chosen
  * precisely when the caller wants no date reasoning.
  */
+/**
+ * What assembling a prompt produced.
+ *
+ * ## Why the evidence size travels out beside the text
+ *
+ * `#recordEvidence` in `memory.ts` captures the turns **passed to** this builder
+ * and stores them as the reader's context. `fitToBudget` below then truncates the
+ * evidence when the prompt is over budget, so the captured context and the
+ * context the model received are different whenever the budget binds. Run
+ * `38044858147` bound on every question -- 506,338 characters of evidence
+ * against a 24,000-character budget -- and the artifact reported 3,016-4,528
+ * turns of evidence while the model received roughly 150-160.
+ *
+ * The two are only equal by accident, and only when nothing is cut. So the
+ * builder returns the size it actually carried, and the capture records it. A
+ * caller that recomputed this from the prompt text would be re-deriving a value
+ * this function already knows, which is the shape `report-write.ts` rejects by
+ * name for the same reason.
+ */
+export type AssembledPrompt = {
+  /** The text handed to the model. */
+  readonly prompt: string;
+  /**
+   * Characters of **evidence** this prompt carries, after any budget cut.
+   *
+   * Excludes the instruction block, the question and the section header, since
+   * the question this answers is how much of what retrieval produced reached the
+   * model. Zero when the evidence section holds the no-evidence placeholder:
+   * that sentence is a statement about evidence, not evidence.
+   */
+  readonly evidenceChars: number;
+};
+
 export function buildPrompt(
   question: string,
   turns: readonly AdmittedTurn[],
   contract: PromptContract,
   options: PromptOptions = {},
-): string {
+): AssembledPrompt {
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const date = contract === 'temporal' ? options.questionDate : undefined;
 
@@ -398,7 +431,7 @@ export function buildPrompt(
     instructionsFor(contract, date, options.ask),
   ].join('\n');
 
-  if (prompt.length <= maxChars) return prompt;
+  if (prompt.length <= maxChars) return { prompt, evidenceChars: evidence.length };
 
   // Over budget: shrink the evidence, never the question, and never the
   // instruction block that names the abstention token.
@@ -437,13 +470,13 @@ function fitToBudget(
   ask: EvidenceAsk | undefined,
   maxChars: number,
   header: string,
-): string {
+): AssembledPrompt {
   const SEPARATOR = '\n\n';
 
   // Spend the budget in priority order, and never revisit a decision: each
   // section is sized against what is genuinely left, so the assembled result is
   // within budget by construction and no final clip is needed. A final clip is
-  // what made the two earlier versions wrong — it is applied after the
+  // what made the two earlier versions wrong -- it is applied after the
   // priorities were already spent, so it can only violate them.
   //
   // The ask is threaded through rather than read from a closure so that a budget
@@ -451,26 +484,35 @@ function fitToBudget(
   // SAME instruction block. The two earlier versions of this function disagreed
   // between their branches; a second axis is a second chance to reintroduce that.
   const instruction = truncateCodePointSafe(instructionsFor(contract, date, ask), maxChars);
-  if (instruction.length === 0) return '';
+  if (instruction.length === 0) return { prompt: '', evidenceChars: 0 };
 
   let remaining = maxChars - instruction.length;
-  if (remaining < SEPARATOR.length) return instruction;
+  if (remaining < SEPARATOR.length) return { prompt: instruction, evidenceChars: 0 };
   remaining -= SEPARATOR.length;
 
   const questionLine = truncateCodePointSafe(`QUESTION: ${question}`, remaining);
-  if (questionLine.length === 0) return instruction;
+  if (questionLine.length === 0) return { prompt: instruction, evidenceChars: 0 };
   remaining -= questionLine.length;
 
-  if (remaining < SEPARATOR.length) return `${instruction}${SEPARATOR}${questionLine}`;
+  if (remaining < SEPARATOR.length) {
+    return { prompt: `${instruction}${SEPARATOR}${questionLine}`, evidenceChars: 0 };
+  }
   remaining -= SEPARATOR.length;
 
   const evidenceRoom = remaining - header.length;
   const evidence = evidenceRoom <= 0 ? '' : truncateCodePointSafe(evidenceText, evidenceRoom);
   const head = evidence.length === 0 ? '' : `${header}${evidence}`;
 
-  return head.length === 0
-    ? `${instruction}${SEPARATOR}${questionLine}`
-    : `${head}${SEPARATOR}${questionLine}${SEPARATOR}${instruction}`;
+  // `evidenceChars` is the truncated evidence length, so it reports what the
+  // prompt carries rather than what it was offered -- including the zero when the
+  // room ran out before any evidence fit.
+  return {
+    prompt:
+      head.length === 0
+        ? `${instruction}${SEPARATOR}${questionLine}`
+        : `${head}${SEPARATOR}${questionLine}${SEPARATOR}${instruction}`,
+    evidenceChars: evidence.length,
+  };
 }
 
 /**
@@ -502,7 +544,7 @@ export function buildSessionPrompt(
   question: string,
   sessions: readonly AdmittedSession[],
   options: PromptOptions = {},
-): string {
+): AssembledPrompt {
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
 
   const body =
@@ -536,9 +578,27 @@ export function buildSessionPrompt(
   ];
 
   const full = sections.join('\n\n');
-  if (full.length <= maxChars) return full;
+  if (full.length <= maxChars) {
+    // The placeholder is a sentence about evidence, not evidence, so an empty
+    // session list reports zero carried characters. That path cannot reach the
+    // model anyway -- an empty admission declines before any prompt is built, per
+    // `retrieved-context.test.ts` -- but the number should not depend on that.
+    return { prompt: full, evidenceChars: sessions.length === 0 ? 0 : body.length };
+  }
 
-  return fitToBudget(question, body, 'extractive', undefined, options.ask, maxChars, 'EVIDENCE:\n');
+  const fitted = fitToBudget(
+    question,
+    body,
+    'extractive',
+    undefined,
+    options.ask,
+    maxChars,
+    'EVIDENCE:\n',
+  );
+  // `body` is the placeholder on an empty list, and `fitToBudget` cannot tell
+  // that from evidence, so the correction is made here where the list length is
+  // still known. The prompt itself is untouched.
+  return sessions.length === 0 ? { prompt: fitted.prompt, evidenceChars: 0 } : fitted;
 }
 
 /** Tells the model that the blocks are separate conversations. */

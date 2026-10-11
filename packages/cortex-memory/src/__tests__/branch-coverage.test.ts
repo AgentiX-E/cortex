@@ -103,9 +103,11 @@ describe('prompt budget boundaries', () => {
    * loudly instead of looping — an unbounded scan here once hung the suite.
    */
   function findBudgetWhere(turnToShow: AdmittedTurn, needle: string): number {
-    const full = buildPrompt('Q?', [turnToShow], 'extractive').length;
+    const full = buildPrompt('Q?', [turnToShow], 'extractive').prompt.length;
     for (let budget = 1; budget <= full; budget += 1) {
-      if (buildPrompt('Q?', [turnToShow], 'extractive', { maxChars: budget }).includes(needle)) {
+      if (
+        buildPrompt('Q?', [turnToShow], 'extractive', { maxChars: budget }).prompt.includes(needle)
+      ) {
         return budget;
       }
     }
@@ -131,17 +133,19 @@ describe('prompt budget boundaries', () => {
   }
 
   it('returns the prompt unchanged when it is exactly at the budget', () => {
-    const unbounded = buildPrompt('Q?', [turn('a')], 'extractive');
-    const atBudget = buildPrompt('Q?', [turn('a')], 'extractive', { maxChars: unbounded.length });
+    const unbounded = buildPrompt('Q?', [turn('a')], 'extractive').prompt;
+    const atBudget = buildPrompt('Q?', [turn('a')], 'extractive', {
+      maxChars: unbounded.length,
+    }).prompt;
 
     expect(atBudget).toBe(unbounded);
   });
 
   it('truncates evidence, not the instruction block, when one over budget', () => {
-    const unbounded = buildPrompt('Q?', [turn('a'.repeat(200))], 'extractive');
+    const unbounded = buildPrompt('Q?', [turn('a'.repeat(200))], 'extractive').prompt;
     const bounded = buildPrompt('Q?', [turn('a'.repeat(200))], 'extractive', {
       maxChars: unbounded.length - 1,
-    });
+    }).prompt;
 
     expect(bounded).toContain('Reply with the answer alone.');
     expect(bounded.length).toBeLessThanOrEqual(unbounded.length - 1);
@@ -151,7 +155,9 @@ describe('prompt budget boundaries', () => {
     // The instruction block carries the abstention token, so it must survive;
     // the evidence is what gives. Asserting the surviving token and the bound
     // is asserting the priority order.
-    const bounded = buildPrompt('Q?', [turn('x'.repeat(5_000))], 'extractive', { maxChars: 200 });
+    const bounded = buildPrompt('Q?', [turn('x'.repeat(5_000))], 'extractive', {
+      maxChars: 200,
+    }).prompt;
 
     expect(bounded).toContain('INSUFFICIENT_EVIDENCE');
     expect(bounded).toContain('1. x');
@@ -162,10 +168,10 @@ describe('prompt budget boundaries', () => {
 
   it('never exceeds the budget, at any budget', () => {
     const long = turn('x'.repeat(5_000));
-    const full = buildPrompt('Q?', [long], 'extractive').length;
+    const full = buildPrompt('Q?', [long], 'extractive').prompt.length;
 
     for (let budget = 1; budget <= full + 5; budget += 1) {
-      const bounded = buildPrompt('Q?', [long], 'extractive', { maxChars: budget });
+      const bounded = buildPrompt('Q?', [long], 'extractive', { maxChars: budget }).prompt;
       expect(bounded.length).toBeLessThanOrEqual(budget);
     }
   });
@@ -179,11 +185,11 @@ describe('prompt budget boundaries', () => {
     // is the property that distinguishes a priority order from two heuristics
     // that happen to agree at the sampled points.
     const long = turn('x'.repeat(5_000));
-    const full = buildPrompt('Q?', [long], 'extractive').length;
+    const full = buildPrompt('Q?', [long], 'extractive').prompt.length;
     const tokenFitsAt = findBudgetWhere(long, 'INSUFFICIENT_EVIDENCE');
 
     for (let budget = tokenFitsAt; budget <= full; budget += 1) {
-      expect(buildPrompt('Q?', [long], 'extractive', { maxChars: budget })).toContain(
+      expect(buildPrompt('Q?', [long], 'extractive', { maxChars: budget }).prompt).toContain(
         'INSUFFICIENT_EVIDENCE',
       );
     }
@@ -193,8 +199,8 @@ describe('prompt budget boundaries', () => {
     // `maxChars: 0` is a caller error, but a thrown exception here would abort
     // a whole benchmark run over one bad option. An empty string is the honest
     // result: there is no room for anything, including the token.
-    expect(buildPrompt('Q?', [turn('x')], 'extractive', { maxChars: 0 })).toBe('');
-    expect(buildSessionPrompt('Q?', [], { maxChars: 0 })).toBe('');
+    expect(buildPrompt('Q?', [turn('x')], 'extractive', { maxChars: 0 }).prompt).toBe('');
+    expect(buildSessionPrompt('Q?', [], { maxChars: 0 }).prompt).toBe('');
   });
 
   it('spends the budget on the instruction block before the question', () => {
@@ -206,21 +212,23 @@ describe('prompt budget boundaries', () => {
     const questionFitsAt = findBudgetWhere(long, 'QUESTION:');
 
     expect(tokenFitsAt).toBeLessThanOrEqual(questionFitsAt);
-    const tight = buildPrompt('Q?', [long], 'extractive', { maxChars: tokenFitsAt });
+    const tight = buildPrompt('Q?', [long], 'extractive', { maxChars: tokenFitsAt }).prompt;
     expect(tight).toContain('INSUFFICIENT_EVIDENCE');
   });
 
   it('spends the budget on the question before the evidence', () => {
     const long = turn('x'.repeat(5_000));
-    const full = buildPrompt('Q?', [long], 'extractive').length;
+    const full = buildPrompt('Q?', [long], 'extractive').prompt.length;
     const questionFitsAt = findBudgetWhere(long, 'QUESTION:');
 
     expect(questionFitsAt).toBeLessThanOrEqual(full);
-    expect(buildPrompt('Q?', [long], 'extractive', { maxChars: questionFitsAt })).toContain(
+    expect(buildPrompt('Q?', [long], 'extractive', { maxChars: questionFitsAt }).prompt).toContain(
       'QUESTION:',
     );
     // One below the threshold, the question is gone and the budget still fits.
-    const justBelow = buildPrompt('Q?', [long], 'extractive', { maxChars: questionFitsAt - 1 });
+    const justBelow = buildPrompt('Q?', [long], 'extractive', {
+      maxChars: questionFitsAt - 1,
+    }).prompt;
     expect(justBelow).not.toContain('QUESTION:');
     expect(justBelow.length).toBeLessThanOrEqual(questionFitsAt - 1);
   });
@@ -229,7 +237,7 @@ describe('prompt budget boundaries', () => {
     // Degenerate but reachable: a caller that sets a budget below the fixed
     // overhead. The result is clipped rather than thrown, because a thrown
     // error here would abort a whole benchmark run over one bad option.
-    const bounded = buildPrompt('Q?', [turn('a')], 'extractive', { maxChars: 10 });
+    const bounded = buildPrompt('Q?', [turn('a')], 'extractive', { maxChars: 10 }).prompt;
 
     expect(typeof bounded).toBe('string');
     expect(bounded.length).toBeLessThanOrEqual(10);
@@ -237,8 +245,8 @@ describe('prompt budget boundaries', () => {
 
   it('applies the same budget rules to a session prompt', () => {
     const session: AdmittedSession = { index: 0, size: 1, turns: [turn('a'.repeat(400))] };
-    const unbounded = buildSessionPrompt('Q?', [session]);
-    const bounded = buildSessionPrompt('Q?', [session], { maxChars: unbounded.length - 1 });
+    const unbounded = buildSessionPrompt('Q?', [session]).prompt;
+    const bounded = buildSessionPrompt('Q?', [session], { maxChars: unbounded.length - 1 }).prompt;
 
     expect(bounded.length).toBeLessThanOrEqual(unbounded.length - 1);
     expect(bounded).toContain('Reply with the answer alone.');
@@ -250,7 +258,7 @@ describe('prompt budget boundaries', () => {
       { index: 2, size: 1, turns: [turn('third')] },
     ];
 
-    const prompt = buildSessionPrompt('Q?', sessions);
+    const prompt = buildSessionPrompt('Q?', sessions).prompt;
 
     // The label uses the source index, not the presentation position, so a
     // reader can match a block back to the session it came from.
@@ -259,14 +267,14 @@ describe('prompt budget boundaries', () => {
   });
 
   it('explains the empty case in a session prompt rather than omitting the section', () => {
-    const prompt = buildSessionPrompt('Q?', []);
+    const prompt = buildSessionPrompt('Q?', []).prompt;
 
     expect(prompt).toContain('(no evidence was admitted for this question)');
   });
 
   it('clips a session prompt that cannot fit its own instruction block', () => {
     const session: AdmittedSession = { index: 0, size: 1, turns: [turn('a')] };
-    const bounded = buildSessionPrompt('Q?', [session], { maxChars: 10 });
+    const bounded = buildSessionPrompt('Q?', [session], { maxChars: 10 }).prompt;
 
     expect(bounded.length).toBeLessThanOrEqual(10);
   });

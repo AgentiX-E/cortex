@@ -2247,12 +2247,49 @@ which the dataset does not carry on this arm -- the same limit `§13.11.5` state
 Measuring the carried size is what makes that question askable; it does not answer
 it.
 
-### 13.13.5 Status
+### 13.13.5 What was built, and the decision it settled
 
-**Registered**, with the defect open. The measurement's shape is not yet fixed:
-carrying the prompt-carried evidence instead of the admitted context would make
-`§13.11.5`'s question askable but would change what `§13.11.3`'s two predictions
-are read from; carrying both adds a field and a capture path. Either way the
-decision belongs in `cortex-eval`, not in `bench/**`, for the reason
+**Implemented.** The open question was the measurement's shape, and it is settled by
+carrying both quantities rather than by choosing between them:
+
+| Quantity | Field | Answers |
+| --- | --- | --- |
+| admitted context | `evidenceTurns` / `evidenceChars` | `§13.11.3`'s two predictions: did retrieval *produce* evidence |
+| prompt-carried evidence | `promptChars` | `§13.11.5`'s ranking question: did the evidence *reach the model* |
+
+They are different questions about one run, so one field cannot answer both -- and
+the repair is additive, which is why `§13.11.3`'s reading is unaffected.
+
+The value is produced where it is known rather than re-derived by a caller:
+`buildPrompt` and `buildSessionPrompt` return `AssembledPrompt`, carrying the
+evidence characters the prompt actually holds after `fitToBudget` has run. A caller
+that recomputed it from the prompt text would be re-deriving a value the builder
+already has, which is the shape `report-write.ts` rejects by name.
+
+It is captured under the **existing** `captureRetrievedContext` flag rather than a
+new one, because the two are never wanted apart: a context vector without the
+carried size overstates what the model saw and cannot be corrected after the fact.
+One flag, one capture, two vectors.
+
+`null` in the vector means the system exposes no such accessor, and it reaches the
+record as **absent** rather than as zero. A system that cannot report this has not
+reported a prompt that carried nothing.
+
+The decision belongs in `cortex-eval`, not in `bench/**`, for the reason
 `report-write.ts` records: a decision in an entry point is a decision no test can
-reach.
+reach. The record field and its forwarding through `withEvidenceBound` are both
+asserted at the arm level, on the artifact, because every hop from the builder to
+the record is a place the value can be dropped silently -- and a dropped field
+renders exactly like a system that cannot report it.
+
+### 13.13.6 How the repair is read
+
+Both predictions in §13.13.3 are decided by `promptChars` against
+`evidenceChars` in the same artifact: prediction 1 by the first being strictly
+smaller on every question of this dataset, prediction 2 by being bounded by the
+budget rather than by the route.
+
+A run whose artifact reports the two as equal on most questions says the budget is
+not binding, which would make this section's premise wrong for that configuration
+rather than the repair wrong.
+

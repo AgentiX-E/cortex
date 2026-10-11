@@ -188,7 +188,7 @@ describe('the ask composes with the rendering without either moving the other', 
       rendering: 'sourced',
       ask: 'extractive',
       questionDate: '2023/06/01',
-    });
+    }).prompt;
 
     // The rendering moved: the source id is present.
     expect(prompt).toContain(`[${TURNS[0]!.id}]`);
@@ -205,8 +205,11 @@ describe('the ask composes with the rendering without either moving the other', 
     // previous version of this function disagreed between its branches. Adding a second
     // axis to the instruction block is a second chance to reintroduce that, so the ask
     // is asserted on the truncating path too.
-    const generous = buildPrompt('q', TURNS, 'abstention', { ask: 'extractive' });
-    const tight = buildPrompt('q', TURNS, 'abstention', { ask: 'extractive', maxChars: 120 });
+    const generous = buildPrompt('q', TURNS, 'abstention', { ask: 'extractive' }).prompt;
+    const tight = buildPrompt('q', TURNS, 'abstention', {
+      ask: 'extractive',
+      maxChars: 120,
+    }).prompt;
 
     expect(generous).not.toContain(DECLINE_INVITATION);
     expect(tight).not.toContain(DECLINE_INVITATION);

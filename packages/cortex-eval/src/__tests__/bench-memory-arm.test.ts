@@ -1928,3 +1928,123 @@ describe('a bounded run reports what the bound dropped', () => {
     expect(record.evidenceTurns).toBe(6);
   });
 });
+
+describe('the prompt-carried evidence size reaches the record', () => {
+  /**
+   * ## Why the arm has to prove this, not just the builder
+   *
+   * The value is computed in `cortex-memory`, captured by `cortex-eval`'s
+   * benchmark loop, carried on `ScoredEvaluation` and `AblationResult`, and only
+   * then written onto a record. Every one of those hops is a place it can be
+   * dropped silently, and a dropped field renders as absent -- identical to a
+   * system that cannot report it. So the assertion is made at the end of the
+   * chain, on the artifact, rather than at the start.
+   */
+  function oneQuestionDataset(): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: [],
+          sessions: [],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+  }
+
+  const GATE_CONFIG = {
+    threshold: 0,
+    retrievalThreshold: 0,
+    sessionBudget: null,
+    sourceTrust: 0.5,
+    confidenceSignal: 'none',
+    promptContract: 'abstention',
+    renderingRoutes: [],
+    ask: 'route',
+    askRoutes: [],
+  } as const;
+
+  /** A system that can say what it retrieved and what the prompt carried. */
+  function reportingSystem(retrieved: string, promptChars: number): MemorySystem {
+    return {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      lastRetrievedContext: () => retrieved,
+      lastPromptEvidenceChars: () => promptChars,
+      lastRawOutput: () => 'Lisbon',
+    } as unknown as MemorySystem;
+  }
+
+  it('writes the carried size beside the offered size, which are different facts', async () => {
+    // The two numbers are deliberately unequal here: `evidenceChars` counts the
+    // admitted context and `promptChars` counts what the prompt carried after the
+    // builder's budget. A run whose artifact reports only the first overstates
+    // what the model saw -- by about twenty times on `38044858147`.
+    const retrieved = 'turn 0\nturn 1\nturn 2';
+    const { report } = await runCortexMemoryArm(
+      oneQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      reportingSystem(retrieved, 27),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE_CONFIG,
+      },
+    );
+
+    const record = report.questions![0]!;
+    expect(record.promptChars).toBe(27);
+    expect(record.evidenceChars).toBe(retrieved.length);
+    expect(record.evidenceTurns).toBe(3);
+  });
+
+  it('omits the field when the system cannot report it, rather than writing zero', async () => {
+    // Absent is not zero. A system with no such accessor has not reported a prompt
+    // that carried nothing, and the two must not render the same way -- the same
+    // rule `evidenceTurns` and `evidenceChars` follow for a reader shown nothing.
+    const { report } = await runCortexMemoryArm(
+      oneQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      constantSystem('cortex-memory', 'Lisbon'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE_CONFIG,
+      },
+    );
+
+    expect(report.questions![0]!.promptChars).toBeUndefined();
+    expect(Object.hasOwn(report.questions![0]!, 'promptChars')).toBe(false);
+  });
+
+  it('survives a reduction, so a bounded artifact does not lose the delivery size', async () => {
+    // The reducer rebuilds every record through `buildQuestionRecords`, so a field
+    // it does not forward is a field a reduction silently drops -- the defect
+    // `withEvidenceBound` already carried once for `featureConfig`.
+    const retrieved = Array.from({ length: 6 }, (_, i) => `turn ${i}`).join('\n');
+    const { report } = await runCortexMemoryArm(
+      oneQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      reportingSystem(retrieved, 27),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE_CONFIG,
+        evidenceBound: { maxTurnsPerRecord: 2 },
+      },
+    );
+
+    const record = report.questions![0]!;
+    expect(report.evidenceReduction).toBeDefined();
+    expect(record.promptChars).toBe(27);
+    expect(record.turns.length).toBeLessThan(record.evidenceTurns);
+  });
+});

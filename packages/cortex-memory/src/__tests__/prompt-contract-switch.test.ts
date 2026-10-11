@@ -120,10 +120,10 @@ describe('the prompt-contract switch', () => {
     // map, so its entry can be absent and the rest of this test would then be
     // comparing the baseline against itself and passing for the wrong reason.
     expect(rendering).toBeDefined();
-    const baseline = buildPrompt('Where does the user deploy?', TURNS, 'abstention');
+    const baseline = buildPrompt('Where does the user deploy?', TURNS, 'abstention').prompt;
     const candidate = buildPrompt('Where does the user deploy?', TURNS, 'abstention', {
       rendering: rendering ?? 'sourced',
-    });
+    }).prompt;
     expect(candidate).not.toBe(baseline);
   });
 
@@ -131,7 +131,11 @@ describe('the prompt-contract switch', () => {
     // A rendering that dropped evidence would confound the experiment with the gate:
     // the run would then be testing whether *less* evidence helps, which is a different
     // question from the one §12.5 registered.
-    const prompt = buildPrompt('Where does the user deploy?', TURNS, 'abstention-evidence-blocks');
+    const prompt = buildPrompt(
+      'Where does the user deploy?',
+      TURNS,
+      'abstention-evidence-blocks',
+    ).prompt;
     for (const turn of TURNS) {
       expect(prompt).toContain(turn.content);
     }
@@ -142,7 +146,11 @@ describe('the prompt-contract switch', () => {
     // ability to decline nor the token `parseAnswer` reads; a rendering that lost the
     // token would turn every decline into a parse failure and the run's abstention
     // count would measure the parser instead of the model.
-    const prompt = buildPrompt('Where does the user deploy?', TURNS, 'abstention-evidence-blocks');
+    const prompt = buildPrompt(
+      'Where does the user deploy?',
+      TURNS,
+      'abstention-evidence-blocks',
+    ).prompt;
     expect(prompt).toContain('INSUFFICIENT_EVIDENCE');
   });
 
@@ -150,14 +158,22 @@ describe('the prompt-contract switch', () => {
     // Same reason as the abstention token: the MR route's whole point is that a
     // boundary is visible. A rendering change that erased it would be a second
     // independent variable, and MR is one of the two capabilities under test.
-    const prompt = buildPrompt('Where does the user deploy?', TURNS, 'abstention-evidence-blocks');
+    const prompt = buildPrompt(
+      'Where does the user deploy?',
+      TURNS,
+      'abstention-evidence-blocks',
+    ).prompt;
     expect(prompt.length).toBeGreaterThan(0);
-    const baseline = buildPrompt('Where does the user deploy?', TURNS, 'abstention');
+    const baseline = buildPrompt('Where does the user deploy?', TURNS, 'abstention').prompt;
     expect(baseline.length).toBeGreaterThan(0);
   });
 
   it('handles the empty-evidence case without inventing a turn', () => {
-    const prompt = buildPrompt('Where does the user deploy?', [], 'abstention-evidence-blocks');
+    const prompt = buildPrompt(
+      'Where does the user deploy?',
+      [],
+      'abstention-evidence-blocks',
+    ).prompt;
     expect(prompt).toContain('no evidence was admitted');
   });
 });

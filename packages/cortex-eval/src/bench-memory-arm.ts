@@ -1106,6 +1106,12 @@ function buildArmRoster(
   // shape tests build by hand; that is a statement about the type, not licence for a
   // branch here. A hand-built `AblationResult` never reaches this function.
   const retrievedContexts = ablation.featureRetrievedContexts!;
+  // The other half of the same capture. Read with `!` for the same reason as the
+  // context vector: this arm is handed an `AblationResult` by the chain it called
+  // itself, and `runAblation` asks for both under one flag on one line. Mapped per
+  // question rather than passed whole, because a `null` entry means the system
+  // exposes no accessor and must reach the record as *absent*, not as zero.
+  const promptEvidenceChars = ablation.featurePromptEvidenceChars!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -1122,6 +1128,7 @@ function buildArmRoster(
       // made in the shape the record can hold. `null` is not collapsed into `''`
       // in the VECTOR, where the distinction is still expressible.
       retrieved: retrievedContexts[i] ?? '',
+      promptChars: promptEvidenceChars[i] ?? null,
     })),
     featureConfig,
     ablation.featureCorrect,
