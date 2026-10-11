@@ -103,8 +103,17 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
  *
  * Defaults to `numbered`, so every prior artifact keeps its meaning byte for
  * byte.
+ *
+ * ## Not exported, and the census is why
+ *
+ * `memory.ts` named this type until §13.15, where `#promptOptions` was narrowed to
+ * return `PromptOptions` -- which already carries it. That left the name with no
+ * non-test consumer outside this file, which the census gate reported as a new
+ * orphan, and its instruction is right: the `export` keyword was unnecessary and the
+ * code was not. A caller needs the *values*, and `PromptOptions['rendering']` names
+ * the type for anyone who genuinely needs to hold one.
  */
-export type EvidenceRendering = 'numbered' | 'sourced';
+type EvidenceRendering = 'numbered' | 'sourced';
 
 /**
  * How hard the prompt asks the model to answer rather than to decline.
@@ -129,6 +138,43 @@ export type EvidenceRendering = 'numbered' | 'sourced';
  */
 export type EvidenceAsk = 'route' | 'extractive';
 
+/**
+ * Per-turn relevance: the score that decides which turns the budget is spent on.
+ *
+ * ## Why this is an input and not a mechanism
+ *
+ * A relevance score is a retrieval measurement, and `cortex-memory` reads no
+ * embedding model -- it depends on `cortex-core` only. Measuring turn relevance
+ * here would make the composition layer depend on a retrieval mechanism it is
+ * supposed to sit above, which is the boundary `confidenceFor` and
+ * `CortexMemoryOptions.llm` already draw. The layer owns the mechanism; whoever
+ * has a measurement injects one.
+ *
+ * Optionally supplied by `cortex-eval`'s arm from retrieval it already performs,
+ * so the ranking the reference pipeline uses and the ranking the feature selects
+ * with are the same ranking rather than two.
+ *
+ * ## Why the question is threaded through rather than captured
+ *
+ * The signal is per question, and a closure that held "the current question" would
+ * be state written by one call site and read by another -- the shape `fitToBudget`
+ * refuses for the ask, which is threaded for the same reason. Passing the question
+ * makes the callback a pure function of its arguments, so a test can call it and a
+ * reader can see what it depends on.
+ *
+ * ## Why this returns any finite number rather than a `[0, 1]` score
+ *
+ * `confidenceFor` is validated into `[0, 1]` because it is a factor of the bounded
+ * product `confidence * sourceTrust * (0.5 + 0.5 * recency)`, so a value outside
+ * that range is a category error that completes a run describing the callback.
+ * This field only **orders** turns, and any real orders them: a log-likelihood, a
+ * centred cosine and a reciprocal-rank penalty are all legitimate signals.
+ * Requiring them to be rescaled would be the layer inventing a calibration it has
+ * no basis for. `NaN` and the infinities are still rejected -- see
+ * `validateRelevance` -- because those do not order anything reproducibly.
+ */
+type RelevanceFor = (question: string, turn: string) => number;
+
 /** Optional inputs to {@link buildPrompt}. */
 export type PromptOptions = {
   /** Reference point for relative time; supplied only to the temporal contract. */
@@ -139,6 +185,26 @@ export type PromptOptions = {
   rendering?: EvidenceRendering;
   /** Which instruction block to use. Defaults to the route's own. */
   ask?: EvidenceAsk;
+  /**
+   * Which turns the evidence room is spent on. Absent means the previous
+   * behaviour, character for character.
+   *
+   * ## What it buys, measured
+   *
+   * Without it the room is spent on a prefix of the arriving order, and on this
+   * arm the arriving order is the dataset's haystack order because `CortexMemory`
+   * ranks nothing. Run `38114272884`: the gold turn was inside the carried prefix
+   * for 12.4% of questions, while the median gold session sat at 22% of the
+   * haystack against a prefix reaching 4.6% of it.
+   *
+   * With it, selection is the largest prefix of the relevance order whose
+   * **chronological** rendering fits the room. Both halves matter and they are
+   * different decisions: a budget spent on the first turns to arrive is wasted,
+   * and a log printed in relevance order makes relative-time and knowledge-update
+   * questions unanswerable -- which is why `selectSessionBudget` refuses to
+   * reorder sessions for presentation either.
+   */
+  relevanceFor?: RelevanceFor;
 };
 
 /** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
@@ -401,6 +467,29 @@ export type AssembledPrompt = {
    * that sentence is a statement about evidence, not evidence.
    */
   readonly evidenceChars: number;
+  /**
+   * The turns whose text this prompt carries, in the order they are printed.
+   *
+   * ## Why the identities travel out beside the count
+   *
+   * `evidenceChars` says how much of the offered evidence reached the model and
+   * cannot say **which**. `§13.11.5` hands the campaign one question -- was the gold
+   * turn inside what the model saw -- and a size cannot answer it. Run
+   * `38114272884` is why: the artifact recorded the turns `#recordEvidence` was
+   * handed, which are the turns **offered** to this builder, so the reader's
+   * context and the model's context were different whenever the budget bound --
+   * and it bound on every question.
+   *
+   * A prefix would not need this, because `turns.slice(0, k)` is reconstructible
+   * from a count. A relevance-driven selection is not a prefix, so the identities
+   * are the only complete description of what was shown, and everything downstream
+   * that asks the question has to read them from here.
+   *
+   * Empty when the evidence section holds the no-evidence placeholder, which is
+   * the same state `evidenceChars: 0` reports: nothing was carried, and `[]` says
+   * which nothing rather than how much.
+   */
+  readonly carried: readonly AdmittedTurn[];
 };
 
 export function buildPrompt(
@@ -416,27 +505,67 @@ export function buildPrompt(
   // form compared `contract === 'abstention-evidence-blocks'`, which made the
   // rendering unreachable on every route whose ask is something else -- including
   // both of the routes that carried the measured loss.
-  const evidence =
-    options.rendering === 'sourced' ? formatEvidenceWithSources(turns) : formatEvidence(turns);
+  const render = (picked: readonly AdmittedTurn[]): string =>
+    options.rendering === 'sourced' ? formatEvidenceWithSources(picked) : formatEvidence(picked);
+
+  const evidence = render(turns);
   const evidenceBlock =
-    evidence.length === 0
-      ? 'EVIDENCE:\n(no evidence was admitted for this question)'
-      : `EVIDENCE:\n${evidence}`;
+    evidence.length === 0 ? `EVIDENCE:\n${NO_EVIDENCE}` : `EVIDENCE:\n${evidence}`;
 
-  const prompt = [
-    evidenceBlock,
-    '',
-    `QUESTION: ${question}`,
-    '',
-    instructionsFor(contract, date, options.ask),
-  ].join('\n');
+  // Computed once and handed to both paths. The docstring on `fitToBudget` records
+  // two earlier versions that assembled different instruction blocks on their two
+  // branches -- the token appeared at one budget, vanished at a larger one and
+  // reappeared later. Computing it here is what makes that disagreement
+  // unrepresentable rather than merely tested for.
+  const instruction = instructionsFor(contract, date, options.ask);
 
-  if (prompt.length <= maxChars) return { prompt, evidenceChars: evidence.length };
+  const prompt = [evidenceBlock, '', `QUESTION: ${question}`, '', instruction].join('\n');
+
+  if (prompt.length <= maxChars) {
+    return { prompt, evidenceChars: evidence.length, carried: turns };
+  }
 
   // Over budget: shrink the evidence, never the question, and never the
   // instruction block that names the abstention token.
-  return fitToBudget(question, evidence, contract, date, options.ask, maxChars, 'EVIDENCE:\n');
+  return fitToBudget(
+    question,
+    instruction,
+    {
+      turns,
+      render,
+      ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
+    },
+    maxChars,
+    'EVIDENCE:\n',
+  );
 }
+
+/**
+ * The evidence a budget can be spent on, and how to render it.
+ *
+ * A record rather than five positional parameters, and `render` rather than the
+ * rendered text, so that the rendered string cannot disagree with the turns the
+ * selection chose. Passing pre-rendered text alongside the turns would let a caller
+ * hand in the full evidence while the selection had already decided on a subset --
+ * and the two paths would then be spending one budget on two different things.
+ */
+type EvidencePlan = {
+  readonly turns: readonly AdmittedTurn[];
+  readonly render: (picked: readonly AdmittedTurn[]) => string;
+  /**
+   * Rides with the question, and is therefore allocated after it.
+   *
+   * It explains the session boundaries the evidence draws, so it is dropped rather
+   * than printed when no evidence survives: a note about session blocks above no
+   * blocks is worse than noise. It also does not exist on the flat route, which
+   * draws no boundaries.
+   */
+  readonly note?: string;
+  readonly relevanceFor?: RelevanceFor;
+};
+
+/** The sentence that stands in for evidence when nothing was admitted. */
+const NO_EVIDENCE = '(no evidence was admitted for this question)';
 
 /**
  * Fit a prompt to a character budget by spending it in a fixed priority order.
@@ -445,9 +574,10 @@ export function buildPrompt(
  *
  *   1. the **instruction block**, which names the abstention token;
  *   2. the **question**, which the instructions are instructions about;
- *   3. the **evidence**, truncated to whatever is left.
+ *   3. the **note**, when there is one, because it frames the question;
+ *   4. the **evidence**, which is selected to whatever is left.
  *
- * A prompt that lost (1) and kept (3) would ask a model a question while
+ * A prompt that lost (1) and kept (4) would ask a model a question while
  * removing its ability to decline — the failure the abstention contract exists
  * to prevent, reached from the budget side instead of the prompt side. A prompt
  * that lost (2) and kept (1) is at least evaluable: the model abstains.
@@ -461,13 +591,26 @@ export function buildPrompt(
  * appeared at one budget, vanished at a larger one, and reappeared later. Both
  * are why the budget sweep in `branch-coverage.test.ts` asserts monotonicity
  * across *every* budget rather than checking one boundary.
+ *
+ * ## The note was the third instance of that same defect, and it is fixed here
+ *
+ * `buildSessionPrompt` has always assembled `[evidence, note, question,
+ * instruction]` on its fit path and called this function with no way to pass the
+ * note on its budget path. So every over-budget multi-session prompt reached the
+ * model with the boundaries drawn and the sentence explaining them missing, while
+ * the docstring in `buildSessionPrompt` states the opposite: "a boundary that is
+ * rendered but unexplained is worse than one the model is told about". The run
+ * that measured this had every question over budget, so the note was absent from
+ * every multi-session prompt in it.
+ *
+ * The note is allocated rather than clipped into the evidence, because it is not
+ * evidence: spending the evidence room on it would make the room depend on the
+ * route, which is the property `§13.13`'s second prediction tests for.
  */
 function fitToBudget(
   question: string,
-  evidenceText: string,
-  contract: PromptContract,
-  date: string | undefined,
-  ask: EvidenceAsk | undefined,
+  instructionText: string,
+  plan: EvidencePlan,
   maxChars: number,
   header: string,
 ): AssembledPrompt {
@@ -478,41 +621,193 @@ function fitToBudget(
   // within budget by construction and no final clip is needed. A final clip is
   // what made the two earlier versions wrong -- it is applied after the
   // priorities were already spent, so it can only violate them.
-  //
-  // The ask is threaded through rather than read from a closure so that a budget
-  // large enough to skip truncation and one small enough to need it produce the
-  // SAME instruction block. The two earlier versions of this function disagreed
-  // between their branches; a second axis is a second chance to reintroduce that.
-  const instruction = truncateCodePointSafe(instructionsFor(contract, date, ask), maxChars);
-  if (instruction.length === 0) return { prompt: '', evidenceChars: 0 };
+  const instruction = truncateCodePointSafe(instructionText, maxChars);
+  if (instruction.length === 0) return { prompt: '', evidenceChars: 0, carried: [] };
 
   let remaining = maxChars - instruction.length;
-  if (remaining < SEPARATOR.length) return { prompt: instruction, evidenceChars: 0 };
+  if (remaining < SEPARATOR.length) return { prompt: instruction, evidenceChars: 0, carried: [] };
   remaining -= SEPARATOR.length;
 
   const questionLine = truncateCodePointSafe(`QUESTION: ${question}`, remaining);
-  if (questionLine.length === 0) return { prompt: instruction, evidenceChars: 0 };
+  if (questionLine.length === 0) {
+    return { prompt: instruction, evidenceChars: 0, carried: [] };
+  }
   remaining -= questionLine.length;
 
   if (remaining < SEPARATOR.length) {
-    return { prompt: `${instruction}${SEPARATOR}${questionLine}`, evidenceChars: 0 };
+    return {
+      prompt: `${instruction}${SEPARATOR}${questionLine}`,
+      evidenceChars: 0,
+      carried: [],
+    };
   }
   remaining -= SEPARATOR.length;
 
-  const evidenceRoom = remaining - header.length;
-  const evidence = evidenceRoom <= 0 ? '' : truncateCodePointSafe(evidenceText, evidenceRoom);
-  const head = evidence.length === 0 ? '' : `${header}${evidence}`;
+  // Allocated whole or not at all. A half-note would name boundaries without
+  // explaining them, which is the state this allocation exists to leave.
+  const note = plan.note ?? '';
+  const noteText = note.length + SEPARATOR.length <= remaining ? note : '';
+  if (noteText.length > 0) remaining -= noteText.length + SEPARATOR.length;
 
-  // `evidenceChars` is the truncated evidence length, so it reports what the
-  // prompt carries rather than what it was offered -- including the zero when the
-  // room ran out before any evidence fit.
+  const evidenceRoom = remaining - header.length;
+  const selected =
+    evidenceRoom <= 0
+      ? NOTHING_CARRIED
+      : plan.relevanceFor === undefined
+        ? { evidence: truncateCodePointSafe(plan.render(plan.turns), evidenceRoom), carried: null }
+        : selectByRelevance(question, plan, plan.relevanceFor, evidenceRoom);
+
+  if (selected.evidence.length === 0) {
+    // Unchanged, including the order: with nothing to carry, this is the prompt
+    // the two earlier versions converged on, and the budget sweep pins it.
+    return { prompt: `${instruction}${SEPARATOR}${questionLine}`, evidenceChars: 0, carried: [] };
+  }
+
+  const head = `${header}${selected.evidence}`;
+  const sections = noteText.length === 0 ? [head] : [head, noteText];
+
   return {
-    prompt:
-      head.length === 0
-        ? `${instruction}${SEPARATOR}${questionLine}`
-        : `${head}${SEPARATOR}${questionLine}${SEPARATOR}${instruction}`,
-    evidenceChars: evidence.length,
+    prompt: [...sections, questionLine, instruction].join(SEPARATOR),
+    evidenceChars: selected.evidence.length,
+    // The selecting path knows its set, so it hands it over rather than having the
+    // set re-derived from the text it just produced.
+    carried: selected.carried ?? wholeTurnsIn(plan, selected.evidence.length),
   };
+}
+
+/** Nothing carried, and the two fields that say so. */
+const NOTHING_CARRIED: { evidence: string; carried: readonly AdmittedTurn[] | null } = {
+  evidence: '',
+  carried: null,
+};
+
+/**
+ * The turns a **clipped** evidence string holds whole.
+ *
+ * ## Why the clip needs a search and the selection does not
+ *
+ * The selecting path knows which turns it chose; the clipped path does not, because
+ * a clip ends wherever the room ran out and that can be inside a turn. What the
+ * clip holds whole is the largest **prefix** of the turns whose rendering fits in
+ * it -- a prefix because the clip is one and contiguous from the start, and largest
+ * because adding the next turn would overflow it.
+ *
+ * Search rather than a scan, and for a reason that is arithmetic rather than taste:
+ * rendered length is non-decreasing in the number of turns, because every block
+ * keeps its place and its index can only grow, so the predicate is monotone and the
+ * search is exact in `log n` renders instead of `n`. A scan cost one full render per
+ * turn, which at this arm's 3,496 turns per question is a second budget's worth of
+ * string building per question.
+ *
+ * Exact for the renderer in use without knowing which one it is: every renderer here
+ * emits each block independently and joins them in order, so `render(prefix)` is a
+ * prefix of `render(all)` and a length comparison is a containment test.
+ */
+function wholeTurnsIn(plan: EvidencePlan, evidenceChars: number): readonly AdmittedTurn[] {
+  let low = 0;
+  let high = plan.turns.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (plan.render(plan.turns.slice(0, middle)).length <= evidenceChars) low = middle;
+    else high = middle - 1;
+  }
+  return plan.turns.slice(0, low);
+}
+
+/**
+ * The evidence that fits `room`, chosen by the caller's relevance signal.
+ *
+ * ## The two decisions this keeps apart
+ *
+ * **Selection** is the largest prefix of the relevance order whose rendering fits
+ * the room. **Presentation** is arrival order, always. A budget spent on whichever
+ * turns arrived first is wasted -- run `38114272884` measured the gold turn inside
+ * that prefix for 12.4% of questions -- and a prompt printed in relevance order
+ * makes relative-time and knowledge-update questions unanswerable, which is why
+ * `selectSessionBudget` pays for a second sort to put chosen sessions back in
+ * chronological order. Selecting by relevance and presenting chronologically is the
+ * only arrangement that is not one of those two defects.
+ *
+ * ## Why a prefix, and what that costs
+ *
+ * A prefix because it makes the size exact and the search monotone, and because the
+ * alternative -- skipping a turn that does not fit and continuing -- is a greedy
+ * fill whose cost model is a second budget accounting. The cost is bounded and
+ * stated here rather than hidden: a turn larger than the whole room ends the
+ * selection instead of being skipped past, so the prompt carries no evidence. That
+ * needs a single turn more than 165 times this arm's mean turn length, and when it
+ * happens the artifact says so -- `evidenceChars` reports zero and the roster is
+ * empty -- rather than the defect being silent.
+ *
+ * ## Why the search is exact
+ *
+ * Rendered length is non-decreasing in the number of turns: each block keeps its
+ * position and its index can only grow, so appending a turn can never shrink the
+ * total. Binary search over that predicate therefore lands on the largest fitting
+ * prefix. `evidence-relevance.test.ts` checks the landed set against a brute-force
+ * scan of every prefix rather than against the search's own arithmetic.
+ */
+function selectByRelevance(
+  question: string,
+  plan: EvidencePlan,
+  relevanceFor: RelevanceFor,
+  room: number,
+): { evidence: string; carried: readonly AdmittedTurn[] } {
+  const ranked = plan.turns
+    .map((turn, arrival) => ({
+      turn,
+      arrival,
+      relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
+    }))
+    // Highest first, and ties by arrival so the outcome does not depend on the
+    // sort being stable. Two turns the signal cannot separate are then ordered the
+    // way the context ordered them, which is reproducible and is what an
+    // unsignalled budget would have done with them.
+    .sort((a, b) => b.relevance - a.relevance || a.arrival - b.arrival);
+
+  const chronological = (count: number): AdmittedTurn[] =>
+    ranked
+      .slice(0, count)
+      .sort((a, b) => a.arrival - b.arrival)
+      .map(({ turn }) => turn);
+
+  let low = 0;
+  let high = ranked.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (plan.render(chronological(middle)).length <= room) low = middle;
+    else high = middle - 1;
+  }
+
+  const carried = chronological(low);
+  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+}
+
+/**
+ * Validate a relevance, naming the turn it was computed for.
+ *
+ * Only finiteness is required, and that is not a weaker rule than
+ * `validateConfidence` by accident: that field is a factor of a bounded product, so
+ * a value outside `[0, 1]` is a category error, while this one only orders turns and
+ * any real orders them. `NaN` and the infinities are rejected because they order
+ * *nothing*: `NaN` compares false against everything, so a sort over it falls back
+ * to an implementation-defined order and the run would describe the sort rather than
+ * the system, and two turns with the same infinity are indistinguishable from a
+ * signal that failed.
+ *
+ * The message carries the turn because the callback is evaluated per turn, and a
+ * 3,496-turn context is exactly where the offending call is hard to find.
+ */
+function validateRelevance(turn: string, value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(
+      `relevanceFor must return a finite number, got ${String(value)} for turn ` +
+        `${JSON.stringify(turn)}. It orders which turns the prompt budget is spent on, ` +
+        'and a value that orders nothing makes the selection depend on the sort rather ' +
+        'than on the signal -- a run whose artifact describes the callback.',
+    );
+  }
+  return value;
 }
 
 /**
@@ -546,24 +841,22 @@ export function buildSessionPrompt(
   options: PromptOptions = {},
 ): AssembledPrompt {
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  const flat = sessions.flatMap((session) => session.turns);
 
-  const body =
-    sessions.length === 0
-      ? '(no evidence was admitted for this question)'
-      : sessions
-          .map((session) =>
-            formatEvidence(session.turns, {
-              sessionIndex: session.index,
-              ...(options.rendering === undefined ? {} : { rendering: options.rendering }),
-            }),
-          )
-          .join('\n\n');
+  // A closure over these sessions rather than a pre-rendered string, so the
+  // selection cannot end up sizing one list while the text holds another.
+  const render = (picked: readonly AdmittedTurn[]): string =>
+    sessions.length === 0 ? NO_EVIDENCE : renderSessionBlocks(sessions, picked, options.rendering);
 
-  // One extra line over the flat builder: the note explaining that the blocks
-  // are sessions. It rides with the question rather than standing alone, so the
-  // allocator's three-level priority (instruction, question, evidence) is still
-  // the whole story — a boundary that is rendered but unexplained is worse than
-  // one the model is told about, and both are worse than the abstention token.
+  const body = render(flat);
+
+  const instruction = instructionsFor('extractive', undefined, options.ask);
+
+  // `SESSION_NOTE` is passed to the allocator rather than left in the fit path's
+  // section list. Leaving it there was a defect: the note was assembled only when
+  // the whole prompt fitted, so every over-budget multi-session prompt reached the
+  // model with boundaries drawn and no sentence explaining them -- the state the
+  // paragraph below calls worse than being told. See `fitToBudget`.
   const sections = [
     `EVIDENCE:\n${body}`,
     SESSION_NOTE,
@@ -574,7 +867,7 @@ export function buildSessionPrompt(
     // MR's prompt under `ask: 'extractive'` is byte-identical to its shipped prompt, so
     // a movement on MR cannot be attributed to the ask. The reach report records which
     // routes the ask actually changed for exactly this reason.
-    instructionsFor('extractive', undefined, options.ask),
+    instruction,
   ];
 
   const full = sections.join('\n\n');
@@ -583,22 +876,70 @@ export function buildSessionPrompt(
     // session list reports zero carried characters. That path cannot reach the
     // model anyway -- an empty admission declines before any prompt is built, per
     // `retrieved-context.test.ts` -- but the number should not depend on that.
-    return { prompt: full, evidenceChars: sessions.length === 0 ? 0 : body.length };
+    return { prompt: full, evidenceChars: sessions.length === 0 ? 0 : body.length, carried: flat };
   }
 
   const fitted = fitToBudget(
     question,
-    body,
-    'extractive',
-    undefined,
-    options.ask,
+    instruction,
+    {
+      turns: flat,
+      render,
+      note: SESSION_NOTE,
+      ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
+    },
     maxChars,
     'EVIDENCE:\n',
   );
   // `body` is the placeholder on an empty list, and `fitToBudget` cannot tell
   // that from evidence, so the correction is made here where the list length is
   // still known. The prompt itself is untouched.
-  return sessions.length === 0 ? { prompt: fitted.prompt, evidenceChars: 0 } : fitted;
+  return sessions.length === 0 ? { ...fitted, evidenceChars: 0, carried: [] } : fitted;
+}
+
+/**
+ * Render the turns a session prompt carries, grouped by session.
+ *
+ * ## Why membership is decided by identity and not by `ordinal`
+ *
+ * `AdmittedTurn.ordinal` is the turn's position **inside its own session**, because
+ * `admitSessions` admits each session independently. So a turn in session 3 can
+ * carry the same ordinal as one in session 1, and a lookup keyed on it would
+ * confuse the two. The selection is a subset of these very objects, so identity is
+ * both exact and free.
+ *
+ * ## Why the kept headers keep their original numbers
+ *
+ * A session that loses every turn is dropped, because a boundary with nothing
+ * behind it is a claim about evidence that is not there. The surviving headers are
+ * **not** renumbered: `Session 1` and `Session 3` say truthfully that these were the
+ * first and third conversations in the log, while renumbering them 1 and 2 would
+ * assert an adjacency that does not exist -- and adjacency is the one thing a
+ * session boundary is for. The prompt's own out-of-order risk does not arise here:
+ * the order is still ascending, only with gaps.
+ *
+ * Not exported: both callers are in this file, and the census gate reports an
+ * export nothing outside reaches.
+ */
+function renderSessionBlocks(
+  sessions: readonly AdmittedSession[],
+  picked: readonly AdmittedTurn[],
+  rendering: EvidenceRendering | undefined,
+): string {
+  const kept = new Set(picked);
+  return sessions
+    .map((session) => ({
+      index: session.index,
+      turns: session.turns.filter((turn) => kept.has(turn)),
+    }))
+    .filter((session) => session.turns.length > 0)
+    .map((session) =>
+      formatEvidence(session.turns, {
+        sessionIndex: session.index,
+        ...(rendering === undefined ? {} : { rendering }),
+      }),
+    )
+    .join('\n\n');
 }
 
 /** Tells the model that the blocks are separate conversations. */

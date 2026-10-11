@@ -34,9 +34,8 @@ import {
   RENDERING_BY_CONTRACT,
   buildPrompt,
   buildSessionPrompt,
-  type EvidenceAsk,
-  type EvidenceRendering,
   type PromptContract,
+  type PromptOptions,
   type AssembledPrompt,
 } from './prompt.js';
 import { parseAnswer } from './parse.js';
@@ -256,15 +255,30 @@ export class CortexMemory implements SessionAwareMemorySystem {
   /**
    * The evidence the reader was shown for the most recent call, or `null`.
    *
-   * One line per admitted turn, in admission order, joined with newlines -- the
-   * same shape the benchmark's roster splits back into turns, so a record built
-   * from this agrees with what the reader actually received rather than with a
-   * re-rendering of it.
+   * One line per turn the **prompt carried**, in the order the prompt printed them,
+   * joined with newlines -- the same shape the benchmark's roster splits back into
+   * turns, so a record built from this agrees with what the reader actually received
+   * rather than with a re-rendering of it.
+   *
+   * ## "Carried" rather than "admitted", since §13.15
+   *
+   * This returned the **admitted** turns until §13.15, which is a superset whenever
+   * the prompt budget binds -- and it bound on every question of run `38044858147`.
+   * The docstring above it claimed the carried set all along ("which turns reached
+   * the reader", "the same turns the prompt carried"), so the accessor was the one
+   * place where the artifact's roster and the artifact's size described different
+   * runs, and a reader comparing the gold turn against the roster was comparing it
+   * against evidence the model never saw.
+   *
+   * The order is the prompt's own, which is chronological. With a relevance signal
+   * the selection is not a prefix, so this list is the only place the carried set is
+   * nameable at all.
    *
    * `null` means no call has happened, or the machine declined before a reader
    * was shown anything. It does **not** mean an empty context was shown; that is
    * the census's `empty`, and the two are different outcomes this accessor keeps
-   * apart.
+   * apart. A prompt that carried no evidence reports `''` -- the reader was reached
+   * and shown nothing -- which is a third state and is why this is not `null`.
    */
   lastRetrievedContext(): string | null {
     return this.#lastRetrievedContext;
@@ -298,11 +312,41 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * turn was retrieved" from "no turn was retrieved" would have to parse the
    * other two back out. The turns are the claim.
    *
-   * `promptEvidenceChars` is recorded beside them in the same call, because the
-   * turns are what the reader was **offered** and this is what the prompt
-   * **carried**. Recording them apart would let a route update one and not the
-   * other, and the artifact would then report a delivery for an offer that never
-   * happened -- the shape `#consult` exists to prevent on the model-outcome axis.
+   * ## The turns recorded are the ones the prompt CARRIED, and that is the repair
+   *
+   * This recorded the turns **offered** to the builder until §13.15, and the
+   * accessor's own docstring claimed the opposite -- "which turns reached the
+   * reader", "the same turns the prompt carried, in the same order". Both sentences
+   * were false whenever the budget bound, and it bound on every question of run
+   * `38044858147`: 506,338 characters of evidence against a 24,000-character budget.
+   *
+   * So the artifact could report a size for the delivery while identifying the
+   * offer, which made `§13.11.5`'s question -- was the gold turn inside what the
+   * model saw -- unanswerable from it. A size cannot answer a question about
+   * membership, and the reader's context is the roster every downstream consumer
+   * transcribes.
+   *
+   * `carried` is taken from the builder rather than re-derived here for the reason
+   * `AssembledPrompt` gives: the selection is not a prefix, so nothing outside the
+   * builder can name the set. And `carried` is a subset of `turns`, so a route still
+   * cannot record a turn it never admitted.
+   *
+   * ## Why the offer is still recorded
+   *
+   * `promptEvidenceChars` is recorded beside them in the same call, because the two
+   * answer different questions about the same run and both are needed: the offer is
+   * what retrieval produced (`evidenceTurns`, `evidenceChars` on the record) and the
+   * delivery is what reached the model. Recording only one would let a reader
+   * mistake a budget for a retrieval failure. They are written in one call so a
+   * route cannot update one and not the other -- the shape `#consult` exists to
+   * prevent on the model-outcome axis.
+   *
+   * The assembled prompt is the only argument, and it carries both numbers. Passing
+   * the admitted turns alongside it would be a second list that this function does
+   * not read -- and a parameter nothing reads is a parameter that will drift.
+   *
+   * `carried` cannot name a turn that was never admitted: the builder is handed the
+   * admitted turns and can only return a subset of what it was handed.
    *
    * `[]` cannot reach here, and the accessor does not pretend otherwise. All
    * three call sites sit behind a `turns.length === 0` return that hands the
@@ -313,12 +357,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * the source. The invariant is asserted where it can be reached:
    * `retrieved-context.test.ts` requires an empty admission to report `null` and
    * to never consult the model.
+   *
+   * An empty `carried` **can** reach here, and it is not the same state: the reader
+   * was reached and shown nothing because no turn fitted the room. It records `''`,
+   * which the roster reads as `turns: []` against a non-zero `evidenceTurns` -- the
+   * three-state distinction `question-record.ts` registers.
    */
-  #recordEvidence(
-    turns: readonly AdmittedTurn[],
-    assembled: Pick<AssembledPrompt, 'evidenceChars'>,
-  ): void {
-    this.#lastRetrievedContext = turns.map((turn) => turn.content).join('\n');
+  #recordEvidence(assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried'>): void {
+    this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content).join('\n');
     this.#lastPromptEvidenceChars = assembled.evidenceChars;
   }
 
@@ -579,7 +625,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // answered. The rendering is resolved in `#promptOptions` instead, so every
     // route keeps its own ask and only the evidence presentation moves.
     const assembled = buildPrompt(question, turns, contract, this.#promptOptions());
-    this.#recordEvidence(turns, assembled);
+    this.#recordEvidence(assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -594,7 +640,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...base,
       ...(questionDate === undefined ? {} : { questionDate }),
     });
-    this.#recordEvidence(turns, assembled);
+    this.#recordEvidence(assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -609,10 +655,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // boundary is presentation; a reader comparing this against `turns` on the
     // roster wants the same turns the prompt carried, in the same order -- up to
     // the budget, which `evidenceChars` is what reports.
-    this.#recordEvidence(
-      sessions.flatMap((session) => session.turns),
-      assembled,
-    );
+    this.#recordEvidence(assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -668,7 +711,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * a rendering or deliberately does not, and the default reproduces the baseline
    * byte for byte so prior artifacts stay comparable.
    */
-  #promptOptions(): { maxChars?: number; rendering?: EvidenceRendering; ask?: EvidenceAsk } {
+  #promptOptions(): PromptOptions {
     // `promptContract` is absent on every pre-switch construction, and an absent
     // contract means the baseline rendering -- which is the same answer as naming
     // `abstention`. The lookup is guarded rather than defaulted so the record stays a
@@ -687,6 +730,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
         : { maxChars: this.#options.maxPromptChars }),
       ...(rendering === undefined ? {} : { rendering }),
       ...(ask === undefined ? {} : { ask }),
+      // Forwarded here rather than at each `#prompt*` call site, so the three routes
+      // cannot disagree about whether the budget is spent on relevant turns -- the
+      // same argument `#admit` makes for applying the session budget in one place.
+      // Spread conditionally because `admission.ts` and this class both treat a
+      // present-but-undefined key as "configured".
+      ...(this.#options.relevanceFor === undefined
+        ? {}
+        : { relevanceFor: this.#options.relevanceFor }),
     };
   }
 }

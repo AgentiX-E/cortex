@@ -680,7 +680,7 @@ forwarded into a step's `env`. Three injections were run against it:
   ask is held at §13's value rather than reverted, because reverting it would restore
   the shipped per-route blocks and change the surface the evidence capture is being
   read from.
-* `evidenceTurnsPerRecord: 16` — **added by §13.12.** Track `b✗f✓`. Run `38003036421`
+* `evidenceTurnsPerRecord: 256` — **added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
   completed all four runs of all five hundred questions and then died writing the JSON
   with `Invalid string length` (§13.11.10). The evidence is carried
   unbounded — `admission.ts` declines to truncate and the arm admits every session — and
@@ -691,6 +691,18 @@ forwarded into a step's `env`. Three injections were run against it:
   discovered, because a bound that decides what the artifact contains is a measurement
   decision, and a measurement decision taken after the fact is what pre-registration
   exists to prevent.
+
+  The value moved from sixteen to two hundred and fifty-six because §13.15 changed
+  what the roster holds, and that is a change to what the bound protects rather than a
+  loosening of it. The roster used to be the **offered** context — 3,016 to 4,528 turns
+  per question — so sixteen was a real cut and a small artifact. It now holds the
+  **carried** evidence, which the prompt budget already bounds at roughly one hundred
+  and sixty-seven turns on this arm, so sixteen would have cut a set that was already
+  bounded and destroyed the one thing §13.11.5 needs: the identities of the turns the
+  model actually read. Two hundred and fifty-six is twice what the budget carries at
+  this arm's measured one hundred and forty-four characters per turn, so it is a
+  writability guard rather than a measurement, and if it ever bites the marker and
+  `evidenceReduction` both record it rather than the roster silently losing turns.
 
 > **Amended by §12.5, in place rather than below**, for the reason §10.9's note gives:
 > `registered()` reads the list and stops at the first blank line, so an amendment note
@@ -2477,3 +2489,147 @@ that speak to the second, and there are 15 of them.
 **Registered.** The measurement is a reading of artifacts that already exist; the
 repair it points at is not yet designed, because it changes what the feature's
 admission path does and therefore what every number this arm has produced means.
+## 13.15 The budget is spent on the turns that matter, and the roster names them
+
+Registered because §13.14 located the root cause — the feature ranks nothing, so the
+prompt received a chronological prefix of the haystack and the gold turn was inside it
+for 12.4% of questions — and the repair it points at changes what every number this arm
+has produced means.
+
+### 13.15.1 What moved
+
+| Surface | Before | After |
+| --- | --- | --- |
+| Evidence selection under budget | a character prefix of the arrival order | the largest prefix of the **relevance** order whose chronological rendering fits |
+| Evidence presentation | arrival order | arrival order — **unchanged, deliberately** |
+| Session note on an over-budget prompt | dropped | allocated after the question and rendered with the evidence |
+| `lastRetrievedContext` / the roster `turns` | the turns **offered** to the builder | the turns the prompt **carried** |
+| `evidenceTurnsPerRecord` (§10.3) | 16 | 256 |
+
+### 13.15.2 The signal is injected, and that is the package boundary
+
+`CortexMemoryOptions.relevanceFor` is `(question, turn) => number`, threaded into
+`PromptOptions.relevanceFor` and read by the budget allocator.
+`cortex-memory` reads no embedding model, so it cannot measure relevance and does not
+try: it owns the mechanism and whoever has a measurement injects one, which is the same
+boundary `confidenceFor` and `CortexMemoryOptions.llm` already use. The question is a
+parameter rather than captured in a closure, so the callback is a pure function of its
+arguments — the rule `fitToBudget` already applies to the ask.
+
+**Absent means byte-identical.** Every prompt in every prior artifact is reproduced
+character for character when no signal is supplied, and
+`evidence-relevance.test.ts` characterises the unsignalled path as a **clip** (one
+character of room buys one character of evidence) rather than asserting equality with a
+remembered string.
+
+### 13.15.3 Selection and presentation are different decisions
+
+The repair does **not** reorder the log. A prompt that lists a later session before an
+earlier one makes relative-time and knowledge-update questions unanswerable, which is
+why `selectSessionBudget` pays for a second sort to put chosen sessions back into
+chronological order. Selecting by relevance and *printing* in relevance order would
+trade the 87.6% miss for a defect the session route already refused, so the tests pin
+both halves: the selected set is the top-k by relevance, and it is printed in arrival
+order.
+
+The multi-session route keeps its boundaries and **drops a session that lost every
+turn** — a boundary with nothing behind it is a claim about evidence that is not there —
+while the surviving headers keep their original numbers, because renumbering `1, 2` over
+what were the first and third conversations asserts an adjacency that does not exist.
+
+### 13.15.4 The selection is a prefix of the relevance order, and what that costs
+
+A prefix makes the size exact and the search monotone: rendered length is
+non-decreasing in the number of turns, since every block keeps its place and its index
+can only grow, so binary search lands on the largest fitting set. The alternative —
+skipping a turn that does not fit and continuing — is a greedy fill whose cost model is
+a second budget accounting, and this repository keeps one owner for the budget.
+
+The cost is stated rather than hidden: **a single turn larger than the whole evidence
+room ends the selection instead of being skipped past**, so the prompt carries no
+evidence. That needs a turn more than 165 times this arm's mean turn length, and it is
+observable when it happens — `evidenceChars` reports zero, the roster is empty, and both
+are recorded per question.
+
+### 13.15.5 The roster now holds what the model read, which is what made §13.11.5 askable
+
+`§13.11.5` hands the campaign one question — was the gold turn inside what the model
+saw — and it needs **membership**, not a size. The artifact had a size for the delivery
+(`promptChars`, added by §13.13) and a roster of the **offer**, and a reader comparing
+the gold turn against that roster was comparing it against evidence the model never
+saw. With a relevance-driven selection the carried set is not a prefix, so nothing
+outside the builder can name it: `AssembledPrompt.carried` travels out with the text and
+`#recordEvidence` records it.
+
+The three states are now readable from two fields, and they are different outcomes:
+
+| State | `turns.length` | `evidenceTurns` |
+| --- | --- | --- |
+| no reader was consulted | 0 | 0 |
+| nothing was cut | n | n |
+| the budget or the bound removed turns | m | n, m < n |
+
+### 13.15.6 The session note was a defect of the same family, found while wiring this
+
+`buildSessionPrompt` assembles `[evidence, note, question, instruction]` and stated the
+principle itself: *"a boundary that is rendered but unexplained is worse than one the
+model is told about"*. On the over-budget path it called the allocator with no way to
+pass the note, so **every over-budget multi-session prompt reached the model with the
+boundaries drawn and the sentence explaining them missing** — and run `38114272884` had
+every question over budget, so the note was absent from every MR, TR, ABS and KU prompt
+in it.
+
+That is the third instance of one family in this function: an intention stated in a
+comment and not implemented on one branch (§12.9 (b), §57.6, §13.13 are the others).
+
+**Registered prediction 1**: `promptChars` on the session routes is now about 172
+characters lower than on the flat route at the same instruction and question lengths,
+because the note occupies 170 characters plus one separator of the evidence room. §13.13's
+second prediction — that the carried size is a function of the budget rather than of the
+route — is now a function of the budget **and this one fixed offset**, and a spread
+materially larger than that offset falsifies this reading.
+
+**Registered prediction 2**: the note reaches the model, so `promptChars` decreases
+rather than staying at the previous run's value for the same capability. The artifact
+does not carry prompt text, so the size is the evidence; a run whose session-route
+`promptChars` is unchanged falsifies the claim that the note was allocated.
+
+**Open question, registered as open**: whether the note changes accuracy. The mechanism
+claim is what this section registers; a directional prediction about MR would be a guess
+about the model, and §13.14.5 records that this arm cannot yet separate "the evidence
+never arrived" from "it arrived and the model declined".
+
+### 13.15.7 Why the bound moved, which is a registration and not a tuning
+
+`§13.12` registered `evidenceTurnsPerRecord: 16` when the roster held the **offered**
+context, 3,016 to 4,528 turns per question — sixteen was then a real cut that kept the
+artifact small. The roster now holds the **carried** evidence, which the prompt budget
+already bounds at roughly 167 turns on this arm, so sixteen would cut an
+already-bounded set and destroy the identities §13.11.5 needs.
+
+The value is now **256**: twice what the budget carries at this arm's measured 144
+characters per turn. It is a **writability** guard rather than a measurement — it exists
+because a run that sets a large `maxPromptChars` would otherwise have no outer bound,
+which is the failure §13.11.10 records reached from the configuration side — and if it
+ever bites, the marker and `evidenceReduction` both record it rather than the roster
+silently losing turns.
+
+### 13.15.8 What this run tests, and what it deliberately does not
+
+The dispatch that follows this section **supplies no relevance signal**, so the arm's
+selection behaviour is unchanged and the only prompt-level change is the note. That is
+deliberate: §13.14's repair moves the prompt's *content* for every session-route
+question, and folding it into the same run as the note would leave two changes and no
+attribution.
+
+This run therefore measures three things, all of them about the instrument:
+
+1. **the gold-inside-carried rate read from the artifact** rather than inferred. §13.14
+   measured 12.4% by locating gold sessions in `benchmark-*-diagnostics.json`, whose
+   turn ordinal was an estimate from session dates. The roster now names the carried
+   turns, so the same fraction is measurable exactly and from the ablation artifact.
+2. **the note's effect on the size**, per prediction 1 above.
+3. **the note's effect on accuracy**, recorded as an observation and not as a claim,
+   because this section registers a mechanism and not a direction.
+
+The relevance signal is the next section's single variable, and it is not this one's.

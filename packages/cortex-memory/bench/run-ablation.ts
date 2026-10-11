@@ -75,8 +75,16 @@ import { REDUCED_TURNS_MARKER, serializeReportOrReduce } from '@agentix-e/cortex
  * that a report which cannot be written is reduced rather than lost). When the
  * fallback engages, the artifact's `evidenceReduction` field records it -- a
  * reduced report is never silently reduced.
+ *
+ * The number is two hundred and fifty-six rather than a round one, and §13.15 is
+ * why. The roster it bounds holds the evidence the prompt **carried**, which the
+ * prompt budget already bounds at roughly one hundred and sixty-seven turns on this
+ * arm, so this is a writability guard and not a measurement. It stays finite
+ * because a run that sets a large `maxPromptChars` would otherwise have no outer
+ * bound at all -- which is the failure `§13.11.10` records, reached from the
+ * configuration side.
  */
-const EVIDENCE_TURNS_PER_RECORD = 16;
+const EVIDENCE_TURNS_PER_RECORD = 256;
 
 /**
  * The last progress event seen, read by the failure handler.

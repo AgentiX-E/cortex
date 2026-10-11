@@ -138,9 +138,21 @@ export type QuestionRecord = {
    * So on that run this field reports 3,016-4,528 while the model received at most
    * 24,000 characters -- roughly 150-160 turns, an overstatement of about twenty
    * times. The number is still the right one for `§13.11.3`, whose two predictions
-   * ask whether retrieval *produced* evidence. It is the wrong one for
-   * `§13.11.5`'s ranking question, which asks whether the gold turn reached the
-   * model, and that question needs a measurement this artifact does not carry.
+   * ask whether retrieval *produced* evidence.
+   *
+   * ## The other half of that split was repaired in §13.15
+   *
+   * `§13.11.5`'s ranking question -- was the gold turn inside what the model saw --
+   * needs membership, not a size, and it was unanswerable because the roster
+   * (`turns`, built from the same captured context) also described the offer. Since
+   * §13.15 `lastRetrievedContext` returns what the prompt **carried**, so `turns` is
+   * the reader's evidence and this field is the retrieval's. The two are now the
+   * three states `toTurns` registers, read together:
+   *
+   *   - `turns: []` with `evidenceTurns: 0` -- no reader was consulted
+   *   - `turns.length === evidenceTurns` -- nothing was cut
+   *   - `turns.length < evidenceTurns` -- the budget or the bound removed turns,
+   *     and the removal is recorded rather than implied
    */
   readonly evidenceTurns: number;
   /**
@@ -204,7 +216,7 @@ export type QuestionRecordInput = {
   /** The caller's summary of the verdict; overridden by `correctness` if given. */
   readonly correct: boolean;
   readonly grounded: boolean;
-  /** The retrieved context as the reader received it, one turn per line. */
+  /** The evidence the reader received, one turn per line -- see §13.15. */
   readonly retrieved: string;
   /**
    * The evidence characters the prompt carried, when the caller can report it.

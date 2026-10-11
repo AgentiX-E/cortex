@@ -183,17 +183,26 @@ describe('the system reports the evidence the prompt carried', () => {
     // against a 24,000-character budget, so the carried size has to be strictly
     // smaller. Equality here would mean the budget is not being spent, which is
     // the condition §13.13.3 names as falsifying this whole section.
+    //
+    // The offer is measured from the fixture rather than from the accessor, because
+    // §13.15 made the accessor report the delivery. A test that read the offer back
+    // out of it would now be asking the delivery to be larger than itself.
     const memory = system({ llm: recordingLlm([]) });
     const context = Array.from({ length: 2_000 }, (_, i) => `user: note number ${i} about it`);
 
     await memory.answer('What did I note?', context);
 
-    const offered = memory.lastRetrievedContext()!.length;
+    const offered = context.join('\n').length;
     const carried = memory.lastPromptEvidenceChars()!;
     expect(offered).toBeGreaterThan(DEFAULT_MAX_PROMPT_CHARS);
     expect(carried).toBeLessThan(offered);
     // And it is bounded by the budget, which is the allocator's whole job.
     expect(carried).toBeLessThanOrEqual(DEFAULT_MAX_PROMPT_CHARS);
+    // The roster is the same set: fewer turns than were offered, and every one of
+    // them a turn that was offered.
+    const roster = memory.lastRetrievedContext()!.split('\n');
+    expect(roster.length).toBeLessThan(context.length);
+    for (const line of roster) expect(context).toContain(line);
   });
 
   it('reports the carried size on the session route, which is half the measured loss', async () => {
@@ -234,10 +243,20 @@ describe('the system reports the evidence the prompt carried', () => {
     const slice = carriedSlice(seen[0]!, reported);
     expect(slice.after).toBe('\n\n');
     expect(slice.text.length).toBe(reported);
-    // The offered context is larger, which is the whole reason the two fields are
-    // kept apart. Not asserted as a ratio: the offered number counts the joined
-    // turn contents and the carried one counts the numbered rendering, so the two
-    // are in different units and only the direction is meaningful here.
-    expect(memory.lastRetrievedContext()!.length).toBeGreaterThan(reported);
+    // §13.15: the roster and the size now answer the same question about the same
+    // run. The accessor's lines are the turns the prompt carries whole, and they
+    // must be the evidence block's own first blocks, in its own order, numbered the
+    // way it numbered them. Before §13.15 the roster described the offer, so the two
+    // could disagree about a run and each be internally consistent.
+    const roster = memory.lastRetrievedContext()!.split('\n');
+    const blocks = slice.text.split('\n\n');
+    expect(roster.length).toBeLessThan(context.length);
+    for (let i = 0; i < roster.length; i += 1) {
+      expect(blocks[i]).toBe(`${i + 1}. ${roster[i]}`);
+    }
+    // One block more at most, and only ever a fragment: a character clip stops
+    // wherever the room ran out, so the turn it interrupted is not wholly carried
+    // and is deliberately not named by the roster.
+    expect(blocks.length).toBeLessThanOrEqual(roster.length + 1);
   });
 });

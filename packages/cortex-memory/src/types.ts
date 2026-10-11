@@ -126,6 +126,40 @@ export type CortexMemoryOptions = {
   /** Upper bound on prompt length in UTF-16 code units. */
   maxPromptChars?: number;
   /**
+   * Which turns the prompt budget is spent on, as a score over the question and
+   * the turn. Absent leaves the budget character-clipped exactly as before.
+   *
+   * ## Why it sits here and not on `GateOptions`
+   *
+   * It is a **prompt assembly** input, so it belongs beside `maxPromptChars`, which
+   * is the budget it competes for. `GateOptions` decides what is *kept* and what may
+   * be *answered from*; this decides what is *shown* among the turns already kept,
+   * and it has no effect at all unless the budget binds. Putting it on the gate
+   * would suggest it can change an admission decision, which it cannot and must
+   * not — a signal that moved admissions would make the next run's delta
+   * uninterpretable, two variables having moved at once.
+   *
+   * ## Why it is injected rather than computed here
+   *
+   * A relevance score is a retrieval measurement, and this package reads no
+   * embedding model: the same boundary `confidenceFor` and `llm` already draw. On
+   * the arm the signal comes from `cortex-eval`'s own retrieval, so the ranking the
+   * reference pipeline uses and the ranking the feature selects with are one
+   * ranking rather than two.
+   *
+   * ## What it is for, measured
+   *
+   * Run `38114272884` spent every evidence room on a prefix of the arrival order,
+   * which on this arm is the dataset's haystack order because nothing here ranks
+   * anything. The gold turn sat inside that prefix for 12.4% of questions while the
+   * median gold session sat at 22% of the haystack. A budget is not usefully small
+   * or large; it is usefully **spent on the right turns**.
+   *
+   * Reaches every route, including the multi-session one, through `#promptOptions`.
+   * See `PromptOptions.relevanceFor` for the selection and presentation rules.
+   */
+  relevanceFor?: (question: string, turn: string) => number;
+  /**
    * Overrides the contract the **abstention route** uses, without touching the others.
    *
    * Exists for §12.5's registered experiment. §12.4 measured that the feature side

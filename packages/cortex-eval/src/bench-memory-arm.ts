@@ -1127,6 +1127,14 @@ function buildArmRoster(
       // anything" reaches the record as `turns: []`, which is the same statement
       // made in the shape the record can hold. `null` is not collapsed into `''`
       // in the VECTOR, where the distinction is still expressible.
+      //
+      // This vector is the evidence the reader **received** since §13.15, because
+      // it is built from `lastRetrievedContext` and that accessor now reports what
+      // the prompt carried rather than what admission offered. So the record's
+      // `turns` are the turns the model read -- which is what makes the artifact
+      // able to answer whether the gold turn was among them -- while `evidenceTurns`
+      // and `evidenceChars`, stamped by the builder from what it was handed, remain
+      // the offer. Both are needed and they are different questions.
       retrieved: retrievedContexts[i] ?? '',
       promptChars: promptEvidenceChars[i] ?? null,
     })),

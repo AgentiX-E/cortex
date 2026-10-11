@@ -132,7 +132,7 @@ INPUTS = {
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
     "cortex_memory_ask": "extractive",
-    "cortex_memory_evidence_turns": "16",
+    "cortex_memory_evidence_turns": "256",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",
