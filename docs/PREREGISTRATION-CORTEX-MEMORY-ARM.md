@@ -2361,3 +2361,119 @@ constraint, and it is measurable -- but only against gold-turn attribution, whic
 this dataset does not carry on this arm (§13.11.5, §13.13.4).
 
 
+
+## 13.14 The prompt carries a chronological prefix of the haystack, and the gold turn is outside it for 87.6% of questions
+
+Registered because `§13.11.5` handed the next round a ranking question, `§13.13`
+made the evidence size measurable, and measuring it turned up the answer to a
+different question: **the feature has no ranking to blame.**
+
+### 13.14.1 The finding, verified in code
+
+The chain from the dataset to the model, read end to end:
+
+| Step | Where | What it does to the order |
+| --- | --- | --- |
+| `flattenSessions(haystack_sessions, haystack_dates)` | `longmemeval-loader.ts` | session order, i.e. the dataset's own haystack order |
+| `CortexMemory.answer(question, context)` | `memory.ts` | passes `context` straight to `#admit` |
+| `#admit(context)` | `memory.ts:534` | `admissionOptionsFrom` + `admitTurns`, no reordering |
+| `admitTurns(turns, options)` | `admission.ts:189` | `for (ordinal = 0; ordinal < turns.length; ordinal++)`, **push in iteration order**; no `sort` |
+| `#prompt` → `buildPrompt` | `prompt.ts` | `formatEvidence(turns)`, preserving that order |
+| `fitToBudget` | `prompt.ts` | `truncateCodePointSafe(evidenceText, evidenceRoom)` -- **a prefix** |
+
+`memory.ts` contains **no** `retrieveTopK`, no `embedding`, no `similarity`, no
+`rank` and no `sort(`. Its only retrieval-shaped member, `#retrievalAdmitted`, is a
+**boolean** gate (`decideRetrieval` takes the maximum over candidates) and is called
+from `answerAbstention` and nowhere else.
+
+So on the flat route the evidence order is the **haystack order**, and the prompt
+receives the **first `evidenceRoom` characters of it**. `§13.13` measured that
+prefix at about 23,740 characters, roughly 155-165 of roughly 3,496 turns.
+
+### 13.14.2 The finding, measured
+
+The `benchmark-*-diagnostics.json` artifacts from run `38114272884` carry
+`answer_session_ids`, `haystack_dates` and `answer_sessions_content` per question, so
+the gold session's position in the haystack is derivable from an artifact that
+already exists -- no new run and no dataset access needed.
+
+For the **121** questions whose gold session could be located:
+
+| Quantity | min | p25 | median | p75 | max |
+| --- | --- | --- | --- | --- | --- |
+| gold session position, as a fraction of the haystack | 0.000 | 0.115 | **0.220** | 0.438 | 0.891 |
+| implied gold turn ordinal (fraction x `evidenceTurns`) | 0 | 400 | **748** | 1,452 | 3,136 |
+
+**The gold turn falls inside the carried prefix for 15 of 121 questions -- 12.4%.**
+
+The ordinal is an estimate: it assumes turns are spread evenly across sessions,
+because the diagnostics carry session dates but not per-session turn counts. The
+fraction is not an estimate and is what the conclusion rests on: the median gold
+session sits at **22%** of the haystack while the prefix reaches **4.6%** of it, so
+the search would have to be about five times deeper to reach the median question.
+The two columns agree on the direction and on the order of magnitude, and a per-turn
+attribution would refine the middle of the distribution rather than move it.
+
+**Note the second-order fact.** 12.4% inside a prefix that covers 4.6% means golds
+are about 2.7x more likely to be early than a uniform draw -- the dataset does front-
+load some evidence. It does not change the verdict: **87.6% of questions have their
+gold turn outside what the model was shown, and no prompt wording or model choice
+can recover a question whose evidence never reached the prompt.**
+
+### 13.14.3 This corrects a verdict of this document
+
+`§13.11.4` pre-committed the recovery to the shape *"it is a look at `admission.ts`,
+because producing no evidence for a question whose context demonstrably contains the
+answer is a write-gate defect"*. `cortex-docs` §70.3 and §4.1.28 recorded that this
+recovery **does not apply**, on the grounds that `empty = 0` proves the write gate
+rejected nothing.
+
+**That reading was wrong, and the correction matters more than the original
+statement did.** `admission.ts` is exactly where the defect lives -- not in the gate
+that decides *whether* a turn is admitted, which admits nearly everything at
+`threshold: 0`, but in the **order** it admits them in, which is the caller's order
+and carries no notion of relevance. The pre-committed recovery named the right file
+for a reason that was close but not the reason the defect exists.
+
+The lesson is recorded rather than the sentence rewritten: a pre-committed recovery
+that names a module should be **executed** before it is declared inapplicable,
+because "this module is not the problem" and "this module is the problem in a
+different place" look identical from outside it.
+
+### 13.14.4 The prediction this registers
+
+The retrieval machinery this repository already measures is not the feature's.
+`recall-curve.ts` drives `retrieveTopKByQueries` -- the bi-encoder the reference
+pipeline uses -- and run `38114272884`'s curve reports:
+
+| k | recall | ceiling | gain |
+| --- | --- | --- | --- |
+| 1 | 0.276 | 0.921 | 0.645 |
+| 5 | 0.579 | 0.921 | 0.342 |
+| 20 | 0.868 | 0.921 | 0.053 |
+| 50 | **0.921** | 0.921 | **0.000** |
+
+At k=50 the bi-encoder's own top-50 already contains every answer turn that is in
+the pool at all: **gain is zero**, so reordering alone can add nothing more, and
+`ceiling` is 0.921 rather than 1.0 because 6 of the 76 considered questions have
+their answer outside the pool entirely -- a breadth problem, not an ordering one.
+
+**Prediction: ordering the admitted turns by that ranking, and carrying the same
+~160 turns, moves the gold turn inside the prefix from 12.4% to approximately the
+curve's ceiling, 92%.** If the move is materially smaller, the gap is in the
+transfer from retrieval scores to admission order rather than in the ranking.
+
+### 13.14.5 What this does not establish
+
+Whether the model answers correctly once the gold turn is present. `§13.13.8` and
+this section together say the evidence now has to reach the model before that
+question is even askable, and the current reading cannot separate "the gold never
+arrived" from "the gold arrived and the model declined" because the first is true
+for 87.6% of questions. The 12.4% where the gold did arrive are the only observations
+that speak to the second, and there are 15 of them.
+
+### 13.14.6 Status
+
+**Registered.** The measurement is a reading of artifacts that already exist; the
+repair it points at is not yet designed, because it changes what the feature's
+admission path does and therefore what every number this arm has produced means.
