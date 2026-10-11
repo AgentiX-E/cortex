@@ -2284,12 +2284,80 @@ renders exactly like a system that cannot report it.
 
 ### 13.13.6 How the repair is read
 
-Both predictions in §13.13.3 are decided by `promptChars` against
-`evidenceChars` in the same artifact: prediction 1 by the first being strictly
-smaller on every question of this dataset, prediction 2 by being bounded by the
-budget rather than by the route.
+Both predictions in §13.13.3 are decided by `promptChars` against `evidenceChars`
+in the same artifact: prediction 1 by the first being strictly smaller on every
+question of this dataset, prediction 2 by being bounded by the budget rather than
+by the route.
 
 A run whose artifact reports the two as equal on most questions says the budget is
 not binding, which would make this section's premise wrong for that configuration
 rather than the repair wrong.
+
+### 13.13.7 Read off run `38114272884` — both predictions hold
+
+Run `38114272884` (`5241be13`, the commit carrying the measurement) completed
+success. Its artifact is **3,897,380 bytes**, against **258,473,032** for
+`38044858147` -- the second bound (§69's, now reaching both copies) turning a
+258 MB artifact into a 3.9 MB one, a factor of 66. No partial file, so the arm
+returned normally.
+
+**The ablation reading replicated.** Against `38044858147`: baseline 44.30% vs
+44.65%, feature 6.35% vs 6.20%, Δ -37.95pp vs -38.45pp, discordant 189 vs 193,
+`empty` 0 and `threshold` 0 in both, and **0 questions the feature answers
+correctly that the baseline does not** in both. Two runs on different commits under
+the same registered configuration agree, so the next round can build on the
+reading rather than on a draw.
+
+**Prediction 1: confirmed.** `promptChars < evidenceChars` on **500 of 500**
+questions. The prompt-carried evidence is strictly smaller than the admitted
+evidence on every question of this dataset, which is what the budget being reached
+on every question means.
+
+**Prediction 2: confirmed.** `promptChars` spans **23,460 to 23,794**, with the
+per-capability ranges almost entirely overlapping:
+
+| Capability | n | min | median | max |
+| --- | --- | --- | --- | --- |
+| IE | 150 | 23,460 | 23,739 | 23,794 |
+| MR | 121 | 23,649 | 23,746 | 23,782 |
+| KU | 72 | 23,692 | 23,756 | 23,782 |
+| TR | 127 | 23,572 | 23,735 | 23,781 |
+| ABS | 30 | 23,702 | 23,751 | 23,787 |
+
+The whole spread is **334 characters**, which is the instruction block and the
+question line varying while the budget holds -- `evidenceRoom = maxChars -
+instruction - questionLine - separators - header`. The carried size is a function
+of the budget and not of the route, exactly as `fitToBudget`'s fixed priority order
+requires.
+
+### 13.13.8 What the measurement settles, and what it hands forward
+
+The model receives **about 23,740 characters** of evidence against **about
+506,338** offered -- **4.7%**.
+
+`fitToBudget` truncates with `truncateCodePointSafe(evidenceText, evidenceRoom)`,
+which takes a **prefix**. So the model reads the **first** turns in admission
+order.
+
+The size of that prefix in turns is an estimate, and the estimate is bounded on
+both sides. The run's raw evidence is **144.24 characters per turn** (253,168,815
+characters over 1,755,133 turns), so 23,740 carried characters is at most **165**
+turns; the renderer adds a `N. ` index and a blank-line separator to every turn, so
+the formatted cost per turn is higher and the true figure is lower -- roughly
+**155 to 165**. The exact count is not carried, and that is a further refinement
+this section does not make.
+
+So the model reads roughly the first **160** of the roughly **3,496** median turns
+offered -- **4.69%** of the evidence, on every question.
+
+That converts §13.11.5's ranking question into a statement with a number in it:
+
+> **Is the gold turn inside the top ~160 of ~3,500, by admission order?**
+
+A ranker that leaves the gold turn below that position loses the question no matter
+how complete retrieval was, and §13.11's reading already established that retrieval
+is complete (minimum 3,016 turns, none empty). This is now the campaign's binding
+constraint, and it is measurable -- but only against gold-turn attribution, which
+this dataset does not carry on this arm (§13.11.5, §13.13.4).
+
 
