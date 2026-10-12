@@ -40,7 +40,7 @@ import urllib.error
 import urllib.request
 
 REPO = "AgentiX-E/cortex"
-WORKFLOW = "benchmark.yml"
+WORKFLOW = "benchmark-cortex-memory.yml"
 
 # The configuration registered in `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3,
 # held constant. These values are not free parameters of this script: §10 fixed them

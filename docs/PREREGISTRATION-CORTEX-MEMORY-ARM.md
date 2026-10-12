@@ -2944,3 +2944,43 @@ would make that ratio a fact about two units.
 `relevanceSignal: retrieval` at `relevanceTopK: 64`; the rendering, the ask, both
 thresholds, the ceiling and the session budget are all held at their §13 values, so a
 non-zero delta cannot be attributed to any of them.
+
+### 13.17.7 The first dispatch failed, one layer above everything this section tested
+
+The dispatch was rejected before it started:
+
+    422 Invalid Argument - failed to parse workflow: you may only define up to 25
+    `inputs` for a `workflow_dispatch` event
+
+`benchmark.yml` held 26 once this section's two inputs were added. Every layer §13.17.2
+built tested green — the arm option, the artifact field, the `env:` forward, the dispatch
+script's value, and `test_preregistration_config.py` comparing §10.3 against the dispatch in
+both directions — and the run could not start. That is the §7.3 side-channel defect one level
+up: the artifact would have described a configuration no run ever applied, because there was
+no run, and no test in this repository could see it because the limit is enforced by the
+platform rather than by any file under test.
+
+**The repair is structural rather than a subtraction.** The ceiling is per workflow, so the
+arm's inputs move to `benchmark-cortex-memory.yml` — fifteen in `benchmark.yml`, seventeen in
+the new one. Removing a knob instead would have re-created the defect this section exists to
+avoid: `cortex_memory_session_budget` and `cortex_memory_confidence` are the only two inputs
+§10.3 does not register, so they are the only two whose deletion costs nothing this run
+needs, and deleting either would have made a registered configuration un-dispatchable the
+next time it was wanted. The split is also the shape the dependency graph already has:
+this arm is the only entry point that can construct both of its sides, and it is the one job
+whose inputs are about the cognitive layer rather than about the reference pipeline.
+
+Two guards came out of the failure, both in `tools/__tests__/test_dispatch_inputs.py`:
+
+* every dispatch script is pinned to the workflow that declares **its** inputs, so
+  `dispatch-cortex-memory-ab.py` is no longer checked against a file that has nothing to do
+  with it — and the pinning is itself asserted, so an unmapped script fails rather than
+  skips;
+* **no `workflow_dispatch` in this repository may hold 25 inputs.** A workflow at the maximum
+  is one registration away from being un-dispatchable, and the failure that produces is a
+  `422` at dispatch time rather than a red test. `benchmark.yml` now declares fifteen and the
+  arm's own workflow seventeen, so both have room for the next registration.
+
+The artifact name is unchanged (`longmemeval-s-report`) on purpose: the fetch tooling resolves
+by name, and a second name would make every reader learn which workflow produced a report
+before it could download it.

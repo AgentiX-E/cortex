@@ -1,0 +1,329 @@
+# The cortex-memory A/B, in a workflow of its own rather than as a step of
+# `benchmark.yml`.
+#
+# ## Why the split, and it is not a preference
+#
+# `workflow_dispatch` accepts at most **25 inputs per workflow**. `benchmark.yml` had
+# 26 once §13.17 registered the relevance signal and the width it is built at, and
+# the dispatch that carried them was rejected:
+#
+#     422 Invalid Argument - failed to parse workflow: you may only define up to 25
+#     `inputs` for a `workflow_dispatch` event
+#
+# Every layer beneath the registration tested green -- the arm option, the artifact
+# field, the `env:` forward, the dispatch script's value -- and no run could start.
+# That is the §7.3 side-channel defect one level up: an artifact would have described
+# a configuration no run ever applied, because there was no run.
+#
+# The ceiling is per workflow, so the repair is structural rather than a subtraction.
+# The arm's inputs move here, where they have a budget of their own and neither the
+# B7 axis nor the main benchmark's can crowd them out. It is also the shape the
+# dependency graph already has: this arm is the only entry point that can construct
+# both of its sides (`cortex-eval` cannot see `CortexMemory`), so it is the one job
+# whose inputs are about the cognitive layer rather than about the reference pipeline.
+#
+# `tools/__tests__/test_dispatch_inputs.py` pins each dispatch script to the workflow
+# that declares its inputs, so "the key exists in one of the workflows" is not a
+# passing answer -- which is what makes this split safe rather than merely tidy.
+#
+# ## What the split does not change
+#
+# The job is the same job. The reader, the embedding cache and the pre-registered
+# scale are all unchanged, and the cache stays shared with the main benchmark through
+# `actions/cache` keyed on the dataset hash -- so the two workflows still grade
+# against one set of vectors, which is the property that makes their numbers
+# comparable at all.
+name: Benchmark (cortex-memory A/B)
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Sample size (0 = full 500-question dataset). The pre-registration fixes 0; the default is the main benchmark''s to keep an unconfigured dispatch cheap'
+        required: false
+        default: '60'
+        type: string
+      ablation_runs:
+        description: 'Number of runs per ablation (keep at 1: shared answer caches make extra runs redundant). The pre-registration fixes 4 for the arm''s own comparisons'
+        required: false
+        default: '1'
+        type: string
+      temperature:
+        description: 'Sampling temperature (0 = deterministic)'
+        required: false
+        default: '0'
+        type: string
+      model:
+        description: 'DeepSeek model id (deepseek-chat, deepseek-v4-pro, ...)'
+        required: false
+        default: 'deepseek-chat'
+        type: string
+      thinking:
+        description: 'Thinking mode: enabled or disabled (default disabled for shallow QA)'
+        required: false
+        default: 'disabled'
+        type: string
+      embedding_batch_interval_ms:
+        description: 'Minimum spacing between consecutive embedding requests in ms (0 = unpaced). Zhipu throttles on request rate, so a real run should pace'
+        required: false
+        default: '0'
+        type: string
+      cortex_memory:
+        description: 'Run the cortex-memory A/B: 1 = run it, 0 = nothing. Defaults to 1 because this workflow exists for that one arm -- the toggle is kept rather than removed so a dispatch can still ask for an empty run, and it is forwarded rather than hardcoded so the arm''s own reader (`readToggle`, which recognises only the literal 1) has a single source of truth'
+        required: false
+        default: '1'
+        type: string
+      cortex_memory_threshold:
+        description: 'Admission threshold for the cortex-memory arm, in [0, 1] (empty = 0, gates open). Above 1 admits nothing, below 0 admits everything, so the range is enforced rather than trusted'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_retrieval_threshold:
+        description: 'Retrieval threshold for the cortex-memory arm, in [0, 1] (empty = 0, answer whenever anything was admitted). Separate from cortex_memory_threshold because it gates a different decision: whether the admitted evidence is strong enough to ANSWER with, not whether a turn was worth keeping. Run 37094200823 published threshold=0 with an ungated abstention path and scored 6.40%, so the two are now recorded and set independently'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_session_budget:
+        description: 'Turn budget across all presented sessions for the cortex-memory arm (empty = unbounded)'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_source_trust:
+        description: 'Source trust stamped on every memory the cortex-memory arm admits, in [0, 1] (empty = 0.5, the value admission.ts hardcoded before the field existed). It is the ceiling of the value function confidence * sourceTrust * (0.5 + 0.5 * recency), so at the 0.5 default the reachable interval is [0, 0.5] and cortex_memory_retrieval_threshold can only be always-open or always-closed -- which is why run 37110579101 reproduced run 37094200823 digit for digit. Raising it to 1 makes threshold > 0.5 reachable'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_confidence:
+        description: 'Per-turn confidence signal the cortex-memory arm admits with: empty or none = no callback, so every admitted turn carries confidence 1 and the value function is constant for a fixed source trust; length = min(1, turn.length / 2000). This is the input that makes the retrieval interval populated rather than degenerate: without it, source trust alone fixes every admitted turn to one value, so cortex_memory_retrieval_threshold can only ever be always-open or always-closed (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 11). An unrecognised value is REJECTED rather than defaulted to none, because a run dispatched to introduce per-turn variation that silently ran the constant behaviour would publish an artifact reading as evidence that variation does not help'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_ask:
+        description: 'Instruction block the cortex-memory arm asks every route with: empty or route = each route own block (shipped behaviour); extractive = the reference pipeline two-line block applied everywhere, which still names the abstention token but never calls declining "expected and valid" (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13). This is section 13 single variable and a SEPARATE axis from cortex_memory_prompt_contract: a contract selects a rendering, an ask selects an instruction block, and the experiment requires them to move independently. Two routes are deliberately unaffected and the artifact says so: multi-session and the flat path already ask with the extractive block, so this option is a byte-identical no-op on them -- which matters because section 13 headline prediction is about multi-session. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to widen the ask that silently ran the shipped one would publish an unchanged result reading as evidence the ask does not matter'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_evidence_turns:
+        description: 'Turns of evidence each per-question record carries before reduction (section 13.12, re-valued by section 13.15): empty = unbounded, i.e. carry everything, which is the pre-13.12 behaviour; a positive integer = carry at most that many turns per record and mark the reduction. Run 38003036421 completed all four runs of all five hundred questions and then died writing the JSON with RangeError: Invalid string length, because the evidence is carried unbounded and carried twice -- once in ablation.featureRetrievedContexts and once as questions[].turns[].text. The bound reduces what is CARRIED and never what is MEASURED: evidenceTurns and evidenceChars are recorded unreduced on every record, so section 13.11.3 two predictions survive any bound. Off by default so no prior artifact changes meaning, and a value below 1 is REJECTED rather than clamped, because a bound of 0 would carry no evidence while the record still reported evidenceTurns > 0 -- making a reduced record read as one whose reader was shown nothing. Section 13.15 raised the dispatched value from sixteen to two hundred and fifty-six because the roster now holds the CARRIED evidence, which the prompt budget already bounds; sixteen would have cut an already-bounded set and destroyed the identities section 13.11.5 needs, so the bound is now a writability guard rather than a measurement'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_relevance:
+        description: 'Relevance signal the cortex-memory arm spends its prompt budget with (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.17): empty or none = the budget buys the first turns that arrived, which is the shipped behaviour and what every prior artifact was produced with; retrieval = the budget buys the turns the arm own bi-encoder ranks highest for the question. Section 13.16 is why this is the variable and nothing else is: run 38142407062 measured that the prompt carried 4.69% of a 506338-character mean context and that the gold turn was inside what the model read for 11.6% of questions, against a ceiling of 92.1% -- the share of questions whose answer turn is in the bundle at all (MEASURE-B2-RECALL-CURVE.md). The budget has been shown to be neither too small nor too large; whether it buys the turns that matter has not been measured. The signal is built from the question text and its context ONLY, never from the answer key, and the index type makes that structural rather than promised. An unrecognised value is REJECTED rather than defaulted to none, because a run dispatched to rank its turns that silently ran arrival order would publish a delta reading as evidence that ranking does not help -- the one conclusion this dispatch exists to test'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_relevance_top_k:
+        description: 'Turns per question the relevance index scores (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.17): empty = 64, the index default, chosen at or above the knee of a measured recall curve (recall 0.921 at k = 50, curve already flattened -- MEASURE-B2-RECALL-CURVE.md); a positive integer = that width. Recorded beside the signal because the two are different claims: the name says a ranking was applied, the width says how much of the context it could speak about. A width at or above roughly 167 leaves the width inert relative to the budget (the prompt holds about that many turns at 24000 characters, so every scored turn survives selection); below that the scored set is genuinely the whole selection. A value below 1 is REJECTED rather than clamped, because a width of 0 scores nothing, which leaves every turn at the unscored floor -- the selection degenerates to arrival order while the artifact config line still claimed a ranking'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_prompt_contract:
+        description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+jobs:
+  cortex-memory-ablation:
+    name: cortex-memory A/B
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --requirement tools/requirements-dev.txt
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Built and not `pnpm check`ed. The gate is `Verify`'s job and runs on every
+      # push, so repeating it here would spend the arm's wall-clock budget on a
+      # result already published beside it. What this workflow needs is the compiled
+      # `dist` the bench entry points import.
+      - name: Build packages
+        run: pnpm build
+
+      - name: Download LongMemEval-S
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+
+      # Keyed on the dataset hash, which is the same key `benchmark.yml` uses -- so
+      # whichever workflow runs first pays for the vectors and the other finds them
+      # cached. This is the property that keeps the two reports comparable, and it is
+      # why the restore has to happen before either side of the A/B touches a turn.
+      - name: Restore embedding cache
+        id: restore-embedding
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
+          restore-keys: |
+            longmemeval-embedding-
+
+      # A separate step rather than a branch inside the main benchmark's, because the
+      # two systems cannot be constructed by the same entry point: `cortex-eval`
+      # cannot see `CortexMemory`, and the arrow in the dependency graph runs the
+      # other way. `cortex-memory`'s own bench entry builds BOTH sides and calls
+      # `runCortexMemoryArm`, which is what keeps the pair inside a single
+      # `runAblationReport` call.
+      - name: Run cortex-memory A/B
+        if: github.event.inputs.cortex_memory == '1'
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          # Read from the input rather than hardcoded to '1'.
+          #
+          # The `if:` above and this variable are two statements of the same fact, and
+          # a duplicate statement is one that can disagree. Hardcoded, this line says
+          # "the arm is on" unconditionally; the arm's own reader is strict
+          # (`readToggle`: only the literal `'1'` is on, and a present-but-unrecognised
+          # value is OFF), so a future dispatch that flips the toggle's spelling would
+          # have the step run while the arm silently skipped, printing
+          # `cortex-memory arm skipped` into a green run -- or the reverse, which is
+          # the §13 failure where two arms came out byte-identical and the verdict was
+          # about the dispatch rather than the feature.
+          CORTEX_MEMORY: ${{ github.event.inputs.cortex_memory }}
+          CORTEX_MEMORY_THRESHOLD: ${{ github.event.inputs.cortex_memory_threshold }}
+          CORTEX_MEMORY_RETRIEVAL_THRESHOLD: ${{ github.event.inputs.cortex_memory_retrieval_threshold }}
+          CORTEX_MEMORY_SESSION_BUDGET: ${{ github.event.inputs.cortex_memory_session_budget }}
+          # The ceiling, forwarded for the same reason as the two thresholds. Note that
+          # this variable is what makes `cortex_memory_retrieval_threshold` mean
+          # anything above 0.5: without it the arm can only express "always answer"
+          # and "never answer", so a dispatch that set a midpoint retrieval threshold
+          # while silently leaving the ceiling at its default would run a configuration
+          # it believes is gated and is not. That is the §7.3 side-channel defect --
+          # the run completes and the artifact describes the intent rather than the
+          # code.
+          CORTEX_MEMORY_SOURCE_TRUST: ${{ github.event.inputs.cortex_memory_source_trust }}
+          # The per-turn confidence signal, and the reason the two variables above are
+          # not sufficient on their own. `sourceTrust` raises the CEILING of the value
+          # function; it does not vary the value, because a fixed source trust still
+          # multiplies a `confidence` of 1 for every admitted turn. The result is a
+          # reachable interval that is populated in appearance only -- every threshold
+          # inside it is the same experiment. This variable is what supplies the
+          # variation, and PREREGISTRATION-CORTEX-MEMORY-ARM.md 11 records that the
+          # pair together is what makes a cut mean anything.
+          CORTEX_MEMORY_CONFIDENCE: ${{ github.event.inputs.cortex_memory_confidence }}
+          # §12.5's single variable, forwarded for the same reason as every variable
+          # above: `readPromptContract` rejects an unrecognised value, so a dispatch
+          # that named a rendering while this line was absent would run the baseline,
+          # complete successfully, and publish a `b-to-f-repairs` of zero reading as
+          # evidence that the rendering does not help.
+          #
+          # It is the only variable that changes what the model is shown. The five
+          # above are held at their dispatched values on purpose: if this switch also
+          # moved a gate, a non-zero MR/TR could not be attributed to either change,
+          # and the run would answer neither question.
+          CORTEX_MEMORY_PROMPT_CONTRACT: ${{ github.event.inputs.cortex_memory_prompt_contract }}
+          # Section 13's variable, passed the same way. It is a second axis rather than
+          # a value of the contract above: the contract selects a rendering, this
+          # selects an instruction block, and the ask experiment holds the rendering at
+          # whatever the dispatch names. Passed unconditionally because the product
+          # defaults a blank to `route`, and defaulting here instead would put the same
+          # default in two places -- which is how the two would eventually disagree.
+          CORTEX_MEMORY_ASK: ${{ github.event.inputs.cortex_memory_ask }}
+          # Section 13.17's variable, passed the same way and for the same reason: the
+          # product defaults a blank to `none` (the arrival-order prefix every prior
+          # artifact was produced with), and defaulting here instead would put the same
+          # default in two places -- which is how the two would eventually disagree
+          # about whether a run had ranked anything.
+          #
+          # It is a SELECTION input, not an admission input: `confidenceFor` decides
+          # which turns survive the write gate and this decides which admitted turns
+          # the prompt budget buys, so moving it cannot change an admission decision.
+          # That separation is what keeps a non-zero delta attributable to one change.
+          CORTEX_MEMORY_RELEVANCE: ${{ github.event.inputs.cortex_memory_relevance }}
+          # The width the index is built at, on its own line rather than folded into
+          # the signal because the two are different claims: the name says a ranking
+          # ran and this says how much of the context it scored. Passed unconditionally
+          # for the reason above -- the arm defaults a blank to the index's own default,
+          # and a second copy of that default here is how the two would drift.
+          CORTEX_MEMORY_RELEVANCE_TOP_K: ${{ github.event.inputs.cortex_memory_relevance_top_k }}
+          # Section 13.12's bound, passed the same way. It is what keeps the run from
+          # dying at the JSON write: run 38003036421 graded all four runs of all five
+          # hundred questions and then lost the whole measurement to
+          # `RangeError: Invalid string length`. Passed unconditionally because the arm
+          # defaults a blank to unbounded, and defaulting here instead would put the
+          # same default in two places.
+          CORTEX_MEMORY_EVIDENCE_TURNS: ${{ github.event.inputs.cortex_memory_evidence_turns }}
+          # The pre-registered scale. `limit: 0` is the full 500 questions and
+          # `ablation_runs: 4` is the run count the pre-registration fixes; both are
+          # read from the same dispatch inputs the job already carries, so a dispatch
+          # that sets them at the workflow level cannot disagree with this step.
+          #
+          # RUNS is deliberately NOT forwarded. The arm reads `ABLATION_RUNS`, not
+          # `RUNS`: every ablation shares one answer cache across its two arms, so a
+          # second run replays the first run's cached answers and costs full wall-clock
+          # for a byte-identical report.
+          LIMIT: ${{ github.event.inputs.limit || '60' }}
+          ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
+          TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
+          # The reader is shared by both sides, so the model and the thinking mode have
+          # to reach this step too. Omitting them would run the arm's two sides on a
+          # different reader from the primary benchmark's, which makes the two reports
+          # incomparable for the one reason the pre-registration pins.
+          DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
+          DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
+          EMBEDDING_BATCH_INTERVAL_MS: ${{ github.event.inputs.embedding_batch_interval_ms || '0' }}
+        run: pnpm --filter @agentix-e/cortex-memory bench
+
+      - name: Save embedding cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
+
+      # The artifact name is deliberately the one `benchmark.yml` uses. The fetch
+      # tooling resolves by name, and a run of either workflow is "the report of the
+      # measurement I just dispatched" -- so a second name would make every reader
+      # learn which workflow produced it before it could download it.
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: longmemeval-s-report
+          # Glob the whole report set instead of enumerating filenames: an explicit
+          # list silently dropped the P3b entity-graph ablation report (it ran, but was
+          # never uploaded), which would have made an ablation result unrecoverable had
+          # the run been the only record.
+          path: |
+            packages/cortex-memory/benchmark-*.md
+            packages/cortex-memory/benchmark-*.json
+            packages/cortex-memory/benchmark-error.log
+          retention-days: 30

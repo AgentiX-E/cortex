@@ -19,6 +19,20 @@ __pycache__/
 # A glob covers the whole family and, more importantly, covers the next artifact
 # too -- which is what an enumeration cannot do, and what went wrong here.
 benchmark-*
+# ...and one negation, because a glob without one is the previous defect mirrored.
+#
+# `benchmark-*` carries no slash, so it matches at every depth -- including
+# `.github/workflows/benchmark-cortex-memory.yml`, the workflow that runs the
+# cognitive arm. The split commit added the file, `git add -A` reported nothing,
+# and the workflow that a dispatch had just been pointed at did not exist in the
+# repository. The enumeration missed the next artifact; the glob swallowed the next
+# source file, and both are the same mistake: a rule about artifacts applied to a
+# name instead of to a place.
+#
+# The negation is scoped to the one directory where a `benchmark-*` file is source,
+# rather than narrowing the glob back to today's three suffixes -- narrowing would
+# restore the original defect the moment a fourth artifact appears.
+!.github/workflows/benchmark-*
 # Probe scratch. `tools/run-program.py --keep` writes improvised programs here so a
 # probe survives the session that wrote it instead of living in scrollback.
 #
