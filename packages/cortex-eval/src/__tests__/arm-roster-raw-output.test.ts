@@ -31,6 +31,7 @@ import { describe, expect, it } from 'vitest';
 
 import { runCortexMemoryArm } from '../bench-memory-arm.js';
 import { exactMatchScorer } from '../metrics.js';
+import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 import type { AblationResult, Answer, BenchmarkDataset, MemorySystem } from '../types.js';
 
 /**
@@ -101,6 +102,8 @@ async function runArm(
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
     },
   });
   return result as unknown as {

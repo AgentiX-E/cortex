@@ -125,6 +125,35 @@ WORKFLOW = "benchmark.yml"
 # `cortex_memory_ask` is therefore held at §13's value rather than reverted to the shipped
 # per-route blocks. Reverting it would move a second variable alongside the capture and
 # make a non-empty `turns` on MR unattributable to either.
+#
+# §13.16 read the run that capture made possible (38142407062) and it closed the evidence
+# question in one direction and opened it in another. Closed: the capture works, the record
+# now carries the turns the model actually read, and the offer is reported beside them --
+# `evidenceTurns` and `admittedTurns` are two numbers rather than one collapsed value. Open:
+# the *selection* was measured and it is wrong in kind, not in degree. The gold turn was
+# inside the delivered context for **11.6%** of questions (14 of 121) while the ceiling is
+# **92.1%** -- the share of questions whose answer turn is in the bundle at all
+# (`MEASURE-B2-RECALL-CURVE.md`). The prompt spent its whole budget, carried 4.69% of a
+# 506338-character mean context, and bought the wrong 4.69%, because nothing beneath the
+# builder ranked anything and arrival order on this arm is the dataset's haystack order.
+#
+# So §13.17 registers the selection signal as the variable, and it is the only one this
+# dispatch moves. `cortex_memory_relevance: 'retrieval'` builds an index over each
+# question's own context from the arm's own bi-encoder and spends the budget on the turns
+# that rank highest -- the same ranking the reference pipeline already uses, so the two
+# sides answer from one notion of relevance rather than two. The signal reads the question
+# text and its context and **never the answer key**; `relevance-index.ts` makes that
+# structural (the ground truth is not a parameter of the case type) and a test measures it.
+#
+# `cortex_memory_relevance_top_k` is sent explicitly at `64` rather than left blank, and the
+# reason is the guard in `tools/__tests__/test_preregistration_config.py`: a value that
+# never reaches the environment is a value §10.3 cannot be compared against, so a blank here
+# would let the run apply a default no registration names. Sixty-four is at or above the
+# knee of the measured recall curve (`recall = 0.921` at `k = 50`, already flattened).
+#
+# Every other input is held at its §13 value: this run varies the selection and nothing
+# else. The rendering and the ask stay as dispatched so a non-zero delta cannot be
+# attributed to a change in what the prompt says rather than in which turns it says it about.
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_threshold": "0",
@@ -133,6 +162,8 @@ INPUTS = {
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
     "cortex_memory_ask": "extractive",
     "cortex_memory_evidence_turns": "256",
+    "cortex_memory_relevance": "retrieval",
+    "cortex_memory_relevance_top_k": "64",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

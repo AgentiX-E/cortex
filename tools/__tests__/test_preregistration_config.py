@@ -63,6 +63,8 @@ CONCEPT_TO_INPUT = {
     "promptContract": "cortex_memory_prompt_contract",
     "ask": "cortex_memory_ask",
     "evidenceTurnsPerRecord": "cortex_memory_evidence_turns",
+    "relevanceSignal": "cortex_memory_relevance",
+    "relevanceTopK": "cortex_memory_relevance_top_k",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
     "temperature": "temperature",

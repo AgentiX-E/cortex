@@ -66,6 +66,7 @@ import {
   serializeEmbeddingCache,
   snapshotEmbeddingCache,
 } from './retrieval.js';
+import { DEFAULT_RELEVANCE_TOP_K } from './relevance-index.js';
 import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
@@ -187,6 +188,43 @@ export type CortexMemoryArmOptions = {
    * run's behaviour is unchanged and a caller must opt into a bound.
    */
   evidenceTurnsPerRecord: number;
+  /**
+   * Whether the prompt budget is spent on retrieval-ranked turns, and by what.
+   *
+   * §13.16's single remaining variable. Run `38142407062` established that the
+   * feature side's loss is not the size of the budget: the prompt carried 4.69% of a
+   * 506,338-character mean context (`§13.13`) and the gold turn sat inside what the
+   * model read for 11.6% of questions, against a ceiling of 92.1% -- the share of
+   * questions whose answer turn is in the bundle at all
+   * (`MEASURE-B2-RECALL-CURVE.md`). Everything else about the budget has been
+   * measured; whether the turns it spends on are the turns that matter has not.
+   *
+   * A signal *name* rather than a callback, for the reason `confidenceSignal` gives:
+   * the arming is "ranked or not", the callback itself lives in
+   * `cortex-eval/src/relevance-index.ts` where it can be tested, and the CLI is
+   * excluded from coverage -- so an option taking a function would move the signal
+   * into the one file no test can reach. `bench-arm-options.ts` records that
+   * defect.
+   *
+   * Defaults to `none`, i.e. the arrival-order prefix every prior run used, so every
+   * prior artifact's meaning is unchanged.
+   */
+  relevanceSignal: string;
+  /**
+   * How many turns per question the relevance index scores.
+   *
+   * Paired with `relevanceSignal` rather than folded into it, because the two are
+   * different claims: the name says a ranking was applied, and this says how much of
+   * the context the ranking could speak about. `MEASURE-B2-RECALL-CURVE.md` measured
+   * `recall = 0.921` at `k = 50` with a flattened curve, so a width at or above that
+   * knee is what makes the ranking complete rather than partial -- and a run reported
+   * only by name would make a width of `8` and a width of `64` look like one
+   * experiment.
+   *
+   * Defaults to the index's own default, so the CLI does not carry a second copy of
+   * the number.
+   */
+  relevanceTopK: number;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -199,6 +237,23 @@ const CONFIDENCE_SIGNALS = {
 
 /** The signal a run gets when it does not name one. */
 const DEFAULT_CONFIDENCE_SIGNAL = CONFIDENCE_SIGNALS.none;
+
+/**
+ * The relevance signals `CORTEX_MEMORY_RELEVANCE` accepts, and what each supplies.
+ *
+ * `none` is the arrival-order prefix and `retrieval` is `buildRetrievalRelevanceIndex`
+ * over the arm's own embedding backend. Both are names, not functions, for the layering
+ * reason `CortexMemoryArmOptions.relevanceSignal` records.
+ */
+const RELEVANCE_SIGNALS = {
+  /** No callback: the budget buys the first turns that arrived. The pre-§13.17 behaviour. */
+  none: 'none',
+  /** Cosine against the question, from the same bi-encoder the reference pipeline uses. */
+  retrieval: 'retrieval',
+} as const;
+
+/** The signal a run gets when it does not name one. */
+const DEFAULT_RELEVANCE_SIGNAL = RELEVANCE_SIGNALS.none;
 
 const THRESHOLD_VARIABLE = 'CORTEX_MEMORY_THRESHOLD';
 const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
@@ -227,6 +282,27 @@ const PROMPT_CONTRACT_VARIABLE = 'CORTEX_MEMORY_PROMPT_CONTRACT';
 
 /** Names the instruction block the arm asks with (§13). */
 const ASK_VARIABLE = 'CORTEX_MEMORY_ASK';
+
+/**
+ * Names the relevance signal the prompt budget is spent under (§13.16).
+ *
+ * Its own variable rather than a reuse of `CORTEX_MEMORY_CONFIDENCE`, because the two
+ * move different decisions: confidence is an **admission** input (which turns survive
+ * the value gate) and this is a **selection** input (which admitted turns the budget
+ * buys). `cortex-memory/src/types.ts` states the same boundary from the product side --
+ * a signal that moved admissions would put two variables in a run whose whole value is
+ * that it has one.
+ */
+const RELEVANCE_VARIABLE = 'CORTEX_MEMORY_RELEVANCE';
+
+/**
+ * Names how many turns per question the relevance index scores.
+ *
+ * Separate from the signal for the reason the signal is separate from confidence: the
+ * name and the width are different claims, and a run that moved both would report a
+ * ranking whose extent is unknown.
+ */
+const RELEVANCE_TOP_K_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_TOP_K';
 
 /**
  * The contract a run gets when it does not name one.
@@ -301,6 +377,8 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       promptContract: DEFAULT_PROMPT_CONTRACT,
       ask: DEFAULT_ASK,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
+      relevanceSignal: DEFAULT_RELEVANCE_SIGNAL,
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
     };
   }
   return {
@@ -316,6 +394,8 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
+    relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
+    relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
   };
 }
 
@@ -582,6 +662,63 @@ function readEvidenceBound(raw: string | undefined): number {
 }
 
 /**
+ * Read the relevance signal name, rejecting anything unrecognised.
+ *
+ * Thrown rather than defaulted, and the direction is the opposite of `readToggle`'s for
+ * the reason `readConfidenceSignal` gives at length: an unrecognised *boolean* switch
+ * running the control arm is safe because the artifact's config line says so, while an
+ * unrecognised signal here would let a run dispatched to introduce a ranking publish a
+ * delta taken under arrival order. That artifact's own config line would read
+ * `relevanceSignal=none`, which is honest and arrives too late -- §13.16's reading of
+ * run `38142407062` had to reconstruct the applied configuration from a delta whose two
+ * sides differed by a variable the run never named.
+ *
+ * The accepted set is enumerated from `RELEVANCE_SIGNALS`, so adding a signal is a
+ * deliberate edit in one place and the error message lists what does exist.
+ */
+function readRelevanceSignal(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_RELEVANCE_SIGNAL;
+
+  const value = raw.trim();
+  const known = Object.keys(RELEVANCE_SIGNALS);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${RELEVANCE_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised signal is rejected rather ` +
+        'than defaulted to "none": a run dispatched to rank the turns its budget buys ' +
+        'would otherwise run the arrival-order prefix, and its artifact would read as ' +
+        'evidence that ranking does not help.',
+    );
+  }
+  return value;
+}
+
+/**
+ * Read how many turns per question the relevance index scores.
+ *
+ * Strict, for the same class of reason as `readEvidenceBound`: the unit is turns, so a
+ * fraction or a non-number describes nothing, and `0` is the dangerous value rather than
+ * the harmless one. At `0` the retrieval returns no hits, every turn receives the
+ * unscored floor, the selection degenerates to arrival order -- and the artifact's config
+ * line says `relevanceSignal=retrieval`. That is a run reporting a treatment it did not
+ * administer, which is the defect every "reject rather than default" guard in this file
+ * exists to prevent.
+ */
+function readRelevanceTopK(raw: string | undefined): number {
+  const value = readNumeric(raw);
+  if (value === undefined) return DEFAULT_RELEVANCE_TOP_K;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${RELEVANCE_TOP_K_VARIABLE} must be a positive integer or unset, got ` +
+        `${JSON.stringify(raw)}. The unit is turns scored per question; a width of 0 ` +
+        'scores nothing, which leaves every turn at the unscored floor -- so the ' +
+        'selection would be arrival order while the config line claimed a ranking.',
+    );
+  }
+  return value;
+}
+
+/**
  * Read how many turns a session budget admits, defaulting to unbounded.
  *
  * The blank rule is `readNumeric`'s; `Infinity` is the honest default because
@@ -675,6 +812,12 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
     ask: options.ask,
     askRoutes: ASK_ROUTES[options.ask] ?? [],
+    // Projected rather than inferred from the signal name, for the reason the two
+    // thresholds are projected verbatim: the width is a separate claim about the same
+    // run, and a reader recomputing it from the name would have to know this module's
+    // constants to do it.
+    relevanceSignal: options.relevanceSignal,
+    relevanceTopK: options.relevanceTopK,
   };
 }
 

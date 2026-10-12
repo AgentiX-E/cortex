@@ -691,6 +691,37 @@ forwarded into a step's `env`. Three injections were run against it:
   discovered, because a bound that decides what the artifact contains is a measurement
   decision, and a measurement decision taken after the fact is what pre-registration
   exists to prevent.
+* `relevanceSignal: retrieval` — **added by §13.17, and it is the selection variable.**
+  §13.16 read run `38142407062` and found the prompt spending its entire budget correctly
+  while buying the wrong turns: the delivered context contained the gold turn for **11.6%**
+  of questions (14 of 121) against a ceiling of **92.1%**, the share of questions whose
+  answer turn is in the bundle at all. The budget itself is settled arithmetic — 24,000
+  characters against a capacity of roughly one hundred and sixty-seven turns, carrying
+  4.69% of a 506,338-character mean context — so nothing about its size is left to vary.
+  What is left is **which** turns it buys, and until this registration nothing beneath the
+  prompt builder ranked anything: on this arm arrival order is the dataset's haystack
+  order. `retrieval` builds an index over each question's own context with the arm's own
+  embedding backend, using the same bi-encoder the reference pipeline retrieves with, so
+  the two sides answer from one notion of relevance rather than two. Selection is by
+  relevance and **presentation stays chronological**, because a prompt printed in relevance
+  order would make relative-time and knowledge-update questions unanswerable. The signal is
+  built from the question text and its context and never from the answer key: the case type
+  has no ground-truth parameter, so this is structural rather than promised, and
+  `relevance-index.test.ts` measures it by building two indices from cases that differ only
+  in an unread field.
+* `relevanceTopK: 64` — **added by §13.17.** The width the index scores at, registered
+  separately because the signal's name and the signal's extent are different claims: a
+  `retrieval` signal built at a width of `8` ranks almost nothing, and an artifact naming
+  only the signal would make that run and this one look like the same experiment.
+  `MEASURE-B2-RECALL-CURVE.md` measured `recall = 0.921` at `k = 50` with a curve that had
+  already flattened, so any width at or above the knee is complete for this dataset's
+  purpose and 64 is that with a margin for the six-question floor being an artifact of a
+  different sample. It is also below the budget's own capacity of roughly one hundred and
+  sixty-seven turns, which is the property that makes the width inert with respect to the
+  budget: every scored turn survives selection, so widening the index would reorder the
+  low-scoring turns rather than admit more high-scoring ones. Sent explicitly rather than
+  left blank for the reason `sourceTrust` is: a value that never reaches the environment is
+  a value this guard cannot compare against the registration.
 
   The value moved from sixteen to two hundred and fifty-six because §13.15 changed
   what the roster holds, and that is a change to what the bound protects rather than a
@@ -703,7 +734,6 @@ forwarded into a step's `env`. Three injections were run against it:
   this arm's measured one hundred and forty-four characters per turn, so it is a
   writability guard rather than a measurement, and if it ever bites the marker and
   `evidenceReduction` both record it rather than the roster silently losing turns.
-
 > **Amended by §12.5, in place rather than below**, for the reason §10.9's note gives:
 > `registered()` reads the list and stops at the first blank line, so an amendment note
 > placed between the heading and the list would silently disable the guard. This entry is
@@ -2810,3 +2840,107 @@ in both, census clean, pre-registration guard 300 passed with 20 subtests.
 | P1 | Repair the line/turn unit (§13.16.6), as its own registered change |
 | P1 | Per-turn gold attribution, to replace the session-index rule with a turn-level measurement |
 | P2 | The in-band marker's ambiguity: a context line that happens to carry the exact marker shape would be read as a reduction |
+
+## 13.17 The budget learns which turns matter, and what that is registered to change
+
+§13.16 left exactly one variable open, and it is the one §13.14 predicted the whole loss
+turns on. The prompt's budget is settled: 24,000 characters against a context whose mean is
+506,338, carrying 4.69% of it. Its *size* is therefore not a live question — §13.13 measured
+that enlarging it would buy a better chance of hitting the answer by luck — and what
+remained is that it bought the **wrong** turns. Until this section nothing beneath the
+builder ranked anything at all, so the prefix it spent the budget on was the dataset's
+arrival order.
+
+### 13.17.1 The finding this registers against, in one number
+
+The gold turn was inside the evidence the model actually read for **11.6%** of questions —
+14 of 121 — with a ceiling of **92.1%**, the share of questions whose answer turn is in the
+bundle at all (`MEASURE-B2-RECALL-CURVE.md`: `recall = 0.921` at `k = 50`, curve already
+flattened, six questions with no answer turn in the bundle). Both numbers come from run
+`38142407062`, and §13.16.3 records how they were read and cross-checked (121 of 121
+records agreed between the two independent paths).
+
+The gap is therefore not between what retrieval *could* find and what it *did* find — the
+ceiling is what the bundle offers — but between what the bundle offers and what the budget
+pays for. Eleven point six per cent against ninety-two point one per cent is the whole of
+the defect, and it is a selection defect rather than a budget, prompt or model defect.
+
+### 13.17.2 What was built
+
+A relevance index, built once per run before either side is graded, over each question's
+**own** context with the arm's **own** embedding backend. It reuses
+`retrieveTopKByQueries` — the same bi-encoder, the same fusion — so the ranking the feature
+side selects with and the ranking the reference pipeline retrieves with are one ranking
+rather than two that happen to agree. The prompt builder receives it as
+`CortexMemoryOptions.relevanceFor`, spends the budget on the highest-ranking turns, and
+presents them in **arrival order**, because a prompt printed in relevance order would make
+relative-time and knowledge-update questions unanswerable — the same reason
+`selectSessionBudget` pays for a second sort.
+
+The width is registered rather than chosen at dispatch time (**§10.3**), and every layer of
+its plumbing is guarded: the arm option (`readRelevanceSignal`, `readRelevanceTopK`), the
+artifact (`MemoryArmConfig.relevanceSignal`, `relevanceTopK`, rendered on the config line),
+the workflow input and its `env:` forward, and the dispatch's own value — which
+`tools/__tests__/test_preregistration_config.py` compares against §10.3 in both directions.
+
+### 13.17.3 The signal is non-oracle, and that is a type rather than a promise
+
+`RelevanceCase` has two fields: a question and its context. The ground truth is **not a
+parameter**, so "the index was sharpened with the answer key" is not a mistake a later edit
+can make quietly — the type would have to change first. `relevance-index.test.ts` measures
+the property end to end: two cases that differ only in an unread field produce one index,
+including one `scoredPairs` count.
+
+This matters more here than at any earlier layer, because a signal derived from the answer
+key would not look wrong in any artifact. It would make `gold-in-carried` approach 100% and
+the accuracy delta would improve, and both numbers would be true statements about a run that
+graded itself.
+
+### 13.17.4 The predictions this registers, so the repair is falsifiable
+
+Both are read from the next run's artifact, and neither is a restatement of "the code
+changed".
+
+* **P1 — `gold-in-carried` rises to at least 0.80, point estimate 0.92.** The mechanism is
+  arithmetic: the prompt holds roughly 167 turns at 24,000 characters and the index scores
+  the top 64, so **every scored turn survives selection** and a gold turn that retrieval
+  places inside its top 64 is carried regardless of where it sits in arrival order. The
+  prediction is therefore `P(gold inside the index's top 64)` conditioned on the gold turn
+  passing admission. `MEASURE-B2-RECALL-CURVE.md` measured `0.921` at `k = 50` — a lower
+  width than this run's — so a reading materially below `0.80` falsifies the mechanism
+  rather than the arithmetic, and the first thing to check would be whether the index's
+  keys matched the admitted turns at all.
+* **P2 — the feature side's abstention rate falls below 80%, from 95.40%.** This is the
+  prediction that connects selection to the score. §13 established that the feature's
+  abstentions are the **model's** (`reason: "llm"`, `retrievalThreshold: 0` so the gate
+  never closed) and that 113 of 120 outputs were the bare `INSUFFICIENT_EVIDENCE` token —
+  the model was shown evidence and declined. If the evidence it is shown is the evidence the
+  question is about, a meaningful share of those declines should become answers. A run whose
+  `gold-in-carried` rises while the abstention rate does not isolates the loss to the model
+  rather than to retrieval, and that is a result about this arm rather than a failed repair.
+
+**What the pair jointly excludes.** P1 holding and P2 failing would retire the retrieval
+hypothesis for this arm — the evidence is present and the model still declines — which is
+precisely the state §13.11 opened and could not close, because the artifact could not say
+whether the evidence had been there. Either outcome narrows the remaining space, which is
+the property a registered prediction is supposed to have.
+
+### 13.17.5 What would still not be known afterwards
+
+The width is a single point. `64` is registered because it sits at or above a **measured**
+knee (`recall = 0.921` at `k = 50`), not because a sweep chose it, so the run cannot say
+where between `50` and the budget's capacity the reading stops improving. A later
+registration can sweep that axis, and this one deliberately does not: moving the width in
+the same run as the signal would make a null result unattributable to either.
+
+The unit defect of §13.16.6 is also still open and still registered. `evidenceTurns` counts
+**lines** of the joined context rather than turns, and the offer's count matches it on
+purpose so the ratio between offer and delivery stays meaningful. Repairing one side alone
+would make that ratio a fact about two units.
+
+### 13.17.6 Status
+
+**Registered and built; awaiting its dispatch.** The single variable is
+`relevanceSignal: retrieval` at `relevanceTopK: 64`; the rendering, the ask, both
+thresholds, the ceiling and the session budget are all held at their §13 values, so a
+non-zero delta cannot be attributed to any of them.

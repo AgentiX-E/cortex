@@ -1,0 +1,189 @@
+/**
+ * A relevance signal for the prompt budget, taken from the arm's own retrieval.
+ *
+ * ## The defect this closes
+ *
+ * `CortexMemory` spent its prompt budget on the first turns that arrived, and on
+ * this arm arrival order is the dataset's haystack order because nothing beneath it
+ * ranked anything. Run `38142407062` measured the consequence: across the fourteen
+ * gold sessions the arm had carried whole, the gold turn was inside the context the
+ * model actually read for **11.6%** of questions (14 of 121), against a ceiling of
+ * **92.1%** -- the share of questions whose answer turn is in the bundle at all
+ * (`MEASURE-B2-RECALL-CURVE.md`).
+ *
+ * So the gap was never the size of the budget. `§13.13` established that too: the
+ * budget carried 4.69% of a 506,338-character mean context, and enlarging it would
+ * have been a run that bought a better chance of hitting the answer by luck. The
+ * budget has to be spent on the right turns, and "right" is a *retrieval*
+ * measurement -- which is why `CortexMemoryOptions.relevanceFor` takes a callback
+ * rather than computing one: `cortex-memory` reads no embedding model, and the
+ * ranking the reference pipeline already uses is the ranking this index reuses.
+ *
+ * ## Why an index rather than a callback that retrieves
+ *
+ * `relevanceFor` is synchronous and the retrieval behind it is not. An index built
+ * before the ablation makes the callback a pure map lookup, which also makes the
+ * signal **auditable**: `questions` and `scoredPairs` describe exactly how much of
+ * the context carries a score, and they are read at build time rather than
+ * accumulated during a run.
+ *
+ * ## The non-oracle boundary, and why it is a type
+ *
+ * The signal is built from a question's **text** and its **context**. The ground
+ * truth is not a parameter of {@link RelevanceCase} and is not in scope anywhere in
+ * this module, so "the index was sharpened with the answer" is not a mistake a
+ * later edit can make quietly -- it would have to change the input type first.
+ * `relevance-index.test.ts` measures that property: two cases differing only in an
+ * unread field produce one index.
+ *
+ * The queries are the question alone. The reference pipeline also queries with
+ * LLM-written expansion phrases, and this deliberately does not: an expansion pass
+ * would put a model call inside the construction of the signal, so a run whose
+ * signal moved could no longer say whether the ranking or the model changed. One
+ * query per question is the cheap, deterministic instrument.
+ */
+import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import { retrieveTopKByQueries } from './retrieval.js';
+
+/**
+ * What a turn scores when the index holds no measurement for it.
+ *
+ * ## Why a number below every cosine rather than a sentinel
+ *
+ * `CortexMemory` orders turns by this value and offers the budget the largest
+ * fitting prefix of that order, so the floor's only job is to sort last. It cannot
+ * be `-Infinity`: `validateRelevance` rejects non-finite scores, on the ground that
+ * they order nothing and a sort over them describes the sort rather than the
+ * signal. It cannot be `0` either, and that is the subtle one -- `0` is a cosine
+ * two orthogonal turns genuinely earn, so a floor of `0` would make "the index
+ * never measured this turn" and "the index measured this turn as unrelated"
+ * indistinguishable in the ordering, which is the collapse this package has
+ * removed three times at other layers.
+ *
+ * `-2` is below the range of a cosine, which is `[-1, 1]`. The relation is asserted
+ * rather than the literal -- `relevance-index.test.ts` compares it against a turn
+ * the index scores at `-1` -- so raising it to `-1.5` would stay legal and lowering
+ * it to `-0.5` would fail.
+ *
+ * Not exported: the only thing a caller can do with it is compare a score against
+ * it, and the one caller that needs to (`relevanceFor` itself) is in this file. A
+ * caller asking "was this turn scored" has `scoredPairs` for the run and the
+ * ordering for the question, and an exported floor would invite a hand-written
+ * comparison against a constant this module is free to move.
+ */
+const UNSCORED_RELEVANCE = -2;
+
+/**
+ * How many turns per question the index scores when the caller names no width.
+ *
+ * `MEASURE-B2-RECALL-CURVE.md` measured `recall = 0.921` at `k = 50` on this
+ * dataset, with `gain = 0.000` -- the curve had already flattened, and `0.921` is
+ * its ceiling rather than a point on the way up (six questions have no answer turn
+ * in the bundle at all). So the interesting property of this constant is only that
+ * it is **at or above** the knee of a measured curve, and 64 is that with a margin
+ * for the six-question floor being an artifact of a different sample.
+ *
+ * It is deliberately not raised to the whole context. The prompt budget holds
+ * roughly 167 turns at 24,000 characters, so every scored turn survives selection
+ * as long as the scored set is smaller than the room -- and a scored set of 64 is
+ * therefore the *entire* selection on a question where retrieval found something.
+ * Widening past that would change which of the low-scoring turns are ordered rather
+ * than which high-scoring turns are admitted, at a linear cost in cosine work.
+ */
+export const DEFAULT_RELEVANCE_TOP_K = 64;
+
+/** One question, and the context it is asked against. Nothing else is read. */
+export type RelevanceCase = {
+  readonly question: string;
+  readonly context: readonly string[];
+};
+
+/** How to build the index. */
+export type RelevanceIndexOptions = {
+  /**
+   * How many turns per question carry a score. Defaults to
+   * {@link DEFAULT_RELEVANCE_TOP_K}.
+   *
+   * Validated by the arm's option reader rather than here, for the reason
+   * `bench-arm-options.ts` documents: a guard in this module would be a second
+   * place to be wrong about the same value, and the arm is the caller whose
+   * configuration reaches an artifact.
+   */
+  readonly topK?: number;
+};
+
+/**
+ * The built signal: a synchronous lookup, plus how much it measured.
+ *
+ * The two counts exist so a run can say what it built. They are facts about
+ * construction and not about any question, so they are read once, before the
+ * ablation, rather than accumulated during it -- a counter written by
+ * `relevanceFor` would make the callback stateful, and a stateful callback is one
+ * whose value depends on how many times the prompt builder happened to ask.
+ */
+export type RelevanceIndex = {
+  /** Cases the index covers. */
+  readonly questions: number;
+  /** `(question, turn)` pairs carrying a score. */
+  readonly scoredPairs: number;
+  /** The width the index was built at. */
+  readonly topK: number;
+  /**
+   * The score for `turn` under `question`, or {@link UNSCORED_RELEVANCE}.
+   *
+   * Total: an unknown question, a turn outside the top-k, and a turn from a
+   * different question's context all answer with the floor rather than throwing.
+   * That is what the selection needs -- it ranks every admitted turn, most of
+   * which a top-k index does not hold -- and it is why the miss is a value rather
+   * than an error.
+   */
+  relevanceFor(question: string, turn: string): number;
+};
+
+/**
+ * Build the index by retrieving each question's context against its own text.
+ *
+ * One retrieval per case, run before the ablation, against the same embedding
+ * backend and the same process-wide vector cache the two sides grade with. That
+ * sharing is not an optimisation: on this arm the reference pipeline embeds the
+ * same haystack turns, so a signal built from a different backend would make the
+ * selection and the baseline disagree about what "relevant" means while both are
+ * reported as one run.
+ *
+ * The order the hits come back in is discarded. `retrieveTopKByQueries` fuses
+ * several rankings by reciprocal rank and re-writes each score to the turn's
+ * maximum cosine, so the *score* it returns is already order-independent; this
+ * index keeps the score and drops the ranking, because the consumer's own selection
+ * is the only thing that should be ordering turns.
+ */
+export async function buildRetrievalRelevanceIndex(
+  embedding: EmbeddingModel,
+  cases: readonly RelevanceCase[],
+  options: RelevanceIndexOptions = {},
+): Promise<RelevanceIndex> {
+  const topK = options.topK ?? DEFAULT_RELEVANCE_TOP_K;
+  const scores = new Map<string, Map<string, number>>();
+  let scoredPairs = 0;
+
+  for (const entry of cases) {
+    const hits = await retrieveTopKByQueries(embedding, [entry.question], [...entry.context], topK);
+    const byTurn = new Map<string, number>();
+    for (const hit of hits) {
+      byTurn.set(hit.text, hit.score);
+    }
+    scoredPairs += byTurn.size;
+    // Last write wins for a repeated question. The arm asks each question once, so
+    // the case is not one the run creates; what matters is that the lookup stays a
+    // function of the question's text rather than of the case's position.
+    scores.set(entry.question, byTurn);
+  }
+
+  return {
+    questions: cases.length,
+    scoredPairs,
+    topK,
+    relevanceFor(question: string, turn: string): number {
+      return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
+    },
+  };
+}

@@ -376,6 +376,41 @@ export type MemoryArmConfig = {
    * `renderingRoutes` draws and for the same reason.
    */
   readonly askRoutes?: readonly string[] | undefined;
+  /**
+   * Which per-turn relevance signal the prompt budget was spent under.
+   *
+   * Written even at its default (`none`), for the reason every other field here is:
+   * omitting a defaulted value makes "this run spent its budget on arrival order"
+   * and "this artifact predates the field" the same bytes, and the two runs this
+   * field exists to separate differ in nothing else.
+   *
+   * ## What it separates, and why a name rather than a number
+   *
+   * The feature side's prompt carried 4.69% of a 506,338-character mean context
+   * (`§13.13`) and the gold turn sat inside what the model read for 11.6% of
+   * questions (`§13.16`). A budget is not usefully small or large; it is usefully
+   * spent on the right turns, and this field says whether anything ranked them.
+   *
+   * A `string` rather than an enum for the reason `confidenceSignal` gives: the arm
+   * validates it against its own list at parse time, and restating the union here
+   * would be a second definition to keep in step.
+   */
+  readonly relevanceSignal: string;
+  /**
+   * How many turns per question the relevance index scored.
+   *
+   * Recorded beside the signal because it is the same claim's second half: a
+   * `retrieval` signal built at a width of `8` ranks almost nothing, and an artifact
+   * naming the signal without the width would make that run and one built at `64`
+   * look like the same experiment.
+   *
+   * The width is what bounds the scored set, and the prompt budget holds roughly 167
+   * turns at 24,000 characters -- so at the default `64` every scored turn survives
+   * selection and the width does not interact with the budget at all. Stating it
+   * makes that argument checkable against the artifact rather than against the
+   * source.
+   */
+  readonly relevanceTopK: number;
 };
 
 /**
@@ -552,7 +587,17 @@ export function formatAblationReport(report: AblationReport): string {
         // compares carry IDENTICAL `threshold`, `retrievalThreshold`, `sourceTrust` and
         // `confidenceSignal`, so without this line their artifacts would be the same
         // bytes and a reader would have no way to see which prompt produced which score.
-        `, \`promptContract=${memoryArm.promptContract}\``,
+        `, \`promptContract=${memoryArm.promptContract}\`` +
+        // The budget's signal, on the same line and with the same always-present
+        // rule, because the run this field exists to make readable is one whose every
+        // other number on this line is identical to the run before it. `relevanceTopK`
+        // is appended only when a signal ran: the width is a property of the index, and
+        // the index does not exist without the signal -- rendering `64` beside
+        // `relevanceSignal=none` would describe a ranking the run never built.
+        `, \`relevanceSignal=${memoryArm.relevanceSignal}\`` +
+        (memoryArm.relevanceSignal === 'none'
+          ? ''
+          : `, \`relevanceTopK=${memoryArm.relevanceTopK}\``),
     );
 
     // The reachable set, rendered beside the name and for the reason §12.8 gives: the

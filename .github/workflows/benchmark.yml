@@ -118,6 +118,16 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_relevance:
+        description: 'Relevance signal the cortex-memory arm spends its prompt budget with (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.17): empty or none = the budget buys the first turns that arrived, which is the shipped behaviour and what every prior artifact was produced with; retrieval = the budget buys the turns the arm own bi-encoder ranks highest for the question. Section 13.16 is why this is the variable and nothing else is: run 38142407062 measured that the prompt carried 4.69% of a 506338-character mean context and that the gold turn was inside what the model read for 11.6% of questions, against a ceiling of 92.1% -- the share of questions whose answer turn is in the bundle at all (MEASURE-B2-RECALL-CURVE.md). The budget has been shown to be neither too small nor too large; whether it buys the turns that matter has not been measured. The signal is built from the question text and its context ONLY, never from the answer key, and the index type makes that structural rather than promised. An unrecognised value is REJECTED rather than defaulted to none, because a run dispatched to rank its turns that silently ran arrival order would publish a delta reading as evidence that ranking does not help -- the one conclusion this dispatch exists to test'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_relevance_top_k:
+        description: 'Turns per question the relevance index scores (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.17): empty = 64, the index default, chosen at or above the knee of a measured recall curve (recall 0.921 at k = 50, curve already flattened -- MEASURE-B2-RECALL-CURVE.md); a positive integer = that width. Recorded beside the signal because the two are different claims: the name says a ranking was applied, the width says how much of the context it could speak about. A width at or above roughly 167 leaves the width inert relative to the budget (the prompt holds about that many turns at 24000 characters, so every scored turn survives selection); below that the scored set is genuinely the whole selection. A value below 1 is REJECTED rather than clamped, because a width of 0 scores nothing, which leaves every turn at the unscored floor -- the selection degenerates to arrival order while the artifact config line still claimed a ranking'
+        required: false
+        default: ''
+        type: string
       cortex_memory_prompt_contract:
         description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
         required: false
@@ -363,6 +373,23 @@ jobs:
           # `route`, and defaulting here instead would put the same default in two places
           # -- which is how the two would eventually disagree.
           CORTEX_MEMORY_ASK: ${{ github.event.inputs.cortex_memory_ask }}
+          # Section 13.17's variable, passed the same way and for the same reason: the
+          # product defaults a blank to `none` (the arrival-order prefix every prior
+          # artifact was produced with), and defaulting here instead would put the same
+          # default in two places -- which is how the two would eventually disagree about
+          # whether a run had ranked anything.
+          #
+          # It is a SELECTION input, not an admission input: `confidenceFor` decides
+          # which turns survive the write gate and this decides which admitted turns the
+          # prompt budget buys, so moving it cannot change an admission decision. That
+          # separation is what keeps a non-zero delta attributable to one change.
+          CORTEX_MEMORY_RELEVANCE: ${{ github.event.inputs.cortex_memory_relevance }}
+          # The width the index is built at, on the line below rather than folded into the
+          # signal because the two are different claims: the name says a ranking ran and
+          # this says how much of the context it scored. Passed unconditionally for the
+          # reason above -- the arm defaults a blank to the index's own default, and a
+          # second copy of that default here is how the two would drift.
+          CORTEX_MEMORY_RELEVANCE_TOP_K: ${{ github.event.inputs.cortex_memory_relevance_top_k }}
           # Section 13.12's bound, passed the same way. It is what keeps the run from
           # dying at the JSON write: run 38003036421 graded all four runs of all five
           # hundred questions and then lost the whole measurement to

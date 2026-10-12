@@ -53,6 +53,7 @@ import {
   toMemoryArmConfig,
 } from '../bench-memory-arm.js';
 import { exactMatchScorer } from '../metrics.js';
+import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 import { formatAblationReport, type AblationReport } from '../report.js';
 import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } from '../types.js';
 
@@ -72,6 +73,8 @@ const GATE = {
   sourceTrust: 0.5,
   confidenceSignal: 'none',
   promptContract: 'abstention',
+  relevanceSignal: 'none',
+  relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
 } as const;
 
 /**
@@ -109,6 +112,8 @@ function formalizeArm(config: {
       confidenceSignal: 'none',
       promptContract: 'abstention',
       ask: 'route',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     }),
   });
@@ -155,6 +160,8 @@ async function runCortexMemoryArmReport(config: {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
@@ -516,6 +523,138 @@ describe('cortexMemoryArmOptions', () => {
   });
 });
 
+describe('relevance signal', () => {
+  it('defaults to none, which is the unranked behaviour', () => {
+    // The compatibility guarantee, and here it is load-bearing in a way the other
+    // defaults are not: the feature side's prompt budget has always been spent on a
+    // prefix of arrival order, so "unset" has to mean "keep doing that" or every
+    // artifact written before this field existed describes a different system.
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).relevanceSignal).toBe('none');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: '' }).relevanceSignal,
+    ).toBe('none');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: '  ' })
+        .relevanceSignal,
+    ).toBe('none');
+  });
+
+  it('accepts the retrieval signal, trimmed', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: 'retrieval' })
+        .relevanceSignal,
+    ).toBe('retrieval');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: 'retrieval\n' })
+        .relevanceSignal,
+    ).toBe('retrieval');
+  });
+
+  it('rejects an unrecognised signal rather than falling back to none', () => {
+    // The §13.16 mistake in the arm's own configuration. That run was dispatched to
+    // move the ask, the delta came back as the ask and not the rendering, and the
+    // artifact's `askRoutes` is what made the difference legible. Here the failure
+    // mode is worse than an unread field: a run dispatched to supply a ranking and
+    // silently running unranked publishes a delta that reads as evidence ranking
+    // does not help -- which is the one conclusion the next dispatch exists to test.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: 'ranked' }),
+    ).toThrow(/CORTEX_MEMORY_RELEVANCE/);
+    // The message names the accepted set, so the operator does not have to read the
+    // source to fix the typo.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: 'nope' }),
+    ).toThrow(/"retrieval"/);
+  });
+
+  it('defaults the index width to the measured knee', () => {
+    // `MEASURE-B2-RECALL-CURVE.md` measured `recall = 0.921` at `k = 50` with a
+    // flattened curve, so the default only has to sit at or above the knee. Asserted
+    // as a relation rather than as the literal, so a later revision that raises the
+    // default for a measured reason is not blocked by this test.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.relevanceTopK).toBe(DEFAULT_RELEVANCE_TOP_K);
+    expect(options.relevanceTopK).toBeGreaterThanOrEqual(50);
+  });
+
+  it('accepts a width override, and reports the one it will use', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_TOP_K: '8' })
+        .relevanceTopK,
+    ).toBe(8);
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_TOP_K: '' })
+        .relevanceTopK,
+    ).toBe(DEFAULT_RELEVANCE_TOP_K);
+  });
+
+  it('rejects a width that cannot describe a top-k', () => {
+    // Each of these completes a full run whose artifact names a ranking the run did
+    // not administer: `0` scores nothing (every turn reaches the floor, so the
+    // selection degenerates to arrival order while the config line says
+    // `retrieval`), `-1` and `NaN` are the same state reached by a typo, and a
+    // fraction is not a count of turns.
+    for (const bad of ['0', '-1', 'abc', '1.5']) {
+      expect(() =>
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_TOP_K: bad }),
+      ).toThrow(/CORTEX_MEMORY_RELEVANCE_TOP_K/);
+    }
+  });
+
+  it('projects the signal and its width into the memory arm config', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_RELEVANCE: 'retrieval',
+      CORTEX_MEMORY_RELEVANCE_TOP_K: '12',
+    });
+    const config = toMemoryArmConfig(options);
+    expect(config.relevanceSignal).toBe('retrieval');
+    expect(config.relevanceTopK).toBe(12);
+  });
+
+  it('renders the signal on the config line', () => {
+    // The config line is what a reader of the Markdown has, and a ranking whose
+    // presence is only visible in the JSON is the side channel §7.4 records. The
+    // line is produced by the real renderer, so this asserts production output.
+    const withSignal = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        ...GATE,
+        renderingRoutes: [],
+        ask: 'route',
+        askRoutes: [],
+        relevanceSignal: 'retrieval',
+        relevanceTopK: 64,
+      },
+    });
+    const withoutSignal = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: {
+        ...GATE,
+        renderingRoutes: [],
+        ask: 'route',
+        askRoutes: [],
+        relevanceSignal: 'none',
+        relevanceTopK: 64,
+      },
+    });
+
+    expect(withSignal).toContain('relevanceSignal=retrieval');
+    expect(withoutSignal).toContain('relevanceSignal=none');
+    expect(withSignal).toContain('relevanceTopK=64');
+  });
+});
+
 describe('source trust reaches the artifact', () => {
   it('projects the value into the memory arm config', () => {
     // The §7.4 defect in its third form: a gate configuration the code applies but
@@ -535,6 +674,8 @@ describe('source trust reaches the artifact', () => {
       sourceTrust: 1,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -670,6 +811,8 @@ describe('runCortexMemoryArm', () => {
           sourceTrust: 0.5,
           confidenceSignal: 'none',
           promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -683,6 +826,8 @@ describe('runCortexMemoryArm', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -709,6 +854,8 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       },
     });
     expect(markdown).toContain('Memory arm config');
@@ -741,6 +888,8 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention-evidence-blocks',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         renderingRoutes: ['abstention', 'multi-session', 'temporal'],
       },
     });
@@ -771,6 +920,8 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
@@ -799,6 +950,8 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       },
     });
 
@@ -910,6 +1063,8 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         ask: 'not-a-real-ask',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.askRoutes).toEqual([]);
@@ -930,6 +1085,8 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'not-a-real-contract',
         ask: 'route',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.renderingRoutes).toEqual([]);
@@ -948,6 +1105,8 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         ask: 'route',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.sessionBudget).toBeNull();
@@ -964,6 +1123,8 @@ describe('runCortexMemoryArm', () => {
         confidenceSignal: 'none',
         promptContract: 'abstention',
         ask: 'route',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config).toEqual({
@@ -973,6 +1134,8 @@ describe('runCortexMemoryArm', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
@@ -1277,6 +1440,8 @@ describe('the retrieval threshold', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -1375,6 +1540,8 @@ describe('blank values from unfilled dispatch inputs', () => {
       confidenceSignal: 'none',
       promptContract: 'abstention',
       ask: 'route',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     });
   });
@@ -1395,6 +1562,8 @@ describe('blank values from unfilled dispatch inputs', () => {
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -1723,6 +1892,8 @@ describe('the ask reaches the artifacts, in both renderings', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         renderingRoutes: [],
         ask: 'extractive',
         askRoutes: [],
@@ -1748,6 +1919,8 @@ describe('the ask reaches the artifacts, in both renderings', () => {
         sourceTrust: 0.5,
         confidenceSignal: 'none',
         promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         renderingRoutes: [],
         ask: 'route',
       },
@@ -1811,6 +1984,8 @@ describe('a bounded run reports what the bound dropped', () => {
           sourceTrust: 0.5,
           confidenceSignal: 'none',
           promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -1901,6 +2076,8 @@ describe('a bounded run reports what the bound dropped', () => {
           sourceTrust: 0.5,
           confidenceSignal: 'none',
           promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -1972,6 +2149,8 @@ describe('the prompt-carried evidence size reaches the record', () => {
     sourceTrust: 0.5,
     confidenceSignal: 'none',
     promptContract: 'abstention',
+    relevanceSignal: 'none',
+    relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
     renderingRoutes: [],
     ask: 'route',
     askRoutes: [],

@@ -316,6 +316,14 @@ export {
 
 export { serializeReportOrReduce } from './report-write.js';
 
+export {
+  buildRetrievalRelevanceIndex,
+  DEFAULT_RELEVANCE_TOP_K,
+  type RelevanceCase,
+  type RelevanceIndex,
+  type RelevanceIndexOptions,
+} from './relevance-index.js';
+
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
 export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-options.js';

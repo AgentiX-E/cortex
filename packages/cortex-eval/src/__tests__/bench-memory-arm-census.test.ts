@@ -39,6 +39,7 @@ import { runCortexMemoryArm } from '../bench-memory-arm.js';
 
 import type { MemoryArmConfig } from '../report.js';
 import { exactMatchScorer } from '../metrics.js';
+import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 import type { Answer, BenchmarkDataset, MemorySystem } from '../types.js';
 
 const GATE = {
@@ -48,6 +49,8 @@ const GATE = {
   sourceTrust: 0.5,
   confidenceSignal: 'none',
   promptContract: 'abstention',
+  relevanceSignal: 'none',
+  relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
 } as const;
 
 function dataset(): BenchmarkDataset {

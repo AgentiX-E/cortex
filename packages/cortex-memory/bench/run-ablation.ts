@@ -40,6 +40,7 @@
 import { createLlmFromEnv, createEmbeddingWithProvenanceFromEnv } from '@agentix-e/cortex-eval';
 import {
   NaturalLanguageMemorySystem,
+  buildRetrievalRelevanceIndex,
   createLlmJudge,
   judgeScorer,
   loadLongMemEval,
@@ -51,6 +52,9 @@ import {
   sampleInstances,
   toMemoryArmConfig,
   type BenchmarkProgress,
+  type RelevanceCase,
+  type RelevanceIndex,
+  type RelevanceIndexOptions,
 } from '@agentix-e/cortex-eval';
 import {
   CortexMemory,
@@ -196,6 +200,44 @@ async function main(): Promise<void> {
     structuredCache,
   });
 
+  // §13.17's single variable, built before either side is graded.
+  //
+  // The index is a retrieval measurement over the arm's own embedding backend, and it
+  // is built here rather than inside the arm because the prompt builder's relevance
+  // callback is synchronous while embedding is not: `cortex-eval` turns that into a
+  // pure table lookup (`relevance-index.ts`), and this is the call that fills the
+  // table.
+  //
+  // The cost is one retrieval per question, against the same process-wide vector
+  // cache the two graded sides read. That sharing is why the extra pass is not a
+  // doubling of the embedding bill: the reference pipeline embeds the same haystack
+  // turns, so the second reader finds them cached.
+  //
+  // The switch is read from the parsed arm options rather than decided here, for the
+  // reason `evidenceBound` is below: `bench/**` is outside the coverage boundary, so a
+  // decision written in this file is a decision no test can reach, and a value that
+  // never reaches the environment is a value the pre-registration guard cannot compare
+  // against `§10.3`.
+  // The cases the index is built over: each question with its own context, and nothing
+  // else. The type carries no ground-truth field, which is what makes the signal
+  // non-oracle structurally rather than by convention -- the answer key is not a value
+  // this call could reach even if a later edit wanted it to.
+  const relevanceCases: readonly RelevanceCase[] = dataset.questions.map((question) => ({
+    question: question.question,
+    context: question.context,
+  }));
+  const relevanceOptions: RelevanceIndexOptions = { topK: armOptions.relevanceTopK };
+  const relevance: RelevanceIndex | null =
+    armOptions.relevanceSignal === 'retrieval'
+      ? await buildRetrievalRelevanceIndex(embedding, relevanceCases, relevanceOptions)
+      : null;
+  if (relevance !== null) {
+    console.log(
+      `Relevance index: ${relevance.scoredPairs} scored (question, turn) pairs over ` +
+        `${relevance.questions} questions at topK=${relevance.topK}`,
+    );
+  }
+
   const feature = new CortexMemory({
     llm,
     now: Date.now(),
@@ -241,6 +283,12 @@ async function main(): Promise<void> {
     // `readAsk` validates it against the product's own list at parse time, throwing on
     // anything unrecognised. So the value IS one of the union's members here.
     ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
+    // §13.17's single variable, spread conditionally for the same reason as the two
+    // above: `none` IS the shipped behaviour (the budget buys the first turns that
+    // arrived) and is expressed by NOT passing the key, so a run that names no signal
+    // reproduces the previous prompt byte for byte. `relevance.index`'s lookup is a
+    // plain table read, so extracting it from its object does not lose a receiver.
+    ...(relevance === null ? {} : { relevanceFor: relevance.relevanceFor }),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this
@@ -276,7 +324,14 @@ async function main(): Promise<void> {
       // changes what every number below means. §13 dispatches the ask change to the
       // routes that carry the loss, and a reader with the log alone has to be able to
       // tell an ask change from a gate change.
-      `ask=${armOptions.ask}`,
+      `ask=${armOptions.ask}, ` +
+      // On the same line for the same reason, and it is the variable §13.16 left open:
+      // every other input to the prompt has been measured, and whether the budget buys
+      // the turns that matter has not. A reader comparing this run against
+      // `38142407062` needs both halves -- the signal and the width it was built at --
+      // because `retrieval` at a width of `8` and at `64` are different experiments.
+      `relevanceSignal=${armOptions.relevanceSignal}` +
+      (armOptions.relevanceSignal === 'none' ? '' : `, relevanceTopK=${armOptions.relevanceTopK}`),
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

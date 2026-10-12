@@ -40,6 +40,7 @@ import { describe, expect, it } from 'vitest';
 
 import { formatAblationReport, type AblationReport, type AbstentionReasons } from '../report.js';
 import type { AblationResult, Capability, Metrics, PerCapabilityPairedStats } from '../types.js';
+import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 
 const CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
 
@@ -123,6 +124,8 @@ function persistedCensusReport(
       sourceTrust: 0.5,
       confidenceSignal: 'none',
       promptContract: 'abstention',
+      relevanceSignal: 'none',
+      relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
     },
     runs,
     abstentionReasons: census,
