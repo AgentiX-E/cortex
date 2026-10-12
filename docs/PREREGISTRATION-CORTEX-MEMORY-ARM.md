@@ -2984,3 +2984,118 @@ Two guards came out of the failure, both in `tools/__tests__/test_dispatch_input
 The artifact name is unchanged (`longmemeval-s-report`) on purpose: the fetch tooling resolves
 by name, and a second name would make every reader learn which workflow produced a report
 before it could download it.
+
+## 13.18 What run 38250133116 read: the selection hypothesis holds, and the metric I read it with does not
+
+The run completed all 13 steps in 3 h 47 m and produced a 26.7 MB artifact. It is the first
+run of this arm whose feature side **beats** the reference pipeline. It is also the first whose
+headline metric I could not read honestly from the artifact alone, and that second fact is the
+more useful one.
+
+### 13.18.1 The headline, and it is not noise
+
+| Metric | `38142407062` (no signal) | `38250133116` (retrieval @ 64) |
+| --- | --- | --- |
+| baseline / feature | 44.90% / 6.40% | 44.00% / **54.30%** |
+| **Δ** | **−38.50pp** | **+10.30pp** |
+| McNemar p | — | **2.724e-3** (significant) |
+| discordant `b✓f✗` / `b✗f✓` | 192 / **0** | 130 / **184** |
+| feature abstention rate | 95.40% | **38.00%** |
+| per-run `llm` / `answered` | — | 195.5 / 304.5 |
+
+`b✗f✓ = 184` is the first non-zero repair count this arm has produced. Every earlier artifact
+had `b✗f✓ = 0` on every capability, which is what made the pre-§13 line dead rather than
+merely weak: a feature that repairs nothing is a feature with no mechanism.
+
+**P2 holds.** The registered prediction was an abstention rate below 80% against 95.40%, and
+the reading is 38.00%. The mechanism §13.17.4 argued for — the model declines because what it
+is shown is not what it was asked about — is consistent with a 57.4-point fall in declines.
+
+### 13.18.2 P1 cannot be read off this artifact, and the reason is a defect in my predicate
+
+The registered prediction was `gold-in-carried ≥ 0.80`. I computed it by testing whether a
+record's `groundTruth` appears as a substring of any carried turn, and the first pass returned
+`MR 47.1%`, `ALL 48.7%` against `31.4%` / `16.2%` on the same predicate over §13.16's run.
+
+**Those numbers are not usable, and the artifact says why in three lines.** The predicate is
+short-answer-blind:
+
+| question id | `groundTruth` | the "match" it found |
+| --- | --- | --- |
+| `3a704032` | `3` | `3. **Humidity:** Peace lilies prefer a humid environment…` |
+| `b46e15ed` | `2` | `2. What are your short-term and long-term goals for the product?` |
+| `0a995998` | `3` | `3. store reusable produce bags in a cool, dry place…` |
+
+A list marker is not an answer, and on a dataset where a large share of answers are small
+cardinalities the predicate is dominated by them. Tightening it — word boundaries, skipping
+list-item lines — removes these three and leaves the rest unverifiable, because "3 items" and
+"3 days" are the same token and only the *question* says which one is the answer.
+
+So P1 is **not falsified and not confirmed**. What can be said is the part that does not need
+the predicate: the feature side went from repairing nothing to repairing 184 questions, and the
+prediction that connected selection to score (P2) held.
+
+### 13.18.3 Why §13.16 got a number and this reading could not
+
+§13.16.3 reported `gold-in-carried = 11.6%` from the **same artifact family**, and the
+difference is the predicate, not the data. `§13.11.5`'s measurement is about the **gold turn** —
+the dataset's own annotation of which turn carries the answer — and §13.16 read it with a
+turn-level rule (the gold session's turns, resolved by session index) rather than by string
+matching a `groundTruth` field.
+
+That rule is exactly what `§13.16.7`'s P1 list calls "per-turn gold attribution, to replace the
+session-index rule with a turn-level measurement". This run makes that the **first** priority
+rather than a later one, and for a reason that is not tidiness: without it, P1 is a prediction
+that cannot be read, and a prediction that cannot be read cannot be falsified. A registration
+whose outcome is unmeasurable is the §7.3 defect pointed at the pre-registration itself.
+
+### 13.18.4 The deliverable readings, which need no predicate
+
+| Quantity | `38142407062` | `38250133116` |
+| --- | --- | --- |
+| offer, lines per question | — | mean **3,510.3** |
+| delivery, turns per question | median 141 | mean **152.3**, median 148, max 257 |
+| `promptChars` | 23,499–23,632 | mean **22,814**, median 23,076 |
+| evidence bound engaged | — | 7 records (256-turn guard) |
+
+The offer is now reported beside the delivery for the first time, which is what `§13.16.4`
+repaired: the artifact can say how much evidence existed and how much of it the model read.
+The delivery ratio is `152.3 / 3510.3 = 4.34%`, against §13.13's 4.69% — **the budget buys
+almost exactly as many turns as before**, and it buys different ones. That is the cleanest
+statement this run supports: the change is in *which* turns, not in how many.
+
+### 13.18.5 The capability split, and what it says about the next question
+
+| Capability | baseline | feature | `b✓f✗` | `b✗f✓` |
+| --- | --- | --- | --- | --- |
+| IE | 0.67% | **84.67%** | 0 | 126 |
+| KU | 0.00% | **73.61%** | 0 | 53 |
+| ABS | 100.00% | 93.33% | 2 | 0 |
+| MR | 85.95% | 31.40% | 67 | 1 |
+| TR | 66.93% | 22.05% | 61 | 4 |
+
+Two systems that are near-complementary, and the net is `+10.30pp`. The reference pipeline's
+IE and KU figures are the surprise — `0.67%` and `0.00%` against a 44% overall — and they say
+the two sides are not competing on the same questions: the feature side answers
+entity-attribute and knowledge-update questions the baseline abstains on, and abstains on the
+multi-session and temporal questions the baseline answers.
+
+**MR and TR are where the feature still loses**, and the loss is dominated by declines rather
+than by wrong answers: MR abstains on 56 of 121 (46.3%) and TR on 85 of 127 (66.9%). Whether
+those questions' evidence is present but unread is the question `§13.18.2` could not answer,
+and it is the same question per-turn gold attribution answers — which is why the two P0 items
+below are one item.
+
+### 13.18.6 Status, and the next two steps
+
+**Registered, measured, and read as far as the artifact honestly allows.** Gate: `pnpm check`
+exit 0, `test:tools` 302 passed + 29 subtests, cortex-eval 1,811 tests, cortex-memory 269
+tests, 100% on all four coverage dimensions in both, census clean.
+
+| Priority | Item |
+| --- | --- |
+| **P0** | **Put the gold turn in the artifact.** Read the dataset's answer-turn annotation into `QuestionRecord` as the carried indices it matches, so `gold-in-carried` becomes a number this repository computes rather than one it approximates. This is §13.11.5's measurement, §13.16.3's rule replaced by a turn-level one, and the precondition for reading P1 at all |
+| **P0** | Re-read P1 with that field, and split MR/TR's 46.3% / 66.9% decline rate by whether the gold turn was carried — the per-turn attribution that decides retrieval-side from model-side |
+| P1 | Repair the line/turn unit (§13.16.6) |
+| P2 | The in-band marker's ambiguity; `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded |
+| P3 | `PATH` ordering, which waits on a rebuilt image |
