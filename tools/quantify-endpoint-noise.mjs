@@ -52,6 +52,7 @@ import {
   recordIds,
   correctnessVector,
   buildQuestionRecords,
+  admittedFromRecord,
 } from '../packages/cortex-eval/dist/question-record.js';
 
 /**
@@ -125,6 +126,9 @@ function loadReport(path) {
     correct: q.correct === true,
     grounded: q.grounded === true,
     retrieved: '',
+    // Forwarded rather than dropped, even though this tool reads only the correctness
+    // vector: the record it hands back must describe the same run as the file it read.
+    admitted: admittedFromRecord(q),
   }));
   const records = buildQuestionRecords(inputs);
   return { path, records, featureConfig: raw.featureConfig };

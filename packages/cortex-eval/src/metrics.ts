@@ -5,6 +5,7 @@
  */
 import { binomialCdf, mean, variance, welchTTest } from '@agentix-e/cortex-core';
 import type {
+  AdmittedEvidence,
   AggregateStats,
   Answer,
   BenchmarkDataset,
@@ -182,6 +183,14 @@ export type ScoredEvaluation = {
    * different statement from a prompt that carried nothing.
    */
   promptEvidenceChars?: (number | null)[];
+  /**
+   * What admission produced, per question, in the same order.
+   *
+   * The offer rather than the delivery: see `types.ts`'s `AdmittedEvidence`. It is
+   * optional like the other captures, and omitted rather than defaulted, because a
+   * fabricated zero would read as a system that admitted nothing.
+   */
+  admittedEvidence?: (AdmittedEvidence | null)[];
 };
 
 /**
@@ -337,6 +346,7 @@ export async function scoreEvaluation(
   rawOutputs?: (string | null)[],
   retrievedContexts?: (string | null)[],
   promptEvidenceChars?: (number | null)[],
+  admittedEvidence?: (AdmittedEvidence | null)[],
 ): Promise<ScoredEvaluation> {
   if (dataset.questions.length !== answers.length) {
     throw new Error(
@@ -403,6 +413,7 @@ export async function scoreEvaluation(
     ...(rawOutputs === undefined ? {} : { rawOutputs }),
     ...(retrievedContexts === undefined ? {} : { retrievedContexts }),
     ...(promptEvidenceChars === undefined ? {} : { promptEvidenceChars }),
+    ...(admittedEvidence === undefined ? {} : { admittedEvidence }),
   };
 }
 

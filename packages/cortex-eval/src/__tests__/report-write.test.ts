@@ -58,6 +58,9 @@ function reportWithEvidence(turnsPerQuestion: number, questions: number): Ablati
       correct: true,
       grounded: false,
       retrieved,
+      // The offer, equal to the carried context here because this fixture builds a
+      // report by hand and no budget stands between the two.
+      admitted: { turns: turnsPerQuestion, chars: retrieved.length },
     })),
     // The cohort-level configuration, passed as the builder's second parameter
     // exactly as the arm passes it. It is here so a reduction that drops it is
@@ -162,7 +165,7 @@ describe('serializeReportOrReduce', () => {
 
     expect(result.manifest!.charsMeasured).toBeGreaterThan(0);
     expect(result.manifest!.charsMeasured).toBe(
-      report.questions![0]!.evidenceChars * report.questions!.length,
+      report.questions![0]!.evidenceChars! * report.questions!.length,
     );
   });
 
@@ -366,7 +369,7 @@ describe('serializeReportOrReduce', () => {
     expect(parsed.questions!.map((q) => q.promptChars)).toEqual([4242, 4242]);
     // And the reduction still happened beside it, so this is not passing by
     // leaving the report untouched.
-    expect(parsed.questions![0]!.turns.length).toBeLessThan(parsed.questions![0]!.evidenceTurns);
+    expect(parsed.questions![0]!.turns.length).toBeLessThan(parsed.questions![0]!.evidenceTurns!);
   });
 
   it('states a report defect rather than an empty run when the bound cannot change the outcome', () => {

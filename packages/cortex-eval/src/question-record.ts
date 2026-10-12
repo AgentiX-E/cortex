@@ -40,6 +40,7 @@
  */
 
 import type { TurnLike } from './candidate-context.js';
+import type { AdmittedEvidence } from './types.js';
 import type { FeatureConfig } from './report.js';
 
 /**
@@ -140,21 +141,30 @@ export type QuestionRecord = {
    * times. The number is still the right one for `§13.11.3`, whose two predictions
    * ask whether retrieval *produced* evidence.
    *
-   * ## The other half of that split was repaired in §13.15
+   * ## What this field became, twice
+   *
+   * It counts the **offer**: what admission produced, before the prompt builder's
+   * budget. It derived that from the captured context until §13.15 changed what the
+   * capture holds, and neither of the two consequences was visible without a run.
    *
    * `§13.11.5`'s ranking question -- was the gold turn inside what the model saw --
-   * needs membership, not a size, and it was unanswerable because the roster
-   * (`turns`, built from the same captured context) also described the offer. Since
-   * §13.15 `lastRetrievedContext` returns what the prompt **carried**, so `turns` is
-   * the reader's evidence and this field is the retrieval's. The two are now the
-   * three states `toTurns` registers, read together:
+   * needs membership, not a size, so `turns` had to become the **delivery**; that is
+   * repaired. But `turns` and this field then derived from one string, so this stopped
+   * describing the offer: run `38142407062` shows it at a median of **141** where the
+   * previous run showed 3,016-4,528. The artifact could no longer say how much evidence
+   * existed, which is what `§13.11.3` reads and what makes the budget's effect legible.
    *
-   *   - `turns: []` with `evidenceTurns: 0` -- no reader was consulted
-   *   - `turns.length === evidenceTurns` -- nothing was cut
-   *   - `turns.length < evidenceTurns` -- the budget or the bound removed turns,
-   *     and the removal is recorded rather than implied
+   * It now comes from its own capture, `MemorySystem.lastAdmittedEvidence`, and is
+   * **absent** when the system cannot report it -- a real state, distinct from zero,
+   * and reached by every test double in the arm's own suite.
+   *
+   * The three states a reader can read from this field and `turns` together:
+   *
+   *   - absent -- the system cannot report the offer; `turns` still says what was read
+   *   - `turns.length < evidenceTurns` -- a budget or a bound removed turns
+   *   - `turns.length === evidenceTurns` -- nothing was removed
    */
-  readonly evidenceTurns: number;
+  readonly evidenceTurns?: number | undefined;
   /**
    * The size in characters of the admitted evidence, un-reduced.
    *
@@ -164,12 +174,11 @@ export type QuestionRecord = {
    * whether the bound engaged needs both, and a reader auditing the bound's cost
    * needs `evidenceChars`.
    *
-   * Measured, never reduced, for the reason `evidenceTurns` states -- and admitted
-   * rather than prompt-carried, for the reason stated there too. This is the field
-   * that makes the gap measurable at all: 506,338 against a 24,000-character
-   * budget is the whole of it.
+   * The offer's size, for the reason `evidenceTurns` states -- and absent for the
+   * same reason too. This is the field that makes the gap measurable at all: 506,338
+   * characters against a 24,000-character budget is the whole of it.
    */
-  readonly evidenceChars: number;
+  readonly evidenceChars?: number | undefined;
   /**
    * The characters of evidence the prompt actually carried, when it is known.
    *
@@ -219,6 +228,31 @@ export type QuestionRecordInput = {
   /** The evidence the reader received, one turn per line -- see §13.15. */
   readonly retrieved: string;
   /**
+   * How much evidence admission produced, before any budget. `null` if unknown.
+   *
+   * ## Why this is required and nullable, rather than optional or numeric
+   *
+   * **Required**, so every producer states it and the compiler enumerates the
+   * producers. That is not ceremony: `retrieved` is the **delivery** since §13.15, so a
+   * producer that silently omitted the offer would leave the record deriving both from
+   * one string -- which is exactly what happened, invisibly, until run `38142407062`
+   * showed `evidenceTurns` fall from 3,016-4,528 to a median of 141. It also covers the
+   * reducer's own rebuild: `withEvidenceBound` remaps records through this type, so a
+   * field it forgets to forward is now a compile error rather than an artifact that
+   * quietly reports the wrong number. `featureConfig` and `promptChars` were each
+   * dropped that way once.
+   *
+   * **Nullable**, because a system may legitimately have no accessor for it -- the
+   * arm's own test doubles have none -- and the two dishonest alternatives are a
+   * fabricated zero, which reads as a system that admitted nothing, and a fallback to
+   * `retrieved`, which is the collapse above. `null` reaches the record as an **absent**
+   * `evidenceTurns`, the same way a `null` `promptChars` does.
+   *
+   * `AdmittedEvidence` rather than two numbers, so the pair cannot be transposed on
+   * the way through four hops.
+   */
+  readonly admitted: AdmittedEvidence | null;
+  /**
    * The evidence characters the prompt carried, when the caller can report it.
    *
    * `null` is treated as absent rather than as zero: it means the system exposes
@@ -254,6 +288,40 @@ export type QuestionRecordInput = {
  * | shown, reduced | prefix + this marker | the true count |
  */
 export const REDUCED_TURNS_MARKER = '[evidence reduced:';
+
+/**
+ * The marker for a bound that dropped `dropped` of `total` turns.
+ *
+ * ## Why writing and reading share this function
+ *
+ * `evidenceReductionOf` reads the dropped and total counts back out of the marker,
+ * because after §13.16 the record no longer holds a pre-bound count of its own --
+ * `evidenceTurns` is the offer and `turns` is the delivery. A format written in one
+ * place and parsed in another is two owners of one format, and the failure mode is
+ * silent: a marker that stopped matching would make a reduced report look complete.
+ * `markerCounts` below is the only reader and this is the only writer.
+ */
+function markerText(dropped: number, total: number): string {
+  return `${REDUCED_TURNS_MARKER} ${dropped} of ${total} turns not carried]`;
+}
+
+/**
+ * The counts a marker names, or `null` when this turn is not a marker.
+ *
+ * `null` for a turn that is not a marker is the ordinary case and not an error --
+ * every unbounded record has one. A marker whose numbers cannot be read would be a
+ * defect in `markerText`, which is why the parse is anchored on that template rather
+ * than on a loose pattern: the digits between the fixed words are the only part that
+ * can vary, so a match is a positive statement about the format.
+ */
+function markerCounts(turn: TurnLike | undefined): { dropped: number; total: number } | null {
+  if (turn === undefined || !turn.text.startsWith(REDUCED_TURNS_MARKER)) return null;
+  const match = /^(\d+) of (\d+) turns not carried\]$/.exec(
+    turn.text.slice(REDUCED_TURNS_MARKER.length).trim(),
+  );
+  if (match === null) return null;
+  return { dropped: Number(match[1]), total: Number(match[2]) };
+}
 
 /**
  * How much of each record's evidence to carry, when a bound is wanted.
@@ -327,7 +395,7 @@ function toTurns(retrieved: string, bound?: EvidenceBoundOptions): TurnLike[] {
   // disclosure after the evidence it qualifies rather than before it.
   kept.push({
     index: kept.length,
-    text: `${REDUCED_TURNS_MARKER} ${dropped} of ${turns.length} turns not carried]`,
+    text: markerText(dropped, turns.length),
   });
   return kept;
 }
@@ -415,9 +483,6 @@ export function buildQuestionRecords(
     }
     seen.add(input.questionId);
 
-    // Measured before the bound is applied, which is the whole point: these two
-    // fields are the evidence, and `turns` is what is carried of it.
-    const measuredTurns = toTurns(input.retrieved);
     records.push({
       questionId: input.questionId,
       question: input.question,
@@ -428,8 +493,13 @@ export function buildQuestionRecords(
       correct: correctness === undefined ? input.correct : correctness[i]!,
       grounded: input.grounded,
       turns: toTurns(input.retrieved, evidenceBound),
-      evidenceTurns: measuredTurns.length,
-      evidenceChars: input.retrieved.length,
+      // The offer, from the input and never from `retrieved` -- see
+      // `QuestionRecordInput.admitted` for why the fallback would be invisible. Omitted
+      // when unknown, because a reader must be able to tell "not measured" from
+      // "measured as nothing", and the two fields are written together or not at all.
+      ...(input.admitted === null
+        ? {}
+        : { evidenceTurns: input.admitted.turns, evidenceChars: input.admitted.chars }),
       // `null` is the caller saying "this system cannot report it", which is not a
       // prompt that carried nothing -- so it is omitted rather than written.
       ...(input.promptChars === undefined || input.promptChars === null
@@ -460,22 +530,42 @@ export function buildQuestionRecords(
  * makes that prediction falsifiable.
  */
 export function evidenceReductionOf(records: readonly QuestionRecord[]): EvidenceReduction | null {
-  const reduced = records.filter((record) => record.turns.length !== record.evidenceTurns);
+  // The marker is the signal, and since §13.16 it is the ONLY signal: the comparison
+  // this used to make -- `turns.length !== evidenceTurns` -- stopped meaning "the
+  // bound bit" the moment `evidenceTurns` became the offer, and would have fired on
+  // every record of every run, reporting a bound that never engaged.
+  const reduced = records.filter((record) => markerCounts(record.turns.at(-1)) !== null);
   if (reduced.length === 0) return null;
 
   let turnsCarried = 0;
   let turnsMeasured = 0;
   let charsMeasured = 0;
+  let droppedTurns = 0;
   for (const record of records) {
-    turnsCarried += record.turns.length;
-    turnsMeasured += record.evidenceTurns;
-    charsMeasured += record.evidenceChars;
+    const marker = markerCounts(record.turns.at(-1));
+    // Real turns only, so `turnsCarried` does not count the disclosure as evidence.
+    turnsCarried += marker === null ? record.turns.length : record.turns.length - 1;
+    if (marker !== null) {
+      droppedTurns += marker.dropped;
+      // The pre-bound size lives in the marker and nowhere else once `evidenceTurns`
+      // is the offer, so it is read from the one writer of that format.
+      turnsMeasured += marker.total;
+    } else {
+      turnsMeasured += record.turns.length;
+    }
+    // Summed over the records that can report it. A system with no accessor
+    // contributes nothing measurable rather than a zero that would be read as an offer
+    // of no characters -- and on this arm every record has it, so the sum IS the offer.
+    // The bound's own effect is reported by `droppedTurns`, which comes from the markers
+    // and therefore does not depend on this field at all.
+    charsMeasured += record.evidenceChars ?? 0;
   }
   return {
     reducedQuestionIds: reduced.map((record) => record.questionId),
     turnsCarried,
     turnsMeasured,
     charsMeasured,
+    droppedTurns,
     maxTurnsPerRecord: Math.max(...reduced.map((record) => record.turns.length - 1)),
   };
 }
@@ -491,6 +581,47 @@ export function correctnessVector(records: readonly QuestionRecord[]): boolean[]
   return records.map((record) => record.correct);
 }
 
+/**
+ * The reverse of the record construction: the offer a record holds, or `null`.
+ *
+ * ## Why this is exported and shared
+ *
+ * Every reader that round-trips an artifact back through `buildQuestionRecords` --
+ * the reducer, and both `tools/*.mjs` readers -- needs it, and each of them would
+ * otherwise hand-roll the same two-field reconstruction. Three hand-rolled copies of
+ * one mapping is three places for it to drift, and the drift would be invisible: a
+ * reader that reconstructed the offer differently from the writer would report a
+ * different run from the same file.
+ *
+ * Typed on the two fields rather than on `QuestionRecord` so a reader holding a parsed
+ * artifact -- which is not yet a record -- can call it, which is exactly the situation
+ * `tools/read-b7-criterion.mjs` is in.
+ *
+ * `null` when either field is absent: the two are written together or not at all, and
+ * a record that reports only one of them is a record this function refuses to
+ * half-read.
+ */
+export function admittedFromRecord(record: {
+  readonly evidenceTurns?: number | undefined;
+  readonly evidenceChars?: number | undefined;
+}): AdmittedEvidence | null {
+  if (record.evidenceTurns === undefined || record.evidenceChars === undefined) return null;
+  return { turns: record.evidenceTurns, chars: record.evidenceChars };
+}
+
+/**
+ * The offer, for a producer whose `retrieved` is the offer.
+ *
+ * Correct only where no budget sits between admission and the record -- a trace read
+ * back from disk, or a fixture. The arm must NOT use this: its `retrieved` is the
+ * delivery, and counting the delivery as the offer is precisely the defect run
+ * `38142407062` exposed. Naming it for the situation rather than for the arithmetic
+ * is what keeps that distinction visible at each call site.
+ */
+function admittedFrom(retrieved: string): AdmittedEvidence {
+  return { turns: toTurns(retrieved).length, chars: retrieved.length };
+}
+
 /** The question ids of a record set, in record order, for vector comparison. */
 export function recordIds(records: readonly QuestionRecord[]): string[] {
   return records.map((record) => record.questionId);
@@ -503,14 +634,35 @@ export function recordIds(records: readonly QuestionRecord[]): string[] {
  * {@link evidenceReductionOf} for why absence is `null` rather than zeros.
  */
 export type EvidenceReduction = {
-  /** Ids of the records whose `turns` is shorter than `evidenceTurns`. */
+  /** Ids of the records whose `turns` ends with a reduction marker. */
   readonly reducedQuestionIds: readonly string[];
   /** The number of turns actually carried across all records, after the bound. */
   readonly turnsCarried: number;
-  /** The number of turns measured across all records, before the bound. */
+  /**
+   * The number of turns measured across all records, before the bound.
+   *
+   * The bound's own pre-image, read from the markers. It is **not**
+   * `sum(evidenceTurns)`, which is the offer: a record can be bounded without the
+   * budget touching it and budgeted without the bound noticing, and the two numbers
+   * answer different questions.
+   */
   readonly turnsMeasured: number;
-  /** The characters of evidence measured across all records, before the bound. */
+  /**
+   * The characters of evidence **offered** across all records.
+   *
+   * The offer and not the bound's pre-image, because the bound does not report
+   * characters: a marker names turns. Stated here rather than left to a reader to
+   * infer, since the field sits beside a turn count that is on the other axis.
+   */
   readonly charsMeasured: number;
+  /**
+   * The real turns the bound dropped across all records.
+   *
+   * Reported directly rather than left as `turnsMeasured - turnsCarried`, which is
+   * what it used to be and which stopped being true when `turnsMeasured` became the
+   * bound's pre-image and `turnsCarried` stopped counting the markers.
+   */
+  readonly droppedTurns: number;
   /** The largest number of real turns any reduced record carries. */
   readonly maxTurnsPerRecord: number;
 };
@@ -606,6 +758,11 @@ export function buildRecordsFromDataset(
         correct: correctness[i]!,
         grounded: isGrounded({ question, trace }),
         retrieved: trace?.retrieved ?? '',
+        // This producer reads a trace, and a trace has no budget: what the reader
+        // received IS what admission produced. So the offer is counted from the same
+        // string, in the same unit, rather than defaulted to zero -- a zero here would
+        // report a system that admitted nothing while the record carried evidence.
+        admitted: admittedFrom(trace?.retrieved ?? ''),
       };
     }),
     featureConfig,

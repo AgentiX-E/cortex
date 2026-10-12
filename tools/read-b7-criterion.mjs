@@ -37,7 +37,10 @@ import {
   judgeCriterion,
   outcomeMoved,
 } from '../packages/cortex-eval/dist/b7-cohort.js';
-import { buildQuestionRecords } from '../packages/cortex-eval/dist/question-record.js';
+import {
+  admittedFromRecord,
+  buildQuestionRecords,
+} from '../packages/cortex-eval/dist/question-record.js';
 
 const PUBLISHED_TARGET_COUNT = 9;
 
@@ -117,6 +120,10 @@ function readRecords(report, label) {
       correct: q.correct === true,
       grounded: q.grounded === true,
       retrieved: turns.map((t) => String(t.text ?? '')).join('\n'),
+      // The offer, read back rather than rebuilt: this reader reassembles `retrieved`
+      // from `turns`, so it cannot recover how much was admitted, and inventing one
+      // would put a number in a record that the artifact never reported.
+      admitted: admittedFromRecord(q),
     };
   });
   return buildQuestionRecords(inputs);

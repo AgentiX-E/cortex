@@ -21,6 +21,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  admittedFromRecord,
   buildQuestionRecords,
   buildRecordsFromDataset,
   correctnessVector,
@@ -31,7 +32,15 @@ import {
   type RecordableTrace,
 } from '../question-record.js';
 
+/**
+ * An input with sane defaults, so each test states only what it is about.
+ *
+ * The offer is derived from the retrieved context: in a fixture nothing sits between
+ * admission and the record, so overriding `retrieved` describes a different question
+ * rather than a budget cut. An explicit `admittedTurns` in `overrides` still wins.
+ */
 function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInput {
+  const retrieved = overrides.retrieved ?? 'the record says 85\nthe note says 240';
   return {
     questionId: 'q1',
     question: 'which reading did the unit report?',
@@ -40,10 +49,37 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
     answer: '240',
     correct: true,
     grounded: true,
-    retrieved: 'the record says 85\nthe note says 240',
+    retrieved,
+    admitted: {
+      turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
+      chars: retrieved.length,
+    },
     ...overrides,
   };
 }
+
+describe('admittedFromRecord reads back exactly what was written', () => {
+  it('returns null for a record that reports only half the offer', () => {
+    // The two fields are written together or not at all, so a record carrying one of
+    // them is not half-measured -- it is a record whose other half is unknown, and a
+    // reader that accepted it would put a size beside a count they do not describe.
+    // Reachable from any artifact written by an older or a hand-edited producer.
+    expect(admittedFromRecord({ evidenceTurns: 5 })).toBeNull();
+    expect(admittedFromRecord({ evidenceChars: 20 })).toBeNull();
+  });
+
+  it('round-trips a record that reports both', () => {
+    const [record] = buildQuestionRecords([input()]);
+
+    expect(admittedFromRecord(record!)).toEqual({
+      turns: record!.evidenceTurns,
+      chars: record!.evidenceChars,
+    });
+    // And a record that reported neither reconstructs to neither.
+    const [bare] = buildQuestionRecords([input({ admitted: null })]);
+    expect(admittedFromRecord(bare!)).toBeNull();
+  });
+});
 
 describe('buildQuestionRecords preserves one record per question, in order', () => {
   it('emits the same number of records as inputs', () => {

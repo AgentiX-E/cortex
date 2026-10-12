@@ -2,6 +2,7 @@
  * Benchmark runner: run a memory system over a dataset and evaluate its answers.
  */
 import type {
+  AdmittedEvidence,
   Answer,
   BenchmarkDataset,
   MemorySystem,
@@ -168,7 +169,11 @@ type BenchmarkRawOutputCallback = (raw: string | null) => void;
  * caller is this module's own loop, and an export nothing outside could use is
  * the `1 NEW orphan(s)` the census gate reports.
  */
-type BenchmarkRetrievedCallback = (retrieved: string | null, promptChars: number | null) => void;
+type BenchmarkRetrievedCallback = (
+  retrieved: string | null,
+  promptChars: number | null,
+  admitted: AdmittedEvidence | null,
+) => void;
 
 /**
  * A sink for each answer as it is produced, so a throw does not erase the pass.
@@ -235,6 +240,18 @@ export async function runBenchmark(
         ? (system as { lastPromptEvidenceChars: () => number | null }).lastPromptEvidenceChars.bind(
             system,
           )
+        : undefined;
+  // The offer, resolved alongside them for the reason §13.15's run had to teach: the
+  // other two describe the delivery, and a reader with only the delivery cannot tell
+  // a budget that cut the context from a retrieval that found almost nothing. `null`
+  // when the system does not expose the accessor, which is not an offer of zero.
+  const admittedEvidence =
+    onRetrieved === undefined
+      ? undefined
+      : 'lastAdmittedEvidence' in system
+        ? (
+            system as { lastAdmittedEvidence: () => AdmittedEvidence | null }
+          ).lastAdmittedEvidence.bind(system)
         : undefined;
   // Every branch below routes through this, rather than calling `answers.push`
   // itself. Seven branches are seven chances to forget the sink, and the routing
@@ -314,6 +331,7 @@ export async function runBenchmark(
       onRetrieved(
         retrievedContext === undefined ? null : retrievedContext(),
         promptEvidence === undefined ? null : promptEvidence(),
+        admittedEvidence === undefined ? null : admittedEvidence(),
       );
     }
   }
@@ -364,6 +382,7 @@ export async function evaluateWithScorerDetailed(
   const rawOutputs: (string | null)[] = [];
   const retrievedContexts: (string | null)[] = [];
   const promptEvidenceChars: (number | null)[] = [];
+  const admittedEvidence: (AdmittedEvidence | null)[] = [];
   const answers = await runBenchmark(
     dataset,
     system,
@@ -371,9 +390,10 @@ export async function evaluateWithScorerDetailed(
     run,
     captureRawOutput ? (raw) => rawOutputs.push(raw) : undefined,
     captureRetrievedContext
-      ? (retrieved, chars) => {
+      ? (retrieved, chars, admitted) => {
           retrievedContexts.push(retrieved);
           promptEvidenceChars.push(chars);
+          admittedEvidence.push(admitted);
         }
       : undefined,
     onAnswer,
@@ -385,5 +405,6 @@ export async function evaluateWithScorerDetailed(
     captureRawOutput ? rawOutputs : undefined,
     captureRetrievedContext ? retrievedContexts : undefined,
     captureRetrievedContext ? promptEvidenceChars : undefined,
+    captureRetrievedContext ? admittedEvidence : undefined,
   );
 }

@@ -33,8 +33,17 @@ import {
   type QuestionRecordInput,
 } from '../question-record.js';
 
-/** An input with sane defaults, so each test states only what it is about. */
+/**
+ * An input with sane defaults, so each test states only what it is about.
+ *
+ * The offer is derived from the retrieved context rather than fixed, because in a
+ * fixture nothing sits between admission and the record -- a test that overrides
+ * `retrieved` is describing a different question, not a budget cut. An explicit
+ * `admittedTurns` in `overrides` still wins, which is how the tests about a budget
+ * say so.
+ */
 function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInput {
+  const retrieved = overrides.retrieved ?? 'first turn\nsecond turn';
   return {
     questionId: 'q1',
     question: 'what did the user say?',
@@ -43,7 +52,11 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
     answer: 'a fact',
     correct: true,
     grounded: false,
-    retrieved: 'first turn\nsecond turn',
+    retrieved,
+    admitted: {
+      turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
+      chars: retrieved.length,
+    },
     ...overrides,
   };
 }
@@ -174,6 +187,49 @@ describe('the three states are distinguishable', () => {
   });
 });
 
+describe('a context line that looks like a marker is not read as one', () => {
+  it('reports no reduction when the last turn only resembles a marker', () => {
+    // A caller's own text can begin with `[evidence reduced:`. If that were taken for
+    // the bound's own disclosure, a record nobody reduced would report a reduction
+    // with counts the text happened to contain -- and the manifest would be a fact
+    // about the dataset rather than about the bound. The parse is anchored on the
+    // numbers, so a lookalike with no readable counts is not a marker.
+    const retrieved = 'a\n[evidence reduced: many of them turns not carried]';
+    const records = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
+      maxTurnsPerRecord: 9,
+    });
+
+    expect(records[0]!.turns.at(-1)!.text).toContain(REDUCED_TURNS_MARKER);
+    expect(evidenceReductionOf(records)).toBeNull();
+  });
+});
+
+describe('a record with no offer contributes nothing measurable to the manifest', () => {
+  it('sums the offer over the records that can report it, and reports the bound separately', () => {
+    // The absent arm: a system with no `lastAdmittedEvidence`. `charsMeasured` cannot
+    // include an offer nobody reported, and the bound's effect does not depend on it --
+    // `droppedTurns` comes from the markers. Both statements are asserted, because a
+    // sum that quietly treated absent as zero would look identical here and wrong on a
+    // mixed set.
+    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+    const records = buildQuestionRecords(
+      [input({ retrieved, admitted: null })],
+      undefined,
+      undefined,
+      {
+        maxTurnsPerRecord: 2,
+      },
+    );
+
+    const reduction = evidenceReductionOf(records)!;
+    expect(reduction).not.toBeNull();
+    expect(reduction.charsMeasured).toBe(0);
+    expect(reduction.droppedTurns).toBe(8);
+    expect(reduction.turnsCarried).toBe(2);
+    expect(reduction.turnsMeasured).toBe(10);
+  });
+});
+
 describe('evidenceReductionOf reports what the bound did', () => {
   it('is null when no record was reduced', () => {
     const records = buildQuestionRecords([input(), input({ questionId: 'q2' })]);
@@ -198,23 +254,29 @@ describe('evidenceReductionOf reports what the bound did', () => {
 
     expect(reduction).not.toBeNull();
     expect(reduction!.reducedQuestionIds).toEqual(['q1']);
-    // 2 real turns + the marker for q1, plus the single turn for q2.
-    expect(reduction!.turnsCarried).toBe(4);
+    // Real turns only: two for q1 and one for q2. The marker discloses the reduction
+    // and is not evidence, so counting it here would report the bound as having
+    // carried one more turn than it did.
+    expect(reduction!.turnsCarried).toBe(3);
     expect(reduction!.turnsMeasured).toBe(11);
+    expect(reduction!.droppedTurns).toBe(8);
     expect(reduction!.maxTurnsPerRecord).toBe(2);
   });
 
-  it('posts a marker count consistent with turnsMeasured', () => {
-    // The marker states how many turns were dropped, so the two ends of the
-    // manifest must agree: carried + dropped === measured.
+  it('posts a marker count consistent with the manifest, without the reader subtracting', () => {
+    // The invariant is carried + dropped === measured, and `droppedTurns` states the
+    // middle term directly. It used to be recoverable only as
+    // `turnsMeasured - turnsCarried + 1`, where the `+ 1` corrected for the marker
+    // being counted as a turn -- an arithmetic a reader had to reproduce, and one that
+    // stopped being true the moment `turnsCarried` excluded the marker.
     const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
     const records = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 2,
     });
     const reduction = evidenceReductionOf(records)!;
 
-    const dropped = reduction.turnsMeasured - reduction.turnsCarried + 1; // +1: the marker is not a real turn
-    expect(records[0]!.turns.at(-1)!.text).toContain(String(dropped));
+    expect(reduction.turnsCarried + reduction.droppedTurns).toBe(reduction.turnsMeasured);
+    expect(records[0]!.turns.at(-1)!.text).toContain(String(reduction.droppedTurns));
   });
 });
 

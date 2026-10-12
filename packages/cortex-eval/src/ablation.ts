@@ -338,6 +338,7 @@ export async function runAblation(
     // artifact report 3,016-4,528 turns of evidence for a model that received
     // roughly 150-160.
     featurePromptEvidenceChars: featFirst.promptEvidenceChars!,
+    featureAdmittedEvidence: featFirst.admittedEvidence!,
     perCapability,
   };
 }

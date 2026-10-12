@@ -235,6 +235,33 @@ export type PartialAblation = {
   featureAnswers: Answer[];
 };
 
+/**
+ * How much evidence admission produced for one question, as two counts.
+ *
+ * ## Why this is a type rather than two loose numbers
+ *
+ * It travels four hops -- the system's accessor, this package's capture, the
+ * ablation result, and the per-question record -- and at every hop it is one fact
+ * that must stay together. Two numbers threaded separately are two numbers that can
+ * be paired wrongly, and the pairing is not checkable from the data.
+ *
+ * ## Why counts and not the context
+ *
+ * The pre-`§13.15` capture held the offered **text**, which was unbounded on this arm
+ * and produced the 258 MB artifact `§13.14` records. The identities of the offer are
+ * not wanted -- the model did not read them, which is the whole point -- and a bound
+ * on a list that is only ever summarised is a bound on a summary that does not need
+ * to be a list.
+ *
+ * The unit is the record's own: **lines of the joined context**, which is a defect
+ * registered as `§13.16`. It is matched rather than corrected here so the offer and
+ * the delivery stay commensurable.
+ */
+export type AdmittedEvidence = {
+  readonly turns: number;
+  readonly chars: number;
+};
+
 export type AblationResult = {
   feature: string;
   baselineAggregate: AggregateStats;
@@ -383,6 +410,22 @@ export type AblationResult = {
    * place would be editing evidence another reader holds.
    */
   featurePromptEvidenceChars?: readonly (number | null)[];
+  /**
+   * What admission produced for the feature side, per question.
+   *
+   * ## Why the artifact needs this at all
+   *
+   * `featurePromptEvidenceChars` is the **delivery** and `featureRetrievedContexts`
+   * is its roster, so together they say what the model read. Neither says how much
+   * evidence **existed**, and §13.15's run is why that matters: with only the
+   * delivery, `evidenceTurns` fell from 3,016-4,528 to a median of 141 and a reader
+   * could no longer tell a budget that had cut ninety-eight per cent of the context
+   * from a retrieval that had found almost nothing. Those two runs want opposite
+   * repairs.
+   *
+   * Optional for the same reason as the other captures, and `readonly` likewise.
+   */
+  featureAdmittedEvidence?: readonly (AdmittedEvidence | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

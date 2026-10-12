@@ -1840,9 +1840,16 @@ describe('a bounded run reports what the bound dropped', () => {
     // `buildArmRoster`, which is why this fixture is a plain `{ name, answer }`.
     const report = await armReportWithBound(64, 0);
     expect(report.evidenceReduction).toBeUndefined();
-    // And the artifact still says how much evidence each record was shown, so an
-    // absent reduction cannot be confused with an absent measurement.
-    expect(report.questions!.every((q) => q.evidenceTurns === 0)).toBe(true);
+    // And a system with no accessor for the offer reports NO offer rather than a
+    // fabricated zero. This assertion used to be `=== 0`, which was the collapse the
+    // field's own docs warn about -- "a system that admitted nothing" is a claim about
+    // the run, and a system that cannot report is not making one. The third state is
+    // the one that makes §13.11.3's `evidenceTurns > 0` reading safe: absent is not
+    // less than zero, it is unmeasured.
+    expect(report.questions!.every((q) => q.evidenceTurns === undefined)).toBe(true);
+    expect(report.questions!.every((q) => !Object.hasOwn(q, 'evidenceTurns'))).toBe(true);
+    // The delivery is still reported, which is what keeps the two apart.
+    expect(report.questions!.every((q) => Array.isArray(q.turns))).toBe(true);
   });
 
   it('persists the reduction manifest when the bound drops evidence', async () => {
@@ -1875,6 +1882,7 @@ describe('a bounded run reports what the bound dropped', () => {
       name: 'cortex-memory',
       answer: () => 'Lisbon',
       lastRetrievedContext: () => retrieved,
+      lastAdmittedEvidence: () => ({ turns: 6, chars: retrieved.length }),
       lastRawOutput: () => 'the record says Lisbon',
     } as unknown as MemorySystem;
 
@@ -1974,8 +1982,17 @@ describe('the prompt-carried evidence size reaches the record', () => {
     return {
       name: 'cortex-memory',
       answer: () => 'Lisbon',
+      // The delivery: what the prompt carried, which is a prefix of what admission
+      // offered whenever the budget binds.
       lastRetrievedContext: () => retrieved,
+      // The delivery's size, after the budget.
       lastPromptEvidenceChars: () => promptChars,
+      // The offer, which this double reports as the whole context it was handed --
+      // exactly the relation the real system has when no budget is spent.
+      lastAdmittedEvidence: () => ({
+        turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
+        chars: retrieved.length,
+      }),
       lastRawOutput: () => 'Lisbon',
     } as unknown as MemorySystem;
   }
@@ -2045,6 +2062,6 @@ describe('the prompt-carried evidence size reaches the record', () => {
     const record = report.questions![0]!;
     expect(report.evidenceReduction).toBeDefined();
     expect(record.promptChars).toBe(27);
-    expect(record.turns.length).toBeLessThan(record.evidenceTurns);
+    expect(record.turns.length).toBeLessThan(record.evidenceTurns!);
   });
 });

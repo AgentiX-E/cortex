@@ -1112,6 +1112,12 @@ function buildArmRoster(
   // question rather than passed whole, because a `null` entry means the system
   // exposes no accessor and must reach the record as *absent*, not as zero.
   const promptEvidenceChars = ablation.featurePromptEvidenceChars!;
+  // The offer, captured under the same flag on the same line as the two above. Read
+  // with `!` for the same reason, and mapped per question for the same reason: a
+  // `null` entry means the system exposes no accessor, and there is no number that
+  // honestly stands in for it -- `§13.16` records that a zero would read as a system
+  // that admitted nothing, which is the opposite of what an absent accessor says.
+  const admittedEvidence = ablation.featureAdmittedEvidence!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -1129,13 +1135,23 @@ function buildArmRoster(
       // in the VECTOR, where the distinction is still expressible.
       //
       // This vector is the evidence the reader **received** since §13.15, because
-      // it is built from `lastRetrievedContext` and that accessor now reports what
-      // the prompt carried rather than what admission offered. So the record's
-      // `turns` are the turns the model read -- which is what makes the artifact
-      // able to answer whether the gold turn was among them -- while `evidenceTurns`
-      // and `evidenceChars`, stamped by the builder from what it was handed, remain
-      // the offer. Both are needed and they are different questions.
+      // it is built from `lastRetrievedContext` and that accessor reports what the
+      // prompt carried rather than what admission offered. So the record's `turns`
+      // are the turns the model read, which is what makes the artifact able to answer
+      // whether the gold turn was among them.
+      //
+      // `admittedTurns`/`admittedChars` were previously derived from this same string
+      // and therefore stopped describing the offer -- run `38142407062` is where that
+      // was noticed, as `evidenceTurns` falling from thousands to a median of 141.
+      // They now come from their own capture, and a system that cannot report the
+      // offer is reported as `0`, which the record's own docs call a system that
+      // admitted nothing rather than an unknown.
       retrieved: retrievedContexts[i] ?? '',
+      // `!` for the same reason as `featureCorrect[i]` above: this arm is handed an
+      // `AblationResult` by the chain it called itself, and the capture pushes one entry
+      // per question. `null` flows through and is not a defect -- it is the system saying
+      // it has no accessor for the offer, which the record then omits.
+      admitted: admittedEvidence[i]!,
       promptChars: promptEvidenceChars[i] ?? null,
     })),
     featureConfig,

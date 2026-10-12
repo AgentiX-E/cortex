@@ -2633,3 +2633,180 @@ This run therefore measures three things, all of them about the instrument:
    because this section registers a mechanism and not a direction.
 
 The relevance signal is the next section's single variable, and it is not this one's.
+
+## 13.16 What run 38142407062 read, and the measurement §13.15 broke
+
+Registered because the run §13.15.8 scheduled completed, and reading it turned up both
+a confirmed prediction and a defect in the change that made the prediction readable.
+
+### 13.16.1 The run
+
+`38142407062` @ `de8843ae`, all nineteen steps success. Artifact 26.6 MB, up from
+3.9 MB, which is the roster now carrying ~143 carried lines per question instead of
+sixteen offered ones.
+
+| Metric | `38114272884` | `38142407062` |
+| --- | --- | --- |
+| baseline | 44.30% | 44.90% |
+| feature | 6.35% | 6.40% |
+| delta | -37.95pp | **-38.50pp** |
+| discordant b✓f✗ / b✗f✓ | 189 / 0 | **192 / 0** |
+| MR feature | 0.00% | **0.83%** (1 question) |
+| abstention rate | 96.45% | **95.40%** |
+| answered, per run | 70 | **92** |
+| `empty` / `threshold` | 0 / 0 | **0 / 0** |
+
+The model answered twenty-two more questions per run and got one of them right. The
+movement is inside this endpoint's own noise, which §20 quantifies; **nothing here is
+evidence that the note helped**, and that is how §13.15.6 registered it.
+
+### 13.16.2 Prediction 1: the mechanism is confirmed and the magnitude was wrong
+
+Registered: *"`promptChars` on the session routes is now about 172 characters lower than
+on the flat route."*
+
+`promptChars` per question, before and after:
+
+| Capability | `38114272884` min / median / max | `38142407062` min / median / max |
+| --- | --- | --- |
+| IE (flat) | 23,460 / 23,739 / 23,794 | **identical** |
+| MR (session) | 23,649 / 23,746 / 23,782 | **23,499 / 23,596 / 23,632** |
+| TR, KU, ABS | -- | **identical** |
+
+Two findings, and the second is the one worth the registration.
+
+1. **The note is allocated, and it costs exactly 150 characters** -- 148 for the sentence
+   plus one two-character separator. My registered figure was 172, which I had not
+   measured; `SESSION_NOTE.length` is 148 and I would have got 150 by counting it. The
+   correction is recorded rather than the prediction quietly restated.
+2. **The note reaches ONE route, not four.** §13.15.6 wrote "every MR, TR, ABS and KU
+   prompt". That is wrong: `buildSessionPrompt` has exactly one caller, `answerSessions`,
+   which is the MR route. TR, ABS, KU and the assistant route go through `#prompt` and the
+   flat builder, which draws no session boundaries and therefore never had a note to lose.
+   The claim was reasoned from "these are the session-taking routes" -- which is true of
+   `#admit`, and false of the prompt builder. The artifact says otherwise, and the
+   artifact is the one that gets to decide.
+
+### 13.16.3 The instrument reading: gold inside what the model read, measured
+
+§13.14 measured 12.4% and labelled its turn ordinal an **estimate** from session dates.
+The roster names the carried lines, so the same quantity is now exact:
+
+| Quantity | Value |
+| --- | --- |
+| questions whose gold session could be located | 121 |
+| **gold turn inside the carried set** | **14 / 121 = 11.6%** |
+| cross-check: the session-index rule agrees with exact turn identity | **121 / 121** |
+
+**The estimate was confirmed to 0.8pp**, and the cross-check is what makes the number
+trustworthy: the rule "the first answer session's index is at or before the last carried
+turn's index" is computable from date stamps alone, and it agrees with turn identity on
+every question.
+
+**A first attempt read 27.3% and was wrong.** It intersected *lines*: turn content in this
+dataset spans newlines, so a line of one turn matches a line of another and every
+question with a common phrase became a hit. The corrected probe parses turns -- a stamped
+segment, its continuation lines attached -- and the two probes agree only after that fix.
+Recorded because the error was invisible from inside the wrong probe: it produced a
+plausible number for a non-existent effect, and only cross-checking two independent
+routes exposed it.
+
+The carried prefix reaches a **median of 1.1 sessions** of 47, while the first answer
+session sits at a median of **11**. That is the whole of the 11.6%.
+
+### 13.16.4 The defect §13.15 introduced, which the run exposed
+
+`evidenceTurns` fell from 3,016-4,528 to a **median of 141**. It was not measuring the
+offer any more: it is derived from the captured context, and §13.15 changed the captured
+context from the **offer** to the **delivery**. So the record had `turns` and
+`evidenceTurns` both describing the delivery, and nothing reporting how much evidence had
+existed -- which is what §13.11.3 reads and what makes the budget's effect legible. The
+artifact had been made *less* able to describe a run by the change that made it able to
+answer §13.11.5.
+
+**Fixed by giving the offer its own capture**, `MemorySystem.lastAdmittedEvidence`,
+recorded in the same call as the other two measurements and carried as two counts
+(`AdmittedEvidence`) rather than as text -- text would be the unbounded shape §13.13
+removed.
+
+**Fixed at the type level too, and this is the part worth keeping.** `QuestionRecordInput`
+now requires `admitted`. The compiler therefore enumerated every producer, and it found
+`withEvidenceBound` -- the reducer's rebuild, which is the **third** place a field has been
+silently dropped by not being listed (`featureConfig`, then `promptChars`). For the first
+time that family is a compile error rather than an artifact that quietly reports the wrong
+number.
+
+**Required and nullable**, not optional and not numeric:
+
+- **required**, so the enumeration above happens and cannot be forgotten;
+- **nullable**, because a system may legitimately have no accessor -- the arm's own test
+  doubles have none -- and a fabricated zero would read as a system that admitted nothing,
+  which is the collapse `evidenceTurns`' own docs warn about.
+
+`admitted: null` reaches the record as an **absent** `evidenceTurns`, so the three states
+are `absent` / `turns.length < evidenceTurns` / `turns.length === evidenceTurns`. One test
+that asserted the old collapse (`evidenceTurns === 0` for a system with no accessor) was
+rewritten to assert the absence, because the collapse was the defect.
+
+Two readers round-trip artifacts back through `buildQuestionRecords` -- the reducer and
+both `tools/*.mjs` -- so the reverse mapping has **one owner**, `admittedFromRecord`, used
+by all three. Three hand-rolled copies of one mapping would drift, and the drift would be
+silent: two readers reconstructing differently would report different runs from the same
+file.
+
+### 13.16.5 Two smaller repairs that fell out of the same wiring
+
+**The bound's effect is now stated, not inferred.** `evidenceReductionOf` detected the
+bound by comparing `turns.length` against `evidenceTurns`, which stopped meaning "the
+bound bit" the moment `evidenceTurns` became the offer -- it would have fired on every
+record of every run and reported a bound that never engaged. It now reads the marker, which
+is the bound's own disclosure, and reports `droppedTurns` directly instead of leaving a
+reader to compute `turnsMeasured - turnsCarried`. That arithmetic had already stopped
+working: `turnsCarried` no longer counts the marker, and `turnsMeasured` is the bound's
+pre-image rather than the offer.
+
+**A context line that looks like a marker is not read as one.** A caller's own text can
+begin with `[evidence reduced:`; the parse is anchored on the numbers, so a lookalike is
+not taken for a reduction. Tested, because the alternative reading attributes a reduction
+to a dataset phrase.
+
+### 13.16.6 Registered: the roster counts LINES, and has since it existed
+
+Measured on this run's artifact: of 17,341 roster entries across the MR questions,
+**14,724 (84.9%) are not stamped starts** -- they are continuation lines of a turn whose
+content spans newlines. Roster entry [1] is a turn start and entries [2]-[6] are five more
+lines of the same assistant turn.
+
+So `turns`, `evidenceTurns`, `evidenceChars` and every count derived from them are counts
+of **lines of the joined context**, and the docs have called them turns throughout. The
+magnitude of the error on this data is about **6.6 lines per turn**: the budget carries
+~143 lines, which is roughly 22 turns, and `§13.13`'s "~165 turns" is ~165 lines.
+
+**What this does not break.** The selection operates on turns and is unaffected. The
+gold-turn identification in §13.16.3 works because a turn's first line is stamped and
+therefore appears in the roster as its own entry, which is also why the two independent
+probes agreed.
+
+**What it does break.** Every count in this document's §13.13-13.16 that says "turns"
+means lines. The unit is wrong, not the measurements: the ratio arguments hold on either
+unit because both sides are in the same one.
+
+**The fix is registered and not made**, deliberately: it changes `lastRetrievedContext`'s
+contract from a joined string to a list of turns, which ripples through the capture, the
+roster, `QuestionRecordInput.retrieved` and `boundRetrievedContexts` -- all registered
+surface. Doing it in the same change as the offer repair would leave two changes to one
+measurement and no way to attribute either.
+
+### 13.16.7 Status and what is next
+
+**Registered, with the offer repaired and the unit defect open.** Gate: `pnpm check`
+exit 0, cortex-eval 1,790 tests and cortex-memory 269, all four coverage dimensions 100%
+in both, census clean, pre-registration guard 300 passed with 20 subtests.
+
+| Priority | Item |
+| --- | --- |
+| **P0** | Supply the retrieval relevance signal (§13.14.4's registered prediction: gold-inside-carried 11.6% -> ~92%). Now the single remaining variable, because the note is measured and the offer is reported again |
+| **P0** | Read the next artifact for `admittedTurns` per question, which is the first run that can report how much evidence existed |
+| P1 | Repair the line/turn unit (§13.16.6), as its own registered change |
+| P1 | Per-turn gold attribution, to replace the session-index rule with a turn-level measurement |
+| P2 | The in-band marker's ambiguity: a context line that happens to carry the exact marker shape would be read as a reduction |

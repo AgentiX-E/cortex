@@ -42,6 +42,27 @@ import { parseAnswer } from './parse.js';
 import type { CortexMemoryOptions } from './types.js';
 
 /**
+ * The offer's size, counted the way the record counts the delivery.
+ *
+ * ## Why this is a module function and not two lines inside the method
+ *
+ * Because the unit is a decision and it is stated once. The record's `evidenceTurns`
+ * is produced by splitting the joined context on newlines, so a turn whose content
+ * spans newlines counts as several -- a defect, registered as `§13.16` -- and the
+ * offer has to be counted the same way for the two to be comparable. Two call sites
+ * counting independently is how the units would drift apart, which is the same
+ * argument `#admit` makes for applying the session budget in one place.
+ *
+ * The join is the same join `#recordEvidence` performs, so "lines of the joined
+ * context" means the same string in both measurements.
+ */
+function admittedEvidenceOf(admitted: readonly AdmittedTurn[]): { turns: number; chars: number } {
+  const joined = admitted.map((turn) => turn.content).join('\n');
+  const turns = joined.split('\n').filter((line) => line.trim().length > 0).length;
+  return { turns, chars: joined.length };
+}
+
+/**
  * A `MemorySystem` whose retrieval is decided by `cortex-core`'s value gates.
  *
  * Declares five of the six optional routing paths. `answerPreference` is
@@ -231,6 +252,36 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastPromptEvidenceChars: number | null = null;
 
+  /**
+   * How much evidence admission produced for the most recent call, or `null`.
+   *
+   * ## Why the offer needs its own slot, and why §13.15 is the reason
+   *
+   * The roster holds the evidence the prompt **carried** since §13.15, and a size for
+   * the delivery travels with it. What was lost in that change is the **offer**: the
+   * context `#admit` produced, before any budget. Run `38142407062` showed the
+   * consequence -- `evidenceTurns` fell from 3,016-4,528 to a median of 141, because
+   * it is derived from the captured context and the captured context is now the
+   * carried subset. The artifact could therefore no longer say how much evidence
+   * existed, which is what `§13.11.3` reads and what makes the budget's effect
+   * legible at all.
+   *
+   * So the offer is recorded as two numbers rather than as text. Text was what the
+   * pre-`§13.15` capture held, and it was the wrong shape twice over: it was
+   * unbounded (the 258 MB artifact of `§13.14`), and a *prefix* of it was carried,
+   * so the roster could not name what the model read. Two numbers bound the artifact
+   * and answer the question that was actually being asked.
+   *
+   * Counted the same way the record counts `evidenceTurns`, which is **lines** of the
+   * joined context and not turns -- see `§13.16`. That unit is a defect and it is
+   * registered; measuring the offer in the unit the rest of the artifact uses is what
+   * keeps the two comparable until it is repaired.
+   *
+   * `null` means no call has happened, for the same reason the other slots are
+   * nullable: a decline reached the machine and never a reader.
+   */
+  #lastAdmittedEvidence: { turns: number; chars: number } | null = null;
+
   constructor(options: CortexMemoryOptions) {
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
@@ -298,6 +349,28 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * How much evidence admission produced for the most recent call, or `null`.
+   *
+   * The **offer**, as against `lastPromptEvidenceChars`'s delivery. Two numbers, and
+   * both are needed: a reader with only the delivery cannot tell a budget that cut
+   * ninety-eight per cent of the context from a retrieval that found almost nothing,
+   * and those two runs want opposite repairs.
+   *
+   * Counted in **lines of the joined context**, which is the unit the record's
+   * `evidenceTurns` uses -- and which is a defect, registered as `§13.16`: a turn
+   * whose content spans newlines is counted as several. The unit is matched here
+   * rather than corrected in one field, because the offer and the delivery have to be
+   * commensurable for their ratio to mean anything, and correcting one of them alone
+   * would make the ratio a fact about two different units.
+   *
+   * `null` means no call has happened, or the machine declined before a reader was
+   * reached.
+   */
+  lastAdmittedEvidence(): { turns: number; chars: number } | null {
+    return this.#lastAdmittedEvidence;
+  }
+
+  /**
    * Record the evidence a reader is about to be shown.
    *
    * Called at every point a route hands admitted turns to a prompt builder, for
@@ -331,19 +404,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * builder can name the set. And `carried` is a subset of `turns`, so a route still
    * cannot record a turn it never admitted.
    *
-   * ## Why the offer is still recorded
+   * ## Why the offer is recorded as well, and what went wrong without it
    *
-   * `promptEvidenceChars` is recorded beside them in the same call, because the two
-   * answer different questions about the same run and both are needed: the offer is
-   * what retrieval produced (`evidenceTurns`, `evidenceChars` on the record) and the
-   * delivery is what reached the model. Recording only one would let a reader
-   * mistake a budget for a retrieval failure. They are written in one call so a
-   * route cannot update one and not the other -- the shape `#consult` exists to
-   * prevent on the model-outcome axis.
+   * Three measurements come out of this one call, and they answer three different
+   * questions about the same run:
    *
-   * The assembled prompt is the only argument, and it carries both numbers. Passing
-   * the admitted turns alongside it would be a second list that this function does
-   * not read -- and a parameter nothing reads is a parameter that will drift.
+   *   - the **offer** -- what admission produced (`lastAdmittedEvidence`), which is
+   *     what `§13.11.3` asks about and what makes the budget's effect legible;
+   *   - the **delivery** -- the turns the prompt carried (`lastRetrievedContext`)
+   *     and how many characters of them it printed (`lastPromptEvidenceChars`);
+   *   - nothing else. A reader wanting "did retrieval find it" from the delivery
+   *     alone would read a budget cut as a retrieval failure.
+   *
+   * `§13.15` recorded only the delivery, and run `38142407062` showed the cost: the
+   * record's `evidenceTurns` is derived from the captured context, so it fell from
+   * 3,016-4,528 to a median of 141 and the artifact could no longer say how much
+   * evidence had existed. The offer is therefore taken here, where the admitted turns
+   * are still in hand, and carried out as **counts** rather than as text -- text was
+   * the pre-`§13.15` shape and it was unbounded.
+   *
+   * Written in one call so a route cannot update one measurement and not the others,
+   * which is the shape `#consult` exists to prevent on the model-outcome axis.
    *
    * `carried` cannot name a turn that was never admitted: the builder is handed the
    * admitted turns and can only return a subset of what it was handed.
@@ -363,9 +444,13 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * which the roster reads as `turns: []` against a non-zero `evidenceTurns` -- the
    * three-state distinction `question-record.ts` registers.
    */
-  #recordEvidence(assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried'>): void {
+  #recordEvidence(
+    admitted: readonly AdmittedTurn[],
+    assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried'>,
+  ): void {
     this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content).join('\n');
     this.#lastPromptEvidenceChars = assembled.evidenceChars;
+    this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
   }
 
   /**
@@ -625,7 +710,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // answered. The rendering is resolved in `#promptOptions` instead, so every
     // route keeps its own ask and only the evidence presentation moves.
     const assembled = buildPrompt(question, turns, contract, this.#promptOptions());
-    this.#recordEvidence(assembled);
+    this.#recordEvidence(turns, assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -640,7 +725,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...base,
       ...(questionDate === undefined ? {} : { questionDate }),
     });
-    this.#recordEvidence(assembled);
+    this.#recordEvidence(turns, assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -650,12 +735,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
     const assembled = buildSessionPrompt(question, sessions, this.#promptOptions());
-    // Flattened for the accessor while the prompt keeps its boundaries. The
-    // question the accessor answers is "which turns reached the reader", and the
-    // boundary is presentation; a reader comparing this against `turns` on the
-    // roster wants the same turns the prompt carried, in the same order -- up to
-    // the budget, which `evidenceChars` is what reports.
-    this.#recordEvidence(assembled);
+    // Flattened for the two measurements the builder cannot report, which are about
+    // the **offer** and not the delivery: the prompt keeps its boundaries, the offer
+    // is one list of admitted turns, and the boundary is presentation. A reader
+    // comparing this against the carried set wants the same turns the session
+    // admission produced, and `lastAdmittedEvidence` counts them in the record's own
+    // unit.
+    this.#recordEvidence(
+      sessions.flatMap((session) => session.turns),
+      assembled,
+    );
     return this.#consult(assembled.prompt);
   }
 

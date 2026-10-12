@@ -219,6 +219,30 @@ describe('the system reports the evidence the prompt carried', () => {
     expect(carried).toBeLessThanOrEqual(DEFAULT_MAX_PROMPT_CHARS);
   });
 
+  it('reports the offer beside the delivery, and the two are different sizes', async () => {
+    // §13.16. The delivery alone cannot distinguish a budget that cut the context from
+    // a retrieval that found almost nothing, and those two runs want opposite repairs.
+    // This is the accessor that makes the distinction readable per question.
+    const memory = system({ llm: recordingLlm([]) });
+    const context = Array.from({ length: 2_000 }, (_, i) => `user: note number ${i} about it`);
+
+    await memory.answer('What did I note?', context);
+
+    const offer = memory.lastAdmittedEvidence()!;
+    // Counted as lines of the joined context, which is the unit the record's
+    // `evidenceTurns` uses -- one line per turn here, so it equals the turn count.
+    expect(offer.turns).toBe(context.length);
+    expect(offer.chars).toBe(context.join('\n').length);
+    // Strictly larger than the delivery, which is what the budget removed.
+    expect(memory.lastPromptEvidenceChars()!).toBeLessThan(offer.chars);
+  });
+
+  it('has no offer before a call, which is not an offer of nothing', () => {
+    // `null` and `0` are different claims, and this accessor exists because the
+    // artifact lost the ability to tell them apart.
+    expect(system({ llm: recordingLlm([]) }).lastAdmittedEvidence()).toBeNull();
+  });
+
   it('reports a small run as carried whole, so the field does not read as always reduced', async () => {
     const memory = system({ llm: recordingLlm([]) });
 

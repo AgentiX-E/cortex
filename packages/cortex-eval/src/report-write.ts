@@ -42,6 +42,7 @@
 import type { AblationReport } from './report.js';
 import type { AblationResult } from './types.js';
 import {
+  admittedFromRecord,
   boundRetrievedContexts,
   buildQuestionRecords,
   evidenceReductionOf,
@@ -343,6 +344,13 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // reduction operates on the same text the record holds and cannot
         // introduce evidence the original record did not have.
         retrieved: record.turns.map((turn) => turn.text).join('\n'),
+        // The offer travels through a reduction unchanged: the bound removes turns
+        // from what is CARRIED, and these are what was admitted. Forwarding it is not
+        // bookkeeping -- `withEvidenceBound` is the third place a field has been
+        // silently dropped by not being listed, and the only reason this one cannot be
+        // is that the input type requires it. A record that never had an offer rebuilds
+        // to one that does not, so the absence round-trips as an absence.
+        admitted: admittedFromRecord(record),
         // Forwarded for the reason `featureConfig` above is: a field the rebuild
         // does not carry is a field a reduction silently drops. This one is the
         // prompt's own evidence size, so losing it would leave a reduced artifact
