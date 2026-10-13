@@ -526,6 +526,9 @@ const RENDERING_ROUTES: Record<string, readonly string[]> = {
 const ASK_ROUTES: Record<string, readonly string[]> = {
   route: [],
   extractive: ['abstention', 'temporal', 'knowledge-update', 'assistant'],
+  // §13.21's ask, restated for the same reason as the two above: the artifact reports
+  // the reach from this table, and the product's own table is asserted equal to it.
+  aggregate: ['multi-session', 'flat'],
 };
 
 /**

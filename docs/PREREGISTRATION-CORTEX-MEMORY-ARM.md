@@ -669,7 +669,8 @@ forwarded into a step's `env`. Three injections were run against it:
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-* `ask: route` — **reverted from `extractive` by §13.20.** §13.8 falsified the ask
+* `ask: aggregate` — **set by §13.21, after §13.20 reverted it to each route's own block.**
+  §13.8 falsified the ask
   hypothesis at the time -- with
   the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
   `b✓f✗` rose by exactly the amount `b✗f✓` fell — a swap, not a repair — and §13.9
@@ -692,6 +693,21 @@ forwarded into a step's `env`. Three injections were run against it:
   it removes are the temporal block's date resolution and the knowledge-update block's
   earlier-versus-later rule -- on exactly the two capabilities the feature side loses.
   Reverting to `route` restores them and moves nothing else.
+  **§13.20's run confirmed that and localised what is left.** `38439899858` moved TR's
+  abstention rate from 69.3% to 35.4% and its accuracy from 22.05% to 49.61%, KU from
+  73.61% to 86.11%, ABS to 100%, and the arm's delta from +9.25pp to **+18.20pp** with
+  McNemar `p = 2.737e-7` -- while **MR did not move at all** (56 of 121 abstentions, the
+  same 56). That is the internal control behaving exactly as `ASK_ROUTES` says it must:
+  MR's own ask already was `extractive`, so `route` is a no-op there.
+  What is left is MR, and it is the only capability on which the feature side loses
+  (27.27% against the reference pipeline's 88.4%). Its 56 abstentions all had the gold
+  evidence carried and all were the bare decline token, so it needs an instruction rather
+  than more evidence -- and it cannot be given a global one without disturbing the four
+  routes §13.20 just repaired.
+  Hence `aggregate`: the extractive block plus one sentence saying the answer may require
+  combining evidence from more than one turn or session. It reaches exactly
+  `multi-session` and `flat` (the two routes whose contract IS `extractive`) and leaves
+  the other four byte-identical, which is both the mechanism and the control.
 * `evidenceTurnsPerRecord: 256` — **added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
   completed all four runs of all five hundred questions and then died writing the JSON
   with `Invalid string length` (§13.11.10). The evidence is carried
@@ -3321,3 +3337,101 @@ handling of aggregation, which is a different registration.
 **Read, localised, and registered.** Gate: `pnpm check` exit 0, `test:tools` 303 passed + 31
 subtests with the amended §10.3, cortex-eval 1,832 tests, cortex-memory 269, 100% on all
 four coverage dimensions in both, census clean.
+
+## 13.21 What run 38439899858 read: the ask axis returns +8.95pp, and MR is all that is left
+
+Run `38439899858` completed in 3 h 30 m. It is the largest single movement this arm has
+produced, and every capability that moved did so on the route whose instruction block the
+previous run had replaced.
+
+### 13.21.1 The headline
+
+| Metric | `38394103193` (ask: `extractive`) | `38439899858` (ask: `route`) |
+| --- | --- | --- |
+| baseline / feature | 44.40% / 54.60% | 44.85% / **63.05%** |
+| **Δ** | +9.25pp | **+18.20pp** |
+| McNemar p | 5.179e-3 | **2.737e-7** |
+| discordant `b✓f✗` / `b✗f✓` | 135 / 186 | **107 / 197** |
+| abstention rate | 39.20% | **30.40%** |
+
+The feature side is now **18.20 points above the reference pipeline** and 10.55 points
+above the *unmeasured* ceiling §13.20 left it at, with the p-value falling four orders of
+magnitude. `b✗f✓ = 197` is the highest repair count this arm has recorded.
+
+### 13.21.2 The per-route reading is the mechanism, and it is exact
+
+| Capability | `38394103193` acc | `38439899858` acc | Δ | abstention (before → after) | whose block changed |
+| --- | --- | --- | --- | --- | --- |
+| TR | 22.05% | **49.61%** | **+27.56pp** | 69.3% → **35.4%** | `temporal` — restored |
+| KU | 73.61% | **86.11%** | **+12.50pp** | — → **1.4%** | `knowledge-update` — restored |
+| ABS | 93.33% | **100.00%** | **+6.67pp** | 100% (correct) | `abstention` — restored |
+| IE | 84.67% | 84.00% | −0.67pp | — → 13.3% | `extractive` — **unchanged** |
+| MR | 31.40% | 27.27% | −4.13pp | 46.3% → **46.3%** | `extractive` — **unchanged** |
+
+**The three capabilities that moved are the three whose blocks were restored, and the two
+that did not move are the two whose blocks `route` leaves alone.** IE and MR both use the
+`extractive` block, which is what `ask: 'extractive'` had already given them; their
+movements (−0.67pp, −4.13pp) are inside the run-to-run spread this arm has measured
+(1.7–2.1pp on the aggregate, more on a 121-question capability).
+
+MR's abstention count is the sharpest single number in the run: **56 of 121 before, 56 of
+121 after.** A global ask moved four routes; this one moved none of the two it should not.
+
+### 13.21.3 P1' and P3' hold; P2' holds as a control and fails as a prediction
+
+| Prediction | Registered | Measured | Verdict |
+| --- | --- | --- | --- |
+| **P1'** TR abstention < 50% | from 69.3% | **35.4%** | **holds**, by 14.6 points of margin |
+| **P2'** MR abstention < 35% | from 46.3% | **46.3%** | **fails as a prediction, holds as a control** |
+| **P3'** ABS does not regress | ≥ 85% | **100.00%** | **holds**, and improved |
+
+P2' was written with its own interpretation attached -- "MR is the internal control; a
+movement here would mean something else moved with it" -- and the reading is that it did
+not move at all. A prediction that is registered as a control and behaves as one is a
+weaker claim than a prediction that is confirmed, and it is recorded that way rather than
+scored as a success.
+
+### 13.21.4 MR is the whole of what remains, and it is not a retrieval problem
+
+| Capability | feature acc | baseline acc | `b✓f✗` |
+| --- | --- | --- | --- |
+| MR | 27.27% | **86.78%** | the bulk of the 107 |
+
+MR's 56 abstentions all had at least one gold turn carried (`121/121` questions carry one),
+and all 56 are the bare `INSUFFICIENT_EVIDENCE` token. Under the `route` ask MR keeps the
+extractive block, which is the block it has always had -- so this is not a regression the
+last two runs introduced. It is the arm's floor.
+
+The reading that fits: the dataset's multi-session questions ask for a **count or a
+comparison across sessions** ("how many days did I spend camping", "how many hours in
+total did I spend driving to my three road trips"), and **no single turn contains the
+answer**. The extractive block's closing line -- "if the evidence does not contain the
+answer, reply exactly ..." -- is literally true on those questions, and the model takes it.
+
+### 13.21.5 What this registers
+
+**One variable: `ask: aggregate`**, the extractive block plus one sentence -- *"the answer
+may require combining evidence from more than one turn or session: gather every relevant
+piece first, then compute the answer. Do not reply INSUFFICIENT_EVIDENCE merely because no
+single piece states the answer outright."*
+
+It reaches exactly two routes (`multi-session`, `flat`) because those are the two whose
+contract IS `extractive`; the other four keep their own block and are the control. That
+targeting is the point: §13.20's lesson is that a global instruction moves four routes at
+once, and three of the four are now working.
+
+| Prediction | Reading | Falsified if |
+| --- | --- | --- |
+| **P1''** | MR's abstention rate falls **below 30%** (from 46.3%) and its accuracy rises **above 40%** (from 27.27%) | MR stays above 40% abstention, which would say the model's difficulty on these questions is not about the instruction |
+| **P2''** | the four untouched routes **do not move** beyond the measured run-to-run spread: TR within ±3pp, KU within ±3pp, ABS ≥ 93%, IE within ±3pp | any of the four moves more than 3pp, which would mean the ask leaked past `ASK_ROUTES` |
+| **P3''** | the aggregate delta rises **above +20pp** | the delta falls below +15pp, which would mean MR's repair was bought at a cost elsewhere |
+
+**What P2'' is for.** §13.20 could not measure leakage because it changed every block; this
+registration can, and the four routes are the instrument. A movement there is a defect in
+`instructionsFor` rather than a result about the model.
+
+### 13.21.6 Status
+
+**Implemented, tested, and dispatched.** Gate: `pnpm check` exit 0, `test:tools` 303 passed
++ 31 subtests, cortex-eval 1,832 tests, cortex-memory **277** tests (8 new on the ask's
+reach), 100% on all four coverage dimensions in both, census clean.

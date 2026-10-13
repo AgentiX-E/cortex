@@ -77,6 +77,12 @@ export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRende
 export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   route: [],
   extractive: ['abstention', 'temporal', 'knowledge-update', 'assistant'],
+  // §13.21. The aggregate ask reaches only the routes whose own contract IS
+  // `extractive` -- the multi-session route and the flat path -- because every other
+  // route keeps its own block. That is what makes it a targeted instruction rather than
+  // a second global one, and it is measurable: the artifact's `askRoutes` names the two,
+  // and the four capabilities that keep their own block are the control.
+  aggregate: ['multi-session', 'flat'],
 };
 
 /**
@@ -136,7 +142,7 @@ type EvidenceRendering = 'numbered' | 'sourced';
  *
  * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
  */
-export type EvidenceAsk = 'route' | 'extractive';
+export type EvidenceAsk = 'route' | 'extractive' | 'aggregate';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -327,6 +333,42 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
 };
 
 /**
+ * The §13.21 ask: the extractive block plus one sentence about combining evidence.
+ *
+ * ## Why MR needed its own instruction rather than a different one
+ *
+ * Run `38439899858` left the multi-session route as the only net loss on the feature
+ * side -- 27.27% against the reference pipeline's 88.4% -- and the reading that localises
+ * it is unambiguous: of its 56 abstentions, **all 56** had the gold evidence carried, and
+ * every one was the bare `INSUFFICIENT_EVIDENCE` token. The evidence is there. What the
+ * route lacks is any statement that the answer may not be in one place.
+ *
+ * ## Why the wording is what it is
+ *
+ * The sentence names the failure mode instead of the topic. "Do not reply
+ * INSUFFICIENT_EVIDENCE merely because no single piece states the answer" is a statement
+ * about the *evidence layout*, which is what multi-session questions are: the dataset's
+ * own multi-session instances ask for a count or a comparison across sessions, and no
+ * single turn in any of them contains the number. The extractive block's own line -- "if
+ * the evidence does not contain the answer, reply exactly ..." -- is true and, read alone,
+ * licenses the decline that produces 27%.
+ *
+ * ## Why it is an ask and not a contract
+ *
+ * A contract selects a *rendering*; this selects an *instruction*, which is the axis
+ * §13.2 established. It also has to be reachable for exactly two routes and no others,
+ * and `ASK_ROUTES` is the mechanism that expresses that -- a new contract would need its
+ * own reach table and would collide with `PROMPT_CONTRACTS`, which is the rendering axis.
+ */
+const AGGREGATE_ASK_INSTRUCTION = [
+  'Answer the question using only the evidence above.',
+  'The answer may require combining evidence from more than one turn or session: gather every relevant piece first, then compute the answer. Do not reply ' +
+    ABSTAIN_TOKEN +
+    ' merely because no single piece states the answer outright.',
+  `Reply with the answer alone. If the evidence does not contain the answer, reply exactly ${ABSTAIN_TOKEN}.`,
+].join('\n');
+
+/**
  * The instruction block a route emits, honouring the run's ask.
  *
  * The one place `EvidenceAsk` is resolved, called by every builder, for the reason
@@ -346,6 +388,9 @@ function instructionsFor(
 ): string {
   if (ask === 'extractive') {
     return CONTRACT_INSTRUCTIONS.extractive(undefined);
+  }
+  if (ask === 'aggregate' && contract === 'extractive') {
+    return AGGREGATE_ASK_INSTRUCTION;
   }
   return CONTRACT_INSTRUCTIONS[contract](date);
 }

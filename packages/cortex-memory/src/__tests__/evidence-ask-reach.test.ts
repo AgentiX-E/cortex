@@ -37,7 +37,7 @@ import { createMemory } from '@agentix-e/cortex-core';
 import type { LLM } from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
-import { ASK_ROUTES, buildPrompt } from '../prompt.js';
+import { ASK_ROUTES, buildPrompt, type EvidenceAsk } from '../prompt.js';
 import type { AdmittedTurn } from '../admission.js';
 
 const NOW = 1_759_470_000_000;
@@ -65,7 +65,7 @@ function recorder(seen: string[], answer: string): LLM {
   };
 }
 
-function build(seen: string[], ask?: 'route' | 'extractive'): CortexMemory {
+function build(seen: string[], ask?: EvidenceAsk): CortexMemory {
   return new CortexMemory({
     llm: recorder(seen, 'Spitfire'),
     now: NOW,
@@ -214,5 +214,81 @@ describe('the ask composes with the rendering without either moving the other', 
     expect(generous).not.toContain(DECLINE_INVITATION);
     expect(tight).not.toContain(DECLINE_INVITATION);
     expect(tight.length).toBeLessThanOrEqual(120);
+  });
+});
+
+/**
+ * §13.21's ask: the extractive block plus one sentence about combining evidence.
+ *
+ * ## Why this is a separate ask rather than a longer extractive block
+ *
+ * `38439899858` left the multi-session route as the feature side's only net loss -- and
+ * the reading localises it: all 56 of its abstentions had the gold evidence carried, and
+ * every one was the bare `INSUFFICIENT_EVIDENCE` token. Lengthening the extractive block
+ * would have moved four routes; this moves two, and the four that keep their own block
+ * are the control that says so.
+ */
+describe('the aggregate ask reaches two routes and leaves the other four untouched', () => {
+  /** A phrase that appears in this ask and in no other instruction block. */
+  const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
+
+  it('adds the merging sentence on the multi-session route', async () => {
+    const seen: string[] = [];
+    await build(seen, 'aggregate').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!).toContain(MERGING_SENTENCE);
+    // The token survives, so a model that genuinely cannot answer can still decline --
+    // the same rule the extractive ask's test pins.
+    expect(seen[0]!).toContain('INSUFFICIENT_EVIDENCE');
+  });
+
+  it('adds it on the flat path, whose contract is also extractive', async () => {
+    const seen: string[] = [];
+    await build(seen, 'aggregate').answer('How many kits do I own?', [TEXT]);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!).toContain(MERGING_SENTENCE);
+  });
+
+  const OTHER_ROUTES: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
+    ['abstention (ABS)', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
+    ['temporal (TR)', (m) => m.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
+    ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+    ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
+  ];
+
+  for (const [name, drive] of OTHER_ROUTES) {
+    it(`leaves the ${name} route byte-identical`, async () => {
+      // These four routes' contracts are not `extractive`, so they keep their own
+      // block and must be byte-identical to `route`. This is the control that makes the
+      // MR movement in §13.21's run attributable to this ask and nothing else -- and the
+      // reading it protects is a real one: the run before this one moved TR by 27.6
+      // points precisely because a *global* ask had replaced TR's own block.
+      const aggregate: string[] = [];
+      const shipped: string[] = [];
+      await drive(build(aggregate, 'aggregate'));
+      await drive(build(shipped, 'route'));
+
+      expect(instructionsOf(aggregate[0]!)).toBe(instructionsOf(shipped[0]!));
+    });
+  }
+
+  it('records the two routes it changes, and no others', () => {
+    expect(ASK_ROUTES.aggregate).toEqual(['multi-session', 'flat']);
+    // The shipped behaviour is still reached by NOT naming an ask, so `route` stays
+    // empty: naming it would claim a treatment the control did not receive.
+    expect(ASK_ROUTES.route).toEqual([]);
+  });
+
+  it('leaves the extractive ask unchanged, so the previous registration still reproduces', () => {
+    // §13.2's no-op trap, one ask over: MR's own ask IS `extractive`, so the two asks
+    // must differ on that route and the extractive one must still reach four.
+    expect(ASK_ROUTES.extractive).toEqual([
+      'abstention',
+      'temporal',
+      'knowledge-update',
+      'assistant',
+    ]);
   });
 });

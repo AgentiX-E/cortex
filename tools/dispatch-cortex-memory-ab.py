@@ -154,7 +154,31 @@ WORKFLOW = "benchmark-cortex-memory.yml"
 # Every other input is held at its §13 value: this run varies the selection and nothing
 # else. The rendering and the ask stay as dispatched so a non-zero delta cannot be
 # attributed to a change in what the prompt says rather than in which turns it says it about.
-# §13.20 reverts the ask to `route`, and the reading that motivates it is in this run.
+# §13.21 sets the ask to `aggregate`: the extractive block plus one sentence saying the
+# answer may require combining evidence from more than one turn or session.
+#
+# §13.20 reverted the ask to `route` and that run (`38439899858`) is the reason this one can
+# be targeted at all. It moved TR's abstention rate 69.3% -> 35.4% and its accuracy 22.05%
+# -> 49.61%, KU 73.61% -> 86.11%, ABS to 100%, and the arm's delta from +9.25pp to
+# **+18.20pp** with McNemar `2.737e-7` -- and it left **MR untouched** (56 of 121
+# abstentions, the same 56), which is what the internal control was registered to show:
+# MR's own ask already was `extractive`, so `route` is a no-op on it.
+#
+# That leaves MR as the only capability where the feature side loses (27.27% against the
+# reference pipeline's 88.4%), and the reading localises it completely: all 56 of its
+# abstentions had the gold evidence carried, and every one was the bare
+# `INSUFFICIENT_EVIDENCE` token. More evidence cannot help -- there is nothing left to
+# retrieve. What MR lacks is any statement that the answer may not be in one place, which
+# is what multi-session questions are: the dataset's own multi-session instances ask for a
+# count or a comparison across sessions, and no single turn contains the number.
+#
+# The instruction has to be targeted rather than global, because a global one is exactly
+# what §13.20 had to undo. `aggregate` therefore reaches only the two routes whose contract
+# IS `extractive` -- `multi-session` and `flat` -- and leaves the other four byte-identical,
+# which the artifact reports as `askRoutes` and the product's own tests pin.
+#
+# Every other input is held at its §13.20 value, so a movement in MR is attributable to the
+# instruction and nothing else.
 #
 # `38250133116` and `38394103193` both dispatched `ask: 'extractive'`, which replaces
 # EVERY route's instruction block with the reference pipeline's two-line one. That block
@@ -187,7 +211,7 @@ INPUTS = {
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
-    "cortex_memory_ask": "route",
+    "cortex_memory_ask": "aggregate",
     "cortex_memory_evidence_turns": "256",
     "cortex_memory_relevance": "retrieval",
     "cortex_memory_relevance_top_k": "64",
