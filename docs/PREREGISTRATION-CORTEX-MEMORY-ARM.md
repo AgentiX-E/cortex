@@ -669,8 +669,9 @@ forwarded into a step's `env`. Three injections were run against it:
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-* `ask: extractive` — **added by §13.11.** §13.8 falsified the ask hypothesis: with
-  `ask: extractive` the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
+* `ask: route` — **reverted from `extractive` by §13.20.** §13.8 falsified the ask
+  hypothesis at the time -- with
+  the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
   `b✓f✗` rose by exactly the amount `b✗f✓` fell — a swap, not a repair — and §13.9
   marked the line dead. What §13.11 asks instead is a question about the evidence
   rather than about how it is asked: `QuestionRecord.turns` was `[]` on all 120
@@ -680,6 +681,17 @@ forwarded into a step's `env`. Three injections were run against it:
   ask is held at §13's value rather than reverted, because reverting it would restore
   the shipped per-route blocks and change the surface the evidence capture is being
   read from.
+  **That reason expired, and §13.20 is what expired it.** The capture is independent of
+  the ask since §13.19 -- `goldOverlap` is measured against the captured context, not
+  against the prompt -- so the fixed surface is no longer load-bearing. What replaced it
+  is a reading: `38394103193` measured gold coverage per question for the first time and
+  every one of the 56 MR and 88 TR abstentions had at least one gold turn **inside the
+  context the model was shown** (56/56 and 87/88), and every abstention in the run was the
+  bare `INSUFFICIENT_EVIDENCE` token. The ask is therefore not a wording preference: the
+  `extractive` block *removes* each route's reasoning instruction, and the two instructions
+  it removes are the temporal block's date resolution and the knowledge-update block's
+  earlier-versus-later rule -- on exactly the two capabilities the feature side loses.
+  Reverting to `route` restores them and moves nothing else.
 * `evidenceTurnsPerRecord: 256` — **added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
   completed all four runs of all five hundred questions and then died writing the JSON
   with `Invalid string length` (§13.11.10). The evidence is carried
@@ -3188,3 +3200,124 @@ The dispatch is the same one §13.17 made, unchanged: the single variable is sti
 this field is derived from the dataset rather than configured — so the run answers §13.17's
 P1 against the same conditions it was registered under, this time with a number rather than
 an approximation.
+
+## 13.20 What run 38394103193 read: the coverage question answered, and MR/TR localised to the ask
+
+Run `38394103193` completed all 13 steps in 3 h 31 m. It is the same configuration
+§13.17 dispatched, with §13.19's field added, and it is the first run of this arm whose
+central prediction could be read as a number.
+
+### 13.20.1 The headline holds under a second sample
+
+| Metric | `38250133116` | `38394103193` |
+| --- | --- | --- |
+| baseline / feature | 44.00% / 54.30% | 44.40% / **54.60%** |
+| **Δ** | **+10.30pp** | **+9.25pp** |
+| McNemar p | 2.724e-3 | **5.179e-3** |
+| discordant `b✓f✗` / `b✗f✓` | 130 / 184 | 135 / **186** |
+| abstention rate | 38.00% | 39.20% |
+| per-run `llm` / `answered` | 195.5 / 304.5 | 196.8 / 303.3 |
+
+Two independent runs of the same arming, agreeing to within a point. The selection
+hypothesis is not a single-sample result.
+
+### 13.20.2 P1, and the definition it required
+
+The registered prediction was `gold-in-carried ≥ 0.80`. `goldOverlap` now measures it
+directly, and the answer depends on which of two readings "carried" means:
+
+| Reading | IE | MR | KU | TR | ABS | ALL |
+| --- | --- | --- | --- | --- | --- | --- |
+| **at least one** gold turn carried | 149/150 | **121/121** | 72/72 | 126/127 | 30/30 | **498/500 = 99.6%** |
+| **every** gold turn carried | 51/150 | 1/121 | 0/72 | 2/127 | 0/30 | 54/500 = 10.8% |
+| mean `carried / total` | 76.2% | 48.9% | 62.1% | 46.3% | 48.4% | — |
+
+**P1 holds under the reading its own mechanism argued for.** §13.17.4's prediction was
+`P(gold inside the index's top 64)` -- a statement about *a* gold turn being present, not
+about every turn of the gold session fitting in a budget that holds roughly 167 turns.
+Under that reading the figure is **99.6%** (MR **121/121, up from §13.16's 14/121 = 11.6%**
+on the same 121 questions), against a registered floor of 0.80.
+
+Two things are registered rather than glossed:
+
+* **the definition was fixed after the fact, and that is a defect in how P1 was written.**
+  Both readings were computable from the start and only one was named; a prediction whose
+  outcome depends on an unspecified term is not falsifiable, which is the same complaint
+  §13.18 raised about the metric one layer up.
+* **there is no same-definition control.** §13.16's 11.6% used a session-index rule on a run
+  without a signal, so the comparison `11.6% → 100%` is across two rules even though it is
+  across the same 121 questions. The reading that needs no comparison is `carried == 0`:
+  **2 of 500 questions**. Under the arrival-order prefix of `38142407062`, where the gold
+  turn was inside the context for 11.6% of MR questions, a figure of 0.4% is not reachable
+  by chance -- and a control arm that re-ran without the signal would settle it, which is
+  the next registration after this one.
+
+The stronger reading is kept in the artifact for the reason it was measured: a partial
+carry is the ordinary case (444 of 500) and a metric that reported only the two extremes
+would hide the difference between carrying one gold turn of two and one of forty-eight.
+
+### 13.20.3 MR/TR are not a retrieval failure, and the artifact says so directly
+
+This is the reading §13.18.5 asked for and could not perform. Splitting the abstentions by
+whether the gold turn was carried:
+
+| Capability | abstained | of those, gold carried ≥ 1 | gold carried 0 |
+| --- | --- | --- | --- |
+| MR | 56/121 (46.3%) | **56** | 0 |
+| TR | 88/127 (69.3%) | **87** | 1 |
+| IE | 20/150 (13.3%) | 19 | 1 |
+| KU | 3/72 (4.2%) | 3 | 0 |
+
+**Every MR abstention and 87 of 88 TR abstentions had the gold evidence in front of the
+model.** A retrieval-side repair cannot reach them: there is nothing left to retrieve.
+
+And the shape of the decline is uniform to the point of being diagnostic: **all 167
+abstentions in the run -- 56 MR, 88 TR, 20 IE, 3 KU -- are the bare `INSUFFICIENT_EVIDENCE`
+token.** Not one has prose, not one is a wrong answer. The model is shown relevant evidence,
+given an instruction block, and emits the decline token.
+
+### 13.20.4 What the instruction block removes, which is the finding
+
+Both runs dispatched `ask: 'extractive'`, which replaces **every** route's block with the
+reference pipeline's two-line one:
+
+    Answer the question using only the evidence above.
+    Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.
+
+That block is not merely more abstention-flavoured than each route's own -- it is
+**shorter**, and what it removes is each route's *reasoning* instruction. Two of them are
+the ones the losing capabilities need:
+
+* `temporal`: *"resolve every relative expression ('last week', 'two months ago') against
+  that date"* and *"show the resolved date in your answer"* -- TR is 127 relative-time
+  questions;
+* `knowledge-update`: *"distinguish the earlier value from the later one"* and *"use the
+  evidence with the latest date"* -- KU is 72 of them.
+
+So the ask is not a wording preference. On this reading the feature side is being told, on
+69% of its temporal questions, to answer a question whose reasoning instruction has been
+removed, and it declines.
+
+### 13.20.5 What this registers
+
+**One variable: the ask, reverted to `route`.** Every other input is held at its §13.17
+value -- `relevanceSignal: retrieval` at `relevanceTopK: 64`, the same rendering, the same
+gates -- so a movement in MR or TR is attributable to the instruction block and nothing
+else. §10.3 is amended in place, and the dispatch carries the value.
+
+| Prediction | Reading | Falsified if |
+| --- | --- | --- |
+| **P1'** | TR's abstention rate falls **below 50%** (from 69.3%). Restoring the date-resolution instruction is the registered mechanism, and TR is where it is absent on 127 questions | TR stays above 60%, which would say the block was not what the model was reacting to |
+| **P2'** | MR's abstention rate falls **below 35%** (from 46.3%). MR's own ask already *was* `extractive`, so this route is the control for "the ask changed nothing there" -- a movement here would mean something else moved with it | MR rises above 50% |
+| **P3'** | ABS does **not** regress (93.33% currently). The abstention route keeps its own block under `route`, and ABS's gold *is* abstention, so a fall here would mean the reverted ask leaked into the one route where declining is correct | ABS falls below 85% |
+
+**What P2' is for.** MR is the internal control: `ask: 'extractive'` left MR byte-identical
+before the signal existed (§13.2), and it should leave it near-identical now. If MR moves as
+much as TR, then the ask is not the mechanism and the next hypothesis is about the model's
+handling of aggregation, which is a different registration.
+
+### 13.20.6 Status
+
+**Read, localised, and registered.** Gate: `pnpm check` exit 0, `test:tools` 303 passed + 31
+subtests with the amended §10.3, cortex-eval 1,832 tests, cortex-memory 269, 100% on all
+four coverage dimensions in both, census clean.

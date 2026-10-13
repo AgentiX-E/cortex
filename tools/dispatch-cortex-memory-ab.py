@@ -154,13 +154,40 @@ WORKFLOW = "benchmark-cortex-memory.yml"
 # Every other input is held at its §13 value: this run varies the selection and nothing
 # else. The rendering and the ask stay as dispatched so a non-zero delta cannot be
 # attributed to a change in what the prompt says rather than in which turns it says it about.
+# §13.20 reverts the ask to `route`, and the reading that motivates it is in this run.
+#
+# `38250133116` and `38394103193` both dispatched `ask: 'extractive'`, which replaces
+# EVERY route's instruction block with the reference pipeline's two-line one. That block
+# is not abstention-free by accident of wording -- it is *shorter*, and what it removes is
+# each route's own reasoning instruction: the temporal block's "resolve every relative
+# expression against that date", the knowledge-update block's "distinguish the earlier
+# value from the later one". The two capabilities that need those instructions most are
+# exactly the two the feature side loses on.
+#
+# And the loss is not retrieval. `38394103193` measured `goldOverlap` per question for the
+# first time: of the 56 MR abstentions and 88 TR abstentions, **every single one** had at
+# least one gold turn inside the context the model was shown (56/56 and 87/88). Every
+# abstention in the whole run -- 56 MR, 88 TR, 20 IE, 3 KU -- was the bare
+# `INSUFFICIENT_EVIDENCE` token and nothing else. The model is given the evidence, given
+# an instruction that ends "if the evidence does not contain the answer, reply exactly
+# INSUFFICIENT_EVIDENCE", and takes it.
+#
+# So the variable this dispatch moves is the ask, back to each route's own block. §13.9
+# retired the ask line and this registration does not reopen it on the old grounds: it was
+# retired while the evidence capture was being read from a fixed prompt surface, and §13.19
+# makes the coverage measurement independent of the ask. What changed is the evidence, and
+# the evidence now says the ask is the remaining lever for MR and TR.
+#
+# Every other input is held: `relevanceSignal: retrieval` at `relevanceTopK: 64` is the
+# mechanism §13.17 proved, and moving it alongside the ask would make a non-zero delta
+# unattributable to either.
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_threshold": "0",
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
-    "cortex_memory_ask": "extractive",
+    "cortex_memory_ask": "route",
     "cortex_memory_evidence_turns": "256",
     "cortex_memory_relevance": "retrieval",
     "cortex_memory_relevance_top_k": "64",
