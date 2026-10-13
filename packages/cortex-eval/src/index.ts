@@ -307,6 +307,7 @@ export {
   buildRecordsFromDataset,
   correctnessVector,
   evidenceReductionOf,
+  goldOverlapOf,
   recordIds,
   REDUCED_TURNS_MARKER,
   type EvidenceBoundOptions,

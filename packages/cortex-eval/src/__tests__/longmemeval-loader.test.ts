@@ -224,3 +224,132 @@ describe('loadLongMemEval', () => {
     expect(ds.questions[0]!.expected).toBe('3');
   });
 });
+
+/**
+ * The dataset's own answer-turn annotation, which the loader used to discard.
+ *
+ * Discarding it is why `§13.11.5` -- was the gold turn inside what the model saw --
+ * had no direct answer: the first reading approximated it with a session-index rule
+ * and the second with a substring search on the answer text, and the artifact
+ * refuted the second by matching `3. **Humidity:**` for a gold of `3`.
+ */
+function instance(overrides: Partial<LongMemEvalInstance> = {}): LongMemEvalInstance {
+  return {
+    question_id: 'q1',
+    question_type: 'multi-session',
+    question: 'How many events?',
+    answer: '2',
+    haystack_session_ids: ['s-a', 's-b', 's-c'],
+    haystack_dates: ['2023/01/01 (Sun) 00:00', '2023/01/02 (Mon) 00:00', '2023/01/03 (Tue) 00:00'],
+    haystack_sessions: [
+      [{ role: 'user', content: 'first' }],
+      [
+        { role: 'user', content: 'second' },
+        { role: 'assistant', content: 'ok' },
+      ],
+      [{ role: 'user', content: 'third' }],
+    ],
+    answer_session_ids: ['s-b'],
+    ...overrides,
+  };
+}
+
+/**
+ * The instance with one optional key removed.
+ *
+ * `{ answer_session_ids: undefined }` is not the same value under
+ * `exactOptionalPropertyTypes`: this workspace distinguishes an absent optional key from
+ * one holding `undefined`, and the loader tests the absent spelling because that is what
+ * a dataset missing the field actually looks like.
+ */
+function without(
+  inst: LongMemEvalInstance,
+  key: 'answer_session_ids' | 'haystack_session_ids',
+): LongMemEvalInstance {
+  const copy = { ...inst };
+  delete copy[key];
+  return copy;
+}
+
+/**
+ * The gold turns the loader would carry for `inst`, read through the public path.
+ *
+ * `goldTurnsOf` is deliberately not exported: it is the loader's own step, and an
+ * export nothing outside this module calls is an export the census reports as an
+ * orphan. Going through `loadLongMemEval` also means these tests exercise the wiring
+ * that ships rather than a helper beside it.
+ */
+function goldOf(inst: LongMemEvalInstance): readonly string[] {
+  return loadLongMemEval([inst]).questions[0]!.goldTurns ?? [];
+}
+
+describe('goldTurnsOf', () => {
+  it('selects the turns of the sessions the answer ids name', () => {
+    const inst = instance();
+    expect(goldOf(inst)).toEqual([
+      '[2023/01/02 (Mon) 00:00] user: second',
+      '[2023/01/02 (Mon) 00:00] assistant: ok',
+    ]);
+  });
+
+  it('renders them exactly as the context does, which is what makes membership decidable', () => {
+    // The property the field rests on. `goldTurnsOf` and `sessionsToContext` both go
+    // through `turnText`, so a downstream membership test is an equality test between
+    // two applications of one renderer rather than a natural-language match. If this
+    // fails, every coverage number computed from the field is a guess.
+    const question = loadLongMemEval([instance()]).questions[0]!;
+    const gold = question.goldTurns ?? [];
+    expect(gold.length).toBeGreaterThan(0);
+    for (const turn of gold) expect(question.context).toContain(turn);
+  });
+
+  it('returns nothing when the instance names no answer sessions', () => {
+    expect(goldOf(without(instance(), 'answer_session_ids'))).toEqual([]);
+  });
+
+  it('returns nothing when the answer list is empty', () => {
+    const inst = instance({ answer_session_ids: [] });
+    expect(goldOf(inst)).toEqual([]);
+  });
+
+  it('returns nothing when the haystack carries no session ids', () => {
+    // Without `haystack_session_ids` there is no way to relate a positional session to
+    // an id, so the annotation is unusable rather than empty. Returning nothing is what
+    // makes the record omit `goldOverlap` instead of reporting a measured miss.
+    expect(goldOf(without(instance(), 'haystack_session_ids'))).toEqual([]);
+  });
+
+  it('returns nothing when an answer id names no haystack session', () => {
+    const inst = instance({ answer_session_ids: ['s-z'] });
+    expect(goldOf(inst)).toEqual([]);
+  });
+
+  it('gathers several gold sessions in haystack order, not id order', () => {
+    const inst = instance({ answer_session_ids: ['s-c', 's-a'] });
+    expect(goldOf(inst)).toEqual([
+      '[2023/01/01 (Sun) 00:00] user: first',
+      '[2023/01/03 (Tue) 00:00] user: third',
+    ]);
+  });
+});
+
+describe('loadLongMemEval carries the gold annotation as an absence or a value', () => {
+  it('omits the field when the dataset names no evidence', () => {
+    // `[]` would be a claim -- "this question has no gold turns, so nothing was
+    // missed" -- and an abstention question supports no such claim.
+    const dataset = loadLongMemEval([
+      {
+        question_id: 'q1_abs',
+        question_type: 'single-session-user',
+        question: 'q?',
+        answer: 'n/a',
+      },
+    ]);
+    expect(dataset.questions[0]).not.toHaveProperty('goldTurns');
+  });
+
+  it('carries the field when it does name evidence', () => {
+    const dataset = loadLongMemEval([instance()]);
+    expect(dataset.questions[0]!.goldTurns).toHaveLength(2);
+  });
+});

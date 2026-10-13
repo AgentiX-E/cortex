@@ -129,6 +129,10 @@ function loadReport(path) {
     // Forwarded rather than dropped, even though this tool reads only the correctness
     // vector: the record it hands back must describe the same run as the file it read.
     admitted: admittedFromRecord(q),
+    // Forwarded for the reason the offer is, one field over: the record this tool hands
+    // back has to describe the same run as the file it read, and a field the round trip
+    // drops is a field the artifact silently loses.
+    goldOverlap: q.goldOverlap ?? null,
   }));
   const records = buildQuestionRecords(inputs);
   return { path, records, featureConfig: raw.featureConfig };

@@ -46,7 +46,11 @@ import { buildQuestionRecords } from '../question-record.js';
 type ReportWriterDeps = Parameters<typeof serializeReportOrReduce>[1];
 
 /** A minimal report whose records carry a stated amount of evidence. */
-function reportWithEvidence(turnsPerQuestion: number, questions: number): AblationReport {
+function reportWithEvidence(
+  turnsPerQuestion: number,
+  questions: number,
+  gold: { carried: number; total: number } | null = null,
+): AblationReport {
   const retrieved = Array.from({ length: turnsPerQuestion }, (_, i) => `turn ${i}`).join('\n');
   const records = buildQuestionRecords(
     Array.from({ length: questions }, (_, i) => ({
@@ -57,6 +61,7 @@ function reportWithEvidence(turnsPerQuestion: number, questions: number): Ablati
       answer: 'a fact',
       correct: true,
       grounded: false,
+      goldOverlap: gold,
       retrieved,
       // The offer, equal to the carried context here because this fixture builds a
       // report by hand and no budget stands between the two.
@@ -682,5 +687,37 @@ describe('serializeReportOrReduce', () => {
     expect(result.reduced).toBe(true);
     const parsed = JSON.parse(result.json) as { ablation: Record<string, unknown> };
     expect('featureRetrievedContexts' in parsed.ablation).toBe(false);
+  });
+});
+
+describe('a reduction forwards the coverage figure rather than recomputing it', () => {
+  it('keeps goldOverlap intact when the bound cuts the turns it was measured against', () => {
+    // The measurement is taken against the PRE-BOUND context, so a reducer that
+    // recomputed it from the turns the bound left would report coverage falling as the
+    // bound tightened -- a writability guard moving a measurement, which is the class
+    // of defect §13.12 exists to keep out of the artifact. `goldOverlap` is therefore
+    // carried through exactly as the offer is, and this asserts the carried value
+    // rather than a recomputed one: the fixture states 3 of 3 while the reduced record
+    // keeps at most two turns, so a recomputation would necessarily read 0.
+    const report = reportWithEvidence(3, 2, { carried: 3, total: 3 });
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 2"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(report, exploding, { maxTurnsPerRecord: 1 });
+
+    expect(result.reduced).toBe(true);
+    const parsed = JSON.parse(result.json) as {
+      questions: { goldOverlap?: unknown; turns: unknown[] }[];
+    };
+    expect(parsed.questions).toHaveLength(2);
+    for (const question of parsed.questions) {
+      expect(question.goldOverlap).toEqual({ carried: 3, total: 3 });
+      expect(question.turns.length).toBeLessThan(3);
+    }
   });
 });

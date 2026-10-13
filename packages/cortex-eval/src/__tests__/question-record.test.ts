@@ -27,6 +27,7 @@ import {
   correctnessVector,
   recordIds,
   type QuestionRecord,
+  goldOverlapOf,
   type QuestionRecordInput,
   type RecordableQuestion,
   type RecordableTrace,
@@ -54,6 +55,10 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
       turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
       chars: retrieved.length,
     },
+    // `null` rather than a zero object: this fixture names no gold session, and the
+    // absent state is what says "not measured" where a zero would say "measured as a
+    // miss". Tests about coverage override it.
+    goldOverlap: null,
     ...overrides,
   };
 }
@@ -511,5 +516,73 @@ describe('the derived vectors stay aligned with the records they came from', () 
       input({ questionId: 'c' }),
     ]);
     expect(recordIds(records)).toHaveLength(correctnessVector(records).length);
+  });
+});
+
+describe('goldOverlapOf', () => {
+  const A = '[2023/01/01 (Sun) 00:00] user: I bought a bike';
+  const B = '[2023/01/02 (Mon) 00:00] assistant: Two of them, actually';
+
+  it('counts the gold turns the carried context contains', () => {
+    expect(goldOverlapOf(`${A}\n${B}`, [A])).toEqual({ carried: 1, total: 1 });
+    expect(goldOverlapOf(`${A}\n${B}`, [A, B])).toEqual({ carried: 2, total: 2 });
+    expect(goldOverlapOf(`${A}\n${B}`, ['[2023/03/03 (Fri) 00:00] user: nothing here'])).toEqual({
+      carried: 0,
+      total: 1,
+    });
+  });
+
+  it('matches on turn boundaries, so a gold that is a prefix of another turn does not count', () => {
+    // The defect this pins is the one §13.18.2 was refuted by, one layer in. A bare
+    // substring search would report the longer turn as covering the shorter gold, and
+    // the reported coverage would then depend on which way round the two were written.
+    const short = '[2023/01/01 (Sun) 00:00] user: I went';
+    const long = '[2023/01/01 (Sun) 00:00] user: I went to Lisbon';
+    expect(goldOverlapOf(long, [short])).toEqual({ carried: 0, total: 1 });
+    expect(goldOverlapOf(short, [long])).toEqual({ carried: 0, total: 1 });
+    expect(goldOverlapOf(`${short}\n${long}`, [short, long])).toEqual({ carried: 2, total: 2 });
+  });
+
+  it('does not mistake a list marker for a cardinality', () => {
+    // §13.18.2's exact counterexample, kept as a regression: a reader testing the gold
+    // `3` against this context by substring got `true`, which is how a coverage figure
+    // was produced from list markers. The predicate here is equality with a rendered
+    // turn, so `3` alone matches nothing.
+    const context = '3. **Humidity:** Peace lilies prefer a humid environment';
+    expect(goldOverlapOf(context, ['3'])).toEqual({ carried: 0, total: 1 });
+  });
+
+  it('handles a gold turn whose content spans lines', () => {
+    const multi = '[2023/01/01 (Sun) 00:00] user: one\ntwo';
+    expect(goldOverlapOf(`x\n${multi}\ny`, [multi])).toEqual({ carried: 1, total: 1 });
+  });
+
+  it('reports nothing to measure as null rather than as a zero', () => {
+    // `{carried: 0, total: 0}` would render "no annotation" as a measured miss, which
+    // is the collapse §13.11.2 forbids. Both spellings of "nothing" -- an absent field
+    // from the loader and an empty list from a hand-built fixture -- collapse to null.
+    expect(goldOverlapOf('anything', undefined)).toBeNull();
+    expect(goldOverlapOf('anything', [])).toBeNull();
+  });
+});
+
+describe('the record carries the coverage it was given, or omits it', () => {
+  it('writes the measured overlap', () => {
+    const [record] = buildQuestionRecords([
+      input({
+        retrieved: 'the record says 85\nthe note says 240',
+        goldOverlap: { carried: 2, total: 3 },
+      }),
+    ]);
+    expect(record!.goldOverlap).toEqual({ carried: 2, total: 3 });
+  });
+
+  it('omits it rather than writing a zero when nothing was measured', () => {
+    // Two states a reader must be able to tell apart: "the gold turn was missed" and
+    // "nobody could measure". `Object.hasOwn` rather than `=== undefined`, because the
+    // point is that the KEY is absent and survives a JSON round trip as an absence.
+    const [record] = buildQuestionRecords([input({ goldOverlap: null })]);
+    expect(Object.hasOwn(record!, 'goldOverlap')).toBe(false);
+    expect(JSON.parse(JSON.stringify(record))).not.toHaveProperty('goldOverlap');
   });
 });

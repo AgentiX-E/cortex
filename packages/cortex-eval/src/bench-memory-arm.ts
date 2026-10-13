@@ -54,6 +54,7 @@ import {
   boundRetrievedContexts,
   buildQuestionRecords,
   evidenceReductionOf,
+  goldOverlapOf,
   type EvidenceBoundOptions,
   type QuestionRecord,
 } from './question-record.js';
@@ -1296,6 +1297,12 @@ function buildArmRoster(
       // it has no accessor for the offer, which the record then omits.
       admitted: admittedEvidence[i]!,
       promptChars: promptEvidenceChars[i] ?? null,
+      // Measured here rather than inside `buildQuestionRecords`, because the
+      // measurement needs the **pre-bound** context and this is the last place that
+      // string exists: the record's `turns` are what the bound left. Computing it a
+      // hop later would make coverage fall whenever the writability guard bit, which
+      // would make two runs incomparable for a reason that is not about the system.
+      goldOverlap: goldOverlapOf(retrievedContexts[i] ?? '', question.goldTurns),
     })),
     featureConfig,
     ablation.featureCorrect,

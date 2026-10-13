@@ -57,6 +57,9 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
       turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
       chars: retrieved.length,
     },
+    // No dataset annotation in this fixture, so coverage is unmeasurable rather
+    // than measured as zero -- the absent state `goldOverlapOf` returns for `[]`.
+    goldOverlap: null,
     ...overrides,
   };
 }

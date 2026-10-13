@@ -33,6 +33,38 @@ export type Question = {
   sessions?: string[][];
   /** The date the question was asked; needed for relative-time (TR) answers. */
   questionDate?: string;
+  /**
+   * The dataset's **gold turns**, rendered exactly as they appear in `context`.
+   *
+   * ## What this is, and why it is not `expected`
+   *
+   * `expected` is the answer *text*; this is the evidence the answer was drawn from.
+   * They are different kinds of thing and only this one can answer "did the reader
+   * see the evidence", which is `§13.11.5`'s question and the one run `38250133116`
+   * left unreadable.
+   *
+   * The strings are produced by the same renderer that built `context` (`turnText`),
+   * so a membership test against the carried context is an **equality test on one
+   * function's output** rather than a natural-language match. That distinction is
+   * the whole reason this field exists: §13.18.2 tested membership with the answer
+   * text and was refuted by its own artifact -- `groundTruth` of `3` matched
+   * `3. **Humidity:**`, because a list marker and a cardinality are the same token.
+   *
+   * ## Why it is absent rather than empty when there is no annotation
+   *
+   * `[]` would be a claim: "this question has no gold turns, so nothing was missed".
+   * A question the dataset did not annotate -- every `_abs` question, and any
+   * instance whose `answer_session_ids` are missing -- supports no such claim, and a
+   * reader averaging over an empty list would understate coverage. Absent says the
+   * dataset did not name the evidence, which is a different statement from naming
+   * none.
+   *
+   * Not an oracle: nothing in the prompt path reads it. It is measured against the
+   * carried context and never into it, so a signal built from this field could not
+   * reach a prompt even if a later edit wanted it to -- the field is consumed by
+   * `QuestionRecord`, which is written after the answer is graded.
+   */
+  goldTurns?: readonly string[];
 };
 
 export type BenchmarkDataset = {
@@ -260,6 +292,42 @@ export type PartialAblation = {
 export type AdmittedEvidence = {
   readonly turns: number;
   readonly chars: number;
+};
+
+/**
+ * How much of the dataset's gold evidence the carried context contained.
+ *
+ * ## Why two numbers and not a boolean
+ *
+ * `carried === total` is the "gold-in-carried" question `§13.11.5` asks, and a
+ * boolean would answer exactly that -- while throwing away the denominator a reader
+ * needs to know what the answer is about. A question with one gold turn and one
+ * carried scores the same as a question with twelve and twelve, and the two are not
+ * the same evidence: the second says selection works across a session, the first
+ * says one turn happened to survive. `§13.18.2` is what a metric without a
+ * denominator cost: an aggregate that could be moved by which questions were counted.
+ *
+ * ## Why this is a shape rather than two loose fields
+ *
+ * The pair travels together from the loader through four hops to the record, which is
+ * the argument `AdmittedEvidence` makes one field over: two numbers that must agree
+ * have four chances to be transposed, and a transposition here would report perfect
+ * coverage from an empty context.
+ *
+ * ## What makes it computable, which is the point of the field
+ *
+ * `GoldOverlap` is only answerable because the dataset's own annotation reaches the
+ * record. Before this existed, `§13.11.5` was read through a session-index rule and
+ * then through a substring match on the answer text, and the second was refuted by
+ * its own artifact: `groundTruth` of `3` matched `3. **Humidity:**`, because a list
+ * marker and a cardinality are the same token. A metric that can be read two ways is
+ * not a metric.
+ */
+export type GoldOverlap = {
+  /** Gold turns the carried context contains. */
+  readonly carried: number;
+  /** Gold turns the dataset names for this question. */
+  readonly total: number;
 };
 
 export type AblationResult = {

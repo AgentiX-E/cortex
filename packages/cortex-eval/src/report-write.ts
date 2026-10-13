@@ -357,6 +357,13 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // claiming the reader was shown evidence the prompt never carried --
         // exactly the confusion the field exists to end.
         ...(record.promptChars === undefined ? {} : { promptChars: record.promptChars }),
+        // Forwarded, not recomputed, and that is the whole reason the input type carries
+        // a measured shape rather than the gold turns: this producer's `retrieved` is
+        // re-joined from the turns the bound left, so recomputing here would make the
+        // coverage figure FALL as the bound tightened -- a writability guard moving a
+        // measurement. A record that never had a measurement rebuilds to one that does
+        // not, so the absence round-trips as an absence.
+        goldOverlap: record.goldOverlap ?? null,
       })),
       featureConfig,
       records.map((record) => record.correct),

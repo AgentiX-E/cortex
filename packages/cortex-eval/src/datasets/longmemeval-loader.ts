@@ -103,9 +103,49 @@ export function sessionsToContext(sessions?: LongMemEvalTurn[][], dates?: string
   return out;
 }
 
+/**
+ * The gold session's turns, rendered the way `context` renders them.
+ *
+ * ## Why the identifiers have to be intersected rather than trusted
+ *
+ * `answer_session_ids` names sessions by id and `haystack_sessions` is positional, so
+ * the two are only related through `haystack_session_ids`. The loader used to discard
+ * all three, which is why `§13.11.5`'s question -- was the gold turn inside what the
+ * model saw -- had no direct answer and had to be approximated by a session-index rule
+ * and then by an answer-text match. The first of those was a heuristic and the second
+ * was refuted by its own artifact (`§13.18.2`).
+ *
+ * ## Why the rendered text and not an index
+ *
+ * Because `sessionsToContext` already renders every turn with `turnText`, and taking
+ * that same output means the membership test downstream is an **equality test between
+ * two applications of one function**. An index would be equal only if the flattening
+ * order were agreed in two places; a string is equal or it is not.
+ *
+ * Returns `[]` when the instance carries no usable annotation -- no session ids, no
+ * answer ids, or an empty answer list. The caller turns that into an absent field
+ * rather than an empty one, so "the dataset named no evidence" never renders as "the
+ * dataset's evidence was all missed".
+ */
+function goldTurnsOf(inst: LongMemEvalInstance, sessions: readonly string[][]): string[] {
+  const ids = inst.haystack_session_ids;
+  const answerIds = inst.answer_session_ids;
+  if (ids === undefined || answerIds === undefined || answerIds.length === 0) return [];
+
+  const wanted = new Set(answerIds);
+  const out: string[] = [];
+  // Iterated over `sessions` rather than over `ids` so the two stay index-aligned by
+  // construction: both come from the same instance and both are the haystack.
+  sessions.forEach((turns, index) => {
+    if (wanted.has(ids[index]!)) out.push(...turns);
+  });
+  return out;
+}
+
 export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): BenchmarkDataset {
   const questions: Question[] = instances.map((inst) => {
     const sessions = sessionsToContext(inst.haystack_sessions, inst.haystack_dates);
+    const goldTurns = goldTurnsOf(inst, sessions);
     return {
       id: inst.question_id,
       capability: toCapability(inst.question_id, inst.question_type),
@@ -118,6 +158,9 @@ export function loadLongMemEval(instances: readonly LongMemEvalInstance[]): Benc
       context: sessions.flat(),
       sessions,
       ...(inst.question_date !== undefined ? { questionDate: inst.question_date } : {}),
+      // Absent rather than empty when the dataset names no evidence: see
+      // `Question.goldTurns` for why the two are different claims.
+      ...(goldTurns.length === 0 ? {} : { goldTurns }),
     };
   });
   return { name: 'longmemeval', questions };

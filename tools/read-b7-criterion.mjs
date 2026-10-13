@@ -124,6 +124,12 @@ function readRecords(report, label) {
       // from `turns`, so it cannot recover how much was admitted, and inventing one
       // would put a number in a record that the artifact never reported.
       admitted: admittedFromRecord(q),
+      // Forwarded, not recomputed: this reader rebuilds records from a parsed artifact
+      // and has only the reduced `turns` to work with, so a recomputation would report
+      // coverage falling as the bound tightened -- the measurement moving with a
+      // writability guard, which is the defect §13.12 keeps out of the artifact. A
+      // record that never had a measurement reads back as one that does not.
+      goldOverlap: q.goldOverlap ?? null,
     };
   });
   return buildQuestionRecords(inputs);

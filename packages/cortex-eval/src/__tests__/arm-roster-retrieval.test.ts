@@ -181,3 +181,94 @@ describe('the roster carries the evidence each reader was shown', () => {
     expect(records.map((r) => r.rawOutput)).toEqual(['raw-0', 'raw-1']);
   });
 });
+
+/**
+ * The gold annotation has to survive the same three transfers the evidence does, and
+ * it has to be measured against the context the reader was shown.
+ *
+ * This is `§13.11.5`'s question -- was the gold turn inside what the model saw -- and
+ * it is the precondition for reading the prediction `§13.17.4` registered. Run
+ * `38250133116` could not answer it: the only predicate available to a reader of the
+ * artifact was a substring search on `groundTruth`, and the artifact refuted that
+ * predicate by matching `3. **Humidity:**` for a gold of `3`.
+ */
+describe('the roster carries each question gold coverage', () => {
+  /**
+   * The arm's own gate configuration, spelled out rather than shared.
+   *
+   * The options type is required by design, so a test that forgot a field would be a
+   * compile error rather than a quietly thinner configuration -- which is the point of
+   * the type and the reason this literal is written in full.
+   */
+  const ARM_CONFIG = {
+    threshold: 0,
+    retrievalThreshold: 0,
+    sessionBudget: null,
+    sourceTrust: 0.5,
+    confidenceSignal: 'none',
+    promptContract: 'abstention',
+    renderingRoutes: [],
+    ask: 'route',
+    askRoutes: [],
+    relevanceSignal: 'none',
+    relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+  } as const;
+
+  const GOLD = '[2023/01/01 (Sun) 00:00] user: the gold turn';
+
+  async function overlapOf(
+    evidence: string,
+    gold: readonly string[] | undefined,
+  ): Promise<{ carried: number; total: number } | undefined> {
+    const dataset = {
+      name: 'gold-fixture',
+      questions: [
+        {
+          id: 'q0',
+          question: 'Question 0?',
+          expected: 'answer-0',
+          capability: 'IE',
+          context: ['a turn', GOLD, 'another turn'],
+          sessions: [['a turn', GOLD, 'another turn']],
+          ...(gold === undefined ? {} : { goldTurns: gold }),
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+
+    const { report } = await runCortexMemoryArm(
+      dataset,
+      constantSystem('reference-pipeline', 'other'),
+      evidenceFeatureSystem(['answer-0'], [evidence], ['raw-0']),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...ARM_CONFIG },
+      },
+    );
+    return report.questions![0]!.goldOverlap;
+  }
+
+  it('reports full coverage when the carried context holds the gold turn', async () => {
+    expect(await overlapOf(`a turn\n${GOLD}\nanother turn`, [GOLD])).toEqual({
+      carried: 1,
+      total: 1,
+    });
+  });
+
+  it('reports the miss when the carried context does not', async () => {
+    expect(await overlapOf('a turn\nanother turn', [GOLD])).toEqual({ carried: 0, total: 1 });
+  });
+
+  it('counts a partial carry as partial rather than as a pass or a fail', async () => {
+    const second = '[2023/02/02 (Thu) 00:00] user: a second gold turn';
+    expect(await overlapOf(`a turn\n${GOLD}`, [GOLD, second])).toEqual({ carried: 1, total: 2 });
+  });
+
+  it('omits the field when the dataset names no gold evidence', async () => {
+    // Absent, not zero: a question the dataset did not annotate supports no claim
+    // about coverage, and a zero would render that absence as a measured miss.
+    const overlap = await overlapOf(`a turn\n${GOLD}`, undefined);
+    expect(overlap).toBeUndefined();
+  });
+});

@@ -40,7 +40,7 @@
  */
 
 import type { TurnLike } from './candidate-context.js';
-import type { AdmittedEvidence } from './types.js';
+import type { AdmittedEvidence, GoldOverlap } from './types.js';
 import type { FeatureConfig } from './report.js';
 
 /**
@@ -201,6 +201,38 @@ export type QuestionRecord = {
    */
   readonly promptChars?: number | undefined;
   /**
+   * How much of the dataset's gold evidence the reader's context contained.
+   *
+   * ## Why this field is the point of `§13.18`
+   *
+   * `§13.11.5` asks whether the gold turn was inside what the model saw, and it is
+   * the question that decides whether an abstention is a retrieval failure or a
+   * model failure. Run `38250133116` could not answer it: the predicate available to
+   * a reader of the artifact alone was a substring match on `groundTruth`, and the
+   * artifact refuted that predicate in three lines -- `3` matched `3. **Humidity:**`,
+   * `2` matched `2. What are your short-term goals`, `3` matched `3. store reusable
+   * produce bags`. A prediction whose metric can be moved by list markers cannot be
+   * falsified, and a pre-registration whose outcome cannot be falsified is the §7.3
+   * side-channel defect turned on the registration itself.
+   *
+   * ## Why it is measured against the pre-bound context
+   *
+   * `carried` is counted in `QuestionRecordInput.retrieved`, the captured context
+   * **before** `evidenceBound` reduced it. That is deliberate and it is the same rule
+   * `evidenceTurns` follows: `§13.12`'s bound exists to keep the artifact writable,
+   * and a measurement that moved when a writability guard was tuned would make two
+   * runs incomparable for a reason that is not about the system.
+   *
+   * ## Absent, never zero, when nothing could be measured
+   *
+   * `undefined` covers two situations a reader must not read as "the gold turn was
+   * missed": the dataset named no gold evidence (every `_abs` question), and no
+   * carried context was recorded at all (a caller with no trace). Both are *not
+   * measured*, and a zero would render them as a measured miss -- the collapse
+   * `§13.11.2` requires an absence never to make.
+   */
+  readonly goldOverlap?: GoldOverlap | undefined;
+  /**
    * The switches this record was produced under, stamped per record.
    *
    * Per record rather than once beside the array: a reader handed one record out
@@ -261,6 +293,28 @@ export type QuestionRecordInput = {
    * belongs.
    */
   readonly promptChars?: number | null | undefined;
+  /**
+   * How much of the dataset's gold evidence `retrieved` contained, or `null`.
+   *
+   * ## Why the caller measures it and this type only carries it
+   *
+   * The measurement needs the **pre-bound** context -- `retrieved` as captured,
+   * before `evidenceBound` reduced it -- and `buildQuestionRecords` is not the only
+   * producer that knows that string: the reducer re-enters through this same type
+   * with a context it has already reduced, so a value computed here would be
+   * recomputed there against a shorter context and would fall as the bound tightened.
+   * A writability guard must not move a measurement.
+   *
+   * So the shape is the one `admitted` already uses, for the same reason: the
+   * producer measures once, the type carries the result, and the reducer **forwards**
+   * it rather than deriving it. `goldOverlapOf` below is the single implementation of
+   * the measurement, so the arm and `buildRecordsFromDataset` cannot disagree about
+   * what coverage means.
+   *
+   * Required and nullable, so a producer that forgets it is a compile error rather
+   * than an artifact whose coverage is absent for an unstated reason.
+   */
+  readonly goldOverlap: GoldOverlap | null;
 };
 
 /**
@@ -505,10 +559,58 @@ export function buildQuestionRecords(
       ...(input.promptChars === undefined || input.promptChars === null
         ? {}
         : { promptChars: input.promptChars }),
+      ...(input.goldOverlap === null ? {} : { goldOverlap: input.goldOverlap }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });
   }
   return records;
+}
+
+/**
+ * The one implementation of the gold-coverage measurement.
+ *
+ * ## Why it is a function and not two lines in each producer
+ *
+ * Two producers measure it -- the memory arm from its captured context, and
+ * `buildRecordsFromDataset` from a trace -- and a third forwards the result. A
+ * measurement written twice is a measurement that can differ between producers, and
+ * the difference would be invisible: both would report a coverage figure and a reader
+ * comparing runs would be comparing two definitions.
+ *
+ * ## Why the comparison is equality and not a substring search
+ *
+ * `goldTurns` and `retrieved` are both produced by `turnText`, so a gold turn is
+ * either the whole of one carried block or it is not present at all. That makes this
+ * an equality test between two applications of one renderer rather than a
+ * natural-language match, and the distinction is what `§13.18.2` cost: a substring
+ * search on the answer text matched `3. **Humidity:**` for a gold of `3`.
+ *
+ * ## Why `null` rather than a zero object
+ *
+ * `[]` and an absent annotation both mean "there is nothing to measure", and a
+ * `{carried: 0, total: 0}` would render them as a measured miss -- the collapse
+ * `§13.11.2` forbids. `null` is what reaches the record as an absent `goldOverlap`.
+ */
+export function goldOverlapOf(
+  retrieved: string,
+  goldTurns: readonly string[] | undefined,
+): GoldOverlap | null {
+  if (goldTurns === undefined || goldTurns.length === 0) return null;
+  // Matched on **turn boundaries**, not as a bare substring. The two differ exactly
+  // where a gold turn is a prefix of another turn -- `[d] user: I went` inside
+  // `[d] user: I went to Lisbon` -- and a bare substring search would report the
+  // longer turn as covering the shorter gold. Padding the haystack by one separator
+  // on each side makes the test "this text is one of the carried blocks", which is
+  // the question being asked; a multi-line turn passes unchanged because the padding
+  // is only ever added at the ends.
+  //
+  // This is the same class of defect as §13.18.2's answer-text search, caught before
+  // it could produce a number rather than after.
+  const haystack = `\n${retrieved}\n`;
+  return {
+    carried: goldTurns.filter((turn) => haystack.includes(`\n${turn}\n`)).length,
+    total: goldTurns.length,
+  };
 }
 
 /**
@@ -681,6 +783,12 @@ export type RecordableQuestion = {
   readonly capability: string;
   /** `null` is the dataset's "no answer" gold, a real value and not an absence. */
   readonly expected: string | null;
+  /**
+   * The dataset's gold turns, when it names them. Optional because most datasets do
+   * not, and absent then -- which is what makes `goldOverlap` absent rather than
+   * zero on those datasets.
+   */
+  readonly goldTurns?: readonly string[] | undefined;
 };
 
 /**
@@ -763,6 +871,12 @@ export function buildRecordsFromDataset(
         // string, in the same unit, rather than defaulted to zero -- a zero here would
         // report a system that admitted nothing while the record carried evidence.
         admitted: admittedFrom(trace?.retrieved ?? ''),
+        // The dataset's own annotation, measured against the context this producer
+        // recorded. `null` whenever there is nothing to measure -- a question with no
+        // trace has no context to test against, and a dataset that names no gold
+        // session has no evidence to look for. Both are the absent state, not a miss.
+        goldOverlap:
+          trace === undefined ? null : goldOverlapOf(trace.retrieved ?? '', question.goldTurns),
       };
     }),
     featureConfig,

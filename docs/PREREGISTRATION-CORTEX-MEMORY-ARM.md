@@ -3099,3 +3099,92 @@ tests, 100% on all four coverage dimensions in both, census clean.
 | P1 | Repair the line/turn unit (§13.16.6) |
 | P2 | The in-band marker's ambiguity; `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded |
 | P3 | `PATH` ordering, which waits on a rebuilt image |
+
+## 13.19 The gold turn reaches the artifact, and the number stops being a guess
+
+§13.18.2 could not read the prediction it had registered, and the reason was not the
+artifact's completeness — it was that no field in it identified the evidence the dataset
+says answers the question. This section puts that field there.
+
+### 13.19.1 What was discarded, and for how long
+
+`loadLongMemEval` read `haystack_session_ids` and `answer_session_ids` and used neither.
+The minutes of the problem are short and worth stating exactly: the dataset names which
+sessions hold an answer, the loader dropped both the names and the identifiers that would
+have connected them to positions, and every downstream question about coverage was
+therefore answered by a heuristic.
+
+Two heuristics were tried. §13.16 resolved the gold session by **session index**, which
+§13.16.7 recorded as a rule that should be replaced by a turn-level measurement. §13.18.2
+tried the **answer text** as a substring and the artifact refuted it: `groundTruth` of `3`
+matched `3. **Humidity:**`, `2` matched `2. What are your short-term goals`, `3` matched
+`3. store reusable produce bags`. The second reading is the one that cost a round, because
+it produced plausible numbers — `MR 47.1%`, `ALL 48.7%` — that could not be read.
+
+### 13.19.2 The repair, and why it is one field rather than a better heuristic
+
+`Question.goldTurns` carries the gold session's turns **rendered by the same function that
+renders `context`** (`turnText`). That makes membership an **equality test between two
+applications of one renderer** rather than a natural-language match, and it is the whole of
+the design: a heuristic can be made better or worse, but an equality cannot be made
+ambiguous.
+
+The identifiers are intersected where they belong — in the loader, which is the only place
+that has both lists:
+
+    haystack_session_ids[i]  ∩  answer_session_ids   →  sessions[i]
+
+and the result is absent rather than empty when the dataset names nothing, because `[]`
+would be a claim ("this question has no gold turns, so nothing was missed") that an
+abstention question does not support.
+
+### 13.19.3 Where it is measured, and the two ways that could have gone wrong
+
+`goldOverlapOf(retrieved, goldTurns)` is the single implementation, and it is called by the
+arm against the **pre-bound** context. The alternative — computing it inside
+`buildQuestionRecords` — was implemented first and reverted, because the reducer re-enters
+through the same builder with a context it has already reduced: coverage would have **fallen
+as the evidence bound tightened**, which is a writability guard moving a measurement. That
+is the class of defect §13.12 exists to keep out of the artifact, and the test that pins it
+asserts the carried value against a record whose turns were cut to a third of what it was
+measured on.
+
+The second near-miss is in the predicate itself. The first version used
+`retrieved.includes(turn)`, which is a substring search one layer in — the same shape as
+§13.18.2. It differs exactly where a gold turn is a **prefix** of another turn
+(`[d] user: I went` inside `[d] user: I went to Lisbon`), and the reported coverage would
+then depend on which of the two the dataset named. The implemented version pads the
+haystack by one separator on each side and tests for `\n<turn>\n`, which asks "is this text
+one of the carried blocks" — the question actually being asked. Both the prefix case and
+§13.18.2's own counterexample are regression tests.
+
+### 13.19.4 What the field makes readable, and what it still does not
+
+`goldOverlap: { carried, total }` — two numbers rather than a boolean, because
+`carried === total` is the coverage question while the denominator is what makes an
+aggregate over questions meaningful. §13.18.2 is what a metric without a denominator cost:
+a figure that could be moved by which questions were counted.
+
+Three states, and they do not collapse: **absent** (nothing to measure — no annotation, or
+no recorded context), **`carried: 0`** (measured, the gold turn was not carried), and
+**`carried: total`** (measured, it was). The absent state is what the two heuristics could
+not express, and a zero where a reader expects a measurement is how coverage was misread
+once already.
+
+What it still does not do: attribute a **partial** carry to a session boundary rather than
+to the turn, and locate the gold turn inside the record's `turns` array. Both need the
+turn's position rather than its text, and that is the line/turn unit defect of §13.16.6 —
+registered, still open, and now the only thing standing between this field and a per-turn
+attribution.
+
+### 13.19.5 Status
+
+**Implemented, tested, and about to be dispatched.** Gate: `pnpm check` exit 0, cortex-eval
+**1,832** tests (21 new), cortex-memory 269, both packages 100% on all four coverage
+dimensions, census clean, pre-registration guard 303 passed + 31 subtests.
+
+The dispatch is the same one §13.17 made, unchanged: the single variable is still
+`relevanceSignal: retrieval` at `relevanceTopK: 64`. Nothing in the workflow moves, because
+this field is derived from the dataset rather than configured — so the run answers §13.17's
+P1 against the same conditions it was registered under, this time with a number rather than
+an approximation.
