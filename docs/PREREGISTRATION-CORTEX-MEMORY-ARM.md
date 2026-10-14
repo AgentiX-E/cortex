@@ -3895,3 +3895,108 @@ Two items on the standing list need no provider at all, and they are the ones th
 iteration's remaining effort goes to: the **line/turn unit defect** (`§13.16.6`), which is
 an instrument defect in the artifact every future run will produce, and the **no-signal
 control** (`§13.22.8`), whose *dispatch* is blocked but whose design is not.
+
+## 13.25 The capture counts the turns the reader was shown, and §13.16.6 is closed
+
+§13.16.6 registered an instrument defect and deliberately did not repair it: repairing it in
+the same change as the offer would have left two changes to one measurement and no way to
+attribute either. This section makes the repair on its own, and it is the first work in this
+campaign that needs no embedding provider at all. Commit `01d72d1` (local) / `6c2de8f1`
+(remote), 17 files.
+
+### 13.25.1 The repair is at the capture, and the boundary is never re-encoded
+
+The capture held `assembled.carried.map((turn) => turn.content).join('\n')` — one string —
+and every reader split it back on the same newline. The round trip is lossy in **one
+direction only**: the split cannot tell a turn whose content spans newlines from several
+turns, so the repair cannot be a cleverer split.
+
+Three alternatives were rejected because each substitutes one implicit encoding for another
+on content that is model-generated free text:
+
+1. **A sentinel separator.** No sentinel can be shown to be absent from turn content, so a
+   collision fails silently and in a data-dependent way.
+2. **A quoted or percent-encoded form.** The same objection with more moving parts, and it
+   makes the artifact's evidence a transformation of what the model read rather than what it
+   read.
+3. **One logical turn per `carried` entry with the boundary recorded elsewhere.** That is the
+   repaired design with an extra hop, and it pays objection (2)'s cost.
+
+`AssembledPrompt.carried` is the assembler's own list and it is in hand at the moment of
+capture, so the only representation that keeps the boundary is the one that never destroyed
+it. `lastRetrievedContext()` now returns that list, and `AdmittedEvidence.turns` is the
+admission layer's own list length — measured arithmetically rather than by joining 500k
+characters to call `.length`.
+
+### 13.25.2 The unit is now a property of the producing capture, and the two producers differ
+
+`QuestionRecordInput.retrieved` is a list of the units its producer reports. Two producers
+write records, and after this change they do not report the same unit:
+
+| Producer | Unit | Why |
+| --- | --- | --- |
+| `bench-memory-arm` | **turn** | The capture is `AssembledPrompt.carried`, a turn list |
+| `buildRecordsFromDataset` | **line** | `DecisionTrace.retrieved` is a rendered string: `expandContextWindow*` returns text and the same text feeds the answer prompts |
+
+The second is stated rather than hidden, because it was already the case and `respondWith`
+already records the reason — "`retrieved` has already been through session completion and
+truncation, so a newline in it is not a turn boundary". What is new is that the field can no
+longer be read as if the two producers agreed.
+
+The consequence for the trace product is registered rather than papered over:
+`buildRecordsFromDataset` no longer reports `goldOverlap`, because a membership test over line
+units would report a covered gold as uncovered whenever the gold turn spans a line, and a
+wrong number is worse than an absent one (§13.11.2's rule). Both readers of that product
+(`read-b7-criterion.mjs`, `quantify-endpoint-noise.mjs`) forward the field and neither decides
+anything with it; the B7 criterion clusters over `turns`. Restoring it means giving the trace
+the turn list `respondWith` already receives, which reaches `retrieveTurns`' two prompt
+consumers and is therefore a separate registered change.
+
+### 13.25.3 `goldOverlapOf` loses its haystack
+
+The gold measurement asks whether a **gold turn** is one of the units the reader received. It
+searched `'\n' + retrieved + '\n'` for `'\n' + turn + '\n'` — a padded substring search whose
+padding existed only to reconstruct that statement from a joined string, and which rested on
+turns being separated by exactly one newline.
+
+With the units in hand the test is the statement itself: `retrieved.includes(gold)`. The same
+class of defect as §13.18.2's answer-text search, and it cannot recur here, because a bare
+substring search is not expressible against a list of units.
+
+### 13.25.4 Verification
+
+- `pnpm check` exit 0. cortex-eval **1,851** tests, cortex-memory **317**, all four coverage
+  dimensions **100%** in both; `tools` 314 passed + 31 subtests; census clean.
+- **Defect injection, two injections, both caught.** Re-joining the capture in `memory.ts`
+  fails **15 tests across 3 files** — every test of the new contract plus the two pre-existing
+  roster/order tests. Reverting the gold predicate to
+  `retrieved.some((unit) => unit.includes(gold))` — a substring search wearing the repaired
+  shape — fails exactly the three tests written for it: the prefix case, the list-marker
+  counterexample, and the arm-level membership test.
+- Every new assertion is behavioural: it reads what a call returns, not source text (§37's
+  escape).
+
+### 13.25.5 What the archived counts are, in the repaired unit
+
+The four archived artifacts were produced before this change and their evidence vector is the
+old joined string. **Their accuracy and abstention readings are unaffected** — the ask
+experiment measures answers, and the ratio arguments in §13.13–§13.16 hold on either unit
+because both sides of each ratio are in the same one. What changes is every absolute count
+that says "turns":
+
+- §13.16.6 measured **6.6 lines per turn** on this data;
+- §13.13's "~165 turns" is ~165 lines, about **25 turns**;
+- the offer's `3,016–4,528` and the delivery's median `141` are lines on that scale.
+
+The four archived runs are not re-read here, because the numbers their verdicts rest on —
+§13.20's `+18.20pp` and §13.21's `+23.25pp` — are deltas in answers.
+
+### 13.25.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `38595325261` (`ask: computed`) against §13.21's predictions | no (in flight) |
+| P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
+| P1 | Design the **no-signal control** (§13.22.8) separating the merging sentence from the selection | no (dispatch later) |
+| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
