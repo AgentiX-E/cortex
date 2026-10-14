@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@agentix-e/cortex-eval": "workspace:*",
+    "@agentix-e/cortex-llm": "workspace:*",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.0.0",
     "eslint": "^9.0.0",

@@ -510,8 +510,18 @@ type TransportRetrySnapshot = {
   calls: number;
   /** Calls that retried at least once. */
   retriedCalls: number;
-  /** Calls that never retried. */
+  /** Calls that completed without a single retry. */
   cleanCalls: number;
+  /**
+   * Calls that failed on every attempt and never produced a response.
+   *
+   * Restated here for the same reason the other counters are, and it is the field that
+   * makes the rest readable: without it, a call that issued one request and was cut off
+   * is counted as CLEAN, so a run whose traffic was failing outright reports a higher
+   * share of untroubled calls than a healthy one. `cleanCalls + retriedCalls +
+   * exhaustedCalls === calls` is the identity, and it is asserted in `cortex-llm`.
+   */
+  exhaustedCalls: number;
   /** `retriedCalls / calls` -- per call, never per retry. */
   retryRate: number;
 };
@@ -543,6 +553,7 @@ export function transportRetryReport(
     calls: snapshot.calls,
     retriedCalls: snapshot.retriedCalls,
     cleanCalls: snapshot.cleanCalls,
+    exhaustedCalls: snapshot.exhaustedCalls,
     retryRate: snapshot.retryRate,
   };
 }

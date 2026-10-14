@@ -83,6 +83,35 @@ function healthySystem(name: string, answers: Answer[]): MemorySystem {
   return { name, answer: async () => answers[cursor++]! };
 }
 
+/**
+ * A system that counts its own calls and throws on the one `dieOnCall` names.
+ *
+ * ## Why the ordinal is a call count rather than a repetition number
+ *
+ * The harness does not tell a system which repetition it is serving -- `run` goes to
+ * the progress sink, not to `answer` -- and that is a property of the measurement
+ * rather than an omission: a system that could see its repetition could behave
+ * differently in each, which would break the pairing the whole comparison rests on.
+ * So a fixture that has to fail in a LATER repetition has to count calls, and the
+ * count is a function of the harness's own order (baseline then feature, per
+ * repetition) rather than of anything the system is told.
+ *
+ * `perRun` is the dataset size, so the answer it returns is the correct one for the
+ * question and the repetitions that complete before the failure measure as they
+ * would in a real run.
+ */
+function countingSystem(name: string, perRun: number, dieOnCall: number): MemorySystem {
+  let calls = 0;
+  return {
+    name,
+    answer: async () => {
+      calls += 1;
+      if (calls === dieOnCall) throw new TypeError('terminated');
+      return `answer-${(calls - 1) % perRun}`;
+    },
+  };
+}
+
 /** Run the ablation and hand back the thrown error, flipping the pass/fail polarity. */
 async function failureOf(
   dataset: BenchmarkDataset,
@@ -317,5 +346,163 @@ describe('the no-measurement boundary, pinned directly', () => {
     );
 
     expect(thrown).toBe('a primitive throw');
+  });
+});
+
+/**
+ * A failure in a REPETITION is a measurement too, and it was the one that got away.
+ *
+ * ## The loss this pins
+ *
+ * Run `38520676669` repeated this arm's `§13.22` dispatch and died on
+ * `TypeError: terminated` after **three hours and eight minutes**. Its log says how far
+ * it got:
+ *
+ *     reference-pipeline run=0 q=500/500
+ *     cortex-memory      run=0 q=500/500
+ *     reference-pipeline run=1 q=500/500
+ *     cortex-memory      run=1 q=500/500
+ *     progress: died on cortex-memory run=1 q=500/500 id=778164c6
+ *
+ * So two of the four repetitions had completed on BOTH sides -- two thousand graded
+ * answers -- and the artifact held one file, `benchmark-error.log`, carrying a stack
+ * trace. The durability repair described at the top of this file did not fire, and the
+ * reason is structural rather than a bug in it: `attachPartial` wraps the evaluation of
+ * repetition **0** on each side, and the loop that runs the remaining repetitions had
+ * neither a try/catch nor an answer sink. A failure there travelled out unwrapped, so
+ * `error.partial` was `undefined` and the failure path had nothing to write.
+ *
+ * That is the same failure as `37942775447` -- the run this file exists because of --
+ * one repetition later, and it is the costlier version: the earlier one lost forty
+ * minutes, this one lost three hours.
+ *
+ * ## What a partial for repetition i means
+ *
+ * The repetitions are sequential, so `run: i` carries its own extent: repetitions
+ * `0..i-1` completed on both sides, and the vectors are repetition `i`'s, up to where
+ * it got. No new field is needed for that, and no aggregate is added -- the
+ * no-delta rule above applies unchanged.
+ */
+describe('a failure in a repeated run is a measurement too', () => {
+  it('carries the vectors of the repetition that died, and names it', async () => {
+    // Two repetitions of three questions, so each system is called six times: its
+    // first repetition on calls 1-3 and its second on 4-6. The feature dies on call 5 --
+    // its second question of the second repetition -- which is the shape of
+    // `38520676669`: the first repetition fully graded and the second lost part-way.
+    const dataset = datasetOf(3);
+    const baseline = countingSystem('reference-pipeline', 3, 99);
+    const feature = countingSystem('cortex-memory', 3, 5);
+
+    const failure = await runAblation(dataset, baseline, feature, {
+      runs: 2,
+      scorer: exactMatchScorer,
+    }).then(
+      () => {
+        throw new Error('the ablation resolved, but the feature side threw');
+      },
+      (error: unknown) => error as Error,
+    );
+
+    expect(failure).toBeInstanceOf(TypeError);
+    const partial = partialOf(failure);
+    expect(partial).toBeDefined();
+    expect(partial!.run).toBe(1);
+    expect(partial!.system).toBe('cortex-memory');
+    expect(partial!.reached).toBe(1);
+    expect(partial!.total).toBe(3);
+    expect(partial!.featureAnswers).toEqual(['answer-0']);
+    // The baseline's SECOND repetition completed before the feature's second started,
+    // so the vector is that repetition's and not the first one's -- which is what
+    // makes `run` and the vectors consistent with each other.
+    expect(partial!.baselineAnswers).toEqual(['answer-0', 'answer-1', 'answer-2']);
+  });
+
+  it('works at the dispatched repetition count, where the earlier repair covered only the first', async () => {
+    // `ABLATION_RUNS` is 4, so the loop that had no sink is the one every run since
+    // §13.12 has depended on. This asserts the durability rule at that exact count
+    // rather than at the two-repetition case above, because the number is what makes
+    // the failure expensive: a later repetition costs more to lose.
+    const dataset = datasetOf(2);
+    // Two questions and four repetitions is eight calls per system: repetition 0 on
+    // calls 1-2, repetition 1 on 3-4, repetition 2 on 5-6, repetition 3 on 7-8. Dying
+    // on call 6 loses repetition 2 with one of its two questions answered.
+    const failure = await runAblation(
+      dataset,
+      countingSystem('reference-pipeline', 2, 99),
+      countingSystem('cortex-memory', 2, 6),
+      { runs: 4, scorer: exactMatchScorer },
+    ).then(
+      () => {
+        throw new Error('the ablation resolved, but the feature side threw');
+      },
+      (error: unknown) => error as Error,
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.run).toBe(2);
+    expect(partial.reached).toBe(1);
+    expect(partial.featureAnswers).toEqual(['answer-0']);
+  });
+
+  it('reports the baseline side too, if the baseline is what dies in a repetition', async () => {
+    // The mirrored case, and it needs its own assertion because the two sides differ in
+    // what the partial can say: a baseline-side death in repetition i leaves NO feature
+    // vector for that repetition, and `featureAnswers: []` is "the feature had not
+    // started" rather than "the feature answered nothing" -- the distinction the
+    // run-0 tests make one repetition earlier.
+    const dataset = datasetOf(3);
+    const failure = await runAblation(
+      dataset,
+      countingSystem('reference-pipeline', 3, 5),
+      countingSystem('cortex-memory', 3, 99),
+      { runs: 2, scorer: exactMatchScorer },
+    ).then(
+      () => {
+        throw new Error('the ablation resolved, but the baseline side threw');
+      },
+      (error: unknown) => error as Error,
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.run).toBe(1);
+    expect(partial.system).toBe('reference-pipeline');
+    expect(partial.reached).toBe(1);
+    expect(partial.baselineAnswers).toEqual(['answer-0']);
+    expect(partial.featureAnswers).toEqual([]);
+  });
+
+  it('still attaches when a repetition dies on its first question, because run 0 finished', async () => {
+    // The no-measurement boundary does NOT transfer from repetition 0, and this is the
+    // assertion that says so. `attachPartial` refuses to attach when both vectors are
+    // empty because such a partial is byte-identical to a broken capture -- but that is
+    // an argument about repetition 0, the only repetition with nothing before it. A
+    // death on repetition 1's first question leaves TWO HUNDRED questions graded across
+    // the two sides, and the empty pair is then a statement -- "repetition 1 died before
+    // it measured anything" -- rather than a broken capture. `run` is what carries that,
+    // and it is non-zero here.
+    //
+    // The distinction is not academic: `38520676669` completed two repetitions and its
+    // artifact said so nowhere.
+    const dataset = datasetOf(2);
+    const failure = await runAblation(
+      dataset,
+      // Repetition 0 on calls 1-2, repetition 1 on 3-4; the baseline dies on 3.
+      countingSystem('reference-pipeline', 2, 3),
+      countingSystem('cortex-memory', 2, 99),
+      { runs: 2, scorer: exactMatchScorer },
+    ).then(
+      () => {
+        throw new Error('the ablation resolved, but the baseline side threw');
+      },
+      (error: unknown) => error as Error,
+    );
+
+    expect(failure).toBeInstanceOf(TypeError);
+    const partial = partialOf(failure);
+    expect(partial).toBeDefined();
+    expect(partial!.run).toBe(1);
+    expect(partial!.reached).toBe(0);
+    expect(partial!.baselineAnswers).toEqual([]);
+    expect(partial!.featureAnswers).toEqual([]);
   });
 });

@@ -345,8 +345,17 @@ export async function evaluateWithScorer(
   scorer: AnswerScorer,
   progress?: BenchmarkProgressCallback,
   run = 0,
+  onAnswer?: BenchmarkAnswerCallback,
 ): Promise<Metrics> {
-  const answers = await runBenchmark(dataset, system, progress, run);
+  const answers = await runBenchmark(
+    dataset,
+    system,
+    progress,
+    run,
+    undefined,
+    undefined,
+    onAnswer,
+  );
   return computeMetricsAsync(dataset, answers, scorer);
 }
 

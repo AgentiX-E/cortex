@@ -51,4 +51,5 @@ export {
   type RetryStats,
   type RetryOutcome,
   type RetryStatsSnapshot,
+  type RetryExhaustion,
 } from './retry.js';

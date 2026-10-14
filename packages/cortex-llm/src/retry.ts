@@ -212,14 +212,77 @@ export type RetryStats = {
 /** One call's stats plus the response it finally returned. */
 export type RetryOutcome = RetryStats & { response: Response };
 
+/**
+ * What a call that failed on every attempt reports, attached to the error it throws.
+ *
+ * ## Why the url and the attempt count travel on the error
+ *
+ * Run `38520676669` spent three hours and eight minutes over four thousand questions and
+ * ended on `TypeError: terminated`. The record it left named neither the endpoint, nor the
+ * provider, nor whether the fault had survived six attempts or aborted on the first -- so
+ * the one question an infrastructure failure has to answer had no answer in the record,
+ * and the next dispatch could not be chosen on evidence.
+ *
+ * ## Why it is attached rather than wrapped in a new Error
+ *
+ * The stack of the transport error is the only evidence that the loss was infrastructure
+ * rather than a defect in the arm (§13.11.7), which is the same argument
+ * `attachPartial` makes one layer up: a diagnostic must not replace the thing it
+ * describes. The original error is rethrown untouched, with this field added.
+ *
+ * ## Why it carries counts rather than a verdict
+ *
+ * "Was it transient" is a judgement about the provider, and this layer has no basis for
+ * one. `attempts` is what it does know: a call that reached the network six times and
+ * failed six times is a different fact from a call that issued one request and was cut
+ * off, and a reader can draw the conclusion from the number without the number claiming
+ * it.
+ */
+export type RetryExhaustion = {
+  /** The url the failed call was addressed to. */
+  readonly url: string;
+  /** Requests actually issued, including the first attempt. */
+  readonly attempts: number;
+  /** Retries actually performed before giving up. */
+  readonly retried: number;
+  /** Attempts answered with `429`, out of the ones that were issued. */
+  readonly rateLimited: number;
+  /** Wall-clock milliseconds from the first attempt to the last failure. */
+  readonly elapsedMs: number;
+  /** The transport error's own message, or `''` when no attempt produced one. */
+  readonly cause: string;
+};
+
 /** Cross-call view of {@link RetryStats}, with the sample size attached. */
 export type RetryStatsSnapshot = RetryStats & {
   /** Calls recorded, i.e. the sample the rate below is computed over. */
   calls: number;
   /** Calls that made at least one retry. */
   retriedCalls: number;
-  /** Calls that completed without a single retry. */
+  /**
+   * Calls that **completed** without a single retry.
+   *
+   * "Completed" is load-bearing and is why `exhaustedCalls` is a separate field rather
+   * than an absence: a call that issued one request and failed does not complete, so it
+   * is not clean -- and counting it as clean would let a run whose traffic was failing
+   * outright report a higher share of untroubled calls than a healthy one.
+   */
   cleanCalls: number;
+  /**
+   * Calls that failed on every attempt and never produced a response.
+   *
+   * ## Why this is a counter and not just a field on the last error
+   *
+   * The exhaustion path threw without passing through `withResponse`, so a call that
+   * died on every attempt was **absent** from these counters entirely. The aggregate
+   * described the calls that recovered and not the one that did not, which is exactly
+   * backwards for a failure investigation: an artifact could report a 2% retry rate over
+   * 4000 calls and be describing a run whose last call was the end of it.
+   *
+   * The three call classes partition the sample -- `cleanCalls + retriedCalls +
+   * exhaustedCalls === calls` -- and that identity is asserted rather than intended.
+   */
+  exhaustedCalls: number;
   /**
    * `retriedCalls / calls` — the share of calls that had to retry.
    *
@@ -228,6 +291,9 @@ export type RetryStatsSnapshot = RetryStats & {
    * volume is already carried by `retried`, and keeping the two separate is what
    * lets a reader tell "many calls each retrying once" from "one call retrying
    * many times".
+   *
+   * An exhausted call counts here when it retried, and it is `exhaustedCalls` that says
+   * whether the retrying worked.
    *
    * `0` for an empty aggregate rather than `NaN`: `NaN` serializes to `null`,
    * which would read beside a genuine `0` as missing data. The sample size is
@@ -252,15 +318,38 @@ export class RetryStatsAggregate {
   #calls = 0;
   #retriedCalls = 0;
   #cleanCalls = 0;
+  #exhaustedCalls = 0;
 
+  /** A call that finished, whichever way it finished. */
   record(stats: RetryStats): void {
+    this.#accumulate(stats, false);
+  }
+
+  /**
+   * A call that failed on every attempt and produced no response.
+   *
+   * A second method rather than a flag on `record`, because the two are different
+   * events rather than two shapes of one: `record` is called from `withResponse`, which
+   * only exists on a path that HAS a response, and a caller that reached here has none.
+   * Folding them together would make "completed" a parameter a reader could pass wrongly,
+   * which is the kind of thing a signature can prevent and a comment cannot.
+   */
+  recordExhausted(stats: RetryStats): void {
+    this.#accumulate(stats, true);
+  }
+
+  #accumulate(stats: RetryStats, exhausted: boolean): void {
     this.#attempts += stats.attempts;
     this.#retried += stats.retried;
     this.#rateLimited += stats.rateLimited;
     this.#retryAfterHonoured += stats.retryAfterHonoured;
     this.#calls += 1;
+    if (exhausted) this.#exhaustedCalls += 1;
     if (stats.retried === 0) {
-      this.#cleanCalls += 1;
+      // A call that never retried is clean only if it finished. One that did not is
+      // counted by `exhaustedCalls` and by nothing else, so the three classes partition
+      // the sample instead of one call being counted twice.
+      if (!exhausted) this.#cleanCalls += 1;
     } else {
       this.#retriedCalls += 1;
     }
@@ -276,6 +365,7 @@ export class RetryStatsAggregate {
       calls: this.#calls,
       retriedCalls: this.#retriedCalls,
       cleanCalls: this.#cleanCalls,
+      exhaustedCalls: this.#exhaustedCalls,
       retryRate: this.#calls === 0 ? 0 : this.#retriedCalls / this.#calls,
     };
   }
@@ -289,6 +379,7 @@ export class RetryStatsAggregate {
     this.#calls = 0;
     this.#retriedCalls = 0;
     this.#cleanCalls = 0;
+    this.#exhaustedCalls = 0;
   }
 }
 
@@ -460,7 +551,38 @@ export async function retryableFetchWithStats(
     }
     resFromLastAttempt = res;
   }
-  throw lastError ?? new Error(`fetch failed after ${maxRetries + 1} attempts`);
+  // Every attempt failed on transport. The accounting is recorded HERE rather than only
+  // on the returning paths, and that is a repair rather than symmetry: a call that died
+  // on every attempt used to leave no trace in the aggregate at all, so the counters
+  // described the calls that recovered and not the one that did not.
+  processRetryStats.recordExhausted(stats);
+  throw withExhaustion(lastError ?? new Error(`fetch failed after ${stats.attempts} attempts`), {
+    url,
+    attempts: stats.attempts,
+    retried: stats.retried,
+    rateLimited: stats.rateLimited,
+    elapsedMs: Date.now() - sequenceStart,
+    cause: lastError === undefined ? '' : lastError.message,
+  });
+}
+
+/**
+ * Attach what the retry loop observed to the error it is about to throw.
+ *
+ * The error is returned unchanged apart from the added field, so its class and its stack
+ * survive -- a caller that catches on `TypeError` still catches one, and the stack that
+ * names `Fetch.onAborted` is the only evidence in the record that a loss was
+ * infrastructure.
+ *
+ * The parameter is an `Error` rather than `unknown`, and that is not a narrowing for
+ * convenience: the loop above converts a non-Error throw into an `Error` at the point it
+ * is caught, so `lastError` is always one. A `typeof error === 'object'` guard here would
+ * be an arm no input can reach, which is the shape §57.6 removed elsewhere -- and the
+ * branch-coverage gate would be the thing that found it.
+ */
+function withExhaustion(error: Error, exhaustion: RetryExhaustion): Error {
+  (error as { retryExhausted?: RetryExhaustion }).retryExhausted = exhaustion;
+  return error;
 }
 
 /** Attach the final response, record the call, and return the outcome. */

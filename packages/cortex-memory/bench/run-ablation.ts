@@ -38,6 +38,7 @@
  * admission and not a difference in what the model was asked.
  */
 import { createLlmFromEnv, createEmbeddingWithProvenanceFromEnv } from '@agentix-e/cortex-eval';
+import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-llm';
 import {
   NaturalLanguageMemorySystem,
   buildRetrievalRelevanceIndex,
@@ -452,6 +453,24 @@ main().catch((error: unknown) => {
     console.log('=== cortex-memory partial measurement (INCOMPLETE, no delta) ===');
     console.log(JSON.stringify(partial));
   }
+  // What the transport layer observed, and why it is printed rather than left in the
+  // stack.
+  //
+  // Run `38520676669` spent three hours and eight minutes over four thousand questions
+  // and ended on `TypeError: terminated`. The log named no endpoint, no provider and no
+  // attempt count, so "was this a transient fault that survived six attempts, or a single
+  // abort from somewhere the retry loop does not wrap" -- the only question that decides
+  // whether the correct response is a re-dispatch or a code change -- had no answer in
+  // the record. `RetryExhaustion` carries the first three; `retryStats()` carries the
+  // run's whole retry history, which is what says whether the failing call was the only
+  // trouble or the last of many.
+  const exhaustion = (error as { retryExhausted?: RetryExhaustion }).retryExhausted;
+  if (exhaustion !== undefined) {
+    console.error('=== exhausted provider call ===');
+    console.error(JSON.stringify(exhaustion));
+  }
+  console.error('=== transport retry accounting (process-wide) ===');
+  console.error(JSON.stringify(retryStats()));
   console.error(where);
   console.error(message);
   // Persist whatever was embedded before the failure, on the failure path too.

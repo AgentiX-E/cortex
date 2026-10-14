@@ -77,6 +77,22 @@ describe('transport retry report', () => {
     expect(Number.isNaN(report.retryRate)).toBe(false);
   });
 
+  it('carries the exhausted-call count, which the artifact needs to read the others', () => {
+    // The field that keeps `cleanCalls` honest. A call that issued one request and was cut
+    // off never retried, so a report without this counter describes it as clean -- and the
+    // reading it feeds is exactly backwards on a run whose traffic was failing, which is
+    // the run an artifact is most likely to be read about.
+    const aggregate = createRetryStatsAggregate();
+    aggregate.record({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+    aggregate.recordExhausted({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+
+    const report = transportRetryReport(aggregate.snapshot(), { provider: 'llm' });
+
+    expect(report.exhaustedCalls).toBe(1);
+    expect(report.cleanCalls).toBe(1);
+    expect(report.cleanCalls + report.retriedCalls + report.exhaustedCalls).toBe(report.calls);
+  });
+
   it('names the scope it measured, because the counter is shared across providers', () => {
     // `retryableFetch` is the choke point for embedding AND LLM traffic, so the
     // total is process-wide. The artifact must say so instead of presenting a

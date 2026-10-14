@@ -16,6 +16,7 @@ import type {
   BenchmarkDataset,
   Capability,
   MemorySystem,
+  Metrics,
   PartialAblation,
   PerCapabilityPairedStats,
 } from './types.js';
@@ -64,16 +65,24 @@ const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
  *
  * ## The no-measurement case
  *
- * Only when BOTH vectors are empty is nothing attached. The predicate is not
- * `reached === 0`, because `reached` counts the side that was RUNNING when the
- * error surfaced: a feature-side death at question 0 leaves `reached: 0` and a
- * COMPLETE baseline, and discarding the baseline then would throw away the half of
- * the measurement that finished. A `partial` of two empty vectors is the same
- * bytes as a broken capture -- the `null` vs `''` distinction the evidence capture
- * keeps one layer up -- so that is the case that attaches nothing.
+ * Only when nothing at all was measured is nothing attached, and `run` is part of that
+ * question rather than a detail of the record. The repetitions are sequential, so a
+ * repetition ordinal above zero means every earlier repetition completed on both sides:
+ * a partial at `run: 1` with two empty vectors states that repetition 1 died before it
+ * measured anything, which is a real measurement record. At `run: 0` there is nothing
+ * before it, and a partial of two empty vectors is then the same bytes as a broken
+ * capture -- the `null` vs `''` distinction the evidence capture keeps one layer up --
+ * so that is the case that attaches nothing.
+ *
+ * The predicate is not `reached === 0` either, and for the same reason one repetition in:
+ * `reached` counts the side that was RUNNING when the error surfaced, so a feature-side
+ * death at question 0 leaves `reached: 0` and a COMPLETE baseline, and discarding the
+ * baseline then would throw away the half of the measurement that finished.
  */
 function attachPartial(error: unknown, partial: PartialAblation): unknown {
-  if (partial.reached === 0 && partial.baselineAnswers.length === 0) return error;
+  const measuredNothing =
+    partial.run === 0 && partial.reached === 0 && partial.baselineAnswers.length === 0;
+  if (measuredNothing) return error;
   if (error !== null && typeof error === 'object') {
     (error as { partial?: PartialAblation }).partial = partial;
   }
@@ -261,8 +270,54 @@ export async function runAblation(
     // `run: i` rather than the default, so a repeated pass is distinguishable in
     // the progress stream from the first one. Both sides take the same ordinal:
     // they are two systems measured in one repetition, not two repetitions.
-    const b = await evaluateWithScorer(dataset, baseline, scorer, options.onProgress, i);
-    const f = await evaluateWithScorer(dataset, feature, scorer, options.onProgress, i);
+    //
+    // ## Why this loop has sinks and a wrap, and it is the same reason the loop above does
+    //
+    // It did not, and run `38520676669` is the cost. That run dispatched §13.22's
+    // measurement, completed repetitions 0 and 1 on both sides -- two thousand graded
+    // answers -- and died on `TypeError: terminated` at the start of repetition 2. Because
+    // this loop passed no sink and had no catch, the error left `runAblation` unwrapped,
+    // `error.partial` was `undefined`, and the failure path in `bench/run-ablation.ts`
+    // wrote an error log and nothing else. Three hours and eight minutes produced no
+    // durable record of anything.
+    //
+    // The durability rule is stated at the top of `partial-ablation.test.ts` and it does
+    // not distinguish repetitions: a repetition is a measurement, and losing one silently
+    // is the defect that file exists to prevent. What differs is only which vectors the
+    // partial carries -- the dying repetition's, in both cases -- because
+    // `PartialAblation.run` records how many repetitions completed before it.
+    const baselineThisRun: Answer[] = [];
+    const featureThisRun: Answer[] = [];
+    let b: Metrics;
+    try {
+      b = await evaluateWithScorer(dataset, baseline, scorer, options.onProgress, i, (answer) =>
+        baselineThisRun.push(answer),
+      );
+    } catch (error) {
+      throw attachPartial(error, {
+        system: baseline.name,
+        reached: baselineThisRun.length,
+        total: dataset.questions.length,
+        run: i,
+        baselineAnswers: baselineThisRun,
+        featureAnswers: featureThisRun,
+      });
+    }
+    let f: Metrics;
+    try {
+      f = await evaluateWithScorer(dataset, feature, scorer, options.onProgress, i, (answer) =>
+        featureThisRun.push(answer),
+      );
+    } catch (error) {
+      throw attachPartial(error, {
+        system: feature.name,
+        reached: featureThisRun.length,
+        total: dataset.questions.length,
+        run: i,
+        baselineAnswers: baselineThisRun,
+        featureAnswers: featureThisRun,
+      });
+    }
     baselineScores.push(toScore(b));
     featureScores.push(toScore(f));
   }

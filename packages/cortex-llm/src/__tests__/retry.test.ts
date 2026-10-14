@@ -12,6 +12,7 @@ import {
   DEFAULT_RETRY_BASE_DELAY_MS,
   DEFAULT_RETRY_BUDGET_MS,
   DEFAULT_RETRY_TIMEOUT_MS,
+  type RetryExhaustion,
 } from '../retry.js';
 
 /**
@@ -878,6 +879,7 @@ describe('retry stats aggregation', () => {
       calls: 0,
       retriedCalls: 0,
       cleanCalls: 0,
+      exhaustedCalls: 0,
       retryRate: 0,
     });
   });
@@ -888,5 +890,210 @@ describe('retry stats aggregation', () => {
     const snap = agg.snapshot();
     snap.rateLimited = 999;
     expect(agg.snapshot().rateLimited).toBe(0);
+  });
+
+  it('partitions the sample into clean, retried and exhausted calls', () => {
+    // The identity that makes the three counters readable together. An exhausted call with
+    // no retries -- one attempt, cut off -- belongs to neither of the other two: it did
+    // not retry, and it did not complete. Counting it as clean would let a run whose
+    // traffic was failing outright report a HIGHER share of untroubled calls than a
+    // healthy one, which is the reading the counter exists to prevent.
+    const agg = createRetryStatsAggregate();
+    agg.record({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+    agg.record({ attempts: 3, retried: 2, rateLimited: 1, retryAfterHonoured: 0 });
+    agg.recordExhausted({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 });
+
+    const snap = agg.snapshot();
+    expect(snap.calls).toBe(3);
+    expect(snap.cleanCalls).toBe(1);
+    expect(snap.retriedCalls).toBe(1);
+    expect(snap.exhaustedCalls).toBe(1);
+    expect(snap.cleanCalls + snap.retriedCalls + snap.exhaustedCalls).toBe(snap.calls);
+  });
+
+  it('counts an exhausted call that retried in both counters, because both are true', () => {
+    // A call that issued six requests and never got an answer DID retry, so it belongs in
+    // `retriedCalls` -- the retry rate is about the provider's behaviour, and suppressing
+    // it there would report a smooth run over traffic that was failing. `exhaustedCalls`
+    // is what says the retrying did not work, which is why the two are not exclusive.
+    const agg = createRetryStatsAggregate();
+    agg.recordExhausted({ attempts: 6, retried: 5, rateLimited: 0, retryAfterHonoured: 0 });
+
+    const snap = agg.snapshot();
+    expect(snap.retriedCalls).toBe(1);
+    expect(snap.exhaustedCalls).toBe(1);
+    expect(snap.cleanCalls).toBe(0);
+    expect(snap.retryRate).toBe(1);
+  });
+});
+
+/**
+ * A call that exhausts its retries has to say so, and it did not.
+ *
+ * ## The loss this pins
+ *
+ * Run `38520676669` graded four thousand questions across two systems and died on
+ * `TypeError: terminated` after three hours and eight minutes. Its error log carried the
+ * stack and nothing else -- no url, no model, no attempt count -- so the one question a
+ * reader has to answer after an infrastructure failure, "was this a transient fault that
+ * survived six attempts, or a single abort from somewhere the retry loop does not wrap",
+ * had no answer in the record.
+ *
+ * Two defects make that answer unrecordable, and neither is in the retry logic itself:
+ *
+ *   - the exhaustion path throws `lastError` without passing through `withResponse`, so
+ *     a call that failed on every attempt is **invisible** in the retry accounting. The
+ *     counters report the calls that recovered and not the one that did not, which is the
+ *     wrong way round for a failure investigation;
+ *   - the thrown error is the transport error verbatim, so nothing on it distinguishes
+ *     one attempt from six.
+ *
+ * ## Why the record is attached rather than wrapped
+ *
+ * The same argument `attachPartial` makes one layer up: the stack of a transport error is
+ * the only evidence in the record that the loss was infrastructure rather than a defect in
+ * the arm, so replacing the error with a wrapper would destroy the thing the diagnostic
+ * exists for. The original is returned untouched with a field added.
+ */
+describe('an exhausted retry reports itself', () => {
+  /** A fetch that fails every attempt the way a reset socket does. */
+  function alwaysTerminated(): typeof fetch {
+    return (async () => {
+      throw new TypeError('terminated');
+    }) as unknown as typeof fetch;
+  }
+
+  /** The exhaustion record an error carries, or `undefined` when it carries none. */
+  function exhaustionOf(error: unknown) {
+    return (error as { retryExhausted?: RetryExhaustion }).retryExhausted;
+  }
+
+  it('names the url, the attempts and the transport error', async () => {
+    const failure = await retryableFetch(
+      alwaysTerminated(),
+      'https://api.example.test/v1/chat/completions',
+      {},
+      { maxRetries: 2, baseDelayMs: 1 },
+    ).then(
+      () => {
+        throw new Error('the fetch resolved, but every attempt threw');
+      },
+      (error: unknown) => error,
+    );
+
+    const record = exhaustionOf(failure);
+    expect(record).toBeDefined();
+    expect(record!.url).toBe('https://api.example.test/v1/chat/completions');
+    // Three requests were issued: the first and two retries, which is what
+    // `maxRetries: 2` means and what a reader has to be able to check.
+    expect(record!.attempts).toBe(3);
+    expect(record!.retried).toBe(2);
+    expect(record!.cause).toBe('terminated');
+    expect(record!.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('leaves the transport error itself intact, because its stack is the evidence', async () => {
+    const failure = await retryableFetch(
+      alwaysTerminated(),
+      'http://x',
+      {},
+      {
+        maxRetries: 0,
+        baseDelayMs: 1,
+      },
+    ).then(
+      () => {
+        throw new Error('the fetch resolved, but the attempt threw');
+      },
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(TypeError);
+    expect((failure as Error).message).toBe('terminated');
+  });
+
+  it('counts the failed call in the process aggregate, which it did not before', async () => {
+    // The accounting's own purpose. `retryStats()` is the process-level view the artifact
+    // reports, and a call that died on every attempt was absent from it -- so a run whose
+    // traffic was entirely 429s and a run whose last call reset the socket could produce
+    // the same counters.
+    resetRetryStats();
+    const before = retryStats();
+
+    await retryableFetch(
+      alwaysTerminated(),
+      'http://x',
+      {},
+      { maxRetries: 1, baseDelayMs: 1 },
+    ).catch(() => undefined);
+
+    const after = retryStats();
+    expect(after.calls).toBe(before.calls + 1);
+    // Recorded as a call that retried rather than as a clean one: the distinction the
+    // counter exists for, and the one an exhausted call has to land on.
+    expect(after.retriedCalls).toBe(before.retriedCalls + 1);
+    expect(after.attempts).toBe(before.attempts + 2);
+  });
+
+  it('wraps a primitive throw into an Error and records the exhaustion on it', async () => {
+    // A `throw 'string'` from `fetch` is converted into an `Error` by the loop before it is
+    // rethrown -- the layer's own test pins that wrapping -- so the value a caller here
+    // receives is always an object and can always carry the record. The `attachPartial`
+    // rule about primitives is about a seam that can receive one; this is not that seam,
+    // which is why `withExhaustion` takes an `Error` and has no guard.
+    const weird = (async () => {
+      throw 'a primitive throw';
+    }) as unknown as typeof fetch;
+
+    const thrown = await retryableFetch(
+      weird,
+      'http://x',
+      {},
+      { maxRetries: 0, baseDelayMs: 1 },
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe('a primitive throw');
+    expect(exhaustionOf(thrown)!.attempts).toBe(1);
+    expect(exhaustionOf(thrown)!.cause).toBe('a primitive throw');
+  });
+
+  it('records nothing on a call that succeeded, so absence means no exhaustion', async () => {
+    // The other polarity, and it is what makes the field readable: a successful call must
+    // not carry a record, or "no exhaustion" and "exhaustion with zero attempts" would be
+    // the same bytes.
+    const ok = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    const outcome = await retryableFetchWithStats(ok, 'http://x', {}, { maxRetries: 1 });
+    expect(outcome.response.status).toBe(200);
+    expect(exhaustionOf(outcome)).toBeUndefined();
+  });
+
+  it('reports the attempts a non-throwing failure made, including none at all', async () => {
+    // `maxRetries: -1` issues no request and still has to say so: "zero attempts" and
+    // "the record is missing" are different facts about a run, and only one of them means
+    // the call never reached the network.
+    const fetchFn = (async () => new Response('{}')) as unknown as typeof fetch;
+    const thrown = await retryableFetch(
+      fetchFn,
+      'http://x',
+      {},
+      {
+        maxRetries: -1,
+        baseDelayMs: 1,
+      },
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(/fetch failed/);
+    const record = exhaustionOf(thrown);
+    expect(record).toBeDefined();
+    expect(record!.attempts).toBe(0);
+    expect(record!.cause).toBe('');
   });
 });
