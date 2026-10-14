@@ -411,6 +411,43 @@ export type MemoryArmConfig = {
    * source.
    */
   readonly relevanceTopK: number;
+  /**
+   * Which embedding backend this artifact's numbers were produced against.
+   *
+   * ## Why the artifact has to say it
+   *
+   * `createEmbeddingWithProvenanceFromEnv` falls back to a **256-dimension hash
+   * embedding** when no credential is present, so a run graded against the fallback and a
+   * run graded against Zhipu `embedding-3` at `1024` dimensions both produce a complete,
+   * internally consistent report. `embedding.test.ts` makes that explicit: both are
+   * deterministic and they differ by a factor of four in dimension, so two artifacts that
+   * agree on a determinism score are not therefore comparable.
+   *
+   * Until this field the only statement of which backend was used was a line on the
+   * runner's **stdout**, which is not in the artifact: an archived report could not be
+   * read for the question a comparison depends on. This was pending as roadmap item 17.
+   *
+   * ## Why it carries the check as well as the backend
+   *
+   * A backend name says what produced the vectors and not whether the provider was
+   * serving when the run started. Run `38566578567` died **before grading a question**
+   * because the provider had no credit, and the only trace was a log line; a report that
+   * named the backend alone would be consistent with exactly that run had it happened to
+   * finish. `preflight: 'ok'` says the run asked first and was answered, and `'not-run'`
+   * says nothing was asked -- which is the honest value for every artifact that predates
+   * the check and for any caller that constructs a config without one.
+   *
+   * Absent when the caller names no backend at all, which keeps an artifact that predates
+   * this field distinguishable from one whose backend is unrecorded.
+   */
+  readonly embedding?:
+    | {
+        readonly provider: string;
+        readonly model: string | null;
+        readonly dimensions: number;
+        readonly preflight: 'ok' | 'not-run';
+      }
+    | undefined;
 };
 
 /**
@@ -597,7 +634,18 @@ export function formatAblationReport(report: AblationReport): string {
         `, \`relevanceSignal=${memoryArm.relevanceSignal}\`` +
         (memoryArm.relevanceSignal === 'none'
           ? ''
-          : `, \`relevanceTopK=${memoryArm.relevanceTopK}\``),
+          : `, \`relevanceTopK=${memoryArm.relevanceTopK}\``) +
+        // The backend, and the check that it was serving. Appended only when the caller
+        // named one, so an artifact that predates the field reads as pre-dating it rather
+        // than as having run against an unrecorded backend. Both halves are rendered
+        // together because they answer one question -- what produced these vectors, and
+        // was it up -- and either alone is consistent with the run that died before it
+        // graded a question.
+        (memoryArm.embedding === undefined
+          ? ''
+          : `, \`embedding=${memoryArm.embedding.provider}/` +
+            `${memoryArm.embedding.model ?? 'n/a'}@${memoryArm.embedding.dimensions}\`` +
+            `, \`embeddingPreflight=${memoryArm.embedding.preflight}\``),
     );
 
     // The reachable set, rendered beside the name and for the reason §12.8 gives: the

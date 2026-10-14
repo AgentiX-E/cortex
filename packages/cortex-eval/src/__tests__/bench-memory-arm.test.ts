@@ -1845,6 +1845,72 @@ describe('the evidence ask, which is the second axis and not the rendering', () 
     expect(product.askRoutes).toContain('temporal');
   });
 
+  it('carries the embedding backend into the artifact, and the check that it was serving', () => {
+    // Two runs against different backends produce reports that are each internally
+    // consistent and not comparable, and the only statement of which backend ran used to
+    // be a line on a stdout that no archived artifact carries (roadmap item 17).
+    const config = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }), {
+      provider: 'openai-compatible',
+      model: 'embedding-3',
+      dimensions: 1024,
+      preflight: 'ok',
+    });
+
+    expect(config.embedding).toEqual({
+      provider: 'openai-compatible',
+      model: 'embedding-3',
+      dimensions: 1024,
+      preflight: 'ok',
+    });
+  });
+
+  it('omits the embedding field when the caller names no backend', () => {
+    // The three states the reader has to be able to tell apart: named and checked, named
+    // and unchecked, and not named at all. A default here would collapse the third into
+    // one of the first two, and the artifact that cannot say it made no claim is the one
+    // a comparison will read wrongly.
+    const config = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
+    expect(Object.hasOwn(config, 'embedding')).toBe(false);
+  });
+
+  it('renders the backend and its check on the config line, together', () => {
+    // Together, because either half alone is consistent with the run that died before it
+    // graded a question: a backend name says what would have produced the vectors, and
+    // the check says the provider answered before the run committed.
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }), {
+        provider: 'hash',
+        model: null,
+        dimensions: 256,
+        preflight: 'not-run',
+      }),
+    });
+
+    expect(markdown).toContain('`embedding=hash/n/a@256`');
+    expect(markdown).toContain('`embeddingPreflight=not-run`');
+  });
+
+  it('leaves the embedding clauses off an artifact that names no backend', () => {
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+
+    expect(markdown).not.toContain('embedding=');
+    expect(markdown).not.toContain('embeddingPreflight');
+  });
+
   it('keeps the arm copy of every ask reach equal to the product table', () => {
     // The guard above checks that the product's table EXISTS and that one entry of it
     // disagrees with the arm's copy in the direction §12.9 explains. §13.21's run then

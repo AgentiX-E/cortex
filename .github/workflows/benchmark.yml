@@ -162,6 +162,7 @@ jobs:
           path: ${{ github.workspace }}/data/embedding-cache.bin
           key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
           restore-keys: |
+            longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-
             longmemeval-embedding-
 
       - name: Run benchmark
@@ -234,12 +235,30 @@ jobs:
           RERANK_API_KEY: ${{ secrets.RERANK_API_KEY }}
         run: pnpm --filter @agentix-e/cortex-eval bench
 
+      # The key carries the run id, and the restore above matches on the dataset-hash
+      # PREFIX -- which is the pattern `actions/cache` documents and the repair for a
+      # measured waste.
+      #
+      # Both of the failed runs of this workflow lost the vectors they had just paid for:
+      # `38520676669` and `38566578567` each ended with
+      #
+      #     Failed to save: Unable to reserve cache with key longmemeval-embedding-<hash>,
+      #     another job may be creating this cache.
+      #
+      # because the save re-used the exact key the restore had asked for. Two runs that
+      # write one key contend for it, and the loser's vectors are discarded -- which is the
+      # opposite of what the failure path deliberately does (`persistArmEmbeddingCache`
+      # runs on the way out precisely because "a run that dies at question 300 of 500 has
+      # still paid for its embeddings"). A unique save key cannot contend, and the prefix
+      # restore-keys mean the next run picks up whichever entry was written most recently
+      # -- so the two workflows still grade against one set of vectors, which is the
+      # property the shared key existed for.
       - name: Save embedding cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}
 
       - name: Upload benchmark report
         if: always()

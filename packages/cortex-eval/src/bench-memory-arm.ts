@@ -803,7 +803,19 @@ function readSourceTrust(raw: string | undefined): number {
  * precisely the ambiguity `37110579101` created when it reproduced `37094200823`'s
  * number without either artifact naming the ceiling.
  */
-export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmConfig {
+export function toMemoryArmConfig(
+  options: CortexMemoryArmOptions,
+  /**
+   * The embedding backend the run will be graded against, when the caller knows it.
+   *
+   * A parameter rather than a read of the environment from here, because this module
+   * never constructs a backend: `bench/run-ablation.ts` builds one from the environment
+   * and is the only layer that can say what it built. Passing it keeps the fact where it
+   * is known, and the field is optional so every existing caller keeps compiling and its
+   * artifact keeps reading as "predates the field".
+   */
+  embedding?: MemoryArmConfig['embedding'],
+): MemoryArmConfig {
   return {
     threshold: options.threshold,
     retrievalThreshold: options.retrievalThreshold,
@@ -827,6 +839,12 @@ export function toMemoryArmConfig(options: CortexMemoryArmOptions): MemoryArmCon
     // constants to do it.
     relevanceSignal: options.relevanceSignal,
     relevanceTopK: options.relevanceTopK,
+    // Spread conditionally rather than assigned, for the reason the two options above
+    // are spread conditionally in the constructor: an always-present key holding
+    // `undefined` is indistinguishable from a missing one under this workspace's
+    // `exactOptionalPropertyTypes`, and the distinction -- a run that named no backend
+    // versus an artifact that predates the field -- is the one the type exists to keep.
+    ...(embedding === undefined ? {} : { embedding }),
   };
 }
 

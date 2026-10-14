@@ -49,10 +49,12 @@ import {
   cortextMemoryArmOptions,
   persistArmEmbeddingCache,
   restoreArmEmbeddingCache,
+  preflightEmbedding,
   runCortexMemoryArm,
   sampleInstances,
   toMemoryArmConfig,
   type BenchmarkProgress,
+  type EmbeddingPreflight,
   type RelevanceCase,
   type RelevanceIndex,
   type RelevanceIndexOptions,
@@ -168,6 +170,34 @@ async function main(): Promise<void> {
     `Embedding backend: ${provenance.provider} (model=${provenance.model ?? 'n/a'}, ` +
       `dimensions=${provenance.dimensions})`,
   );
+
+  // One request, before anything that takes time, to learn whether the provider will serve
+  // this run at all.
+  //
+  // The two failures that motivate it both died on the embedding provider: `38520676669`
+  // after three hours (a socket the provider terminated) and `38566578567` after thirty
+  // minutes of building the relevance index, with the provider's own refusal -- `429 Too
+  // Many Requests — {"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}`.
+  // The second one is the case this check is for: the account had no credit, and the only
+  // way the run could find out was to spend the thirty minutes first.
+  //
+  // It cannot prevent a balance running out mid-run -- in `38566578567` about nine
+  // thousand five hundred requests were served before the provider started refusing -- so
+  // the claim is narrow and worth stating: every dispatch learns for one request what the
+  // run would otherwise learn for a run.
+  //
+  // Thrown rather than logged-and-continued. A run that cannot embed cannot answer, and
+  // the whole point of moving the discovery earlier is to not spend the money that
+  // follows. The message carries the provider's own words, because `429` reads as a rate
+  // limit -- something you wait out -- and this condition is the opposite.
+  const preflight: EmbeddingPreflight = await preflightEmbedding(embedding);
+  if (!preflight.ok) {
+    throw new Error(
+      `embedding preflight failed against ${provenance.provider} ` +
+        `(model=${provenance.model ?? 'n/a'}): ${preflight.message}`,
+    );
+  }
+  console.log(`Embedding preflight: ok (one vector of ${preflight.dimension} dimensions)`);
 
   // Restore the persisted vector cache BEFORE either system touches a turn.
   //
@@ -338,7 +368,12 @@ async function main(): Promise<void> {
   const result = await runCortexMemoryArm(dataset, baseline, feature, {
     runs,
     scorer: judgeScorer(createLlmJudge(llm)),
-    memoryArmConfig: toMemoryArmConfig(armOptions),
+    memoryArmConfig: toMemoryArmConfig(armOptions, {
+      provider: provenance.provider,
+      model: provenance.model,
+      dimensions: provenance.dimensions,
+      preflight: 'ok',
+    }),
     featureConfig: { cortexMemory: true },
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the

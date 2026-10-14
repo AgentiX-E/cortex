@@ -315,6 +315,7 @@ export {
   type QuestionRecord,
 } from './question-record.js';
 
+export { preflightEmbedding, type EmbeddingPreflight } from './embedding-preflight.js';
 export { serializeReportOrReduce } from './report-write.js';
 
 export {
