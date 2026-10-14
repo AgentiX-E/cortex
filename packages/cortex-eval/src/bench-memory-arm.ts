@@ -529,6 +529,11 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // §13.21's ask, restated for the same reason as the two above: the artifact reports
   // the reach from this table, and the product's own table is asserted equal to it.
   aggregate: ['multi-session', 'flat'],
+  // §13.22's ask: `aggregate` plus the temporal route. The artifact's `askRoutes` is how
+  // the run states that the temporal block was composed with rather than replaced, which
+  // is the one thing a reader of the headline delta cannot otherwise tell -- §13.20 and
+  // §13.21 have the same `ask`-shaped delta from opposite directions.
+  computed: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

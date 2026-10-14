@@ -1844,6 +1844,37 @@ describe('the evidence ask, which is the second axis and not the rendering', () 
     ).not.toContain('multi-session');
     expect(product.askRoutes).toContain('temporal');
   });
+
+  it('keeps the arm copy of every ask reach equal to the product table', () => {
+    // The guard above checks that the product's table EXISTS and that one entry of it
+    // disagrees with the arm's copy in the direction §12.9 explains. §13.21's run then
+    // read the reach off the artifact to decide which capabilities were controls and
+    // which were targets, and got it wrong for one of them: the arm's `aggregate` read
+    // `['multi-session','flat']`, the artifact printed exactly that, and the reading
+    // still treated `flat` (which is the IE route) as untouched. The reach the artifact
+    // carries is the only instrument a reader has, so it has to be checked in both
+    // directions and for every ask -- a one-sided check on one entry cannot notice a
+    // route added to or dropped from any of the others.
+    const source = readFileSync(
+      new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+      'utf-8',
+    );
+
+    for (const ask of ['route', 'extractive', 'aggregate', 'computed']) {
+      const found = new RegExp(`\\n  ${ask}: \\[([^\\]]*)\\]`).exec(source);
+      expect(found, `ASK_ROUTES.${ask} not found in the product source`).not.toBeNull();
+      const productReach = found![1]!
+        .split(',')
+        .map((entry) => entry.trim().replace(/^'|'$/g, ''))
+        .filter((entry) => entry.length > 0);
+      const arm = toMemoryArmConfig(
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: ask }),
+      );
+      expect(arm.askRoutes, `the arm's reach for ${ask} disagrees with the product`).toEqual(
+        productReach,
+      );
+    }
+  });
 });
 
 describe('the ask reaches the artifacts, in both renderings', () => {

@@ -205,13 +205,54 @@ WORKFLOW = "benchmark-cortex-memory.yml"
 # Every other input is held: `relevanceSignal: retrieval` at `relevanceTopK: 64` is the
 # mechanism §13.17 proved, and moving it alongside the ask would make a non-zero delta
 # unattributable to either.
+#
+# §13.22 composes the same sentence into each route's own block instead of substituting it,
+# and reaches `temporal` as well. The run §13.21 dispatched (`38487229554`) is what moved
+# the target: `aggregate` took MR from 27.27% to 44.63% and its abstentions from 56 of 121
+# to 24 of 121, and the arm's delta to **+23.25pp** with McNemar `6.479e-12` -- the largest
+# movement this arm has produced -- while **TR became the largest remaining loss**, 48.82%
+# against the reference pipeline's 64.57%, with **51 of its 127 questions abstaining**.
+#
+# Those 51 are not a retrieval result. 50 of the 51 had the gold turn carried (the run's
+# `goldOverlap` is 126 of 127 questions carrying at least one), and the whole run's
+# abstention tally is 121 of 500 with `llm` as the only counted reason and
+# `retrievalThreshold: 0` so the gate never closed. The questions are "how many weeks ago
+# did I meet up with my aunt", "how many days passed between the day I cancelled my
+# subscription and the day I ...", "what is the order of the three trips I took" -- a
+# duration, a difference or an ordering assembled from several turns. That is the property
+# under which the multi-session route was declining at 56 of 121 before `aggregate` moved
+# it to 24 of 121, and the temporal route's own block does not address it: it says to
+# resolve relative expressions against the question date and to show the resolved date, and
+# its closing line concedes that the evidence may not establish a date.
+#
+# Why compose rather than substitute: §13.20 measured that substitution is destructive. The
+# extractive block sent to every route deleted the date-resolution instruction and TR fell
+# 27.6 points; §13.21's `route` restored it and TR rose the same 27.6 points back. So the
+# sentence has to be added to what the temporal route already says, and `computed` is the
+# ask that expresses that. On the two routes whose own block IS the extractive one it is
+# byte-identical to `aggregate` -- asserted in `evidence-ask-reach.test.ts`, not claimed --
+# so the single variable between `38487229554` and this run is **what the temporal route
+# reads**.
+#
+# The reach is `['multi-session','flat','temporal']` and the omission of `abstention` is the
+# load-bearing one: that route's block calls declining "expected and is a valid outcome", and
+# ABS's gold IS abstention, so a sentence whose closing clause is "do not reply
+# INSUFFICIENT_EVIDENCE merely because..." would invert the one route where declining scores.
+# `knowledge-update` and `assistant` keep their own blocks and are controls.
+#
+# Every other input is held at its §13.21 value, so a movement in TR is attributable to the
+# instruction and nothing else. Note that the threshold bands this registration predicts
+# against are DERIVED rather than asserted -- `tools/registration-power.mjs` prints the
+# one-question granularity and the binomial sd of each per-capability reading, and §13.21's
+# `within 3pp` control band is retired here because on a 72-question capability it was 0.66
+# sd wide and could not have held.
 INPUTS = {
     "cortex_memory": "1",
     "cortex_memory_threshold": "0",
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
-    "cortex_memory_ask": "aggregate",
+    "cortex_memory_ask": "computed",
     "cortex_memory_evidence_turns": "256",
     "cortex_memory_relevance": "retrieval",
     "cortex_memory_relevance_top_k": "64",

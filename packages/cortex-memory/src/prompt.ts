@@ -83,6 +83,17 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // a second global one, and it is measurable: the artifact's `askRoutes` names the two,
   // and the four capabilities that keep their own block are the control.
   aggregate: ['multi-session', 'flat'],
+  // §13.22, and it is `aggregate` plus the temporal route. On the two routes whose own
+  // block IS `extractive` this ask is byte-identical to `aggregate` -- asserted, not
+  // claimed, in `evidence-ask-reach.test.ts` -- so the single variable between the run
+  // §13.21 dispatched and this one is **what the temporal route reads**.
+  //
+  // `abstention` is absent on purpose and it is the one omission that is not tidiness:
+  // its own block tells the model that declining is a valid outcome, and ABS's gold IS
+  // abstention. Giving it a sentence whose closing clause is "do not reply
+  // INSUFFICIENT_EVIDENCE merely because..." would invert the route whose answers are
+  // measured against declining.
+  computed: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -139,10 +150,17 @@ type EvidenceRendering = 'numbered' | 'sourced';
  *     It still names the abstention token, so a model that genuinely cannot answer can
  *     still decline — what it does not do is tell the model that declining is expected.
  *     This is §13's candidate.
+ *   - `aggregate`: the extractive block plus one sentence about combining evidence,
+ *     reaching only the routes whose own block already IS extractive.
+ *   - `computed`: **each reached route's own block, with that sentence inserted**, so a
+ *     route keeps its reasoning instruction instead of trading it for the sentence. This
+ *     is the §13.22 candidate, and the distinction from `aggregate` is the whole of
+ *     §13.20's finding: the ask that replaced every route's block cost TR 27.6 points,
+ *     so an instruction that composes is not the same variable as one that substitutes.
  *
  * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
  */
-export type EvidenceAsk = 'route' | 'extractive' | 'aggregate';
+export type EvidenceAsk = 'route' | 'extractive' | 'aggregate' | 'computed';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -333,40 +351,69 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
 };
 
 /**
- * The §13.21 ask: the extractive block plus one sentence about combining evidence.
+ * The sentence that tells the model the answer may not be in one place.
  *
- * ## Why MR needed its own instruction rather than a different one
+ * ## Why it exists
  *
  * Run `38439899858` left the multi-session route as the only net loss on the feature
  * side -- 27.27% against the reference pipeline's 88.4% -- and the reading that localises
  * it is unambiguous: of its 56 abstentions, **all 56** had the gold evidence carried, and
  * every one was the bare `INSUFFICIENT_EVIDENCE` token. The evidence is there. What the
- * route lacks is any statement that the answer may not be in one place.
+ * route lacked was any statement that the answer may not be in one place.
  *
  * ## Why the wording is what it is
  *
  * The sentence names the failure mode instead of the topic. "Do not reply
  * INSUFFICIENT_EVIDENCE merely because no single piece states the answer" is a statement
- * about the *evidence layout*, which is what multi-session questions are: the dataset's
- * own multi-session instances ask for a count or a comparison across sessions, and no
- * single turn in any of them contains the number. The extractive block's own line -- "if
- * the evidence does not contain the answer, reply exactly ..." -- is true and, read alone,
- * licenses the decline that produces 27%.
+ * about the *evidence layout*, which is what these questions are: the dataset's
+ * multi-session instances ask for a count or a comparison across sessions, and the
+ * temporal instances that a later reading found in the same position ask for a duration
+ * or an ordering across them. No single turn in any of them contains the answer. The
+ * extractive block's own closing line -- "if the evidence does not contain the answer,
+ * reply exactly ..." -- is true and, read alone, licenses the decline.
  *
- * ## Why it is an ask and not a contract
+ * ## Why it is one literal rather than two
  *
- * A contract selects a *rendering*; this selects an *instruction*, which is the axis
- * §13.2 established. It also has to be reachable for exactly two routes and no others,
- * and `ASK_ROUTES` is the mechanism that expresses that -- a new contract would need its
- * own reach table and would collide with `PROMPT_CONTRACTS`, which is the rendering axis.
+ * `aggregate` and `computed` differ in reach and in whether the sentence replaces a block
+ * or composes with it, and in nothing else. Two copies of the wording would be two
+ * wordings the moment either is edited, which is the consolidation-clock shape this
+ * package has removed elsewhere; the difference between the asks is the *placement*, and
+ * placement is code.
  */
-const AGGREGATE_ASK_INSTRUCTION = [
-  'Answer the question using only the evidence above.',
+const MERGING_SENTENCE =
   'The answer may require combining evidence from more than one turn or session: gather every relevant piece first, then compute the answer. Do not reply ' +
-    ABSTAIN_TOKEN +
-    ' merely because no single piece states the answer outright.',
-  `Reply with the answer alone. If the evidence does not contain the answer, reply exactly ${ABSTAIN_TOKEN}.`,
-].join('\n');
+  ABSTAIN_TOKEN +
+  ' merely because no single piece states the answer outright.';
+
+/**
+ * Insert the merging sentence immediately before a block's final line.
+ *
+ * ## Why adjacency to the closing line rather than an opening framing
+ *
+ * The sentence qualifies a permission -- the block's last line is always the one that
+ * licenses declining -- and a qualifier reads as an exception, which is why it sits
+ * directly above the rule it excepts and not above unrelated route-specific rules. It is
+ * also the position with the shortest distance to the model's last instruction, which is
+ * the only argument available: nothing here has been measured against the alternative, so
+ * the choice is stated as a reading of the text rather than as a result.
+ *
+ * ## Why this composes rather than substitutes
+ *
+ * §13.20 is the measurement. Dispatching the extractive block to every route removed the
+ * temporal block's date-resolution instruction and the knowledge-update block's
+ * earlier-versus-later rule, and TR fell 27.6 points for it; dispatching each route's own
+ * block restored them and TR rose 27.6 points back. An ask that *adds* therefore has to
+ * add, and the assertion that it does is in `evidence-ask-reach.test.ts`: on the
+ * `extractive` contract, `computed` is byte-identical to `aggregate`.
+ */
+function withMergingSentence(block: string): string {
+  const lines = block.split('\n');
+  lines.splice(lines.length - 1, 0, MERGING_SENTENCE);
+  return lines.join('\n');
+}
+
+/** The `aggregate` ask: the extractive block, with the sentence in place of nothing. */
+const AGGREGATE_ASK_INSTRUCTION = withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined));
 
 /**
  * The instruction block a route emits, honouring the run's ask.
@@ -380,19 +427,30 @@ const AGGREGATE_ASK_INSTRUCTION = [
  * relative-time line, and passing the date would silently reintroduce TR's own ask --
  * which is the route most likely to be dispatched under §13, so a quiet revert there
  * would make the experiment measure the shipped behaviour and call it a treatment.
+ *
+ * The `computed` branch keys on the **contract**, which is the route's identity for
+ * this purpose: `multi-session` and the flat path both build with `extractive`, and the
+ * temporal path is the only other route whose questions ask for a value assembled from
+ * several turns. Keying on the reach table instead would need a route name here, and the
+ * builder has none -- it has a contract -- which is why the reach table and this branch
+ * are two statements of one fact that a test holds together.
  */
 function instructionsFor(
   contract: PromptContract,
   date: string | undefined,
   ask: EvidenceAsk | undefined,
 ): string {
+  const own = CONTRACT_INSTRUCTIONS[contract](date);
   if (ask === 'extractive') {
     return CONTRACT_INSTRUCTIONS.extractive(undefined);
   }
   if (ask === 'aggregate' && contract === 'extractive') {
     return AGGREGATE_ASK_INSTRUCTION;
   }
-  return CONTRACT_INSTRUCTIONS[contract](date);
+  if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
+    return withMergingSentence(own);
+  }
+  return own;
 }
 
 /**

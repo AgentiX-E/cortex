@@ -128,6 +128,87 @@ describe('isAbstention', () => {
   });
 });
 
+describe('isAbstention reads the token through presentation', () => {
+  /**
+   * Every wrapper a model has actually been seen to put *around* its conclusion.
+   *
+   * The failure this covers is not cosmetic. Run `38487229554` records five
+   * responses whose deciding line is `**INSUFFICIENT_EVIDENCE**`; four were scored as
+   * wrong answers and one as a correct answer, when all five are decisions to
+   * decline under `isAbstention`'s own trailing-line contract. The route is telling:
+   * the temporal block asks the model to *show its work*, and markdown emphasis on the
+   * final line is what a trace-then-conclude answer looks like.
+   */
+  const WRAPPERS: ReadonlyArray<readonly [string, string, string]> = [
+    ['markdown bold', '**', '**'],
+    ['markdown bold underscore', '__', '__'],
+    ['markdown italic', '*', '*'],
+    ['markdown italic underscore', '_', '_'],
+    ['backtick code span', '`', '`'],
+    ['straight double quotes', '"', '"'],
+    ['straight single quotes', "'", "'"],
+    ['curly double quotes', '\u201c', '\u201d'],
+    ['curly single quotes', '\u2018', '\u2019'],
+  ];
+
+  for (const [name, open, close] of WRAPPERS) {
+    it(`reads a conclusion wrapped in ${name}`, () => {
+      expect(isAbstention(`${open}${ABSTAIN_TOKEN}${close}`)).toBe(true);
+    });
+
+    it(`reads it through ${name} around a label, and around a wrapped label`, () => {
+      // Labels and wrappers nest both ways round, which is why the reduction is a
+      // fixpoint rather than one ordered pass: `Answer: **TOKEN**` needs the label
+      // peeled first and `**Answer: TOKEN**` needs the wrapper peeled first, and a
+      // single order can only do one of them.
+      expect(isAbstention(`${open}Answer: ${ABSTAIN_TOKEN}${close}`)).toBe(true);
+      expect(isAbstention(`Answer: ${open}${ABSTAIN_TOKEN}${close}`)).toBe(true);
+    });
+  }
+
+  it('reads the token through nested wrappers', () => {
+    expect(isAbstention(`**"${ABSTAIN_TOKEN}"**`)).toBe(true);
+  });
+
+  it('accepts a lower-case token, because one rule decides case', () => {
+    expect(isAbstention('**insufficient_evidence**')).toBe(true);
+  });
+
+  it('does not read a token that is only part of a decorated line', () => {
+    // The line is the unit. `**TOKEN** was the wrong call here` is a sentence with
+    // emphasis in it, not a decorated token, and the whole predicate rests on a
+    // mention staying an answer -- a wrapper stripper that scanned the interior of a
+    // line would turn every response that discusses the token into a decline.
+    expect(isAbstention(`**${ABSTAIN_TOKEN}** was the wrong call here`)).toBe(false);
+    expect(isAbstention(`I considered saying ${ABSTAIN_TOKEN}.`)).toBe(false);
+  });
+
+  it('does not turn an emphasised short answer into a decline', () => {
+    // The other half of the same rule: unwrapping must leave content, and content
+    // that is not the token is an answer. Without this the fix would be
+    // indistinguishable from "any emphasised last line abstains".
+    expect(isAbstention('**Paris**')).toBe(false);
+    expect(isAbstention('"Business Administration"')).toBe(false);
+  });
+
+  it('finds no decision in a line that is only presentation', () => {
+    expect(isAbstention('"')).toBe(false);
+    expect(isAbstention('**')).toBe(false);
+    expect(isAbstention('``')).toBe(false);
+  });
+
+  it('carries the shape end to end, so the answer is a decline and not prose', () => {
+    // What the artifact shows for those five records: a trace, a blank line, and an
+    // emphasised conclusion. `parseAnswer` must return `null` -- the prose is
+    // reasoning, not the answer -- because a non-null answer is scored, and a decline
+    // scored as an answer is wrong twice: it adds a wrong answer and it hides a
+    // decline from the abstention rate.
+    expect(
+      parseAnswer(`Let us trace the timeline.\n\n- recovered 2023/01/19\n\n**${ABSTAIN_TOKEN}**`),
+    ).toBeNull();
+  });
+});
+
 describe('ABSTAIN_TOKEN', () => {
   it('is a single stable token, so parse and prompt agree by construction', () => {
     // The prompt injects this token and the parser reads it. Two literals that

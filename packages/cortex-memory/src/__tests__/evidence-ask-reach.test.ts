@@ -292,3 +292,118 @@ describe('the aggregate ask reaches two routes and leaves the other four untouch
     ]);
   });
 });
+
+/**
+ * §13.22's ask: each reached route keeps its own block and gains the merging sentence.
+ *
+ * ## The failure it is aimed at
+ *
+ * Run `38487229554` reproduced §13.21's `aggregate` reach and found the loss moved to
+ * where the reach does not go. TR is 48.82% against the baseline's 64.57%, and **51 of
+ * its 127 questions abstain** -- and the abstentions are not a retrieval result: 50 of
+ * the 51 had the gold turn carried, and the run's abstention tally is 121 of 500 with the
+ * only counted reason `llm`. The questions are the shape "how many weeks ago did I meet
+ * up with my aunt", "how many days passed between X and Y", "what is the order of the
+ * three trips" -- a duration, a difference or an ordering **computed across turns**, which
+ * is the same structural property under which the multi-session route was declining at
+ * 56 of 121 before `aggregate` moved it to 24 of 121.
+ *
+ * ## Why the sentence is composed rather than substituted
+ *
+ * §13.20 is the measurement: sending the extractive block to every route removed the
+ * temporal block's date-resolution instruction and cost TR 27.6 points, and §13.21's
+ * `route` ask restored it and recovered 27.6. So the temporal route needs both lines, and
+ * an ask that substitutes cannot express that. The two asks therefore have to differ in
+ * exactly one route's reading, which is what the byte-identity assertion below pins.
+ */
+describe('the computed ask composes with each route instead of replacing it', () => {
+  const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
+  const DATE_RESOLUTION = 'Resolve every relative expression';
+
+  it('composes on the multi-session and flat routes, matching aggregate byte for byte', async () => {
+    // `multi-session`'s own block IS the extractive one, so composing with it is the same
+    // operation as `aggregate`'s substitution there. Asserting equality rather than
+    // describing it is what makes the single-variable claim about §13.22's run a fact:
+    // the only route whose reading differs from the dispatched `aggregate` run is TR.
+    for (const drive of [
+      (m: CortexMemory) => m.answerSessions('How many kits do I own?', [[TEXT]]),
+      (m: CortexMemory) => m.answer('How many kits do I own?', [TEXT]),
+    ]) {
+      const computed: string[] = [];
+      const aggregate: string[] = [];
+      await drive(build(computed, 'computed'));
+      await drive(build(aggregate, 'aggregate'));
+
+      expect(instructionsOf(computed[0]!)).toBe(instructionsOf(aggregate[0]!));
+      expect(computed[0]!).toContain(MERGING_SENTENCE);
+    }
+  });
+
+  it('keeps the temporal route’s own block and gains the sentence', async () => {
+    // The one route that actually differs from the dispatched `aggregate` run, and the
+    // difference has to be an addition. If the date resolution went missing here the ask
+    // would reproduce §13.20's 27.6-point loss instead of testing the hypothesis.
+    const seen: string[] = [];
+    await build(seen, 'computed').answerTemporal('How long ago?', [TEXT], '2023/06/01');
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!).toContain(DATE_RESOLUTION);
+    expect(seen[0]!).toContain('Show the resolved date in your answer');
+    expect(seen[0]!).toContain(MERGING_SENTENCE);
+    // And the decline rule survives, so a temporal question the evidence cannot place is
+    // still answerable with a refusal rather than a guess.
+    expect(seen[0]!).toContain('INSUFFICIENT_EVIDENCE');
+  });
+
+  it('puts the sentence directly above the line that licenses declining', () => {
+    // Placement is the argument, so it is asserted rather than left to the wording. The
+    // sentence is an exception to the block's closing rule, and an exception separated
+    // from its rule by three route-specific lines is a different instruction.
+    const prompt = buildPrompt('q', TURNS, 'temporal', {
+      ask: 'computed',
+      questionDate: '2023/06/01',
+    }).prompt;
+    const lines = instructionsOf(prompt).split('\n');
+
+    expect(lines[lines.length - 2]).toContain(MERGING_SENTENCE);
+    expect(lines[lines.length - 1]).toContain('INSUFFICIENT_EVIDENCE');
+  });
+
+  const CONTROL_ROUTES: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
+    ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+    ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
+  ];
+
+  for (const [name, drive] of CONTROL_ROUTES) {
+    it(`leaves the ${name} route byte-identical`, async () => {
+      const computed: string[] = [];
+      const shipped: string[] = [];
+      await drive(build(computed, 'computed'));
+      await drive(build(shipped, 'route'));
+
+      expect(instructionsOf(computed[0]!)).toBe(instructionsOf(shipped[0]!));
+    });
+  }
+
+  it('leaves the abstention route alone, and that omission is the load-bearing one', async () => {
+    // The abstention block invites the decline -- "That is expected and is a valid
+    // outcome" -- and ABS's gold IS abstention, so the merging sentence's closing clause
+    // would invert the one route where declining is the correct answer. This is not
+    // tidiness: it is the only route whose score moves in the opposite direction.
+    const seen: string[] = [];
+    await build(seen, 'computed').answerAbstention('What is my passport number?', [TEXT]);
+
+    expect(seen[0]!).not.toContain(MERGING_SENTENCE);
+    expect(seen[0]!).toContain(DECLINE_INVITATION);
+    expect(ASK_ROUTES.computed).not.toContain('abstention');
+  });
+
+  it('records the three routes it changes, and leaves the earlier asks at their own reach', () => {
+    // The artifact's reach comes from this table, and a reader comparing §13.21's run
+    // against §13.22's has only this field to tell "the temporal route was composed with"
+    // from "every route was replaced" -- two changes with the same headline shape.
+    expect(ASK_ROUTES.computed).toEqual(['multi-session', 'flat', 'temporal']);
+    expect(ASK_ROUTES.aggregate).toEqual(['multi-session', 'flat']);
+    expect(ASK_ROUTES.route).toEqual([]);
+  });
+});

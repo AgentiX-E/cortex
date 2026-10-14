@@ -669,7 +669,7 @@ forwarded into a step's `env`. Three injections were run against it:
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-* `ask: aggregate` — **set by §13.21, after §13.20 reverted it to each route's own block.**
+* `ask: computed` — **set by §13.22, after §13.21 sent `aggregate`.**
   §13.8 falsified the ask
   hypothesis at the time -- with
   the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
@@ -708,6 +708,24 @@ forwarded into a step's `env`. Three injections were run against it:
   combining evidence from more than one turn or session. It reaches exactly
   `multi-session` and `flat` (the two routes whose contract IS `extractive`) and leaves
   the other four byte-identical, which is both the mechanism and the control.
+  **§13.21's run confirmed the mechanism and moved the target.** `38487229554` took MR from
+  27.27% to 44.63% and its abstentions from 56 of 121 to 24 of 121, and the arm's delta from
+  +18.20pp to **+23.25pp** with McNemar `6.479e-12` -- while **TR became the largest
+  remaining loss**, 48.82% against the reference pipeline's 64.57%, with 51 of its 127
+  questions abstaining. Those 51 are not a retrieval result: 50 had the gold turn carried,
+  and the run's abstention tally is 121 of 500 with `llm` as the only counted reason.
+  The questions are durations, differences and orderings assembled from several turns --
+  the same property under which MR was declining before `aggregate` reached it -- and the
+  temporal block does not address it, because its own instruction is about resolving dates
+  and its closing line concedes that the evidence may not establish one.
+  Hence `computed`: **each reached route's own block, with the sentence inserted immediately
+  above its closing line**, reaching `multi-session`, `flat` and `temporal`. It composes
+  rather than substitutes because §13.20 measured substitution as destructive -- deleting
+  the temporal block cost TR 27.6 points and restoring it returned 27.6. On the two routes
+  whose own block already IS the extractive one it is **byte-identical to `aggregate`**,
+  asserted in `evidence-ask-reach.test.ts`, so the single variable between §13.21's run and
+  this one is what the temporal route reads. `abstention` is deliberately out of reach:
+  its block calls declining "expected and is a valid outcome" and ABS's gold IS abstention.
 * `evidenceTurnsPerRecord: 256` — **added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
   completed all four runs of all five hundred questions and then died writing the JSON
   with `Invalid string length` (§13.11.10). The evidence is carried
@@ -3435,3 +3453,199 @@ registration can, and the four routes are the instrument. A movement there is a 
 **Implemented, tested, and dispatched.** Gate: `pnpm check` exit 0, `test:tools` 303 passed
 + 31 subtests, cortex-eval 1,832 tests, cortex-memory **277** tests (8 new on the ask's
 reach), 100% on all four coverage dimensions in both, census clean.
+
+## 13.22 What run 38487229554 read, and the two defects in how it was read
+
+Run `38487229554` completed all 13 steps in 3 h 37 m. It is the largest movement this arm
+has produced, it moved the loss to a capability the ask does not reach, and reading it
+exposed two defects of mine -- one in what the reach table means and one in how a
+threshold had been written down. Both are repaired here, and the repair to the second is a
+tool rather than a paragraph.
+
+### 13.22.1 The headline, and the three runs it stands on
+
+| Metric | `38394103193` | `38439899858` | `38487229554` |
+| --- | --- | --- | --- |
+| ask | `extractive` | `route` | `aggregate` |
+| baseline / feature | 44.40% / 54.60% | 44.85% / 63.05% | 44.10% / **67.35%** |
+| **Δ** | +9.25pp | +18.20pp | **+23.25pp** |
+| McNemar p | 5.179e-3 | 2.737e-7 | **6.479e-12** |
+| discordant `b✓f✗` / `b✗f✓` | 135 / 186 | 107 / 197 | **88 / 205** |
+| abstention rate | 39.20% | 30.40% | **24.20%** |
+
+The feature side now abstains on 121 of 500 and repairs 205 questions the reference
+pipeline misses. Feature range across the four runs is 66.60% to 68.40%, so the point
+estimate is 67.35% +/- 0.9pp and the Wilson interval is `[62.97%, 71.17%]`.
+
+### 13.22.2 P1'' holds, P3'' holds, and P2'' fails for a reason that is mine
+
+| Capability | feature acc | baseline acc | Δ | feature abstentions | gold carried ≥ 1 |
+| --- | --- | --- | --- | --- | --- |
+| IE | 88.00% | 0.67% | +87.33pp | 15 / 150 (10.0%) | 149 / 150 |
+| MR | 44.63% | 87.60% | −42.98pp | **24 / 121 (19.8%)** | 121 / 121 |
+| KU | 81.94% | 0.00% | +81.94pp | 2 / 72 (2.8%) | 72 / 72 |
+| TR | 48.82% | 64.57% | −15.75pp | **51 / 127 (40.2%)** | 126 / 127 |
+| ABS | 96.67% | 100.00% | −3.33pp | 29 / 30 (correct) | 30 / 30 |
+
+* **P1'' holds.** MR's abstention rate fell from 46.3% to **19.8%** (registered: below 30%)
+  and its accuracy rose from 27.27% to **44.63%** (registered: above 40%).
+* **P3'' holds.** The delta is **+23.25pp**, above the registered +20pp.
+* **P2'' fails as written.** It registered `±3pp` for four named routes; KU moved
+  −4.17pp and IE moved +4.00pp. That is a defect in the threshold, and §13.22.4 derives
+  it properly.
+
+### 13.22.3 The reach table was the instrument, and the reading mis-mapped it
+
+`ASK_ROUTES.aggregate` is `['multi-session', 'flat']` and the artifact printed exactly
+that, under `Evidence ask reached: 2 route(s) — multi-session, flat`. The reading still
+named **IE as one of the four untouched controls**, and IE is the flat route: the
+benchmark dispatch sends only MR to `answerSessions`, TR to `answerTemporal`, ABS to
+`answerAbstention`, knowledge-update to `answerKnowledgeUpdate` and
+single-session-assistant to `answerAssistant`; **everything else falls through to
+`answer`, which is the flat path**. So the ask reached IE, IE improved by 4.00pp, and the
+one capability I had listed as a control while changing it was the one that moved.
+
+**The instrument was right and the mapping was wrong**, and the difference matters because
+the reach table is the only thing in the artifact that says which capabilities received the
+treatment. The genuine controls for that run were TR, KU, ABS and the assistant route:
+TR −0.79pp, KU −4.17pp, ABS −3.33pp (one question). The mapping is now pinned rather than
+remembered -- `bench-memory-arm.test.ts` compares the arm's copy of the reach against the
+product's own table for **every** ask, in both directions. The previous guard checked that
+the table existed and that one entry of it disagreed with the arm in one direction, which
+cannot notice a route added to or dropped from any of the others.
+
+### 13.22.4 The control band was asserted, and three registrations in a row did that
+
+The registered band was `±3pp`. On KU -- 72 questions at an observed 86.11% -- one
+question is 1.39pp, so the band was 2.78pp wide against a binomial standard deviation of
+**4.08pp**. It was 0.68 sd, which no measurement of that quantity can satisfy reliably, and
+the prediction could not have held.
+
+This is the third instance of one defect class:
+
+| Registration | The term that was not derived | What it cost |
+| --- | --- | --- |
+| §13.17 P1 | `carried` undefined | two readings of one artifact, 99.6% and 10.8%, neither wrong |
+| §13.20 P2' | a prediction registered as a control | outcome not scoreable in either direction |
+| §13.21 P2'' | a band asserted, not derived | 0.68 sd on KU, so the prediction had to fail |
+
+`tools/registration-power.mjs` is the repair: given `n` and the observed proportion it
+prints the one-question granularity, the binomial sd, and the band at a chosen multiple,
+and it says when a two-question band would be narrower than one sd. `tools/__tests__/
+test_registration_power.py` pins its arithmetic by hand. The derived bands for this
+registration are in §13.22.7.
+
+### 13.22.5 A measurement defect the read exposed: emphasised declines were read as answers
+
+`isAbstention`'s contract is that the **last non-blank line decides**, and the whole point
+of that rule is that a model which writes a trace and then concludes is read by its
+conclusion. `**INSUFFICIENT_EVIDENCE**` on that line is such a conclusion, and it was read
+as an **answer**, because the comparison was against the raw line after only a label strip.
+Run `38487229554` records five of them, all on the temporal route -- which is not an
+accident: the temporal block is the one that asks the model to *show its work*, and a trace
+followed by an emphasised conclusion is what that produces. Four were scored as wrong
+answers and one as a correct answer.
+
+The counterfactual is exact, because it is a property of stored outputs and needs no run:
+
+| Reading | as measured | with the corrected parser |
+| --- | --- | --- |
+| abstentions | 121 / 500 = 24.2% | **126 / 500 = 25.2%** |
+| accuracy | 336 / 500 = 67.20% | **335 / 500 = 67.00%** |
+| TR abstentions | 51 / 127 = 40.2% | **56 / 127 = 44.1%** |
+| delta | +23.25pp | **+22.90pp** |
+
+The one-question cost is real and is registered rather than absorbed: `gpt4_76048e76`
+answers `bike` correctly and then declines on its last line, and under a rule where the last
+line decides it is a decline. The alternative -- reading a decorated token as a mention --
+is the same defect from the other side, and the predicate's tests keep a decorated line that
+is *not* the token (`**INSUFFICIENT_EVIDENCE** was the wrong call here`) as an answer.
+
+The repair is a fixpoint reduction in `parse.ts`: a symmetric wrapper (`**`, `__`, `*`,
+`_`, backticks, four quote shapes) and the label may nest either way round, so one ordered
+pass cannot cover both. Twenty-one new tests, and defect injection -- reverting the call to
+`stripLabel` -- fails 21 of them. The reference pipeline is unaffected: it has its own token
+(`UNANSWERABLE`) and its own comparison, and the arm injects no parser into it, which is why
+the counterfactual moves the feature side alone.
+
+### 13.22.6 TR is the whole of what remains, and the declines say why
+
+| Capability | feature | baseline | gap | abstentions | of those, bare token | trace then token |
+| --- | --- | --- | --- | --- | --- | --- |
+| TR | 48.82% | 64.57% | −15.75pp | 51 | 36 | **15** |
+| MR | 44.63% | 87.60% | −42.98pp | 24 | 21 | 3 |
+
+Fifty of TR's 51 abstentions had the gold turn carried, so this is not retrieval. And the
+fifteen trace-then-token declines are diagnostic in a way a bare token is not -- they show
+the model reaching the end of the reasoning and declining on a specific ground:
+
+    ... but the evidence does not explicitly state the exact number of days.
+    INSUFFICIENT_EVIDENCE
+
+That is the same structural property under which the multi-session route was declining at
+56 of 121 before `aggregate` reached it: the question asks for a duration, a difference or
+an ordering **assembled from several turns** ("how many weeks ago did I meet up with my
+aunt", "how many days passed between the day I cancelled my subscription and the day I
+...", "what is the order of the three trips I took"), and no single turn states the answer.
+The temporal block does not address it: it says to resolve relative expressions against the
+question date and to show the resolved date, and its closing line concedes that the
+evidence may not establish a date.
+
+### 13.22.7 What this registers
+
+**One variable: `ask: computed`** -- each reached route's own block with the merging
+sentence inserted immediately above its closing line, reaching `multi-session`, `flat` and
+`temporal`. On the two routes whose own block already IS the extractive one it is
+**byte-identical to `aggregate`**, which is asserted in `evidence-ask-reach.test.ts` rather
+than described, so the single variable between `38487229554` and this run is **what the
+temporal route reads**.
+
+It composes rather than substitutes because §13.20 measured substitution as destructive:
+deleting the temporal block's date-resolution instruction cost TR 27.6 points and restoring
+it returned 27.6. `abstention` is deliberately out of reach -- its block calls declining
+"expected and is a valid outcome" and ABS's gold IS abstention -- and `knowledge-update` and
+`assistant` keep their own blocks and are the controls.
+
+Every other input is held at its §13.21 value, and the parse repair above is included in the
+same run. The baselines below are therefore the **corrected** ones, so a movement is
+attributable to the ask; the derivation of every band is the output of
+`tools/registration-power.mjs` at 1.5 standard deviations, which is `±4.91pp` on 30
+questions, `±6.11pp` on 72 and `±3.98pp` on 150 -- all far below the 27.56-point movement
+this arm would have to leak to be mistaken for a result.
+
+| Prediction | Baseline (corrected) | Target | Falsified if |
+| --- | --- | --- | --- |
+| **P1'''** | TR's declined count falls to **≤ 36 of 127** and its accuracy rises **above 58%** | 56 / 127 (44.1%); 48.82% | TR stays above 45 declines, which would say the instruction is not the lever for computed answers |
+| **P2'''** | MR's declined count falls to **≤ 20 of 121** and its accuracy rises **above 48%** | 24 / 121 (19.8%); 44.63% | MR stays above 24 declines, which would say the sentence's reach has been exhausted |
+| **P3'''** | the controls stay inside their derived bands: **KU ≥ 75.83%**, **ABS ≥ 91.76%**, **IE ≥ 84.02%** | 81.94%, 96.67%, 88.00% | any control falls outside its band, which is a defect in `instructionsFor` rather than a result about the model |
+| **P4'''** | the delta rises **above +25pp** | +22.90pp | the delta falls below +20pp, which would mean TR's repair was bought elsewhere |
+
+**What P1''' can still not distinguish.** TR's gold sessions span 22 to 72 turns and its
+mean `carried / total` is 46.03% -- the lowest of the five capabilities -- so a TR
+improvement is consistent with two mechanisms: the sentence, or the selection carrying
+more of what a TR question needs. §13.22.8 records the control that separates them and this
+run does not run it.
+
+**What P3''' is for.** §13.20 could not measure leakage because it changed every block and
+§13.21's instrument was mis-mapped (§13.22.3). This one has three controls with derived
+bands and a machine-checked reach table, so a movement outside a band is a code defect with
+a name rather than a finding.
+
+### 13.22.8 What would still not be known afterwards
+
+* **The sentence's placement** is an argument, not a measurement: it sits immediately above
+  the line that licenses declining because that is where an exception belongs, and nothing
+  here has been run against the alternative.
+* **TR's selection** is not varied, so a TR movement cannot be separated from the
+  selection until a no-signal control arm is run at this ask -- the P0 item §13.20.6 left
+  open and this registration still leaves open.
+* The standing items are unchanged and still registered: the line/turn unit (§13.16.6),
+  `grounded` hard-coded `false`, the writer's reduced manifest not reaching the artifact,
+  and the in-band marker's ambiguity.
+
+### 13.22.9 Status
+
+**Read, two defects repaired, registered, and dispatched.** Gate: `pnpm check` exit 0,
+cortex-memory **308** tests (+39), cortex-eval **1,833** tests, 100% on all four coverage
+dimensions in both, census clean, `test:tools` 310 passed + 31 subtests including the new
+threshold tool's 7.

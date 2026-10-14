@@ -70,7 +70,7 @@ export function isAbstention(text: string): boolean {
   // first line that carries anything at all.
   for (const line of lines) {
     if (line.trim().length === 0) continue;
-    return equalsToken(stripLabel(line));
+    return equalsToken(stripDecoration(line));
   }
 
   // No line carries anything, so there is no decision to read. `parseAnswer`
@@ -88,6 +88,85 @@ function equalsToken(text: string): boolean {
 
 function stripLabel(text: string): string {
   return text.replace(LABEL_PREFIX, '');
+}
+
+/**
+ * Wrappers a model puts *around* its answer rather than *in* it.
+ *
+ * Each entry is a symmetric pair, and only a pair counts: `*Paris*` is emphasis on
+ * one word, while `*` alone is a bullet or a footnote marker and stripping it would
+ * turn a list item into an answer. That is the same distinction `stripWrappingQuotes`
+ * makes for the answer path, and it is why the pair list is data rather than a
+ * character class.
+ */
+const MIRROR_WRAPPERS: readonly (readonly [string, string])[] = [
+  ['**', '**'],
+  ['__', '__'],
+  ['*', '*'],
+  ['_', '_'],
+  ['`', '`'],
+  ['"', '"'],
+  ["'", "'"],
+  ['\u201c', '\u201d'],
+  ['\u2018', '\u2019'],
+];
+
+/**
+ * Strip one symmetric wrapper, if the text carries one.
+ *
+ * The two-character wrappers are tried before the one-character ones, and the order
+ * matters for exactly one input shape: `**X**` also starts and ends with `*`, so a
+ * single-character pass first would leave `*X*`, which the next round would then
+ * strip. Composing to the same result either way is fine; what is not fine is a
+ * wrapper list whose longest-first order is an accident, so it is stated here.
+ */
+function stripWrapper(text: string): string {
+  for (const [open, close] of MIRROR_WRAPPERS) {
+    if (
+      text.length >= open.length + close.length &&
+      text.startsWith(open) &&
+      text.endsWith(close)
+    ) {
+      return text.slice(open.length, text.length - close.length);
+    }
+  }
+  return text;
+}
+
+/**
+ * A deciding line reduced to its content: labels and wrappers are presentation.
+ *
+ * ## Why this is a fixpoint rather than the one `stripLabel` it replaced
+ *
+ * `isAbstention`'s contract is that the **last non-blank line** decides. A model that
+ * writes a reasoning trace and then emphasises its conclusion produces a deciding line
+ * of `**INSUFFICIENT_EVIDENCE**`, which is a decision by that contract and was read as
+ * an answer by the implementation -- so a decline was scored as a wrong answer. Run
+ * `38487229554` records five such lines, all on the temporal route, and the temporal
+ * block is the one that asks the model to *show its work*, which is why the shape
+ * appears there first: markdown emphasis on the final line is a consequence of being
+ * asked for a trace.
+ *
+ * Labels and wrappers also nest both ways round -- `Answer: **TOKEN**` and
+ * `**Answer: TOKEN**` are the same decision -- so one ordered pass cannot cover both.
+ * Peeling to a fixpoint covers every nesting without enumerating the orders, and the
+ * loop terminates by construction because each round either shortens the text or ends
+ * it.
+ *
+ * ## What it deliberately does not do
+ *
+ * It does not look inside the line for the token. `INSUFFICIENT_EVIDENCE was the wrong
+ * call here` stays an answer, because a token inside prose is a mention and the whole
+ * predicate rests on that distinction. Only decoration **around the whole line** is
+ * removed, which is what separates presentation from content.
+ */
+function stripDecoration(text: string): string {
+  let out = text.trim();
+  for (;;) {
+    const next = stripWrapper(stripLabel(stripWrapper(out))).trim();
+    if (next.length >= out.length) return out;
+    out = next;
+  }
 }
 
 /** Trim only the outer edges; interior newlines are part of a multi-line answer. */
