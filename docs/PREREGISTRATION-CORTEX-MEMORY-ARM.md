@@ -3763,3 +3763,135 @@ unchanged.** Gate: `pnpm check` exit 0, `test:tools` 310 passed + 31 subtests, c
 cortex-llm **146** tests (+8), cortex-eval **1,838** (+5), cortex-memory 308, 100% on all
 four coverage dimensions in every package that gates on them, prettier clean. Dropping the
 feature-side wrap fails 2 of the new tests and dropping the exhausted-call record fails 1.
+
+## 13.24 The §13.22 measurement is blocked by an external condition, and here it is in the provider's own words
+
+The re-dispatch (`38566578567`, §13.23) died too, and this time the record named both the
+stage and the reason. It is not a defect in the arm, and it is not the transport fault
+§13.23 repaired. **The embedding account has no credit.**
+
+### 13.24.1 The reading
+
+    Embedding backend: openai-compatible (model=embedding-3, dimensions=1024)
+    progress: no question was started before the failure
+    Error: Embedding request failed: 429 Too Many Requests —
+      {"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}
+        at OpenAIEmbedding.embed (packages/cortex-llm/src/embedding/openai.ts:61:13)
+        at async embedManyCached (retrieval.ts:256)
+        at async buildTurnIndex (retrieval.ts:397)
+        at async retrieveTopKByQueries (retrieval.ts:981)
+        at async buildRetrievalRelevanceIndex (relevance-index.ts:169)
+        at async main (bench/run-ablation.ts:233)
+
+`余额不足或无可用资源包,请充值` is the provider's own message and it is not ambiguous:
+insufficient balance, no available resource package, please top up. The stage matters as
+much as the message — the stack is entirely inside the **relevance index's** construction,
+so **not one question was graded.** The run spent thirty minutes embedding and produced
+nothing at all.
+
+**And it is not the same failure as the one before it.** `38520676669` died on
+`TypeError: terminated` after three hours and eight minutes, in the middle of repetition 2.
+A socket abort and a billing refusal are different events with different remedies; what the
+two have in common is that both runs needed the embedding provider, and both produced no
+number. Whether the first was *caused* by the second cannot be settled from the record, and
+this section does not claim it.
+
+### 13.24.2 Three repairs, and the one measurement each is for
+
+**The preflight.** `preflightEmbedding(embedding)` asks for **one** vector of one short
+constant text before anything that takes time, and returns a verdict rather than throwing:
+a refusal is a condition to act on and a crash is a defect to fix, and the two want
+opposite readings. The message is the provider's own words, verbatim, because `429 Too Many
+Requests` alone reads as a rate limit — something you wait out — and this condition is the
+opposite of that. `ok` also requires the returned vector to be the declared dimension,
+because reachable and usable are different claims.
+
+*What it cannot do, stated because the honest scope matters more than the feature: it
+cannot prevent a balance running out mid-run. In `38566578567` about nine thousand five
+hundred requests were served before the provider began refusing, so an account funded at
+`t=0` was empty at `t=30m`. The claim is narrow — every dispatch learns for one request
+what the run would otherwise learn for a run.*
+
+**The artifact now says which backend produced its numbers.** `MemoryArmConfig.embedding`
+carries `provider`, `model`, `dimensions` and whether the preflight was run, rendered on
+the config line. Until now the only statement of the backend was a line on the runner's
+stdout, which no artifact carries, and `createEmbeddingWithProvenanceFromEnv` falls back
+**silently** to a 256-dimension hash embedding when no credential is present — so a run
+graded against the fallback and a run graded against Zhipu at 1024 dimensions each produce
+a complete, internally consistent report. This closes the item that has been pending as
+roadmap item 17.
+
+**The embedding cache is no longer thrown away.** Both failed runs ended with
+
+    Failed to save: Unable to reserve cache with key longmemeval-embedding-<hash>,
+    another job may be creating this cache.
+
+because the save step re-used the exact key the restore step had requested, so two runs
+writing one key contended and the loser's vectors were discarded. That is the opposite of
+what the failure path does deliberately — `persistArmEmbeddingCache` runs on the way out
+precisely because a run that dies has still paid for its embeddings. The save key now
+carries `github.run_id` and the restore matches on the dataset-hash prefix, so the cache is
+written by every run and read by the next, and the two workflows still resolve to one
+vector set.
+
+### 13.24.3 The probe, and what it verifies
+
+The repairs were verified by dispatching one run **deliberately** against the blocked
+account, on the reasoning that either outcome is informative: if the account is still empty
+the run fails in seconds and proves the guard, and if it has been topped up the run is the
+measurement §13.22 registered. Run `38582212737` failed in under two minutes, and its log
+is the verification:
+
+    Embedding backend: openai-compatible (model=embedding-3, dimensions=1024)
+    === transport retry accounting (process-wide) ===
+    {"attempts":6,"retried":5,"rateLimited":6,"retryAfterHonoured":0,
+     "calls":1,"retriedCalls":1,"cleanCalls":0,"exhaustedCalls":0,"retryRate":1}
+    Error: embedding preflight failed against openai-compatible (model=embedding-3):
+      Embedding request failed: 429 Too Many Requests — {"error":{...,"余额不足..."}}
+        at main (bench/run-ablation.ts:195:11)
+
+Four things, each of which was a defect an hour earlier:
+
+* **`calls: 1`.** The same condition that cost nine thousand five hundred and eighty-nine
+  provider calls and thirty minutes now costs **one**. The attempts counter reads `6`
+  because one call retried five times, and `rateLimited: 6` says all six attempts were
+  refused — which is the accounting read correctly rather than approximately.
+* **`cleanCalls: 0`.** The call is not reported as untroubled. This is the field §13.23
+  added, doing the job it was added for.
+* **The stack names the preflight**, so a reader can tell "the check refused" from "the run
+  died in the middle of its work".
+* **`Save embedding cache` succeeded**, under the run-unique key
+  `longmemeval-embedding-<hash>-38582212737`. The two runs before it both failed that step.
+
+### 13.24.4 Status: blocked, and on what
+
+**The §13.22 measurement cannot be produced until the embedding provider serves requests.**
+No code change reaches that: the account needs credit, or the campaign needs a different
+embedding backend.
+
+Three facts bound the options, and all three are measured rather than assumed:
+
+1. **The offline fallback is not usable for these measurements.** The only non-remote
+   backend the factory builds is `HashEmbedding` — 256 dimensions, not a semantic model —
+   so the relevance index would score turns by hash geometry. A run against it would
+   produce a complete report about a different experiment, which is exactly why the new
+   artifact field names the backend.
+2. **A different provider needs no code, only an environment.** The factory reads
+   `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_API_KEY` and `EMBEDDING_DIMENSIONS`
+   for any openai-compatible endpoint, so pointing the campaign at another provider is a
+   secret plus three `env:` lines in the workflow. It is **not** wired here, because a
+   backend switch re-embeds both sides of every comparison and is therefore a
+   registration rather than a knob: the four archived runs would stop being comparable
+   with anything that follows, while the *delta within* a run stays valid because both
+   sides share one vector set.
+3. **The archived numbers are intact.** `38250133116`, `38394103193`, `38439899858` and
+   `38487229554` were all produced against Zhipu `embedding-3` at 1024 dimensions before the
+   account ran out, and §13.20's and §13.21's readings stand on them. What is missing is one
+   measurement, not the record of the previous four.
+
+### 13.24.5 What is being advanced while the line is blocked
+
+Two items on the standing list need no provider at all, and they are the ones this
+iteration's remaining effort goes to: the **line/turn unit defect** (`§13.16.6`), which is
+an instrument defect in the artifact every future run will produce, and the **no-signal
+control** (`§13.22.8`), whose *dispatch* is blocked but whose design is not.
