@@ -3649,3 +3649,117 @@ a name rather than a finding.
 cortex-memory **308** tests (+39), cortex-eval **1,833** tests, 100% on all four coverage
 dimensions in both, census clean, `test:tools` 310 passed + 31 subtests including the new
 threshold tool's 7.
+
+## 13.23 The §13.22 dispatch failed, and the failure found two defects beneath every layer it tests
+
+Run `38520676669` ran for **three hours and eight minutes** and left one file:
+`benchmark-error.log`, containing a progress line and a stack. Its own progress stream says
+what it had already done:
+
+    reference-pipeline run=0 q=500/500
+    cortex-memory      run=0 q=500/500
+    reference-pipeline run=1 q=500/500
+    cortex-memory      run=1 q=500/500
+    progress: died on cortex-memory run=1 q=500/500 id=778164c6
+
+Two of the four repetitions had completed on both sides -- two thousand graded answers --
+and the run died on `TypeError: terminated` from undici, a TLS socket closed under the
+fetch, at the start of the third. **No prediction in §13.22 was read, and the run is not a
+result about the model.** It is a result about the harness, and reading it found two
+defects that every test in this repository had been passing over.
+
+### 13.23.1 The durability repair covered the first repetition only
+
+`partial-ablation.test.ts` exists because of run `37942775447`: ~40 minutes of grading ended
+by the same `TypeError: terminated`, and the artifact held a stack and nothing else. Its
+repair gives each side's **first** evaluation an answer sink and wraps a throw in
+`attachPartial`, which hangs the measured vectors off the error so the failure path in
+`bench/run-ablation.ts` can write them.
+
+The loop that runs the remaining repetitions had **neither a sink nor a catch**:
+
+    for (let i = 1; i < runs; i++) {
+      const b = await evaluateWithScorer(dataset, baseline, scorer, options.onProgress, i);
+      const f = await evaluateWithScorer(dataset, feature,  scorer, options.onProgress, i);
+      ...
+    }
+
+So a failure at repetition `i > 0` left `runAblation` unwrapped, `error.partial` was
+`undefined`, and the failure path wrote an error log and nothing else. That is the original
+defect, one repetition later, and eight times as expensive: `ABLATION_RUNS` is 4, so three
+of the four repetitions run through the loop that had no durability at all.
+
+The repair is the same sink and the same wrap, per repetition. What the partial then means
+is carried by the field the type already had: the repetitions are sequential, so `run: i`
+states that repetitions `0..i-1` completed on both sides and the vectors are repetition
+`i`'s, up to wherever it got. No aggregate is added -- the no-delta rule is unchanged.
+
+**And the no-measurement rule changes with it.** `attachPartial` refuses to attach a
+partial whose two vectors are empty, because such a partial is byte-identical to a broken
+capture. That is an argument about repetition **0**, the only repetition with nothing before
+it: at `run: i > 0` an empty pair is a statement -- *repetition i died before it measured
+anything* -- and discarding it would lose the only durable record that the earlier
+repetitions happened. The predicate now includes `run === 0`, and the boundary is asserted
+in both polarities.
+
+### 13.23.2 The accounting could not see the call that mattered
+
+`retryableFetchWithStats` records its counters through `withResponse`, which is reached only
+on a path that **has** a response. The exhaustion path throws `lastError` without passing
+through it, so a call that failed on every attempt was **absent** from the aggregate: the
+counters described the calls that recovered and not the one that did not, which is backwards
+for the only reading they are ever consulted for.
+
+The second half is what the error carried. `TypeError: terminated` names no endpoint, no
+provider and no attempt count, so the question that decides the response to an
+infrastructure failure -- *transient and survived six attempts, or one abort from somewhere
+the loop does not wrap* -- had no answer anywhere in the record. Three runs have now been
+destroyed by this class (`37942775447`, `38003036421`, `38520676669`) and each time the log
+was sufficient to name the error and insufficient to act on it.
+
+Two repairs, both shaped by the same argument `attachPartial` makes: the diagnostic is
+attached to the error rather than wrapped around it, because the stack that names
+`Fetch.onAborted` is the only evidence that a loss was infrastructure rather than a defect
+in the arm (`§13.11.7`).
+
+* **`RetryExhaustion`** -- the url, the attempts issued, the retries performed, the 429s
+  among them, the elapsed time and the transport message -- attached as `retryExhausted`.
+  The parameter is an `Error` and there is no guard, because the loop converts a primitive
+  throw one line above, so an `unknown` arm would be unreachable code that reads as a safety
+  net; branch coverage would have been the thing to find it.
+* **`RetryStatsAggregate.recordExhausted`**, so an exhausted call is counted. That needs a
+  field: an exhausted call that never retried is **not clean** -- it did not complete -- and
+  counting it as clean would let a run whose traffic was failing outright report a higher
+  share of untroubled calls than a healthy one. Hence `exhaustedCalls`, and the identity
+  `cleanCalls + retriedCalls + exhaustedCalls === calls`, which is asserted rather than
+  intended. After that change the predicate is `retried === 0 && !exhausted`, because the
+  three classes must partition the sample.
+
+`bench/run-ablation.ts` prints both on the failure path: the exhausted call, and the
+process-wide accounting, so a reader can tell a single cut connection from the last of many.
+
+### 13.23.3 What this changes about §13.22, and what it does not
+
+**Nothing in the measurement.** The repairs touch durability, accounting and one error
+field; no prompt, no gate, no selection and no parse is different, so a re-dispatch is the
+same experiment §13.22 registered. Its four predictions stand exactly as written, including
+the corrected baselines the parse repair produces.
+
+**What the lost run would have added** is not readable from its log: two repetitions of
+aggregate statistics per system exist nowhere, because the answers were only ever in the
+process. The re-dispatch buys them again, which is the cost of the defect rather than of
+the experiment.
+
+The failed run is the first look at repetition-level behaviour in this arm that does not
+come from a completed artifact, and it is unusable for the purpose: the progress stream
+names the questions and not the correctness, and a partial carries answers rather than
+rates, deliberately -- a rate over a shortened vector is a number about the denominator
+rather than about the system.
+
+### 13.23.4 Status
+
+**Two defects repaired, both proved by defect injection, and §13.22 re-dispatched
+unchanged.** Gate: `pnpm check` exit 0, `test:tools` 310 passed + 31 subtests, census clean,
+cortex-llm **146** tests (+8), cortex-eval **1,838** (+5), cortex-memory 308, 100% on all
+four coverage dimensions in every package that gates on them, prettier clean. Dropping the
+feature-side wrap fails 2 of the new tests and dropping the exhausted-call record fails 1.
