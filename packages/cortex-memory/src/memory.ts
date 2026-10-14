@@ -46,20 +46,25 @@ import type { CortexMemoryOptions } from './types.js';
  *
  * ## Why this is a module function and not two lines inside the method
  *
- * Because the unit is a decision and it is stated once. The record's `evidenceTurns`
- * is produced by splitting the joined context on newlines, so a turn whose content
- * spans newlines counts as several -- a defect, registered as `§13.16` -- and the
- * offer has to be counted the same way for the two to be comparable. Two call sites
- * counting independently is how the units would drift apart, which is the same
- * argument `#admit` makes for applying the session budget in one place.
+ * Because the unit is a decision and it is stated once. `§13.16.6` repaired it: this
+ * counted **lines of the joined context** -- a turn whose content spans newlines
+ * counted as several -- because the record derived its own count from a joined string
+ * the same way, and the offer has to be counted on the same unit as the delivery for
+ * the two to be comparable. Now that the capture is a turn list, both sides count
+ * turns, and the offer's count is the admission layer's own list length rather than a
+ * second derivation that could drift from it. Two call sites counting independently is
+ * how units drift apart, which is the same argument `#admit` makes for applying the
+ * session budget in one place.
  *
- * The join is the same join `#recordEvidence` performs, so "lines of the joined
- * context" means the same string in both measurements.
+ * `chars` is unchanged and still the size of the same evidence: the sum of the turn
+ * contents plus the separators a join would have inserted between them. It is computed
+ * arithmetically rather than by joining, because joining builds the whole string -- up
+ * to 506,338 characters on this arm -- to call `.length` on it.
  */
 function admittedEvidenceOf(admitted: readonly AdmittedTurn[]): { turns: number; chars: number } {
-  const joined = admitted.map((turn) => turn.content).join('\n');
-  const turns = joined.split('\n').filter((line) => line.trim().length > 0).length;
-  return { turns, chars: joined.length };
+  let chars = 0;
+  for (const turn of admitted) chars += turn.content.length;
+  return { turns: admitted.length, chars: chars + Math.max(0, admitted.length - 1) };
 }
 
 /**
@@ -227,8 +232,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * census's `empty` counts -- so `''` would present "the reader was shown
    * nothing" indistinguishably from "no call has happened". `null` says the
    * latter only.
+   *
+   * ## Why a list of turns and not the joined text, since §13.16.6
+   *
+   * It held `carried.map((turn) => turn.content).join('\n')` -- one string -- and
+   * every reader split that string back into turns with `split('\n')`. The round
+   * trip is lossy in one direction only: the split cannot tell a turn that contains
+   * a newline from two turns. Run `38142407062` measured the cost -- of 17,341
+   * roster entries across the MR questions, **14,724 (84.9%)** were continuation
+   * lines of a turn whose content spans newlines, and the budget's "~143 turns" was
+   * ~143 lines, about 22 turns at 6.6 lines per turn.
+   *
+   * The unit was wrong, not the measurements, and the repair is to stop destroying
+   * the boundary: `assembled.carried` is in hand here, so the turn list is what is
+   * stored. Re-encoding the boundary instead -- a sentinel separator, a quoted form --
+   * would substitute one implicit encoding for another on content that is
+   * model-generated free text, and no sentinel can be shown to be absent from it.
+   *
+   * `[]` is the old `''`: the reader was reached and carried nothing. `null` is
+   * unchanged and still means no reader was reached.
    */
-  #lastRetrievedContext: string | null = null;
+  #lastRetrievedContext: readonly string[] | null = null;
 
   /**
    * The evidence characters the most recent prompt carried, or `null`.
@@ -306,10 +330,28 @@ export class CortexMemory implements SessionAwareMemorySystem {
   /**
    * The evidence the reader was shown for the most recent call, or `null`.
    *
-   * One line per turn the **prompt carried**, in the order the prompt printed them,
-   * joined with newlines -- the same shape the benchmark's roster splits back into
-   * turns, so a record built from this agrees with what the reader actually received
-   * rather than with a re-rendering of it.
+   * One element per turn the **prompt carried**, in the order the prompt printed
+   * them, each element the turn's whole content. It is the same list the assembler
+   * selected, so a record built from this agrees with what the reader actually
+   * received rather than with a re-rendering of it.
+   *
+   * ## Why this is a list of turns rather than the joined text, since §13.16.6
+   *
+   * It returned the carried turns **joined with newlines** until §13.16.6, and every
+   * reader of it -- the arm's roster, the coverage measurement, the two offline
+   * readers in `tools/` -- split the string back into turns on the same newline. A
+   * turn whose content spans newlines is then indistinguishable from several turns,
+   * and the caller cannot recover the boundary. Run `38142407062` measured it: 84.9%
+   * of the MR roster's entries were continuation lines, and every count named "turns"
+   * was a count of lines, by about 6.6 lines per turn on this data.
+   *
+   * The list is the assembler's own, so the boundary is never destroyed rather than
+   * destroyed and re-guessed. It is `readonly` because the caller does not own it and
+   * a mutation here would alter the evidence another reader holds.
+   *
+   * `[]` is "the reader was reached and carried nothing", which the joined form
+   * spelled `''`. A turn whose content contains a newline is a single element; that
+   * is the whole of the repair.
    *
    * ## "Carried" rather than "admitted", since §13.15
    *
@@ -328,10 +370,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * `null` means no call has happened, or the machine declined before a reader
    * was shown anything. It does **not** mean an empty context was shown; that is
    * the census's `empty`, and the two are different outcomes this accessor keeps
-   * apart. A prompt that carried no evidence reports `''` -- the reader was reached
+   * apart. A prompt that carried no evidence reports `[]` -- the reader was reached
    * and shown nothing -- which is a third state and is why this is not `null`.
    */
-  lastRetrievedContext(): string | null {
+  lastRetrievedContext(): readonly string[] | null {
     return this.#lastRetrievedContext;
   }
 
@@ -440,15 +482,19 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * to never consult the model.
    *
    * An empty `carried` **can** reach here, and it is not the same state: the reader
-   * was reached and shown nothing because no turn fitted the room. It records `''`,
+   * was reached and shown nothing because no turn fitted the room. It records `[]`,
    * which the roster reads as `turns: []` against a non-zero `evidenceTurns` -- the
    * three-state distinction `question-record.ts` registers.
+   *
+   * The captured list is `carried`'s own contents and not a re-join of them, which
+   * is `§13.16.6`'s repair: a turn whose content spans newlines stays one element,
+   * so the roster's count is a count of turns rather than of the lines they printed.
    */
   #recordEvidence(
     admitted: readonly AdmittedTurn[],
     assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried'>,
   ): void {
-    this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content).join('\n');
+    this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content);
     this.#lastPromptEvidenceChars = assembled.evidenceChars;
     this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
   }

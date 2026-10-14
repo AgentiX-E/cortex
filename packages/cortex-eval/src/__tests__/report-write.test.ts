@@ -51,7 +51,12 @@ function reportWithEvidence(
   questions: number,
   gold: { carried: number; total: number } | null = null,
 ): AblationReport {
-  const retrieved = Array.from({ length: turnsPerQuestion }, (_, i) => `turn ${i}`).join('\n');
+  // One turn per unit, since §13.16.6: a list of the units the capture reports, so the
+  // record's `turns` is a count of turns rather than of the lines they printed.
+  const retrieved = Array.from({ length: turnsPerQuestion }, (_, i) => `turn ${i}`);
+  /** The character count `evidenceChars` reports: the units plus their separators. */
+  const chars =
+    retrieved.reduce((total, unit) => total + unit.length, 0) + Math.max(0, retrieved.length - 1);
   const records = buildQuestionRecords(
     Array.from({ length: questions }, (_, i) => ({
       questionId: `q${i}`,
@@ -65,7 +70,7 @@ function reportWithEvidence(
       retrieved,
       // The offer, equal to the carried context here because this fixture builds a
       // report by hand and no budget stands between the two.
-      admitted: { turns: turnsPerQuestion, chars: retrieved.length },
+      admitted: { turns: turnsPerQuestion, chars },
     })),
     // The cohort-level configuration, passed as the builder's second parameter
     // exactly as the arm passes it. It is here so a reduction that drops it is

@@ -7,6 +7,7 @@ import type {
   BenchmarkDataset,
   MemorySystem,
   Metrics,
+  RetrievedTurns,
   SessionAwareMemorySystem,
 } from './types.js';
 import {
@@ -170,7 +171,7 @@ type BenchmarkRawOutputCallback = (raw: string | null) => void;
  * the `1 NEW orphan(s)` the census gate reports.
  */
 type BenchmarkRetrievedCallback = (
-  retrieved: string | null,
+  retrieved: RetrievedTurns | null,
   promptChars: number | null,
   admitted: AdmittedEvidence | null,
 ) => void;
@@ -224,9 +225,9 @@ export async function runBenchmark(
     onRetrieved === undefined
       ? undefined
       : 'lastRetrievedContext' in system
-        ? (system as { lastRetrievedContext: () => string | null }).lastRetrievedContext.bind(
-            system,
-          )
+        ? (
+            system as { lastRetrievedContext: () => RetrievedTurns | null }
+          ).lastRetrievedContext.bind(system)
         : undefined;
   // The carried-evidence size, resolved alongside it because the two are captured
   // together: `retrievedContext` is what the reader was shown and this is how much
@@ -389,7 +390,7 @@ export async function evaluateWithScorerDetailed(
   onAnswer?: BenchmarkAnswerCallback,
 ): Promise<ScoredEvaluation> {
   const rawOutputs: (string | null)[] = [];
-  const retrievedContexts: (string | null)[] = [];
+  const retrievedContexts: (RetrievedTurns | null)[] = [];
   const promptEvidenceChars: (number | null)[] = [];
   const admittedEvidence: (AdmittedEvidence | null)[] = [];
   const answers = await runBenchmark(

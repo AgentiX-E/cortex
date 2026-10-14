@@ -285,14 +285,39 @@ export type PartialAblation = {
  * on a list that is only ever summarised is a bound on a summary that does not need
  * to be a list.
  *
- * The unit is the record's own: **lines of the joined context**, which is a defect
- * registered as `§13.16`. It is matched rather than corrected here so the offer and
- * the delivery stay commensurable.
+ * The unit is the record's own, and `§13.16.6` repaired it: this counted **lines of
+ * the joined context** -- about 6.6 lines per turn on this data, so a budget's "143
+ * turns" was 22 -- because the record derived its count from a joined string the same
+ * way, and the two had to agree. Both sides now count the turns admission produced,
+ * which is what `turns` names.
  */
 export type AdmittedEvidence = {
   readonly turns: number;
   readonly chars: number;
 };
+
+/**
+ * The evidence one reader was shown, as the turns themselves.
+ *
+ * ## Why a list of contents rather than the joined text, since §13.16.6
+ *
+ * This was `string` -- the carried turns joined with newlines -- and every reader of
+ * it split the string back into turns on the same newline. The round trip is lossy in
+ * one direction only: a turn whose content spans newlines is then indistinguishable
+ * from several turns, and no reader can recover the boundary. Run `38142407062`
+ * measured the cost: 84.9% of the MR roster's entries were continuation lines, and
+ * every count named "turns" was a count of lines.
+ *
+ * The list is the assembler's, never re-derived, so the boundary is not destroyed and
+ * re-guessed. It is what `MemorySystem.lastRetrievedContext` returns and what both
+ * copies of the evidence in an artifact carry -- the vector and the roster -- so the
+ * two cannot describe different units.
+ *
+ * `[]` is "the reader was reached and carried nothing"; `null`, at the use sites, is
+ * "no reader was reached". A `string` could express the first only as `''`, which is
+ * the collapse the two states exist to prevent.
+ */
+export type RetrievedTurns = readonly string[];
 
 /**
  * How much of the dataset's gold evidence the carried context contained.
@@ -460,7 +485,7 @@ export type AblationResult = {
    * the shape that lets a later writer mutate evidence some other reader is still
    * holding. Read-only here makes the bounded copy assignable without one.
    */
-  featureRetrievedContexts?: readonly (string | null)[];
+  featureRetrievedContexts?: readonly (RetrievedTurns | null)[];
   /**
    * The evidence characters the feature side's prompts actually carried, per
    * question.

@@ -87,10 +87,13 @@ function extractQuestions(report, label) {
  * same file while both looked correct. This reader previously carried its own
  * `q.questionId ?? q.id ?? q.question_id` chain; that is now the builder's job.
  *
- * `retrieved` is reassembled from `turns` because `buildQuestionRecords` accepts
- * the joined text (it splits it back into turns). The round trip is lossless for
- * what the criterion consumes: it clusters over turn TEXT, and `toTurns` drops
- * only blank lines, which carry no content terms and cannot be clustered.
+ * `retrieved` is the record's own turn texts, as a LIST. It is not re-joined for
+ * the builder to split again, and since §13.16.6 it cannot be: the builder takes the
+ * units the capture reports, so joining here and splitting there would be the exact
+ * round trip that defect removed -- a turn whose content spans newlines came back as
+ * several turns, which is a count of lines wearing the name of a count of turns.
+ *
+ * The list is also what the criterion consumes, since it clusters over turn text.
  */
 function readRecords(report, label) {
   const questions = extractQuestions(report, label);
@@ -119,7 +122,7 @@ function readRecords(report, label) {
       ...(q.answer === undefined ? {} : { answer: q.answer }),
       correct: q.correct === true,
       grounded: q.grounded === true,
-      retrieved: turns.map((t) => String(t.text ?? '')).join('\n'),
+      retrieved: turns.map((t) => String(t.text ?? '')),
       // The offer, read back rather than rebuilt: this reader reassembles `retrieved`
       // from `turns`, so it cannot recover how much was admitted, and inventing one
       // would put a number in a record that the artifact never reported.

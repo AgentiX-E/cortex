@@ -40,8 +40,19 @@ import {
  * admission and the record, so overriding `retrieved` describes a different question
  * rather than a budget cut. An explicit `admittedTurns` in `overrides` still wins.
  */
+
+/**
+ * The size the joined form would have had.
+ *
+ * `evidenceChars` measures characters, which is the same number on either unit -- the
+ * units plus the separators between them. Computed once so a fixture that changes
+ * `retrieved` cannot leave `admitted` describing a different context from the record.
+ */
+function joinedLength(units: readonly string[]): number {
+  return units.reduce((total, unit) => total + unit.length, 0) + Math.max(0, units.length - 1);
+}
 function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInput {
-  const retrieved = overrides.retrieved ?? 'the record says 85\nthe note says 240';
+  const retrieved = overrides.retrieved ?? ['the record says 85', 'the note says 240'];
   return {
     questionId: 'q1',
     question: 'which reading did the unit report?',
@@ -52,8 +63,8 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
     grounded: true,
     retrieved,
     admitted: {
-      turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
-      chars: retrieved.length,
+      turns: retrieved.filter((unit) => unit.trim().length > 0).length,
+      chars: joinedLength(retrieved),
     },
     // `null` rather than a zero object: this fixture names no gold session, and the
     // absent state is what says "not measured" where a zero would say "measured as a
@@ -188,7 +199,7 @@ describe('buildQuestionRecords keeps the fields the criterion and the noise mode
     // criterion would then report every question `unseparable` and look like an
     // instrument limitation rather than a transcription bug in this function.
     const [record] = buildQuestionRecords([
-      input({ retrieved: 'first line\nsecond line\nthird line' }),
+      input({ retrieved: ['first line', 'second line', 'third line'] }),
     ]);
     expect(record!.turns).toEqual([
       { index: 0, text: 'first line' },
@@ -200,7 +211,7 @@ describe('buildQuestionRecords keeps the fields the criterion and the noise mode
   it('drops blank lines rather than emitting empty turns', () => {
     // A blank turn carries no terms, so it can never be clustered and only
     // inflates the index space a reader has to walk.
-    const [record] = buildQuestionRecords([input({ retrieved: 'alpha\n\n\nbeta\n' })]);
+    const [record] = buildQuestionRecords([input({ retrieved: ['alpha', '', '', 'beta', ''] })]);
     expect(record!.turns).toEqual([
       { index: 0, text: 'alpha' },
       { index: 1, text: 'beta' },
@@ -208,7 +219,7 @@ describe('buildQuestionRecords keeps the fields the criterion and the noise mode
   });
 
   it('emits no turns when nothing was retrieved', () => {
-    const [record] = buildQuestionRecords([input({ retrieved: '' })]);
+    const [record] = buildQuestionRecords([input({ retrieved: [] })]);
     expect(record!.turns).toEqual([]);
   });
 });
@@ -293,7 +304,7 @@ describe('a QuestionRecord is what the B7 cohort reader needs', () => {
     // reader holding a reduced report needs them present on every record to tell
     // "shown nothing" from "shown less than measured".
     const [record]: QuestionRecord[] = buildQuestionRecords([
-      input({ retrieved: 'the record says 85\nthe note says 240' }),
+      input({ retrieved: ['the record says 85', 'the note says 240'] }),
     ]);
     expect(Object.keys(record!).sort()).toEqual(
       [
@@ -524,45 +535,55 @@ describe('goldOverlapOf', () => {
   const B = '[2023/01/02 (Mon) 00:00] assistant: Two of them, actually';
 
   it('counts the gold turns the carried context contains', () => {
-    expect(goldOverlapOf(`${A}\n${B}`, [A])).toEqual({ carried: 1, total: 1 });
-    expect(goldOverlapOf(`${A}\n${B}`, [A, B])).toEqual({ carried: 2, total: 2 });
-    expect(goldOverlapOf(`${A}\n${B}`, ['[2023/03/03 (Fri) 00:00] user: nothing here'])).toEqual({
+    expect(goldOverlapOf([A, B], [A])).toEqual({ carried: 1, total: 1 });
+    expect(goldOverlapOf([A, B], [A, B])).toEqual({ carried: 2, total: 2 });
+    expect(goldOverlapOf([A, B], ['[2023/03/03 (Fri) 00:00] user: nothing here'])).toEqual({
       carried: 0,
       total: 1,
     });
   });
 
-  it('matches on turn boundaries, so a gold that is a prefix of another turn does not count', () => {
+  it('is a membership test, so a gold that is a prefix of another turn does not count', () => {
     // The defect this pins is the one §13.18.2 was refuted by, one layer in. A bare
     // substring search would report the longer turn as covering the shorter gold, and
     // the reported coverage would then depend on which way round the two were written.
+    //
+    // Since §13.16.6 the predicate is membership in the carried **units**, so the wrong
+    // answer is not reachable rather than merely avoided: there is no haystack to search
+    // and therefore no prefix relationship for a search to get wrong.
     const short = '[2023/01/01 (Sun) 00:00] user: I went';
     const long = '[2023/01/01 (Sun) 00:00] user: I went to Lisbon';
-    expect(goldOverlapOf(long, [short])).toEqual({ carried: 0, total: 1 });
-    expect(goldOverlapOf(short, [long])).toEqual({ carried: 0, total: 1 });
-    expect(goldOverlapOf(`${short}\n${long}`, [short, long])).toEqual({ carried: 2, total: 2 });
+    expect(goldOverlapOf([long], [short])).toEqual({ carried: 0, total: 1 });
+    expect(goldOverlapOf([short], [long])).toEqual({ carried: 0, total: 1 });
+    expect(goldOverlapOf([short, long], [short, long])).toEqual({ carried: 2, total: 2 });
   });
 
   it('does not mistake a list marker for a cardinality', () => {
     // §13.18.2's exact counterexample, kept as a regression: a reader testing the gold
     // `3` against this context by substring got `true`, which is how a coverage figure
-    // was produced from list markers. The predicate here is equality with a rendered
-    // turn, so `3` alone matches nothing.
-    const context = '3. **Humidity:** Peace lilies prefer a humid environment';
-    expect(goldOverlapOf(context, ['3'])).toEqual({ carried: 0, total: 1 });
+    // was produced from list markers. The predicate here is equality with a carried unit,
+    // so `3` alone matches nothing.
+    const unit = '3. **Humidity:** Peace lilies prefer a humid environment';
+    expect(goldOverlapOf([unit], ['3'])).toEqual({ carried: 0, total: 1 });
   });
 
   it('handles a gold turn whose content spans lines', () => {
+    // The case the old padded-substring form needed its padding to handle, and the case
+    // a line-unit reader could not handle at all: one unit may contain newlines, and it
+    // is one unit either way.
     const multi = '[2023/01/01 (Sun) 00:00] user: one\ntwo';
-    expect(goldOverlapOf(`x\n${multi}\ny`, [multi])).toEqual({ carried: 1, total: 1 });
+    expect(goldOverlapOf(['x', multi, 'y'], [multi])).toEqual({ carried: 1, total: 1 });
+    // And the same gold is NOT covered when the units are the lines it spans -- which is
+    // why the memory arm's capture reports turns and not lines.
+    expect(goldOverlapOf(['x', 'one', 'two', 'y'], [multi])).toEqual({ carried: 0, total: 1 });
   });
 
   it('reports nothing to measure as null rather than as a zero', () => {
     // `{carried: 0, total: 0}` would render "no annotation" as a measured miss, which
     // is the collapse §13.11.2 forbids. Both spellings of "nothing" -- an absent field
     // from the loader and an empty list from a hand-built fixture -- collapse to null.
-    expect(goldOverlapOf('anything', undefined)).toBeNull();
-    expect(goldOverlapOf('anything', [])).toBeNull();
+    expect(goldOverlapOf(['anything'], undefined)).toBeNull();
+    expect(goldOverlapOf(['anything'], [])).toBeNull();
   });
 });
 
@@ -570,7 +591,7 @@ describe('the record carries the coverage it was given, or omits it', () => {
   it('writes the measured overlap', () => {
     const [record] = buildQuestionRecords([
       input({
-        retrieved: 'the record says 85\nthe note says 240',
+        retrieved: ['the record says 85', 'the note says 240'],
         goldOverlap: { carried: 2, total: 3 },
       }),
     ]);

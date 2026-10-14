@@ -40,7 +40,7 @@
  */
 
 import type { TurnLike } from './candidate-context.js';
-import type { AdmittedEvidence, GoldOverlap } from './types.js';
+import type { AdmittedEvidence, GoldOverlap, RetrievedTurns } from './types.js';
 import type { FeatureConfig } from './report.js';
 
 /**
@@ -257,8 +257,35 @@ export type QuestionRecordInput = {
   /** The caller's summary of the verdict; overridden by `correctness` if given. */
   readonly correct: boolean;
   readonly grounded: boolean;
-  /** The evidence the reader received, one turn per line -- see §13.15. */
-  readonly retrieved: string;
+  /**
+   * The evidence the reader received, as the units its capture reports.
+   *
+   * ## Why this is a list and not the joined text, since §13.16.6
+   *
+   * It was `string` -- the captured context, turns joined with newlines -- and
+   * `toTurns` split it back on the same newline. The round trip cannot tell a turn
+   * whose content spans newlines from several turns, so `QuestionRecord.turns` and
+   * every count derived from it measured **lines**: 84.9% of the MR roster's entries
+   * on run `38142407062` were continuation lines, about 6.6 lines per turn.
+   *
+   * A list cannot lose the boundary, which is why the repair is here rather than in a
+   * cleverer split. The memory arm passes the turn list its own assembler selected.
+   *
+   * ## The unit differs by producer, and that is stated rather than hidden
+   *
+   * `buildRecordsFromDataset` passes the **lines** of `DecisionTrace.retrieved`, which
+   * is a rendered string whose upstream contract (`expandContextWindow*`) returns text
+   * and not a list. That producer's unit is therefore still lines, and repairing it
+   * means changing what `retrieveTurns` hands its two prompt builders -- a separate
+   * registered change, because it reaches the reference pipeline's admission rather
+   * than this arm's capture.
+   *
+   * The consequence is that a record's `turns` means turns for the memory arm and lines
+   * for a trace product, and the two products are read by different readers. A reader
+   * that compared them would be comparing units, which is why the field is documented
+   * per producer here instead of being given one uniform gloss.
+   */
+  readonly retrieved: RetrievedTurns;
   /**
    * How much evidence admission produced, before any budget. `null` if unknown.
    *
@@ -425,20 +452,31 @@ function requireValidBound(bound: EvidenceBoundOptions): void {
 }
 
 /**
- * Split retrieved context into ordered turns.
+ * Number the units of a retrieved context, in the order the reader saw them.
  *
- * Blank lines are dropped rather than emitted as empty turns: a blank turn
- * carries no content terms, so it can never be clustered, and keeping it only
- * inflates the index space a reader has to walk. `contextRadius`-style
- * neighbours are not reconstructible from the joined text, which is why the
- * record is a faithful transcription of what the reader saw and not a
- * reconstruction of the hits list.
+ * ## Why this no longer splits anything, since §13.16.6
+ *
+ * It took the joined text and split it on newlines, which made a turn whose content
+ * spans newlines several turns and could not be told apart from several turns. The
+ * capture now reports the units it actually holds, so this numbers them and does not
+ * re-derive them -- the boundary is not guessed at and therefore cannot be lost.
+ *
+ * The units are the producing capture's own: turns for the memory arm, lines for a
+ * trace that carried a rendered string. `QuestionRecordInput.retrieved` documents why
+ * the two differ and what repairing the second would reach.
+ *
+ * ## Why blanks are still dropped
+ *
+ * A blank unit carries no content terms, so it can never be clustered, and keeping it
+ * only inflates the index space a reader has to walk. `contextRadius`-style neighbours
+ * are not reconstructible from the reported units, which is why the record is a faithful
+ * transcription of what the reader saw rather than a reconstruction of the hits list.
  */
-function toTurns(retrieved: string, bound?: EvidenceBoundOptions): TurnLike[] {
+function toTurns(retrieved: RetrievedTurns, bound?: EvidenceBoundOptions): TurnLike[] {
   const turns: TurnLike[] = [];
-  for (const line of retrieved.split('\n')) {
-    if (line.trim().length === 0) continue;
-    turns.push({ index: turns.length, text: line });
+  for (const text of retrieved) {
+    if (text.trim().length === 0) continue;
+    turns.push({ index: turns.length, text });
   }
   if (bound === undefined || turns.length <= bound.maxTurnsPerRecord) {
     return turns;
@@ -467,35 +505,33 @@ function toTurns(retrieved: string, bound?: EvidenceBoundOptions): TurnLike[] {
  * magnitude from V8's 537 MB string limit, and a larger dataset or a longer
  * question set puts it back over.
  *
- * ## Why it reuses `toTurns` rather than re-splitting
+ * ## Why it reuses `toTurns` rather than re-slicing
  *
- * The two copies must describe the same thing. Splitting here with a second
- * implementation -- a `slice` on the raw lines, say -- would keep a different
- * prefix whenever the text has blank lines, because `toTurns` drops blanks before
- * counting. The caller-visible invariant is that
- * `boundRetrievedContexts(texts, b)[i].split('\n')` equals
- * `records[i].turns.map((t) => t.text)`, and going through one function is what
- * makes that true by construction rather than by coincidence.
+ * The two copies must describe the same thing. Cutting here with a second
+ * implementation -- a `slice` on the raw units, say -- would keep a different prefix
+ * whenever an empty unit is present, because `toTurns` drops blanks before counting.
+ * The caller-visible invariant is that `boundRetrievedContexts(texts, b)[i]` equals
+ * `records[i].turns.map((t) => t.text)`, and going through one function is what makes
+ * that true by construction rather than by coincidence.
  *
- * `null` passes through: it is "no reader was consulted", which a bound has
- * nothing to say about, and collapsing it to `''` would erase the distinction in
- * the one place the vector still expresses it.
+ * Since §13.16.6 the value is a list of the capture's own units, so the bound cuts the
+ * list and never re-encodes a boundary it would have to re-guess.
+ *
+ * `null` passes through: it is "no reader was consulted", which a bound has nothing to
+ * say about, and collapsing it to `[]` would erase the distinction in the one place the
+ * vector still expresses it.
  *
  * @returns The input array itself when no bound is given, so an unbounded caller
  * keeps exactly the data it passed rather than a copy of it.
  */
 export function boundRetrievedContexts(
-  contexts: readonly (string | null)[],
+  contexts: readonly (RetrievedTurns | null)[],
   bound?: EvidenceBoundOptions,
-): readonly (string | null)[] {
+): readonly (RetrievedTurns | null)[] {
   if (bound === undefined) return contexts;
   requireValidBound(bound);
-  return contexts.map((text) =>
-    text === null
-      ? null
-      : toTurns(text, bound)
-          .map((turn) => turn.text)
-          .join('\n'),
+  return contexts.map((units) =>
+    units === null ? null : toTurns(units, bound).map((turn) => turn.text),
   );
 }
 
@@ -577,13 +613,23 @@ export function buildQuestionRecords(
  * the difference would be invisible: both would report a coverage figure and a reader
  * comparing runs would be comparing two definitions.
  *
- * ## Why the comparison is equality and not a substring search
+ * ## Why the comparison is membership and not a substring search
  *
  * `goldTurns` and `retrieved` are both produced by `turnText`, so a gold turn is
- * either the whole of one carried block or it is not present at all. That makes this
- * an equality test between two applications of one renderer rather than a
+ * either the whole of one carried unit or it is not present at all. That makes this a
+ * membership test between two applications of one renderer rather than a
  * natural-language match, and the distinction is what `§13.18.2` cost: a substring
  * search on the answer text matched `3. **Humidity:**` for a gold of `3`.
+ *
+ * ## Why the list makes this exact rather than padded, since §13.16.6
+ *
+ * It searched `'\n' + retrieved + '\n'` for `'\n' + turn + '\n'` until §13.16.6, so
+ * that a gold which is a prefix of another turn -- `[d] user: I went` inside
+ * `[d] user: I went to Lisbon` -- was not reported as covered. The padding was a
+ * workaround for having destroyed the boundary in the first place: it reconstructed
+ * the test "this text is one of the carried units" from a joined string. With the
+ * units in hand the test is that statement itself, and the workaround -- and the
+ * single-separator assumption it rests on -- is gone.
  *
  * ## Why `null` rather than a zero object
  *
@@ -592,23 +638,17 @@ export function buildQuestionRecords(
  * `§13.11.2` forbids. `null` is what reaches the record as an absent `goldOverlap`.
  */
 export function goldOverlapOf(
-  retrieved: string,
+  retrieved: RetrievedTurns,
   goldTurns: readonly string[] | undefined,
 ): GoldOverlap | null {
   if (goldTurns === undefined || goldTurns.length === 0) return null;
-  // Matched on **turn boundaries**, not as a bare substring. The two differ exactly
-  // where a gold turn is a prefix of another turn -- `[d] user: I went` inside
-  // `[d] user: I went to Lisbon` -- and a bare substring search would report the
-  // longer turn as covering the shorter gold. Padding the haystack by one separator
-  // on each side makes the test "this text is one of the carried blocks", which is
-  // the question being asked; a multi-line turn passes unchanged because the padding
-  // is only ever added at the ends.
-  //
-  // This is the same class of defect as §13.18.2's answer-text search, caught before
-  // it could produce a number rather than after.
-  const haystack = `\n${retrieved}\n`;
+  // Membership on the carried units themselves. The test is "this gold text is one of
+  // the units the reader received", which is the question `§13.11.5` asks, and it is
+  // asked of the list rather than reconstructed by padding a joined string. The same
+  // class of defect as `§13.18.2`'s answer-text search, and it cannot recur here: a
+  // bare substring search is not expressible against a list of units.
   return {
-    carried: goldTurns.filter((turn) => haystack.includes(`\n${turn}\n`)).length,
+    carried: goldTurns.filter((gold) => retrieved.includes(gold)).length,
     total: goldTurns.length,
   };
 }
@@ -720,8 +760,43 @@ export function admittedFromRecord(record: {
  * `38142407062` exposed. Naming it for the situation rather than for the arithmetic
  * is what keeps that distinction visible at each call site.
  */
-function admittedFrom(retrieved: string): AdmittedEvidence {
-  return { turns: toTurns(retrieved).length, chars: retrieved.length };
+function admittedFrom(units: RetrievedTurns): AdmittedEvidence {
+  let chars = 0;
+  for (const unit of units) chars += unit.length;
+  return {
+    // Counted the way `toTurns` counts the delivery, so the offer and the delivery
+    // are on one unit -- which, for THIS producer, is the line. See `unitsOfTrace`.
+    turns: toTurns(units).length,
+    // The size the joined form would have had: the units plus the separators between
+    // them. Computed rather than joined, because joining builds the whole string.
+    chars: chars + Math.max(0, units.length - 1),
+  };
+}
+
+/**
+ * The units of a trace's rendered context, which are **lines**.
+ *
+ * ## Why this producer's unit is not the turn, stated where it is needed
+ *
+ * `DecisionTrace.retrieved` is a **rendered string**: `retrieveTurns` composes it from
+ * `expandContextWindowBounded`/`BySession`, whose contract is text, and hands the same
+ * text to the answer prompt's builder. `respondWith` already records what follows from
+ * that -- "`retrieved` has already been through session completion and truncation, so a
+ * newline in it is not a turn boundary" -- and it is the reason that method takes an
+ * optional `turns` argument for the one reader that needs real units.
+ *
+ * So this producer cannot report turns and does not pretend to: its units are the lines
+ * of the rendered context, which is the unit the records of this product have always
+ * carried. Repairing it means giving the trace its own turn list, which reaches
+ * `retrieveTurns`' two prompt consumers rather than this arm's capture -- a separate
+ * change, registered rather than folded in here.
+ *
+ * Split rather than wrapped in a one-element list, because a single unit cannot be
+ * clustered and `computeTargetCohort` would then classify every question `unseparable`
+ * -- a silent regression in the B7 criterion rather than in a count.
+ */
+function unitsOfTrace(trace: RecordableTrace | undefined): RetrievedTurns {
+  return trace?.retrieved === undefined ? [] : trace.retrieved.split('\n');
 }
 
 /** The question ids of a record set, in record order, for vector comparison. */
@@ -852,6 +927,7 @@ export function buildRecordsFromDataset(
   return buildQuestionRecords(
     questions.map((question, i) => {
       const trace = traceByQuestion.get(question.question);
+      const units = unitsOfTrace(trace);
       return {
         questionId: question.id,
         question: question.question,
@@ -865,18 +941,30 @@ export function buildRecordsFromDataset(
         ...(trace === undefined ? {} : { answer: trace.answer ?? null }),
         correct: correctness[i]!,
         grounded: isGrounded({ question, trace }),
-        retrieved: trace?.retrieved ?? '',
+        retrieved: units,
         // This producer reads a trace, and a trace has no budget: what the reader
         // received IS what admission produced. So the offer is counted from the same
-        // string, in the same unit, rather than defaulted to zero -- a zero here would
-        // report a system that admitted nothing while the record carried evidence.
-        admitted: admittedFrom(trace?.retrieved ?? ''),
-        // The dataset's own annotation, measured against the context this producer
-        // recorded. `null` whenever there is nothing to measure -- a question with no
-        // trace has no context to test against, and a dataset that names no gold
-        // session has no evidence to look for. Both are the absent state, not a miss.
-        goldOverlap:
-          trace === undefined ? null : goldOverlapOf(trace.retrieved ?? '', question.goldTurns),
+        // units, rather than defaulted to zero -- a zero here would report a system
+        // that admitted nothing while the record carried evidence.
+        admitted: admittedFrom(units),
+        // Absent, and absent by necessity rather than by omission since §13.16.6.
+        //
+        // The gold measurement asks whether a **gold turn** is one of the units the
+        // reader received, and this producer's units are lines of a rendered context --
+        // so the question it would answer is not the question being asked. It used to be
+        // answerable here, by searching the rendered string for the gold text between two
+        // newlines, and that search was correct precisely because the gold turn was
+        // compared against the whole rendered context rather than against its lines.
+        // With the units in hand there is no such haystack, and a line-unit membership
+        // test would report a covered gold as uncovered whenever the turn spans a line.
+        //
+        // A wrong number is worse than an absent one -- that is `§13.11.2`'s rule -- so
+        // this reports nothing rather than a measured-looking zero. Both readers of this
+        // product (`read-b7-criterion.mjs`, `quantify-endpoint-noise.mjs`) forward the
+        // field and neither decides anything with it; the B7 criterion clusters over
+        // `turns`. Restoring it means giving the trace the turn list `respondWith`
+        // already receives, which is registered separately.
+        goldOverlap: null,
       };
     }),
     featureConfig,

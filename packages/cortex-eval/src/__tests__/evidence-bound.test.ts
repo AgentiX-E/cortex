@@ -34,6 +34,18 @@ import {
 } from '../question-record.js';
 
 /**
+ * The size the joined form would have had.
+ *
+ * `evidenceChars` measures characters of evidence, and that number is the same on
+ * either unit -- the units plus the separators between them. Computed here once so a
+ * fixture that changes `retrieved` cannot leave `admitted` describing a different
+ * context from the one the record carries.
+ */
+function joinedLength(units: readonly string[]): number {
+  return units.reduce((total, unit) => total + unit.length, 0) + Math.max(0, units.length - 1);
+}
+
+/**
  * An input with sane defaults, so each test states only what it is about.
  *
  * The offer is derived from the retrieved context rather than fixed, because in a
@@ -43,7 +55,7 @@ import {
  * say so.
  */
 function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInput {
-  const retrieved = overrides.retrieved ?? 'first turn\nsecond turn';
+  const retrieved = overrides.retrieved ?? ['first turn', 'second turn'];
   return {
     questionId: 'q1',
     question: 'what did the user say?',
@@ -54,8 +66,8 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
     grounded: false,
     retrieved,
     admitted: {
-      turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
-      chars: retrieved.length,
+      turns: retrieved.filter((unit) => unit.trim().length > 0).length,
+      chars: joinedLength(retrieved),
     },
     // No dataset annotation in this fixture, so coverage is unmeasurable rather
     // than measured as zero -- the absent state `goldOverlapOf` returns for `[]`.
@@ -74,17 +86,18 @@ describe('evidenceTurns and evidenceChars are unconditional', () => {
   });
 
   it('reports zero turns and zero chars when the reader was shown nothing', () => {
-    const [record] = buildQuestionRecords([input({ retrieved: '' })]);
+    const [record] = buildQuestionRecords([input({ retrieved: [] })]);
 
     expect(record!.turns).toEqual([]);
     expect(record!.evidenceTurns).toBe(0);
     expect(record!.evidenceChars).toBe(0);
   });
 
-  it('counts turns rather than blank lines, matching what turns carries', () => {
-    // `toTurns` drops blank lines, so a count taken from `split('\n')` would
-    // disagree with the array beside it.
-    const [record] = buildQuestionRecords([input({ retrieved: 'a\n\n\nb' })]);
+  it('counts units rather than blank ones, matching what turns carries', () => {
+    // `toTurns` drops blanks, so a count that included them would disagree with the
+    // array beside it. The empty strings here are what a capture reports for the blank
+    // lines of a rendered context, which is how this state arises in practice.
+    const [record] = buildQuestionRecords([input({ retrieved: ['a', '', '', 'b'] })]);
 
     expect(record!.turns).toHaveLength(2);
     expect(record!.evidenceTurns).toBe(2);
@@ -92,7 +105,7 @@ describe('evidenceTurns and evidenceChars are unconditional', () => {
   });
 
   it('never reduces evidenceTurns, even when turns is truncated', () => {
-    const retrieved = Array.from({ length: 50 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 50 }, (_, i) => `turn ${i}`);
     const [record] = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 3,
     });
@@ -102,18 +115,18 @@ describe('evidenceTurns and evidenceChars are unconditional', () => {
   });
 
   it('never reduces evidenceChars, even when turns is truncated', () => {
-    const retrieved = Array.from({ length: 50 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 50 }, (_, i) => `turn ${i}`);
     const [record] = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 3,
     });
 
-    expect(record!.evidenceChars).toBe(retrieved.length);
+    expect(record!.evidenceChars).toBe(joinedLength(retrieved));
   });
 });
 
 describe('a reduction is marked and cannot read as absence', () => {
   it('appends a marker naming how many turns were dropped', () => {
-    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
     const [record] = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 2,
     });
@@ -126,7 +139,7 @@ describe('a reduction is marked and cannot read as absence', () => {
   });
 
   it('does not mark a record that fits inside the bound', () => {
-    const retrieved = 'a\nb\nc';
+    const retrieved = ['a', 'b', 'c'];
     const [record] = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 3,
     });
@@ -136,7 +149,7 @@ describe('a reduction is marked and cannot read as absence', () => {
   });
 
   it('does not mark a record whose reader was shown nothing', () => {
-    const [record] = buildQuestionRecords([input({ retrieved: '' })], undefined, undefined, {
+    const [record] = buildQuestionRecords([input({ retrieved: [] })], undefined, undefined, {
       maxTurnsPerRecord: 3,
     });
 
@@ -144,7 +157,7 @@ describe('a reduction is marked and cannot read as absence', () => {
   });
 
   it('does not mark a record when no bound is given', () => {
-    const retrieved = Array.from({ length: 100 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 100 }, (_, i) => `turn ${i}`);
     const [record] = buildQuestionRecords([input({ retrieved })]);
 
     expect(record!.turns).toHaveLength(100);
@@ -153,10 +166,10 @@ describe('a reduction is marked and cannot read as absence', () => {
 });
 
 describe('the three states are distinguishable', () => {
-  const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+  const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
 
   it('separates "shown nothing" from "shown and reduced"', () => {
-    const [nothing] = buildQuestionRecords([input({ retrieved: '' })]);
+    const [nothing] = buildQuestionRecords([input({ retrieved: [] })]);
     const [reduced] = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 2,
     });
@@ -168,7 +181,7 @@ describe('the three states are distinguishable', () => {
 
   it('separates "carried in full" from "shown and reduced"', () => {
     const [full] = buildQuestionRecords([
-      input({ retrieved: Array.from({ length: 3 }, (_, i) => `turn ${i}`).join('\n') }),
+      input({ retrieved: Array.from({ length: 3 }, (_, i) => `turn ${i}`) }),
     ]);
     const [reduced] = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 2,
@@ -180,8 +193,8 @@ describe('the three states are distinguishable', () => {
   });
 
   it('separates "shown nothing" from "carried in full"', () => {
-    const [nothing] = buildQuestionRecords([input({ retrieved: '' })]);
-    const [full] = buildQuestionRecords([input({ retrieved: 'a' })]);
+    const [nothing] = buildQuestionRecords([input({ retrieved: [] })]);
+    const [full] = buildQuestionRecords([input({ retrieved: ['a'] })]);
 
     expect(nothing!.evidenceTurns).toBe(0);
     expect(full!.evidenceTurns).toBe(1);
@@ -197,7 +210,7 @@ describe('a context line that looks like a marker is not read as one', () => {
     // with counts the text happened to contain -- and the manifest would be a fact
     // about the dataset rather than about the bound. The parse is anchored on the
     // numbers, so a lookalike with no readable counts is not a marker.
-    const retrieved = 'a\n[evidence reduced: many of them turns not carried]';
+    const retrieved = ['a', '[evidence reduced: many of them turns not carried]'];
     const records = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 9,
     });
@@ -214,7 +227,7 @@ describe('a record with no offer contributes nothing measurable to the manifest'
     // `droppedTurns` comes from the markers. Both statements are asserted, because a
     // sum that quietly treated absent as zero would look identical here and wrong on a
     // mixed set.
-    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
     const records = buildQuestionRecords(
       [input({ retrieved, admitted: null })],
       undefined,
@@ -245,9 +258,9 @@ describe('evidenceReductionOf reports what the bound did', () => {
   });
 
   it('names the reduced records and the totals', () => {
-    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
     const records = buildQuestionRecords(
-      [input({ retrieved }), input({ questionId: 'q2', retrieved: 'a' })],
+      [input({ retrieved }), input({ questionId: 'q2', retrieved: ['a'] })],
       undefined,
       undefined,
       { maxTurnsPerRecord: 2 },
@@ -272,7 +285,7 @@ describe('evidenceReductionOf reports what the bound did', () => {
     // `turnsMeasured - turnsCarried + 1`, where the `+ 1` corrected for the marker
     // being counted as a turn -- an arithmetic a reader had to reproduce, and one that
     // stopped being true the moment `turnsCarried` excluded the marker.
-    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
     const records = buildQuestionRecords([input({ retrieved })], undefined, undefined, {
       maxTurnsPerRecord: 2,
     });
@@ -285,11 +298,11 @@ describe('evidenceReductionOf reports what the bound did', () => {
 
 describe('the bound is a record-level bound, applied per record', () => {
   it('applies the bound independently to each record', () => {
-    const long = Array.from({ length: 10 }, (_, i) => `turn ${i}`).join('\n');
+    const long = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
     const records = buildQuestionRecords(
       [
         input({ retrieved: long }),
-        input({ questionId: 'q2', retrieved: 'short' }),
+        input({ questionId: 'q2', retrieved: ['short'] }),
         input({ questionId: 'q3', retrieved: long }),
       ],
       undefined,
@@ -329,7 +342,7 @@ describe('boundRetrievedContexts keeps the second evidence copy in step', () => 
     // Identity, not equality: unbounded is the pre-existing behaviour, and a
     // caller that passes no bound must get exactly its own data back rather
     // than a copy that merely compares equal.
-    const contexts = ['a\nb', null, 'c'];
+    const contexts = [['a', 'b'], null, ['c']];
     expect(boundRetrievedContexts(contexts, undefined)).toBe(contexts);
   });
 
@@ -338,7 +351,7 @@ describe('boundRetrievedContexts keeps the second evidence copy in step', () => 
     // a size assertion: whatever the reader is shown per the record must be what
     // the ablation vector says they were shown. Sizes would pass for a bound that
     // truncated the two copies differently.
-    const contexts = ['t0\nt1\nt2\nt3\nt4', 'x0\nx1', 'only'];
+    const contexts = [['t0', 't1', 't2', 't3', 't4'], ['x0', 'x1'], ['only']];
     const bound = { maxTurnsPerRecord: 2 };
     const bounded = boundRetrievedContexts(contexts, bound);
     const records = buildQuestionRecords(
@@ -349,43 +362,43 @@ describe('boundRetrievedContexts keeps the second evidence copy in step', () => 
     );
 
     for (let i = 0; i < contexts.length; i++) {
-      expect(bounded[i]!.split('\n')).toEqual(records[i]!.turns.map((turn) => turn.text));
+      expect(bounded[i]).toEqual(records[i]!.turns.map((turn) => turn.text));
     }
   });
 
   it('preserves null as null, which is not the same fact as empty', () => {
-    // `null` is "no reader was consulted"; `''` is "a reader was consulted and
-    // shown nothing". The records keep the distinction (`retrievedContexts[i] ??
-    // ''` collapses it only at the point of record construction, where the shape
-    // forces it), so collapsing it in the persisted vector would erase it in the
-    // one place it is still expressible.
-    const bounded = boundRetrievedContexts([null, ''], { maxTurnsPerRecord: 2 });
+    // `null` is "no reader was consulted"; `[]` is "a reader was consulted and shown
+    // nothing". The records keep the distinction (`retrievedContexts[i] ?? []`
+    // collapses it only at the point of record construction, where the shape forces
+    // it), so collapsing it in the persisted vector would erase it in the one place it
+    // is still expressible.
+    const bounded = boundRetrievedContexts([null, []], { maxTurnsPerRecord: 2 });
     expect(bounded[0]).toBeNull();
-    expect(bounded[1]).toBe('');
+    expect(bounded[1]).toEqual([]);
   });
 
   it('carries the marker so a bounded copy cannot read as a short one', () => {
     // The same disclosure the record's `turns` carries, for the same reason: a
     // reader holding only this vector must be able to tell "shown three turns"
     // from "shown one of three".
-    const bounded = boundRetrievedContexts(['t0\nt1\nt2'], { maxTurnsPerRecord: 1 });
-    expect(bounded[0]).toContain(REDUCED_TURNS_MARKER);
-    expect(bounded[0]).toContain('2 of 3 turns not carried');
+    const bounded = boundRetrievedContexts([['t0', 't1', 't2']], { maxTurnsPerRecord: 1 });
+    expect(bounded[0]).toHaveLength(2);
+    // The marker is the LAST unit, so a reader who reads in order meets the disclosure
+    // after the evidence it qualifies rather than before it.
+    expect(bounded[0]![1]).toContain(REDUCED_TURNS_MARKER);
+    expect(bounded[0]![1]).toContain('2 of 3 turns not carried');
   });
 
-  it('drops blank lines exactly as the record builder does', () => {
+  it('drops blank units exactly as the record builder does', () => {
     // `toTurns` drops blanks before counting, so a bound applied to a different
-    // splitting of the same text would keep a different prefix. Both copies go
+    // numbering of the same units would keep a different prefix. Both copies go
     // through the one function that owns the rule.
-    const bounded = boundRetrievedContexts(['a\n\nb\n\nc'], { maxTurnsPerRecord: 1 });
-    expect(bounded[0]!.split('\n')).toEqual([
-      'a',
-      `${REDUCED_TURNS_MARKER} 2 of 3 turns not carried]`,
-    ]);
+    const bounded = boundRetrievedContexts([['a', '', 'b', '', 'c']], { maxTurnsPerRecord: 1 });
+    expect(bounded[0]).toEqual(['a', `${REDUCED_TURNS_MARKER} 2 of 3 turns not carried]`]);
   });
 
   it('rejects a bound below one for the same reason the builder does', () => {
-    expect(() => boundRetrievedContexts(['a'], { maxTurnsPerRecord: 0 })).toThrow(
+    expect(() => boundRetrievedContexts([['a']], { maxTurnsPerRecord: 0 })).toThrow(
       /maxTurnsPerRecord/,
     );
   });

@@ -13,6 +13,7 @@ import type {
   Metrics,
   PerCapabilityResult,
   Question,
+  RetrievedTurns,
 } from './types.js';
 import { toJudgeQuestionType, type AnswerJudge } from './judge.js';
 
@@ -166,7 +167,7 @@ export type ScoredEvaluation = {
    * capture has nothing to put here, and an empty vector would make "not
    * requested" and "the reader was shown nothing" the same reading.
    */
-  retrievedContexts?: (string | null)[];
+  retrievedContexts?: (RetrievedTurns | null)[];
   /**
    * The evidence characters each question's prompt actually carried, per question.
    *
@@ -344,7 +345,7 @@ export async function scoreEvaluation(
   answers: Answer[],
   scorer: AnswerScorer,
   rawOutputs?: (string | null)[],
-  retrievedContexts?: (string | null)[],
+  retrievedContexts?: (RetrievedTurns | null)[],
   promptEvidenceChars?: (number | null)[],
   admittedEvidence?: (AdmittedEvidence | null)[],
 ): Promise<ScoredEvaluation> {

@@ -125,7 +125,8 @@ function loadReport(path) {
     capability: String(q.capability ?? 'unknown'),
     correct: q.correct === true,
     grounded: q.grounded === true,
-    retrieved: '',
+    // Empty as a LIST, which is the unit the builder accepts since §13.16.6.
+    retrieved: [],
     // Forwarded rather than dropped, even though this tool reads only the correctness
     // vector: the record it hands back must describe the same run as the file it read.
     admitted: admittedFromRecord(q),

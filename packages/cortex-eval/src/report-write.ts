@@ -343,7 +343,13 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // The evidence is re-joined from the turns already carried, so the
         // reduction operates on the same text the record holds and cannot
         // introduce evidence the original record did not have.
-        retrieved: record.turns.map((turn) => turn.text).join('\n'),
+        //
+        // Forwarded as the list the record already holds and NOT re-joined into a string
+        // for `toTurns` to split again, since §13.16.6: the round trip cannot tell a turn
+        // that spans a newline from several turns, so rebuilding this way would have
+        // re-introduced the unit defect on the one path that exists to preserve the
+        // record rather than to remeasure it.
+        retrieved: record.turns.map((turn) => turn.text),
         // The offer travels through a reduction unchanged: the bound removes turns
         // from what is CARRIED, and these are what was admitted. Forwarding it is not
         // bookkeeping -- `withEvidenceBound` is the third place a field has been

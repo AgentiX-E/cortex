@@ -2149,12 +2149,17 @@ describe('a bounded run reports what the bound dropped', () => {
       ],
     } as unknown as BenchmarkDataset;
 
-    const retrieved = Array.from({ length: 6 }, (_, i) => `turn ${i}`).join('\n');
+    // Six turns, as a list since §13.16.6. The stub reports the unit the accessor
+    // reports, so a capture that re-joined the list would be a `string` here and the
+    // reduction counts below would describe lines rather than turns.
+    const retrieved = Array.from({ length: 6 }, (_, i) => `turn ${i}`);
+    /** The size of the same evidence: the units plus the separators between them. */
+    const retrievedChars = retrieved.reduce((total, unit) => total + unit.length, 0) + 5;
     const retrievalSystem = {
       name: 'cortex-memory',
       answer: () => 'Lisbon',
       lastRetrievedContext: () => retrieved,
-      lastAdmittedEvidence: () => ({ turns: 6, chars: retrieved.length }),
+      lastAdmittedEvidence: () => ({ turns: 6, chars: retrievedChars }),
       lastRawOutput: () => 'the record says Lisbon',
     } as unknown as MemorySystem;
 
@@ -2191,7 +2196,7 @@ describe('a bounded run reports what the bound dropped', () => {
     expect(reduction!.turnsMeasured).toBe(6);
     expect(reduction!.turnsCarried).toBeLessThan(6);
     expect(reduction!.reducedQuestionIds).toEqual(['q1']);
-    expect(reduction!.charsMeasured).toBe(retrieved.length);
+    expect(reduction!.charsMeasured).toBe(retrievedChars);
 
     // ## The second copy, which is the half that made the artifact 258 MB
     //
@@ -2204,7 +2209,7 @@ describe('a bounded run reports what the bound dropped', () => {
     const vector = report.ablation.featureRetrievedContexts;
     expect(vector).toBeDefined();
     const record = report.questions![0]!;
-    expect(vector![0]!.split('\n')).toEqual(record.turns.map((turn) => turn.text));
+    expect(vector![0]).toEqual(record.turns.map((turn) => turn.text));
     // And the measurement is still whole beside it: the bound reduced what is
     // carried, never what was measured.
     expect(record.evidenceTurns).toBe(6);

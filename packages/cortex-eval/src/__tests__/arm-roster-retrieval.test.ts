@@ -48,11 +48,11 @@ import type { Answer, BenchmarkDataset, MemorySystem } from '../types.js';
  */
 function evidenceFeatureSystem(
   answers: Answer[],
-  evidence: (string | null)[],
+  evidence: (readonly string[] | null)[],
   raw: (string | null)[],
 ): MemorySystem {
   let cursor = 0;
-  let lastEvidence: string | null = null;
+  let lastEvidence: readonly string[] | null = null;
   let lastRaw: string | null = null;
   return {
     name: 'cortex-memory',
@@ -87,7 +87,7 @@ function constantSystem(name: string, answer: Answer): MemorySystem {
 }
 
 /** Run the arm over a fixture whose feature side reports per-question evidence. */
-async function rosterFor(evidence: (string | null)[], raws: (string | null)[]) {
+async function rosterFor(evidence: (readonly string[] | null)[], raws: (string | null)[]) {
   const count = evidence.length;
   const answers = Array.from({ length: count }, (_unused, i) => `answer-${i}`);
 
@@ -122,7 +122,7 @@ describe('the roster carries the evidence each reader was shown', () => {
     // the final question's evidence -- and every value here is distinct, so that
     // shortcut cannot pass.
     const records = await rosterFor(
-      ['first fact', 'second fact', 'third fact'],
+      [['first fact'], ['second fact'], ['third fact']],
       ['raw-0', 'raw-1', 'raw-2'],
     );
 
@@ -133,13 +133,24 @@ describe('the roster carries the evidence each reader was shown', () => {
     ]);
   });
 
-  it('splits multi-turn evidence into turns rather than one blob', async () => {
+  it('keeps one element per turn the capture reported, rather than one blob', async () => {
     // The record's `turns` is a list, and the reason is that retrieval order is
     // part of the claim: "the right turn was present but ranked below something
     // else" is only visible if the turns stayed separate.
-    const records = await rosterFor(['user: Lisbon\nassistant: Noted'], ['raw-0']);
+    const records = await rosterFor([['user: Lisbon', 'assistant: Noted']], ['raw-0']);
 
     expect(records[0]!.turns.map((t) => t.text)).toEqual(['user: Lisbon', 'assistant: Noted']);
+  });
+
+  it('does not split a turn whose own content spans lines, which is §13.16.6', async () => {
+    // The defect this pins, at the smallest scale that exhibits it. A turn whose content
+    // contains a newline is ONE turn, and the capture reports it as one element. It used
+    // to be reported as a joined string that this arm split on newlines, so this single
+    // turn became two -- and on run `38142407062` that made 84.9% of the MR roster's
+    // entries continuation lines rather than turns.
+    const records = await rosterFor([['user: Lisbon\nassistant: Noted']], ['raw-0']);
+
+    expect(records[0]!.turns.map((t) => t.text)).toEqual(['user: Lisbon\nassistant: Noted']);
   });
 
   it('reports an empty turn list when no reader was shown anything', async () => {
@@ -147,7 +158,7 @@ describe('the roster carries the evidence each reader was shown', () => {
     // is distinguishable from the defect above because the records whose evidence
     // WAS captured carry their own turns -- a run where every record is empty is
     // the shape that means the capture failed.
-    const records = await rosterFor([null, 'some evidence'], ['raw-0', 'raw-1']);
+    const records = await rosterFor([null, ['some evidence']], ['raw-0', 'raw-1']);
 
     expect(records[0]!.turns).toEqual([]);
     expect(records[1]!.turns.map((t) => t.text)).toEqual(['some evidence']);
@@ -159,7 +170,7 @@ describe('the roster carries the evidence each reader was shown', () => {
     // another's evidence, which is worse than not capturing at all -- it would read
     // as a finding.
     const records = await rosterFor(
-      ['evidence 0', 'evidence 1', 'evidence 2'],
+      [['evidence 0'], ['evidence 1'], ['evidence 2']],
       ['raw-0', 'raw-1', 'raw-2'],
     );
 
@@ -217,7 +228,7 @@ describe('the roster carries each question gold coverage', () => {
   const GOLD = '[2023/01/01 (Sun) 00:00] user: the gold turn';
 
   async function overlapOf(
-    evidence: string,
+    evidence: readonly string[],
     gold: readonly string[] | undefined,
   ): Promise<{ carried: number; total: number } | undefined> {
     const dataset = {
@@ -250,25 +261,36 @@ describe('the roster carries each question gold coverage', () => {
   }
 
   it('reports full coverage when the carried context holds the gold turn', async () => {
-    expect(await overlapOf(`a turn\n${GOLD}\nanother turn`, [GOLD])).toEqual({
+    expect(await overlapOf(['a turn', GOLD, 'another turn'], [GOLD])).toEqual({
       carried: 1,
       total: 1,
     });
   });
 
   it('reports the miss when the carried context does not', async () => {
-    expect(await overlapOf('a turn\nanother turn', [GOLD])).toEqual({ carried: 0, total: 1 });
+    expect(await overlapOf(['a turn', 'another turn'], [GOLD])).toEqual({ carried: 0, total: 1 });
   });
 
   it('counts a partial carry as partial rather than as a pass or a fail', async () => {
     const second = '[2023/02/02 (Thu) 00:00] user: a second gold turn';
-    expect(await overlapOf(`a turn\n${GOLD}`, [GOLD, second])).toEqual({ carried: 1, total: 2 });
+    expect(await overlapOf(['a turn', GOLD], [GOLD, second])).toEqual({ carried: 1, total: 2 });
+  });
+
+  it('is a membership test on the units, not a search through a rendered string', async () => {
+    // The gold turn is present only as text INSIDE one unit, which is what the old
+    // padded-substring form was built to accept and what a membership test must reject:
+    // the claim is "this gold turn is one of the turns the reader received", and a unit
+    // that merely mentions it is a different fact about the run.
+    expect(await overlapOf([`a turn and ${GOLD} too`], [GOLD])).toEqual({
+      carried: 0,
+      total: 1,
+    });
   });
 
   it('omits the field when the dataset names no gold evidence', async () => {
     // Absent, not zero: a question the dataset did not annotate supports no claim
     // about coverage, and a zero would render that absence as a measured miss.
-    const overlap = await overlapOf(`a turn\n${GOLD}`, undefined);
+    const overlap = await overlapOf(['a turn', GOLD], undefined);
     expect(overlap).toBeUndefined();
   });
 });

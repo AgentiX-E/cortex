@@ -199,10 +199,11 @@ describe('the system reports the evidence the prompt carried', () => {
     // And it is bounded by the budget, which is the allocator's whole job.
     expect(carried).toBeLessThanOrEqual(DEFAULT_MAX_PROMPT_CHARS);
     // The roster is the same set: fewer turns than were offered, and every one of
-    // them a turn that was offered.
-    const roster = memory.lastRetrievedContext()!.split('\n');
+    // them a turn that was offered. It is a list of turns since §13.16.6, so the
+    // membership test is per turn rather than per line of a joined string.
+    const roster = memory.lastRetrievedContext()!;
     expect(roster.length).toBeLessThan(context.length);
-    for (const line of roster) expect(context).toContain(line);
+    for (const turn of roster) expect(context).toContain(turn);
   });
 
   it('reports the carried size on the session route, which is half the measured loss', async () => {
@@ -268,11 +269,15 @@ describe('the system reports the evidence the prompt carried', () => {
     expect(slice.after).toBe('\n\n');
     expect(slice.text.length).toBe(reported);
     // §13.15: the roster and the size now answer the same question about the same
-    // run. The accessor's lines are the turns the prompt carries whole, and they
+    // run. The accessor's entries are the turns the prompt carries whole, and they
     // must be the evidence block's own first blocks, in its own order, numbered the
     // way it numbered them. Before §13.15 the roster described the offer, so the two
     // could disagree about a run and each be internally consistent.
-    const roster = memory.lastRetrievedContext()!.split('\n');
+    //
+    // Since §13.16.6 the entries are turns rather than the lines of a joined string,
+    // so this fixture -- whose every turn is one line -- is the case where the two
+    // units agree. That is what makes it a regression guard rather than a unit test.
+    const roster = memory.lastRetrievedContext()!;
     const blocks = slice.text.split('\n\n');
     expect(roster.length).toBeLessThan(context.length);
     for (let i = 0; i < roster.length; i += 1) {

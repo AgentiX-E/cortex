@@ -99,8 +99,10 @@ describe('the system reports the evidence it was shown', () => {
 
     await memory.answer('Where did I go?', ['user: I went to Lisbon.']);
 
-    const retrieved = memory.lastRetrievedContext();
-    expect(retrieved).toContain('I went to Lisbon.');
+    // A list of turns since §13.16.6, so the assertion is the whole element rather
+    // than a substring of a joined string: the unit this accessor reports is the
+    // turn, and a `toContain` over the joined form would pass on either unit.
+    expect(memory.lastRetrievedContext()).toEqual(['user: I went to Lisbon.']);
   });
 
   it('returns the admitted turns in admission order, so a wrong turn is attributable', async () => {
@@ -116,7 +118,12 @@ describe('the system reports the evidence it was shown', () => {
     ]);
 
     const retrieved = memory.lastRetrievedContext()!;
-    expect(retrieved.indexOf('Lisbon')).toBeLessThan(retrieved.indexOf('Porto'));
+    // Position read on the turn list rather than on a joined string, so the claim is
+    // about the order of turns rather than the order of substrings: a joined form
+    // would satisfy this even if the boundary between the two turns were lost.
+    expect(retrieved.findIndex((turn) => turn.includes('Lisbon'))).toBeLessThan(
+      retrieved.findIndex((turn) => turn.includes('Porto')),
+    );
   });
 
   it('returns the evidence on the session route, which carries the arm largest loss', async () => {
@@ -130,9 +137,10 @@ describe('the system reports the evidence it was shown', () => {
       ['user: I went to Porto.'],
     ]);
 
-    const retrieved = memory.lastRetrievedContext();
-    expect(retrieved).toContain('Lisbon');
-    expect(retrieved).toContain('Porto');
+    const retrieved = memory.lastRetrievedContext()!;
+    expect(retrieved).toContain('user: I went to Lisbon.');
+    expect(retrieved).toContain('assistant: Noted.');
+    expect(retrieved).toContain('user: I went to Porto.');
   });
 
   it('returns the evidence on the temporal route, which is the other half of the loss', async () => {
@@ -145,7 +153,7 @@ describe('the system reports the evidence it was shown', () => {
       [['user: I went to Lisbon in June.']],
     );
 
-    expect(memory.lastRetrievedContext()).toContain('I went to Lisbon in June.');
+    expect(memory.lastRetrievedContext()).toEqual(['user: I went to Lisbon in June.']);
   });
 
   it('overwrites the slot on each call, so it describes the most recent question', async () => {
@@ -158,9 +166,7 @@ describe('the system reports the evidence it was shown', () => {
     await memory.answer('First?', ['user: The first fact.']);
     await memory.answer('Second?', ['user: The second fact.']);
 
-    const retrieved = memory.lastRetrievedContext()!;
-    expect(retrieved).toContain('The second fact.');
-    expect(retrieved).not.toContain('The first fact.');
+    expect(memory.lastRetrievedContext()).toEqual(['user: The second fact.']);
   });
 
   it('reports null when nothing was admitted, rather than an empty context', async () => {
@@ -189,7 +195,7 @@ describe('the system reports the evidence it was shown', () => {
     const answer = await memory.answerSessions('How many trips?', [['user: I took three trips.']]);
 
     expect(answer).toBeNull();
-    expect(memory.lastRetrievedContext()).toContain('I took three trips.');
+    expect(memory.lastRetrievedContext()).toEqual(['user: I took three trips.']);
   });
 
   it('does not report a context for a question the retrieval gate declined', async () => {

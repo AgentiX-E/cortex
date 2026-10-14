@@ -1298,11 +1298,12 @@ function buildArmRoster(
       rawOutput: rawOutputs[i]!,
       correct: ablation.featureCorrect[i]!,
       grounded: false,
-      // `null` becomes `''`, because `QuestionRecordInput.retrieved` is a string
-      // and `splitRetrievedTurns` drops blank turns -- so "no reader was shown
-      // anything" reaches the record as `turns: []`, which is the same statement
-      // made in the shape the record can hold. `null` is not collapsed into `''`
-      // in the VECTOR, where the distinction is still expressible.
+      // `null` becomes `[]`, because `QuestionRecordInput.retrieved` is a list of
+      // turns and "no reader was shown anything" reaches the record as `turns: []`,
+      // which is the same statement made in the shape the record can hold. `null` is
+      // not collapsed into `[]` in the VECTOR, where the distinction is still
+      // expressible -- and where it is what separates "the machine declined before a
+      // reader" from "the reader was reached and carried nothing".
       //
       // This vector is the evidence the reader **received** since §13.15, because
       // it is built from `lastRetrievedContext` and that accessor reports what the
@@ -1316,7 +1317,7 @@ function buildArmRoster(
       // They now come from their own capture, and a system that cannot report the
       // offer is reported as `0`, which the record's own docs call a system that
       // admitted nothing rather than an unknown.
-      retrieved: retrievedContexts[i] ?? '',
+      retrieved: retrievedContexts[i] ?? [],
       // `!` for the same reason as `featureCorrect[i]` above: this arm is handed an
       // `AblationResult` by the chain it called itself, and the capture pushes one entry
       // per question. `null` flows through and is not a defect -- it is the system saying
@@ -1324,11 +1325,15 @@ function buildArmRoster(
       admitted: admittedEvidence[i]!,
       promptChars: promptEvidenceChars[i] ?? null,
       // Measured here rather than inside `buildQuestionRecords`, because the
-      // measurement needs the **pre-bound** context and this is the last place that
-      // string exists: the record's `turns` are what the bound left. Computing it a
-      // hop later would make coverage fall whenever the writability guard bit, which
-      // would make two runs incomparable for a reason that is not about the system.
-      goldOverlap: goldOverlapOf(retrievedContexts[i] ?? '', question.goldTurns),
+      // measurement needs the **pre-bound** context and this is the last place it
+      // exists: the record's `turns` are what the bound left. Computing it a hop later
+      // would make coverage fall whenever the writability guard bit, which would make
+      // two runs incomparable for a reason that is not about the system.
+      //
+      // The units are the accessor's own turns since §13.16.6, so this is a membership
+      // test between two applications of `turnText` rather than a search through a
+      // rendered string -- the gold turn either is one of the carried turns or is not.
+      goldOverlap: goldOverlapOf(retrievedContexts[i] ?? [], question.goldTurns),
     })),
     featureConfig,
     ablation.featureCorrect,
