@@ -65,6 +65,7 @@ CONCEPT_TO_INPUT = {
     "evidenceTurnsPerRecord": "cortex_memory_evidence_turns",
     "relevanceSignal": "cortex_memory_relevance",
     "relevanceTopK": "cortex_memory_relevance_top_k",
+    "relevanceUnits": "cortex_memory_relevance_units",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
     "temperature": "temperature",

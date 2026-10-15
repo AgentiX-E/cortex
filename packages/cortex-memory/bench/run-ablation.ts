@@ -320,6 +320,16 @@ async function main(): Promise<void> {
     // reproduces the previous prompt byte for byte. `relevance.index`'s lookup is a
     // plain table read, so extracting it from its object does not lose a receiver.
     ...(relevance === null ? {} : { relevanceFor: relevance.relevanceFor }),
+    // §13.27's single variable, spread conditionally for the reason `relevanceFor` above
+    // is: `turn` IS the shipped behaviour (the budget buys individual turns wherever they
+    // score highest) and is expressed by NOT passing the key, so a run that names no unit
+    // reproduces the previous prompt byte for byte. The cast is at this boundary rather
+    // than on the option's type, for the reason the contract's cast is: `cortex-eval`
+    // carries the unit as `string` because it cannot import this package's union, and it
+    // validates against the product's own list at parse time -- `readRelevanceUnits`
+    // throws on anything unrecognised -- so by the time execution reaches here the value
+    // IS one of the union's members.
+    ...(armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' as const } : {}),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this
@@ -362,7 +372,12 @@ async function main(): Promise<void> {
       // `38142407062` needs both halves -- the signal and the width it was built at --
       // because `retrieval` at a width of `8` and at `64` are different experiments.
       `relevanceSignal=${armOptions.relevanceSignal}` +
-      (armOptions.relevanceSignal === 'none' ? '' : `, relevanceTopK=${armOptions.relevanceTopK}`),
+      (armOptions.relevanceSignal === 'none' ? '' : `, relevanceTopK=${armOptions.relevanceTopK}`) +
+      // Printed under the same rule as the width: the unit is a property of the ranking the
+      // budget was spent by, and with no signal there is no ranking for it to describe.
+      (armOptions.relevanceSignal === 'none'
+        ? ''
+        : `, relevanceUnits=${armOptions.relevanceUnits}`),
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

@@ -8,7 +8,7 @@
  * else. See `docs/AUDIT-CODE-VS-DOCS.md` §6.
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
-import type { EvidenceAsk, PromptContract } from './prompt.js';
+import type { EvidenceAsk, PromptContract, RelevanceUnits } from './prompt.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -159,6 +159,32 @@ export type CortexMemoryOptions = {
    * See `PromptOptions.relevanceFor` for the selection and presentation rules.
    */
   relevanceFor?: (question: string, turn: string) => number;
+  /**
+   * The unit the evidence room is spent in. Absent means `'turn'`.
+   *
+   * ## Why it is a separate knob from `relevanceFor`
+   *
+   * The signal says how a turn is scored; this says what a score buys. They are
+   * different decisions and the experiment requires them to move independently, which
+   * is why §13.27 holds the signal at `retrieval` and moves only this. A unit folded
+   * into the signal's name would make a run that changed only the unit
+   * indistinguishable, in its own configuration line, from one that changed the
+   * scoring.
+   *
+   * ## Where it reaches, which is one route
+   *
+   * The **multi-session** route only. `buildPrompt` is handed no session boundary, so
+   * a selection in sessions cannot be expressed on flat, temporal, knowledge-update,
+   * abstention or assistant, and the option is inert there -- not by a guard but
+   * because those plans carry no `sessionOf`. That is what makes §13.27 a
+   * single-variable dispatch: MR moves and no other capability can.
+   *
+   * `§13.26` measured why MR needs it: accuracy runs 14.3%, 33.3%, 41.5%, 66.7% across
+   * the first four bands of `goldOverlap` coverage, while MR's carried count has a
+   * median of 14 against a median `total` of 24. A turn-unit budget scatters a session
+   * across the window; the reference pipeline completes it and scores 86.78% on MR.
+   */
+  relevanceUnits?: RelevanceUnits;
   /**
    * Overrides the contract the **abstention route** uses, without touching the others.
    *

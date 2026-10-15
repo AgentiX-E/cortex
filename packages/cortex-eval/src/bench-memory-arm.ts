@@ -226,6 +226,29 @@ export type CortexMemoryArmOptions = {
    * the number.
    */
   relevanceTopK: number;
+  /**
+   * The unit the evidence room is spent in: `turn` or `session`.
+   *
+   * ## Why this is a third field rather than a second `relevanceSignal` value
+   *
+   * The signal says **how a turn is scored**; the unit says **what a score buys**. They
+   * are different claims about one budget and the experiment needs them to move
+   * independently, so §13.27 holds the signal at `retrieval` and moves only this. A unit
+   * folded into the signal's name would make a run that changed only the unit
+   * indistinguishable, in its own configuration line, from one that changed the scoring.
+   *
+   * ## Why the name says "relevance" and not "evidence"
+   *
+   * The unit only has a meaning where the budget is spent by a ranking. With
+   * `relevanceSignal: none` the budget buys the arrival-order prefix and there is no
+   * ranking for a unit to act on, so the two names must stay adjacent -- a reader who saw
+   * `relevanceUnits=session` beside `relevanceSignal=none` would be reading a unit that
+   * nothing consumed.
+   *
+   * Defaults to `turn`, i.e. the behaviour every prior artifact was produced under, so
+   * every archived run stays reproducible from the code.
+   */
+  relevanceUnits: string;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -255,6 +278,28 @@ const RELEVANCE_SIGNALS = {
 
 /** The signal a run gets when it does not name one. */
 const DEFAULT_RELEVANCE_SIGNAL = RELEVANCE_SIGNALS.none;
+
+/**
+ * The units `CORTEX_MEMORY_RELEVANCE_UNITS` accepts, and what each supplies.
+ *
+ * Separate from `RELEVANCE_SIGNALS` rather than a second value of it, for the reason
+ * `CortexMemoryArmOptions.relevanceUnits` records: the signal says how a turn is scored
+ * and this says what a score buys. §13.27 moves only this one.
+ *
+ * `session` is read by the multi-session route alone. `buildPrompt` is handed no session
+ * boundary, so a selection in sessions cannot be expressed on flat, temporal,
+ * knowledge-update, abstention or assistant -- which is what makes that dispatch a
+ * single-variable one rather than a claim about five routes at once.
+ */
+const RELEVANCE_UNITS = {
+  /** The budget buys individual turns wherever they score highest. The pre-§13.27 behaviour. */
+  turn: 'turn',
+  /** The budget buys whole sessions, ordered by their best-scoring turn. */
+  session: 'session',
+} as const;
+
+/** The unit a run gets when it does not name one. */
+const DEFAULT_RELEVANCE_UNITS = RELEVANCE_UNITS.turn;
 
 const THRESHOLD_VARIABLE = 'CORTEX_MEMORY_THRESHOLD';
 const RETRIEVAL_THRESHOLD_VARIABLE = 'CORTEX_MEMORY_RETRIEVAL_THRESHOLD';
@@ -295,6 +340,16 @@ const ASK_VARIABLE = 'CORTEX_MEMORY_ASK';
  * that it has one.
  */
 const RELEVANCE_VARIABLE = 'CORTEX_MEMORY_RELEVANCE';
+
+/**
+ * Names the unit the relevance budget is spent in (§13.27).
+ *
+ * Its own variable rather than a second value of `CORTEX_MEMORY_RELEVANCE`, because the
+ * artifact's configuration line has to be able to say which of the two moved. A run that
+ * changed only the unit and one that changed only the scoring would otherwise publish the
+ * same key with the same value, and the two are different experiments.
+ */
+const RELEVANCE_UNITS_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_UNITS';
 
 /**
  * Names how many turns per question the relevance index scores.
@@ -380,6 +435,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       relevanceSignal: DEFAULT_RELEVANCE_SIGNAL,
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: DEFAULT_RELEVANCE_UNITS,
     };
   }
   return {
@@ -397,6 +453,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
+    relevanceUnits: readRelevanceUnits(env[RELEVANCE_UNITS_VARIABLE]),
   };
 }
 
@@ -703,6 +760,33 @@ function readRelevanceSignal(raw: string | undefined): string {
 }
 
 /**
+ * Read the unit the relevance budget is spent in.
+ *
+ * Rejected rather than defaulted on an unrecognised value, for the reason every guard in
+ * this file gives: a run dispatched to spend the room on whole sessions that silently ran
+ * the turn unit would publish an unchanged result reading as evidence that the unit does
+ * not matter. The measurement and the claim would be about different experiments, and only
+ * the artifact's own configuration line would show it -- which is exactly what the guard
+ * makes impossible.
+ */
+function readRelevanceUnits(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_RELEVANCE_UNITS;
+
+  const value = raw.trim();
+  const known = Object.keys(RELEVANCE_UNITS);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${RELEVANCE_UNITS_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised unit is rejected rather ` +
+        'than defaulted to "turn": a run dispatched to complete whole sessions would ' +
+        'otherwise spend the room on turns, and its artifact would read as evidence that ' +
+        'the unit does not matter.',
+    );
+  }
+  return value;
+}
+
+/**
  * Read how many turns per question the relevance index scores.
  *
  * Strict, for the same class of reason as `readEvidenceBound`: the unit is turns, so a
@@ -839,6 +923,11 @@ export function toMemoryArmConfig(
     // constants to do it.
     relevanceSignal: options.relevanceSignal,
     relevanceTopK: options.relevanceTopK,
+    // Projected rather than inferred, for the reason the width is: the unit is a separate
+    // claim about the same budget, and a reader recomputing it from the signal's name
+    // would have to know this module's constants to do it. §13.27's artifact is read by
+    // comparing this field against §13.26's, so it has to be on the record.
+    relevanceUnits: options.relevanceUnits,
     // Spread conditionally rather than assigned, for the reason the two options above
     // are spread conditionally in the constructor: an always-present key holding
     // `undefined` is indistinguishable from a missing one under this workspace's

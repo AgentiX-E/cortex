@@ -256,6 +256,29 @@ INPUTS = {
     "cortex_memory_evidence_turns": "256",
     "cortex_memory_relevance": "retrieval",
     "cortex_memory_relevance_top_k": "64",
+    # §13.27's single variable.
+    #
+    # §13.26 read the artifact the previous dispatch produced and found the mechanism rather
+    # than a correlation: grouping MR by how much of the answer session the reader was shown,
+    # accuracy runs 14.3%, 33.3%, 41.5%, 66.7% across the first four coverage bands, while
+    # MR's carried count has a median of **14** against a median `total` of **24**. The
+    # signal ranks TURNS, so the budget buys the highest-scoring turns wherever they live and
+    # a multi-session answer -- spread across a whole session of statements -- is scattered
+    # across the window instead of completed. The reference pipeline completes the session
+    # behind each hit and scores 86.78% on MR.
+    #
+    # `session` spends the room on whole SESSIONS, ordered by their best-scoring turn. The
+    # signal itself does not move: a session's score is the MAXIMUM of its turns' scores, so
+    # this is a regrouping of the same numbers rather than a second signal. That is why the
+    # key is its own input rather than a second value of `cortex_memory_relevance` -- a unit
+    # folded into the signal's name would make a run that changed only the unit
+    # indistinguishable, in its own configuration line, from one that changed the scoring.
+    #
+    # Sent explicitly rather than left blank. `turn` is the default, so omitting it would
+    # happen to match -- and it would arrive through the same `''`-to-default path §38
+    # identified as the source of two defects. A value this run depends on should not arrive
+    # by accident, and an absent key cannot be shown to be wrong.
+    "cortex_memory_relevance_units": "session",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

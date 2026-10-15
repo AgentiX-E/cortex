@@ -873,6 +873,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...(this.#options.relevanceFor === undefined
         ? {}
         : { relevanceFor: this.#options.relevanceFor }),
+      // Forwarded for the same reason and from the same place. Only the multi-session
+      // route reads it, and that is a property of the route rather than of this
+      // forwarding: `buildPrompt` receives no session boundary, so a selection in
+      // sessions cannot be expressed there and the option is inert on flat, temporal,
+      // knowledge-update, abstention and assistant. Stated because it is what makes
+      // §13.27's dispatch a single-variable one -- MR moves and nothing else can.
+      ...(this.#options.relevanceUnits === undefined
+        ? {}
+        : { relevanceUnits: this.#options.relevanceUnits }),
     };
   }
 }

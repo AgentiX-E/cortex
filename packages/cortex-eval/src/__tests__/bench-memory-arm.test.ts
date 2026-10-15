@@ -114,6 +114,7 @@ function formalizeArm(config: {
       ask: 'route',
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: 'turn',
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     }),
   });
@@ -162,6 +163,7 @@ async function runCortexMemoryArmReport(config: {
         promptContract: 'abstention',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
@@ -676,6 +678,7 @@ describe('source trust reaches the artifact', () => {
       promptContract: 'abstention',
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: 'turn',
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -813,6 +816,7 @@ describe('runCortexMemoryArm', () => {
           promptContract: 'abstention',
           relevanceSignal: 'none',
           relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -828,6 +832,7 @@ describe('runCortexMemoryArm', () => {
       promptContract: 'abstention',
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: 'turn',
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -922,6 +927,7 @@ describe('runCortexMemoryArm', () => {
         promptContract: 'abstention',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
@@ -1065,6 +1071,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'not-a-real-ask',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.askRoutes).toEqual([]);
@@ -1087,6 +1094,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.renderingRoutes).toEqual([]);
@@ -1107,6 +1115,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config.sessionBudget).toBeNull();
@@ -1125,6 +1134,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config).toEqual({
@@ -1136,6 +1146,7 @@ describe('runCortexMemoryArm', () => {
         promptContract: 'abstention',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
@@ -1442,6 +1453,7 @@ describe('the retrieval threshold', () => {
       promptContract: 'abstention',
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: 'turn',
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -1542,6 +1554,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       ask: 'route',
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: 'turn',
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     });
   });
@@ -1564,6 +1577,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       promptContract: 'abstention',
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+      relevanceUnits: 'turn',
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -1991,6 +2005,7 @@ describe('the ask reaches the artifacts, in both renderings', () => {
         promptContract: 'abstention',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         renderingRoutes: [],
         ask: 'extractive',
         askRoutes: [],
@@ -2018,6 +2033,7 @@ describe('the ask reaches the artifacts, in both renderings', () => {
         promptContract: 'abstention',
         relevanceSignal: 'none',
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
         renderingRoutes: [],
         ask: 'route',
       },
@@ -2083,6 +2099,7 @@ describe('a bounded run reports what the bound dropped', () => {
           promptContract: 'abstention',
           relevanceSignal: 'none',
           relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -2180,6 +2197,7 @@ describe('a bounded run reports what the bound dropped', () => {
           promptContract: 'abstention',
           relevanceSignal: 'none',
           relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],

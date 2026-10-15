@@ -118,6 +118,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_relevance_units:
+        description: 'Unit the relevance budget is spent in, when a signal ranked the turns (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.27): empty or turn = the budget buys individual turns wherever they score highest, which is the shipped behaviour and what every prior artifact was produced with; session = the budget buys whole SESSIONS, ordered by their best-scoring turn, so a multi-session answer is completed rather than scattered. Section 13.26 is why this is the variable: run 38595325261 measured MR accuracy at 14.3%, 33.3%, 41.5% and 66.7% across the first four bands of gold-overlap coverage, with a median carried count of 14 against a median gold session of 24 -- accuracy tracks how much of the answer session the reader was shown, a turn-unit budget does not deliver it, and the reference pipeline completes each hit session and scores 86.78% on MR. Reaches the multi-session route ALONE: buildPrompt receives no session boundary, so the unit cannot be expressed on flat, temporal, knowledge-update, abstention or assistant, which is what makes this dispatch single-variable. Inert without a signal, because an arrival-order prefix has no ordering for a unit to act on. An unrecognised value is REJECTED rather than defaulted to turn, because a run dispatched to complete whole sessions that silently spent the room on turns would publish an unchanged result reading as evidence the unit does not matter'
+        required: false
+        default: ''
+        type: string
       cortex_memory_prompt_contract:
         description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
         required: false
@@ -275,6 +280,12 @@ jobs:
           # for the reason above -- the arm defaults a blank to the index's own default,
           # and a second copy of that default here is how the two would drift.
           CORTEX_MEMORY_RELEVANCE_TOP_K: ${{ github.event.inputs.cortex_memory_relevance_top_k }}
+          # The unit the budget is spent in, on its own line for the same reason the
+          # width is: the signal says how a turn was scored and this says what a score
+          # bought, and section 13.27 moves only this one. Passed unconditionally --
+          # the arm defaults a blank to `turn`, and a second copy of that default here
+          # is how the two would drift.
+          CORTEX_MEMORY_RELEVANCE_UNITS: ${{ github.event.inputs.cortex_memory_relevance_units }}
           # Section 13.12's bound, passed the same way. It is what keeps the run from
           # dying at the JSON write: run 38003036421 graded all four runs of all five
           # hundred questions and then lost the whole measurement to

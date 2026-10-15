@@ -229,7 +229,34 @@ export type PromptOptions = {
    * reorder sessions for presentation either.
    */
   relevanceFor?: RelevanceFor;
+  /**
+   * The unit the room is spent in. Absent means `'turn'`, character for character.
+   *
+   * ## Why this is a second field rather than a second `relevanceFor` value
+   *
+   * The signal and the unit are different decisions and the experiment needs them to
+   * move independently: `relevanceFor` says **how a turn is scored**, and this says
+   * **what a score buys**. A unit folded into the signal's name would make a run that
+   * changed only the unit indistinguishable, in its own configuration line, from one
+   * that changed the scoring -- and both would be dispatched under the same key.
+   *
+   * ## What `'session'` does, and why it is not a second signal
+   *
+   * The turns are still scored one at a time by the same callback; a session's score is
+   * the **maximum** of its turns', so this is a regrouping of the same numbers. What
+   * changes is what the room buys: every turn of a chosen session, chronologically,
+   * rather than the individual turns that scored highest wherever they live.
+   *
+   * Measured, on run `38595325261`: MR's accuracy runs 14.3%, 33.3%, 41.5%, 66.7% across
+   * the first four bands of `goldOverlap` coverage, while its carried count has a median
+   * of 14 against a median total of 24. The turn unit scatters a session across the
+   * window; the reference pipeline completes it and scores 86.78% on MR.
+   */
+  relevanceUnits?: RelevanceUnits;
 };
+
+/** The unit the evidence room is spent in. */
+export type RelevanceUnits = 'turn' | 'session';
 
 /** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
 export const DEFAULT_MAX_PROMPT_CHARS = 24_000;
@@ -665,6 +692,24 @@ type EvidencePlan = {
    */
   readonly note?: string;
   readonly relevanceFor?: RelevanceFor;
+  /**
+   * Which session each entry of `turns` belongs to, when the route draws boundaries.
+   *
+   * ## Why the selection needs it and the renderer does not
+   *
+   * `render` closes over the sessions themselves and decides membership by identity,
+   * so it can group a picked set without being told anything. A **selection** cannot:
+   * spending the room on whole sessions means knowing which turns share one before
+   * anything is picked, and `AdmittedTurn.ordinal` cannot answer that -- it is the
+   * position inside the turn's own session, so session 3 and session 1 both have an
+   * ordinal 0.
+   *
+   * Absent means the route draws no boundaries, which is one session; a selection in
+   * sessions is then the whole list and is a no-op rather than an error.
+   */
+  readonly sessionOf?: readonly number[];
+  /** The unit the room is spent in. See `PromptOptions.relevanceUnits`. */
+  readonly relevanceUnits?: RelevanceUnits;
 };
 
 /** The sentence that stands in for evidence when nothing was admitted. */
@@ -758,7 +803,9 @@ function fitToBudget(
       ? NOTHING_CARRIED
       : plan.relevanceFor === undefined
         ? { evidence: truncateCodePointSafe(plan.render(plan.turns), evidenceRoom), carried: null }
-        : selectByRelevance(question, plan, plan.relevanceFor, evidenceRoom);
+        : plan.relevanceUnits === 'session'
+          ? selectBySession(question, plan, plan.relevanceFor, evidenceRoom)
+          : selectByRelevance(question, plan, plan.relevanceFor, evidenceRoom);
 
   if (selected.evidence.length === 0) {
     // Unchanged, including the order: with nothing to carry, this is the prompt
@@ -887,6 +934,102 @@ function selectByRelevance(
 }
 
 /**
+ * Spend the evidence room on whole sessions, ordered by their best-scoring turn.
+ *
+ * ## Why the unit is separate from the signal, and what that buys
+ *
+ * `relevanceFor` still scores one turn at a time and does not change here: a session's
+ * score is the **maximum** of its turns' scores, so this is a regrouping of the same
+ * numbers rather than a second signal. What changes is what the room buys -- every turn
+ * of a chosen session, in chronological order, instead of the individual turns that
+ * scored highest wherever they live.
+ *
+ * ## Why this is the right unit for a multi-session question, measured
+ *
+ * Run `38595325261`, grouping MR by how much of the answer session the reader was shown:
+ * accuracy runs **14.3%, 33.3%, 41.5%, 66.7%** across the first four coverage bands, while
+ * MR's carried count has a median of **14** against a median `total` of **24**. A
+ * turn-level budget scatters a session across the window -- which is what a median of 58%
+ * coverage looks like -- and the reference pipeline does the opposite, completing the
+ * session behind each hit, and scores 86.78% on MR.
+ *
+ * ## Why the largest session PREFIX, and not a best fit that skips
+ *
+ * Sessions are taken in rank order until the next one does not fit, and the search stops
+ * there: it does not skip that session and try a smaller one further down. Skipping would
+ * make the carried set depend on the sizes of sessions the signal did not choose, so two
+ * runs whose rankings agreed could still carry different evidence -- and the selection is
+ * the one thing this option is supposed to decide. Refusing to skip keeps the property
+ * that the carried set is a function of the ranking and the room.
+ *
+ * ## Why the output is chronological
+ *
+ * The order is a separate decision from the selection and the answer depends on it: a log
+ * printed in relevance order makes relative-time and knowledge-update questions
+ * unanswerable. `selectSessionBudget` already refuses to reorder sessions for presentation
+ * and this is the same rule one layer in. `§13.26`'s TR gain came from an instruction, so
+ * leaving the order alone is also what keeps the two changes separable.
+ *
+ * `plan.sessionOf` absent means the route draws no boundaries, so there is one session and
+ * the prefix is the whole list. That is the flat route: a no-op rather than an error.
+ */
+function selectBySession(
+  question: string,
+  plan: EvidencePlan,
+  relevanceFor: RelevanceFor,
+  room: number,
+): { evidence: string; carried: readonly AdmittedTurn[] } {
+  const sessionOf = plan.sessionOf;
+  const scored = plan.turns.map((turn, arrival) => ({
+    turn,
+    arrival,
+    session: sessionOf === undefined ? 0 : sessionOf[arrival]!,
+    relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
+  }));
+
+  // Session order: best turn first, and ties by the earliest arrival among the turns
+  // that produced the score -- so two sessions the signal cannot separate are ordered
+  // the way the context ordered them, which is reproducible and is what an unsignalled
+  // budget would have done with them.
+  const best = new Map<number, { score: number; first: number }>();
+  const bySession = new Map<number, { turn: AdmittedTurn; arrival: number }[]>();
+  for (const entry of scored) {
+    const seen = best.get(entry.session);
+    if (seen === undefined) {
+      best.set(entry.session, { score: entry.relevance, first: entry.arrival });
+    } else if (entry.relevance > seen.score) {
+      seen.score = entry.relevance;
+      seen.first = entry.arrival;
+    }
+    const owned = bySession.get(entry.session);
+    if (owned === undefined)
+      bySession.set(entry.session, [{ turn: entry.turn, arrival: entry.arrival }]);
+    else owned.push({ turn: entry.turn, arrival: entry.arrival });
+  }
+  const order = [...best.entries()]
+    .sort((a, b) => b[1].score - a[1].score || a[1].first - b[1].first)
+    .map(([session]) => session);
+
+  const chronological = (count: number): AdmittedTurn[] =>
+    order
+      .slice(0, count)
+      .flatMap((session) => bySession.get(session)!)
+      .sort((a, b) => a.arrival - b.arrival)
+      .map((entry) => entry.turn);
+
+  let low = 0;
+  let high = order.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (plan.render(chronological(middle)).length <= room) low = middle;
+    else high = middle - 1;
+  }
+
+  const carried = chronological(low);
+  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+}
+
+/**
  * Validate a relevance, naming the turn it was computed for.
  *
  * Only finiteness is required, and that is not a weaker rule than
@@ -990,6 +1133,13 @@ export function buildSessionPrompt(
       render,
       note: SESSION_NOTE,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
+      ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
+      // The boundary the selection needs and the renderer does not. Built here rather
+      // than passed in because `flat` is built here too, so the two cannot disagree
+      // about how many turns there are -- an index array of the wrong length would
+      // attribute a turn to a session it does not belong to, and the selection would
+      // then spend the room on the wrong block.
+      sessionOf: sessions.flatMap((session, index) => session.turns.map(() => index)),
     },
     maxChars,
     'EVIDENCE:\n',

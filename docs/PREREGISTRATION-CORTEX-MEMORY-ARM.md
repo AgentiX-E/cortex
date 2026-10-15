@@ -768,6 +768,21 @@ forwarded into a step's `env`. Three injections were run against it:
   low-scoring turns rather than admit more high-scoring ones. Sent explicitly rather than
   left blank for the reason `sourceTrust` is: a value that never reaches the environment is
   a value this guard cannot compare against the registration.
+* `relevanceUnits: session` — **added by §13.27, and it is the selection unit.** Registered
+  separately from `relevanceSignal` because the two are different claims about one budget:
+  the signal says **how a turn is scored** and this says **what a score buys**. A unit folded
+  into the signal's name would make a run that changed only the unit indistinguishable, in its
+  own configuration line, from one that changed the scoring — and §13.27 moves only the unit,
+  holding the signal at `retrieval` and the width at `64` so a movement cannot be attributed
+  to either. `session` spends the room on whole sessions ordered by their best-scoring turn;
+  the signal itself does not change, because a session's score is the maximum of its turns'
+  scores, so this is a regrouping of the same numbers rather than a second signal. It reaches
+  the **multi-session route alone**, which is what makes the dispatch single-variable:
+  `buildPrompt` is handed no session boundary, so the unit cannot be expressed on flat,
+  temporal, knowledge-update, abstention or assistant. Sent explicitly rather than left blank
+  for the reason `sourceTrust` and `relevanceTopK` are: `turn` is the default, so omitting it
+  would happen to match — and it would arrive through the `''`-to-default path §38 identified
+  as the source of two separate defects.
 
   The value moved from sixteen to two hundred and fifty-six because §13.15 changed
   what the roster holds, and that is a change to what the bound protects rather than a
@@ -4000,3 +4015,195 @@ The four archived runs are not re-read here, because the numbers their verdicts 
 | P1 | Design the **no-signal control** (§13.22.8) separating the merging sentence from the selection | no (dispatch later) |
 | P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded | no |
 | P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+## 13.26 `computed` returns +25.75pp, and TR stops being a significant loss
+
+Run `38595325261`, dispatched at `5ac30ee0` (before the §13.16.6 repair), 500 questions,
+4 repetitions, temperature 0. Artifact id `11923457465`. Everything below is read from
+`benchmark-cortex-memory-ablation-report.json`; nothing is inferred from the log.
+
+### 13.26.1 The judgement, against the registration §13.21 wrote before the number existed
+
+| Registered | Required | Measured | Verdict |
+| --- | --- | --- | --- |
+| Point estimate beats the same dispatch's baseline | Δ > 0 | **+25.75pp** | holds |
+| McNemar, two-sided, overall | p < 0.05 | **1.064e-13** | holds |
+| Full N, four runs, temperature 0 | 500 × 4 | 500 × 4 | holds |
+| One dispatch, no peeking | — | one dispatch | holds |
+
+`ask: computed` reaches **3 routes** (`multi-session`, `flat`, `temporal`) against
+`aggregate`'s 2, which is the design: it composes the merging sentence into each reached
+route's own block rather than substituting one, and on the two routes whose block already
+IS the extractive one the result is byte-identical to `aggregate` (asserted in
+`evidence-ask-reach.test.ts`).
+
+### 13.26.2 The control band: three capabilities could not have moved
+
+Only the temporal route's instruction changed. `multi-session`, `flat`, `knowledge-update`,
+`abstention` and `assistant` are byte-identical to the `aggregate` run, so any movement on
+IE, MR, KU and ABS between the two runs is noise by construction. That makes them a control
+band, which is the thing §13.22 lacked:
+
+| Capability | Route touched | aggregate | computed | Δ questions |
+| --- | --- | --- | --- | --- |
+| IE | no | 132/150 | 133/150 | **+1** |
+| MR | no | 54/121 | 51/121 | **−3** |
+| KU | no | 59/72 | 62/72 | **+3** |
+| ABS | no | 29/30 | 29/30 | **0** |
+| **control total** | | **274/373** | **275/373** | **+1** |
+| **TR** | **yes** | 62/127 | **72/127** | **+10** |
+
+Two readings come out of this, and both are needed:
+
+1. **The control band's net movement is +1 question over 373.** The endpoint is not drifting
+   globally, so the run-to-run noise floor on an aggregate figure is small.
+2. **Per-capability movement inside the band reaches ±3 questions** (MR −3, KU +3, in
+   opposite directions on disjoint question sets). A single capability is the unit that
+   matters here, and its noise reaches 3 questions.
+
+TR moved **+10 questions**. That is above the largest band movement observed, in the one
+capability whose prompt changed, in the direction the instruction was written to move it.
+
+### 13.26.3 TR is no longer a significant loss
+
+| | aggregate `38487229554` | computed `38595325261` |
+| --- | --- | --- |
+| TR accuracy | 48.82% | **56.69%** |
+| TR b✓f✗ / b✗f✓ | 30 / 10 | 23 / 11 |
+| TR McNemar p | **2.221e-3** (significant) | **5.761e-2** (not significant) |
+
+§13.21 left TR as a **significant** net loss. It is now statistically indistinguishable from
+the reference pipeline on that capability — the first time that has been true in this
+campaign — while remaining numerically below it. That is a durable improvement under the
+registered reading, and it is exactly the movement `computed` was registered to produce.
+
+The `ask` axis' full arc, on the feature side's abstention rate and delta:
+
+| run | ask | reached | Δ | abstention |
+| --- | --- | --- | --- | --- |
+| `38250133116` | extractive | 6 | +10.30pp | 38.00% |
+| `38394103193` | extractive | 6 | +9.25pp | 39.20% |
+| `38439899858` | route | 6 | +18.20pp | 30.40% |
+| `38487229554` | aggregate | 2 | +23.25pp | 24.20% |
+| **`38595325261`** | **computed** | **3** | **+25.75pp** | **20.60%** |
+
+### 13.26.4 Where the remaining loss is, and it is one capability
+
+| Capability | n | feature | baseline | b✓f✗ | b✗f✓ | net | McNemar p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| IE | 150 | 88.67% | 1.33% | 0 | 131 | +131 | 7.347e-40 |
+| **MR** | **121** | **42.15%** | **86.78%** | **59** | **5** | **−54** | **9.003e-13** |
+| KU | 72 | 86.11% | 0.00% | 0 | 62 | +62 | 4.337e-19 |
+| TR | 127 | 56.69% | 66.14% | 23 | 11 | −12 | 5.761e-2 |
+| ABS | 30 | 96.67% | 100.00% | 1 | 0 | −1 | 1.000e+0 |
+
+**MR is now the only capability where the feature side loses significantly**, and it is a
+large loss: 54 net questions. The arm's aggregate win comes from IE and KU, where the
+reference pipeline answers essentially nothing correctly (1.33% and 0.00%).
+
+The shape of MR's 70 non-correct questions, classified from the artifact:
+
+| Failure shape | Count | What it means |
+| --- | --- | --- |
+| `numeric_mismatch` — both sides carry a number and they differ | **31** | The model counted or compared and got a different value |
+| `other` | 7 | Neither numeric nor recognisably a refusal |
+| `plan_output` — output opens with "Let me gather…" / "Step 1" | 4 | The model narrated its plan instead of answering |
+| `soft_refusal` — "I don't have enough information" | 2 | The model declined in prose, so it is not counted as an abstention |
+| `long_prose` — answer is 200+ characters of reasoning | 2 | The answer, if present, is buried |
+| abstention (bare `INSUFFICIENT_EVIDENCE`) | 24 | Machine-readable decline |
+
+### 13.26.5 The mechanism, measured: coverage is the variable
+
+The artifact carries `goldOverlap` per question, and this run is the first whose unit repair
+is not yet in the code — so the coverage number is the same measurement §13.16.6 registered,
+not a new one. Grouping by outcome:
+
+| Capability | correct | wrong | abstained |
+| --- | --- | --- | --- |
+| MR | **0.587** | 0.470 | 0.451 |
+| TR | **0.579** | 0.407 | 0.342 |
+| IE | **0.793** | — | 0.574 |
+
+And for MR, bucketed:
+
+| gold coverage (carried/total) | n | correct | accuracy |
+| --- | --- | --- | --- |
+| [0.00, 0.25) | 14 | 2 | **14.3%** |
+| [0.25, 0.45) | 33 | 11 | 33.3% |
+| [0.45, 0.65) | 41 | 17 | 41.5% |
+| [0.65, 0.85) | 24 | 16 | **66.7%** |
+| [0.85, 1.01) | 9 | 5 | 55.6% |
+
+The relation is monotone across the four buckets that carry weight (the last has 9 questions
+and is the one inversion). **Accuracy tracks how much of the answer session the reader was
+shown**, and the levels are low: MR's carried count has a **median of 14 against a median
+total of 24**, i.e. **58%**.
+
+The `relevance: retrieval` signal ranks **turns**, and a multi-session question's answer is
+smeared across a whole session. A turn-level ranking spends its budget on the highest-scoring
+turns wherever they live, which scatters each answer session across the budget rather than
+completing it. The reference pipeline does the opposite: `expandContextWindowBySession`
+**completes the session behind each hit** before spending anything on neighbours, and it
+scores 86.78% on MR.
+
+### 13.26.6 What §13.26 does not claim
+
+- **The +2.50pp over `aggregate` is not all TR.** TR supplies +10 questions of it; the
+  control band supplies +1 and the interval between the two runs' aggregates is 2.5pp of
+  500, i.e. ~13 questions, of which TR is 10. Stated so the increment is not read as larger
+  than TR.
+- **MR's −3 questions between the two runs is noise, not a regression.** Its prompt did not
+  change. What §13.26 records about MR is the **level** (42.15%) and its shape, not a
+  movement.
+- **The failure classifier is mine, not the artifact's.** It is a reading of `rawOutput` and
+  `answer`, run over the artifact, using the four patterns named in the table. It is reported
+  as a reading, and §13.27 registers the mechanism it implies rather than this classifier.
+
+## 13.27 The selection unit becomes the session, and what that is registered to move
+
+§13.26.5 measures the mechanism: coverage of the answer session is monotone in accuracy, and
+the current signal does not deliver it because it ranks turns.
+
+**Registered before dispatch**: one dispatch of the same configuration as `38595325261`, with
+a single variable changed — the relevance signal's **unit**.
+
+| Field | Value | Note |
+| --- | --- | --- |
+| `cortex_memory_ask` | `computed` | held at §13.26's value, so a movement is not the instruction |
+| `cortex_memory_relevance` | **`retrieval-session`** | the variable |
+| `cortex_memory_relevance_top_k` | `64` | held |
+| `cortex_memory_evidence_turns` | `256` | held |
+| everything else | §13.26's values | held |
+
+**What the new value does.** It ranks **sessions** by their best-scoring turn, and then admits
+the highest-ranked sessions **whole** — the same preference `expandContextWindowBySession`
+expresses, but ordered by the arm's own bi-encoder over the question instead of by the hit
+list's arrival order. The signal still reads the question text and the context and never the
+answer key: `relevance-index.ts` has no ground-truth parameter, and the new unit is a
+grouping of the same cases, not access to more information.
+
+**Predictions, in the order they would be read:**
+
+1. **The gold session coverage rises.** MR's median `carried/total` moves from **0.58** to at
+   least **0.75**. This is the primary prediction: if the unit is the mechanism, the
+   coverage distribution moves first and by more than the accuracy does.
+2. **MR accuracy rises** and the arm's delta exceeds **+25.75pp**. MR is where the loss is.
+3. **TR does not fall back below its §13.26 level.** TR's answer is often a single turn and a
+   session-completing budget could crowd it out; if TR regresses while MR improves, the two
+   capabilities want different units and that is the finding.
+4. **IE and KU do not move beyond the control band.** They are not multi-session. If they
+   move, the budget they share with MR moved and the change is not confined to the unit.
+
+**Falsifiers, stated before the number exists:**
+
+- Median MR coverage does not rise above 0.65 while MR accuracy is unchanged → the coverage
+  reading is correlational, not causal, and §13.26.5 does not name the mechanism.
+- MR rises but TR falls by a comparable number → the arm is trading one capability for
+  another under a shared budget, and the honest statement is that the budget is the binding
+  constraint rather than the unit.
+- Coverage rises and accuracy **falls** → the extra turns are diluting the reader, which
+  would refute the direction `§13.22.8`'s no-signal control was written to separate.
+
+**Stopping rule.** One dispatch, no peeking, no redraw. The point estimate must exceed the
+BASELINE side of the same dispatch, McNemar p < 0.05 two-sided, full N = 500, 4 runs,
+temperature 0 — the same instrument as §13.21 and §13.26, so the three are comparable.

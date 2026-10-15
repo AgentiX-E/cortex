@@ -412,6 +412,25 @@ export type MemoryArmConfig = {
    */
   readonly relevanceTopK: number;
   /**
+   * The unit the relevance budget was spent in: `turn` or `session`.
+   *
+   * ## Why the artifact carries both the signal and the unit
+   *
+   * A run's budget is described by two independent claims -- how a turn was **scored** and
+   * what a score **bought** -- and §13.27 moves only the second while §13.17 moved only the
+   * first. A single field would make the two experiments publish the same configuration
+   * line, and §13.26's artifact is the thing §13.27's is compared against, so the field
+   * being present is what makes the comparison a comparison of one variable.
+   *
+   * Optional, and absent reads as `turn`. Every artifact written since §13.27 carries it,
+   * so an artifact without it predates the field rather than having run under some
+   * unrecorded unit -- the convention `embedding` is written under one field down.
+   * Requiring it would force every fixture that builds a `MemoryArmConfig` by hand to
+   * invent a value, and the value they would write is the default: the field's purpose is
+   * to tell two dispatches apart, and both of those go through `toMemoryArmConfig`.
+   */
+  readonly relevanceUnits?: string;
+  /**
    * Which embedding backend this artifact's numbers were produced against.
    *
    * ## Why the artifact has to say it
@@ -635,6 +654,15 @@ export function formatAblationReport(report: AblationReport): string {
         (memoryArm.relevanceSignal === 'none'
           ? ''
           : `, \`relevanceTopK=${memoryArm.relevanceTopK}\``) +
+        // The unit, under the same rule as the width and for the same reason: it has no
+        // meaning without a ranking to act on, because with `relevanceSignal=none` the
+        // budget buys the arrival-order prefix and there is no ordering for a unit to
+        // change. §13.27's reading is a comparison of this field against §13.26's, so a
+        // value that never reached this line would leave the two artifacts describing the
+        // same run while differing in what they spent the budget on.
+        (memoryArm.relevanceSignal === 'none' || memoryArm.relevanceUnits === undefined
+          ? ''
+          : `, \`relevanceUnits=${memoryArm.relevanceUnits}\``) +
         // The backend, and the check that it was serving. Appended only when the caller
         // named one, so an artifact that predates the field reads as pre-dating it rather
         // than as having run against an unrecorded backend. Both halves are rendered
