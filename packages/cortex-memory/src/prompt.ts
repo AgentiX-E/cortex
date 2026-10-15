@@ -803,8 +803,8 @@ function fitToBudget(
       ? NOTHING_CARRIED
       : plan.relevanceFor === undefined
         ? { evidence: truncateCodePointSafe(plan.render(plan.turns), evidenceRoom), carried: null }
-        : plan.relevanceUnits === 'session'
-          ? selectBySession(question, plan, plan.relevanceFor, evidenceRoom)
+        : plan.relevanceUnits === 'session' && plan.sessionOf !== undefined
+          ? selectBySession(question, plan, plan.sessionOf, plan.relevanceFor, evidenceRoom)
           : selectByRelevance(question, plan, plan.relevanceFor, evidenceRoom);
 
   if (selected.evidence.length === 0) {
@@ -972,18 +972,22 @@ function selectByRelevance(
  *
  * `plan.sessionOf` absent means the route draws no boundaries, so there is one session and
  * the prefix is the whole list. That is the flat route: a no-op rather than an error.
+ * `sessionOf` is a parameter rather than a read of `plan.sessionOf`, so the precondition is
+ * stated in the type instead of re-checked inside. A plan that draws no boundaries has no
+ * session to complete, and the caller falls back to the turn unit for it -- which is what
+ * makes the option inert on the flat route rather than a silent single-session special case.
  */
 function selectBySession(
   question: string,
   plan: EvidencePlan,
+  sessionOf: readonly number[],
   relevanceFor: RelevanceFor,
   room: number,
 ): { evidence: string; carried: readonly AdmittedTurn[] } {
-  const sessionOf = plan.sessionOf;
   const scored = plan.turns.map((turn, arrival) => ({
     turn,
     arrival,
-    session: sessionOf === undefined ? 0 : sessionOf[arrival]!,
+    session: sessionOf[arrival]!,
     relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
   }));
 

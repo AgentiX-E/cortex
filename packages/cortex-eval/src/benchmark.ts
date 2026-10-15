@@ -56,6 +56,34 @@ export type BenchmarkProgress = {
   readonly total: number;
   readonly run: number;
   readonly questionId: string;
+  /**
+   * Milliseconds since this pass began, on a monotonic clock.
+   *
+   * ## Why the callback carries it
+   *
+   * Run `38659495034` spent **1h49m inside one question** -- the reference pipeline's
+   * first -- and then died, and its `benchmark-error.log` said only
+   * `progress: died on reference-pipeline run=0 q=1/500 id=e47becba`. That line cannot
+   * distinguish a hung endpoint from a slow one, and the two want opposite repairs: a
+   * hang is retried or circuited, a slow pass is given a longer budget or a smaller
+   * sample.
+   *
+   * A question's cost is the gap between the events that bracket it, so the *pass* is the
+   * right place to measure it rather than each question: this fires BEFORE its question is
+   * answered, and `events[i + 1].elapsedMs - events[i].elapsedMs` is therefore exactly the
+   * cost of question `i`.
+   *
+   * ## Why `performance.now()` and not an injected clock
+   *
+   * This package injects its clocks everywhere a value participates in a **measurement**
+   * -- `now` on the memory systems, `generatedAt` on reports -- because a measurement taken
+   * against the wall clock is not reproducible. This one participates in none: it is
+   * reporting, it is never written to an artifact, and nothing reads it to decide anything.
+   * A monotonic source is the correct one for a duration for the separate reason that it
+   * cannot go backwards when the system clock is adjusted mid-pass, which would render as
+   * a negative cost.
+   */
+  readonly elapsedMs: number;
 };
 
 /**
@@ -207,6 +235,9 @@ export async function runBenchmark(
   onAnswer?: BenchmarkAnswerCallback,
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
+  // Monotonic and taken once per pass, so `BenchmarkProgress.elapsedMs` is a duration
+  // rather than a wall-clock reading. See that field for why this one is not injected.
+  const startedAt = performance.now();
   const total = dataset.questions.length;
   // Resolved once rather than per question: the member either exists or it does
   // not, and a lookup per question would call `in` 500 times to learn the same
@@ -270,7 +301,17 @@ export async function runBenchmark(
     // threw on. See `BenchmarkProgress`. `run` is a parameter rather than
     // something read here, because a single pass over the dataset has no way to
     // know which repetition it is serving.
-    progress?.({ system: system.name, index, total, run, questionId: q.id });
+    //
+    // `elapsedMs` is taken here rather than inside the callback so every consumer sees
+    // the same number for the same event, and so a slow consumer cannot move the reading.
+    progress?.({
+      system: system.name,
+      index,
+      total,
+      run,
+      questionId: q.id,
+      elapsedMs: performance.now() - startedAt,
+    });
     if (isSessionAware(system) && q.capability === 'MR' && q.sessions && q.sessions.length > 0) {
       // Multi-session questions aggregate evidence across sessions.
       record(await system.answerSessions(q.question, q.sessions));

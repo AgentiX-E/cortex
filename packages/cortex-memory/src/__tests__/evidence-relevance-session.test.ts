@@ -157,6 +157,53 @@ describe('the relevance budget can be spent in sessions', () => {
     expect(carried).toEqual(['a0', 'a1', 'a2', 'a3']);
   });
 
+  it('orders two sessions the signal cannot separate by the earlier arrival', async () => {
+    // The tie rule, and it is the same one §13.17's turn unit uses: two candidates the
+    // signal cannot separate are ordered the way the context ordered them, so the outcome
+    // does not depend on the sort being stable. Asserted on the session unit because that
+    // is where a tie is decided -- the turn unit's own tie is covered by
+    // `evidence-relevance.test.ts`.
+    const memory = new CortexMemory({
+      now: NOW,
+      gate: OPEN_GATE,
+      llm: recordingLlm([]),
+      // Every turn scores the same, so every session does, and only arrival decides.
+      relevanceFor: () => 0.5,
+      maxPromptChars: 10_000,
+      relevanceUnits: 'session',
+    });
+
+    await memory.answerSessions('How many?', twoSessions());
+
+    expect(memory.lastRetrievedContext()!.map((text) => text.split('-')[0])).toEqual([
+      'a0',
+      'a1',
+      'a2',
+      'a3',
+    ]);
+  });
+
+  it('refuses a session it cannot fit whole, rather than carrying part of it', async () => {
+    // The other half of "whole sessions": when even the top session is larger than the
+    // room, the selection carries nothing. Carrying a prefix of it would be the turn unit
+    // wearing the session unit's name, and a reader comparing the two runs would be
+    // comparing an option that did not do what its configuration line said.
+    const memory = new CortexMemory({
+      now: NOW,
+      gate: OPEN_GATE,
+      llm: recordingLlm([]),
+      relevanceFor,
+      // Two turns' worth of room against sessions of four: the first session cannot fit,
+      // and skipping it for the second is exactly what the prefix rule forbids.
+      maxPromptChars: 4_500,
+      relevanceUnits: 'session',
+    });
+
+    await memory.answerSessions('How many?', twoSessions());
+
+    expect(memory.lastRetrievedContext()).toEqual([]);
+  });
+
   it('is inert on a route that has no session boundary to spend it in', async () => {
     // `buildPrompt` is handed no session boundary, so a selection in sessions cannot be
     // expressed on flat, temporal, knowledge-update, abstention or assistant. That is

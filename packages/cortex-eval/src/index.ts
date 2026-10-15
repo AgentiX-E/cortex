@@ -37,6 +37,7 @@ export {
   type BenchmarkProgress,
   type BenchmarkProgressCallback,
 } from './benchmark.js';
+export { describeFailure } from './bench-failure.js';
 export {
   createLlmJudge,
   buildJudgePrompt,

@@ -569,6 +569,43 @@ describe('relevance signal', () => {
     ).toThrow(/"retrieval"/);
   });
 
+  it('defaults the relevance unit to turn, and trims a blank as unset', () => {
+    // `turn` is the behaviour every prior artifact was produced under, so "unset" has to
+    // mean exactly that or the historical numbers stop describing the budget they were
+    // taken with -- the same compatibility rule the rendering and the contract are under.
+    // A blank is trimmed rather than rejected: an unfilled `workflow_dispatch` input is the
+    // empty string, not a typo, and §38 is where treating those two the same cost two runs.
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).relevanceUnits).toBe('turn');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_UNITS: '' })
+        .relevanceUnits,
+    ).toBe('turn');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_UNITS: '  ' })
+        .relevanceUnits,
+    ).toBe('turn');
+    // And a named one survives verbatim, so the two values are not the same value.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_UNITS: 'session' })
+        .relevanceUnits,
+    ).toBe('session');
+  });
+
+  it('rejects an unrecognised unit rather than falling back to turn', () => {
+    // The same argument `readRelevanceSignal` makes one field up, applied to the unit: a
+    // run dispatched to complete whole sessions that silently spent the room on turns would
+    // publish an unchanged result, and unchanged is exactly what "the unit does not matter"
+    // looks like. The rejection is what keeps the artifact's own configuration line honest.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_UNITS: 'sessions' }),
+    ).toThrow(/CORTEX_MEMORY_RELEVANCE_UNITS/);
+    // The message names the accepted set, so the operator does not have to read the source
+    // to fix the typo.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE_UNITS: 'nope' }),
+    ).toThrow(/"session"/);
+  });
+
   it('defaults the index width to the measured knee', () => {
     // `MEASURE-B2-RECALL-CURVE.md` measured `recall = 0.921` at `k = 50` with a
     // flattened curve, so the default only has to sit at or above the knee. Asserted
@@ -632,6 +669,7 @@ describe('relevance signal', () => {
         askRoutes: [],
         relevanceSignal: 'retrieval',
         relevanceTopK: 64,
+        relevanceUnits: 'session',
       },
     });
     const withoutSignal = formatAblationReport({
@@ -648,12 +686,21 @@ describe('relevance signal', () => {
         askRoutes: [],
         relevanceSignal: 'none',
         relevanceTopK: 64,
+        // Named even though the signal is `none`, so the assertion below can show that the
+        // unit is NOT rendered beside it: a unit is a property of the ranking the budget was
+        // spent by, and printing one beside `relevanceSignal=none` would describe an
+        // ordering that no run built.
+        relevanceUnits: 'session',
       },
     });
 
     expect(withSignal).toContain('relevanceSignal=retrieval');
     expect(withoutSignal).toContain('relevanceSignal=none');
     expect(withSignal).toContain('relevanceTopK=64');
+    // The unit rides with the signal and is absent without one, which is the same rule the
+    // width is under: both describe the ranking, and no ranking means neither is a fact.
+    expect(withSignal).toContain('relevanceUnits=session');
+    expect(withoutSignal).not.toContain('relevanceUnits=');
   });
 });
 

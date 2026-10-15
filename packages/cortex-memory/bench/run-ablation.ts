@@ -37,7 +37,11 @@
  * evidence for identical prompts, so a difference between them is a difference in
  * admission and not a difference in what the model was asked.
  */
-import { createLlmFromEnv, createEmbeddingWithProvenanceFromEnv } from '@agentix-e/cortex-eval';
+import {
+  createLlmFromEnv,
+  createEmbeddingWithProvenanceFromEnv,
+  describeFailure,
+} from '@agentix-e/cortex-eval';
 import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-llm';
 import {
   NaturalLanguageMemorySystem,
@@ -135,7 +139,11 @@ function onProgress(progress: BenchmarkProgress): void {
   if (!isFirst && !isLast && !atInterval) return;
   console.log(
     `[progress] ${progress.system} run=${progress.run} ` +
-      `q=${progress.index + 1}/${progress.total} id=${progress.questionId}`,
+      `q=${progress.index + 1}/${progress.total} id=${progress.questionId} ` +
+      // §13.28: the duration beside the counter, because the counter alone cannot tell a
+      // pass that died immediately from one that spent hours inside a single question.
+      // Run `38659495034` printed `q=1/500` after 1h49m and the two were indistinguishable.
+      `+${(progress.elapsedMs / 1000).toFixed(0)}s`,
   );
 }
 
@@ -471,18 +479,25 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  // Name the question the run died on, before the stack. This is the half of the
-  // failure record that run `37281155088` was missing: an HTTP 402 ended a
-  // ~52-minute arm and the only durable trace said nothing about how far it got,
-  // so the next attempt could not avoid repeating the spend up to an unknown
-  // point. The progress event fires BEFORE a question is answered, so this line
-  // names the question the throw happened inside -- not the one before it.
-  const where =
-    lastProgress === null
-      ? 'progress: no question was started before the failure'
-      : `progress: died on ${lastProgress.system} run=${lastProgress.run} ` +
-        `q=${lastProgress.index + 1}/${lastProgress.total} id=${lastProgress.questionId}`;
-  writeFileSync('benchmark-error.log', `${where}\n\n${message}\n`);
+  // Name the question the run died on, before the stack, and say how long it had been
+  // running and whether the retry ladder under it was exhausted.
+  //
+  // The first half is the one run `37281155088` was missing -- an HTTP 402 ended a
+  // ~52-minute arm and the only durable trace said nothing about how far it got. The
+  // progress event fires BEFORE a question is answered, so this line names the question
+  // the throw happened inside, not the one before it.
+  //
+  // The second half is §13.28, and it is the half run `38659495034` was missing: it spent
+  // 1h49m inside the reference pipeline's FIRST question, and `q=1/500` -- which is also
+  // what a pass that died immediately would print -- was the whole record. The summary is
+  // built by `describeFailure` rather than here so that it has tests; an entry point that
+  // assembles a log line by hand is a log line no test can execute, which is why the
+  // previous two incidents of this class changed nothing.
+  const summary = describeFailure({
+    progress: lastProgress ?? undefined,
+    error,
+  });
+  writeFileSync('benchmark-error.log', `${summary}\n${message}\n`);
   // Write what the run MEASURED, not only what it embedded.
   //
   // Run `37942775447` is why this exists: ~40 minutes of grading across six routes
@@ -521,7 +536,7 @@ main().catch((error: unknown) => {
   }
   console.error('=== transport retry accounting (process-wide) ===');
   console.error(JSON.stringify(retryStats()));
-  console.error(where);
+  console.error(summary);
   console.error(message);
   // Persist whatever was embedded before the failure, on the failure path too.
   // `bench/run.ts` does the same, and the reason is the same: a run that dies at

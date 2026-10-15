@@ -107,6 +107,7 @@ describe('runBenchmark progress reporting', () => {
       total: 4,
       run: 0,
       questionId: 'p-1',
+      elapsedMs: expect.any(Number),
     });
     expect(events[3]).toEqual({
       system: 'cortex-memory',
@@ -114,7 +115,45 @@ describe('runBenchmark progress reporting', () => {
       total: 4,
       run: 0,
       questionId: 'p-4',
+      elapsedMs: expect.any(Number),
     });
+  });
+
+  it('reports a non-negative, non-decreasing elapsed time on every event', async () => {
+    const events: BenchmarkProgress[] = [];
+    await runBenchmark(dataset, recordingSystem('cortex-memory', []), (p) => events.push(p));
+
+    expect(events).toHaveLength(dataset.questions.length);
+    expect(events[0]!.elapsedMs).toBeGreaterThanOrEqual(0);
+    for (let i = 1; i < events.length; i += 1) {
+      expect(events[i]!.elapsedMs).toBeGreaterThanOrEqual(events[i - 1]!.elapsedMs);
+    }
+  });
+
+  it('advances by what each question cost, so one slow question becomes a reading', async () => {
+    // The defect this closes, in one line: run `38659495034` spent **1h49m inside a single
+    // question** and its `benchmark-error.log` said only `q=1/500`. A question's cost is
+    // the gap between the events that bracket it, and without this field that gap is
+    // unobservable -- so the run that died could not say whether it had been hung or was
+    // merely slow, which are different repairs.
+    //
+    // A real delay rather than a fake clock: the property is that the number tracks the
+    // caller's own work, and a fake clock would only assert the arithmetic of the fake.
+    const slow: MemorySystem = {
+      name: 'slow',
+      answer: async (question: string): Promise<string> => {
+        if (question === 'Q2') await new Promise((resolve) => setTimeout(resolve, 60));
+        return 'x';
+      },
+    };
+    const events: BenchmarkProgress[] = [];
+    await runBenchmark(dataset, slow, (p) => events.push(p));
+
+    // Question 1 is the slow one, and the event at index 2 fires once it has returned.
+    const slowest = events[2]!.elapsedMs - events[1]!.elapsedMs;
+    const immediate = events[1]!.elapsedMs - events[0]!.elapsedMs;
+    expect(slowest).toBeGreaterThanOrEqual(50);
+    expect(immediate).toBeLessThan(slowest);
   });
 
   it('is inert when no callback is supplied', async () => {
