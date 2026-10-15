@@ -4320,5 +4320,41 @@ failure record that says how long it had been failing.
 | **P0** | Read `38725510400` against §13.27's four predictions | no (in flight) |
 | P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
 | P1 | Design the **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is **98.61%**, which predates this change and is the only dimension below 100% anywhere in the repository | no |
+| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is **98.64%** — the two branches its own suite could not reach are now covered, and the one that remains is v8's `finally` arm, a reporting convention rather than an uncovered path (see §13.29) | no |
 | P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+## 13.29 The one dimension below 100%, and why it is left there
+
+`cortex-node` was the only package in the repository whose branch coverage sat below 100%,
+at **98.61%**. Two of its uncovered branches were reachable and are now covered; the third is
+not, and the argument for leaving it is the interesting part.
+
+### 13.29.1 What was covered
+
+| Branch | Why it was uncovered | What the test asserts |
+| --- | --- | --- |
+| `query({ offset, limit })` | The SQLite adapter's suite reaches it; the Postgres one only ever queried without a page | **Parity**, not a branch count: the two adapters must agree on what a page is, or a system moved from one to the other reads different rows for the same query and the difference looks like a change in what was stored |
+| A transaction body that throws | Every transaction test in that suite succeeds | The **contract**: the error propagates and the connection returns to the pool — deliberately not the rollback's *effect*, because `pg-mem` does not implement ACID rollback (already recorded in that file), so asserting the effect would assert `pg-mem` rather than the adapter |
+
+### 13.29.2 What is left, and why
+
+`PgStorage.transaction`'s `finally` arm is reported by v8 with a count of **zero**, and that is
+a reporting convention rather than an uncovered path: `finally` runs on every exit.
+
+The repair that would move the number is to release the client on both paths instead of in
+`finally`:
+
+```ts
+try { … client.release(); return result; }
+catch (err) { await client.query('ROLLBACK'); client.release(); throw err; }
+```
+
+which is **wrong**: if the `ROLLBACK` itself throws, the release never runs and the connection
+leaks out of the pool. A percentage point is not worth an error-handling shape that fails
+precisely when the database is already unhappy, and the alternative — `/* v8 ignore */` — is
+not used in this repository by policy, because it silences a measurement rather than
+correcting one.
+
+So the number stays at 98.64%, above the 95% floor and explained rather than suppressed. What
+changed is that the two branches a test *could* reach now have one, and that the coverage
+digits are no longer the only statement about them.
