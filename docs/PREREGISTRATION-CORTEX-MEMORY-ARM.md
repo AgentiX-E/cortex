@@ -4367,6 +4367,74 @@ precisely when the database is already unhappy, and the alternative — `/* v8 i
 not used in this repository by policy, because it silences a measurement rather than
 correcting one.
 
+## 13.30 The §13.27 re-dispatch hung for five hours and left nothing, so the pass gets a ceiling
+
+Run `38725510400` never ended. It sat inside the **reference pipeline's first question** for
+**over five hours** and the workflow's job-level `timeout-minutes: 240` did not fire, so:
+
+| | run `38659495034` | run `38725510400` |
+| --- | --- | --- |
+| How it ended | `TimeoutError` after 1h49m | never |
+| Durable record | 362 bytes: progress + message | **none** |
+| What §13.28's repair contributes | the elapsed time and a `retry:` line | **nothing — `catch` is never reached** |
+
+That is the sequence worth recording: §13.28 made a **failure** say more, and the very next
+dispatch failed in a way that produces no failure at all. A hang does not reach `catch`, does
+not write `benchmark-error.log`, and does not upload an artifact.
+
+### 13.30.1 The repair, and why the ceiling lives in the pass
+
+`runBenchmark` takes a per-pass wall-clock ceiling and throws `BenchmarkBudgetExceeded` from
+inside the loop, between questions. Three properties, each a decision:
+
+1. **It is enforced between questions, not inside a request.** It cannot interrupt a call
+   already in flight, and it does not pretend to — `cortex-llm`'s per-attempt timeout is what
+   bounds one request. What it guarantees is that the **pass ends**, which is exactly what
+   failed here.
+2. **The error carries the question it stopped before.** So the entry point's existing
+   `catch` writes the same record a thrown failure does — now with the elapsed time §13.28
+   added, which is the pair of facts that were missing on the two previous failures.
+3. **It is a run option, not a field of `memoryArmConfig`.** The config is what the numbers
+   are conditioned on and it is serialized into the artifact; a ceiling changes only whether
+   the run finishes. Putting it in the config would make two artifacts that measured the same
+   thing differ in a field describing neither.
+
+The ceiling reaches the run as `CORTEX_MEMORY_BUDGET_MINUTES`, registered in §10.3 as
+`budgetMinutes: 90` — roughly three and a half times the longest pass any completed run has
+produced here (`3h32m` for eight passes). Absent means **no ceiling**, which is what every
+archived artifact was produced under, and a non-positive value is rejected rather than read as
+"unset": zero would abandon every pass before its first question and produce a failed run that
+reads as a healthy configuration.
+
+### 13.30.2 Verification
+
+- `pnpm check` exit 0, including the export census — which reported the exception class as
+  `1 NEW orphan(s)` the moment it was exported, and is why it is module-private: nothing
+  outside needs to identify it, since the entry point's `catch` is generic.
+- **Defect injection, caught**: removing the budget check fails `abandons the pass when its
+  wall-clock budget is spent, and stops where it ran out`. A second test holds the
+  compatibility rule — with no budget the pass runs to completion, which is every archived
+  run.
+- **§13.27 was re-dispatched once more** as run **`38753835652`**, still with no variable
+  moved: the ceiling is a run option, so the registered experiment is untouched and the four
+  predictions of §13.27 stand exactly as written.
+
+### 13.30.3 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read `38753835652` against §13.27's four predictions — and if it fails, the record will say where and for how long | no (in flight) |
+| P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
+| P1 | Design the **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is 98.64% (§13.29) | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+**Three failures, three different layers, each now closed.** `38659495034` failed and could not
+say how long it had been failing (§13.28). `38725510400` failed without failing — it hung, so
+there was nothing to say (§13.30). The pattern is the same one §13.16.6 recorded for the
+evidence unit: **the instrument was the defect**, and each repair was to make the thing that
+was silent say something.
+
 So the number stays at 98.64%, above the 95% floor and explained rather than suppressed. What
 changed is that the two branches a test *could* reach now have one, and that the coverage
 digits are no longer the only statement about them.
