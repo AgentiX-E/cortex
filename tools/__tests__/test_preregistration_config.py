@@ -66,6 +66,7 @@ CONCEPT_TO_INPUT = {
     "relevanceSignal": "cortex_memory_relevance",
     "relevanceTopK": "cortex_memory_relevance_top_k",
     "relevanceUnits": "cortex_memory_relevance_units",
+    "budgetMinutes": "cortex_memory_budget_minutes",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
     "temperature": "temperature",

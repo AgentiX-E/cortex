@@ -156,6 +156,47 @@ describe('runBenchmark progress reporting', () => {
     expect(immediate).toBeLessThan(slowest);
   });
 
+  it('abandons the pass when its wall-clock budget is spent, and stops where it ran out', async () => {
+    // The defect this closes, and it is worse than the one §13.28 repaired. Run
+    // `38725510400` hung for **over five hours** and its job never ended: the workflow's own
+    // `timeout-minutes: 240` did not fire, so there was no `benchmark-error.log` at all --
+    // not even the thin one the run before it produced. A `TimeoutError` at least reaches
+    // `catch`; a hang reaches nothing.
+    //
+    // A budget checked between questions cannot interrupt a request already in flight, and
+    // it does not pretend to. What it guarantees is that the pass **ends**, and that what
+    // ended it is reportable: the error carries the question it stopped at, and the entry
+    // point's `describeFailure` prints it with the elapsed time and any exhausted retry.
+    const slow: MemorySystem = {
+      name: 'slow',
+      answer: async (): Promise<string> => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return 'x';
+      },
+    };
+    const events: BenchmarkProgress[] = [];
+
+    await expect(
+      runBenchmark(dataset, slow, (p) => events.push(p), 0, undefined, undefined, undefined, 100),
+    ).rejects.toThrow(/budget/i);
+
+    // It stopped where the budget ran out rather than running all four questions, which is
+    // what makes the failure record able to say how far the pass got.
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.length).toBeLessThan(dataset.questions.length);
+  });
+
+  it('runs to completion when no budget is set, which is every prior run', async () => {
+    // The compatibility control. Every archived artifact was produced without a budget, so
+    // an absent one has to mean "no limit" rather than some default that would have changed
+    // what those runs measured.
+    const events: BenchmarkProgress[] = [];
+    const answers = await runBenchmark(dataset, recordingSystem('s', []), (p) => events.push(p));
+
+    expect(answers).toHaveLength(dataset.questions.length);
+    expect(events).toHaveLength(dataset.questions.length);
+  });
+
   it('is inert when no callback is supplied', async () => {
     // The backward-compatibility control: every existing caller passes two
     // arguments, so the absent-callback path is the one most of this suite

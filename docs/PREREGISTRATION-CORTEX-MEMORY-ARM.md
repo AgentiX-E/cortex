@@ -782,7 +782,19 @@ forwarded into a step's `env`. Three injections were run against it:
   temporal, knowledge-update, abstention or assistant. Sent explicitly rather than left blank
   for the reason `sourceTrust` and `relevanceTopK` are: `turn` is the default, so omitting it
   would happen to match — and it would arrive through the `''`-to-default path §38 identified
-  as the source of two separate defects.
+  as the source of two separate defects.* `budgetMinutes: 90` — **added by §13.30, and it is a run option rather than a measurement
+  configuration.** Each **pass** (one system over one repetition) is abandoned once it exceeds
+  this ceiling, and the pass itself enforces it between questions, so a hang ends with a
+  failure record naming the question it stopped at. §13.30 records why this exists: run
+  `38725510400` hung for over five hours inside the reference pipeline's first question and
+  never ended — the job-level `timeout-minutes: 240` did not fire — so its durable record was
+  **empty** rather than thin. Ninety minutes is roughly three and a half times the longest pass
+  any completed run has produced here (a full run is about `3h32m` for eight passes), because a
+  ceiling that fires on a slow pass destroys the measurement it was meant to protect. It is not
+  a member of `memoryArmConfig` for the reason that type's own docs give: the config is what the
+  numbers are conditioned on and it is serialized, while a ceiling changes only whether the run
+  finishes. Sent explicitly rather than left blank for the reason `sourceTrust` is.
+
 
   The value moved from sixteen to two hundred and fifty-six because §13.15 changed
   what the roster holds, and that is a change to what the bound protects rather than a

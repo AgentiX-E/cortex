@@ -1070,6 +1070,21 @@ export type CortexMemoryArmRunOptions = {
    */
   onProgress?: BenchmarkProgressCallback;
   /**
+   * Wall-clock ceiling for **each pass**, in milliseconds. Absent means no ceiling.
+   *
+   * A run option rather than a member of `memoryArmConfig`, and the distinction is the
+   * artifact's: the config is what the numbers are conditioned on and it is serialized,
+   * while a ceiling changes only whether the run finishes. Putting it there would make two
+   * artifacts that measured the same thing differ in a field describing neither.
+   *
+   * §13.30 records why it exists: run `38725510400` hung for over five hours inside the
+   * reference pipeline's first question and never ended, and the workflow's own
+   * `timeout-minutes: 240` did not fire -- so the durable record was **empty** rather than
+   * thin, which is worse than the run before it, whose `TimeoutError` at least reached
+   * `catch`.
+   */
+  budgetMs?: number | undefined;
+  /**
    * How much of each record's evidence to carry in the artifact.
    *
    * ## Why a bound exists at all
@@ -1194,6 +1209,7 @@ export async function runCortexMemoryArm(
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     memoryArmConfig: options.memoryArmConfig,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+    ...(options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs }),
   });
 
   // The census is read BEFORE the Markdown is rendered, and put into the report

@@ -131,6 +131,41 @@ const PROGRESS_EVERY = Number(process.env['PROGRESS_EVERY'] ?? 25);
  * file's header gives: `cortex-eval/src` emits nothing to a stream, and output
  * policy is not a measurement decision.
  */
+/**
+ * The per-pass wall-clock ceiling, from the environment, or `undefined` for none.
+ *
+ * ## Why an environment variable and not a constant
+ *
+ * A ceiling exists because a pass can hang, and how long "too long" is belongs to the
+ * dispatch: the same code runs a 500-question arm and a 60-question probe, and a constant
+ * would have to be wrong for one of them. It also has to be **visible in the workflow**, so
+ * a reader of a run can see the ceiling it ran under without reading this file -- which is
+ * the same argument `evidenceTurnsPerRecord` is an input for.
+ *
+ * ## Why absent means "no ceiling" rather than a default
+ *
+ * Every archived artifact was produced without one, so a default would silently change what
+ * those runs measured -- the compatibility rule `maxPromptChars`, the prompt contract and
+ * the relevance unit are all under.
+ *
+ * `0` and negatives are rejected rather than treated as "no ceiling": a ceiling of zero
+ * would abandon every pass before its first question, which is a run that produces a
+ * failure record and no measurement while reading as a healthy configuration.
+ */
+function readBudgetMs(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = env['CORTEX_MEMORY_BUDGET_MINUTES'];
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const minutes = Number(raw.trim());
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    throw new Error(
+      `CORTEX_MEMORY_BUDGET_MINUTES must be a positive number of minutes or unset, got ` +
+        `${JSON.stringify(raw)}. It is the per-pass ceiling: 0 abandons every pass before ` +
+        'its first question, which fails the run while looking like a healthy configuration.',
+    );
+  }
+  return minutes * 60_000;
+}
+
 function onProgress(progress: BenchmarkProgress): void {
   lastProgress = progress;
   const isFirst = progress.index === 0;
@@ -410,6 +445,10 @@ async function main(): Promise<void> {
       ? { evidenceBound: { maxTurnsPerRecord: armOptions.evidenceTurnsPerRecord } }
       : {}),
     onProgress,
+    // §13.30, and it is set by the workflow rather than defaulted here: an absent value
+    // means no ceiling, which is what every archived run was produced under, so a default
+    // would silently change what those runs measured. See `readBudgetMs`.
+    ...(readBudgetMs(process.env) === undefined ? {} : { budgetMs: readBudgetMs(process.env) }),
   });
 
   // The census is already inside `result.report` -- `runCortexMemoryArm` puts it

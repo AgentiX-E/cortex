@@ -123,6 +123,29 @@ export type AblationOptions = {
    * side. See `BenchmarkProgress`.
    */
   onProgress?: BenchmarkProgressCallback;
+  /**
+   * Wall-clock ceiling for **each pass**, in milliseconds. Absent means no ceiling.
+   *
+   * ## Why the unit is a pass and not the whole ablation
+   *
+   * Each pass is one system over one repetition, and that is where a hang happens: run
+   * `38725510400` spent over five hours in the reference pipeline's first question and
+   * never ended, and the workflow's own `timeout-minutes: 240` did not fire, so no
+   * `benchmark-error.log` was written at all. A per-ablation ceiling would have to be
+   * derived from a figure the caller knows (four repetitions of two sides) and would still
+   * let one hung pass consume it; a per-pass ceiling is the quantity that was actually
+   * observed to run away.
+   *
+   * ## Why the measured value is generous rather than tight
+   *
+   * A pass is roughly a twenty-sixth of a completed run on this arm (`3h32m` for eight
+   * passes), so a ceiling has to be far above that to be a hang detector rather than a
+   * slow-run detector. The dispatch sets it well above what any healthy pass has measured,
+   * and the reason is the same one §13.28 gives: a hang and a slow pass want opposite
+   * repairs, and a ceiling that fires on the slow one destroys the measurement it was meant
+   * to protect.
+   */
+  budgetMs?: number | undefined;
 };
 
 /** Run a baseline vs feature ablation and report statistical significance. */
@@ -166,6 +189,7 @@ export async function runAblation(
       false,
       false,
       (answer) => baselineAnswers.push(answer),
+      options.budgetMs,
     );
   } catch (error) {
     throw attachPartial(error, {
@@ -196,6 +220,7 @@ export async function runAblation(
       // can only be asked of the side that lost.
       true,
       (answer) => featureAnswers.push(answer),
+      options.budgetMs,
     );
   } catch (error) {
     throw attachPartial(error, {
@@ -290,8 +315,14 @@ export async function runAblation(
     const featureThisRun: Answer[] = [];
     let b: Metrics;
     try {
-      b = await evaluateWithScorer(dataset, baseline, scorer, options.onProgress, i, (answer) =>
-        baselineThisRun.push(answer),
+      b = await evaluateWithScorer(
+        dataset,
+        baseline,
+        scorer,
+        options.onProgress,
+        i,
+        (answer) => baselineThisRun.push(answer),
+        options.budgetMs,
       );
     } catch (error) {
       throw attachPartial(error, {
@@ -305,8 +336,14 @@ export async function runAblation(
     }
     let f: Metrics;
     try {
-      f = await evaluateWithScorer(dataset, feature, scorer, options.onProgress, i, (answer) =>
-        featureThisRun.push(answer),
+      f = await evaluateWithScorer(
+        dataset,
+        feature,
+        scorer,
+        options.onProgress,
+        i,
+        (answer) => featureThisRun.push(answer),
+        options.budgetMs,
       );
     } catch (error) {
       throw attachPartial(error, {

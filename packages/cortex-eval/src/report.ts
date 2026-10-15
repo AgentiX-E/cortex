@@ -536,6 +536,8 @@ export type AblationReportOptions = {
    * from the output.
    */
   onProgress?: BenchmarkProgressCallback;
+  /** Wall-clock ceiling for each pass. See `AblationOptions.budgetMs`. */
+  budgetMs?: number | undefined;
 };
 
 export async function runAblationReport(
@@ -551,6 +553,9 @@ export async function runAblationReport(
   }
   if (options.alpha !== undefined) {
     ablationOptions.alpha = options.alpha;
+  }
+  if (options.budgetMs !== undefined) {
+    ablationOptions.budgetMs = options.budgetMs;
   }
   if (options.abstentionAware !== undefined) {
     ablationOptions.abstentionAware = options.abstentionAware;

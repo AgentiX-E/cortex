@@ -279,6 +279,10 @@ INPUTS = {
     # identified as the source of two defects. A value this run depends on should not arrive
     # by accident, and an absent key cannot be shown to be wrong.
     "cortex_memory_relevance_units": "session",
+    # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
+    # pass any completed run has produced on this arm (a full run is about 3h32m for eight
+    # passes), so it is a hang detector rather than a slow-run detector.
+    "cortex_memory_budget_minutes": "90",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

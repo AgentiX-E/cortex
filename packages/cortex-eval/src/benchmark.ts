@@ -97,6 +97,43 @@ export type BenchmarkProgress = {
 export type BenchmarkProgressCallback = (progress: BenchmarkProgress) => void;
 
 /**
+ * A pass that ran out of its wall-clock budget, carrying where it stopped.
+ *
+ * ## Why this is not exported
+ *
+ * Nothing outside this module needs to identify it: the entry point's `catch` handles every
+ * failure the same way, and `describeFailure` prints the progress from the last emitted
+ * event. An export nothing calls is the `1 NEW orphan(s)` this repository's census gate
+ * reports, and it would have been reported the moment this class was added -- which is the
+ * gate working rather than obstructing.
+ *
+ * ## Why it is a class at all, rather than a bare `Error`
+ *
+ * So the message is constructed in one place from the progress record, and so the throw site
+ * reads as a decision rather than as string building. The `name` also reaches the stack the
+ * entry point logs, which is what tells a reader this was the ceiling and not a provider
+ * fault.
+ *
+ * ## Why it carries the progress rather than only a count
+ *
+ * It is thrown from inside the loop, where the record exists, and the entry point's `catch`
+ * has the last emitted event as well -- but the error being self-sufficient means a future
+ * caller that wraps this pass in its own loop does not have to reconstruct it.
+ */
+class BenchmarkBudgetExceeded extends Error {
+  constructor(
+    readonly progress: BenchmarkProgress,
+    readonly budgetMs: number,
+  ) {
+    super(
+      `the pass spent its ${budgetMs}ms budget and was abandoned before question ` +
+        `${progress.index + 1}/${progress.total} (${progress.system}, run ${progress.run})`,
+    );
+    this.name = 'BenchmarkBudgetExceeded';
+  }
+}
+
+/**
  * Optional per-question sink for the system's raw model output.
  *
  * ## Why this exists, and why it is a hook rather than a return field
@@ -233,6 +270,26 @@ export async function runBenchmark(
   onRawOutput?: BenchmarkRawOutputCallback,
   onRetrieved?: BenchmarkRetrievedCallback,
   onAnswer?: BenchmarkAnswerCallback,
+  /**
+   * Wall-clock ceiling for this pass, in milliseconds. Absent means no ceiling, which is
+   * what every archived artifact was produced under.
+   *
+   * ## Why the last parameter and not a field on `system`
+   *
+   * It is a property of the **run**, not of the system under test: the same system measured
+   * with a budget is measuring the same thing, and putting it on `system` would make two
+   * configurations of one system look like two systems to every reader of the artifact.
+   *
+   * ## What it is for
+   *
+   * A pass that hangs must end and must say where it ended. The workflow's own
+   * `timeout-minutes` did not fire on run `38725510400`, so a five-hour hang left no record
+   * at all; a ceiling enforced here throws `BenchmarkBudgetExceeded` from inside the loop,
+   * which the entry point's existing `catch` turns into the same `benchmark-error.log` a
+   * thrown failure produces. Enforced between questions: it cannot interrupt a call in
+   * flight, and the per-attempt timeout in `cortex-llm` is what bounds that one.
+   */
+  budgetMs?: number,
 ): Promise<Answer[]> {
   const answers: Answer[] = [];
   // Monotonic and taken once per pass, so `BenchmarkProgress.elapsedMs` is a duration
@@ -297,6 +354,32 @@ export async function runBenchmark(
   };
   for (let index = 0; index < dataset.questions.length; index++) {
     const q = dataset.questions[index]!;
+    // The budget is checked HERE, between questions, and that placement is the whole design.
+    //
+    // It cannot interrupt a request already in flight, and it does not pretend to: a hang
+    // inside one call is the transport's problem and the retry layer's per-attempt timeout
+    // is what bounds it. What this guarantees is that the **pass ends**. Run `38725510400`
+    // hung for over five hours and never ended -- the workflow's `timeout-minutes: 240` did
+    // not fire, so no `benchmark-error.log` was written at all, which is strictly worse than
+    // the thin record the run before it left: a `TimeoutError` reaches `catch`, a hang
+    // reaches nothing.
+    //
+    // Checked before the progress event so the event count is the number of questions this
+    // pass STARTED, and the error carries the question it stopped before.
+    const elapsed = performance.now() - startedAt;
+    if (budgetMs !== undefined && elapsed > budgetMs) {
+      throw new BenchmarkBudgetExceeded(
+        {
+          system: system.name,
+          index,
+          total,
+          run,
+          questionId: q.id,
+          elapsedMs: elapsed,
+        },
+        budgetMs,
+      );
+    }
     // Before the answer call, so a throw inside it cannot skip the question it
     // threw on. See `BenchmarkProgress`. `run` is a parameter rather than
     // something read here, because a single pass over the dataset has no way to
@@ -388,6 +471,8 @@ export async function evaluateWithScorer(
   progress?: BenchmarkProgressCallback,
   run = 0,
   onAnswer?: BenchmarkAnswerCallback,
+  /** Wall-clock ceiling for this pass. See {@link runBenchmark}'s last parameter. */
+  budgetMs?: number,
 ): Promise<Metrics> {
   const answers = await runBenchmark(
     dataset,
@@ -397,6 +482,7 @@ export async function evaluateWithScorer(
     undefined,
     undefined,
     onAnswer,
+    budgetMs,
   );
   return computeMetricsAsync(dataset, answers, scorer);
 }
@@ -429,6 +515,8 @@ export async function evaluateWithScorerDetailed(
   captureRawOutput = false,
   captureRetrievedContext = false,
   onAnswer?: BenchmarkAnswerCallback,
+  /** Wall-clock ceiling for this pass. See {@link runBenchmark}'s last parameter. */
+  budgetMs?: number,
 ): Promise<ScoredEvaluation> {
   const rawOutputs: (string | null)[] = [];
   const retrievedContexts: (RetrievedTurns | null)[] = [];
@@ -448,6 +536,7 @@ export async function evaluateWithScorerDetailed(
         }
       : undefined,
     onAnswer,
+    budgetMs,
   );
   return scoreEvaluation(
     dataset,

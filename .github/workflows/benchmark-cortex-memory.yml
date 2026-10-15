@@ -123,6 +123,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_budget_minutes:
+        description: 'Per-pass wall-clock ceiling in minutes (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.30): empty = no ceiling, which is what every archived run was produced under; a positive number = abandon any single pass that exceeds it. Section 13.30 is why this exists: run 38725510400 hung for OVER FIVE HOURS inside the reference pipeline first question and never ended -- the job-level timeout-minutes: 240 did not fire -- so its durable record was EMPTY rather than thin, which is worse than the run before it, whose TimeoutError at least reached catch and produced a benchmark-error.log. The ceiling is enforced between questions by the pass itself, so a hang ends with a record naming the question it stopped at; it cannot interrupt a request already in flight, and cortex-llm per-attempt timeout bounds that one. Set well above what any healthy pass has measured (a completed run is about 3h32m for eight passes): a ceiling that fires on a slow pass destroys the measurement it was meant to protect. A value of 0 or below is REJECTED rather than treated as no ceiling, because it would abandon every pass before its first question -- a failed run reading as a healthy configuration'
+        required: false
+        default: ''
+        type: string
       cortex_memory_prompt_contract:
         description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
         required: false
@@ -286,6 +291,9 @@ jobs:
           # the arm defaults a blank to `turn`, and a second copy of that default here
           # is how the two would drift.
           CORTEX_MEMORY_RELEVANCE_UNITS: ${{ github.event.inputs.cortex_memory_relevance_units }}
+          # The per-pass ceiling, passed the same way. Blank means no ceiling, and the
+          # arm rejects a non-positive one rather than reading it as "unset".
+          CORTEX_MEMORY_BUDGET_MINUTES: ${{ github.event.inputs.cortex_memory_budget_minutes }}
           # Section 13.12's bound, passed the same way. It is what keeps the run from
           # dying at the JSON write: run 38003036421 graded all four runs of all five
           # hundred questions and then lost the whole measurement to
