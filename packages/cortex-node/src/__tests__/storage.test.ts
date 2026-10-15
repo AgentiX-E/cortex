@@ -98,6 +98,59 @@ describe('PgStorage (pg-mem)', () => {
     await s.close();
   });
 
+  it('paginates with an explicit limit and offset', async () => {
+    // The `limit` half of the SQL-side pagination, which the SQLite adapter's own test
+    // already covers -- so this is a parity assertion rather than a branch count. The two
+    // adapters have to agree on what `{ offset, limit }` means, or a system moved from one
+    // to the other would read a different page for the same query, and the difference would
+    // look like a change in what was stored.
+    //
+    // Asserted on lengths rather than on contents because the query makes no ordering
+    // promise: a test that compared values would be asserting the order the database
+    // happened to return, which is not the property under test.
+    const db = newDb();
+    const pool = new (db.adapters.createPg().Pool)() as never;
+    await ensurePgSchema(pool as never);
+    const s = new PgStorage({ pool: pool as never });
+    for (const i of [0, 1, 2]) await s.put('mem', `k${i}`, { v: i });
+
+    expect(await s.query('mem', {})).toHaveLength(3);
+    expect(await s.query('mem', { limit: 2 })).toHaveLength(2);
+    expect(await s.query('mem', { offset: 1, limit: 1 })).toHaveLength(1);
+    // A limit past the end is a short page rather than an error, and an offset past the end
+    // is an empty one -- what `slice` does, and therefore what the adapter must do.
+    expect(await s.query('mem', { offset: 2, limit: 10 })).toHaveLength(1);
+    expect(await s.query('mem', { offset: 3, limit: 10 })).toEqual([]);
+    await s.close();
+  });
+
+  it('re-raises a failure from inside a transaction and returns the client', async () => {
+    // The `catch` and `finally` arms, which no other test in this describe can reach: every
+    // one of them succeeds. What is asserted is the **contract** -- a failing body
+    // propagates, and the connection goes back to the pool -- and deliberately not the
+    // rollback's effect, because `pg-mem` does not implement ACID rollback (the test below
+    // records that). Asserting the effect here would assert `pg-mem` rather than this
+    // adapter, and it would pass for the wrong reason on a real server.
+    const db = newDb();
+    const pool = new (db.adapters.createPg().Pool)() as never;
+    await ensurePgSchema(pool as never);
+    const s = new PgStorage({ pool: pool as never });
+    await s.put('mem', 'before', { v: 1 });
+
+    await expect(
+      s.transaction(async (tx) => {
+        await tx.put('mem', 'inside', { v: 2 });
+        throw new Error('body failed');
+      }),
+    ).rejects.toThrow('body failed');
+
+    // The instance is still usable, which is what `client.release()` in the `finally`
+    // exists for: a released connection is what keeps a failed transaction from taking the
+    // pool down with it.
+    expect(await s.get('mem', 'before')).toEqual({ v: 1 });
+    await s.close();
+  });
+
   it('runs transactions atomically', async () => {
     const db = newDb();
     const pool = new (db.adapters.createPg().Pool)() as never;
