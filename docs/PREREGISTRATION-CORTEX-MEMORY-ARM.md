@@ -4238,3 +4238,87 @@ Verification:
   evidence depends on the instruction block's length: the properties hold across a band of
   four to six turns' worth of room, and stating them as membership keeps them true across
   that band instead of pinning an instruction block's character count.
+
+## 13.28 The §13.27 dispatch failed, and the failure showed what a failure record was missing
+
+Run `38659495034` ran for **1h49m** and died in the **reference pipeline's first question**.
+Its entire durable record was:
+
+```
+progress: died on reference-pipeline run=0 q=1/500 id=e47becba
+
+TimeoutError: The operation was aborted due to timeout
+```
+
+The artifact it uploaded is 362 bytes of that text. No report, no partial vector, no count of
+how far the pass got.
+
+### 13.28.1 What the record could not say, and why each one matters
+
+| Missing fact | What a reader could conclude | What the two possibilities want |
+| --- | --- | --- |
+| How long the pass had been running | `q=1/500` is what a pass that died **immediately** would also print | a hang is retried or circuited; a slow pass is given a longer budget or a smaller sample |
+| Whether the retry ladder was exhausted | not printed anywhere on the failure path | an endpoint that was **down** and one that was **throttling** are different providers' problems |
+
+The first had to be reconstructed from the workflow's `created_at`/`completed_at`, which is a
+fact about the runner rather than about the failure. The second existed -- the entry point
+prints `retryStats()` and the `RetryExhaustion` to **stderr** -- but stderr is collected into
+the job log, which is **not** the durable artifact, and the artifact is what a later reader
+has. `37281155088` (52 minutes, a stack trace and nothing else) and `37942775447` are the same
+class; this is the third run it has cost.
+
+### 13.28.2 The repair, and why it is a module rather than four more lines
+
+Two additions, both in `cortex-eval`:
+
+1. **`BenchmarkProgress.elapsedMs`** -- measured monotonically once per pass, so a question's
+   cost is exactly `events[i + 1].elapsedMs - events[i].elapsedMs`. This is why the field is
+   on the **pass** and not computed per question: the callback fires before its question is
+   answered, so the gap between consecutive events **is** the cost, with no extra state.
+2. **`describeFailure({ progress, error })`** -- the block the entry point writes, with the
+   duration in milliseconds and seconds and, when the error carries one, a `retry:` line
+   summarising `attempts` / `retried` / `rateLimited` / `elapsedMs` / `url`.
+
+The second is a module with tests rather than four more lines in `bench/run-ablation.ts`, and
+that is the whole argument: the two earlier repairs of this class changed the entry point, and
+an entry point is a layer no test reaches -- which is why they changed nothing. The summary is
+pure, takes its inputs explicitly, and is asserted against a **real** progress event.
+
+Two choices worth stating:
+
+- **The exhaustion is read structurally**, by field name, off an `unknown`. `RetryExhaustion`
+  is `cortex-llm`'s type and `cortex-eval` sits below that package; importing it would make the
+  harness depend on one adapter, which is the arrangement every provider-agnostic layer here
+  exists to prevent. `attempts` is required for the line to print and the rest are optional,
+  because an annotation without it is not a summary of a retry ladder.
+- **The `cause` chain is walked, with a bound**, because wrapping is normal and a top-level
+  read would report the missing fact for exactly the deepest failures. The bound is 8, and a
+  test holds it with a self-referential chain: the failure path is the one path that must
+  always finish.
+
+### 13.28.3 Verification
+
+- `pnpm check` exit 0. cortex-eval **1,866** tests and cortex-memory **324**, all four coverage
+  dimensions **100%** in both; `tools` 314 + 33 subtests; census clean.
+- **Defect injection, two injections, both caught.** Pinning `elapsedMs` to `0` fails
+  `advances by what each question cost`; dropping the duration from `describeFailure` fails
+  `reports how long the pass had been running`.
+- Both new files reached 100% on all four dimensions only after the tests were extended. The
+  first pass left `bench-failure.ts` at 96.36/82.14 and `bench-memory-arm.ts` at 97.2, and the
+  uncovered branches were the ones the fixes exist for: the omit-empty-fields path, the
+  bounded-cause path, the unit-rejection path and the unit's own config-line rendering.
+
+### 13.28.4 Status
+
+**§13.27 was re-dispatched unchanged** as run **`38725510400`** -- same configuration, same
+registration. The failure was the provider's and not the configuration's, so the registered
+experiment stands and no variable moves. What the new run has that the last one did not is a
+failure record that says how long it had been failing.
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read `38725510400` against §13.27's four predictions | no (in flight) |
+| P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
+| P1 | Design the **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is **98.61%**, which predates this change and is the only dimension below 100% anywhere in the repository | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
