@@ -4207,3 +4207,34 @@ grouping of the same cases, not access to more information.
 **Stopping rule.** One dispatch, no peeking, no redraw. The point estimate must exceed the
 BASELINE side of the same dispatch, McNemar p < 0.05 two-sided, full N = 500, 4 runs,
 temperature 0 — the same instrument as §13.21 and §13.26, so the three are comparable.
+
+### 13.27.1 Status: implemented, registered, dispatched
+
+Commit `abbf694` (local) / `987d3376` (remote). Run **`38659495034`**, dispatched at that
+commit with `cortex_memory_relevance_units: session` and every other input held at
+§13.26's values.
+
+What landed, and where the decisions are stated once:
+
+| Piece | Where | Why it is there |
+| --- | --- | --- |
+| `RelevanceUnits`, `PromptOptions.relevanceUnits` | `cortex-memory/src/prompt.ts` | The unit is a second field rather than a second signal value, so a run that changed only the unit is not reportable as one that changed the scoring |
+| `EvidencePlan.sessionOf` | same | The selection needs the boundary; `render` does not, because it closes over the sessions and decides membership by identity |
+| `selectBySession` | same | Largest session **prefix**, no skipping: skipping would make the carried set depend on the sizes of sessions the signal did not choose |
+| `CortexMemoryOptions.relevanceUnits` | `cortex-memory/src/types.ts` | Reaches the multi-session route alone, which is what makes this dispatch single-variable |
+| `CORTEX_MEMORY_RELEVANCE_UNITS`, `relevanceUnits` | `cortex-eval/src/bench-memory-arm.ts` | Rejected rather than defaulted on an unknown value, so a run that did not apply the treatment cannot publish as one that did |
+| The artifact's config line | `cortex-eval/src/report.ts` | The field is what §13.27's artifact is compared against §13.26's by |
+| §10.3's registration of the value | this document, §10.3 | `test_preregistration_config.py` compares the dispatch against it, which is the guard that caught the omission when the key was first added |
+
+Verification:
+
+- `pnpm check` exit 0. cortex-eval **1,851**, cortex-memory **322**, all four coverage
+  dimensions **100%** in both; `tools` 314 passed + 33 subtests; census clean.
+- **Defect injection, two injections, both caught.** Removing the session branch from
+  `fitToBudget` fails the two tests written for the unit (`admits the top session whole`
+  and `keeps the rendered order chronological`). A plan whose `sessionOf` is empty -- so
+  every turn looks like one session -- fails the same two.
+- The tests assert **membership rather than exact lists**, because the room left for
+  evidence depends on the instruction block's length: the properties hold across a band of
+  four to six turns' worth of room, and stating them as membership keeps them true across
+  that band instead of pinning an instruction block's character count.
