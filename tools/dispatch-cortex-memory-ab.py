@@ -252,7 +252,8 @@ INPUTS = {
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
-    "cortex_memory_ask": "computed",
+    # §13.34: `computed` plus the two-step enumeration contract on multi-session alone.
+    "cortex_memory_ask": "enumerated",
     "cortex_memory_evidence_turns": "256",
     "cortex_memory_relevance": "retrieval",
     "cortex_memory_relevance_top_k": "64",
@@ -282,7 +283,9 @@ INPUTS = {
     # session ranking and stopped at the first session that did not fit, which left half the
     # room unread; `session-fill` skips it and keeps scanning. Sent explicitly rather than
     # left to the default so the run cannot arrive through the `''`-to-default path.
-    "cortex_memory_relevance_units": "session-fill",
+    # §13.34 holds the selection unit at the shipped default: the variable is the ask, so
+    # §13.26 is the comparison and the room, the signal and the unit all stay as they were.
+    "cortex_memory_relevance_units": "turn",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
     # pass any completed run has produced on this arm (a full run is about 3h32m for eight
     # passes), so it is a hang detector rather than a slow-run detector.

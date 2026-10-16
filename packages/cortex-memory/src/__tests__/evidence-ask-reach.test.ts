@@ -407,3 +407,119 @@ describe('the computed ask composes with each route instead of replacing it', ()
     expect(ASK_ROUTES.route).toEqual([]);
   });
 });
+
+/**
+ * The ask that makes the multi-session route enumerate before it computes.
+ *
+ * ## Why this exists, and what run `38828538851` measured
+ *
+ * §13.32 closed the *selection* axis: three allocations, two of which spend the room,
+ * agree within three questions of five hundred, and the room is nearly sufficient -- a
+ * perfect selector at the current window would reach 0.917 coverage. So MR's loss was
+ * not in what the window holds. The failures say where it is:
+ *
+ * | MR, run `38828538851` | count |
+ * | --- | --- |
+ * | correct | 52 |
+ * | wrong, of which **numeric mismatch** | 47, **41** |
+ * | abstained while carrying 14–20 gold turns | 22 |
+ *
+ * The model has the evidence and either miscounts it or declines with it in hand. The
+ * reference pipeline scores 86.78% on MR with a *smaller* window, and its prompt is the
+ * difference: a two-step contract (enumerate every matching item with its date, then
+ * compute per the question's kind) whose abstention clause requires the list to exist
+ * first. `computed`'s one sentence asks the model to "gather every relevant piece first,
+ * then compute" -- the two-step contract is what says *how*, and it is what the failing
+ * rows above lack.
+ *
+ * ## Why it reaches the multi-session route alone
+ *
+ * `buildSessionPrompt` and the flat path both build with the `extractive` contract, so a
+ * branch keyed on the contract cannot separate them, and this ask is about MR's failures
+ * only. The scope is therefore passed by the builder that knows it: the session builder
+ * says `multi-session`, `buildPrompt` says nothing. Everything else is `computed` to the
+ * byte -- asserted below -- which is what keeps §13.22's TR gain and §13.26's headline
+ * out of this dispatch's variable.
+ */
+describe('the enumerated ask adds a two-step contract on the multi-session route alone', () => {
+  const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
+  const STEP_ONE = 'Step 1';
+  const STEP_TWO = 'Step 2';
+
+  it('carries both steps, beside the sentence that licenses combining', async () => {
+    const seen: string[] = [];
+    await build(seen, 'enumerated').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain(STEP_ONE);
+    expect(block).toContain(STEP_TWO);
+    expect(block).toContain(MERGING_SENTENCE);
+    // The decline rule survives and is now conditional on the list, which is the half
+    // of the reference contract the failing MR rows are missing: 22 of them abstained
+    // with 14 to 20 gold turns already in the window.
+    expect(block).toContain('INSUFFICIENT_EVIDENCE');
+    expect(block).toContain(`without first writing the ${STEP_ONE} list`);
+  });
+
+  it('puts both steps directly above the line that licenses declining', async () => {
+    // Placement is the argument, as it is for the merging sentence: the two-step
+    // contract is an exception to the block's closing rule, and an exception separated
+    // from its rule by route-specific lines is a different instruction.
+    const seen: string[] = [];
+    await build(seen, 'enumerated').answerSessions('How many kits do I own?', [[TEXT]]);
+    const lines = instructionsOf(seen[0]!).split('\n');
+
+    expect(lines[lines.length - 1]).toContain('INSUFFICIENT_EVIDENCE');
+    expect(lines.slice(-8, -1).join('\n')).toContain(STEP_TWO);
+  });
+
+  it('is byte-identical to computed on the flat path', async () => {
+    // The flat path serves every question with no route of its own, IE among them, and
+    // IE is at 88.67%. A two-step contract there would be answering a question nobody
+    // asked, on a capability that is not the loss.
+    const enumerated: string[] = [];
+    const computed: string[] = [];
+    await build(enumerated, 'enumerated').answer('How many kits do I own?', [TEXT]);
+    await build(computed, 'computed').answer('How many kits do I own?', [TEXT]);
+
+    expect(instructionsOf(enumerated[0]!)).toBe(instructionsOf(computed[0]!));
+  });
+
+  it('is byte-identical to computed on the temporal route, which is where TR lives', async () => {
+    // The TR gain §13.26 measured came from the temporal route's composed block. This
+    // ask must not touch it, or the dispatch would move two capabilities at once and
+    // neither number would be attributable.
+    const enumerated: string[] = [];
+    const computed: string[] = [];
+    await build(enumerated, 'enumerated').answerTemporal('How long ago?', [TEXT], '2023/06/01');
+    await build(computed, 'computed').answerTemporal('How long ago?', [TEXT], '2023/06/01');
+
+    expect(instructionsOf(enumerated[0]!)).toBe(instructionsOf(computed[0]!));
+  });
+
+  const UNTOUCHED: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
+    ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+    ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
+    ['abstention', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
+  ];
+
+  for (const [name, drive] of UNTOUCHED) {
+    it(`leaves the ${name} route byte-identical`, async () => {
+      const enumerated: string[] = [];
+      const shipped: string[] = [];
+      await drive(build(enumerated, 'enumerated'));
+      await drive(build(shipped, 'route'));
+
+      expect(instructionsOf(enumerated[0]!)).toBe(instructionsOf(shipped[0]!));
+    });
+  }
+
+  it('records the routes it changes, and they are computed reach', () => {
+    // The reach table names the routes whose instruction differs from the shipped ask.
+    // That the set equals `computed`'s is the point rather than a coincidence: this ask
+    // is `computed` plus one route, and the artifact distinguishes them by the value of
+    // `ask` beside an unchanged `askRoutes`.
+    expect(ASK_ROUTES.enumerated).toEqual(['multi-session', 'flat', 'temporal']);
+    expect(ASK_ROUTES.computed).toEqual(['multi-session', 'flat', 'temporal']);
+  });
+});

@@ -94,6 +94,22 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // INSUFFICIENT_EVIDENCE merely because..." would invert the route whose answers are
   // measured against declining.
   computed: ['multi-session', 'flat', 'temporal'],
+  // §13.34. `computed` plus a **two-step contract on the multi-session route alone**, so
+  // the reach set is `computed`'s by construction and the single variable against §13.26's
+  // run is what the multi-session route reads.
+  //
+  // The reach set is the same three routes and the artifact cannot distinguish the two
+  // asks by it; what separates them is the `ask` value beside an unchanged `askRoutes`,
+  // and `evidence-ask-reach.test.ts` asserts both halves -- the set, and that flat and
+  // temporal are byte-identical to `computed` while multi-session is not. That is
+  // deliberate rather than convenient: TR's gain came from the temporal route and IE's
+  // 88.67% from the flat path, and a dispatch that moved either would leave MR's number
+  // unattributable.
+  //
+  // Why the multi-session route needs its own scope rather than a contract branch:
+  // `buildSessionPrompt` and the flat path **both** build with `extractive`, so no test of
+  // the contract can separate them. The builder that knows which route it is passes it.
+  enumerated: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -160,7 +176,7 @@ type EvidenceRendering = 'numbered' | 'sourced';
  *
  * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
  */
-export type EvidenceAsk = 'route' | 'extractive' | 'aggregate' | 'computed';
+export type EvidenceAsk = 'route' | 'extractive' | 'aggregate' | 'computed' | 'enumerated';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -448,6 +464,58 @@ function withMergingSentence(block: string): string {
   return lines.join('\n');
 }
 
+/**
+ * Insert text immediately before a block's final line.
+ *
+ * `withMergingSentence` generalised, because the enumeration contract is several lines
+ * and the placement argument is the same one: an exception to a block's closing rule has
+ * to be adjacent to it, or the closing rule wins.
+ */
+function withInsertedBeforeClose(block: string, text: string): string {
+  const lines = block.split('\n');
+  lines.splice(lines.length - 1, 0, ...text.split('\n'));
+  return lines.join('\n');
+}
+
+/**
+ * The two-step contract the `enumerated` ask adds to the multi-session route.
+ *
+ * ## Why this shape, and what it is copied from
+ *
+ * Run `38828538851` measured MR's failures precisely enough to stop guessing at them:
+ * 47 wrong answers of which **41 are numeric mismatches**, and 22 abstentions taken with
+ * 14 to 20 gold turns already in the window. The reader has the evidence and either
+ * miscounts it or declines with it in hand. The reference pipeline scores 86.78% on MR
+ * over a *smaller* window, and the difference is its prompt: enumerate matching items
+ * first, compute second, and make the abstention token conditional on the list existing.
+ *
+ * The wording below is this project's own and not a copy of that prompt, which is tuned
+ * to its own dataset's arithmetic (durations, money, exchanges). What is copied is the
+ * **structure**, because that is what the failing rows lack: `computed`'s single sentence
+ * tells the model to gather pieces and compute, and never says how, or what a legitimate
+ * answer to a counting question looks like.
+ *
+ * ## The abstention clause is the load-bearing half
+ *
+ * The block's closing line licenses declining, and the 22 abstentions are the reader
+ * taking that licence. Making the licence conditional on a list -- and saying that a bare
+ * token with no list is not a valid response -- is what turns "I could not find it" into
+ * "I looked and here is what I found". It is the same move §13.21's merging sentence
+ * makes in one line; this one names the artefact it requires.
+ */
+const ENUMERATION_CONTRACT = [
+  'Work in two steps, and write both of them out.',
+  `Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.`,
+  'Step 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.',
+  `Do not reply ${ABSTAIN_TOKEN} without first writing the Step 1 list: a bare ${ABSTAIN_TOKEN} with no list is not a valid response.`,
+].join('\n');
+
+/** The multi-session block under `enumerated`: computed's, plus the two-step contract. */
+const ENUMERATED_MULTI_SESSION_INSTRUCTION = withInsertedBeforeClose(
+  withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+  ENUMERATION_CONTRACT,
+);
+
 /** The `aggregate` ask: the extractive block, with the sentence in place of nothing. */
 const AGGREGATE_ASK_INSTRUCTION = withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined));
 
@@ -475,6 +543,15 @@ function instructionsFor(
   contract: PromptContract,
   date: string | undefined,
   ask: EvidenceAsk | undefined,
+  /**
+   * Which route is asking, for the one ask that reaches a route no contract can name.
+   *
+   * `multi-session` and the flat path both build with `extractive`, so `enumerated`
+   * cannot address MR through the contract. The session builder is the only caller that
+   * knows it is the multi-session route, so it says so here and every other caller omits
+   * this argument -- the default is "an unnamed route", which is what `buildPrompt` is.
+   */
+  scope?: 'multi-session',
 ): string {
   const own = CONTRACT_INSTRUCTIONS[contract](date);
   if (ask === 'extractive') {
@@ -482,6 +559,14 @@ function instructionsFor(
   }
   if (ask === 'aggregate' && contract === 'extractive') {
     return AGGREGATE_ASK_INSTRUCTION;
+  }
+  if (ask === 'enumerated') {
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return ENUMERATED_MULTI_SESSION_INSTRUCTION;
+    }
+    // Everything else is `computed` to the byte, which is the whole reason this ask can
+    // be dispatched against §13.26's run as a single variable.
+    return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
   if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
     return withMergingSentence(own);
@@ -1234,7 +1319,7 @@ export function buildSessionPrompt(
 
   const body = render(flat);
 
-  const instruction = instructionsFor('extractive', undefined, options.ask);
+  const instruction = instructionsFor('extractive', undefined, options.ask, 'multi-session');
 
   // `SESSION_NOTE` is passed to the allocator rather than left in the fit path's
   // section list. Leaving it there was a defect: the note was assembled only when

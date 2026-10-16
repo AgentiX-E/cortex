@@ -669,7 +669,20 @@ forwarded into a step's `env`. Three injections were run against it:
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-* `ask: computed` — **set by §13.22, after §13.21 sent `aggregate`.**
+* `ask: enumerated` — **set by §13.34, after §13.26 sent `computed`.** It is `computed` plus
+  a **two-step contract on the multi-session route alone**: enumerate every matching item with
+  its date, compute the answer from that list per the question's kind, and make the abstain
+  token conditional on the list existing. Run `38828538851` is why — MR's 47 wrong answers
+  include **41 numeric mismatches**, and 22 questions abstained with 14–20 gold turns already
+  in the window, so the reader holds the evidence and either miscounts it or declines with it
+  in hand, while the reference pipeline scores 86.78% on MR over a *smaller* window using a
+  two-step contract of its own. On flat and temporal this ask is **byte-identical to
+  `computed`** (asserted in `evidence-ask-reach.test.ts`), so §13.26's TR gain and IE's 88.67%
+  on the flat path are held and the only route whose reading moves is multi-session. The
+  reach set is unchanged from `computed` — the artifact separates the two asks by this value
+  beside an unchanged `askRoutes` — and the multi-session route needs its own scope argument
+  because `buildSessionPrompt` and the flat path both build with the `extractive` contract.  Sent explicitly rather than left blank for the reason `sourceTrust` is. §13.3 records the
+  four values this entry replaced, in order, and why each was retired.
   §13.8 falsified the ask
   hypothesis at the time -- with
   the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
@@ -768,8 +781,13 @@ forwarded into a step's `env`. Three injections were run against it:
   low-scoring turns rather than admit more high-scoring ones. Sent explicitly rather than
   left blank for the reason `sourceTrust` is: a value that never reaches the environment is
   a value this guard cannot compare against the registration.
-* `relevanceUnits: session-fill` — **added by §13.27, re-registered by §13.31, and it is the
-  selection unit.** Registered separately from `relevanceSignal` because the two are different
+* `relevanceUnits: turn` — **added by §13.27, refuted by §13.31, and held at the shipped
+  default by §13.34** because the variable of that dispatch is the ask: §13.26 is its
+  comparison, so the signal, the width, the room and the unit all stay where that run left
+  them. §13.31's `session-fill` remains the repaired form of §13.27's rule and remains the
+  best-known session allocation, but it is not what this run administers. The rest of this
+  entry is the registration that produced run `38828538851`, kept because its refutation and
+  its repair both rest on it: **added by §13.27 as the selection unit.** Registered separately from `relevanceSignal` because the two are different
   claims about one budget: the signal says **how a turn is scored** and this says **what a score
   buys**. A unit folded into the signal's name would make a run that changed only the unit
   indistinguishable, in its own configuration line, from one that changed the scoring — and each
