@@ -4736,3 +4736,16 @@ implementing the partial version first.
   the partial-token case.
 - The four new tests are the four ways this can be wrong quietly: the verdict itself, the
   negative case, whose rule decides a match, and which copy of the evidence is measured.
+
+### 13.33.5 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `38828538851` against §13.32 — MR's `promptChars` first, then the roster, then coverage, then accuracy | no (in flight) |
+| P1 | Restore the trace product's turn unit and its `goldOverlap`. **Narrowed by §13.33.3**: the multi-session path destroys the turn boundary twice, so this is a registered change to that path's rendering — a dispatch that invalidates archived comparability — and not a cleanup. Second to §13.32's question | no |
+| P1 | Design the **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering" | no (dispatch later) |
+| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+`grounded` is **closed** (§13.33.1) and drops off this list. `cortex-node`'s branch coverage stays
+at 98.64% by §13.29's decision, and no item above is blocked on it.
