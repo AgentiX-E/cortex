@@ -592,13 +592,26 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   route: [],
   extractive: ['abstention', 'temporal', 'knowledge-update', 'assistant'],
   // §13.21's ask, restated for the same reason as the two above: the artifact reports
-  // the reach from this table, and the product's own table is asserted equal to it.
+  // the reach from this table. §13.35 is why "restated" is a hazard rather than a
+  // formality -- this copy is what `readAsk` validates against, a value added to the
+  // product's union alone is accepted by every type here, and the first
+  // `ask: enumerated` dispatch was rejected at startup with a stack trace pointing at
+  // `readAsk`. `tools/__tests__/test_ask_table_parity.py` now compares the two key sets
+  // by source; until it existed, the sentence that stood here claimed an assertion nobody
+  // had written.
   aggregate: ['multi-session', 'flat'],
   // §13.22's ask: `aggregate` plus the temporal route. The artifact's `askRoutes` is how
   // the run states that the temporal block was composed with rather than replaced, which
   // is the one thing a reader of the headline delta cannot otherwise tell -- §13.20 and
   // §13.21 have the same `ask`-shaped delta from opposite directions.
   computed: ['multi-session', 'flat', 'temporal'],
+  // §13.34's ask: `computed` plus the two-step enumeration contract, on the multi-session
+  // route alone. The reach set equals `computed`'s because flat and temporal are
+  // byte-identical to it -- which is exactly what makes the single-variable claim about
+  // §13.26's run true -- so an artifact separates the two asks by this value beside an
+  // unchanged `askRoutes`, and `tools/__tests__/test_ask_table_parity.py` holds this
+  // table and the product's own to the same key set.
+  enumerated: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

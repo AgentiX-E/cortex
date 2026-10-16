@@ -21,3 +21,12 @@ pytest>=8,<10
 # Every other tool in this directory uses the standard library alone, so this is
 # the complete set.
 requests>=2.31,<3
+
+# Added with `test_workflow_yaml.py`, and it is the same class of omission the
+# paragraph above records: that guard PARSES the workflow files rather than grepping
+# them, because a quoting error inside a single-quoted YAML scalar is invisible to a
+# text search -- and that is what refused a dispatch with a message naming the wrong
+# cause. It raises `AssertionError` rather than skipping when the import fails, on the
+# argument that a control which skips is a control that is not there, so an undeclared
+# dependency here fails the gate on a clean runner instead of passing quietly.
+PyYAML>=6,<7
