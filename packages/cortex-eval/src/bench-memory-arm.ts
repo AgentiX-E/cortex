@@ -1034,22 +1034,94 @@ export function restoreArmEmbeddingCache(path: string | undefined): number {
 }
 
 /**
- * Persist the process-wide embedding cache so a later run can skip the provider.
+ * Persist the shared embedding cache so a later run can skip the provider.
  *
- * Writing even when the cache is EMPTY is the intended behaviour, not an
- * oversight. Skipping the write would leave the previous run's file in place, and
- * the next run would restore vectors for haystack turns this run never saw —
- * silently grading against another dataset's evidence. An empty file is a true
- * statement ("this run embedded nothing"); a stale file is a false one.
+ * Named for the cache rather than for the arm because both entry points publish
+ * this file. `cortex-memory/bench/run-ablation.ts` and `cortex-eval/bench/run.ts`
+ * are separate processes that share `EMBEDDING_CACHE_PATH` and, through the
+ * workflow's Actions cache, one entry -- so a rule about what may be published is
+ * a rule about the file, not about either caller. It sits next to
+ * `restoreArmEmbeddingCache` because they are the two halves of that contract.
  *
- * Symmetric with `restoreArmEmbeddingCache`, including the blank-path rule: an
- * unconfigured path is a no-op rather than a write to `''`.
+ * ## A write that would lose vectors is not a write
+ *
+ * This used to write even when the cache was EMPTY, and the reasoning was stated
+ * as a choice: "an empty file is a true statement ('this run embedded nothing');
+ * a stale file is a false one", the concern being that skipping the write would
+ * leave a previous run's file in the workspace and the next run would restore
+ * vectors for turns this run never saw. The reversal here is forced by what that
+ * reasoning could not see: **the file in the workspace is not the only copy**.
+ * The workflow publishes it to the Actions cache under a key fresher than any
+ * before it, so "a true statement" was in practice "the newest entry in the
+ * cache store", and the next run's prefix restore prefers the newest.
+ *
+ * Two such entries are in the store now, and both are 200-odd bytes:
+ *
+ * | cache | size | run | why the snapshot was empty |
+ * | --- | --- | --- | --- |
+ * | `9050669935` | 216 B | `38908223281` | threw in `cortextMemoryArmOptions` before the restore |
+ * | `8943694690` | 212 B | `38582212737` | hung before its first embed |
+ *
+ * 216 bytes is a compressed copy of the thirteen-byte header
+ * `serializeEmbeddingCache` emits for an empty map, so the size alone identifies
+ * the contents. Each of those runs ALSO overwrote the populated file the workflow
+ * had just restored into the same directory, destroying the workspace copy as
+ * well as publishing the empty one -- the salvage path calls this function on the
+ * way out, which is exactly when the in-memory cache is most likely to be empty.
+ *
+ * Both were harmless while nothing read a run-keyed key (see
+ * `tools/__tests__/test_embedding_cache_key.py` for that half). They stop being
+ * harmless the moment the key coupling is repaired, because the repair makes the
+ * newest entry the entry every run reads, and an empty newest entry would send
+ * the next run back to embedding ~270k texts from an exhausted account.
+ *
+ * The counter-argument about the dataset is answered by the cache KEY rather than
+ * by the file: the key carries `hashFiles` of the dataset, so a file embedded
+ * from an older dataset can never be restored under a newer dataset's key, and a
+ * prefix restore across datasets only ever returns vectors for turn texts that
+ * are literally identical -- the same text, the same vector, by definition.
+ *
+ * So an empty snapshot is written nowhere, and the file on disk is left as the
+ * restore left it. Nothing is lost that a write could have preserved.
+ *
+ * @param path the file to write, or an unconfigured path for a no-op.
+ * @returns the number of vectors written, or `0` when nothing was written --
+ *   either because the process held none or because no path was configured. The
+ *   count exists for the same reason `restoreArmEmbeddingCache` returns one: a
+ *   skipped publish and a publish of the whole cache are indistinguishable in
+ *   every downstream number, and `describeEmbeddingCachePersist` is what puts the
+ *   difference in the log.
  */
-export function persistArmEmbeddingCache(path: string | undefined): void {
+export function persistEmbeddingCache(path: string | undefined): number {
   if (path === undefined || path.trim() === '') {
-    return;
+    return 0;
   }
-  writeFileSync(path, serializeEmbeddingCache(snapshotEmbeddingCache()));
+  const snapshot = snapshotEmbeddingCache();
+  if (snapshot.size === 0) {
+    return 0;
+  }
+  writeFileSync(path, serializeEmbeddingCache(snapshot));
+  return snapshot.size;
+}
+
+/**
+ * One line describing what {@link persistEmbeddingCache} did, for an entry point
+ * to print.
+ *
+ * Built here rather than assembled at the call site for the reason
+ * `bench-failure.ts` gives about `describeFailure`: `bench/**` is excluded from
+ * the coverage boundary, so a sentence assembled there is a sentence no test can
+ * execute, and an untestable sentence is how a run that published an empty cache
+ * managed to say nothing about it for seven weeks.
+ */
+export function describeEmbeddingCachePersist(written: number, path: string | undefined): string {
+  if (written > 0) {
+    return `Embedding cache: persisted ${written} vectors to ${path}`;
+  }
+  if (path === undefined || path.trim() === '') {
+    return 'Embedding cache: not configured, nothing persisted';
+  }
+  return `Embedding cache: nothing to persist, ${path} left as restored`;
 }
 
 /** Options for {@link runCortexMemoryArm}. */

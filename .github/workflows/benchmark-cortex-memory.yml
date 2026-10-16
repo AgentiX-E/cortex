@@ -194,12 +194,36 @@ jobs:
       # whichever workflow runs first pays for the vectors and the other finds them
       # cached. This is the property that keeps the two reports comparable, and it is
       # why the restore has to happen before either side of the A/B touches a turn.
+      # The primary key names the entry THIS run will write, and deliberately cannot
+      # match anything older.
+      #
+      # It used to be the bare dataset hash, while the save below had learned to append
+      # `${{ github.run_id }}`. The comment underneath claimed the prefix `restore-keys`
+      # would then "pick up whichever entry was written most recently" -- and a measured
+      # audit of the cache store says the opposite happened, for seven weeks:
+      #
+      #   cache 7119462708   691 MB   created 2026-08-29   last accessed 2026-10-16
+      #   cache 9009810001  1099 MB   created 2026-10-15   last accessed 2026-10-15
+      #   cache 9030207266  1100 MB   created 2026-10-16   last accessed 2026-10-16
+      #
+      # `last_accessed_at == created_at` on every run-keyed entry is the proof that the
+      # prefix path had never run: an entry existed under the bare key, so the primary
+      # key HIT, and `actions/cache` consults `restore-keys` only after a miss. Three
+      # consecutive runs therefore each restored the same 170,095 vectors and each saved
+      # a strictly larger cache that nothing read. Half of every job's wall clock
+      # (1h38m-1h49m of ~3h21m) went into re-embedding turns the previous run had already
+      # paid for, and `38910134192` finally died of it -- 11,476 live embedding requests,
+      # then `429` / code 1113 / 余额不足, with no question started.
+      #
+      # `run_attempt` is in both keys so a re-run starts from its predecessor's entry: the
+      # primary key misses, the prefix resolves to the most recently created entry, and
+      # the vectors the failed attempt paid for are the ones it resumes from.
       - name: Restore embedding cache
         id: restore-embedding
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-
             longmemeval-embedding-
@@ -334,18 +358,33 @@ jobs:
       #
       # because the save re-used the exact key the restore had asked for. Two runs that
       # write one key contend for it, and the loser's vectors are discarded -- which is the
-      # opposite of what the failure path deliberately does (`persistArmEmbeddingCache`
-      # runs on the way out precisely because "a run that dies at question 300 of 500 has
-      # still paid for its embeddings"). A unique save key cannot contend, and the prefix
-      # restore-keys mean the next run picks up whichever entry was written most recently
-      # -- so the two workflows still grade against one set of vectors, which is the
-      # property the shared key existed for.
+      # opposite of what the failure path deliberately does (`persistEmbeddingCache` runs
+      # on the way out precisely because "a run that dies at question 300 of 500 has still
+      # paid for its embeddings").
+      #
+      # ## What this key change did NOT achieve until 2026-10-17
+      #
+      # A unique save key cannot contend. But it also was not read, because the restore
+      # above kept asking for the ORIGINAL bare key as its primary key -- see the block
+      # quoted above `Restore embedding cache`. The cache list is the proof:
+      # `last_accessed_at == created_at` on every run-keyed entry, so the prefix path had
+      # never run, so the ~1.1 GB cache each run saved was read by nothing.
+      #
+      # The two flaws are one change because they interact. Repairing the key alone would
+      # have made the NEWEST entry the one every run reads -- and the two newest run-keyed
+      # entries in the store were 216 and 212 bytes, written by runs that died before they
+      # restored. `persistEmbeddingCache` now refuses to publish an empty cache, which is
+      # the other half.
+      #
+      # `run_attempt` is in both keys so a re-run resumes from its predecessor: the primary
+      # key misses, the prefix resolves to the most recently created entry, and the vectors
+      # the failed attempt paid for are the ones it starts from.
       - name: Save embedding cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}
+          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The artifact name is deliberately the one `benchmark.yml` uses. The fetch
       # tooling resolves by name, and a run of either workflow is "the report of the

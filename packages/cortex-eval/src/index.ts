@@ -334,7 +334,8 @@ export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-option
 export {
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
-  persistArmEmbeddingCache,
+  describeEmbeddingCachePersist,
+  persistEmbeddingCache,
   restoreArmEmbeddingCache,
   runCortexMemoryArm,
   toMemoryArmConfig,

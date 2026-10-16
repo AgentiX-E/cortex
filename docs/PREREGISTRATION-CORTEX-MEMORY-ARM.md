@@ -5115,3 +5115,200 @@ against a table. Replacing a false claim with an honest boundary is the whole of
 The parity rule closes the last item that the instrumentation defects of this iteration had left open. The
 remaining P2 pair is about what an artifact records about its own reductions, and neither blocks the
 measurement in flight.
+
+---
+
+## 13.37 The cache the workflow read was never the cache the workflow wrote
+
+### 13.37.1 The dispatch, and what it did and did not decide
+
+Run `38910134192` was the `ask: enumerated` dispatch §13.34.5 registered five predictions for. **It adjudicated
+none of them.** The job ran from `13:44:06Z` to `15:02:15Z` and ended `failure`, and the artifact it published
+is a 612-byte artifact holding one file, `benchmark-error.log`:
+
+```
+progress: no question was started before the failure
+
+Embedding request failed: 429 Too Many Requests — {"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}
+
+Error: Embedding request failed: 429 Too Many Requests — ...
+    at OpenAIEmbedding.embed (packages/cortex-llm/src/embedding/openai.ts:61:13)
+    at async embedManyCached (packages/cortex-eval/src/retrieval.ts:256:21)
+    at async buildTurnIndex (packages/cortex-eval/src/retrieval.ts:397:21)
+    at async retrieveTopKByQueries (packages/cortex-eval/src/retrieval.ts:981:16)
+    at async buildRetrievalRelevanceIndex (packages/cortex-eval/src/relevance-index.ts:169:18)
+    at async main (packages/cortex-memory/bench/run-ablation.ts:306:9)
+```
+
+Two things about that record are worth naming before anything else, because one is this iteration's only
+success and the other is a number the record should not have had to carry.
+
+**The failure record worked, for the first time, on a run that died before question 1.** §13.30 and §13.31
+were written because `38659495034` spent 1h49m and left one line (`q=1/500`) and `38725510400` spent five hours
+and left nothing. This run left the sentence those sections were written to produce — `no question was started
+before the failure` — plus the stack at the frame that threw, plus the process-wide transport accounting
+(`attempts 11482, calls 11477, cleanCalls 11476, retriedCalls 1, rateLimited 6, exhaustedCalls 0`). The
+machinery did what it was specified to do at the first opportunity it had.
+
+**And the stack is the wrong place for the failure to be, because the run had already done 1h17m of work it
+did not need to do.** The bench step started at `13:44:47.9Z` and threw at `15:01:39.9Z`: **4,620 seconds, and
+`progress: no question was started`**. The embedding preflight had passed at `13:44:50` — `ok (one vector of
+1024 dimensions)` — so the account held credit when the run began and was drained by the run itself. 11,476
+live embedding requests were issued, and the question loop had not begun. That is the shape of a defect, not of
+a quota, and it is what this section is about.
+
+### 13.37.2 The audit: 11 entries, 6.95 GB, and one that was read
+
+`GET /repos/AgentiX-E/cortex/actions/caches` returned eleven entries totalling 6.95 GB. Three fields per entry
+matter — `created_at`, `last_accessed_at`, and size — and they answer the question the workflow's comment had
+settled by assertion:
+
+| cache id | size | created | last accessed | key suffix |
+| --- | --- | --- | --- | --- |
+| `7119462708` | 691,302,445 B | 2026-08-29T15:04:45Z | **2026-10-16T13:44:41Z** | *(none — the bare dataset hash)* |
+| `9054925741` | 1,001,342,784 B | 2026-10-16T15:02:12Z | 2026-10-16T15:02:12Z | `-38910134192` |
+| `9030207266` | 1,100,096,763 B | 2026-10-16T03:57:12Z | 2026-10-16T03:57:12Z | `-38828538851` |
+| `9009810001` | 1,099,782,579 B | 2026-10-15T18:04:12Z | 2026-10-15T18:04:12Z | `-38753835652` |
+| `8999392707` | 691,302,483 B | 2026-10-15T14:25:27Z | 2026-10-15T14:25:27Z | `-38725510400` |
+| `8971398298` | 1,094,577,381 B | 2026-10-15T02:09:32Z | 2026-10-15T02:09:32Z | `-38659495034` |
+| `8957778187` | 1,099,711,460 B | 2026-10-14T19:38:50Z | 2026-10-14T19:38:50Z | `-38595325261` |
+| `9050669935` | 216 B | 2026-10-16T13:30:00Z | 2026-10-16T13:30:00Z | `-38908223281` |
+| `8943694690` | 212 B | 2026-10-14T14:39:01Z | 2026-10-14T14:39:01Z | `-38582212737` |
+
+`last_accessed_at == created_at` on **every** run-keyed entry. The one entry with a later `last_accessed_at`
+is the bare dataset hash, created on **29 August** and last read at `13:44:41Z` on 16 October — by every run
+in between, including the four that each saved a cache one and a half times its size.
+
+The mechanism is one sentence of `actions/cache` semantics: **the primary `key:` is tried first, and
+`restore-keys` are consulted only after a miss.** The restore step asked for
+
+```yaml
+key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}
+restore-keys: |
+  longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-
+```
+
+and the save step wrote
+
+```yaml
+key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}
+```
+
+The bare key was a **stale name from before the save learned to append a run id**, and it existed. So the
+primary key hit, `restore-keys` were never reached, and the `-<run_id>` entries — the only ones the workflow
+could still write — were read by nothing.
+
+§13.24.2 made that change and stated its effect: *"the save key now carries `github.run_id` and the restore
+matches on the dataset-hash prefix, so the cache is written by every run and read by the next."* The first
+half is true. The second half is what the `last_accessed_at` column above measures, and it is false — **the
+repair left the old key in the slot that decides**, and that slot is the primary key: a primary key that hits
+is a primary key that ends the search.
+
+### 13.37.3 What it cost, measured
+
+Three consecutive runs, from their logs:
+
+| run | restored | saved | `Relevance index` built in | job |
+| --- | --- | --- | --- | --- |
+| `38753835652` | **170,095 vectors** (659 MB) | 1,099,782,579 B | 1h37m42s | 3h21m27s |
+| `38828538851` | **170,095 vectors** (659 MB) | 1,100,096,763 B | 1h49m23s | 3h40m48s |
+| `38910134192` | **170,095 vectors** (659 MB) | 1,001,342,784 B *(died inside the build)* | — | 1h17m33s |
+
+The same 170,095 every time, and a save 1.59x larger than the restore each time. The delta is the turns the
+run re-embedded because the entry holding them was under a key the restore did not ask for.
+
+`buildRetrievalRelevanceIndex` is the whole of that time — it is the one pass that runs before the question
+loop, over all 500 questions' haystacks (`Relevance index: 32000 scored (question, turn) pairs over 500
+questions at topK=64` is its completion line, and the failed run never reached it). **1h38m–1h49m of a
+~3h20m job, half the wall clock, spent re-deriving vectors the previous run had already computed and saved.**
+It also sits *outside* the §13.30 wall-clock ceiling, which bounds the question loop: the budget could not
+have ended a pass that was spending its time here even if it had been reached.
+
+And this is what drained the account. 11,476 requests × 3 paid runs of the same ~100k texts.
+
+### 13.37.4 The other half, without which the first half is worse than the bug
+
+Repairing the key alone makes the **newest** entry the one every run reads. Two of the newest run-keyed entries
+were **216 and 212 bytes**, and their size is not an accident: `serializeEmbeddingCache` emits a 13-byte header
+for an empty map, and a compressed copy of that header is ~216 bytes.
+
+| run | size published | what the run did |
+| --- | --- | --- |
+| `38908223281` | 216 B | threw in `cortextMemoryArmOptions` (`run-ablation.ts:189`) — **before** the restore merged |
+| `38582212737` | 212 B | hung before its first embed |
+
+Both reached the failure path, which calls `persistArmEmbeddingCache` on the way out *deliberately* — "a run
+that dies at question 300 of 500 has still paid for its embeddings" — and both wrote an **empty** file over the
+691 MB file the workflow had just restored into the same directory. That call also destroyed the workspace
+copy, not merely the published one.
+
+So the two defects are one change, and this is the reason it is one change rather than two commits: ship the
+key repair alone and the next dispatch restores 216 bytes and re-embeds ~270k texts **from an account that is
+already dry**.
+
+`persistEmbeddingCache` now refuses to write an empty snapshot, and `bench/run.ts` — which had the same
+unconditional `writeFileSync` at two sites, in the other workflow that shares this cache — routes through the
+same function. **This reverses a previously documented decision**, and the reversal is on the record: the
+docstring that argued for writing the empty cache reasoned about the file *in the workspace*, and the file in
+the workspace is not the copy that gets published. The dataset worry it raised is answered by the cache key
+rather than by the file — `hashFiles` is in the key, so a file embedded from an older dataset cannot be
+restored under a newer dataset's key, and a cross-dataset prefix restore only ever returns vectors for turn
+texts that are literally identical.
+
+### 13.37.5 The rule, so the class is closed rather than this instance
+
+`tools/__tests__/test_embedding_cache_key.py` already pinned three properties of the save/restore pair: the
+save key is unique per run, a prefix of it appears in some `restore-keys`, and the dataset hash is in it. All
+three passed while this defect was live. The guard pinned **the pattern, and the defect was in the half of the
+pattern it did not name**: the restore's primary key.
+
+The rule added is exact and needs no knowledge of the cache store:
+
+- a restore primary key must not be **strictly extended** by the save key — otherwise the primary name is one
+  no save writes, so any entry under it is older than every run-keyed entry, and a hit on it suppresses the
+  prefix fallback entirely;
+- and, with the sign flipped, the restore primary key must not strictly extend the save key, which is the same
+  name-nothing-writes defect.
+
+The repair asks for the name **this run will write** — `...-${{ hashFiles(...) }}-${{ github.run_id }}-${{
+github.run_attempt }}`, in both workflows, for both the restore and the save. The primary key therefore misses,
+the prefix list resolves to the most recently created entry, and `run_attempt` in both keys is what makes a
+**re-run resume from its predecessor's attempt** rather than from scratch.
+
+This is the fourth consecutive instance of one defect class in this campaign, and the largest: §13.24's
+docstring described code that did not exist, §13.34.6's workflow trigger check was a text grep, §13.36's
+rendering comment claimed a census test that cannot exist, and both workflow comments here stated that the
+prefix restore "means the next run picks up whichever entry was written most recently" — which three
+consecutive runs' `last_accessed_at` values disprove. **A claim and a check have to be the same thing, and a
+comment is not a check.**
+
+### 13.37.6 Verification
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s branch
+  column (§13.29). `tools`: **317 passed + 40 subtests** (was 316; the new rule is the +1).
+- Both new guards were run against the **unfixed** tree first and failed with the message they were written to
+  produce — the Python rule on `benchmark-cortex-memory.yml`, and the TypeScript rule on 8 tests including the
+  one that used to assert the old behaviour (`persists an empty cache as a valid file rather than skipping the
+  write`), which is now its reverse.
+- The new tests use real files in a temp directory and the real `serialize`/`deserialize` pair; no mocks, and
+  the empty-snapshot rule is asserted from **bytes on disk** (`readFileSync(...).equals(before)`) rather than
+  from a flag.
+- One test asserts the **count returned by the persist call** and three assert the sentence
+  `describeEmbeddingCachePersist` produces, so a skipped publish cannot be silent in the log again — which is
+  how two 216-byte entries sat in the store unnoticed for seven weeks.
+
+### 13.37.7 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The `ask: enumerated` reading. **Not produced**: §13.34.5's five predictions remain unadjudicated, and the account must be topped up before any dispatch can start | **yes** |
+| **P0 (done)** | The cache coupling: the restore's primary key now names the entry this run writes, and an empty snapshot is never published | no |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+The experiment is where it was: `ask: enumerated` has not been measured, because the run that was to measure it
+died before question 1 of 500. What changed is that the run no longer has to re-derive half its inputs to get
+there — the first dispatch after the top-up restores ≈1.0 GB of vectors and should reach the question loop in
+minutes rather than in 1h49m, which also puts the §13.30 ceiling back in charge of the pass it bounds.

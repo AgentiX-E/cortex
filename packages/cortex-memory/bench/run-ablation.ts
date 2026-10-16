@@ -51,7 +51,8 @@ import {
   loadLongMemEval,
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
-  persistArmEmbeddingCache,
+  describeEmbeddingCachePersist,
+  persistEmbeddingCache,
   restoreArmEmbeddingCache,
   preflightEmbedding,
   runCortexMemoryArm,
@@ -499,7 +500,12 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(written.manifest));
   }
 
-  persistArmEmbeddingCache(cachePath);
+  // Read back off the return value rather than re-deriving the rule here. The
+  // number is the only thing that distinguishes "the run published the vectors it
+  // paid for" from "the run published nothing", and the workflow's cache entry for
+  // this run is a copy of this file -- so a reader of the log can tell, without
+  // opening the cache store, whether the next run will start from this one's work.
+  console.log(describeEmbeddingCachePersist(persistEmbeddingCache(cachePath), cachePath));
 
   // Printed as well as written, for §10.8's reason: the log is what survives when
   // the artifact is not collected, and `37281155088` lost a ~52-minute arm with no
@@ -583,7 +589,16 @@ main().catch((error: unknown) => {
   // charges the next run for the same vectors. Best-effort, so it can never mask
   // the original error.
   try {
-    persistArmEmbeddingCache(cortexMemoryArmEmbeddingCachePath(process.env));
+    // Reported on stderr, next to the failure record rather than in the middle of
+    // it. A failure path that persists nothing is now a normal outcome -- the
+    // process may have died before it restored -- and the line saying so is what
+    // separates that from a salvage that worked.
+    console.error(
+      describeEmbeddingCachePersist(
+        persistEmbeddingCache(cortexMemoryArmEmbeddingCachePath(process.env)),
+        cortexMemoryArmEmbeddingCachePath(process.env),
+      ),
+    );
   } catch {
     // The console output and `benchmark-error.log` are the primary diagnostics.
   }

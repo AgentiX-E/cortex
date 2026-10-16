@@ -17,6 +17,7 @@ import {
   computeRecallCurve,
   createRerankerFromEnv,
   type RerankFactoryOptions,
+  describeEmbeddingCachePersist,
   deserializeEmbeddingCache,
   embeddingBatchIntervalMs,
   embeddingSourceStats,
@@ -28,6 +29,7 @@ import {
   setEmbeddingBatchIntervalMs,
   hasDiagnosticRecord,
   mergeEmbeddingCache,
+  persistEmbeddingCache,
   runMrAggregationAblation,
   runNaturalLanguageBenchmark,
   runTemporalEngineAblation,
@@ -42,8 +44,6 @@ import {
   buildAblationSkipRecord,
   serializeAblationSkips,
   sampleInstances,
-  serializeEmbeddingCache,
-  snapshotEmbeddingCache,
   toCapability,
   turnText,
   attributeRecallGap,
@@ -1024,11 +1024,16 @@ async function main(): Promise<void> {
   // Persist the embedding cache so a later run (which uses the same haystack
   // turns) can restore it and skip the embedding provider. Done after every
   // report so a partial run still saves whatever it has already embedded.
-  if (embeddingCachePath) {
-    const snapshot = snapshotEmbeddingCache();
-    writeFileSync(embeddingCachePath, serializeEmbeddingCache(snapshot));
-    console.log(`Persisted ${snapshot.size} embedding vectors to ${embeddingCachePath}`);
-  }
+  //
+  // Through the shared rule rather than a bare `writeFileSync`, because "whatever
+  // it has already embedded" may be nothing: a process that dies before it
+  // restores reaches this line with an empty cache and once published that
+  // emptiness to the Actions cache under a key fresher than every populated one.
+  // `persistEmbeddingCache` refuses the write in that case and the sentence it
+  // pairs with says which happened.
+  console.log(
+    describeEmbeddingCachePersist(persistEmbeddingCache(embeddingCachePath), embeddingCachePath),
+  );
 }
 
 main().catch((err) => {
@@ -1050,7 +1055,7 @@ main().catch((err) => {
   try {
     const cachePath = process.env['EMBEDDING_CACHE_PATH'];
     if (cachePath) {
-      writeFileSync(cachePath, serializeEmbeddingCache(snapshotEmbeddingCache()));
+      console.error(describeEmbeddingCachePersist(persistEmbeddingCache(cachePath), cachePath));
     }
   } catch {
     // Persisting the cache is best-effort; never mask the original error.

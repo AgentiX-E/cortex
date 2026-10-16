@@ -92,6 +92,16 @@ def key_of(step: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def path_of(step: str) -> str | None:
+    """The step's `path:`, so a restore can be paired with the save of the SAME cache.
+
+    A workflow may cache more than one thing, and a restore of one paired with the
+    save of another would produce a message about the wrong file.
+    """
+    match = re.search(r'^\s+path: (.+)$', step, re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
 def test_every_cache_save_key_is_unique_per_run():
     saves = steps_using(SAVE_ACTION)
     assert saves, 'no actions/cache/save step found; the guard would pass vacuously'
@@ -158,3 +168,75 @@ def test_the_dataset_hash_still_keys_the_cache():
             f'{path.name}: the save key {key!r} no longer keys on the dataset, so a changed '
             'dataset would restore vectors that were never embedded from it.'
         )
+
+
+def test_no_restore_primary_key_can_only_ever_name_a_stale_entry():
+    """The half of the pattern the checks above do not cover, and the one that cost money.
+
+    A restore's `key:` is an **exact** name, not a pattern. `actions/cache` tries it
+    first and consults `restore-keys` only after it MISSES. So a primary key that no
+    current save writes is not merely unhelpful -- if an entry happens to exist under
+    it, every restore HITS it, the prefix list is never reached, and the entries the
+    saves keep writing are read by nothing.
+
+    That is what was live in this repository, and the cache list says so outright:
+
+    | cache | size | created | last accessed |
+    | --- | --- | --- | --- |
+    | `7119462708` | 691 MB | 2026-08-29 | 2026-10-16 (every run) |
+    | `9009810001` | 1099 MB | 2026-10-15 | 2026-10-15 (never) |
+    | `9030207266` | 1100 MB | 2026-10-16 | 2026-10-16 (never) |
+
+    `last_accessed_at == created_at` on every run-keyed entry is the proof that the
+    `restore-keys` path had never once run. The cost, measured from three consecutive
+    runs: each restored the same 170,095 vectors while each saving a strictly larger
+    cache, and each spent 1h38m-1h49m of a ~3h21m job -- half the wall clock -- inside
+    `buildRetrievalRelevanceIndex`, re-embedding turns the previous run had already
+    paid for and saved under a key nothing read. `38910134192` died from it: 11,476
+    live embedding requests, then `429` / `code 1113` / "余额不足" with
+    `progress: no question was started before the failure`.
+
+    The rule below is exact and needs no knowledge of the cache store:
+
+      * if the save writes a name that STRICTLY EXTENDS the restore's primary key,
+        then the restore's name is one no save produces, so any hit on it is an entry
+        written by an older revision -- the oldest one -- and it suppresses the
+        prefix fallback;
+      * if the restore's primary key strictly extends the save's, the restore asks for
+        a name nothing writes, which is the same defect with the sign flipped.
+
+    Both are refused. The repair is to make the primary key name the entry this very
+    run will write, and let the prefix list do the reading of earlier ones.
+    """
+    pairs = 0
+    for restore_path, restore in steps_using(RESTORE_ACTION):
+        restore_key = key_of(restore)
+        assert restore_key is not None, f'{restore_path.name}: a restore step with no key'
+        target = path_of(restore)
+        assert target is not None, f'{restore_path.name}: a restore step with no path'
+
+        for save_path, save in steps_using(SAVE_ACTION):
+            if save_path != restore_path or path_of(save) != target:
+                continue
+            pairs += 1
+            save_key = key_of(save)
+            assert save_key is not None
+
+            assert not (save_key.startswith(restore_key) and save_key != restore_key), (
+                f'{restore_path.name}: the save writes {save_key!r}, which strictly '
+                f'extends the restore\'s primary key {restore_key!r}. The primary key '
+                'is tried first and an exact hit suppresses every restore-key, so on '
+                'any entry left under it the restore serves the OLDEST cache and never '
+                'looks at the fresh ones. Make the primary key the name this run '
+                'writes, so a miss is what happens and the prefix list resolves.'
+            )
+            assert not (restore_key.startswith(save_key) and restore_key != save_key), (
+                f'{restore_path.name}: the restore asks for {restore_key!r}, which no '
+                f'save writes -- the save writes {save_key!r}. A name nothing produces '
+                'is a name that can only ever be satisfied by a stale entry.'
+            )
+
+    assert pairs > 0, (
+        'no restore/save pair sharing a path was found in any workflow; the guard would '
+        'pass vacuously, which is the failure mode it exists to prevent.'
+    )

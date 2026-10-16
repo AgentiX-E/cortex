@@ -58,7 +58,8 @@ import {
 import { HashEmbedding } from '../embedding.js';
 import {
   cortexMemoryArmEmbeddingCachePath,
-  persistArmEmbeddingCache,
+  describeEmbeddingCachePersist,
+  persistEmbeddingCache,
   restoreArmEmbeddingCache,
 } from '../bench-memory-arm.js';
 
@@ -115,7 +116,7 @@ describe('restoreArmEmbeddingCache', () => {
     // the job; pass 2 is this arm's process starting fresh.
     const firstPassLive = await embedTurns();
     expect(firstPassLive).toBe(TURNS.length);
-    persistArmEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath);
 
     // A fresh process: the in-memory cache is gone, only the file remains.
     clearEmbeddingCache();
@@ -162,7 +163,7 @@ describe('restoreArmEmbeddingCache', () => {
     // A file holding only an unrelated entry.
     clearEmbeddingCache();
     await embedManyCached(embedding, ['from-the-file turn']);
-    persistArmEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath);
 
     clearEmbeddingCache();
     await embedManyCached(embedding, ['in-process turn']);
@@ -178,7 +179,7 @@ describe('persistArmEmbeddingCache', () => {
   it('writes a file the next process can restore', () => {
     clearEmbeddingCache();
     return embedManyCached(embedding, TURNS).then(() => {
-      persistArmEmbeddingCache(cachePath);
+      persistEmbeddingCache(cachePath);
       expect(existsSync(cachePath)).toBe(true);
       const restored = deserializeEmbeddingCache(readFileSync(cachePath));
       expect(restored.size).toBe(TURNS.length);
@@ -189,13 +190,24 @@ describe('persistArmEmbeddingCache', () => {
   });
 
   it('is a no-op when no path was configured', () => {
-    persistArmEmbeddingCache(undefined);
+    expect(persistEmbeddingCache(undefined)).toBe(0);
     expect(existsSync(cachePath)).toBe(false);
   });
 
   it('is a no-op when the path is blank', () => {
-    persistArmEmbeddingCache('');
+    expect(persistEmbeddingCache('')).toBe(0);
     expect(existsSync(cachePath)).toBe(false);
+  });
+
+  it('reports how many vectors it wrote, so a skipped write is visible', async () => {
+    // The count is the reason this function returns a number at all, and it is
+    // the same argument `restoreArmEmbeddingCache` makes for its own return
+    // value: a publish that did nothing and a publish that wrote the world look
+    // identical in every downstream number, so the one place they differ has to
+    // say which happened.
+    clearEmbeddingCache();
+    await embedManyCached(embedding, TURNS);
+    expect(persistEmbeddingCache(cachePath)).toBe(TURNS.length);
   });
 
   it('round-trips through a real process boundary, not just within one', async () => {
@@ -205,7 +217,7 @@ describe('persistArmEmbeddingCache', () => {
     // than a copy, or `serialize` dropped vectors, this is where it shows.
     clearEmbeddingCache();
     await embedManyCached(embedding, TURNS);
-    persistArmEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath);
 
     clearEmbeddingCache();
     resetEmbeddingSourceStats();
@@ -217,25 +229,67 @@ describe('persistArmEmbeddingCache', () => {
     expect(embeddingSourceStats().cachedTexts).toBe(TURNS.length);
   });
 
-  it('persists an empty cache as a valid file rather than skipping the write', () => {
-    // A run that embedded nothing still produces the artifact. Skipping the
-    // write would leave a PREVIOUS run's cache in place, which is worse than an
-    // empty file: the next run would restore vectors that do not correspond to
-    // the dataset it was handed.
+  it('leaves a populated file alone when this process holds no vectors', async () => {
+    // This test asserts the REVERSE of what it asserted before, and the reversal
+    // was forced by measurement rather than by taste.
+    //
+    // The rule used to be "an empty cache is a true statement, so write it"; the
+    // argument was that leaving the previous run's file in place would let the
+    // next run grade against evidence it never embedded. What that argument
+    // missed is that the file is not the only copy. The workflow publishes this
+    // file to the Actions cache under a key that is fresher than every key before
+    // it, so "a true statement" was in fact "the newest entry in the store", and
+    // the next run's prefix restore prefers the newest.
+    //
+    // Measured cost, from the repository's own cache list:
+    //
+    //   cache 9050669935   216 bytes   run 38908223281
+    //   cache 8943694690   212 bytes   run 38582212737
+    //
+    // 216 bytes is a tar.zst of the 13-byte header `serializeEmbeddingCache`
+    // emits for an empty map, and both runs are ones that died BEFORE restoring:
+    // `38908223281` threw in `cortextMemoryArmOptions` (run-ablation.ts:189) and
+    // `38582212737` hung before its first embed. Each then ran the failure path,
+    // which persists deliberately, and each wrote an empty file OVER the 691 MB
+    // one the workflow had just restored into the same directory -- destroying
+    // the copy in the workspace as well as publishing the empty one.
+    //
+    // Both of those were harmless while nothing read a run-keyed key. They stop
+    // being harmless the moment the key coupling is repaired, which is this
+    // iteration: the repair makes the newest entry the one every run reads, and
+    // an empty newest entry would send the next run back to embedding ~270k
+    // texts from an exhausted account. So the two are one change.
     clearEmbeddingCache();
-    persistArmEmbeddingCache(cachePath);
-    expect(existsSync(cachePath)).toBe(true);
-    expect(deserializeEmbeddingCache(readFileSync(cachePath)).size).toBe(0);
+    await embedManyCached(embedding, ['the previous run paid for this turn']);
+    persistEmbeddingCache(cachePath);
+    const before = readFileSync(cachePath);
+
+    // A fresh process that dies before it restores: empty in memory, populated
+    // on disk. Nothing has been learned and nothing may be destroyed.
+    clearEmbeddingCache();
+    expect(persistEmbeddingCache(cachePath)).toBe(0);
+
+    expect(readFileSync(cachePath).equals(before)).toBe(true);
+    expect(deserializeEmbeddingCache(readFileSync(cachePath)).size).toBe(1);
+  });
+
+  it('does not create an empty file where none existed', () => {
+    // The other half of the same rule. A file that does not exist cannot be
+    // published as "the newest cache"; creating one is how a poison entry gets
+    // into the store in the first place.
+    clearEmbeddingCache();
+    expect(persistEmbeddingCache(cachePath)).toBe(0);
+    expect(existsSync(cachePath)).toBe(false);
   });
 
   it('overwrites a previous cache rather than appending to it', async () => {
     clearEmbeddingCache();
     await embedManyCached(embedding, ['stale turn']);
-    persistArmEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath);
 
     clearEmbeddingCache();
     await embedManyCached(embedding, ['fresh turn']);
-    persistArmEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath);
 
     const restored = deserializeEmbeddingCache(readFileSync(cachePath));
     expect(restored.size).toBe(1);
@@ -250,8 +304,38 @@ describe('persistArmEmbeddingCache', () => {
     clearEmbeddingCache();
     await embedManyCached(embedding, TURNS);
     const viaHelpers = serializeEmbeddingCache(snapshotEmbeddingCache());
-    persistArmEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath);
     const onDisk = new Uint8Array(readFileSync(cachePath));
     expect(Buffer.from(onDisk).equals(Buffer.from(viaHelpers))).toBe(true);
+  });
+});
+
+describe('describeEmbeddingCachePersist', () => {
+  it('names the count when vectors were written', () => {
+    // The count is what a reader compares against the `Restored N embedding
+    // vectors` line to see whether the run added anything. Without it, a run
+    // that re-embedded its whole haystack and a run that re-embedded nothing
+    // print the same log.
+    expect(describeEmbeddingCachePersist(3, '/tmp/cache.bin')).toBe(
+      'Embedding cache: persisted 3 vectors to /tmp/cache.bin',
+    );
+  });
+
+  it('says so when it published nothing', () => {
+    // The line that did not exist when the defect was live. Run `38908223281`
+    // published a 216-byte cache over a 691 MB one and its log said nothing
+    // about the write at all.
+    expect(describeEmbeddingCachePersist(0, '/tmp/cache.bin')).toBe(
+      'Embedding cache: nothing to persist, /tmp/cache.bin left as restored',
+    );
+  });
+
+  it('distinguishes an unconfigured path from an empty process', () => {
+    expect(describeEmbeddingCachePersist(0, undefined)).toBe(
+      'Embedding cache: not configured, nothing persisted',
+    );
+    expect(describeEmbeddingCachePersist(0, '  ')).toBe(
+      'Embedding cache: not configured, nothing persisted',
+    );
   });
 });
