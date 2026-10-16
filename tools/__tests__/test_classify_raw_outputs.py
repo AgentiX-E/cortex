@@ -256,3 +256,192 @@ class TestTheRosterIsRead:
         )
         r = self._run(path)
         assert '6a1b2c3d' in r.stdout
+
+
+# --------------------------------------------------------------------------
+# §13.38: the failure taxonomy behind a registered prediction
+# --------------------------------------------------------------------------
+
+FIXTURES = REPO / 'tools' / '__tests__' / 'fixtures'
+
+
+class TestTheFailureShapes:
+    """The taxonomy §13.34.5's prediction 2 is stated in, and it did not exist as code.
+
+    `numeric_mismatch` appeared in the pre-registration document and in no file of
+    this repository. The number behind the prediction (`41 of 47`) was produced by
+    an ad-hoc script that was never committed, so the prediction could not be
+    re-derived -- which is how a registered prediction becomes a claim about a
+    script someone once ran.
+    """
+
+    def test_every_abstention_shape_is_the_abstention_shape(self) -> None:
+        for raw in (SUM, f'Answer: {SUM}', f'prose\n{SUM}', f'prose\nAnswer: {SUM}'):
+            assert _MODULE.failure_shape({'rawOutput': raw, 'groundTruth': '3', 'answer': '2'}) == 'abstention', raw
+
+    def test_a_plan_output_is_its_own_shape(self) -> None:
+        assert _MODULE.failure_shape({
+            'rawOutput': 'Let me gather all model kits mentioned across sessions:\n\n1. Session 2: ...',
+            'groundTruth': 'five', 'answer': '4'}) == 'plan_output'
+
+    def test_step_1_is_a_plan_output(self) -> None:
+        assert _MODULE.failure_shape({
+            'rawOutput': 'Step 1: enumerate the sessions\n- Session 3: ...',
+            'groundTruth': '3', 'answer': '2'}) == 'plan_output'
+
+    def test_a_plan_output_outranks_the_numbers_in_its_own_body(self) -> None:
+        """The whole of the disagreement between the two published tables.
+
+        Run 38828538851 answered two numeric MR questions with `Let me gather all
+        mentions ... **Session 6**`. The gold and that prose both carry numbers, so
+        a rule without the plan bucket calls them numeric mismatches -- which is
+        how §13.34.4's `41 of 47` was produced. The detailed taxonomy in §13.26.4
+        counts them as `plan_output`, and the same run is then `39`.
+        """
+        record = {'rawOutput': 'Let me gather all mentions of the count:\n\n**Session 6**: three items',
+                  'groundTruth': '10 times', 'answer': 'Let me gather all mentions of the count:\n\n**Session 6**: three items'}
+        assert _MODULE.failure_shape(record) == 'plan_output'
+
+    def test_a_prose_refusal_is_soft_and_not_an_abstention(self) -> None:
+        """§13.26.4: "the model declined in prose, so it is not counted as an abstention"."""
+        assert _MODULE.failure_shape({
+            'rawOutput': "I'm sorry, but I don't have enough information to determine the total.",
+            'groundTruth': '$185', 'answer': "I'm sorry, but I don't have enough information"}) == 'soft_refusal'
+
+    def test_numbers_that_differ_are_a_numeric_mismatch(self) -> None:
+        assert _MODULE.failure_shape({'rawOutput': '2', 'groundTruth': '3', 'answer': '2'}) == 'numeric_mismatch'
+
+    def test_a_currency_pair_is_a_mismatch(self) -> None:
+        assert _MODULE.failure_shape({'rawOutput': '2300', 'groundTruth': '$2,500', 'answer': '2300'}) == 'numeric_mismatch'
+
+    def test_a_gold_written_in_words_is_not_a_mismatch(self) -> None:
+        """`three` is not a number to a digit extractor, and the published taxonomy
+        put these three records in `other` rather than in `numeric_mismatch`."""
+        assert _MODULE.failure_shape({'rawOutput': '2', 'groundTruth': 'three', 'answer': '2'}) == 'other'
+
+    def test_a_one_sided_number_is_not_a_mismatch(self) -> None:
+        assert _MODULE.failure_shape({'rawOutput': 'IKEA bookshelf', 'groundTruth': '4', 'answer': 'IKEA bookshelf'}) == 'other'
+
+    def test_a_long_answer_that_is_not_a_number_is_long_prose(self) -> None:
+        assert _MODULE.failure_shape({
+            'rawOutput': 'Based on the evidence, ' + 'x' * 300,
+            'groundTruth': 'Thrive Market', 'answer': 'Based on the evidence, ' + 'x' * 300}) == 'long_prose'
+
+    def test_a_long_answer_that_is_a_number_is_a_mismatch(self) -> None:
+        """Precedence. `numeric_mismatch` is tested before `long_prose`, which is
+        what the detailed published table requires: without that order the two
+        buckets swap by one record and neither matches."""
+        assert _MODULE.failure_shape({
+            'rawOutput': '3 ' + 'y' * 300, 'groundTruth': '4', 'answer': '3 ' + 'y' * 300}) == 'numeric_mismatch'
+
+    def test_a_missing_raw_output_is_not_an_abstention(self) -> None:
+        """`classify` keeps `undefined` (a capture gap) and `null` (not consulted)
+        apart from each other; the taxonomy does not, because neither is a decline.
+        What matters here is that neither becomes an abstention, and that a missing
+        raw output does not suppress the rules that do not read it."""
+        assert _MODULE.failure_shape({'groundTruth': 'Thrive Market', 'answer': 'Walmart'}) == 'other'
+        assert _MODULE.failure_shape({'rawOutput': None, 'groundTruth': 'Thrive Market', 'answer': 'Walmart'}) == 'other'
+        assert _MODULE.failure_shape({'groundTruth': '3', 'answer': '2'}) == 'numeric_mismatch'
+
+    def test_the_shape_names_are_distinct(self) -> None:
+        assert len(set(_MODULE.FAILURE_SHAPES)) == len(_MODULE.FAILURE_SHAPES)
+
+
+class TestTheTwoReadingsOfTheNumericRule:
+    """A word that carried two definitions across two tables of one document."""
+
+    def test_the_two_rules_disagree_on_a_leading_agreement(self) -> None:
+        gold, answer = '15 hours for getting to the three destinations (or 30 hours)', '15 hours'
+        assert _MODULE.numeric_mismatch(gold, answer) is False
+        assert _MODULE.numeric_mismatch_by_multiset(gold, answer) is True
+
+    def test_both_agree_when_the_leading_numbers_differ(self) -> None:
+        assert _MODULE.numeric_mismatch('3', '2') is True
+        assert _MODULE.numeric_mismatch_by_multiset('3', '2') is True
+
+
+class TestThePublishedTablesAreReproducible:
+    """The calibration, pinned to the two archived rosters.
+
+    These fixtures are the only place the published numbers can be re-derived from
+    without the Actions artifact store, and re-deriving them is exactly what the
+    prediction needs: §13.34.5 says "41 of 47", and 41 is only reachable if the
+    rule that produced it is known.
+    """
+
+    @staticmethod
+    def _census(run: str) -> 'Counter[str]':
+        from collections import Counter
+
+        report = json.loads((FIXTURES / f'mr-roster-{run}.json').read_text(encoding='utf-8'))
+        questions = [q for q in report['questions'] if not q['correct']]
+        return Counter(_MODULE.failure_shape(q) for q in questions)
+
+    def test_the_detailed_table_of_13_26_4_is_reproduced_exactly(self) -> None:
+        """Run 38595325261, whose taxonomy is published as 24/4/2/31/2/7.
+
+        An exact match on all six numbers is what makes the definitions above
+        derived rather than invented. Five of the seven readings of "the numbers
+        disagree" that were tried give 32 rather than 31 for `numeric_mismatch`,
+        so `numeric_mismatch` compares the FIRST number on each side -- and the
+        calibration is the evidence for that, not a first-principles argument.
+        """
+        assert dict(self._census('38595325261')) == {
+            'abstention': 24, 'plan_output': 4, 'soft_refusal': 2,
+            'numeric_mismatch': 31, 'long_prose': 2, 'other': 7,
+        }
+
+    def test_the_coarse_table_of_13_34_4_needs_a_different_rule(self) -> None:
+        """Run 38828538851, published as `wrong 47, of which 41 are numeric`.
+
+        Under the taxonomy's own precedence this run is 39, not 41. The 41 is the
+        same roster with `plan_output` folded into `numeric_mismatch`. Both numbers
+        are correct; they are answers to different questions, and only one of them
+        was named in the document.
+        """
+        census = self._census('38828538851')
+        assert census['abstention'] == 22
+        assert sum(census.values()) == 69
+        answered_wrong = 69 - census['abstention']
+        assert answered_wrong == 47
+        assert census['numeric_mismatch'] == 39
+        assert census['numeric_mismatch'] + census['plan_output'] == 41
+
+
+class TestTheFailuresReport:
+    """The report prints the rules beside the table.
+
+    A table without its definitions is what §13.34.5's prediction was read from, and
+    the two published readings of one word differ by two records on the same roster.
+    """
+
+    @staticmethod
+    def _run(*args: str) -> 'subprocess.CompletedProcess[str]':
+        return subprocess.run(
+            [sys.executable, str(TOOL), *args],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_the_six_shapes_and_the_definitions_are_both_printed(self) -> None:
+        r = self._run('--failures', '--capability', 'MR', str(FIXTURES / 'mr-roster-38828538851.json'))
+        assert r.returncode == 0, r.stderr
+        for shape in _MODULE.FAILURE_SHAPES:
+            assert shape in r.stdout, shape
+        assert 'definitions' in r.stdout
+
+    def test_both_readings_of_numeric_mismatch_are_printed_and_labelled(self) -> None:
+        r = self._run('--failures', '--capability', 'MR', str(FIXTURES / 'mr-roster-38828538851.json'))
+        assert 'plan_output folded in' in r.stdout
+        assert 'by multiset instead' in r.stdout
+        # 41 and 39 are the two published readings of one roster, and a report that
+        # printed one of them without the other could not be read against the
+        # prediction, which names the folded one.
+        assert 'folded in        41' in r.stdout
+        assert 'instead        39' in r.stdout
+
+    def test_the_report_is_the_right_population(self) -> None:
+        r = self._run('--failures', '--capability', 'MR', str(FIXTURES / 'mr-roster-38828538851.json'))
+        assert '121 question(s), 52 correct, 69 non-correct' in r.stdout
+
+    def test_a_missing_file_is_an_error(self, tmp_path: Path) -> None:
+        assert self._run('--failures', str(tmp_path / 'nope.json')).returncode == 2

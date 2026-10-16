@@ -5339,3 +5339,122 @@ The experiment is where it was: `ask: enumerated` has not been measured, because
 died before question 1 of 500. What changed is that the run no longer has to re-derive half its inputs to get
 there — the first dispatch after the top-up restores ≈1.0 GB of vectors and should reach the question loop in
 minutes rather than in 1h49m, which also puts the §13.30 ceiling back in charge of the pass it bounds.
+
+---
+
+## 13.38 The taxonomy behind a registered prediction was not in the repository
+
+### 13.38.1 What the readout needs, and what exists
+
+§13.34.5 registers five predictions for the run in flight. The second is:
+
+> **MR's wrong answers stop being numeric mismatches.** 41 of 47 → **≤ 25**, which is the counting half.
+
+`numeric_mismatch` appears **twice** in this document — as the largest row of §13.26.4's taxonomy and as the
+subject of that sentence — and in **no file of the repository**:
+
+```
+$ grep -rn "numeric_mismatch" .
+./docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md
+```
+
+The 41 was produced by a script that was run once and not committed. So the readout was going to be: write
+another ad-hoc script, get some number, and compare it to 41 — with no way to tell whether a difference was
+the run moving or **the rule being re-invented**. That is a registered prediction resting on a claim about a
+script, and it is the same defect class as §13.37 one layer down: a number whose instrument is not a thing
+that exists.
+
+Two archived rosters make this checkable rather than arguable. Their reports are not in the repository, but
+the per-question records they are built from now are:
+`tools/__tests__/fixtures/mr-roster-38595325261.json` and `mr-roster-38828538851.json`, 121 MR questions each.
+
+### 13.38.2 The calibration found two rules, not one
+
+The definitions were **recovered by requiring them to reproduce the published tables**, and the result is that
+**no single rule reproduces both**:
+
+| published table | numbers | reproduced exactly by |
+| --- | --- | --- |
+| §13.26.4, run `38595325261` | `abstention 24 / plan 4 / soft 2 / numeric 31 / long 2 / other 7` | plan bucket applied, `numeric_mismatch` = **first** number on each side differs → **all six exact** |
+| §13.34.4, run `38828538851` | `wrong 47, of which 41 are numeric` | `plan_output` **folded into** `numeric_mismatch`; the taxonomy's own precedence gives **39** |
+
+The two records that separate them are the whole of the disagreement: a counting question answered with
+`Let me gather all mentions ... **Session 6**`. Its gold and its prose both carry numbers, so a rule without
+the plan bucket scores it as a numeric mismatch; the taxonomy scores it as `plan_output`.
+
+The numeric rule itself is also pinned by calibration rather than by preference. Seven readings of "the numbers
+disagree" were tried against the detailed table:
+
+| reading | `numeric_mismatch` on run `38595325261` |
+| --- | --- |
+| **first number on each side differs** | **31** |
+| multisets differ (§13.26.4's literal wording) | 32 |
+| the answer's numbers are not a subset of the gold's | 32 |
+| the last numbers differ | 32 |
+| first differs or the counts differ | 32 |
+| no number appears on both sides | 28 |
+| the gold's numbers are not a subset of the answer's | 28 |
+
+One reading out of seven gives 31, and it is the one adopted. The semantic story offered for it — a counting
+question leads with the quantity it asks about, on both sides — is a **plausibility and not the evidence**;
+the evidence is the exact match on all six rows. That distinction is written into the tool, because a
+definition justified by a story would be indistinguishable from one that fits.
+
+### 13.38.3 What this changes about §13.34.5, and what it does not
+
+The prediction is **not** amended. It was written against 41, 41 is reproducible, and the readout will report
+it. What changes is that the readout reports **both** and names which is which:
+
+| reading | run `38828538851` | what it is |
+| --- | --- | --- |
+| `numeric_mismatch`, `plan_output` folded in | **41** | §13.34.4's number, and the one prediction 2 is stated against |
+| `numeric_mismatch`, taxonomy precedence | **39** | the number whose rows define the vocabulary |
+
+Registering a second definition of a word the same document already uses is the risk this creates, so the
+tool prints both on every run rather than leaving the fold to a reader's memory. A prediction re-read against a
+number it was not written against would be a redraw, which §4 forbids.
+
+### 13.38.4 The instrument
+
+`tools/classify-raw-outputs.py` gains the taxonomy beside its existing abstention classifier:
+
+- `failure_shape(record)` → one of `abstention`, `plan_output`, `soft_refusal`, `numeric_mismatch`,
+  `long_prose`, `other`, with the precedence documented in the source and two of its orderings pinned by tests:
+  a plan output outranks the numbers in its own body, and a numeric mismatch outranks `long_prose`.
+- **The abstention family comes from `classify()`**, the function the existing report already uses, so the two
+  reports in one file cannot disagree about what a bare token is. That is §13.36's rule applied to itself.
+- `failure_census(questions)` counts only the **non-correct** questions: every shape here is a way of being
+  wrong, and counting a correct answer's length would put it in a bucket whose name then describes the wrong
+  population.
+- `--failures` prints the table, the definitions, and both comparability lines.
+- The module docstring's usage line said `--dataset MR` while the parser has always defined `--capability`.
+  A reader copying the documented invocation would have got `unrecognized arguments`. Fixed here.
+
+### 13.38.5 Verification
+
+- `pnpm check` **exit 0**; `tools` **338 passed + 40 subtests** (was 317; +21 by this section); coverage
+  dimensions unchanged and still 100% except `cortex-node`'s branch column (§13.29) — no TypeScript changed.
+- **Red first.** The 21 new tests were written before the implementation and 17 of them failed; the four that
+  passed were the ones asserting the sentinel rules `classify` already owned.
+- **The calibration is a test, not a claim.** `TestThePublishedTablesAreReproducible` requires all six numbers
+  of §13.26.4's row and the 41/39 pair of §13.34.4 from committed fixtures, so a later edit to any rule fails
+  in CI instead of quietly producing a different number under the same name.
+- **One test of mine was wrong and is corrected rather than worked around.** I asserted `{groundTruth: '3',
+  answer: '2'}` with no `rawOutput` classifies as `other`; it is a numeric mismatch, because the rule that
+  reads it does not consult the raw output at all. The test now asserts what it was for — a missing raw output
+  is not an abstention — and separately that a missing raw output does not suppress the rules that do not
+  read it.
+
+### 13.38.6 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `38941095220` (`ask: enumerated`, in flight since `17:37:56Z`) against §13.34.5 — abstentions first, then the mismatch count, **now with a committed classifier** | no (in flight) |
+| **P0 (done)** | The cache coupling (§13.37), and the taxonomy behind prediction 2 (§13.38) | no |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no |
+| P1 | The **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering". Its mechanism already exists (`cortex_memory_relevance: none`); what it needs is a registered dispatch | no (dispatch later) |
+| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+The prediction's instrument now exists, so the readout is executable the moment the run lands. Nothing else in
+the P0 row was blocked by the provider, which is why this section was writable while the run was in flight.

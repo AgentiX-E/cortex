@@ -1,0 +1,980 @@
+{
+ "provenance": {
+  "run": "38828538851",
+  "workflow": "benchmark-cortex-memory.yml",
+  "artifact": "longmemeval-s-report > benchmark-cortex-memory-ablation-report.json",
+  "capability": "MR",
+  "questions": 121,
+  "note": "only the fields tools/classify-raw-outputs.py reads; the report is not committed"
+ },
+ "questions": [
+  {
+   "questionId": "0a995998",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "6d550036",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_59c863d7",
+   "capability": "MR",
+   "groundTruth": "I have worked on or bought five model kits. The scales of the models are: Revell F-15 Eagle (scale not mentioned), Tamiya 1/48 scale Spitfire Mk.V, 1/16 scale German Tiger I tank, 1/72 scale B-29 bomber, and 1/24 scale '69 Camaro.",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": false
+  },
+  {
+   "questionId": "b5ef892d",
+   "capability": "MR",
+   "groundTruth": "8 days.",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "e831120c",
+   "capability": "MR",
+   "groundTruth": "3.5 weeks",
+   "answer": "Let's find the relevant facts:\n\n- Marvel Cinematic Universe movies: In Session 14, the user says they watched all 22 MCU movies in two weeks.\n- Main Star Wars films: In Session 24, the user says they watched all the main films in a week and a half.\n\nThe question asks how many weeks it took to watch all the MCU movies **and** the main Star Wars films.  \nTwo weeks + one and a half weeks = 3.5 weeks.\n\nAnswer: 3.5 weeks",
+   "rawOutput": "Let's find the relevant facts:\n\n- Marvel Cinematic Universe movies: In Session 14, the user says they watched all 22 MCU movies in two weeks.\n- Main Star Wars films: In Session 24, the user says they watched all the main films in a week and a half.\n\nThe question asks how many weeks it took to watch all the MCU movies **and** the main Star Wars films.  \nTwo weeks + one and a half weeks = 3.5 weeks.\n\nAnswer: 3.5 weeks",
+   "correct": true
+  },
+  {
+   "questionId": "3a704032",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "Let me gather all plant acquisition mentions:\n\n1. Session 2: \"my peace lily, which I got from the nursery two weeks ago along with a succulent\" — Peace lily + succulent = 2 plants (acquired ~2 weeks before 2023/05/20, so ~May 6).\n2. Session 14: mentions snake plant and succulents (in assistant reply), orchid, fern, African violets, spider plant — but these are mentioned as plants the user has, not necessarily acquired last month.\n3. Session 14: \"new plants to your collection\" — vague.\n4. Session 17: \"my snake plant, which I got from my sister last month\" — snake plant acquired last month (relative to 2023/05/25).\n\nNow, what's \"the last month\"? The sessions span 2023/05/20 to 2023/05/29. So \"last month\" likely means within the past month (~late April to late May).\n\nPlants explicitly acquired:\n- Peace lily (two weeks before May 20) — yes, within last month.\n- Succulent (same time) — yes, within last month.\n- Snake plant (got from sister last month, stated May 25) — yes, within last month.\n\nThe fern, orchid, African violets, spider plant are mentioned as already owned but no acquisition date given, so can't confirm they were acquired last month.\n\nSo confirmed acquisitions: peace lily, succulent, snake plant = 3.\n\n**3**",
+   "rawOutput": "Let me gather all plant acquisition mentions:\n\n1. Session 2: \"my peace lily, which I got from the nursery two weeks ago along with a succulent\" — Peace lily + succulent = 2 plants (acquired ~2 weeks before 2023/05/20, so ~May 6).\n2. Session 14: mentions snake plant and succulents (in assistant reply), orchid, fern, African violets, spider plant — but these are mentioned as plants the user has, not necessarily acquired last month.\n3. Session 14: \"new plants to your collection\" — vague.\n4. Session 17: \"my snake plant, which I got from my sister last month\" — snake plant acquired last month (relative to 2023/05/25).\n\nNow, what's \"the last month\"? The sessions span 2023/05/20 to 2023/05/29. So \"last month\" likely means within the past month (~late April to late May).\n\nPlants explicitly acquired:\n- Peace lily (two weeks before May 20) — yes, within last month.\n- Succulent (same time) — yes, within last month.\n- Snake plant (got from sister last month, stated May 25) — yes, within last month.\n\nThe fern, orchid, African violets, spider plant are mentioned as already owned but no acquisition date given, so can't confirm they were acquired last month.\n\nSo confirmed acquisitions: peace lily, succulent, snake plant = 3.\n\n**3**",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_d84a3211",
+   "capability": "MR",
+   "groundTruth": "$185",
+   "answer": "65",
+   "rawOutput": "65",
+   "correct": false
+  },
+  {
+   "questionId": "aae3761f",
+   "capability": "MR",
+   "groundTruth": "15 hours for getting to the three destinations (or 30 hours for the round trip)",
+   "answer": null,
+   "rawOutput": "Let me gather all mentions of driving hours to specific road trip destinations:\n\n1. **Session 6**: \"my recent trip to Outer Banks in North Carolina - it only took me **four hours** to drive there from my place.\"\n\n2. **Session 29**: \"when I drove for **six hours** to Washington D.C. recently\"\n\nThat's only two destinations with stated driving times. The question asks for three road trip destinations combined. No third destination has a stated driving time (Tybee Island and the national parks are discussed, but no actual trip duration stated for the user).\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_f2262a51",
+   "capability": "MR",
+   "groundTruth": "I visited three different doctors: a primary care physician, an ENT specialist, and a dermatologist.",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "dd2973ad",
+   "capability": "MR",
+   "groundTruth": "2 AM",
+   "answer": "2 AM",
+   "rawOutput": "2 AM",
+   "correct": true
+  },
+  {
+   "questionId": "c4a1ceb8",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_a56e767c",
+   "capability": "MR",
+   "groundTruth": "I attended four movie festivals.",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": true
+  },
+  {
+   "questionId": "6cb6f249",
+   "capability": "MR",
+   "groundTruth": "17 days",
+   "answer": "17",
+   "rawOutput": "17",
+   "correct": true
+  },
+  {
+   "questionId": "46a3abf7",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "36b9f61e",
+   "capability": "MR",
+   "groundTruth": "$2,500",
+   "answer": "2300",
+   "rawOutput": "2300",
+   "correct": false
+  },
+  {
+   "questionId": "28dc39ac",
+   "capability": "MR",
+   "groundTruth": "140 hours",
+   "answer": "23",
+   "rawOutput": "23",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_2f8be40d",
+   "capability": "MR",
+   "groundTruth": "I attended three weddings. The couples were Rachel and Mike, Emily and Sarah, and Jen and Tom.",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": false
+  },
+  {
+   "questionId": "2e6d26dc",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "6",
+   "rawOutput": "6",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_15e38248",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "I don't see any information about furniture purchases, assembly, sales, or repairs in the evidence.",
+   "rawOutput": "I don't see any information about furniture purchases, assembly, sales, or repairs in the evidence.",
+   "correct": false
+  },
+  {
+   "questionId": "88432d0a",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": false
+  },
+  {
+   "questionId": "80ec1f4f",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "Let me gather the relevant evidence:\n\n- Session 28: \"James Parker, whose work I recently saw when I visited The Art Cube on 2/15\" — The Art Cube, 2/15 (February).\n- Session 33: \"I took my niece to the Natural History Museum on 2/8\" — Natural History Museum, 2/8 (February).\n- Session 35: \"I recently got back into art after attending a guided workshop at the Modern Art Museum in January\" — January, not February, so exclude.\n\nDifferent museums/galleries in February:\n1. The Art Cube (2/15)\n2. Natural History Museum (2/8)\n\n**2**",
+   "rawOutput": "Let me gather the relevant evidence:\n\n- Session 28: \"James Parker, whose work I recently saw when I visited The Art Cube on 2/15\" — The Art Cube, 2/15 (February).\n- Session 33: \"I took my niece to the Natural History Museum on 2/8\" — Natural History Museum, 2/8 (February).\n- Session 35: \"I recently got back into art after attending a guided workshop at the Modern Art Museum in January\" — January, not February, so exclude.\n\nDifferent museums/galleries in February:\n1. The Art Cube (2/15)\n2. Natural History Museum (2/8)\n\n**2**",
+   "correct": true
+  },
+  {
+   "questionId": "d23cf73b",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_7fce9456",
+   "capability": "MR",
+   "groundTruth": "I viewed four properties before making an offer on the townhouse in the Brookside neighborhood. The reasons I didn't make an offer on them were: the kitchen of the bungalow needed serious renovation, the property in Cedar Creek was out of my budget, the noise from the highway was a deal-breaker for the 1-bedroom condo, and my offer on the 2-bedroom condo was rejected due to a higher bid.",
+   "answer": "Let's gather the relevant pieces about properties viewed before the offer on the Brookside townhouse.\n\nFrom Session 23:\n- User says they put in an offer on a 3-bedroom townhouse in Brookside on February 25th.\n\nFrom Session 29:\n- User says they fell in love with a 2-bedroom condo on February 15th, but their offer got rejected on the 17th.\n- Later, user mentions the 3-bedroom townhouse in Brookside and says they had a home inspection done on it.\n\nFrom Session 30:\n- User mentions seeing a property in Cedar Creek on February 1st that didn’t fit their budget.\n\nFrom Session 36:\n- User says they viewed a 1-bedroom condo on February 10th, but highway noise was a deal-breaker.\n\nSo the properties viewed before the offer on the Brookside townhouse (offer made February 25th):\n1. Cedar Creek property — February 1st\n2. 1-bedroom condo — February 10th\n3. 2-bedroom condo — February 15th (offer rejected February 17th)\n\nThat’s 3 properties.\n\n**3**",
+   "rawOutput": "Let's gather the relevant pieces about properties viewed before the offer on the Brookside townhouse.\n\nFrom Session 23:\n- User says they put in an offer on a 3-bedroom townhouse in Brookside on February 25th.\n\nFrom Session 29:\n- User says they fell in love with a 2-bedroom condo on February 15th, but their offer got rejected on the 17th.\n- Later, user mentions the 3-bedroom townhouse in Brookside and says they had a home inspection done on it.\n\nFrom Session 30:\n- User mentions seeing a property in Cedar Creek on February 1st that didn’t fit their budget.\n\nFrom Session 36:\n- User says they viewed a 1-bedroom condo on February 10th, but highway noise was a deal-breaker.\n\nSo the properties viewed before the offer on the Brookside townhouse (offer made February 25th):\n1. Cedar Creek property — February 1st\n2. 1-bedroom condo — February 10th\n3. 2-bedroom condo — February 15th (offer rejected February 17th)\n\nThat’s 3 properties.\n\n**3**",
+   "correct": false
+  },
+  {
+   "questionId": "d682f1a2",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "7024f17c",
+   "capability": "MR",
+   "groundTruth": "0.5 hours",
+   "answer": "7 hours",
+   "rawOutput": "7 hours",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_5501fe77",
+   "capability": "MR",
+   "groundTruth": "TikTok",
+   "answer": "Twitter",
+   "rawOutput": "Twitter",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_2ba83207",
+   "capability": "MR",
+   "groundTruth": "Thrive Market",
+   "answer": "Walmart",
+   "rawOutput": "Walmart",
+   "correct": false
+  },
+  {
+   "questionId": "2318644b",
+   "capability": "MR",
+   "groundTruth": "$270",
+   "answer": "$270",
+   "rawOutput": "$270",
+   "correct": true
+  },
+  {
+   "questionId": "2ce6a0f2",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_d12ceb0e",
+   "capability": "MR",
+   "groundTruth": "59.6",
+   "answer": "Let's gather the ages from the evidence:\n\n- User: In Session 26, the user says, \"I just turned 32 on February 12th\" → user is 32.\n- User's mom: In Session 17, \"my mom is 55\" → mom is 55.\n- User's dad: In Session 17, \"my dad is 58\" → dad is 58.\n- User's grandma: In Session 7, \"My grandma is 75\" → grandma is 75.\n- User's grandpa: In Session 7, \"my grandpa is 78\" → grandpa is 78.\n\nAverage = (32 + 55 + 58 + 75 + 78) / 5 = 298 / 5 = 59.6\n\n59.6",
+   "rawOutput": "Let's gather the ages from the evidence:\n\n- User: In Session 26, the user says, \"I just turned 32 on February 12th\" → user is 32.\n- User's mom: In Session 17, \"my mom is 55\" → mom is 55.\n- User's dad: In Session 17, \"my dad is 58\" → dad is 58.\n- User's grandma: In Session 7, \"My grandma is 75\" → grandma is 75.\n- User's grandpa: In Session 7, \"my grandpa is 78\" → grandpa is 78.\n\nAverage = (32 + 55 + 58 + 75 + 78) / 5 = 298 / 5 = 59.6\n\n59.6",
+   "correct": true
+  },
+  {
+   "questionId": "00ca467f",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "I can't provide a definitive count based only on the evidence. The sessions mention appointments with Dr. Patel (gastroenterologist), an EMG test with Dr. Johnson (neurologist) on April 1st, and discussions about scheduling appointments with Dr. Smith, but they don't clearly state how many doctor's appointments the user actually went to in March.",
+   "rawOutput": "I can't provide a definitive count based only on the evidence. The sessions mention appointments with Dr. Patel (gastroenterologist), an EMG test with Dr. Johnson (neurologist) on April 1st, and discussions about scheduling appointments with Dr. Smith, but they don't clearly state how many doctor's appointments the user actually went to in March.",
+   "correct": false
+  },
+  {
+   "questionId": "b3c15d39",
+   "capability": "MR",
+   "groundTruth": "5 days. 6 days (including the last day) is also acceptable.",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_31ff4165",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "eeda8a6d",
+   "capability": "MR",
+   "groundTruth": "17",
+   "answer": "16",
+   "rawOutput": "16",
+   "correct": false
+  },
+  {
+   "questionId": "2788b940",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "Based on the evidence, the user mentions attending:\n- Zumba classes on Tuesdays and Thursdays (2 classes)\n- BodyPump class on Mondays (1 class)\n- Yoga class on Sundays (1 class)\n- Hip Hop Abs class on Saturdays (1 class)\n\nThat totals 5 fitness classes per week.\n\n5",
+   "rawOutput": "Based on the evidence, the user mentions attending:\n- Zumba classes on Tuesdays and Thursdays (2 classes)\n- BodyPump class on Mondays (1 class)\n- Yoga class on Sundays (1 class)\n- Hip Hop Abs class on Saturdays (1 class)\n\nThat totals 5 fitness classes per week.\n\n5",
+   "correct": true
+  },
+  {
+   "questionId": "60bf93ed",
+   "capability": "MR",
+   "groundTruth": "5 days. 6 days (including the last day) is also acceptable.",
+   "answer": "5 days",
+   "rawOutput": "5 days",
+   "correct": true
+  },
+  {
+   "questionId": "9d25d4e0",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "129d1232",
+   "capability": "MR",
+   "groundTruth": "$5,850",
+   "answer": "$5,250",
+   "rawOutput": "$5,250",
+   "correct": false
+  },
+  {
+   "questionId": "60472f9c",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_194be4b3",
+   "capability": "MR",
+   "groundTruth": "I currently own 4 musical instruments. I've had the Fender Stratocaster electric guitar for 5 years, the Yamaha FG800 acoustic guitar for 8 years, the 5-piece Pearl Export drum set for an unspecified amount of time, and the Korg B1 piano for 3 years.",
+   "answer": "6",
+   "rawOutput": "6",
+   "correct": false
+  },
+  {
+   "questionId": "a9f6b44c",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "d851d5ba",
+   "capability": "MR",
+   "groundTruth": "$3,750",
+   "answer": "$2,750",
+   "rawOutput": "$2,750",
+   "correct": false
+  },
+  {
+   "questionId": "5a7937c8",
+   "capability": "MR",
+   "groundTruth": "3 days.",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_ab202e7f",
+   "capability": "MR",
+   "groundTruth": "I replaced or fixed five items: the kitchen faucet, the kitchen mat, the toaster, the coffee maker, and the kitchen shelves.",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_e05b82a6",
+   "capability": "MR",
+   "groundTruth": "10 times",
+   "answer": "Let me gather all mentions of rollercoaster rides across the sessions.\n\n1. Session 5: \"I rode the Revenge of the Mummy rollercoaster three times in a row at Universal Studios Hollywood on October 15th\" → 3 rides (October)\n\n2. Session 38: \"I rode Space Mountain: Ghost Galaxy three times at Disneyland on September 24th\" → 3 rides (September)\n\n3. Session 43: \"Congratulations on riding three rollercoasters in one night at SeaWorld San Diego!\" → 3 rides (date not specified, not confirmed within July–October)\n\nOnly sessions 5 and 38 have explicit dates within July–October (October 15th and September 24th), totaling 3 + 3 = 6.\n\nSession 43's rides have no date given, so they cannot be confirmed within the July–October range.\n\n**6**",
+   "rawOutput": "Let me gather all mentions of rollercoaster rides across the sessions.\n\n1. Session 5: \"I rode the Revenge of the Mummy rollercoaster three times in a row at Universal Studios Hollywood on October 15th\" → 3 rides (October)\n\n2. Session 38: \"I rode Space Mountain: Ghost Galaxy three times at Disneyland on September 24th\" → 3 rides (September)\n\n3. Session 43: \"Congratulations on riding three rollercoasters in one night at SeaWorld San Diego!\" → 3 rides (date not specified, not confirmed within July–October)\n\nOnly sessions 5 and 38 have explicit dates within July–October (October 15th and September 24th), totaling 3 + 3 = 6.\n\nSession 43's rides have no date given, so they cannot be confirmed within the July–October range.\n\n**6**",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_731e37d7",
+   "capability": "MR",
+   "groundTruth": "$720",
+   "answer": "620",
+   "rawOutput": "620",
+   "correct": false
+  },
+  {
+   "questionId": "edced276",
+   "capability": "MR",
+   "groundTruth": "15 days",
+   "answer": "8",
+   "rawOutput": "8",
+   "correct": false
+  },
+  {
+   "questionId": "10d9b85a",
+   "capability": "MR",
+   "groundTruth": "3 days",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "e3038f8c",
+   "capability": "MR",
+   "groundTruth": "99",
+   "answer": "Let me gather all the rare item counts mentioned across sessions:\n\n- Session 8: 12 rare figurines, 57 rare records, rare coins (no count given here)\n- Session 16: 25 rare coins\n- Session 10: rare records collection (57 mentioned in Session 8, 11)\n- Session 11: 57 rare records\n- Session 26: rare vinyl records (no count)\n- Also mentioned: rare books, grandmother's antique vase (no counts)\n\nRare items with counts:\n- 12 rare figurines\n- 57 rare records\n- 25 rare coins\n\nTotal: 12 + 57 + 25 = 94\n\nThe vase and rare books have no stated quantities, so they cannot be counted.\n\n94",
+   "rawOutput": "Let me gather all the rare item counts mentioned across sessions:\n\n- Session 8: 12 rare figurines, 57 rare records, rare coins (no count given here)\n- Session 16: 25 rare coins\n- Session 10: rare records collection (57 mentioned in Session 8, 11)\n- Session 11: 57 rare records\n- Session 26: rare vinyl records (no count)\n- Also mentioned: rare books, grandmother's antique vase (no counts)\n\nRare items with counts:\n- 12 rare figurines\n- 57 rare records\n- 25 rare coins\n\nTotal: 12 + 57 + 25 = 94\n\nThe vase and rare books have no stated quantities, so they cannot be counted.\n\n94",
+   "correct": false
+  },
+  {
+   "questionId": "2b8f3739",
+   "capability": "MR",
+   "groundTruth": "$495",
+   "answer": "285",
+   "rawOutput": "285",
+   "correct": false
+  },
+  {
+   "questionId": "1a8a66a6",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "1",
+   "rawOutput": "1",
+   "correct": false
+  },
+  {
+   "questionId": "c2ac3c61",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": true
+  },
+  {
+   "questionId": "bf659f65",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_372c3eed",
+   "capability": "MR",
+   "groundTruth": "10 years",
+   "answer": "8",
+   "rawOutput": "8",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_2f91af09",
+   "capability": "MR",
+   "groundTruth": "23",
+   "answer": "Let's gather the relevant pieces of writing mentioned across the sessions:\n\n**Session 8:**\n- 17 poems in two weeks.\n\n**Session 40:**\n- Five short stories written so far.\n\n**Session 52:**\n- Participating in a writing challenge; wrote one piece titled \"The Smell of Old Books\" for the \"forgotten memories\" prompt (1 piece).\n\n**Total:**\n17 poems + 5 short stories + 1 writing challenge piece = 23 pieces.\n\n23",
+   "rawOutput": "Let's gather the relevant pieces of writing mentioned across the sessions:\n\n**Session 8:**\n- 17 poems in two weeks.\n\n**Session 40:**\n- Five short stories written so far.\n\n**Session 52:**\n- Participating in a writing challenge; wrote one piece titled \"The Smell of Old Books\" for the \"forgotten memories\" prompt (1 piece).\n\n**Total:**\n17 poems + 5 short stories + 1 writing challenge piece = 23 pieces.\n\n23",
+   "correct": true
+  },
+  {
+   "questionId": "81507db6",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "d3ab962e",
+   "capability": "MR",
+   "groundTruth": "8 miles",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "2311e44b",
+   "capability": "MR",
+   "groundTruth": "190",
+   "answer": "190",
+   "rawOutput": "190",
+   "correct": true
+  },
+  {
+   "questionId": "cc06de0d",
+   "capability": "MR",
+   "groundTruth": "$6",
+   "answer": "$6",
+   "rawOutput": "$6",
+   "correct": true
+  },
+  {
+   "questionId": "a11281a2",
+   "capability": "MR",
+   "groundTruth": "100",
+   "answer": "100",
+   "rawOutput": "100",
+   "correct": true
+  },
+  {
+   "questionId": "4f54b7c9",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "6",
+   "rawOutput": "6",
+   "correct": false
+  },
+  {
+   "questionId": "85fa3a3f",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$50",
+   "rawOutput": "$50",
+   "correct": true
+  },
+  {
+   "questionId": "9aaed6a3",
+   "capability": "MR",
+   "groundTruth": "$0.75",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "1f2b8d4f",
+   "capability": "MR",
+   "groundTruth": "$750",
+   "answer": "$750",
+   "rawOutput": "$750",
+   "correct": true
+  },
+  {
+   "questionId": "e6041065",
+   "capability": "MR",
+   "groundTruth": "40%",
+   "answer": "40%",
+   "rawOutput": "40%",
+   "correct": true
+  },
+  {
+   "questionId": "51c32626",
+   "capability": "MR",
+   "groundTruth": "February 1st",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "d905b33f",
+   "capability": "MR",
+   "groundTruth": "20%",
+   "answer": "40%",
+   "rawOutput": "40%",
+   "correct": false
+  },
+  {
+   "questionId": "7405e8b1",
+   "capability": "MR",
+   "groundTruth": "Yes.",
+   "answer": "Yes",
+   "rawOutput": "Yes",
+   "correct": true
+  },
+  {
+   "questionId": "f35224e0",
+   "capability": "MR",
+   "groundTruth": "27",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "6456829e",
+   "capability": "MR",
+   "groundTruth": "8",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a4996e51",
+   "capability": "MR",
+   "groundTruth": "50",
+   "answer": "50 hours",
+   "rawOutput": "50 hours",
+   "correct": true
+  },
+  {
+   "questionId": "3c1045c8",
+   "capability": "MR",
+   "groundTruth": "2.5 years",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "60036106",
+   "capability": "MR",
+   "groundTruth": "12,000",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "681a1674",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "1",
+   "rawOutput": "1",
+   "correct": false
+  },
+  {
+   "questionId": "e25c3b8d",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "4adc0475",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": false
+  },
+  {
+   "questionId": "4bc144e2",
+   "capability": "MR",
+   "groundTruth": "$65",
+   "answer": "$65",
+   "rawOutput": "$65",
+   "correct": true
+  },
+  {
+   "questionId": "ef66a6e5",
+   "capability": "MR",
+   "groundTruth": "two",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "5025383b",
+   "capability": "MR",
+   "groundTruth": "photography and cooking",
+   "answer": "Photography and cooking",
+   "rawOutput": "Photography and cooking",
+   "correct": true
+  },
+  {
+   "questionId": "a1cc6108",
+   "capability": "MR",
+   "groundTruth": "11",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "9ee3ecd6",
+   "capability": "MR",
+   "groundTruth": "100",
+   "answer": "300",
+   "rawOutput": "300",
+   "correct": false
+  },
+  {
+   "questionId": "3fdac837",
+   "capability": "MR",
+   "groundTruth": "11 days (or 12 days, if April 15th to 22nd is considered as 8 days)",
+   "answer": "11",
+   "rawOutput": "11",
+   "correct": true
+  },
+  {
+   "questionId": "91b15a6e",
+   "capability": "MR",
+   "groundTruth": "$5,150",
+   "answer": "6500",
+   "rawOutput": "6500",
+   "correct": false
+  },
+  {
+   "questionId": "27016adc",
+   "capability": "MR",
+   "groundTruth": "10%",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "720133ac",
+   "capability": "MR",
+   "groundTruth": "$75",
+   "answer": "$75",
+   "rawOutput": "$75",
+   "correct": true
+  },
+  {
+   "questionId": "77eafa52",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "300",
+   "rawOutput": "300",
+   "correct": true
+  },
+  {
+   "questionId": "8979f9ec",
+   "capability": "MR",
+   "groundTruth": "8 meals",
+   "answer": "8",
+   "rawOutput": "8",
+   "correct": true
+  },
+  {
+   "questionId": "0100672e",
+   "capability": "MR",
+   "groundTruth": "$12",
+   "answer": "$12",
+   "rawOutput": "$12",
+   "correct": true
+  },
+  {
+   "questionId": "a96c20ee",
+   "capability": "MR",
+   "groundTruth": "Harvard University",
+   "answer": "Harvard University",
+   "rawOutput": "Harvard University",
+   "correct": true
+  },
+  {
+   "questionId": "92a0aa75",
+   "capability": "MR",
+   "groundTruth": "1 year and 5 months",
+   "answer": "3 years and 9 months",
+   "rawOutput": "3 years and 9 months",
+   "correct": false
+  },
+  {
+   "questionId": "3fe836c9",
+   "capability": "MR",
+   "groundTruth": "$25,000",
+   "answer": "$25,000",
+   "rawOutput": "$25,000",
+   "correct": true
+  },
+  {
+   "questionId": "1c549ce4",
+   "capability": "MR",
+   "groundTruth": "$140",
+   "answer": "$140",
+   "rawOutput": "$140",
+   "correct": true
+  },
+  {
+   "questionId": "6c49646a",
+   "capability": "MR",
+   "groundTruth": "3,000 miles",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "1192316e",
+   "capability": "MR",
+   "groundTruth": "an hour and a half",
+   "answer": "1 hour 30 minutes",
+   "rawOutput": "1 hour 30 minutes",
+   "correct": true
+  },
+  {
+   "questionId": "0ea62687",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "67e0d0f2",
+   "capability": "MR",
+   "groundTruth": "20",
+   "answer": "18",
+   "rawOutput": "18",
+   "correct": false
+  },
+  {
+   "questionId": "bb7c3b45",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "ba358f49",
+   "capability": "MR",
+   "groundTruth": "33",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "61f8c8f8",
+   "capability": "MR",
+   "groundTruth": "10 minutes",
+   "answer": "10 minutes",
+   "rawOutput": "10 minutes",
+   "correct": true
+  },
+  {
+   "questionId": "60159905",
+   "capability": "MR",
+   "groundTruth": "three",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": false
+  },
+  {
+   "questionId": "ef9cf60a",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "$300",
+   "rawOutput": "$300",
+   "correct": true
+  },
+  {
+   "questionId": "73d42213",
+   "capability": "MR",
+   "groundTruth": "9:00 AM",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "bc149d6b",
+   "capability": "MR",
+   "groundTruth": "70 pounds",
+   "answer": "50-pound",
+   "rawOutput": "50-pound",
+   "correct": false
+  },
+  {
+   "questionId": "099778bb",
+   "capability": "MR",
+   "groundTruth": "20%",
+   "answer": "20%",
+   "rawOutput": "20%",
+   "correct": true
+  },
+  {
+   "questionId": "09ba9854",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$40",
+   "rawOutput": "$40",
+   "correct": false
+  },
+  {
+   "questionId": "d6062bb9",
+   "capability": "MR",
+   "groundTruth": "1,998",
+   "answer": "1977",
+   "rawOutput": "1977",
+   "correct": false
+  },
+  {
+   "questionId": "157a136e",
+   "capability": "MR",
+   "groundTruth": "43",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "c18a7dc8",
+   "capability": "MR",
+   "groundTruth": "7",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a3332713",
+   "capability": "MR",
+   "groundTruth": "$200",
+   "answer": "180",
+   "rawOutput": "180",
+   "correct": false
+  },
+  {
+   "questionId": "55241a1f",
+   "capability": "MR",
+   "groundTruth": "33",
+   "answer": "33",
+   "rawOutput": "33",
+   "correct": true
+  },
+  {
+   "questionId": "a08a253f",
+   "capability": "MR",
+   "groundTruth": "4 days.",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": false
+  },
+  {
+   "questionId": "f0e564bc",
+   "capability": "MR",
+   "groundTruth": "$1,300",
+   "answer": "$1300",
+   "rawOutput": "$1300",
+   "correct": true
+  },
+  {
+   "questionId": "078150f1",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$50",
+   "rawOutput": "$50",
+   "correct": true
+  },
+  {
+   "questionId": "8cf4d046",
+   "capability": "MR",
+   "groundTruth": "3.83",
+   "answer": "The evidence mentions a graduate GPA of 3.8 out of 4.0, and an undergraduate \"First-Class distinction,\" but it does not provide a numerical undergraduate GPA. Therefore, the average GPA cannot be computed.",
+   "rawOutput": "The evidence mentions a graduate GPA of 3.8 out of 4.0, and an undergraduate \"First-Class distinction,\" but it does not provide a numerical undergraduate GPA. Therefore, the average GPA cannot be computed.",
+   "correct": false
+  },
+  {
+   "questionId": "a346bb18",
+   "capability": "MR",
+   "groundTruth": "12",
+   "answer": "12",
+   "rawOutput": "12",
+   "correct": true
+  },
+  {
+   "questionId": "37f165cf",
+   "capability": "MR",
+   "groundTruth": "856",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "8e91e7d9",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "Let’s go through the evidence for any mention of siblings.\n\n- **Session 19:** “I come from a family with 3 sisters…”\n- **Session 23:** “I have a brother…”\n\nThese are the only sibling mentions. The user says they have 3 sisters and 1 brother. That totals 4 siblings.\n\n**Answer:** 4",
+   "rawOutput": "Let’s go through the evidence for any mention of siblings.\n\n- **Session 19:** “I come from a family with 3 sisters…”\n- **Session 23:** “I have a brother…”\n\nThese are the only sibling mentions. The user says they have 3 sisters and 1 brother. That totals 4 siblings.\n\n**Answer:** 4",
+   "correct": true
+  },
+  {
+   "questionId": "87f22b4a",
+   "capability": "MR",
+   "groundTruth": "$120",
+   "answer": "$120",
+   "rawOutput": "$120",
+   "correct": true
+  },
+  {
+   "questionId": "e56a43b9",
+   "capability": "MR",
+   "groundTruth": "$5",
+   "answer": "Based on the evidence, there are conflicting statements about the discount. In Session 13, the user mentions reaching 500 points, the minimum for a discount, and wanting to save money. In Session 32, the user states that 500 points gets a $5 discount on the next purchase. Therefore, the discount is $5.",
+   "rawOutput": "Based on the evidence, there are conflicting statements about the discount. In Session 13, the user mentions reaching 500 points, the minimum for a discount, and wanting to save money. In Session 32, the user states that 500 points gets a $5 discount on the next purchase. Therefore, the discount is $5.",
+   "correct": true
+  },
+  {
+   "questionId": "efc3f7c2",
+   "capability": "MR",
+   "groundTruth": "30 minutes",
+   "answer": "30 minutes earlier",
+   "rawOutput": "30 minutes earlier",
+   "correct": true
+  },
+  {
+   "questionId": "21d02d0d",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "1",
+   "rawOutput": "1",
+   "correct": false
+  }
+ ]
+}

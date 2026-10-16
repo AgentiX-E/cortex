@@ -1,0 +1,980 @@
+{
+ "provenance": {
+  "run": "38595325261",
+  "workflow": "benchmark-cortex-memory.yml",
+  "artifact": "longmemeval-s-report > benchmark-cortex-memory-ablation-report.json",
+  "capability": "MR",
+  "questions": 121,
+  "note": "only the fields tools/classify-raw-outputs.py reads; the report is not committed"
+ },
+ "questions": [
+  {
+   "questionId": "0a995998",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "6d550036",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_59c863d7",
+   "capability": "MR",
+   "groundTruth": "I have worked on or bought five model kits. The scales of the models are: Revell F-15 Eagle (scale not mentioned), Tamiya 1/48 scale Spitfire Mk.V, 1/16 scale German Tiger I tank, 1/72 scale B-29 bomber, and 1/24 scale '69 Camaro.",
+   "answer": "Let me gather all model kits mentioned across sessions:\n\n**Session 2:**\n1. 1/72 scale B-29 bomber model kit (new, just got it)\n2. 1/24 scale '69 Camaro (just got it at a model show)\n\n**Session 33:**\n3. Revell F-15 Eagle kit (finished, picked up in late April)\n\n**Session 44:**\n4. Tamiya 1/48 scale Spitfire Mk.V (recently finished)\n\n**Session 15:** Lenovo laptop — not a model kit.\n\nThat's 4 model kits.\n\n4",
+   "rawOutput": "Let me gather all model kits mentioned across sessions:\n\n**Session 2:**\n1. 1/72 scale B-29 bomber model kit (new, just got it)\n2. 1/24 scale '69 Camaro (just got it at a model show)\n\n**Session 33:**\n3. Revell F-15 Eagle kit (finished, picked up in late April)\n\n**Session 44:**\n4. Tamiya 1/48 scale Spitfire Mk.V (recently finished)\n\n**Session 15:** Lenovo laptop — not a model kit.\n\nThat's 4 model kits.\n\n4",
+   "correct": false
+  },
+  {
+   "questionId": "b5ef892d",
+   "capability": "MR",
+   "groundTruth": "8 days.",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "e831120c",
+   "capability": "MR",
+   "groundTruth": "3.5 weeks",
+   "answer": "4 weeks",
+   "rawOutput": "4 weeks",
+   "correct": false
+  },
+  {
+   "questionId": "3a704032",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "I don't have enough information to determine the total number of plants acquired in the last month.",
+   "rawOutput": "I don't have enough information to determine the total number of plants acquired in the last month.",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_d84a3211",
+   "capability": "MR",
+   "groundTruth": "$185",
+   "answer": "I'm sorry, but I don't have enough information to determine the total amount you've spent on bike-related expenses since the start of the year. The evidence mentions a $25 chain replacement and $40 bike lights from an April 20th tune-up, but it does not list all bike-related expenses you may have incurred since January.",
+   "rawOutput": "I'm sorry, but I don't have enough information to determine the total amount you've spent on bike-related expenses since the start of the year. The evidence mentions a $25 chain replacement and $40 bike lights from an April 20th tune-up, but it does not list all bike-related expenses you may have incurred since January.",
+   "correct": false
+  },
+  {
+   "questionId": "aae3761f",
+   "capability": "MR",
+   "groundTruth": "15 hours for getting to the three destinations (or 30 hours for the round trip)",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_f2262a51",
+   "capability": "MR",
+   "groundTruth": "I visited three different doctors: a primary care physician, an ENT specialist, and a dermatologist.",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": false
+  },
+  {
+   "questionId": "dd2973ad",
+   "capability": "MR",
+   "groundTruth": "2 AM",
+   "answer": "2 AM",
+   "rawOutput": "2 AM",
+   "correct": true
+  },
+  {
+   "questionId": "c4a1ceb8",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "orange, lemon, lime, grapefruit",
+   "rawOutput": "orange, lemon, lime, grapefruit",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_a56e767c",
+   "capability": "MR",
+   "groundTruth": "I attended four movie festivals.",
+   "answer": "Based on the evidence, I can identify the following film festivals the user attended or participated in:\n\n1. **Austin Film Festival** (Session 7) – participated in the 48-hour film challenge\n2. **Portland Film Festival** (Session 30) – volunteered and assisted with a masterclass\n3. **AFI Fest** (Session 33) – attended and saw \"Joker\" with a Q&A session\n\nThat makes **3** film festivals.\n\n**3**",
+   "rawOutput": "Based on the evidence, I can identify the following film festivals the user attended or participated in:\n\n1. **Austin Film Festival** (Session 7) – participated in the 48-hour film challenge\n2. **Portland Film Festival** (Session 30) – volunteered and assisted with a masterclass\n3. **AFI Fest** (Session 33) – attended and saw \"Joker\" with a Q&A session\n\nThat makes **3** film festivals.\n\n**3**",
+   "correct": false
+  },
+  {
+   "questionId": "6cb6f249",
+   "capability": "MR",
+   "groundTruth": "17 days",
+   "answer": "17",
+   "rawOutput": "17",
+   "correct": true
+  },
+  {
+   "questionId": "46a3abf7",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "36b9f61e",
+   "capability": "MR",
+   "groundTruth": "$2,500",
+   "answer": "2200",
+   "rawOutput": "2200",
+   "correct": false
+  },
+  {
+   "questionId": "28dc39ac",
+   "capability": "MR",
+   "groundTruth": "140 hours",
+   "answer": "Let me gather all the playtime mentions across sessions.\n\nThe user states completion times for games they've played:\n- Hyper Light Drifter: 5 hours\n- The Last of Us Part II: completed on normal and hard (Session 12), also completed on hard in 30 hours (Session 20), and finished on normal in 25 hours (Session 28)\n- Celeste: 10 hours\n- Assassin's Creed Odyssey: completed (no time given)\n- The Last of Us Part II: Session 20 says 30 hours (hard), Session 28 says 25 hours (normal)\n- The Last of Us Part II again in Session 12 mentions \"recently completed on both normal and hard difficulties\"\n\nThis is tricky. The user reports multiple playthroughs of The Last of Us Part II. In Session 12 they completed it on both normal and hard. In Session 20 it took 30 hours (hard). In Session 28 it took 25 hours (normal). These appear to be the same two playthroughs referenced.\n\nSum of distinct playtimes:\n- Hyper Light Drifter: 5\n- Celeste: 10\n- The Last of Us Part II normal: 25\n- The Last of Us Part II hard: 30\n\nTotal = 5 + 10 + 25 + 30 = 70 hours\n\nBut other games (Assassin's Creed Odyssey, The Last of Us Part II in Session 12, etc.) lack time data. The question asks total hours spent playing games. We only have partial data. However, combining every relevant piece: 5 + 10 + 25 + 30 = 70 hours.\n\nGiven the instruction to gather all relevant pieces and compute, the answer is 70.\n\n70",
+   "rawOutput": "Let me gather all the playtime mentions across sessions.\n\nThe user states completion times for games they've played:\n- Hyper Light Drifter: 5 hours\n- The Last of Us Part II: completed on normal and hard (Session 12), also completed on hard in 30 hours (Session 20), and finished on normal in 25 hours (Session 28)\n- Celeste: 10 hours\n- Assassin's Creed Odyssey: completed (no time given)\n- The Last of Us Part II: Session 20 says 30 hours (hard), Session 28 says 25 hours (normal)\n- The Last of Us Part II again in Session 12 mentions \"recently completed on both normal and hard difficulties\"\n\nThis is tricky. The user reports multiple playthroughs of The Last of Us Part II. In Session 12 they completed it on both normal and hard. In Session 20 it took 30 hours (hard). In Session 28 it took 25 hours (normal). These appear to be the same two playthroughs referenced.\n\nSum of distinct playtimes:\n- Hyper Light Drifter: 5\n- Celeste: 10\n- The Last of Us Part II normal: 25\n- The Last of Us Part II hard: 30\n\nTotal = 5 + 10 + 25 + 30 = 70 hours\n\nBut other games (Assassin's Creed Odyssey, The Last of Us Part II in Session 12, etc.) lack time data. The question asks total hours spent playing games. We only have partial data. However, combining every relevant piece: 5 + 10 + 25 + 30 = 70 hours.\n\nGiven the instruction to gather all relevant pieces and compute, the answer is 70.\n\n70",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_2f8be40d",
+   "capability": "MR",
+   "groundTruth": "I attended three weddings. The couples were Rachel and Mike, Emily and Sarah, and Jen and Tom.",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "2e6d26dc",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "6",
+   "rawOutput": "6",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_15e38248",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "IKEA bookshelf",
+   "rawOutput": "IKEA bookshelf",
+   "correct": false
+  },
+  {
+   "questionId": "88432d0a",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "Let’s go through the evidence and pull out every instance where the user says they baked something, and check the dates to see if it falls within the “past two weeks.”\n\n**Reference point:** The latest timestamp in the evidence is **2023/05/30**.  \nTwo weeks before that is **2023/05/16 to 2023/05/30**.\n\n**Baking references:**\n\n1. **Session 3, 2023/05/20** – User mentions cooking steak, making apple pie in cast iron skillet.  \n   - “I made the apple pie in my cast iron skillet and it turned out amazing!” → **Baked** (apple pie). ✅ Within window.\n\n2. **Session 9, 2023/05/21** – User says:  \n   - “I recently baked a chocolate cake for my sister's birthday party…” → **Baked** (chocolate cake). ✅ Within window.\n\n3. **Session 23, 2023/05/24** – User mentions whole wheat baguette success indirectly, but that was assistant congratulating; earlier context unclear if within two weeks. The user says “your successful whole wheat baguette” — implies user baked it. The date is 2023/05/24, so likely recent. ✅ Possible baked item (baguette). But it’s not explicit “I baked”; assistant says “Congratulations on your successful whole wheat baguette!” so user did bake it. ✅ Within window.\n\n4. **Session 38, 2023/05/28** – User mentions:  \n   - “I've had good results with the convection setting on my oven, like when I used it to bake a batch of cookies last Thursday.”  \n     Last Thursday from 2023/05/28 (Sunday) = 2023/05/25. ✅ Baked cookies. Within window.\n\n5. **Session 38, 2023/05/28** – User says: “I'm thinking of trying out a new bread recipe this weekend” → future, not yet baked. ❌ Not counted.\n\n6. **Session 40, 2023/05/30** – User talks about making a fruit tart, but it's planning, not baked yet. ❌ Not counted.\n\n7. **Session 43, 2023/05/30** – Mentions “Korean-style BBQ beef… which I tried two weekends ago” → that’s cooking, not necessarily baking. ❌ Not baking.\n\n8. **Session 44, 2023/05/30** – Talk about jam and market, no baking mentioned. ❌\n\n**Also check earlier possible bakes:**\n- Session 9 also mentions sourdough bread baked “on Tuesday” — if session is 2023/05/21 (Sunday), Tuesday before = 2023/05/16. That’s exactly two weeks before 05/30, so within window. ✅ Sourdough bread baked.\n\n**Summary of distinct baking events within 2023/05/16–05/30:**\n1. Apple pie (Session 3, 05/20)\n2. Chocolate cake (Session 9, 05/21)\n3. Sourdough bread (Session 9, baked Tuesday 05/16)\n4. Whole wheat baguette (Session 23, ~05/24)\n5. Cookies (Session 38, baked Thursday 05/25)\n\nThat’s **5** distinct times.\n\n**Answer:** 5",
+   "rawOutput": "Let’s go through the evidence and pull out every instance where the user says they baked something, and check the dates to see if it falls within the “past two weeks.”\n\n**Reference point:** The latest timestamp in the evidence is **2023/05/30**.  \nTwo weeks before that is **2023/05/16 to 2023/05/30**.\n\n**Baking references:**\n\n1. **Session 3, 2023/05/20** – User mentions cooking steak, making apple pie in cast iron skillet.  \n   - “I made the apple pie in my cast iron skillet and it turned out amazing!” → **Baked** (apple pie). ✅ Within window.\n\n2. **Session 9, 2023/05/21** – User says:  \n   - “I recently baked a chocolate cake for my sister's birthday party…” → **Baked** (chocolate cake). ✅ Within window.\n\n3. **Session 23, 2023/05/24** – User mentions whole wheat baguette success indirectly, but that was assistant congratulating; earlier context unclear if within two weeks. The user says “your successful whole wheat baguette” — implies user baked it. The date is 2023/05/24, so likely recent. ✅ Possible baked item (baguette). But it’s not explicit “I baked”; assistant says “Congratulations on your successful whole wheat baguette!” so user did bake it. ✅ Within window.\n\n4. **Session 38, 2023/05/28** – User mentions:  \n   - “I've had good results with the convection setting on my oven, like when I used it to bake a batch of cookies last Thursday.”  \n     Last Thursday from 2023/05/28 (Sunday) = 2023/05/25. ✅ Baked cookies. Within window.\n\n5. **Session 38, 2023/05/28** – User says: “I'm thinking of trying out a new bread recipe this weekend” → future, not yet baked. ❌ Not counted.\n\n6. **Session 40, 2023/05/30** – User talks about making a fruit tart, but it's planning, not baked yet. ❌ Not counted.\n\n7. **Session 43, 2023/05/30** – Mentions “Korean-style BBQ beef… which I tried two weekends ago” → that’s cooking, not necessarily baking. ❌ Not baking.\n\n8. **Session 44, 2023/05/30** – Talk about jam and market, no baking mentioned. ❌\n\n**Also check earlier possible bakes:**\n- Session 9 also mentions sourdough bread baked “on Tuesday” — if session is 2023/05/21 (Sunday), Tuesday before = 2023/05/16. That’s exactly two weeks before 05/30, so within window. ✅ Sourdough bread baked.\n\n**Summary of distinct baking events within 2023/05/16–05/30:**\n1. Apple pie (Session 3, 05/20)\n2. Chocolate cake (Session 9, 05/21)\n3. Sourdough bread (Session 9, baked Tuesday 05/16)\n4. Whole wheat baguette (Session 23, ~05/24)\n5. Cookies (Session 38, baked Thursday 05/25)\n\nThat’s **5** distinct times.\n\n**Answer:** 5",
+   "correct": false
+  },
+  {
+   "questionId": "80ec1f4f",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "I visited three different museums or galleries in February:\n\n1. The Art Cube (visited 2/15, mentioned in Sessions 28 and 35)\n2. The Natural History Museum (visited 2/8, mentioned in Session 33)\n3. The Modern Art Museum (attended a guided workshop in January — mentioned in Session 35)\n\nWait — the Modern Art Museum visit was in January, not February, so it should not count. That leaves:\n\n1. The Art Cube (2/15)\n2. The Natural History Museum (2/8)\n\n**2**",
+   "rawOutput": "I visited three different museums or galleries in February:\n\n1. The Art Cube (visited 2/15, mentioned in Sessions 28 and 35)\n2. The Natural History Museum (visited 2/8, mentioned in Session 33)\n3. The Modern Art Museum (attended a guided workshop in January — mentioned in Session 35)\n\nWait — the Modern Art Museum visit was in January, not February, so it should not count. That leaves:\n\n1. The Art Cube (2/15)\n2. The Natural History Museum (2/8)\n\n**2**",
+   "correct": true
+  },
+  {
+   "questionId": "d23cf73b",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "Let me gather the relevant evidence about cuisines the user has learned to cook or tried out:\n\n1. **Session 21** (2023/05/24): User says \"I tried out a new Ethiopian restaurant in town last week and loved it!\" — Ethiopian (tried out)\n2. **Session 21**: User says \"I think I'll try out the Ethiopian-inspired dishes, especially the misir wot\" and asks about making injera from scratch — Ethiopian (learning to cook)\n3. **Session 33** (2023/05/26): User says \"Congratulations on mastering it in a cooking class\" context — the assistant mentions \"Chicken tikka masala is a fantastic choice! Congratulations on mastering it in a cooking class.\" — Indian (learned to cook)\n4. **Session 33**: User says \"I'm planning to make a few other Indian-inspired dishes for my dinner party, including naan bread and saag paneer.\" — Indian\n5. **Session 44** (2023/05/29): User says \"I just tried out a recipe for Korean bibimbap from the cooking class's online recipe library, and it was amazing.\" — Korean (tried/learned)\n6. **Session 44**: User plans to add kimchi to stir-fry, asks about making kimchi at home — Korean\n\nNow let me count distinct cuisines:\n- Ethiopian\n- Indian\n- Korean\n\nThat's **3** different cuisines.\n\n3",
+   "rawOutput": "Let me gather the relevant evidence about cuisines the user has learned to cook or tried out:\n\n1. **Session 21** (2023/05/24): User says \"I tried out a new Ethiopian restaurant in town last week and loved it!\" — Ethiopian (tried out)\n2. **Session 21**: User says \"I think I'll try out the Ethiopian-inspired dishes, especially the misir wot\" and asks about making injera from scratch — Ethiopian (learning to cook)\n3. **Session 33** (2023/05/26): User says \"Congratulations on mastering it in a cooking class\" context — the assistant mentions \"Chicken tikka masala is a fantastic choice! Congratulations on mastering it in a cooking class.\" — Indian (learned to cook)\n4. **Session 33**: User says \"I'm planning to make a few other Indian-inspired dishes for my dinner party, including naan bread and saag paneer.\" — Indian\n5. **Session 44** (2023/05/29): User says \"I just tried out a recipe for Korean bibimbap from the cooking class's online recipe library, and it was amazing.\" — Korean (tried/learned)\n6. **Session 44**: User plans to add kimchi to stir-fry, asks about making kimchi at home — Korean\n\nNow let me count distinct cuisines:\n- Ethiopian\n- Indian\n- Korean\n\nThat's **3** different cuisines.\n\n3",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_7fce9456",
+   "capability": "MR",
+   "groundTruth": "I viewed four properties before making an offer on the townhouse in the Brookside neighborhood. The reasons I didn't make an offer on them were: the kitchen of the bungalow needed serious renovation, the property in Cedar Creek was out of my budget, the noise from the highway was a deal-breaker for the 1-bedroom condo, and my offer on the 2-bedroom condo was rejected due to a higher bid.",
+   "answer": "Let's gather the relevant pieces:\n\n- Session 23: User put an offer on a 3-bedroom townhouse in Brookside on February 25th.\n- Session 29: User says they fell in love with a 2-bedroom condo on February 15th, but their offer got rejected on the 17th.\n- Session 30: User mentions seeing a property in Cedar Creek on February 1st that didn't fit their budget.\n- Session 36: User viewed a 1-bedroom condo on February 10th, but highway noise was a deal-breaker.\n\nThese are four properties viewed before the Brookside townhouse offer: Cedar Creek (Feb 1), 1-bedroom condo (Feb 10), 2-bedroom condo (Feb 15), and the Brookside townhouse itself (Feb 22 viewed / offer Feb 25).\n\nThe question asks how many properties were viewed **before making an offer on the townhouse**. The townhouse itself shouldn't count as \"before.\" So the properties viewed before are the three others.\n\n**3**",
+   "rawOutput": "Let's gather the relevant pieces:\n\n- Session 23: User put an offer on a 3-bedroom townhouse in Brookside on February 25th.\n- Session 29: User says they fell in love with a 2-bedroom condo on February 15th, but their offer got rejected on the 17th.\n- Session 30: User mentions seeing a property in Cedar Creek on February 1st that didn't fit their budget.\n- Session 36: User viewed a 1-bedroom condo on February 10th, but highway noise was a deal-breaker.\n\nThese are four properties viewed before the Brookside townhouse offer: Cedar Creek (Feb 1), 1-bedroom condo (Feb 10), 2-bedroom condo (Feb 15), and the Brookside townhouse itself (Feb 22 viewed / offer Feb 25).\n\nThe question asks how many properties were viewed **before making an offer on the townhouse**. The townhouse itself shouldn't count as \"before.\" So the properties viewed before are the three others.\n\n**3**",
+   "correct": false
+  },
+  {
+   "questionId": "d682f1a2",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "7024f17c",
+   "capability": "MR",
+   "groundTruth": "0.5 hours",
+   "answer": "2 hours and 30 minutes",
+   "rawOutput": "2 hours and 30 minutes",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_5501fe77",
+   "capability": "MR",
+   "groundTruth": "TikTok",
+   "answer": "Based on the evidence, you gained:\n- Twitter: 420 → 540 followers (120 gained over the past month)\n- TikTok: around 200 followers gained over the past three weeks\n- Facebook: remained steady at around 800\n\nThe platform where you gained the most followers over the past month is **TikTok**.",
+   "rawOutput": "Based on the evidence, you gained:\n- Twitter: 420 → 540 followers (120 gained over the past month)\n- TikTok: around 200 followers gained over the past three weeks\n- Facebook: remained steady at around 800\n\nThe platform where you gained the most followers over the past month is **TikTok**.",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_2ba83207",
+   "capability": "MR",
+   "groundTruth": "Thrive Market",
+   "answer": "Walmart",
+   "rawOutput": "Walmart",
+   "correct": false
+  },
+  {
+   "questionId": "2318644b",
+   "capability": "MR",
+   "groundTruth": "$270",
+   "answer": "$270",
+   "rawOutput": "$270",
+   "correct": true
+  },
+  {
+   "questionId": "2ce6a0f2",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_d12ceb0e",
+   "capability": "MR",
+   "groundTruth": "59.6",
+   "answer": "Let me gather the ages from the evidence:\n\n- User: turned 32 on February 12th (Session 26) → age 32\n- Mom: 55 (Session 17)\n- Dad: 58 (Session 17)\n- Grandma: 75 (Session 7)\n- Grandpa: 78 (Session 7)\n\nSum = 32 + 55 + 58 + 75 + 78 = 298\nAverage = 298 / 5 = 59.6\n\n59.6",
+   "rawOutput": "Let me gather the ages from the evidence:\n\n- User: turned 32 on February 12th (Session 26) → age 32\n- Mom: 55 (Session 17)\n- Dad: 58 (Session 17)\n- Grandma: 75 (Session 7)\n- Grandpa: 78 (Session 7)\n\nSum = 32 + 55 + 58 + 75 + 78 = 298\nAverage = 298 / 5 = 59.6\n\n59.6",
+   "correct": true
+  },
+  {
+   "questionId": "00ca467f",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "Based on the evidence, I can identify the following doctor's appointments mentioned in March:\n\n1. **Session 13** – \"I had an appointment with my primary care physician, but the antibiotic didn't fully clear it up.\" (This appointment already happened.)\n2. **Session 13** – An EMG test scheduled with neurologist Dr. Johnson on **April 1st** (this is in April, not March, so it doesn't count).\n3. **Session 41** – The user mentions scheduling appointments with Dr. Smith and Dr. Johnson, but these are future appointments with no confirmed March date.\n\nOnly the primary care physician appointment is confirmed as having occurred in March. The EMG is in April, and the Dr. Smith/Dr. Johnson appointments are not confirmed as March visits.\n\n**1**",
+   "rawOutput": "Based on the evidence, I can identify the following doctor's appointments mentioned in March:\n\n1. **Session 13** – \"I had an appointment with my primary care physician, but the antibiotic didn't fully clear it up.\" (This appointment already happened.)\n2. **Session 13** – An EMG test scheduled with neurologist Dr. Johnson on **April 1st** (this is in April, not March, so it doesn't count).\n3. **Session 41** – The user mentions scheduling appointments with Dr. Smith and Dr. Johnson, but these are future appointments with no confirmed March date.\n\nOnly the primary care physician appointment is confirmed as having occurred in March. The EMG is in April, and the Dr. Smith/Dr. Johnson appointments are not confirmed as March visits.\n\n**1**",
+   "correct": false
+  },
+  {
+   "questionId": "b3c15d39",
+   "capability": "MR",
+   "groundTruth": "5 days. 6 days (including the last day) is also acceptable.",
+   "answer": "5 days",
+   "rawOutput": "5 days",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_31ff4165",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": false
+  },
+  {
+   "questionId": "eeda8a6d",
+   "capability": "MR",
+   "groundTruth": "17",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "2788b940",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "Based on the evidence, the fitness classes mentioned are:\n\n- Zumba on Tuesdays and Thursdays (2 classes)\n- BodyPump on Mondays (1 class)\n- Yoga on Sundays (1 class)\n- Hip Hop Abs on Saturdays (1 class)\n\nTotal: 5 fitness classes in a typical week.",
+   "rawOutput": "Based on the evidence, the fitness classes mentioned are:\n\n- Zumba on Tuesdays and Thursdays (2 classes)\n- BodyPump on Mondays (1 class)\n- Yoga on Sundays (1 class)\n- Hip Hop Abs on Saturdays (1 class)\n\nTotal: 5 fitness classes in a typical week.",
+   "correct": true
+  },
+  {
+   "questionId": "60bf93ed",
+   "capability": "MR",
+   "groundTruth": "5 days. 6 days (including the last day) is also acceptable.",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": true
+  },
+  {
+   "questionId": "9d25d4e0",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "129d1232",
+   "capability": "MR",
+   "groundTruth": "$5,850",
+   "answer": "$5,250",
+   "rawOutput": "$5,250",
+   "correct": false
+  },
+  {
+   "questionId": "60472f9c",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_194be4b3",
+   "capability": "MR",
+   "groundTruth": "I currently own 4 musical instruments. I've had the Fender Stratocaster electric guitar for 5 years, the Yamaha FG800 acoustic guitar for 8 years, the 5-piece Pearl Export drum set for an unspecified amount of time, and the Korg B1 piano for 3 years.",
+   "answer": "Let me gather every instrument the user mentions owning (as opposed to considering buying):\n\n1. **Black Fender Stratocaster electric guitar** – owned for ~5 years (Session 2, turn 1).\n2. **Acoustic guitar** – mentioned re: humidifier (Session 2, turn 2).\n3. **Old drum set – 5-piece Pearl Export** – owned, hasn't played in years (Session 7, turn 1).\n4. **Piano – Korg B1** – owned ~3 years (Session 7, turn 3).\n5. **Guitar** – \"I've been playing guitar for a while now\" (Session 9, turn 3).\n\nUkuleles are only being considered, not owned. Cordoba ukuleles are aspirational. The acoustic guitar in Session 2 is owned (humidifier for it). The Stratocaster and general \"guitar\" references likely overlap, but the acoustic guitar is distinct.\n\nDistinct owned instruments: electric guitar, acoustic guitar, drum set, piano.\n\nThat is 4 distinct instruments, treating the \"guitar I've been playing for a while\" as the same instrument(s) already counted.\n\n**4**",
+   "rawOutput": "Let me gather every instrument the user mentions owning (as opposed to considering buying):\n\n1. **Black Fender Stratocaster electric guitar** – owned for ~5 years (Session 2, turn 1).\n2. **Acoustic guitar** – mentioned re: humidifier (Session 2, turn 2).\n3. **Old drum set – 5-piece Pearl Export** – owned, hasn't played in years (Session 7, turn 1).\n4. **Piano – Korg B1** – owned ~3 years (Session 7, turn 3).\n5. **Guitar** – \"I've been playing guitar for a while now\" (Session 9, turn 3).\n\nUkuleles are only being considered, not owned. Cordoba ukuleles are aspirational. The acoustic guitar in Session 2 is owned (humidifier for it). The Stratocaster and general \"guitar\" references likely overlap, but the acoustic guitar is distinct.\n\nDistinct owned instruments: electric guitar, acoustic guitar, drum set, piano.\n\nThat is 4 distinct instruments, treating the \"guitar I've been playing for a while\" as the same instrument(s) already counted.\n\n**4**",
+   "correct": true
+  },
+  {
+   "questionId": "a9f6b44c",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "1",
+   "rawOutput": "1",
+   "correct": false
+  },
+  {
+   "questionId": "d851d5ba",
+   "capability": "MR",
+   "groundTruth": "$3,750",
+   "answer": "$3,750",
+   "rawOutput": "$3,750",
+   "correct": true
+  },
+  {
+   "questionId": "5a7937c8",
+   "capability": "MR",
+   "groundTruth": "3 days.",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_ab202e7f",
+   "capability": "MR",
+   "groundTruth": "I replaced or fixed five items: the kitchen faucet, the kitchen mat, the toaster, the coffee maker, and the kitchen shelves.",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_e05b82a6",
+   "capability": "MR",
+   "groundTruth": "10 times",
+   "answer": "Let me gather all rollercoaster ride counts mentioned:\n\n1. **Session 5**: \"I rode the Revenge of the Mummy rollercoaster three times in a row at Universal Studios Hollywood on October 15th\" → 3 times\n\n2. **Session 38**: \"I rode Space Mountain: Ghost Galaxy three times at Disneyland on September 24th\" → 3 times\n\n3. **Session 43**: \"Congratulations on riding three rollercoasters in one night at SeaWorld San Diego!\" → 3 times (three rollercoasters)\n\nTotal: 3 + 3 + 3 = 9\n\n**9**",
+   "rawOutput": "Let me gather all rollercoaster ride counts mentioned:\n\n1. **Session 5**: \"I rode the Revenge of the Mummy rollercoaster three times in a row at Universal Studios Hollywood on October 15th\" → 3 times\n\n2. **Session 38**: \"I rode Space Mountain: Ghost Galaxy three times at Disneyland on September 24th\" → 3 times\n\n3. **Session 43**: \"Congratulations on riding three rollercoasters in one night at SeaWorld San Diego!\" → 3 times (three rollercoasters)\n\nTotal: 3 + 3 + 3 = 9\n\n**9**",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_731e37d7",
+   "capability": "MR",
+   "groundTruth": "$720",
+   "answer": "$720",
+   "rawOutput": "$720",
+   "correct": true
+  },
+  {
+   "questionId": "edced276",
+   "capability": "MR",
+   "groundTruth": "15 days",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": false
+  },
+  {
+   "questionId": "10d9b85a",
+   "capability": "MR",
+   "groundTruth": "3 days",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "e3038f8c",
+   "capability": "MR",
+   "groundTruth": "99",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "2b8f3739",
+   "capability": "MR",
+   "groundTruth": "$495",
+   "answer": "$465",
+   "rawOutput": "$465",
+   "correct": false
+  },
+  {
+   "questionId": "1a8a66a6",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "Based on the evidence:\n\n- The user canceled their Forbes magazine subscription in early March (Session 2).\n- The user subscribed to The New Yorker in early February and has been enjoying it, including receiving a recent issue (Session 2 and Session 40).\n\nThat leaves **one** current magazine subscription: The New Yorker.\n\n**1**",
+   "rawOutput": "Based on the evidence:\n\n- The user canceled their Forbes magazine subscription in early March (Session 2).\n- The user subscribed to The New Yorker in early February and has been enjoying it, including receiving a recent issue (Session 2 and Session 40).\n\nThat leaves **one** current magazine subscription: The New Yorker.\n\n**1**",
+   "correct": false
+  },
+  {
+   "questionId": "c2ac3c61",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": true
+  },
+  {
+   "questionId": "bf659f65",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_372c3eed",
+   "capability": "MR",
+   "groundTruth": "10 years",
+   "answer": "8",
+   "rawOutput": "8",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_2f91af09",
+   "capability": "MR",
+   "groundTruth": "23",
+   "answer": "17",
+   "rawOutput": "17",
+   "correct": false
+  },
+  {
+   "questionId": "81507db6",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": true
+  },
+  {
+   "questionId": "d3ab962e",
+   "capability": "MR",
+   "groundTruth": "8 miles",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "2311e44b",
+   "capability": "MR",
+   "groundTruth": "190",
+   "answer": "190",
+   "rawOutput": "190",
+   "correct": true
+  },
+  {
+   "questionId": "cc06de0d",
+   "capability": "MR",
+   "groundTruth": "$6",
+   "answer": "$6",
+   "rawOutput": "$6",
+   "correct": true
+  },
+  {
+   "questionId": "a11281a2",
+   "capability": "MR",
+   "groundTruth": "100",
+   "answer": "350",
+   "rawOutput": "350",
+   "correct": false
+  },
+  {
+   "questionId": "4f54b7c9",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "4",
+   "rawOutput": "4",
+   "correct": false
+  },
+  {
+   "questionId": "85fa3a3f",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$50",
+   "rawOutput": "$50",
+   "correct": true
+  },
+  {
+   "questionId": "9aaed6a3",
+   "capability": "MR",
+   "groundTruth": "$0.75",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "1f2b8d4f",
+   "capability": "MR",
+   "groundTruth": "$750",
+   "answer": "$750",
+   "rawOutput": "$750",
+   "correct": true
+  },
+  {
+   "questionId": "e6041065",
+   "capability": "MR",
+   "groundTruth": "40%",
+   "answer": "20%",
+   "rawOutput": "20%",
+   "correct": false
+  },
+  {
+   "questionId": "51c32626",
+   "capability": "MR",
+   "groundTruth": "February 1st",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "d905b33f",
+   "capability": "MR",
+   "groundTruth": "20%",
+   "answer": null,
+   "rawOutput": "Session 34 states the book was originally priced at $30, but the actual price paid or discount percentage is not given.  \nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "7405e8b1",
+   "capability": "MR",
+   "groundTruth": "Yes.",
+   "answer": "Yes",
+   "rawOutput": "Yes",
+   "correct": true
+  },
+  {
+   "questionId": "f35224e0",
+   "capability": "MR",
+   "groundTruth": "27",
+   "answer": null,
+   "rawOutput": "I've listened to 12 episodes of \"My Favorite Murder\" (Session 33). The evidence does not state the number of \"How I Built This\" episodes listened to.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "6456829e",
+   "capability": "MR",
+   "groundTruth": "8",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a4996e51",
+   "capability": "MR",
+   "groundTruth": "50",
+   "answer": "50 hours",
+   "rawOutput": "50 hours",
+   "correct": true
+  },
+  {
+   "questionId": "3c1045c8",
+   "capability": "MR",
+   "groundTruth": "2.5 years",
+   "answer": "3.5 years",
+   "rawOutput": "3.5 years",
+   "correct": false
+  },
+  {
+   "questionId": "60036106",
+   "capability": "MR",
+   "groundTruth": "12,000",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "681a1674",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "e25c3b8d",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "$300",
+   "rawOutput": "$300",
+   "correct": true
+  },
+  {
+   "questionId": "4adc0475",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "I scored 3 goals and had 2 assists, so the total is 5.",
+   "rawOutput": "I scored 3 goals and had 2 assists, so the total is 5.",
+   "correct": true
+  },
+  {
+   "questionId": "4bc144e2",
+   "capability": "MR",
+   "groundTruth": "$65",
+   "answer": "$65",
+   "rawOutput": "$65",
+   "correct": true
+  },
+  {
+   "questionId": "ef66a6e5",
+   "capability": "MR",
+   "groundTruth": "two",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": true
+  },
+  {
+   "questionId": "5025383b",
+   "capability": "MR",
+   "groundTruth": "photography and cooking",
+   "answer": "Photography and cooking",
+   "rawOutput": "Photography and cooking",
+   "correct": true
+  },
+  {
+   "questionId": "a1cc6108",
+   "capability": "MR",
+   "groundTruth": "11",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "9ee3ecd6",
+   "capability": "MR",
+   "groundTruth": "100",
+   "answer": "300",
+   "rawOutput": "300",
+   "correct": false
+  },
+  {
+   "questionId": "3fdac837",
+   "capability": "MR",
+   "groundTruth": "11 days (or 12 days, if April 15th to 22nd is considered as 8 days)",
+   "answer": "11",
+   "rawOutput": "11",
+   "correct": true
+  },
+  {
+   "questionId": "91b15a6e",
+   "capability": "MR",
+   "groundTruth": "$5,150",
+   "answer": "$5150",
+   "rawOutput": "$5150",
+   "correct": true
+  },
+  {
+   "questionId": "27016adc",
+   "capability": "MR",
+   "groundTruth": "10%",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "720133ac",
+   "capability": "MR",
+   "groundTruth": "$75",
+   "answer": "$75",
+   "rawOutput": "$75",
+   "correct": true
+  },
+  {
+   "questionId": "77eafa52",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "$300",
+   "rawOutput": "$300",
+   "correct": true
+  },
+  {
+   "questionId": "8979f9ec",
+   "capability": "MR",
+   "groundTruth": "8 meals",
+   "answer": "8",
+   "rawOutput": "8",
+   "correct": true
+  },
+  {
+   "questionId": "0100672e",
+   "capability": "MR",
+   "groundTruth": "$12",
+   "answer": "$60",
+   "rawOutput": "$60",
+   "correct": false
+  },
+  {
+   "questionId": "a96c20ee",
+   "capability": "MR",
+   "groundTruth": "Harvard University",
+   "answer": "Harvard University",
+   "rawOutput": "Harvard University",
+   "correct": true
+  },
+  {
+   "questionId": "92a0aa75",
+   "capability": "MR",
+   "groundTruth": "1 year and 5 months",
+   "answer": "3 years and 9 months",
+   "rawOutput": "3 years and 9 months",
+   "correct": false
+  },
+  {
+   "questionId": "3fe836c9",
+   "capability": "MR",
+   "groundTruth": "$25,000",
+   "answer": "$25,000",
+   "rawOutput": "$25,000",
+   "correct": true
+  },
+  {
+   "questionId": "1c549ce4",
+   "capability": "MR",
+   "groundTruth": "$140",
+   "answer": "$140",
+   "rawOutput": "$140",
+   "correct": true
+  },
+  {
+   "questionId": "6c49646a",
+   "capability": "MR",
+   "groundTruth": "3,000 miles",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "1192316e",
+   "capability": "MR",
+   "groundTruth": "an hour and a half",
+   "answer": "70 minutes",
+   "rawOutput": "70 minutes",
+   "correct": false
+  },
+  {
+   "questionId": "0ea62687",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2 miles per gallon",
+   "rawOutput": "2 miles per gallon",
+   "correct": true
+  },
+  {
+   "questionId": "67e0d0f2",
+   "capability": "MR",
+   "groundTruth": "20",
+   "answer": "15",
+   "rawOutput": "15",
+   "correct": false
+  },
+  {
+   "questionId": "bb7c3b45",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "ba358f49",
+   "capability": "MR",
+   "groundTruth": "33",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "61f8c8f8",
+   "capability": "MR",
+   "groundTruth": "10 minutes",
+   "answer": "10 minutes",
+   "rawOutput": "10 minutes",
+   "correct": true
+  },
+  {
+   "questionId": "60159905",
+   "capability": "MR",
+   "groundTruth": "three",
+   "answer": "2",
+   "rawOutput": "2",
+   "correct": false
+  },
+  {
+   "questionId": "ef9cf60a",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "$300",
+   "rawOutput": "$300",
+   "correct": true
+  },
+  {
+   "questionId": "73d42213",
+   "capability": "MR",
+   "groundTruth": "9:00 AM",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "bc149d6b",
+   "capability": "MR",
+   "groundTruth": "70 pounds",
+   "answer": "50 pounds",
+   "rawOutput": "50 pounds",
+   "correct": false
+  },
+  {
+   "questionId": "099778bb",
+   "capability": "MR",
+   "groundTruth": "20%",
+   "answer": "20%",
+   "rawOutput": "20%",
+   "correct": true
+  },
+  {
+   "questionId": "09ba9854",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$60",
+   "rawOutput": "$60",
+   "correct": false
+  },
+  {
+   "questionId": "d6062bb9",
+   "capability": "MR",
+   "groundTruth": "1,998",
+   "answer": "1988",
+   "rawOutput": "1988",
+   "correct": false
+  },
+  {
+   "questionId": "157a136e",
+   "capability": "MR",
+   "groundTruth": "43",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "c18a7dc8",
+   "capability": "MR",
+   "groundTruth": "7",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a3332713",
+   "capability": "MR",
+   "groundTruth": "$200",
+   "answer": "$200",
+   "rawOutput": "$200",
+   "correct": true
+  },
+  {
+   "questionId": "55241a1f",
+   "capability": "MR",
+   "groundTruth": "33",
+   "answer": "33",
+   "rawOutput": "33",
+   "correct": true
+  },
+  {
+   "questionId": "a08a253f",
+   "capability": "MR",
+   "groundTruth": "4 days.",
+   "answer": "3",
+   "rawOutput": "3",
+   "correct": false
+  },
+  {
+   "questionId": "f0e564bc",
+   "capability": "MR",
+   "groundTruth": "$1,300",
+   "answer": "$1300",
+   "rawOutput": "$1300",
+   "correct": true
+  },
+  {
+   "questionId": "078150f1",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$50",
+   "rawOutput": "$50",
+   "correct": true
+  },
+  {
+   "questionId": "8cf4d046",
+   "capability": "MR",
+   "groundTruth": "3.83",
+   "answer": null,
+   "rawOutput": "The evidence states a graduate GPA of 3.8 out of 4.0, but no undergraduate GPA is provided (only a First-Class distinction), so the average cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a346bb18",
+   "capability": "MR",
+   "groundTruth": "12",
+   "answer": "12",
+   "rawOutput": "12",
+   "correct": true
+  },
+  {
+   "questionId": "37f165cf",
+   "capability": "MR",
+   "groundTruth": "856",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "8e91e7d9",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "5",
+   "rawOutput": "5",
+   "correct": false
+  },
+  {
+   "questionId": "87f22b4a",
+   "capability": "MR",
+   "groundTruth": "$120",
+   "answer": "In Session 13, the user says they sold 40 dozen eggs so far this month, and in Session 35, they say they sell eggs to their neighbor for $3 a dozen. 40 × $3 = $120.",
+   "rawOutput": "In Session 13, the user says they sold 40 dozen eggs so far this month, and in Session 35, they say they sell eggs to their neighbor for $3 a dozen. 40 × $3 = $120.",
+   "correct": true
+  },
+  {
+   "questionId": "e56a43b9",
+   "capability": "MR",
+   "groundTruth": "$5",
+   "answer": "$5",
+   "rawOutput": "$5",
+   "correct": true
+  },
+  {
+   "questionId": "efc3f7c2",
+   "capability": "MR",
+   "groundTruth": "30 minutes",
+   "answer": "30 minutes",
+   "rawOutput": "30 minutes",
+   "correct": true
+  },
+  {
+   "questionId": "21d02d0d",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "1",
+   "rawOutput": "1",
+   "correct": false
+  }
+ ]
+}
