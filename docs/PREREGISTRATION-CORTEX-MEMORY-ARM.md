@@ -4640,3 +4640,99 @@ a single variable changed — the session rule's search.
 **Stopping rule.** One dispatch, no peeking, no redraw. The point estimate must exceed the
 BASELINE side of the same dispatch, McNemar p < 0.05 two-sided, full N = 500, 4 runs,
 temperature 0 — the same instrument as §13.21, §13.26 and §13.27, so all four are comparable.
+
+## 13.33 The arm reports groundedness, and the trace producer's repair is narrowed
+
+Run `38828538851` (§13.32) is in flight and this section was written while it ran. Two
+instrument repairs that need no provider, and one finding that shrinks a P1 this document has
+carried since §13.25.
+
+### 13.33.1 `grounded: false` was a constant, and that was not a refusal to guess
+
+Every record the memory arm produced carried `grounded: false`. The docstring above the
+roster function said why: grounding is a property of the upstream failure classifier, this arm
+collects no classification, so the records say `false` rather than guessing. The premise is
+right about the **trace** product — `buildRecordsFromDataset` takes the verdict from a
+predicate its caller supplies — and wrong about this one. The classifier is a published rule
+over two values this arm already holds: the **graded answer** and the **evidence the reader
+received**. That is `classifyTrFailure`, and the arm can call it.
+
+So `false` was not a refusal to guess. It was a value the arm had not measured, reported as if
+it had measured it — which is `§13.11.2`'s rule ("a wrong number is worse than an absent one")
+violated in the one direction that rule does not cover: not an absent number standing in for a
+measurement, but a **constant** standing in for one.
+
+**What the constant cost, exactly.** `computeTargetCohort` files an ungrounded question under
+`notGrounded` and `continue`s before clustering. With the field constant, that bucket held
+**every question of every arm artifact**, so:
+
+- the published B7 criterion could not be executed against this product at all — a reader
+  would have found zero targets and concluded the criterion was inapplicable;
+- and the artifact asserted that five hundred questions had been **classified** as ungrounded,
+  when in fact none had been classified. "Nobody classified these" and "these were all
+  ungrounded" are different findings, and the artifact published the second.
+
+The repair is a call in the arm's roster, and three decisions about it are stated in code:
+
+| Decision | Where | Why |
+| --- | --- | --- |
+| The haystack is the **delivery** | `bench-memory-arm.ts` | Grounding asks what the reader had in hand, and the delivery is `retrievedContexts[i]` — the same vector `turns` is built from |
+| It is read **before the bound** | same | The bound is an artifact setting applied after the run, so a verdict taken from the post-bound turns would make a question's groundedness depend on how the JSON was written. `goldOverlap` sits on the same line for the same reason |
+| The arm supplies evidence and reads a verdict | `tr-failure-class.ts` | The arm does not decide what counts as a match. A test pins that a partial match is ungrounded, so an arm that recomputed or relaxed the rule would fail rather than quietly report the opposite |
+
+`TrFailureInput.questionDate` became optional in the same change. It is declared and **read by
+no verdict**; requiring it would have forced this new caller to fabricate a value for a field
+nothing consumes. The docblock now says so, which is also the only place a reader would learn
+that the field is inert.
+
+### 13.33.2 A stale fixture the change exposed
+
+Two pre-existing tests broke on first run, and the break is worth recording because of what it
+means. Their `reportingSystem` returned a **joined string** from `lastRetrievedContext`, which
+has been a turn list since §13.16.6. The arm's capture copied it through untouched, no caller
+had ever joined it, and so **no test could observe the violation**: the fixture had described
+the pre-§13.16.6 accessor for two sections and stayed green.
+
+The new consumer is the first to treat the delivery as a list, and it found the fixture on its
+first execution. Both are now list-shaped, with the offer's `chars` computed as the joined
+length the real producer reports.
+
+### 13.33.3 Why the trace producer's turn list is not a quick win, and what that narrows
+
+§13.25 left one P1 open: give `DecisionTrace` the turn list `respondWith` already receives, so
+the trace product reports turns and its `goldOverlap` can be restored. Investigating it
+narrows the change in a way that is worth writing down, because the naive version would
+produce an artifact **worse** than the one it replaces.
+
+- Four of the six answering paths render through `expandContextWindow*`, which selects a set of
+  corpus positions and joins them. Exposing the selection beside the render is mechanical
+  there, and it touches no prompt.
+- The **multi-session** path does not. `answerSessions` composes its context as
+  `truncateText(hits.map((h) => truncateSession(h.text, maxChars)).join('\n\n'), maxAggregationChars)`
+  — a join of joined sessions, then a character-level cut. The turn boundary is destroyed
+  twice, and recovering it means changing how that path renders.
+
+The consequence is decisive. The four repairable paths are the ones behind IE, KU, TR, ABS and
+assistant; the pathological one is the path behind **MR** — the capability whose gold coverage
+this document has been measuring since §13.26. So a partial repair would:
+
+1. leave MR reporting lines while the other four report turns, making the artifact's `turns`
+   **heterogeneous** — a reader aggregating across capabilities would be summing units; and
+2. change nothing about the capability we are working on.
+
+And a complete repair reaches the reference pipeline's rendering, which changes prompts and
+therefore invalidates the comparability of every archived run. That is a registered dispatch of
+its own, not a P1 cleanup, and it is second to §13.32's question: whether the **room** is MR's
+binding constraint. This section exists so the next attempt does not rediscover it by
+implementing the partial version first.
+
+### 13.33.4 Verification
+
+- `pnpm check` **exit 0**; all four coverage dimensions **100%** in every package except
+  `cortex-node`'s branch column, which §13.29 explains; `tools` green; census clean.
+- **Two defect injections, both caught.** Restoring the constant fails the three tests that
+  assert a measured verdict. Giving the classifier the **reader's** answer as the graded one —
+  the realistic mistake, since the arm holds both strings — fails three of the four, including
+  the partial-token case.
+- The four new tests are the four ways this can be wrong quietly: the verdict itself, the
+  negative case, whose rule decides a match, and which copy of the evidence is measured.
