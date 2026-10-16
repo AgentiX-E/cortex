@@ -68,6 +68,7 @@ import {
   snapshotEmbeddingCache,
 } from './retrieval.js';
 import { DEFAULT_RELEVANCE_TOP_K } from './relevance-index.js';
+import { classifyTrFailure } from './tr-failure-class.js';
 import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
@@ -1349,12 +1350,20 @@ export async function runCortexMemoryArm(
  * shown anything, which is a true statement about that question and is the same
  * outcome the abstention census files at `empty`.
  *
- * `grounded` remains the part this arm genuinely cannot report. Grounding is a
- * property of the upstream failure classifier, and this arm collects no
- * classification, so the records say `false` rather than guessing. B7 excludes an
- * ungrounded question before clustering, which is the right outcome for a run
- * that did not record its classification -- a fabricated `true` would admit a
- * question no trace supports.
+ * `grounded` is reported since §13.33, and the paragraph that used to stand here said it
+ * could not be. It argued that grounding is a property of the upstream failure classifier
+ * and that this arm collects no classification, so the records said `false` rather than
+ * guessing. The premise was right about the trace product and wrong about this one: the
+ * classifier is a published rule over the graded answer and the delivered evidence, both
+ * of which this arm holds, so `false` was not a refusal to guess -- it was a value the arm
+ * had not measured, reported as if it had.
+ *
+ * What that cost is specific. `computeTargetCohort` files an ungrounded question under
+ * `notGrounded` and excludes it **before** clustering, so a constant made that bucket
+ * hold every question of every arm artifact: the published B7 criterion could not be run
+ * against this product at all, and a reader would have seen five hundred questions the
+ * classifier had called ungrounded. "Nobody classified these" and "these were all
+ * ungrounded" are different findings, and the artifact was publishing the second.
  */
 function buildArmRoster(
   dataset: BenchmarkDataset,
@@ -1409,7 +1418,28 @@ function buildArmRoster(
       answer: answers[i]!,
       rawOutput: rawOutputs[i]!,
       correct: ablation.featureCorrect[i]!,
-      grounded: false,
+      // Reported, not declared unreportable. The §13.33 repair: this arm used to write
+      // `false` on the argument that grounding belongs to the upstream failure
+      // classifier and no classification is collected here. That argument holds for the
+      // *trace* product, whose predicate its caller supplies; it does not hold for this
+      // one, because the classifier is a published rule over two values this arm already
+      // holds -- the graded answer and the evidence the reader received -- and
+      // `classifyTrFailure` is that rule. The arm supplies the haystack and reads a
+      // verdict; it decides nothing about what counts as a match.
+      //
+      // The haystack is the **delivery** (`retrievedContexts[i]`), because grounding is a
+      // statement about what the reader had in hand. And it is read here, beside
+      // `goldOverlap` and before the bound, for the reason that field's own comment gives:
+      // the bound is an artifact setting applied after the run, so a verdict taken from
+      // the record's post-bound `turns` would make a question's groundedness depend on
+      // how the JSON was written.
+      grounded:
+        classifyTrFailure({
+          question: question.question,
+          groundTruth: question.expected,
+          answer: answers[i]!,
+          retrieved: (retrievedContexts[i] ?? []).join('\n'),
+        }) === 'grounded',
       // `null` becomes `[]`, because `QuestionRecordInput.retrieved` is a list of
       // turns and "no reader was shown anything" reaches the record as `turns: []`,
       // which is the same statement made in the shape the record can hold. `null` is

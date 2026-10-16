@@ -83,7 +83,17 @@ export type TrFailureInput = {
   readonly answer: string | null;
   /** The retrieved context, as the diagnostic records it. */
   readonly retrieved: string;
-  readonly questionDate: string;
+  /**
+   * The question's date, as the diagnostic record carries it.
+   *
+   * Optional since §13.33, and declared here for the reader's benefit rather than this
+   * classifier's: **no verdict reads it.** Every caller that has one passes it, and the
+   * one added by §13.33 -- the memory arm, which classifies its own records -- does not
+   * always have it, because a dataset question's date is optional upstream. Requiring a
+   * field nothing consumes would have forced that caller to fabricate a value for it,
+   * which is the shape of defect this project keeps closing rather than opening.
+   */
+  readonly questionDate?: string;
 };
 
 export type TrFailureClass = 'grounded' | 'ungrounded';

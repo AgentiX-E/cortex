@@ -55,6 +55,7 @@ import {
 import { exactMatchScorer } from '../metrics.js';
 import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 import { formatAblationReport, type AblationReport } from '../report.js';
+import type { QuestionRecord } from '../question-record.js';
 import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } from '../types.js';
 
 /**
@@ -2350,20 +2351,24 @@ describe('the prompt-carried evidence size reaches the record', () => {
   } as const;
 
   /** A system that can say what it retrieved and what the prompt carried. */
-  function reportingSystem(retrieved: string, promptChars: number): MemorySystem {
+  function reportingSystem(turns: readonly string[], promptChars: number): MemorySystem {
     return {
       name: 'cortex-memory',
       answer: () => 'Lisbon',
       // The delivery: what the prompt carried, which is a prefix of what admission
-      // offered whenever the budget binds.
-      lastRetrievedContext: () => retrieved,
+      // offered whenever the budget binds. A list since §13.16.6 -- the accessor
+      // reports turns, and this double used to return the joined string, which no
+      // caller had ever joined and so no test could catch (§13.33).
+      lastRetrievedContext: () => turns,
       // The delivery's size, after the budget.
       lastPromptEvidenceChars: () => promptChars,
       // The offer, which this double reports as the whole context it was handed --
       // exactly the relation the real system has when no budget is spent.
       lastAdmittedEvidence: () => ({
-        turns: retrieved.split('\n').filter((line) => line.trim().length > 0).length,
-        chars: retrieved.length,
+        turns: turns.length,
+        // The size the joined form has: the units plus the separators between them,
+        // which is what `admittedFrom` computes for the real producer.
+        chars: turns.join('\n').length,
       }),
       lastRawOutput: () => 'Lisbon',
     } as unknown as MemorySystem;
@@ -2374,11 +2379,11 @@ describe('the prompt-carried evidence size reaches the record', () => {
     // admitted context and `promptChars` counts what the prompt carried after the
     // builder's budget. A run whose artifact reports only the first overstates
     // what the model saw -- by about twenty times on `38044858147`.
-    const retrieved = 'turn 0\nturn 1\nturn 2';
+    const turns = ['turn 0', 'turn 1', 'turn 2'];
     const { report } = await runCortexMemoryArm(
       oneQuestionDataset(),
       constantSystem('reference-pipeline', 'Lisbon'),
-      reportingSystem(retrieved, 27),
+      reportingSystem(turns, 27),
       {
         runs: 1,
         scorer: exactMatchScorer,
@@ -2389,7 +2394,7 @@ describe('the prompt-carried evidence size reaches the record', () => {
 
     const record = report.questions![0]!;
     expect(record.promptChars).toBe(27);
-    expect(record.evidenceChars).toBe(retrieved.length);
+    expect(record.evidenceChars).toBe(turns.join('\n').length);
     expect(record.evidenceTurns).toBe(3);
   });
 
@@ -2417,11 +2422,11 @@ describe('the prompt-carried evidence size reaches the record', () => {
     // The reducer rebuilds every record through `buildQuestionRecords`, so a field
     // it does not forward is a field a reduction silently drops -- the defect
     // `withEvidenceBound` already carried once for `featureConfig`.
-    const retrieved = Array.from({ length: 6 }, (_, i) => `turn ${i}`).join('\n');
+    const turns = Array.from({ length: 6 }, (_, i) => `turn ${i}`);
     const { report } = await runCortexMemoryArm(
       oneQuestionDataset(),
       constantSystem('reference-pipeline', 'Lisbon'),
-      reportingSystem(retrieved, 27),
+      reportingSystem(turns, 27),
       {
         runs: 1,
         scorer: exactMatchScorer,
@@ -2435,5 +2440,157 @@ describe('the prompt-carried evidence size reaches the record', () => {
     expect(report.evidenceReduction).toBeDefined();
     expect(record.promptChars).toBe(27);
     expect(record.turns.length).toBeLessThan(record.evidenceTurns!);
+  });
+});
+
+/**
+ * The arm reports groundedness, instead of declaring it unreportable.
+ *
+ * ## The field it replaces
+ *
+ * Every record this arm produced carried `grounded: false`, on the argument that
+ * grounding is the upstream failure classifier's property and this arm collects no
+ * classification. The argument is sound about the *trace* product, whose records get
+ * the verdict from a predicate its caller supplies. It is wrong here: the classifier
+ * is a published rule over two values **this arm already holds** -- the graded answer
+ * and the evidence the reader received -- and `classifyTrFailure` implements it.
+ *
+ * ## What the constant cost
+ *
+ * `computeTargetCohort` files an ungrounded question under `notGrounded` and excludes
+ * it before clustering. With the field constant, **every** question of every arm
+ * artifact landed in that bucket, so the published B7 criterion could not be executed
+ * against this product at all -- and a reader of the artifact would have seen 500
+ * questions the classifier had called ungrounded, which is a claim about the questions
+ * rather than a statement that nobody classified them. That is `§13.11.2`'s collapse,
+ * one field over from where it was last fixed.
+ *
+ * ## The unit and the timing, which are the two ways to get this wrong quietly
+ *
+ * The haystack is the **delivery**: the evidence the prompt carried, which is what
+ * `lastRetrievedContext` reports and what the record's `turns` are built from. And it
+ * is measured **before** the evidence bound, like `goldOverlap` beside it -- a record
+ * reduced for artifact size still describes what the reader had in hand, and measuring
+ * after the bound would make a question's groundedness depend on an artifact setting.
+ */
+describe('the arm reports groundedness with the published classifier', () => {
+  const CONFIG = {
+    threshold: 0,
+    retrievalThreshold: 0,
+    sessionBudget: null,
+    sourceTrust: 0.5,
+    confidenceSignal: 'none',
+    promptContract: 'abstention',
+    relevanceSignal: 'none',
+    relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+    relevanceUnits: 'turn',
+    renderingRoutes: [],
+    ask: 'route',
+    askRoutes: [],
+  } as const;
+
+  function datasetGraded(expected: string): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'TR',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected,
+          context: [],
+          sessions: [],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+  }
+
+  /** A system whose delivery is fixed, so groundedness is the only variable. */
+  function deliveringSystem(turns: readonly string[], answer: Answer): MemorySystem {
+    return {
+      name: 'cortex-memory',
+      answer: () => answer,
+      lastRetrievedContext: () => turns,
+      lastAdmittedEvidence: () => ({ turns: turns.length, chars: 0 }),
+      lastRawOutput: () => String(answer),
+    } as unknown as MemorySystem;
+  }
+
+  async function recordFor(
+    expected: string,
+    turns: readonly string[],
+    answer: Answer,
+    evidenceBound?: { maxTurnsPerRecord: number },
+  ): Promise<QuestionRecord> {
+    const { report } = await runCortexMemoryArm(
+      datasetGraded(expected),
+      constantSystem('reference-pipeline', expected),
+      deliveringSystem(turns, answer),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: CONFIG,
+        ...(evidenceBound === undefined ? {} : { evidenceBound }),
+      },
+    );
+    return report.questions![0]!;
+  }
+
+  it('reports a question as grounded when the reader received the graded evidence', async () => {
+    // The population B7 exists to name: the evidence was in hand and the reader
+    // produced something else anyway. The answer differs from the truth on purpose --
+    // grounding is a statement about the EVIDENCE, not about the answer.
+    const record = await recordFor('Lisbon', ['user: I went to Lisbon.'], 'Porto');
+
+    expect(record.grounded).toBe(true);
+    expect(record.correct).toBe(false);
+  });
+
+  it('reports it as ungrounded when the evidence was never delivered', async () => {
+    // The other population, and the one that points at retrieval rather than at the
+    // reader. Same question, same graded answer, different delivery.
+    const record = await recordFor('Lisbon', ['user: I went to Porto.'], 'Porto');
+
+    expect(record.grounded).toBe(false);
+  });
+
+  it("requires every token of the graded answer, which is the classifier rule and not this arm's", async () => {
+    // The arm passes the haystack and reads a verdict; it does not decide what counts
+    // as a match. A partial match is ungrounded, and this is asserted here because an
+    // arm that recomputed the rule (or relaxed it to a substring) would report the
+    // opposite -- so the boundary between "which evidence" and "what counts" is pinned.
+    const partial = await recordFor(
+      'Business Administration',
+      ['user: I studied Business.'],
+      'Business',
+    );
+    const whole = await recordFor(
+      'Business Administration',
+      ['user: I studied Business Administration.'],
+      'Business',
+    );
+
+    expect(partial.grounded).toBe(false);
+    expect(whole.grounded).toBe(true);
+  });
+
+  it('measures the delivery the reader received, not what an evidence bound left in the record', async () => {
+    // The bound is an artifact setting: it cuts what the JSON carries, after the run.
+    // Grounding describes the run, so a reduced record must still report what the
+    // reader had in hand -- the same rule `goldOverlap` is measured under, and for the
+    // same reason. The bound is set to keep one turn and the gold is second, so the
+    // record demonstrably no longer carries the evidence and the verdict must not
+    // follow it.
+    const record = await recordFor(
+      'Lisbon',
+      ['user: I went to Porto.', 'user: I went to Lisbon.'],
+      'Porto',
+      { maxTurnsPerRecord: 1 },
+    );
+
+    expect(record.grounded).toBe(true);
+    expect(record.turns.some((turn: { text: string }) => turn.text.includes('Lisbon'))).toBe(false);
   });
 });
