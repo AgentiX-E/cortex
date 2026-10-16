@@ -1097,3 +1097,122 @@ describe('an exhausted retry reports itself', () => {
     expect(record!.cause).toBe('');
   });
 });
+
+/**
+ * The deadline must cover the BODY, not only the headers.
+ *
+ * ## The run this was written against
+ *
+ * `38941095220` graded four passes and died at `reference-pipeline run=1 q=391` on
+ * `TimeoutError: The operation was aborted due to timeout`, and the same run's
+ * transport accounting said:
+ *
+ *     {"attempts":6702,"retried":0,"rateLimited":0,"calls":6702,
+ *      "retriedCalls":0,"cleanCalls":6702,"exhaustedCalls":0}
+ *
+ * Zero retries and zero exhausted calls across 6,702 calls, while a `TimeoutError`
+ * killed the process. The two facts are only jointly true one way: `attemptSignal`
+ * arms `AbortSignal.timeout` on the REQUEST, `fetch` resolves as soon as the
+ * HEADERS arrive, and this function returns that response -- so the deadline is
+ * still armed when the CALLER reads the body. A body still streaming when the
+ * deadline fires aborts there, at `res.json()` in the client, where this loop
+ * cannot see it: the call was already counted `clean`, and no retry is attempted
+ * because no attempt is still open.
+ *
+ * The consequence is the one §13.31 named as the open question -- "a single abort
+ * from somewhere the retry loop does not wrap" -- and it cost 79 minutes of graded
+ * answers.
+ *
+ * ## What the fix changes, and what it deliberately does not
+ *
+ * An attempt becomes the COMPLETE exchange: the body is read inside the same `try`
+ * that issues the request, so a body-level abort is a transport failure like any
+ * other and takes the ordinary backoff and retry path. The response handed back is
+ * rebuilt from those bytes, so no caller's code changes and none can observe the
+ * difference except by a body that used to stall.
+ *
+ * Not changed: the deadline's value, the retry count, the backoff, and the
+ * classification of statuses. Those were not what failed.
+ */
+describe('the per-attempt deadline covers the body', () => {
+  /** Headers arrive at once; the body never does. */
+  function stalledBodyFetch(): typeof fetch {
+    return (async (_url: unknown, init?: RequestInit) => {
+      const signal = init?.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const abort = (): void => {
+            controller.error(
+              signal?.reason instanceof Error ? signal.reason : new Error('aborted'),
+            );
+          };
+          if (signal?.aborted) {
+            abort();
+          } else {
+            signal?.addEventListener('abort', abort, { once: true });
+          }
+        },
+      });
+      return new Response(body, { status: 200 });
+    }) as unknown as typeof fetch;
+  }
+
+  it('retries a body that stalls past the deadline instead of dying at the caller', async () => {
+    // Without the fix this resolves: the loop returns on the first attempt with a
+    // live stream, `attempts` is 1, and the abort happens outside every counter.
+    // Reset first, so the counters read below describe this call and not the file's
+    // earlier ones.
+    resetRetryStats();
+    await expect(
+      retryableFetchWithStats(
+        stalledBodyFetch(),
+        'https://stall.test/v1',
+        {},
+        {
+          timeoutMs: 25,
+          maxRetries: 2,
+          baseDelayMs: 1,
+          retryBudgetMs: 60_000,
+        },
+      ),
+    ).rejects.toThrow();
+
+    const stats = retryStats();
+    expect(stats.exhaustedCalls).toBe(1);
+    // Three attempts and two retries: the stall is a transport failure at every
+    // attempt, so the ladder runs to the end rather than stopping at the first.
+    expect(stats.attempts).toBe(3);
+    expect(stats.retried).toBe(2);
+  });
+
+  it('still hands back a readable body for a response that completes', async () => {
+    // The regression guard for the buffering itself: a rebuilt response must keep
+    // the status, the headers and the bytes, or the fix would trade a rare hang for
+    // a common breakage.
+    const outcome = await retryableFetchWithStats(
+      (async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })) as unknown as typeof fetch,
+      'https://ok.test/v1',
+      {},
+      { timeoutMs: 1_000, maxRetries: 0 },
+    );
+    expect(outcome.response.status).toBe(200);
+    expect(outcome.response.headers.get('content-type')).toBe('application/json');
+    await expect(outcome.response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it('keeps the status readable for a response that carries no body', async () => {
+    // 204 has no body to read and no failure to classify; a buffering step that
+    // assumed a stream would turn a legal empty response into an exception.
+    const outcome = await retryableFetchWithStats(
+      (async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
+      'https://empty.test/v1',
+      {},
+      { timeoutMs: 1_000, maxRetries: 0 },
+    );
+    expect(outcome.response.status).toBe(204);
+  });
+});

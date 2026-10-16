@@ -5458,3 +5458,122 @@ number it was not written against would be a redraw, which §4 forbids.
 
 The prediction's instrument now exists, so the readout is executable the moment the run lands. Nothing else in
 the P0 row was blocked by the provider, which is why this section was writable while the run was in flight.
+
+---
+
+## 13.39 Run `38941095220`: no reading, two defects, and the first honest cost accounting
+
+### 13.39.1 What happened, in one table
+
+The `ask: enumerated` dispatch ran `79m14s` and ended `failure`. Its artifact is 4,820 bytes.
+
+| time | event |
+| --- | --- |
+| `17:37:59` | embedding preflight `ok` — the balance is live |
+| `17:38:06` | **`Restored 239456 embedding vectors`** — the §13.37 repair reading a run-keyed key |
+| `18:04:57` | `Relevance index: 32000 scored …` — **26m51s**, after which 21,709 vectors had been added |
+| `18:28:47` | reference-pipeline `run=0` complete, 500/500 |
+| `18:44:07` | cortex-memory `run=0` complete, 500/500 |
+| `18:56:58` | reference-pipeline `run=1` **died at q=391** on `TimeoutError` |
+| `18:57:09` | `Embedding cache: persisted 261165 vectors` |
+
+**No prediction of §13.34.5 can be adjudicated**: the report is written only on success, and this run produced
+none. What it did produce is two defects and the first measurement of what the §13.37 repair actually bought.
+
+### 13.39.2 The cache repair, measured
+
+`239456` restored, `261165` persisted. The repair works — a run-keyed key was read for the first time — and the
+residual §13.37.7 recorded as "store churn rather than correctness" is **larger than that sentence implied**:
+the 21,709 missing vectors cost **26m51s** of the 79-minute run, because the entry restored was the *955 MB*
+one rather than the *1.10 GB* one.
+
+The mechanism is worth stating because it is a direct consequence of the other half of the repair: the
+acceptance run `38939122161` died at the preflight, left the restored file on disk, and republished it under a
+fresher key. `restore-keys` resolves to the **most recently created** entry, so re-publishing content the entry
+already had pinned the newest entry to the smaller cache — the 1.10 GB entries written by §13.32's and §13.26's
+runs became unreachable by recency.
+
+This is self-correcting as long as a run finishes enough work to publish a larger file, and this one did
+(`261165`). It is recorded as a measured property rather than as a footnote: **a run that publishes only what it
+restored can delay the cache's convergence by one full index build.**
+
+### 13.39.3 Defect 1: a finished repetition was as disposable as a dead one
+
+`benchmark-cortex-memory-partial.json`, written by the failure path exactly as §13.31 specifies:
+
+```json
+{"reached": 390, "total": 500, "run": 1, "baselineAnswers": [390], "featureAnswers": []}
+```
+
+**Repetition 0 had completed both sides at 500 of 500 each.** A complete, paired, N=500 measurement was in
+memory when the failure path ran, and `featureAnswers` is an empty list.
+
+§13.31 closed the same loss one repetition earlier: run `38520676669` "completed repetitions 0 and 1 on both
+sides — two thousand graded answers — and died on `TypeError: terminated` at the start of repetition 2", and
+the repair gave the **dying** repetition a sink and a catch. The rule it wrote down was broader than the
+repair: *"a repetition is a measurement, and losing one silently is the defect that file exists to prevent."*
+Only the dying one was ever durable.
+
+`PartialAblation` now carries `completed: CompletedPass[]` — every repetition that finished, both sides, in
+dataset order — and `runAblation` records repetition 0 where it ends and every later one at the bottom of its
+loop. **Nothing is computed from them**: `delta` is still absent from a partial, because the registered
+statistic is over four repetitions and a recovered repetition is a complete vector — the exact shape that
+invites the subtraction §13.31 forbids. The reading a recovered repetition supports is labelled `1 of 4`, not
+the pre-registered number.
+
+### 13.39.4 Defect 2: the deadline covered the headers and not the body
+
+The transport accounting from the same failing run:
+
+```
+{"attempts":6702,"retried":0,"rateLimited":0,"calls":6702,"retriedCalls":0,
+ "cleanCalls":6702,"exhaustedCalls":0,"retryRate":0}
+```
+
+**Zero retries and zero exhausted calls across 6,702 calls, while a `TimeoutError` killed the process.** Those
+two facts are jointly true in exactly one way. `attemptSignal` arms `AbortSignal.timeout(timeoutMs)` on the
+**request**; `fetch` resolves as soon as the **headers** arrive; `retryableFetchWithStats` returns that
+response. The deadline is therefore still armed when the **caller** reads the body — and a body still arriving
+when it fires rejects at the caller's `res.json()`, one frame above the retry loop, where the call has already
+been counted `clean` and no attempt is open to retry.
+
+§13.31's comment named this possibility verbatim — *"a single abort from somewhere the retry loop does not
+wrap"* — and listed it as the question that decides whether the right response is a re-dispatch or a code
+change. It is now answered, and it is a code change.
+
+**The repair**: an attempt is the complete exchange. The body is read inside the same `try` that issues the
+request (`withBufferedBody`), so a body-level abort is a transport failure like any other and takes the
+ordinary backoff and retry path; the response handed back is rebuilt from those bytes, so no caller changes.
+What is *not* changed: the deadline's value, the retry count, the backoff, and the status classification.
+
+### 13.39.5 Verification
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s branch
+  column (§13.29). `tools` **338 passed + 40 subtests**; `cortex-llm` **149** (+3); `cortex-eval` **1888** (+5).
+- **Red first, both fixes.** The five `completed` tests failed against the unfixed tree with
+  `partial.completed` undefined; the deadline test failed by **resolving**, which is the defect itself — the
+  loop returned a live stream and the abort happened outside every counter.
+- **The deadline test is a discriminator, not a description.** Its fake returns headers immediately and never
+  finishes the body, so it can only pass if the wrapper reads the body inside its own `try`. Two companion
+  tests keep the buffering honest: a completed response must still yield its status, its headers and its parsed
+  JSON, and a `204` with no body must still yield its status.
+- **One test of mine was wrong and was corrected rather than worked around.** The first version of the
+  `completed` tests assumed a single call counter shared by both systems; `countingSystem` counts its own
+  calls, so the ordinals were twice what they should have been and every test resolved instead of rejecting.
+  A probe run against the real ablation pinned the order (`base` 1-5, `feat` 6-10, `base` 11-15, …) and the
+  ordinals were corrected from the measurement.
+
+### 13.39.6 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Re-dispatch `ask: enumerated`. §13.34.5's five predictions are still unadjudicated; the instrument for prediction 2 exists (§13.38), and two of the three ways this dispatch could lose its work are now closed | **yes** (balance live) |
+| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); a finished repetition is durable (§13.39.3); the deadline covers the body (§13.39.4) | no |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no |
+| P1 | The **no-signal control** (§13.22.8): the mechanism exists as `cortex_memory_relevance: none`; it needs a registered dispatch | no (dispatch later) |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+The three ways this run could have kept its work were: the cache (fixed in §13.37 — and it did keep it: `261165`
+vectors), the completed repetitions (fixed here), and the abort (fixed here). The next dispatch is the same
+request with strictly more of its own work protected, which is the whole of what this iteration bought.

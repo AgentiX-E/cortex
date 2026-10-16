@@ -265,6 +265,41 @@ export type PartialAblation = {
   baselineAnswers: Answer[];
   /** The feature's answers, in dataset order, up to wherever the feature got. */
   featureAnswers: Answer[];
+  /**
+   * Every repetition that FINISHED before the one that died, in ordinal order.
+   *
+   * ## Why this is carried rather than merely counted
+   *
+   * `run` says how many repetitions completed; it does not say what they measured,
+   * and those are different losses. Run `38941095220` completed both sides of
+   * repetition 0 at 500 of 500 each and died in repetition 1: a complete, paired,
+   * N=500 measurement existed in memory when the failure path ran, and the artifact
+   * published `featureAnswers: []`. Run `38520676669` had lost two of them the same
+   * way. The rule this field honours is stated in `partial-ablation.test.ts` -- "a
+   * repetition is a measurement, and losing one silently is the defect that file
+   * exists to prevent" -- and until this field existed the rule held only for the
+   * repetition that was dying.
+   *
+   * ## And why nothing is computed from it here
+   *
+   * The entries are data. `AblationResult.delta` is still absent from a partial, for
+   * the reason `attachPartial` gives: the registered statistic is over four
+   * repetitions, and a run that finished one of them has a reading that says `1 of
+   * 4`, not the pre-registered number. A recovered repetition is a COMPLETE vector,
+   * which is exactly the shape that invites the subtraction, so the boundary is
+   * stated in the type rather than left to the writer.
+   */
+  completed: CompletedPass[];
+};
+
+/** One finished repetition, both sides, in dataset order. */
+export type CompletedPass = {
+  /** The ordinal `BenchmarkProgress` reported for this repetition. */
+  run: number;
+  /** The baseline's answers for the whole dataset. */
+  baselineAnswers: Answer[];
+  /** The feature's answers for the whole dataset. */
+  featureAnswers: Answer[];
 };
 
 /**

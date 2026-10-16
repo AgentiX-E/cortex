@@ -506,3 +506,157 @@ describe('a failure in a repeated run is a measurement too', () => {
     expect(partial!.featureAnswers).toEqual([]);
   });
 });
+
+/**
+ * A repetition that FINISHED is as durable as the one that died.
+ *
+ * ## The loss this pins, and it is the same loss twice
+ *
+ * The block above quotes run `38520676669`: "completed repetitions 0 and 1 on both
+ * sides -- two thousand graded answers -- and died on `TypeError: terminated` at
+ * the start of repetition 2". The repair that closed it gave the DYING repetition a
+ * sink and a catch. It did not carry the completed ones, and the file's own rule --
+ * "a repetition is a measurement, and losing one silently is the defect that file
+ * exists to prevent" -- was therefore still violated: two repetitions were lost,
+ * and all that survived was the number that said how many had finished.
+ *
+ * Run `38941095220` is the second instance and it is exact. The reference pipeline's
+ * repetition 0 completed 500 of 500, the arm's repetition 0 completed 500 of 500,
+ * and the reference pipeline's repetition 1 died at question 391 on a raw
+ * `TimeoutError`. The artifact it published was:
+ *
+ *     {"reached": 390, "total": 500, "run": 1, "baselineAnswers": [390], "featureAnswers": []}
+ *
+ * A complete, paired, N=500 measurement of repetition 0 -- both sides -- was in
+ * memory when the failure path ran, and it was thrown away because `attachPartial`
+ * is handed the dying repetition's two arrays and nothing else.
+ *
+ * ## What "durable" deliberately does not mean
+ *
+ * The completed repetitions are carried as DATA and nothing is computed from them.
+ * `delta` still must not appear: the registered statistic is over four repetitions
+ * and a run that finished one of them has a reading labelled `1 of 4`, not the
+ * pre-registered one. This is the same boundary `PartialAblation` already draws one
+ * field down -- a partial result carries the answers it has and does not carry a
+ * delta -- and the reason it is drawn again here is that a recovered repetition is a
+ * complete vector, which is exactly the shape that invites a subtraction.
+ */
+describe('a repetition that finished is durable, not only the one that died', () => {
+  /** The failure of a multi-repetition ablation, where the ordinal matters. */
+  async function repeatedFailureOf(
+    dataset: BenchmarkDataset,
+    baseline: MemorySystem,
+    feature: MemorySystem,
+    runs: number,
+  ): Promise<Error> {
+    return runAblation(dataset, baseline, feature, { runs, scorer: exactMatchScorer }).then(
+      () => {
+        throw new Error('the ablation resolved, but a system was asked to throw');
+      },
+      (error: unknown) => error as Error,
+    );
+  }
+
+  it('carries the repetitions that completed before the failure', async () => {
+    // `countingSystem` counts ITS OWN calls, so the feature's calls 1-5 are
+    // repetition 0 and call 6 is the first question of repetition 1 -- the ordinal
+    // is per system, which is why dying in a later repetition is expressed as a
+    // larger `dieOnCall` on the feature alone.
+    const dataset = datasetOf(5);
+    const baseline = countingSystem('reference-pipeline', 5, Number.MAX_SAFE_INTEGER);
+    const feature = countingSystem('cortex-memory', 5, 6);
+
+    const failure = await repeatedFailureOf(dataset, baseline, feature, 3);
+
+    const partial = partialOf(failure);
+    expect(partial).toBeDefined();
+    expect(partial!.run).toBe(1);
+    expect(partial!.completed).toHaveLength(1);
+    const completed = partial!.completed[0]!;
+    expect(completed.run).toBe(0);
+    expect(completed.baselineAnswers).toHaveLength(5);
+    expect(completed.featureAnswers).toHaveLength(5);
+  });
+
+  it('carries the answers themselves, not a placeholder of the right length', async () => {
+    // A vector of the right length holding `undefined` would satisfy every count
+    // above and would be worth nothing, which is the failure mode a length-only
+    // assertion invites.
+    const dataset = datasetOf(5);
+    const failure = await repeatedFailureOf(
+      dataset,
+      countingSystem('reference-pipeline', 5, Number.MAX_SAFE_INTEGER),
+      countingSystem('cortex-memory', 5, 6),
+      3,
+    );
+
+    const completed = partialOf(failure)!.completed[0]!;
+    expect(completed.baselineAnswers).toEqual([
+      'answer-0',
+      'answer-1',
+      'answer-2',
+      'answer-3',
+      'answer-4',
+    ]);
+    expect(completed.featureAnswers).toEqual([
+      'answer-0',
+      'answer-1',
+      'answer-2',
+      'answer-3',
+      'answer-4',
+    ]);
+  });
+
+  it('does not list the dying repetition among the completed ones', async () => {
+    // `completed` and `run` must partition, or a reader would sum the completion
+    // count and the dying ordinal and over-report how far the run got -- and the
+    // over-report is in the direction of "more evidence than there is".
+    const dataset = datasetOf(4);
+    const failure = await repeatedFailureOf(
+      dataset,
+      countingSystem('reference-pipeline', 4, Number.MAX_SAFE_INTEGER),
+      countingSystem('cortex-memory', 4, 5),
+      3,
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.run).toBe(1);
+    expect(partial.completed.map((pass) => pass.run)).toEqual([0]);
+  });
+
+  it('is empty when the failure is in the first repetition', async () => {
+    // The control. If `completed` were populated by something other than a finished
+    // pass -- a pre-allocated slot, say -- this is where it would show, because
+    // nothing has finished yet. The feature dies on its own first call, which is
+    // repetition 0's first question.
+    const dataset = datasetOf(5);
+    const failure = await repeatedFailureOf(
+      dataset,
+      countingSystem('reference-pipeline', 5, Number.MAX_SAFE_INTEGER),
+      countingSystem('cortex-memory', 5, 1),
+      3,
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.run).toBe(0);
+    expect(partial.completed).toEqual([]);
+  });
+
+  it('accumulates every completed repetition, not just the first', async () => {
+    // The feature's calls 1-5 are repetition 0, 6-10 repetition 1 and 11-15
+    // repetition 2, so dying on its call 11 leaves repetitions 0 and 1 complete. A
+    // `completed` that only ever held run 0 would pass the earlier tests and fail
+    // this one.
+    const dataset = datasetOf(5);
+    const failure = await repeatedFailureOf(
+      dataset,
+      countingSystem('reference-pipeline', 5, Number.MAX_SAFE_INTEGER),
+      countingSystem('cortex-memory', 5, 11),
+      3,
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.run).toBe(2);
+    expect(partial.completed.map((pass) => pass.run)).toEqual([0, 1]);
+  });
+});

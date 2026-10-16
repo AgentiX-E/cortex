@@ -13,6 +13,7 @@ import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
 import type {
   AblationResult,
   Answer,
+  CompletedPass,
   BenchmarkDataset,
   Capability,
   MemorySystem,
@@ -81,7 +82,10 @@ const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
  */
 function attachPartial(error: unknown, partial: PartialAblation): unknown {
   const measuredNothing =
-    partial.run === 0 && partial.reached === 0 && partial.baselineAnswers.length === 0;
+    partial.run === 0 &&
+    partial.reached === 0 &&
+    partial.baselineAnswers.length === 0 &&
+    partial.completed.length === 0;
   if (measuredNothing) return error;
   if (error !== null && typeof error === 'object') {
     (error as { partial?: PartialAblation }).partial = partial;
@@ -178,6 +182,12 @@ export async function runAblation(
   // partial result must not report a delta.
   const baselineAnswers: Answer[] = [];
   const featureAnswers: Answer[] = [];
+  // Every repetition that finished, so a failure in a later one does not discard it.
+  // Declared HERE rather than inside the loop below because the first repetition is
+  // not run by that loop -- it is the pair of calls immediately after this line --
+  // and a `completed` that only ever held the loop's repetitions would report `[]`
+  // for the failure the runs above actually had.
+  const completed: CompletedPass[] = [];
   let baseFirst: ScoredEvaluation;
   try {
     baseFirst = await evaluateWithScorerDetailed(
@@ -199,6 +209,7 @@ export async function runAblation(
       run: 0,
       baselineAnswers,
       featureAnswers,
+      completed,
     });
   }
   let featFirst: ScoredEvaluation;
@@ -230,8 +241,16 @@ export async function runAblation(
       run: 0,
       baselineAnswers,
       featureAnswers,
+      completed,
     });
   }
+
+  // Repetition 0 is the only one whose completion is not visible where the others'
+  // is: it ends here rather than at the bottom of the loop below. Recorded before
+  // the pairing arithmetic, because the arithmetic can throw on a length mismatch
+  // (`buildQuestionRecords` throws for the same reason) and the answers would then
+  // be lost by a failure that is not about them.
+  completed.push({ run: 0, baselineAnswers, featureAnswers });
 
   let baselineCorrectFeatureIncorrect = 0;
   let baselineIncorrectFeatureCorrect = 0;
@@ -332,6 +351,7 @@ export async function runAblation(
         run: i,
         baselineAnswers: baselineThisRun,
         featureAnswers: featureThisRun,
+        completed,
       });
     }
     let f: Metrics;
@@ -353,10 +373,16 @@ export async function runAblation(
         run: i,
         baselineAnswers: baselineThisRun,
         featureAnswers: featureThisRun,
+        completed,
       });
     }
     baselineScores.push(toScore(b));
     featureScores.push(toScore(f));
+    completed.push({
+      run: i,
+      baselineAnswers: baselineThisRun,
+      featureAnswers: featureThisRun,
+    });
   }
 
   const baselineAggregate = aggregate(baselineScores);

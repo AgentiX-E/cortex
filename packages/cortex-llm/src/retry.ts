@@ -532,6 +532,19 @@ export async function retryableFetchWithStats(
     try {
       stats.attempts += 1;
       res = await fetchFn(url, signal ? { ...init, signal } : init);
+      // The body is read HERE, inside the deadline and inside the retry, because
+      // otherwise an attempt ends when the HEADERS arrive and the deadline stays
+      // armed across a body read this function has already returned from.
+      //
+      // The measured cost of not doing it: run `38941095220` died at
+      // `reference-pipeline run=1 q=391` on `TimeoutError: The operation was aborted
+      // due to timeout` with `{"attempts":6702,"retried":0,"calls":6702,
+      // "cleanCalls":6702,"exhaustedCalls":0}` -- a raw abort, no retry, no counter,
+      // and 79 minutes of graded answers already in memory. The abort happened in
+      // the client at `res.json()`, one stack frame above this loop, where nothing
+      // can classify it. §13.31 named this exact possibility ("a single abort from
+      // somewhere the retry loop does not wrap") and left it open; this closes it.
+      res = await withBufferedBody(res);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       // A transport failure carries no response, so there is no header to read
@@ -586,6 +599,43 @@ function withExhaustion(error: Error, exhaustion: RetryExhaustion): Error {
 }
 
 /** Attach the final response, record the call, and return the outcome. */
+/**
+ * Read a response's body to completion and hand back a response holding those bytes.
+ *
+ * ## Why the wrapper reads it rather than the caller
+ *
+ * `AbortSignal.timeout` is armed on the REQUEST and `fetch` resolves on the HEADERS,
+ * so a `fetch` that returns a live stream leaves the deadline running past the end of
+ * this module's scope. A body that is still arriving when it fires rejects at the
+ * caller's `res.json()` -- outside the `try` below, so the ladder sees nothing: the
+ * call is counted clean and the process dies. Measured once, in `38941095220`, after
+ * 79 minutes.
+ *
+ * Reading it here makes one attempt mean one COMPLETE exchange, which is what the
+ * retry semantics, the accounting and the `timeoutMs` docstring all already assumed.
+ *
+ * ## What it costs
+ *
+ * One buffer per response. Every caller in this repository consumes JSON bodies that
+ * are a few kilobytes, and the ones that only inspect a status still paid for a
+ * connection that would otherwise have been abandoned mid-body -- so the buffer is
+ * smaller than the socket it replaces.
+ *
+ * `null` bodies (204, 304, HEAD) are passed through untouched: `new Response` refuses
+ * a body on a null-body status, and there is nothing to read.
+ */
+async function withBufferedBody(res: Response): Promise<Response> {
+  if (res.body === null) {
+    return res;
+  }
+  const bytes = await res.arrayBuffer();
+  return new Response(bytes, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  });
+}
+
 function withResponse(response: Response, stats: RetryStats): RetryOutcome {
   const outcome: RetryOutcome = { ...stats, response };
   processRetryStats.record(outcome);
