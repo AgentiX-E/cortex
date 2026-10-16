@@ -104,9 +104,12 @@ function system(options: Partial<CortexMemoryOptions>): CortexMemory {
   });
 }
 
-async function carriedContents(options: Partial<CortexMemoryOptions>): Promise<string[]> {
+async function carriedContents(
+  options: Partial<CortexMemoryOptions>,
+  sessions: string[][] = twoSessions(),
+): Promise<string[]> {
   const memory = system(options);
-  await memory.answerSessions('How many?', twoSessions());
+  await memory.answerSessions('How many?', sessions);
   const carried = memory.lastRetrievedContext()!;
   return carried.map((text) => text.split('-')[0]!.trim());
 }
@@ -221,5 +224,119 @@ describe('the relevance budget can be spent in sessions', () => {
     const carried = withUnit.lastRetrievedContext()!;
     expect(carried.length).toBeLessThan(flat.length);
     expect(carried).toEqual(withTurn.lastRetrievedContext());
+  });
+});
+
+/**
+ * The prefix rule stranded the room, and that is what run `38753835652` measured.
+ *
+ * ## What the archive says
+ *
+ * The session unit was dispatched against §13.26's turn unit with nothing else moved, and
+ * it lost: `+25.75pp` became `+17.80pp`, MR fell 42.15% to 12.40% (92 questions the
+ * baseline had right and this arm now had wrong, against **zero** it gained), and MR's
+ * abstentions rose from 24 to 63. Coverage did not rise with it -- 0.500 to 0.455 -- which
+ * is the falsifier §13.27 wrote before the number existed: if the unit were the cause,
+ * showing a whole session would raise coverage, and it did not.
+ *
+ * ## What the mechanism was
+ *
+ * `session` orders sessions by their best-scoring turn and then carries a **prefix** of
+ * that order, stopping at the first session that does not fit. A session is much larger
+ * than a turn, so the first one over the line ends the pass and the rest of the room goes
+ * unused. The archived run had a median of 12 carried turns against a room that holds
+ * about 23, and the same write-up that described the search called the stopping rule a
+ * virtue: "the largest prefix, without skipping". It was the defect.
+ *
+ * A discarded alternative is worth naming so it is not re-proposed as new: carry the
+ * session's leading turns instead of all of it. That trades the ordering rule for a second
+ * one and cannot be compared against a run that only moved the unit.
+ */
+describe('the session unit fills the room it is given', () => {
+  /**
+   * A session too large for the room, ranked first, and a small one behind it.
+   *
+   * Six turns of two thousand characters is about 12k, more than the room holds at any
+   * budget this suite uses, and two turns is about 4k, less than it holds at all of them.
+   * The gap is wide enough that the assertions do not depend on the instruction block's
+   * exact length -- which is what keeps this a test of the rule and not of a character
+   * count that a wording change would move.
+   */
+  function oversizedThenSmall(): string[][] {
+    return [Array.from({ length: 6 }, (_, i) => turn(`a${i}`)), [turn('b0'), turn('b1')]];
+  }
+
+  it('strands the room on the prefix rule, which is what was measured', async () => {
+    const carried = await carriedContents({ relevanceUnits: 'session' }, oversizedThenSmall());
+
+    // Nothing at all: the ranked-first session does not fit, and the rule stops there
+    // rather than reaching a session that does.
+    expect(carried).toEqual([]);
+  });
+
+  it('skips the session that does not fit and carries the one that does', async () => {
+    const carried = await carriedContents({ relevanceUnits: 'session-fill' }, oversizedThenSmall());
+
+    expect(carried).toEqual(['b0', 'b1']);
+  });
+
+  it('keeps the prompt inside the room while filling', async () => {
+    // A greedy fill that measured the room with an additive estimate would overrun it,
+    // because the session route renders a header per session and a separator per turn.
+    // The rule measures with the renderer itself, and this is the assertion that says so.
+    const seen: string[] = [];
+    const memory = new CortexMemory({
+      now: NOW,
+      gate: OPEN_GATE,
+      llm: recordingLlm(seen),
+      relevanceFor,
+      maxPromptChars: 10_000,
+      relevanceUnits: 'session-fill',
+    });
+
+    await memory.answerSessions('How many?', oversizedThenSmall());
+
+    expect(memory.lastRetrievedContext()).not.toEqual([]);
+    expect(seen[0]!.length).toBeLessThanOrEqual(10_000);
+  });
+
+  it('agrees with the prefix rule whenever every session fits', async () => {
+    // The two rules are one change, not two: they differ only in what happens when a
+    // session is rejected. Asserted rather than assumed, because a filling rule that also
+    // reordered sessions would move the winner's reading for a reason §13.31 did not
+    // measure -- and §13.26's turn unit is the comparison, so the shared part has to be
+    // shared.
+    const small = [[turn('a0'), turn('a1')], [turn('b0')]];
+    const filled = await carriedContents({ relevanceUnits: 'session-fill' }, small);
+    const prefixed = await carriedContents({ relevanceUnits: 'session' }, small);
+
+    expect(filled).toEqual(['a0', 'a1', 'b0']);
+    expect(filled).toEqual(prefixed);
+  });
+
+  it('is inert on a route that has no session boundary to spend it in', async () => {
+    // Same guard as the prefix rule, for the same reason: `buildPrompt` is handed no
+    // session boundary, so a selection in sessions cannot be expressed on flat, temporal,
+    // knowledge-update, abstention or assistant.
+    const flat = ['a0', 'a1', 'a2', 'a3', 'b0', 'b1'].map(turn);
+    const withFill = system({ relevanceUnits: 'session-fill' });
+    await withFill.answer('How many?', flat);
+    const withTurn = system({ relevanceUnits: 'turn' });
+    await withTurn.answer('How many?', flat);
+
+    expect(withFill.lastRetrievedContext()).toEqual(withTurn.lastRetrievedContext());
+  });
+
+  it('carries nothing when no session fits, which is the one outcome filling cannot fix', async () => {
+    // Skipping recovers the room a single oversized session stranded; it does not make a
+    // session fit that does not. With every session larger than the room the outcome is the
+    // same empty roster as the prefix rule -- and the artifact says so rather than the
+    // reader being handed a truncated session, which would be the turn unit under the
+    // session unit's name.
+    const carried = await carriedContents({ relevanceUnits: 'session-fill' }, [
+      Array.from({ length: 6 }, (_, i) => turn(`a${i}`)),
+    ]);
+
+    expect(carried).toEqual([]);
   });
 });

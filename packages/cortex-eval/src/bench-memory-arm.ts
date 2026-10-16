@@ -284,18 +284,25 @@ const DEFAULT_RELEVANCE_SIGNAL = RELEVANCE_SIGNALS.none;
  *
  * Separate from `RELEVANCE_SIGNALS` rather than a second value of it, for the reason
  * `CortexMemoryArmOptions.relevanceUnits` records: the signal says how a turn is scored
- * and this says what a score buys. §13.27 moves only this one.
+ * and this says what a score buys.
  *
- * `session` is read by the multi-session route alone. `buildPrompt` is handed no session
- * boundary, so a selection in sessions cannot be expressed on flat, temporal,
- * knowledge-update, abstention or assistant -- which is what makes that dispatch a
- * single-variable one rather than a claim about five routes at once.
+ * `session` and `session-fill` are read by the multi-session route alone. `buildPrompt` is
+ * handed no session boundary, so a selection in sessions cannot be expressed on flat,
+ * temporal, knowledge-update, abstention or assistant -- which is what makes each dispatch
+ * a single-variable one rather than a claim about five routes at once.
+ *
+ * `session` is **frozen**: it is the rule run `38753835652` measured, it lost, and it stays
+ * reachable so that reading is reproducible from the code that produced it. §13.31's repair
+ * is a third value rather than an edit to this one, for exactly that reason -- a value whose
+ * meaning changed between two archived runs would make both artifacts ambiguous.
  */
 const RELEVANCE_UNITS = {
   /** The budget buys individual turns wherever they score highest. The pre-§13.27 behaviour. */
   turn: 'turn',
-  /** The budget buys whole sessions, ordered by their best-scoring turn. */
+  /** The budget buys whole sessions, ordered by their best-scoring turn, on the prefix rule. */
   session: 'session',
+  /** The same, skipping a session that does not fit instead of ending the pass on it. */
+  'session-fill': 'session-fill',
 } as const;
 
 /** The unit a run gets when it does not name one. */

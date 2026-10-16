@@ -278,7 +278,11 @@ INPUTS = {
     # happen to match -- and it would arrive through the same `''`-to-default path §38
     # identified as the source of two defects. A value this run depends on should not arrive
     # by accident, and an absent key cannot be shown to be wrong.
-    "cortex_memory_relevance_units": "session",
+    # §13.31's repair of §13.27's refuted rule. `session` took the largest prefix of the
+    # session ranking and stopped at the first session that did not fit, which left half the
+    # room unread; `session-fill` skips it and keeps scanning. Sent explicitly rather than
+    # left to the default so the run cannot arrive through the `''`-to-default path.
+    "cortex_memory_relevance_units": "session-fill",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
     # pass any completed run has produced on this arm (a full run is about 3h32m for eight
     # passes), so it is a hang detector rather than a slow-run detector.

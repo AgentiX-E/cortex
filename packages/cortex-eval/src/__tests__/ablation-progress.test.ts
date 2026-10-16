@@ -100,4 +100,38 @@ describe('runAblationReport forwards progress without persisting it', () => {
     expect('onProgress' in report).toBe(false);
     expect(JSON.stringify(report)).not.toContain('onProgress');
   });
+
+  it('forwards the per-pass ceiling, so the entry point cannot hold a switch nothing applies', async () => {
+    // §13.30 added a wall-clock ceiling to `runBenchmark` and threaded it through four
+    // call sites and two option types to reach the arm. A field that is declared and never
+    // forwarded is exactly the defect the census was added for, one layer up: the run
+    // would be dispatched with a ceiling, the config line would name it, and nothing would
+    // apply it. `budgetMs: 0` is the observable -- it can only reject if it arrived.
+    //
+    // The fake answers take a millisecond, so `elapsed > 0` holds on the second question
+    // and the assertion does not depend on the clock's resolution.
+    const slow: MemorySystem = {
+      name: 'base',
+      answer: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return 'a';
+      },
+    };
+
+    await expect(
+      runAblationReport(dataset, slow, fixedSystem('feat', 'a'), {
+        runs: 1,
+        scorer: exactMatchScorer,
+        budgetMs: 0,
+      }),
+    ).rejects.toThrow(/budget/);
+
+    // And the absent path is what every pre-existing caller takes.
+    await expect(
+      runAblationReport(dataset, slow, fixedSystem('feat', 'a'), {
+        runs: 1,
+        scorer: exactMatchScorer,
+      }),
+    ).resolves.toBeDefined();
+  });
 });

@@ -768,21 +768,34 @@ forwarded into a step's `env`. Three injections were run against it:
   low-scoring turns rather than admit more high-scoring ones. Sent explicitly rather than
   left blank for the reason `sourceTrust` is: a value that never reaches the environment is
   a value this guard cannot compare against the registration.
-* `relevanceUnits: session` — **added by §13.27, and it is the selection unit.** Registered
-  separately from `relevanceSignal` because the two are different claims about one budget:
-  the signal says **how a turn is scored** and this says **what a score buys**. A unit folded
-  into the signal's name would make a run that changed only the unit indistinguishable, in its
-  own configuration line, from one that changed the scoring — and §13.27 moves only the unit,
-  holding the signal at `retrieval` and the width at `64` so a movement cannot be attributed
-  to either. `session` spends the room on whole sessions ordered by their best-scoring turn;
-  the signal itself does not change, because a session's score is the maximum of its turns'
-  scores, so this is a regrouping of the same numbers rather than a second signal. It reaches
-  the **multi-session route alone**, which is what makes the dispatch single-variable:
-  `buildPrompt` is handed no session boundary, so the unit cannot be expressed on flat,
-  temporal, knowledge-update, abstention or assistant. Sent explicitly rather than left blank
-  for the reason `sourceTrust` and `relevanceTopK` are: `turn` is the default, so omitting it
-  would happen to match — and it would arrive through the `''`-to-default path §38 identified
-  as the source of two separate defects.* `budgetMinutes: 90` — **added by §13.30, and it is a run option rather than a measurement
+* `relevanceUnits: session-fill` — **added by §13.27, re-registered by §13.31, and it is the
+  selection unit.** Registered separately from `relevanceSignal` because the two are different
+  claims about one budget: the signal says **how a turn is scored** and this says **what a score
+  buys**. A unit folded into the signal's name would make a run that changed only the unit
+  indistinguishable, in its own configuration line, from one that changed the scoring — and each
+  dispatch moves only the unit, holding the signal at `retrieval` and the width at `64` so a
+  movement cannot be attributed to either. `session-fill` spends the room on whole sessions
+  ordered by their best-scoring turn, **skipping** a session that does not fit and continuing
+  down the ranking; the signal itself does not change, because a session's score is the maximum
+  of its turns' scores, so this is a regrouping of the same numbers rather than a second signal.
+  It reaches the **multi-session route alone**, which is what makes the dispatch single-variable:
+  `buildPrompt` is handed no session boundary, so the unit cannot be expressed on flat, temporal,
+  knowledge-update, abstention or assistant. Sent explicitly rather than left blank for the reason
+  `sourceTrust` and `relevanceTopK` are: `turn` is the default, so omitting it would happen to
+  match — and it would arrive through the `''`-to-default path §38 identified as the source of two
+  separate defects.
+  **Why this is a third value and not an edit to `session`.** §13.27 registered `session`, which
+  carries the largest **prefix** of the ranking, and run `38753835652` refuted it: `+17.80pp`
+  against the turn unit's `+25.75pp`, MR 12.40% against 42.15%, MR abstentions 24 → 63. The defect
+  is not the unit but the search — a session is far larger than a turn, so the first session over
+  the line ends the pass and the rest of the room is never spent (that run's MR records carry a
+  median of **12** turns against a room that holds about **23**). Editing `session` in place would
+  make both archived artifacts ambiguous, since a configuration line is the only thing either one
+  records; so `session` is **frozen** at exactly the rule that was measured, exactly as a
+  confirmed-negative configuration is kept elsewhere in this project, and the repair arrives as a
+  value whose name says which rule it is. A reader can therefore execute either run's
+  configuration and get the run that was reported.
+* `budgetMinutes: 90` — **added by §13.30, and it is a run option rather than a measurement
   configuration.** Each **pass** (one system over one repetition) is abandoned once it exceeds
   this ceiling, and the pass itself enforces it between questions, so a hang ends with a
   failure record naming the question it stopped at. §13.30 records why this exists: run
@@ -4182,7 +4195,8 @@ a single variable changed — the relevance signal's **unit**.
 | Field | Value | Note |
 | --- | --- | --- |
 | `cortex_memory_ask` | `computed` | held at §13.26's value, so a movement is not the instruction |
-| `cortex_memory_relevance` | **`retrieval-session`** | the variable |
+| `cortex_memory_relevance` | `retrieval` | held — **corrected by §13.31.4**: this row was written as `retrieval-session`, a value that was never implemented or dispatched, so the variable it described could not be read from the archive at all |
+| `cortex_memory_relevance_units` | **`session`** | the variable; the field the implementation and the artifact both carry |
 | `cortex_memory_relevance_top_k` | `64` | held |
 | `cortex_memory_evidence_turns` | `256` | held |
 | everything else | §13.26's values | held |
@@ -4423,7 +4437,7 @@ reads as a healthy configuration.
 
 | Priority | Item | Needs provider |
 | --- | --- | --- |
-| **P0** | Read `38753835652` against §13.27's four predictions — and if it fails, the record will say where and for how long | no (in flight) |
+| **P0** | Read the §13.32 dispatch against its five predictions (§13.31.3 says what to read first: MR's `promptChars`, then the roster, then coverage, then accuracy) | yes — dispatched |
 | P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
 | P1 | Design the **no-signal control** (§13.22.8) | no (dispatch later) |
 | P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is 98.64% (§13.29) | no |
@@ -4438,3 +4452,191 @@ was silent say something.
 So the number stays at 98.64%, above the 95% floor and explained rather than suppressed. What
 changed is that the two branches a test *could* reach now have one, and that the coverage
 digits are no longer the only statement about them.
+
+## 13.31 `session` is refuted: the unit was right, the search stranded the room
+
+Run **`38753835652`** completed in `3h21m` and produced a full five-hundred-question artifact.
+It is the first dispatch since §13.25 to finish on the first attempt, and the first in four
+attempts to fail *in the measurement* rather than in the plumbing.
+
+### 13.31.1 The judgement, against §13.27's four predictions
+
+| §13.27 prediction | Registered | Measured | Verdict |
+| --- | --- | --- | --- |
+| MR's median `carried/total` rises from 0.58 to **≥ 0.75** | primary | **0.455** (turn: 0.500) | **FALSIFIED** |
+| MR rises and the arm's delta exceeds **+25.75pp** | — | delta **+17.80pp**, MR **12.40%** (turn: 42.15%) | **FALSIFIED** |
+| TR does not fall back below its §13.26 level | — | TR **62.99%** (turn: 56.69%, +8 questions) | holds |
+| IE and KU do not move beyond the control band | — | IE **−4** questions, KU **−1** | holds, with a caveat below |
+
+The registered falsifier **"coverage rises and accuracy falls"** did not fire. The one that
+fired is worse for the design: **neither rose**. Coverage moved the wrong way while accuracy
+moved by thirty percentage points, so the mechanism §13.26.5 named was not reached by this
+design at all.
+
+The headline numbers, side by side with the run they were compared against:
+
+| | §13.26 `turn` | §13.27 `session` | Δ |
+| --- | --- | --- | --- |
+| Δ accuracy | **+25.75pp** | **+17.80pp** | −7.95pp |
+| McNemar | 1.064e-13 | 1.787e-7 | — |
+| MR | 42.15% (51/121) | **12.40%** (15/121) | **−36** |
+| IE | 88.67% (133/150) | 86.00% (129/150) | −4 |
+| KU | 86.11% (62/72) | 84.72% (61/72) | −1 |
+| TR | 56.69% (72/127) | 62.99% (80/127) | +8 |
+| ABS | 96.67% (29/30) | 100.00% (30/30) | +1 |
+| Abstention rate | 20.60% | 28.40% | +7.80pp |
+
+MR's paired counts are the part that cannot be noise: **92** questions the baseline had right
+and this arm got wrong, against **zero** it gained. A rule that changes a capability from
+"the arm's best result" to "92 lost, none won" is not a weak effect, it is the wrong rule.
+
+One further correction to the registration, in the same class as §13.31.4. §13.27 wrote the
+turn unit's MR median coverage as **0.58**; recomputed on the same predicate and the same
+artifact, against the run this dispatch was compared with and against this one, it is
+**0.500**. The registered direction ("rises") is what was falsified, and it was falsified
+either way — but a registration that mis-states the starting value makes the target it names
+(0.75) unanchored, so the number is corrected here rather than carried forward.
+
+### 13.31.2 The control band, and why this dispatch's controls are weaker than §13.26's
+
+§13.26 could argue that IE, MR, KU and ABS were controls, because `computed` reaches only
+the temporal route on those four. **This dispatch cannot**: `relevanceUnits` reaches every
+route whose plan carries session boundaries, and IE's own roster moved with it. The evidence
+that the change was confined to MR is therefore not the band but the artifact's own
+`promptChars`, which is the falsification test the band was standing in for:
+
+- **375 of 500 questions have byte-identical `promptChars`** across the two runs.
+- Every one of the 125 that differ is MR or a question whose MR route was taken: the median
+  difference is exactly **0** for IE, KU, TR and ABS, and **−6,439** for MR.
+- Of MR's 121 questions, **119** got a shorter prompt and 2 were unchanged.
+
+So IE's −4 questions is not a second effect; it is what §13.26 measured as inside the noise
+band on an untouched capability. Stated because a reader who took the table alone would
+attribute it to the unit.
+
+### 13.31.3 The mechanism: the prefix rule never spent the room
+
+A session is much larger than a turn, so the first session over the line ends the pass. The
+artifact measures the consequence directly, in a unit that does not depend on the code
+version: the prompt's own length.
+
+| MR, per question | `turn` | `session` |
+| --- | --- | --- |
+| room used, median | **0.940** | **0.673** |
+| room used, p10 | — | 0.503 |
+| room used, min | 0.843 | **0.205** |
+| questions using under 20,000 of 24,000 | **0 / 121** | **102 / 121** |
+| roster, median entries | 23 turns (149 lines, pre-§13.25 units) | 12 turns |
+
+The rule stranded a median of **6,439 characters — 28% of the room — on 102 of 121 MR
+questions**, and more than half the room on 48 of them. It is not the "cannot fit the top
+session" path the suite tests: **no** MR question had an empty roster. It is the ordinary
+case, where the third or fourth session did not fit and the rule stopped with the rest of
+the room unread.
+
+Two consequences follow, and the second is the one that matters for what to try next:
+
+1. The carried set was smaller than the budget allows, so the run's MR result is a reading of
+   an allocation fault rather than of the session unit.
+2. **The coverage column agrees independently**: 0.500 to 0.455, with the `[0.65, 0.85)` band
+   emptying from 24 questions to zero. If whole sessions were the mechanism, carrying them
+   would have raised coverage even with a smaller budget. It did not.
+
+**A units caveat, recorded because it nearly produced a wrong number here.** §13.26's artifact
+was produced before §13.25 repaired the capture, so its `turns` counts **lines** (≈6.6 per
+turn, the ratio §13.16.6 measured); this one counts turns. The two artifacts' roster lengths
+are therefore not comparable, and an early reading of this run compared them directly and
+concluded the budget had been halved. The comparable quantities are accuracy, `goldOverlap`,
+and `promptChars` — the last one for the reason §13.25 gives: it is produced by a different
+code path than the capture and did not change.
+
+### 13.31.4 A defect this dispatch's audit found in §13.27's registration
+
+§13.27's "Registered before dispatch" table names its variable as
+`cortex_memory_relevance: retrieval-session`. That value **was never implemented and never
+dispatched** — it appears nowhere in the repository outside that one row. The variable that
+was actually moved is `relevanceUnits`, whose implementation §13.27.1 documents and whose
+value the dispersed run's configuration line records. The table row is corrected here rather
+than silently, because a registration that names a variable which does not exist is a
+registration the guard cannot check: `test_preregistration_config.py` compares values it can
+find in both places, and a concept with no input behind it is invisible to it.
+
+### 13.31.5 The repair, and the two alternatives rejected
+
+**Kept**: the scoring, the grouping, the ranking and the tie rule. `rankSessionTurns` is now
+extracted so the two session rules cannot drift apart, and `chooseEvidence` owns the branch so
+the "route must draw boundaries" precondition is tested once instead of once per rule.
+
+**Repaired**: the search. `session-fill` walks the same ranked order and **skips** a session
+that does not fit, continuing until the room is spent. The property the prefix rule was argued
+for — the carried set is a function of the ranking and the room, so it does not depend on the
+sizes of sessions the signal did not choose — is **given up and stated as a cost**, because
+filling the room is worth more than a purity claim that leaves 28% of it unread on the median
+question.
+
+**Rejected, with reasons, so neither is re-proposed as new**:
+
+| Alternative | Why not |
+| --- | --- |
+| Carry each session's **leading** turns up to a per-session quota | Re-introduces the "whole session" claim as a *partial* session, and needs a second ordering rule (where inside the session to start). One change at a time: the refuted rule's only fault that the artifact measures is the stopping rule, and this would move two things at once |
+| Give `session` the filling rule **in place** | A configuration line is the only record an artifact carries. Editing the rule under the same value would make `38753835652` ambiguous with its successor, and the refutation unreproducible. `session` is frozen exactly as measured, as a confirmed-negative configuration is kept elsewhere in this project |
+| Raise the room instead (`maxPromptChars`) | Not delegated: it changes the budget, and every number in this document is conditioned on 24,000. A budget sweep is a legitimate later experiment and a different one |
+
+### 13.31.6 Verification
+
+- `pnpm check` **exit 0**; cortex-eval **1,872**, cortex-memory **330**, **100% on all four
+  coverage dimensions** in both; `tools` 314 passed + 35 subtests; census clean.
+- **Three defect injections, all caught.** Making the filling loop `break` on the first
+  session that does not fit fails the two fill tests. Routing `session-fill` to
+  `selectBySession` fails the same two. Removing the `budgetMs` forwarding in the arm fails
+  the ceiling test added when that branch was the only uncovered one in the repository.
+- The two new coverage branches were closed by **writing the tests they imply**, not by
+  excluding them: no-session-fits for the filling rule, and the arm's forwarding of the
+  per-pass ceiling.
+
+## 13.32 The session unit with the room actually spent, and what that is registered to move
+
+**Registered before dispatch**: one dispatch of the same configuration as `38753835652`, with
+a single variable changed — the session rule's search.
+
+| Field | Value | Note |
+| --- | --- | --- |
+| `cortex_memory_relevance_units` | **`session-fill`** | the variable |
+| `cortex_memory_ask` | `computed` | held at §13.26's value |
+| `cortex_memory_relevance` | `retrieval` | held |
+| `cortex_memory_relevance_top_k` | `64` | held |
+| `cortex_memory_evidence_turns` | `256` | held |
+| `cortex_memory_budget_minutes` | `90` | held (§13.30) |
+| everything else | §13.26's values | held |
+
+**Predictions, in the order they would be read:**
+
+1. **MR's room usage returns to the turn unit's level.** Median `promptChars / 24000` moves
+   from **0.673** to at least **0.90** — the same band the turn unit occupies (0.940 median,
+   0.843 minimum). This is the primary prediction and it is about the *repair*, not about the
+   unit: if filling does not spend the room, the search was not what the artifact measured.
+2. **The MR roster grows past the turn unit's.** More than 23 turns on the median question,
+   because a filling rule that skips can admit more sessions than a prefix that stops. If the
+   roster is still near 12, the pass is stopping for a reason this section did not identify.
+3. **MR coverage rises above 0.50, and the `[0.65, 0.85)` band refills.** §13.26.5's mechanism
+   says coverage is what accuracy tracks, so coverage moves first.
+4. **MR accuracy rises above the turn unit's 42.15%** and the arm's delta exceeds **+25.75pp**.
+   This is the claim that replaces §13.27's falsified one: the session unit with the room spent
+   beats the turn unit, or the unit is not the lever.
+5. **TR stays at or above `session`'s 62.99%.** TR moved *up* under the session unit and there
+   is no registered reason for the repair to give that back; if it does, the TR gain came from
+   the stranding rather than from completing sessions, which would be a finding about TR.
+
+**Falsifiers, stated before the number exists:**
+
+- Room usage rises to the turn unit's level while MR accuracy stays near 12% → the MR collapse
+  was about **which** sessions are chosen, not how much room is spent, and the ranking — not
+  the search — is the lever.
+- Coverage rises above 0.65 and MR accuracy does not improve → §13.26.5's coverage/accuracy
+  reading is correlational, and the band table is not a mechanism.
+- `promptChars` differs from the turn unit's on any IE, KU, TR or ABS question → the change is
+  not confined to the multi-session route, and this dispatch is not single-variable.
+
+**Stopping rule.** One dispatch, no peeking, no redraw. The point estimate must exceed the
+BASELINE side of the same dispatch, McNemar p < 0.05 two-sided, full N = 500, 4 runs,
+temperature 0 — the same instrument as §13.21, §13.26 and §13.27, so all four are comparable.

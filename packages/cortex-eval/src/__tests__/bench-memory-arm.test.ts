@@ -821,6 +821,32 @@ describe('runCortexMemoryArm', () => {
     expect(result.report.ablation.discordant.baselineCorrectFeatureIncorrect).toBe(0);
   });
 
+  it('applies the per-pass ceiling it was handed', async () => {
+    // §13.30's ceiling crosses two option types to reach `runBenchmark`: this one and
+    // `AblationReportOptions`. A field declared on the first and dropped before the second
+    // is a switch nothing applies -- the run would be dispatched with a ceiling, its
+    // configuration line would name it, and a hang would still run to the job timeout.
+    // `budgetMs: 0` is the observable, because it can only reject if it arrived; the fake
+    // answers take a millisecond so the assertion does not depend on clock resolution.
+    const slow: MemorySystem = {
+      name: 'cortex-memory',
+      answer: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return 'one';
+      },
+    };
+
+    await expect(
+      runCortexMemoryArm(twoQuestionDataset(), constantSystem('reference-pipeline', 'one'), slow, {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+        budgetMs: 0,
+      }),
+    ).rejects.toThrow(/budget/);
+  });
+
   it('names both sides in the report so the artifact says which systems produced it', async () => {
     const result = await runCortexMemoryArm(
       twoQuestionDataset(),

@@ -240,12 +240,21 @@ export type PromptOptions = {
    * changed only the unit indistinguishable, in its own configuration line, from one
    * that changed the scoring -- and both would be dispatched under the same key.
    *
-   * ## What `'session'` does, and why it is not a second signal
+   * ## What the two session rules do, and why there are two
    *
    * The turns are still scored one at a time by the same callback; a session's score is
    * the **maximum** of its turns', so this is a regrouping of the same numbers. What
    * changes is what the room buys: every turn of a chosen session, chronologically,
    * rather than the individual turns that scored highest wherever they live.
+   *
+   * `'session'` carries the largest **prefix** of the session ranking and `'session-fill'`
+   * skips a session that does not fit and keeps scanning. Both are present because the
+   * first was dispatched, lost, and has to stay executable for its own refutation to be
+   * reproducible -- run `38753835652` measured it at `+17.80pp` against the turn unit's
+   * `+25.75pp`, with MR at 12.40% instead of 42.15%. The prefix rule's defect is that a
+   * session is far larger than a turn, so the first one over the line ends the pass and the
+   * rest of the room goes unspent; that run's MR records carry a median of 12 turns against
+   * a room holding about 23. See the doc block on `selectBySession` for the full reading.
    *
    * Measured, on run `38595325261`: MR's accuracy runs 14.3%, 33.3%, 41.5%, 66.7% across
    * the first four bands of `goldOverlap` coverage, while its carried count has a median
@@ -256,7 +265,7 @@ export type PromptOptions = {
 };
 
 /** The unit the evidence room is spent in. */
-export type RelevanceUnits = 'turn' | 'session';
+export type RelevanceUnits = 'turn' | 'session' | 'session-fill';
 
 /** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
 export const DEFAULT_MAX_PROMPT_CHARS = 24_000;
@@ -799,13 +808,7 @@ function fitToBudget(
 
   const evidenceRoom = remaining - header.length;
   const selected =
-    evidenceRoom <= 0
-      ? NOTHING_CARRIED
-      : plan.relevanceFor === undefined
-        ? { evidence: truncateCodePointSafe(plan.render(plan.turns), evidenceRoom), carried: null }
-        : plan.relevanceUnits === 'session' && plan.sessionOf !== undefined
-          ? selectBySession(question, plan, plan.sessionOf, plan.relevanceFor, evidenceRoom)
-          : selectByRelevance(question, plan, plan.relevanceFor, evidenceRoom);
+    evidenceRoom <= 0 ? NOTHING_CARRIED : chooseEvidence(question, plan, evidenceRoom);
 
   if (selected.evidence.length === 0) {
     // Unchanged, including the order: with nothing to carry, this is the prompt
@@ -862,6 +865,43 @@ function wholeTurnsIn(plan: EvidencePlan, evidenceChars: number): readonly Admit
     else high = middle - 1;
   }
   return plan.turns.slice(0, low);
+}
+
+/**
+ * Which selection the evidence room is spent by.
+ *
+ * ## Why a named function rather than a nested conditional
+ *
+ * The option has three values and two of them share a precondition -- a route that draws
+ * session boundaries. Written inline, that precondition is tested once per session rule, and
+ * a second copy of a precondition is how one branch ends up applying a session rule to a
+ * route that has none. Here it is tested once and both rules sit behind it.
+ *
+ * ## Why the unsignalled case is the first branch
+ *
+ * Because it is not a unit at all: with no `relevanceFor`, the room is clipped from the
+ * arrival-ordered list, character for character, which is the behaviour every run before
+ * §13.17 was produced under. Ordering the three rules by how much they assume keeps that
+ * case reading as the default rather than as a fallback.
+ */
+function chooseEvidence(
+  question: string,
+  plan: EvidencePlan,
+  room: number,
+): { evidence: string; carried: readonly AdmittedTurn[] | null } {
+  if (plan.relevanceFor === undefined) {
+    return { evidence: truncateCodePointSafe(plan.render(plan.turns), room), carried: null };
+  }
+  const sessionOf = plan.sessionOf;
+  if (sessionOf !== undefined) {
+    if (plan.relevanceUnits === 'session') {
+      return selectBySession(question, plan, sessionOf, plan.relevanceFor, room);
+    }
+    if (plan.relevanceUnits === 'session-fill') {
+      return selectBySessionFill(question, plan, sessionOf, plan.relevanceFor, room);
+    }
+  }
+  return selectByRelevance(question, plan, plan.relevanceFor, room);
 }
 
 /**
@@ -953,14 +993,34 @@ function selectByRelevance(
  * coverage looks like -- and the reference pipeline does the opposite, completing the
  * session behind each hit, and scores 86.78% on MR.
  *
- * ## Why the largest session PREFIX, and not a best fit that skips
+ * ## The unit was right and the search was wrong, which run `38753835652` settled
  *
- * Sessions are taken in rank order until the next one does not fit, and the search stops
- * there: it does not skip that session and try a smaller one further down. Skipping would
- * make the carried set depend on the sizes of sessions the signal did not choose, so two
- * runs whose rankings agreed could still carry different evidence -- and the selection is
- * the one thing this option is supposed to decide. Refusing to skip keeps the property
- * that the carried set is a function of the ranking and the room.
+ * `session` carries the largest **prefix** of the ranking: it walks the ranked sessions,
+ * stops at the first one that does not fit, and does not skip it for a smaller session
+ * further down. That rule was argued for from a property -- the carried set is a function
+ * of the ranking and the room, so two runs whose rankings agreed cannot carry different
+ * evidence -- and the archive refutes it with a number. Dispatched against §13.26's turn
+ * unit with nothing else moved, the session unit lost: **+25.75pp became +17.80pp**, MR
+ * fell **42.15% to 12.40%** (92 questions the baseline had right and this arm had wrong,
+ * against **zero** gained), and MR abstentions rose from 24 to 63.
+ *
+ * The mechanism is not the unit. A session is far larger than a turn, so the first session
+ * over the line ends the pass and **the rest of the room is never spent**: that run's MR
+ * records carry a median of **12** turns against a room that holds about **23**. The
+ * coverage column says the same thing independently -- 0.500 to 0.455, flat to slightly
+ * down -- which is exactly the falsifier §13.27 wrote before the number existed: if the
+ * unit were the cause, carrying whole sessions would have raised coverage, and it did not.
+ *
+ * So the ranking and the grouping are kept, and the search is replaced. `session-fill`
+ * walks the same ranked order and **skips** a session that does not fit, continuing down
+ * the list until the room is spent. The property the prefix rule bought is given up
+ * deliberately and is now stated as a cost rather than sold as a feature: the carried set
+ * depends on the sizes of sessions the signal did not choose. Filling the room is worth
+ * more than a purity claim that leaves half of it unread.
+ *
+ * Both rules remain reachable. `session` stays **frozen** so the refutation is
+ * reproducible -- the same reason a confirmed-negative configuration is kept elsewhere in
+ * this project -- and a reader of either artifact can execute the configuration it names.
  *
  * ## Why the output is chronological
  *
@@ -984,6 +1044,91 @@ function selectBySession(
   relevanceFor: RelevanceFor,
   room: number,
 ): { evidence: string; carried: readonly AdmittedTurn[] } {
+  const ranking = rankSessionTurns(question, plan, sessionOf, relevanceFor);
+
+  const chronological = (count: number): AdmittedTurn[] =>
+    chronologicalOf(ranking, ranking.order.slice(0, count));
+
+  let low = 0;
+  let high = ranking.order.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (plan.render(chronological(middle)).length <= room) low = middle;
+    else high = middle - 1;
+  }
+
+  const carried = chronological(low);
+  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+}
+
+/**
+ * Spend the evidence room on whole sessions, skipping any that does not fit.
+ *
+ * This is `session` with the search repaired, and the doc block above records what the
+ * repair costs and what it buys. The only difference between the two functions is the four
+ * lines after the ranking: where the prefix rule binary-searches the largest prefix that
+ * fits, this walks the same ranked order and takes each session it can, so a ranked-first
+ * session too large for the room no longer ends the pass.
+ *
+ * ## Why it measures with the renderer instead of accumulating sizes
+ *
+ * Because the render is not additive: the session route prints a header per session and a
+ * separator per turn, so a total taken from `turn.content.length` would be short by exactly
+ * the overhead that grows with the number of sessions -- and the rule would then overrun
+ * the room it is supposed to fill. Measuring the candidate set with `plan.render` costs one
+ * render per session and is right by construction. The cost is bounded by the session count,
+ * which `topK` bounds in turn.
+ *
+ * ## Why it does not stop at the first failure but keeps scanning
+ *
+ * The sessions after the failure are still candidates: they are lower-ranked, not
+ * disqualified, and the room is the only thing being spent. A rule that stopped would be
+ * the prefix rule again with a different name.
+ */
+function selectBySessionFill(
+  question: string,
+  plan: EvidencePlan,
+  sessionOf: readonly number[],
+  relevanceFor: RelevanceFor,
+  room: number,
+): { evidence: string; carried: readonly AdmittedTurn[] } {
+  const ranking = rankSessionTurns(question, plan, sessionOf, relevanceFor);
+
+  const kept: number[] = [];
+  for (const session of ranking.order) {
+    const candidate = [...kept, session];
+    if (plan.render(chronologicalOf(ranking, candidate)).length <= room) kept.push(session);
+  }
+
+  const carried = chronologicalOf(ranking, kept);
+  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+}
+
+/** The ranking two session-unit rules share: which sessions, in what order, holding what. */
+type SessionRanking = {
+  /** Session ids, best-scoring turn first. */
+  readonly order: readonly number[];
+  readonly bySession: ReadonlyMap<number, readonly { turn: AdmittedTurn; arrival: number }[]>;
+};
+
+/**
+ * Score every turn once, group the scores by session, and order the sessions.
+ *
+ * Extracted so the two session-unit rules cannot drift apart: they differ in what they do
+ * with a rejection and in nothing else, and a second copy of this would be a second copy of
+ * the tie rule.
+ *
+ * Session order: best turn first, and ties by the earliest arrival among the turns that
+ * produced the score -- so two sessions the signal cannot separate are ordered the way the
+ * context ordered them, which is reproducible and is what an unsignalled budget would have
+ * done with them.
+ */
+function rankSessionTurns(
+  question: string,
+  plan: EvidencePlan,
+  sessionOf: readonly number[],
+  relevanceFor: RelevanceFor,
+): SessionRanking {
   const scored = plan.turns.map((turn, arrival) => ({
     turn,
     arrival,
@@ -991,10 +1136,6 @@ function selectBySession(
     relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
   }));
 
-  // Session order: best turn first, and ties by the earliest arrival among the turns
-  // that produced the score -- so two sessions the signal cannot separate are ordered
-  // the way the context ordered them, which is reproducible and is what an unsignalled
-  // budget would have done with them.
   const best = new Map<number, { score: number; first: number }>();
   const bySession = new Map<number, { turn: AdmittedTurn; arrival: number }[]>();
   for (const entry of scored) {
@@ -1010,27 +1151,20 @@ function selectBySession(
       bySession.set(entry.session, [{ turn: entry.turn, arrival: entry.arrival }]);
     else owned.push({ turn: entry.turn, arrival: entry.arrival });
   }
+
   const order = [...best.entries()]
     .sort((a, b) => b[1].score - a[1].score || a[1].first - b[1].first)
     .map(([session]) => session);
 
-  const chronological = (count: number): AdmittedTurn[] =>
-    order
-      .slice(0, count)
-      .flatMap((session) => bySession.get(session)!)
-      .sort((a, b) => a.arrival - b.arrival)
-      .map((entry) => entry.turn);
+  return { order, bySession };
+}
 
-  let low = 0;
-  let high = order.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (plan.render(chronological(middle)).length <= room) low = middle;
-    else high = middle - 1;
-  }
-
-  const carried = chronological(low);
-  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+/** The chosen sessions' turns, in the order the context had them -- never in rank order. */
+function chronologicalOf(ranking: SessionRanking, sessions: readonly number[]): AdmittedTurn[] {
+  return sessions
+    .flatMap((session) => ranking.bySession.get(session)!)
+    .sort((a, b) => a.arrival - b.arrival)
+    .map((entry) => entry.turn);
 }
 
 /**
