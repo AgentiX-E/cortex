@@ -5038,3 +5038,80 @@ collection, reproducing the runner's failure exactly.
 | P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
 | P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous; **and a general parity rule** — every duplicated declaration across the `cortex-eval`/`cortex-memory` boundary needs a source-level guard, of which §13.35 is one instance and not the last | no |
 | P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+## 13.36 One rule for every table the arm restates, and the census that found four
+
+§13.35 fixed one duplication. This section takes the census that produced it and turns the fix into
+a rule, because the count is what made that necessary: **four** vocabularies are declared twice across
+the `cortex-eval` / `cortex-memory` boundary, and in one iteration each of them turned out to carry a
+comment claiming a check.
+
+### 13.36.1 The census
+
+The boundary is real and cannot be removed: `cortex-eval` measures `cortex-memory` and may not depend
+on it, so every shared vocabulary is restated in the arm. What existed beside each restatement:
+
+| Vocabulary | Product side | Arm side | Check before this section |
+| --- | --- | --- | --- |
+| ask names | `EvidenceAsk`, `ASK_ROUTES` | `ASK_ROUTES` | **none** — the comment said "the product's own table is asserted equal to it" |
+| relevance units | `RelevanceUnits` | `RELEVANCE_UNITS` | **none** — `session-fill` was hand-added to both in §13.31 and nothing would have noticed if it had not been |
+| prompt contracts | `PROMPT_CONTRACTS` | `PROMPT_CONTRACTS` | guarded, and the only one whose guard was real |
+| rendering reach | `RENDERING_BY_CONTRACT` | `RENDERING_ROUTES` | guarded, but **weaker than its own comment**: the product's source was read only to assert the constant *exists*, and the route list was compared against a literal, so a route added on the product side could not fail it |
+
+Four instances of the same defect in one iteration is not a run of bad luck; it is a missing rule. It is
+also the same defect the campaign keeps meeting one layer over — §13.24's docstring describing code that
+did not exist, §13.34.6's workflow whose trigger check was a text grep, and this. **A claim and a check
+have to be the same thing.**
+
+### 13.36.2 The rule
+
+One data-driven `describe` in `bench-memory-arm.test.ts` now covers all four, and each axis is compared
+in **both directions**: a value that exists only on the product side is a dispatch that dies at startup
+(§13.35), and a value that exists only on the arm side is a run whose artifact claims a treatment the
+product never administers — the `bcf66463` defect inverted.
+
+Three properties make it stronger than the guards it replaces:
+
+1. **It drives the option parser the dispatch uses.** The arm's accepted set is not read from its table
+   but from the **error message it raises on a bad value**, because every reader in that file enumerates
+   its own keys into the message. That asserts the set the arm *behaves* on, which is what a dispatch
+   meets — and the helper throws rather than comparing an empty set if a reader ever stops listing.
+2. **The route vocabulary comes from the product**, parsed out of its `ASK_ROUTES`, so a route name that
+   exists only in the arm fails; and every ask that reaches anything must report a non-empty reach.
+3. **It supersedes §13.35's `tools/` guard, which is deleted.** That guard was correct, and it was in the
+   wrong place: the pattern already existed in this file, which can read the product's source *and* drive
+   the parser, and one fact should have one check rather than two. §13.35's guard was correct for the
+   reason it gave (it has to be written where both copies are visible); it just was not the only such
+   place, and not the better one.
+
+### 13.36.3 The check that cannot exist, stated instead of pretended
+
+The rendering table's comment claimed a census test asserted the product's reach. Nothing can: which
+routes a rendering reaches is a property of the **dispatch**, decided in `bench/run-ablation.ts` where the
+contract is chosen, and that file is outside the coverage boundary. So the vocabulary is checked, the
+per-contract list is not, and the comment now says so — with where a reader should verify it instead:
+the artifact records the reach per run as `renderingRoutes`, so it is checked against the run rather than
+against a table. Replacing a false claim with an honest boundary is the whole of this section's method.
+
+### 13.36.4 Verification
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s
+  branch column (§13.29); `tools` **316 passed + 40 subtests** (one file fewer than §13.35, by design).
+- **Four defect injections, each caught by exactly one test**: the ask value removed from the arm's table;
+  the unit value removed; a contract added that the product does not have; and a route added that the
+  product does not name. "Exactly one" is the assertion that the axes are independent — a single
+  over-broad check would fire on all four and would not tell a reader which vocabulary drifted.
+
+### 13.36.5 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `38910134192` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight) |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+The parity rule closes the last item that the instrumentation defects of this iteration had left open. The
+remaining P2 pair is about what an artifact records about its own reductions, and neither blocks the
+measurement in flight.
