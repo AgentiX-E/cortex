@@ -1795,6 +1795,134 @@ describe('the contract list agrees with the product layer', () => {
   });
 });
 
+/**
+ * Every table this arm restates is compared against the product, both directions.
+ *
+ * ## The pattern that was half-built, and the three comments that claimed it was whole
+ *
+ * `cortex-eval` measures `cortex-memory` and may not import from it, so the arm restates four
+ * vocabularies: the ask names, the prompt contracts, the relevance units and the routes each
+ * rendering reaches. The first two had guards beside this one. The other two did not, and both
+ * carried a comment asserting they did:
+ *
+ *   - the ask table's comment said "the product's own table is asserted equal to it" -- nothing
+ *     asserted it, and `ask: enumerated` was accepted by every type, passed the whole gate, and
+ *     was rejected by the arm **at startup**, killing run `38908223281` before question one;
+ *   - the relevance-units table is a copy of the product's `RelevanceUnits` union that had to be
+ *     updated by hand when §13.31 added `session-fill`, and nothing would have noticed if it had
+ *     not been.
+ *
+ * The rendering-reach guard *did* exist and was weaker than its own comment: it reads the
+ * product's source only to assert `RENDERING_BY_CONTRACT` is present, then compares the arm's
+ * route list against a **literal**, so a route added on the product side could not fail it.
+ *
+ * A campaign that produces four instances of "the comment claims a check" in one iteration is
+ * not a run of bad luck; it is a missing rule. The rule is this table: one entry per restated
+ * vocabulary, each compared in **both directions** and driven through the parser the dispatch
+ * actually uses, so a value that exists on one side only fails here rather than at a dispatch.
+ *
+ * ## Why the arm's accepted set is read from its rejection message
+ *
+ * The tables are module-private, and importing them would be the import this file exists to
+ * avoid. Feeding an invalid value and reading the accepted set out of the error is both the
+ * only reachable route and a stronger claim than parsing the table: it asserts the set the arm
+ * *behaves* on, which is what a dispatch meets.
+ */
+describe('every restated table agrees with the product in both directions', () => {
+  const PRODUCT = readFileSync(
+    new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+    'utf-8',
+  );
+
+  /** The quoted members of an exported string-literal union. */
+  function unionMembers(name: string): string[] {
+    const match = new RegExp(`export type ${name} =([^;]+);`).exec(PRODUCT);
+    expect(match, `${name} not found in the product source`).not.toBeNull();
+    const members = [...(match?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] ?? '');
+    expect(members.length, `${name} parsed to nothing`).toBeGreaterThan(0);
+    return members.sort();
+  }
+
+  /** The quoted members of an exported `as const` array literal. */
+  function arrayLiteral(name: string): string[] {
+    const match = new RegExp(`export const ${name} = \\[([^\\]]*)\\] as const;`).exec(PRODUCT);
+    expect(match, `${name} not found in the product source`).not.toBeNull();
+    const members = [...(match?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] ?? '');
+    expect(members.length, `${name} parsed to nothing`).toBeGreaterThan(0);
+    return members.sort();
+  }
+
+  /**
+   * The values the arm accepts for one variable, read from the error it raises on a bad one.
+   *
+   * Every reader in this file enumerates `Object.keys(<its table>)` into the message, so the
+   * message is a true statement of what the arm will take -- and the assertion below is the one
+   * that keeps that true, since a reader that stopped listing its table would make this helper
+   * throw rather than silently compare an empty set.
+   */
+  function armAccepted(variable: string): string[] {
+    let message = '';
+    try {
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', [variable]: 'not-a-value-the-arm-knows' });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message, `${variable} accepted a value it does not know`).not.toBe('');
+    const head = message.split(' or unset')[0] ?? '';
+    const listed = [...head.matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? '');
+    expect(listed.length, `${variable} listed no alternatives: ${message}`).toBeGreaterThan(0);
+    return listed.sort();
+  }
+
+  it('accepts exactly the ask values the product implements', () => {
+    expect(armAccepted('CORTEX_MEMORY_ASK')).toEqual(unionMembers('EvidenceAsk'));
+  });
+
+  it('accepts exactly the contracts the product implements', () => {
+    expect(armAccepted('CORTEX_MEMORY_PROMPT_CONTRACT')).toEqual(arrayLiteral('PROMPT_CONTRACTS'));
+  });
+
+  it('accepts exactly the units the product implements', () => {
+    // The copy that had to be hand-edited for §13.31's `session-fill`. Nothing checked it, so
+    // the next value added on the product side would have been rejected at startup like the ask
+    // was -- or, worse in the other direction, accepted here and unknown to the product.
+    expect(armAccepted('CORTEX_MEMORY_RELEVANCE_UNITS')).toEqual(unionMembers('RelevanceUnits'));
+  });
+
+  it('names only routes the product names, in every reach table it records', () => {
+    // The route vocabulary belongs to the product: `ASK_ROUTES` in `prompt.ts` is the authority
+    // on which routes exist and which ask reaches them, and the arm restates it for the report.
+    // A route name that exists only in the arm is a reach the artifact would claim and the
+    // product would never apply -- the `bcf66463` defect, inverted.
+    const table = /export const ASK_ROUTES[^=]*= \{(.*?)\n\};/s.exec(PRODUCT);
+    expect(table, 'ASK_ROUTES not found in the product source').not.toBeNull();
+    const productRoutes = new Set(
+      [...(table?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] ?? ''),
+    );
+    // The control: a parse that found nothing would make every assertion below vacuous.
+    expect(productRoutes.size).toBeGreaterThan(0);
+
+    const asks = armAccepted('CORTEX_MEMORY_ASK');
+    for (const ask of asks) {
+      const config = toMemoryArmConfig(
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_ASK: ask }),
+      );
+      const reached = config.askRoutes ?? [];
+      for (const route of reached) {
+        expect(
+          productRoutes.has(route),
+          `ask ${ask} records the route ${route}, which the product does not name`,
+        ).toBe(true);
+      }
+      // And the direction that matters for attribution: a route the product names for this ask
+      // must appear in what the artifact reports. `route` names none by definition.
+      if (ask !== 'route') {
+        expect(reached.length, `ask ${ask} reports no reach`).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
 describe('the rendering reach the artifact reports agrees with the product layer', () => {
   it('reports every route the product applies the rendering to', () => {
     // The §12.8 property, and the reason it is a field at all: at `bcf66463` the

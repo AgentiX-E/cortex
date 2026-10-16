@@ -539,9 +539,14 @@ const PROMPT_CONTRACTS = {
  * The routes each contract's rendering reaches, restated for the report.
  *
  * Duplicated from `cortex-memory` for the same layering reason as
- * {@link PROMPT_CONTRACTS}, and checked the same way: the census test asserts this
- * matches the product's own reach, so a route added or lost on the product side
- * fails a test here rather than silently becoming a reach the artifact claims.
+ * {@link PROMPT_CONTRACTS}. What is checked, and what is not, stated plainly because the
+ * sentence that stood here claimed more than the check did: the route **vocabulary** is the
+ * product's and a name that exists only here fails a test, but the **list per contract** has no
+ * authority on the product side to compare against -- which routes a rendering reaches is a
+ * property of the dispatch, decided in `bench/run-ablation.ts` where the contract is chosen, and
+ * that file is outside the coverage boundary. So the list is the arm's claim about the dispatch,
+ * the artifact records it per run as `renderingRoutes`, and a reader verifies it against the run
+ * rather than against a table.
  *
  * ## Why the artifact needs this at all
  *
