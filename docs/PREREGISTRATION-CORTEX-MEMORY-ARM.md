@@ -5297,7 +5297,34 @@ comment is not a check.**
   `describeEmbeddingCachePersist` produces, so a skipped publish cannot be silent in the log again — which is
   how two 216-byte entries sat in the store unnoticed for seven weeks.
 
-### 13.37.7 Status after this section
+### 13.37.7 The acceptance run
+
+Run **`38939122161`** on `63c5ce9e`, dispatched **on purpose** against the account that is still dry, by
+§13.24.3's method: a run that is expected to fail is still the only way to observe which cache the restore
+resolves to, and either outcome is informative. Job `17:22:05Z` to `17:23:23Z` — **78 seconds**, `failure`.
+
+| acceptance criterion | what the log says |
+| --- | --- |
+| the prefix path fires at all | `Cache hit for restore-key: longmemeval-embedding-fc18…-38910134192` |
+| it resolves to the most recent entry | `Cache restored from key: …-38910134192`, `Cache Size: ~955 MB (1001342784 B)` |
+| the new save key is written | `Cache saved with key: …-38939122161-1` — `run_id` **and** `run_attempt` |
+| an empty snapshot is refused | `Embedding cache: nothing to persist, …/embedding-cache.bin left as restored` |
+| a dry account is named, not inferred | `embedding preflight failed against openai-compatible (model=embedding-3): … 429 … {"error":{"code":"1113"…}}` |
+| the failure record again | `progress: no question was started before the failure` |
+
+`Cache hit for **restore-key**` is the action's own wording for "the primary key missed and a prefix matched",
+which is the sentence this repository had never produced. Before the repair the same delivery was
+`Cache hit for: …<bare hash>` — the primary, and the end of the search.
+
+**78 seconds against 1h17m33s** for the same dry account before the repair. The difference is that the run no
+longer spends 77 minutes re-embedding before it discovers it cannot embed at all.
+
+**One residual, measured rather than hidden.** A run that dies at the preflight still has the *restored* file
+on disk, so the save step re-publishes ~1.0 GB under a fresh key. That is the new rule behaving as specified —
+"left as restored" — and it costs store churn rather than correctness: the re-published bytes are the ones the
+restore just read, the store is bounded by the 10 GB LRU budget, and a run does this at most once.
+
+### 13.37.8 Status after this section
 
 | Priority | Item | Needs provider |
 | --- | --- | --- |
