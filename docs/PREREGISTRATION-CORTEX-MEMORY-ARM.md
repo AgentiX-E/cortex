@@ -4767,3 +4767,170 @@ implementing the partial version first.
 
 `grounded` is **closed** (§13.33.1) and drops off this list. `cortex-node`'s branch coverage stays
 at 98.64% by §13.29's decision, and no item above is blocked on it.
+
+## 13.34 `session-fill` spends the room and changes nothing, and MR's loss is not in the window
+
+Run **`38828538851`** completed in `3h41m`. It was dispatched to repair §13.27's rule by
+spending the room, and it did exactly that — and the measurement barely moved.
+
+### 13.34.1 The judgement, against §13.32's five predictions
+
+| §13.32 prediction | Registered | Measured | Verdict |
+| --- | --- | --- | --- |
+| MR room usage returns to the turn unit's level | ≥ 0.90 | **0.941** (turn 0.940, p10 0.882, min 0.843 — identical) | **holds** |
+| MR roster grows past the turn unit's | > 23 turns | **26** (turn 23, prefix 12) | **holds** |
+| Coverage rises above 0.50 and the `[0.65,0.85)` band refills | — | median **0.500** (unchanged), band refilled (24 from 0) | half |
+| MR rises above 42.15% **and** the delta exceeds +25.75pp | — | MR **42.98%**, delta **+24.90pp** | half |
+| TR stays at or above `session`'s 62.99% | — | TR **55.91%** | **FALSIFIED** |
+
+The fifth was falsified exactly as written, including its stated meaning: *"if it does, the TR gain
+came from the stranding rather than from completing sessions, which would be a finding about TR."*
+TR went 62.99% → 55.91%, back to the turn unit's own level, so **§13.27's +8 TR questions were bought
+by the room the prefix rule failed to spend** — a shorter, thinner context helped TR, and completing
+sessions gave it back. That is a real finding about TR and it is now on the record rather than
+absorbed into a delta.
+
+### 13.34.2 The allocation axis is closed
+
+| | §13.26 `turn` | §13.27 `session` | §13.32 `session-fill` |
+| --- | --- | --- | --- |
+| delta | **+25.75pp** | +17.80pp | +24.90pp |
+| MR | 42.15% | 12.40% | 42.98% |
+| IE / KU / TR / ABS | 88.67 / 86.11 / 56.69 / 96.67 | 86.00 / 84.72 / 62.99 / 100.00 | 88.67 / 81.94 / 55.91 / 96.67 |
+| MR room used | 0.940 | 0.673 | 0.941 |
+| MR roster | 23 turns | 12 turns | 26 turns |
+| MR coverage bands `[0, .25)` … `[.85, 1]` | 14 / 33 / 41 / 24 / 9 | 23 / 35 / 51 / 0 / 12 | **14 / 33 / 41 / 24 / 9** |
+
+Against the turn unit, `session-fill` moves **+1 question on MR and −3 across the other four** — inside
+the ±3-question band this document has been using as noise since §13.26. And the coverage band counts
+are **identical**, question for question, across two structurally different allocations: one spends the
+room on the highest-scoring turns wherever they live, the other on whole sessions ranked by their best
+turn. Two different sets of turns, the same gold coverage. So **how the room is spent is not the
+constraint**, and the axis that began at §13.27 is closed with three measurements rather than one.
+
+### 13.34.3 The room is nearly sufficient, which is the part that redirects
+
+| MR, run `38828538851` | value |
+| --- | --- |
+| gold turns per question, median | **24** |
+| carried gold, median | **14** |
+| roster, median | **26** |
+| questions whose roster ≥ their gold total | **52 / 121** |
+| coverage a **perfect selector** would reach at this room, median | **0.917** |
+
+The window already holds as many turns as the gold set contains, on the median question. A selector
+that could *find* the gold would carry essentially all of it. So the missing 10 of 24 are not missing
+for want of space — and the earlier plan for this iteration, a room sweep, was dropped once this table
+existed: buying more room would be compensation for a ranking that spends half the window on
+non-gold, and the reference pipeline scores 86.78% on MR with a **smaller** window (20,000 characters)
+than this arm's 24,000.
+
+### 13.34.4 Where the loss actually is: the answer contract, not the evidence
+
+| MR, 121 questions | count |
+| --- | --- |
+| correct | **52** |
+| wrong | **47**, of which **41 are numeric mismatches** |
+| abstained | **22**, carrying 14–20 gold turns each |
+
+The reader holds the evidence and either miscounts it or declines with it in hand. Note the shape of the
+second row: these are not "the wrong fact" answers, they are *counts off by a little* on questions whose
+gold is a small number (`3`, `8`, `15`). And the abstentions are not gates closing — `empty` and
+`threshold` are both 0 in this run — they are the model taking a licence the block grants it.
+
+An earlier check in this iteration ruled out the obvious retrieval explanation: the window already spans
+a median of **8** sessions (p90 15), so it is not concentrated on one conversation, and the assistant-turn
+share of the window is 0.364 with no difference between correct (0.368), wrong (0.333) and abstained
+(0.383), so it is not noise crowding the answer out either.
+
+### 13.34.5 Registration: the ask becomes `enumerated`
+
+The reference pipeline's MR prompt is a **two-step contract** — enumerate every matching item with its
+date, then compute per the kind of question — whose abstention clause requires the list to exist first.
+`computed`'s single sentence asks for the gathering and never says how, or what a legitimate answer to a
+counting question looks like. That is the difference between a 86.78% and a 42.98% on MR, and it is a
+prompt, not a window.
+
+**Registered before dispatch**: one dispatch of §13.26's configuration, with a single variable changed.
+
+| Field | Value | Note |
+| --- | --- | --- |
+| `cortex_memory_ask` | **`enumerated`** | the variable |
+| `cortex_memory_relevance` | `retrieval`, `top_k` `64` | held |
+| `cortex_memory_relevance_units` | **`turn`** | held at the shipped default, so §13.26 is the comparison |
+| `cortex_memory_evidence_turns` | `256` | held |
+| `cortex_memory_budget_minutes` | `90` | held (§13.30) |
+| everything else | §13.26's values | held |
+
+**Predictions, in the order they would be read:**
+
+1. **MR's abstentions fall.** 22 → **≤ 12**. This is the primary prediction because it is the half of
+   the contract with a mechanical reading: `Do not reply INSUFFICIENT_EVIDENCE without first writing the
+   Step 1 list` names the artefact it requires, and a question with 14 gold turns in the window has
+   something to list.
+2. **MR's wrong answers stop being numeric mismatches.** 41 of 47 → **≤ 25**, which is the counting half.
+3. **MR rises above §13.32's 42.98%** by more than the noise band: **≥ 48%** (58/121).
+4. **The arm's delta exceeds +25.75pp.**
+5. **IE, KU and TR do not move beyond the band.** Unlike §13.27's dispatch, these *are* controls and
+   the claim is structural rather than statistical: the flat path and the temporal route are asserted
+   byte-identical to `computed` in `evidence-ask-reach.test.ts`, and KU's route is untouched by both asks.
+
+**Falsifiers, stated before the number exists:**
+
+- Abstentions fall to ≤ 12 and accuracy does not move → the abstentions were a *symptom* of an incomplete
+  count rather than a cause, and the fix needs the evidence to be complete rather than the instruction to
+  be structured. That would point back at the ranking, with the room already ruled out.
+- Numeric mismatches stay near 41 → the two-step contract is not what the reference prompt contributes,
+  and its 86.78% comes from something else in that path (its ledger parser, its critique pass, or its
+  session-level retriever), which would then be the next thing to isolate.
+- Any movement in IE, KU or TR beyond ±3 questions → the byte-identity assertions are not being honoured
+  at the artifact, which is a defect in the arm rather than a result.
+
+**Stopping rule.** One dispatch, no peeking, no redraw. The point estimate must exceed the BASELINE side
+of the same dispatch, McNemar p < 0.05 two-sided, full N = 500, 4 runs, temperature 0.
+
+### 13.34.6 The dispatch was refused, and the reason it gave was wrong
+
+The first attempt returned:
+
+```
+POST /actions/workflows/benchmark-cortex-memory.yml/dispatches -> 422
+{"message": "Workflow does not have 'workflow_dispatch' trigger"}
+```
+
+The trigger was there. An **apostrophe inside a single-quoted YAML scalar** — the word `question's`
+in the `description` this section added — made the file unparseable, so GitHub registered no workflow
+at all and reported the absence as a missing trigger. Every check passed: the full gate reads TypeScript
+and Markdown, and both pre-registration guards read the YAML as **text**, which cannot see a quoting
+error. The only thing that noticed was the dispatch, after the commit was pushed, and the artifact of
+the failure was a run with **zero jobs** — also what a cancelled run looks like.
+
+`tools/__tests__/test_workflow_yaml.py` closes it: every workflow must parse, and every workflow a
+`dispatch-*.py` posts to must declare the trigger (a *valid* file without the trigger produces the same
+422). Defect injection — the apostrophe put back — fails both assertions. The second attempt dispatched
+as run **`38908223281`** at `c1f3dcb9`.
+
+### 13.34.7 Verification
+
+- `pnpm check` **exit 0**; all four coverage dimensions **100%** in every package except `cortex-node`'s
+  branch column (§13.29); `tools` **316 passed + 40 subtests**; census clean; the §10.3 guard green
+  against the re-registered `ask` and the held `relevanceUnits`.
+- **Four defect injections, all caught.** The enumeration contract dropped from the multi-session route;
+  the scope check removed so the flat path receives it too; and — in a second file — the apostrophe put
+  back into the workflow.
+- The two halves of §13.34.5's prediction 5 are **assertions, not claims**: flat and temporal are
+  byte-identical to `computed`, and the multi-session block is not.
+
+### 13.34.8 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `38908223281` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight) |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no |
+| P1 | The **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering" | no (dispatch later) |
+| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+**The selection axis is closed** (§13.34.2) and **the room is ruled out as the constraint on MR**
+(§13.34.3). What remains for MR is the answer contract, which this dispatch tests, and the ranking, which
+the falsifiers above route to if the contract is not it.
