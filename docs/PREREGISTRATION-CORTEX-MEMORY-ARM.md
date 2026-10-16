@@ -4934,3 +4934,107 @@ as run **`38908223281`** at `c1f3dcb9`.
 **The selection axis is closed** (§13.34.2) and **the room is ruled out as the constraint on MR**
 (§13.34.3). What remains for MR is the answer contract, which this dispatch tests, and the ranking, which
 the falsifiers above route to if the contract is not it.
+
+## 13.35 The dispatch died at startup, and the parity it needed was claimed in a comment
+
+§13.34.6 records the *first* refusal (an apostrophe in YAML). The dispatch after that fix was
+**accepted and then died before question one**:
+
+```
+CORTEX_MEMORY_ASK must be one of "route", "extractive", "aggregate", "computed" or unset,
+got "enumerated".
+    at readAsk (packages/cortex-eval/src/bench-memory-arm.ts:665:11)
+```
+
+The value was in the product's union and in the product's table. It was not in the **second**
+declaration of the same fact.
+
+### 13.35.1 The defect: one decision, two declarations, no check between them
+
+| | Where | What it is |
+| --- | --- | --- |
+| the union and the reach table | `cortex-memory/src/prompt.ts` | decides what an instruction block actually says |
+| a second `ASK_ROUTES` | `cortex-eval/src/bench-memory-arm.ts` | what `readAsk` validates a dispatched value against, and what the artifact's `askRoutes` comes from |
+
+The second copy has to exist: `cortex-eval` may not depend on `cortex-memory` — the arm adapts a
+system it does not own, and there is a test asserting the dependency is absent. But it was typed
+`Record<string, readonly string[]>`, so **adding a value to the union changed nothing here**, and
+a comment beside it stated the property that would have caught the omission:
+
+> *"§13.21's ask, restated for the same reason as the two above: the artifact reports the reach
+> from this table, and **the product's own table is asserted equal to it**."*
+
+Nothing asserted it. That sentence is the same defect class as §13.24's docstring describing code
+that did not exist and as the workflow guard two hours earlier: **a claim and a check have to be
+the same thing**, and a comment is not a check. Three separate instances in one campaign is the
+signal that this deserves a rule rather than three fixes.
+
+### 13.35.2 The repair, and why the check reads source
+
+`tools/__tests__/test_ask_table_parity.py` extracts the union members from `prompt.ts` and the
+table keys from `bench-memory-arm.ts` and asserts they are equal, with a control that each parse
+found something. Reading source is the only technique available: the two files live in packages
+that may not reference each other, and a test inside either one can see only its own copy. That is
+the same reason `test_dispatch_inputs.py` reads the workflow files as text and the same reason
+`test_workflow_yaml.py` parses them — **the guard has to be written at the layer where the two
+copies are visible at once**, which here is the repository.
+
+The defect injection is the defect itself: remove the value from the arm's table and the guard
+fails naming it.
+
+### 13.35.3 What the failure record did, which is the part worth keeping
+
+The run produced no report and no partial vector — and it produced a **complete** record in
+`benchmark-error.log`, in this order:
+
+```
+progress: no question was started before the failure
+CORTEX_MEMORY_ASK must be one of ... got "enumerated". An unrecognised ask is rejected ...
+Error: ... at readAsk (bench-memory-arm.ts:665:11) at cortextMemoryArmOptions (460:10) at main ...
+```
+
+One line says how far the pass got, the next names the option, the rejected value and the accepted
+set, and the stack names the line. That is §13.28's repair on its first real use, and it turned a
+"the run failed" into a one-step diagnosis. The elapsed-time field added there is present too, at
+a value that says the failure was immediate rather than a hang — which is what ruled out the pass
+ceiling and the timeout as suspects before either was checked.
+
+### 13.35.4 The second CI red of the iteration, and the same omission already on file
+
+The workflow guard added in §13.34.6 imports PyYAML. It was not in `tools/requirements-dev.txt`,
+so on a clean runner it failed **at collection** and `Verify library` went red at `c1f3dcb9` and
+`4317c70c`. Locally it passed, because the development environment has PyYAML for other reasons —
+which is exactly the story that file already tells once:
+
+> *"Not a test dependency: `fetch-artifact.py` imports it at module scope ... Its absence on a
+> clean runner is what the first CI run of `pnpm check` failed on."*
+
+The guard raises `AssertionError` rather than skipping when the import fails, on the argument that a
+control which skips is a control that is not there — so the omission failed the gate instead of
+passing quietly, which is how it was found. The fix is one declared requirement, verified by
+installing only that file into a fresh virtualenv (what the runner does) and running the suite
+there: **318 passed + 40 subtests**, and with PyYAML deliberately absent the same suite errors at
+collection, reproducing the runner's failure exactly.
+
+### 13.35.5 Verification, and the re-dispatch
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s
+  branch column (§13.29); `tools` **318 passed + 40 subtests**, the last two files being the two
+  guards this iteration added.
+- **Verify green at `45b1de63`**, after two reds, both traced to a single undeclared dependency.
+- **Five defect injections across the iteration, all caught**: the enumeration contract dropped; the
+  scope check removed; the apostrophe restored in the workflow; the ask value removed from the arm's
+  table; and, earlier, the constant `grounded` restored (§13.33).
+- **Re-dispatched unchanged** as run **`38910134192`** at `45b1de63`. No variable moved: the science
+  of §13.34 was never in question — two configuration defects stopped the run before it began, and
+  both were in the instrumentation.
+
+### 13.35.6 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `38910134192` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight) |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous; **and a general parity rule** — every duplicated declaration across the `cortex-eval`/`cortex-memory` boundary needs a source-level guard, of which §13.35 is one instance and not the last | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
