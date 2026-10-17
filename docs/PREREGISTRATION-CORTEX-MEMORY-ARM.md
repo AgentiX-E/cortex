@@ -7562,7 +7562,22 @@ This is the fourth time a measurement has demoted a variable that a plausible re
 sentence, the units, the arithmetic). The pattern is worth naming: **every one of those readings was about how
 the model behaves, and every correction came from measuring what it was given.**
 
-### 13.59.5 Verification
+### 13.59.5 The same measure on the previous artifact, because one draw is not a mechanism
+
+§13.56.4 measured this instrument's cross-draw resolution at 6.1%, so a claim about a *mechanism* has to be
+checked on a second draw or it is a claim about one sample. The same tool, run on `39005914398`'s artifact:
+
+| run | MR numeric failures | counted its list | off by exactly one |
+| --- | --- | --- | --- |
+| `39005914398` (§13.45) | 24 | 6 | **9** (37.5%) |
+| `39035438120` (§13.55) | 27 | 10 | **10** (37.0%) |
+
+The **off-by-one rate is stable at 37%** of MR's numeric failures across two independent draws, which is what
+makes it a mechanism rather than a sample. The "counted its list" rate is less stable (25% → 37%), and the
+difference between the two rows is the honest statement of what one draw can support: the *sign and size* of the
+shortfall replicates, the *attribution* to faithful counting does not replicate as tightly.
+
+### 13.59.6 Verification
 
 - `--counted` is `readout-arm-run.py`'s fifth mode, with 4 tests: the predicate, the population it excludes, the
   sign of the difference (a faithful short count reads positive, and a column that read −1 would say the model
@@ -7571,7 +7586,7 @@ the model behaves, and every correction came from measuring what it was given.**
 - The table is the tool's output on run `39035438120`'s artifact, unedited and untruncated in the rows that
   matter; the `…` above hides rows whose answer differs from their list, which are the 17.
 
-### 13.59.6 Status
+### 13.59.7 Status
 
 | Priority | Item | Needs provider |
 | --- | --- | --- |
