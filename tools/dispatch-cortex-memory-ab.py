@@ -296,6 +296,74 @@ INPUTS = {
 }
 
 
+def apply_overrides(inputs: dict[str, str], overrides: list[str]) -> dict[str, str]:
+    """`inputs` with each `KEY=VALUE` applied, refusing anything that would be silent.
+
+    ## Why the refusals are the point
+
+    The table above is edited per dispatch, and an override is how a second dispatch keeps
+    the first one's record intact. The failure mode that matters is not a wrong value -- a
+    wrong value shows up in the run -- it is an override that **does nothing**: a typo'd key
+    would dispatch the previous configuration while the commit message described the new
+    one, and the run would then be evidence for an experiment nobody ran.
+
+    So every refusal names what was wrong, and the unknown-key refusal lists the keys that
+    exist. A refusal that does not say what would have worked sends the reader back to the
+    source, which is where the typo came from.
+
+    Two overrides for one key are refused rather than last-wins: with last-wins the
+    experiment is decided by argument order, which is not a thing anyone would intend and
+    not a thing a reader could see in the log.
+    """
+    applied: dict[str, str] = {}
+    for override in overrides:
+        if '=' not in override:
+            raise SystemExit(
+                f'--set takes KEY=VALUE, and {override!r} has no "=". '
+                f'Keys: {", ".join(sorted(inputs))}'
+            )
+        key, _, value = override.partition('=')
+        if key not in inputs:
+            raise SystemExit(
+                f'--set {key}=... names a key the dispatch does not send. '
+                f'Keys: {", ".join(sorted(inputs))}'
+            )
+        if key in applied:
+            raise SystemExit(
+                f'--set names {key} twice ({applied[key]!r} then {value!r}). '
+                'One dispatch cannot send two values for one input.'
+            )
+        applied[key] = value
+
+    merged = dict(inputs)
+    merged.update(applied)
+    return merged
+
+
+def parse_argv(argv: list[str]) -> list[str]:
+    """The `--set` values from `argv`, refusing anything that is not one.
+
+    Strict rather than permissive: an unrecognised argument is a dispatch that was not
+    asked for, and this script's job is to send the experiment it printed.
+    """
+    sets: list[str] = []
+    index = 0
+    while index < len(argv):
+        argument = argv[index]
+        if argument == '--set':
+            if index + 1 >= len(argv):
+                raise SystemExit('--set needs a KEY=VALUE argument')
+            sets.append(argv[index + 1])
+            index += 2
+            continue
+        if argument.startswith('--set='):
+            sets.append(argument[len('--set=') :])
+            index += 1
+            continue
+        raise SystemExit(f'unrecognised argument {argument!r}; this script takes --set KEY=VALUE')
+    return sets
+
+
 def token() -> str:
     for line in open(".git/config"):
         if "oauth2:" in line:
@@ -355,16 +423,20 @@ def remote_head() -> str:
     return req("GET", f"/repos/{REPO}/git/ref/heads/master")["object"]["sha"]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    inputs = apply_overrides(INPUTS, parse_argv(sys.argv[1:] if argv is None else argv))
     sha = remote_head()
     print(f"dispatching cortex-memory A/B at master ({sha[:8]})")
-    for key in sorted(INPUTS):
-        print(f"  {key} = {INPUTS[key]}")
+    # Overridden keys are marked, so the log says which values this dispatch chose rather
+    # than leaving a reader to diff the output against the source.
+    for key in sorted(inputs):
+        marker = " *" if inputs[key] != INPUTS.get(key) else ""
+        print(f"  {key} = {inputs[key]}{marker}")
 
     req(
         "POST",
         f"/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
-        {"ref": "master", "inputs": INPUTS},
+        {"ref": "master", "inputs": inputs},
         allow_empty=True,
     )
     print("dispatched")

@@ -6314,3 +6314,108 @@ repetitions of a single-variable dispatch affordable at all.
 **Three readings of one configuration, and only the third is a measurement.** `+26.75pp` was a judge accepting
 transcripts; `+23.25pp` was a gate reading operands; `+26.95pp` is both instruments reading what they were built to
 read. The difference between the last two is 3.70pp, and it was entirely an instrument.
+
+---
+
+## 13.46 The no-signal control, at last, and the dispatch can now say what it changed
+
+### 13.46.1 Why this is the right next experiment
+
+§13.22.8 registered a control separating "the extra turns" from "the ordering" and it has been the campaign's
+oldest open P1. It was blocked first by the ask (a control at a refuted ask separates nothing) and then by the room
+(a control at a selection unit that lost the room measures the loss). **Both are now settled**: §13.45 fixed the
+configuration at `ask: enumerated` + `relevanceUnits: turn`, and `relevanceSignal: retrieval` is the one input
+whose contribution has never been isolated.
+
+The mechanism is the arm's **default**, so this is a one-variable dispatch with nothing to implement:
+
+```yaml
+cortex_memory_relevance: ''     # empty == none == the arrival-order prefix
+```
+
+### 13.46.2 What the arm is spending on, and what it is not known to be spending on
+
+| input | value | isolated by |
+| --- | --- | --- |
+| `ask` | `enumerated` | §13.45: `+26.95pp`, MR 51.24% |
+| `relevanceUnits` | `turn` | §13.32–13.34: `session-fill` and `session` both lost |
+| `relevanceSignal` | `retrieval` | **never isolated** |
+| `relevanceTopK` | 64 | §13.26's recall measurement, not an ablation |
+| `promptContract` | `abstention-evidence-blocks` | §12.5, held |
+
+`retrieval` costs a relevance index over 32,000 (question, turn) pairs per run. §13.37's cache repair cut that
+from 1h38m to 18 seconds, which makes the *cost* irrelevant and leaves the *question*: does ranking the turns beat
+taking the ones that arrived first?
+
+### 13.46.3 Registration
+
+**One variable**: `cortex_memory_relevance` from `retrieval` to `none`. Every other input held at §13.45's values,
+including `ablation_runs: 4` and `temperature: 0`, so the comparison is against `+26.95pp` and not against a
+single repetition.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **The ranking's contribution is measurable**: the delta differs from **+26.95pp** by more than **3pp** | within ±3pp of +26.95pp |
+| **2** | **If it is measurable, MR is where it shows**: MR differs from 62/121 by at least 5 questions | a delta outside ±3pp with MR within 4 of 62 |
+| **3** | **`none` is not catastrophically worse.** A collapse to the arrival-order prefix would mean the ranking is doing the arm's whole job, and the configuration would then be a retrieval system with a prompt contract bolted on | delta below **+15pp** |
+
+**The tolerance is 3pp because it is six times the configuration's own variance**, which is the lesson §13.45.4
+records: `retrieval`'s four repetitions span `0.714–0.726`, so one repetition's standard deviation is about
+0.005 — 2.5 questions of 500. The previous two registers predicted a quantity from **one** observation and both
+were falsified by noise; this one names the noise first and sets the band outside it.
+
+**Prediction 3 is directional and predictions 1–2 are not, deliberately.** Which way the ranking moves the arm is
+the thing being measured; registering a direction would be registering a guess. What is registered is that a
+collapse would mean something specific, and that a difference smaller than the noise means the ranking is not
+what the arm is buying.
+
+**The reading rule.** If prediction 1 is falsified — the delta lands within ±3pp — then `retrieval` is **not**
+carrying the arm, and the honest configuration drops it: 18 seconds per run and an embedding dependency for the
+index, in exchange for nothing measurable. If it is met and `none` is lower, the redundancy of ranking to the
+two-step contract is the next question. If it is met and `none` is **higher**, then similarity ranking is
+*costing* the arm accuracy — which would be the most consequential result of the campaign, because the whole
+retrieval stack would be the thing to reconsider rather than the thing to lean on.
+
+### 13.46.4 The dispatch script can now say what it changed
+
+Every dispatch before this one edited the literal `INPUTS` table. That was workable while each dispatch changed
+the constant it needed and stops being workable now: this dispatch changes one input and must leave the other
+eleven at §13.45's values **in the record**, which editing the table would erase.
+
+`tools/dispatch-cortex-memory-ab.py` gains `--set KEY=VALUE`, and the property that matters is that a **typo fails
+loudly**:
+
+| input | result |
+| --- | --- |
+| `--set cortex_memory_relevance=none` | applied; the log marks the line with `*` |
+| `--set cortex_memory_relevance=` | applied as the empty string — a real value, not a missing one |
+| `--set cortex_memory_releavnce=none` | **`SystemExit`** naming the typo and listing the keys that exist |
+| `--set cortex_memory_relevance` | **`SystemExit`** naming the required `KEY=VALUE` shape |
+| `--set a=1 --set a=2` | **`SystemExit`**: with last-wins the argument order would decide the experiment |
+
+A silently-ignored override would dispatch the **previous** configuration while the commit message described the
+new one, and the run would then be evidence for an experiment nobody ran. That is §13.34.6's defect class — a
+check that is not a check — applied to the thing that decides what an experiment *is*.
+
+One further test holds the other direction: **every key in `INPUTS` must be declared by the workflow**, parsed
+from the workflow file rather than from a copy. A key renamed on one side and not the other would otherwise fail at
+dispatch, where GitHub answers with a 422 whose message names nothing useful.
+
+### 13.46.5 Verification
+
+- `tools` **368 passed + 40 subtests** (was 358; +10 by this section). `pnpm check` **exit 0**.
+- **Red first**: nine of the ten new tests failed against the script without `apply_overrides`; the tenth — the
+  key-parity check — passed, which is the correct result for a table that was in fact in parity.
+- The overrides are a **pure function** over a dict, so every refusal is tested without a network call and without
+  a dispatch.
+
+### 13.46.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The no-signal control is **dispatched**; §13.46.3's three predictions are registered | yes (in flight) |
+| **P0 (done)** | The configuration (§13.45): `enumerated` + repaired parser + repaired gate, `+26.95pp` | no |
+| **P1** | Tolerances from repetition spread rather than from one observation (§13.45.4) — **applied** here | no |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
