@@ -6419,3 +6419,76 @@ dispatch, where GitHub answers with a 422 whose message names nothing useful.
 | **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
 | P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
 | P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+---
+
+## 13.47 Ten tests that could not run on the machine the suite runs on
+
+### 13.47.1 What happened
+
+`pnpm check` was **exit 0** locally and `Verify` **failed** on `9fcb7fe1`. All ten new
+dispatch-override tests errored with the same message:
+
+```
+SystemExit: no oauth2 token in .git/config
+```
+
+The overrides were fine. `tools/dispatch-cortex-memory-ab.py` read its PAT at **module level**:
+
+```python
+TOKEN = token()      # module level, and `token()` exits when there is none
+```
+
+so **importing** the script required a checkout with an oauth2 token in `.git/config`. A GitHub runner
+checkout has neither, and `tools/__tests__` is collected on every push.
+
+### 13.47.2 Why nothing had noticed, and it is the interesting part
+
+Three other test files reference this script and all of them pass. Two of them —
+`test_dispatch_inputs.py` and `test_preregistration_config.py` — read it as **source text**
+(`ast.parse`), which does not execute it. My new file is the first test to **import** it, because
+`apply_overrides` and `parse_argv` are pure functions and importing them is how you test a pure function.
+
+**So the defect had been in the file since it was written and was invisible to a test suite that had
+never imported it.** The suite covered the script's *contents* and never its *module*.
+
+### 13.47.3 The repair
+
+The read moves to first use, behind the accessor, with the value cached:
+
+| operation | before | after |
+| --- | --- | --- |
+| `import` the script from anywhere | **required a token** | succeeds; `_TOKEN is None` |
+| `apply_overrides(INPUTS, [...])` | unreachable without a token | works |
+| `token()` | read at import | reads on first call, caches, exits with a sentence |
+
+Only `req` needs a credential, so only `req` pays for one. And the accessor now distinguishes two problems
+it used to conflate:
+
+- **no `.git/config` at all** — "run this from the repository root". Before, `open` raised
+  `FileNotFoundError` through a traceback about a path, which is a different fix from the next one.
+- **a config without a token** — "no oauth2 token in .git/config".
+
+### 13.47.4 Verification
+
+- Four new tests, three of which reproduce the CI failure **exactly**: `chdir` to a directory that is not a
+  checkout, assert the import succeeds, assert `_TOKEN is None`, assert `apply_overrides` works, and assert
+  that only `token()` refuses. The fourth asserts the token is read once rather than once per request, because
+  a re-read would pick up a rotated file rather than the token the run started with.
+- **The fix was verified by simulating the runner before pushing**, not by reading the code: a temp directory
+  with a `.git/config` containing `[remote "origin"] url = https://github.com/x/y` and no `oauth2:`. `import`
+  succeeds, `_TOKEN` is `None`, `apply_overrides` applies, `token()` exits with the right sentence.
+- `tools` **371 passed + 40 subtests** (+3). `pnpm check` exit 0 locally, then **`Verify` success** on
+  `2d893799` — checked on the runner rather than inferred from the local run.
+
+### 13.47.5 The lesson, which is about the test suite and not about the script
+
+`pnpm check` passing is evidence about **this machine**. It is not evidence about a runner, and the difference
+is exactly the class of state a module can depend on at import: credentials, working directory, environment,
+the presence of a `.git` directory. **A test that imports a module executes its top-level code**, so a script
+whose top level reaches for a credential is a script whose tests cannot run anywhere but a developer's checkout.
+
+This is also the second CI failure in two iterations caused by a dependency the test made on the environment
+rather than on the code — §13.36's was PyYAML, undeclared, failing at collection. Both were found by CI rather
+than by the local gate, which is what CI is for, and both are recorded because **the gate's green is a claim
+about the gate's environment**.
