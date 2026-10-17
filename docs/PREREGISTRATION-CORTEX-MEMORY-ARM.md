@@ -6108,3 +6108,84 @@ failure this campaign keeps finding.
   no test.
 - The `--failures` definitions block is asserted to name the answer, so a later edit that reverts the wording fails
   in CI rather than in a reader's understanding.
+
+---
+
+## 13.44 The readout was an inline script every time, which is how §13.38 happened
+
+### 13.44.1 The pattern, and its cost
+
+Four consecutive sections quoted numbers from a run through a script written for that section and not committed:
+
+| section | the script | what it produced |
+| --- | --- | --- |
+| §13.38 | ad-hoc, never committed | the `41 of 47` behind §13.34.5's prediction 2 — **the prediction could not be re-derived** |
+| §13.41 | inline, `python3 - <<'PY'` | the `52` numeric mismatches, and the transition matrix across four rosters |
+| §13.42 | inline | the same 52, computed a second time |
+| §13.43 | inline | the two fields' disagreement counts |
+
+§13.38 is the section that repaired the *first* of these, and its own repair was reproduced by a script with the
+same defect. **A number is only as durable as the code that produced it**, and the pattern also means that every
+section re-derives the same quantities from scratch — the `total`, the per-capability counts, the taxonomy — with a
+different chance of getting them right each time.
+
+### 13.44.2 `tools/readout-arm-run.py`
+
+```
+$ python3 tools/readout-arm-run.py --reference run-38985220145.json
+
+config: ask=enumerated relevanceUnits=turn relevanceSignal=retrieval relevanceTopK=64 promptContract=abstention-evidence-blocks
+accuracy (this repetition): baseline 0.4440  feature 0.6540  -> +21.00pp
+aggregates (the repetitions behind the register): baseline avg 0.442 (min 0.438 max 0.444)  feature avg 0.6745 (min 0.654 max 0.706)
+registered statistic: delta +23.25pp -- the mean of the repetitions above, which is the number the register uses. McNemar p=1.814e-09 (significant)
+discordant: baseline-incorrect/feature-correct 205, baseline-correct/feature-incorrect 100
+
+per capability (feature side, counted from the roster):
+  ABS: 30/30  against 38595325261: 29 (+1)
+  IE: 132/150  against 38595325261: 133 (-1)
+  KU: 61/72  against 38595325261: 62 (-1)
+  MR: 29/121  against 38595325261: 51 (-22)
+  TR: 75/127  against 38595325261: 72 (+3)
+
+MR failure taxonomy (field: answer)
+  abstention: 35
+  plan_output: 0
+  ...
+  numeric_mismatch with plan_output folded in: 52  (§13.34.4's reading)
+```
+
+**The two accuracies are printed separately because they are different numbers.** `feature.metrics.accuracy` is
+**one** repetition — the worst of four, which is why it equals `featureAggregate.min` — while `ablation.delta` is
+the difference between the **means**. On run `38985220145` those read `+21.00pp` and `+23.25pp`, and §13.41.5 spent
+a paragraph establishing which was which after the fact. The readout says it up front.
+
+### 13.44.3 Three boundaries the tool holds
+
+- **The taxonomy is imported, not re-implemented.** `failure_census` comes from `classify-raw-outputs.py`, so the
+  two reports in this repository cannot disagree about what `numeric_mismatch` means — which is §13.42's defect and
+  would otherwise be reintroduced by a tool written to summarise it.
+- **§13.26's per-capability counts are constants shown only on `--reference`**, and only for the dataset they were
+  produced on. A report that says `dataset: <something else>` gets a warning instead of a delta, because a delta
+  against another benchmark's numbers is a claim nobody made.
+- **The scorer-channel split is not computed here**, deliberately. That is `judgeScorer`'s accounting and needs the
+  TypeScript judge; the arm prints it (`scorer channels: …`, on both the success and the failure path since
+  §13.40.9) and the log is read. A Python re-implementation would be a second definition of the same number, one
+  package away from the first.
+
+### 13.44.4 Verification
+
+- `tools` **358 passed + 40 subtests** (was 350; +8 by this section). `pnpm check` **exit 0**.
+- **Red first**: all eight failed against the absent tool, then two failed on the output format (`MR 1/3` where the
+  tool prints `MR: 1/3`) and were corrected in the tests rather than by changing the tool's format to match a
+  guess — the format is the tool's, and the assertion is what has to describe it.
+- **The archived case is a real artifact.** `TestAgainstAnArchivedRoster` runs against the committed MR fixture and
+  asserts `MR: 29/121`, `abstention: 35` and `numeric_mismatch: 52`, so the roster path and the classifier import
+  are exercised against data rather than a stub.
+- One test asserts **both** accuracy readings from a synthetic report whose two numbers are deliberately different
+  (`+20.00pp` from the metrics, `+24.00pp` from the aggregate), because a test where they coincide would pass
+  against a tool that printed one of them twice.
+
+### 13.44.5 Status
+
+No change to the P0 row: §13.41.6's five predictions remain the thing being read. What changed is that the next
+reading is reproducible by anyone who has the artifact, which is what §13.38 was written to establish and did not.
