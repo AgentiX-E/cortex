@@ -33,9 +33,18 @@ import urllib.request
 # to edit a constant: the wrong repo is now unrepresentable, not merely
 # discouraged.
 def _origin() -> tuple[str, str]:
-    for line in subprocess.run(
-        ["git", "remote", "get-url", "origin"], check=True, capture_output=True, text=True
-    ).stdout.splitlines():
+    # A missing `.git`, a missing `origin`, and an `origin` that is not GitHub are three
+    # problems with three fixes, and none of them is a traceback about a subprocess.
+    try:
+        listed = subprocess.run(
+            ["git", "remote", "get-url", "origin"], check=True, capture_output=True, text=True
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        sys.exit(
+            "cannot read `origin` (git remote get-url origin failed): run this from the "
+            "repository root, in a checkout whose origin is the repository you mean to push"
+        )
+    for line in listed.splitlines():
         url = line.strip()
         if "github.com" in url:
             path = url.split("github.com", 1)[1].lstrip(":/").removesuffix(".git")
@@ -45,25 +54,62 @@ def _origin() -> tuple[str, str]:
     sys.exit("origin is not a github.com remote; refusing to guess a repository")
 
 
-REPO, BRANCH = _origin()
+_ORIGIN: tuple[str, str] | None = None
+_TOKEN: str | None = None
+
+
+def origin() -> tuple[str, str]:
+    """The repository and branch, read from `origin` on first use.
+
+    ## Why not at import
+
+    This used to be `REPO, BRANCH = _origin()` at module level, which made **importing**
+    this script run `git remote get-url origin`. Outside a checkout the import therefore
+    failed with a `CalledProcessError` about a git command -- and a test that imported any
+    pure helper here would have needed a git repository with the right remote.
+
+    The identical defect was found in `dispatch-cortex-memory-ab.py` by the first test that
+    imported it (§13.47). This file has no such test yet, and this repair is what makes the
+    day it gets one a day that works.
+    """
+    global _ORIGIN
+    if _ORIGIN is None:
+        _ORIGIN = _origin()
+    return _ORIGIN
+
+
+def repo() -> str:
+    return origin()[0]
+
+
+def branch() -> str:
+    return origin()[1]
 
 
 def token() -> str:
-    with open(".git/config") as handle:
-        for line in handle:
+    """The PAT from `.git/config`, read on first use. See `origin` for why it is lazy."""
+    global _TOKEN
+    if _TOKEN is None:
+        try:
+            config = open(".git/config").read().splitlines()
+        except FileNotFoundError:
+            sys.exit(
+                "no .git/config in the working directory: the push token comes from the "
+                "checkout's own config, so run this from the repository root"
+            )
+        for line in config:
             if "oauth2:" in line:
-                return line.split("oauth2:", 1)[1].split("@", 1)[0]
-    sys.exit("no oauth2 token in .git/config")
-
-
-TOKEN = token()
+                _TOKEN = line.split("oauth2:", 1)[1].split("@", 1)[0]
+                return _TOKEN
+        sys.exit("no oauth2 token in .git/config")
+    return _TOKEN
 
 
 def req(method: str, path: str, payload=None):
     """One API call, retried on transient failures."""
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(f"https://api.github.com{path}", data=body, method=method)
-    request.add_header("Authorization", f"Bearer {TOKEN}")
+    request.add_header("Authorization", f"Bearer {token()}")
     request.add_header("Accept", "application/vnd.github+json")
     if body:
         request.add_header("Content-Type", "application/json")
@@ -90,7 +136,7 @@ def git(*args: str) -> str:
 
 def remote_blobs(tree_sha: str) -> dict[str, str]:
     """Every blob under a remote tree, as path -> SHA."""
-    result = req("GET", f"/repos/{REPO}/git/trees/{tree_sha}?recursive=1")
+    result = req("GET", f"/repos/{repo()}/git/trees/{tree_sha}?recursive=1")
     if result.get("truncated"):
         sys.exit("remote tree listing truncated; cannot verify completeness")
     return {
@@ -127,8 +173,8 @@ def report_mismatch(remote: dict[str, str], local: dict[str, str]) -> None:
 def main() -> int:
     head = git("rev-parse", "HEAD")
     local_tree = git("rev-parse", f"{head}^{{tree}}")
-    remote_head = req("GET", f"/repos/{REPO}/git/refs/heads/{BRANCH}")["object"]["sha"]
-    remote_tree = req("GET", f"/repos/{REPO}/git/commits/{remote_head}")["tree"]["sha"]
+    remote_head = req("GET", f"/repos/{repo()}/git/refs/heads/{branch()}")["object"]["sha"]
+    remote_tree = req("GET", f"/repos/{repo()}/git/commits/{remote_head}")["tree"]["sha"]
 
     if local_tree == remote_tree:
         print(f"nothing to push: trees already match ({local_tree[:12]})")
@@ -166,17 +212,17 @@ def main() -> int:
             content = handle.read()
         result = req(
             "POST",
-            f"/repos/{REPO}/git/blobs",
+            f"/repos/{repo()}/git/blobs",
             {"content": content.decode("utf-8", errors="surrogateescape"), "encoding": "utf-8"},
         )
         entries.append({"path": path, "mode": "100644", "type": "blob", "sha": result["sha"]})
         print(f"  {path} -> {result['sha'][:8]}")
 
-    tree = req("POST", f"/repos/{REPO}/git/trees", {"base_tree": remote_tree, "tree": entries})
+    tree = req("POST", f"/repos/{repo()}/git/trees", {"base_tree": remote_tree, "tree": entries})
     message = git("log", "-1", "--pretty=%B").rstrip("\n")
     commit = req(
         "POST",
-        f"/repos/{REPO}/git/commits",
+        f"/repos/{repo()}/git/commits",
         {
             "message": message,
             "tree": tree["sha"],
@@ -193,7 +239,7 @@ def main() -> int:
             },
         },
     )
-    req("PATCH", f"/repos/{REPO}/git/refs/heads/{BRANCH}", {"sha": commit["sha"], "force": False})
+    req("PATCH", f"/repos/{repo()}/git/refs/heads/{branch()}", {"sha": commit["sha"], "force": False})
     print(f"pushed {commit['sha']}")
 
     pushed = remote_blobs(commit["tree"]["sha"])

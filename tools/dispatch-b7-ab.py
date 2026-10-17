@@ -60,14 +60,31 @@ COMMON = {
 }
 
 
+_TOKEN: str | None = None
+
+
 def token() -> str:
-    for line in open(".git/config"):
-        if "oauth2:" in line:
-            return line.split("oauth2:", 1)[1].split("@", 1)[0]
-    sys.exit("no oauth2 token in .git/config")
+    """The PAT from `.git/config`, read on first use rather than at import.
 
-
-TOKEN = token()
+    Module-level (`TOKEN = token()`) it made importing this script require a credential,
+    which is the defect §13.47 found in the sibling dispatcher: a test that imports a pure
+    helper then cannot run on a runner. See that section for the failure it caused.
+    """
+    global _TOKEN
+    if _TOKEN is None:
+        try:
+            config = open(".git/config").read().splitlines()
+        except FileNotFoundError:
+            sys.exit(
+                "no .git/config in the working directory: dispatch reads the token from the "
+                "checkout's own config, so run this from the repository root"
+            )
+        for line in config:
+            if "oauth2:" in line:
+                _TOKEN = line.split("oauth2:", 1)[1].split("@", 1)[0]
+                return _TOKEN
+        sys.exit("no oauth2 token in .git/config")
+    return _TOKEN
 
 
 def req(method: str, path: str, payload=None, allow_empty: bool = False):
@@ -81,7 +98,7 @@ def req(method: str, path: str, payload=None, allow_empty: bool = False):
     """
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(f"https://api.github.com{path}", data=body, method=method)
-    request.add_header("Authorization", f"Bearer {TOKEN}")
+    request.add_header("Authorization", f"Bearer {token()}")
     request.add_header("Accept", "application/vnd.github+json")
     if body:
         request.add_header("Content-Type", "application/json")
