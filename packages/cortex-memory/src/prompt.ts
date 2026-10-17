@@ -478,6 +478,29 @@ function withInsertedBeforeClose(block: string, text: string): string {
 }
 
 /**
+ * Replace a block's final line.
+ *
+ * ## Why this exists, and why insertion was not enough
+ *
+ * §13.55 inserted its rule **before** the closing line, on the argument that an exception
+ * belongs adjacent to the rule it excepts. Run `39035438120` measured the argument and
+ * refuted it: the delta did not move (`+26.90pp` against `+26.95pp`), and of the 28 MR
+ * declines it inherited, 21 declined again — **12 of them with a non-empty Step 1 list**.
+ * The model read the exception and then read the rule and followed the rule, because the
+ * rule was last.
+ *
+ * So a rule that has to decide cannot be a second statement placed near the first. It has
+ * to BE the first, which means the closing line is replaced rather than qualified. The
+ * function takes no `old` argument for that reason: "the closing line" is a position, and
+ * naming the text would let the two drift apart silently.
+ */
+function withReplacedClose(block: string, close: string): string {
+  const lines = block.split('\n');
+  lines.splice(lines.length - 1, 1, close);
+  return lines.join('\n');
+}
+
+/**
  * The two-step contract the `enumerated` ask adds to the multi-session route.
  *
  * ## Why this shape, and what it is copied from
@@ -534,10 +557,31 @@ const ENUMERATION_CONTRACT = [
   `Reply ${ABSTAIN_TOKEN} only when the Step 1 list is empty. If it has at least one item, Step 2 must state the number computed from it -- the count of the items you listed, the total of the amounts you listed, or the value it names -- even when you believe the list is incomplete.`,
 ].join('\n');
 
-/** The multi-session block under `enumerated`: computed's, plus the two-step contract. */
-const ENUMERATED_MULTI_SESSION_INSTRUCTION = withInsertedBeforeClose(
-  withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
-  ENUMERATION_CONTRACT,
+/**
+ * The closing line `enumerated` gives the multi-session block, in place of the control's.
+ *
+ * ## Why the same rule is stated twice, and why the second one is the one that counts
+ *
+ * §13.55's sentence above is the rule. This is the rule in the position that decides, and
+ * §13.56 is the measurement that made position the variable: with the rule only *above* the
+ * closing line, 12 of 21 surviving MR declines still carried a non-empty list, and one of
+ * them (`7024f17c`) computed the exact gold in Step 2 and appended the sentinel.
+ *
+ * It keeps the control's `Reply with the answer alone`, because that instruction is what
+ * makes the parser's last-line rule work: an answer that is prose *after* a number is graded
+ * by the numeric gate only if the number survives. And it keeps the condition, because an
+ * empty Step 1 is a real state -- §13.51.2's 0-coverage band declines 100% of the time and
+ * is right to.
+ */
+const ENUMERATED_CLOSE = `Reply with the Step 2 number alone. If the Step 1 list is empty because the evidence does not contain the answer, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The multi-session block under `enumerated`: computed's, plus the contract and its close. */
+const ENUMERATED_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    ENUMERATION_CONTRACT,
+  ),
+  ENUMERATED_CLOSE,
 );
 
 /** The `aggregate` ask: the extractive block, with the sentence in place of nothing. */

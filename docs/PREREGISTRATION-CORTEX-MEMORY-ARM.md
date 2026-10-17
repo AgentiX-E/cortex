@@ -7190,3 +7190,224 @@ way the `numeric_mismatch` movement is the number that says what the trade cost.
 | **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
 | P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
 | P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+## 13.56 The five predictions of §13.55.4, read against run `39035438120`
+
+### 13.56.1 The run
+
+`39035438120`, `13:10:00Z` → `15:03:44Z`, **1h53m44s**, `success`, artifact `12104633586`, 6,901,835 bytes. One
+variable against §13.45's configuration: the §13.55 sentence, in the multi-session block.
+
+| line | value |
+| --- | --- |
+| `Restored` | 262,607 vectors — the cache converged (§13.37's repair held for a third run) |
+| `Relevance index: 32000 scored …` | 17 seconds at `topK=64` |
+| `Embedding cache: persisted` | 262,703 (**96** new) |
+| `scorer channels` | `structural 1424, exact 773, numeric 373, judge 1430/4000 = 35.8%` |
+
+The channel line is the contract's fingerprint and it moved in the right direction: against §13.45's
+`1444 / 791 / 340 / 1425`, the **numeric** gate decided 33 more questions and `structural` — the door an absent
+answer leaves by — decided 20 fewer. More responses ended in a number, and that is what the sentence asked for.
+
+### 13.56.2 The five predictions
+
+| # | registered in §13.55.4 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's declines fall by at least a third: 28 → **≤ 18** | **23** | **falsified** — 5 fewer, 17.9%, and above the 22 that falsifies it |
+| **2** | delta rises above **+26.95pp** | **+26.90pp** | **falsified** — at the threshold |
+| **3** | MR's `numeric_mismatch` rises above **24** | **27** | **met** (+3) |
+| **4** | ABS, IE, KU, TR within 2 questions | ABS 0, IE 0, KU **−3**, TR +1 | **falsified** by KU |
+| **5** | MR's declines' median coverage does not fall below 50% | **50.0%** (from 52.8%) | **met**, by 0.0pp of margin and in the wrong direction |
+
+Predictions 1 and 3 were registered as a pair — a contract that pushes the model to answer converts correct
+declines into wrong answers — and **that is exactly what the roster shows**: 3 of the declines it moved became
+correct, 2 became `numeric_mismatch`, 2 became prose. The mechanism is confirmed; the size is not.
+
+### 13.56.3 Why prediction 1 failed, which is the finding
+
+The roster has both runs' questions, so the 28 declines of run `39005914398` can be followed into
+`39035438120` one at a time:
+
+| what happened to a §13.45 decline | n |
+| --- | --- |
+| declined again | **21** |
+| became correct | 3 |
+| became `numeric_mismatch` | 2 |
+| became prose | 2 |
+
+**The 21 that declined again are the finding.** Read with `--declines`, 12 of them carried a **non-empty Step 1
+list**, one carried a list with no number, and 8 carried an honest empty list. The sentence said *decline only
+when the list is empty*, the model wrote the list, and then declined anyway — because **the block's closing line
+is the last thing it reads**:
+
+```text
+… Step 2 — compute the answer from that list …
+Reply INSUFFICIENT_EVIDENCE only when the Step 1 list is empty. If it has at least one item, …
+Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.
+```
+
+§13.55 inserted its rule **before** that last line, on the argument that an exception belongs adjacent to the rule
+it excepts. The model reads the exception, then reads the rule, and follows the rule — which is last, and which
+licenses declining on exactly the condition these questions meet (`the evidence does not contain the answer`,
+because no single turn does).
+
+**The witness.** `7024f17c`, gold `0.5 hours`, answered:
+
+```text
+Step 2 — Only one completed activity is in the list: the 30-minute jog. No yoga hours were performed.
+Total = 0.5 hours of jogging; 0 hours of yoga.
+INSUFFICIENT_EVIDENCE
+```
+
+It computed the gold and appended the sentinel. That is not a model that could not answer; it is a model whose
+last-read instruction overrode its own arithmetic.
+
+### 13.56.4 Prediction 4's falsification is a defect in the registration, and the control measures the instrument
+
+KU moved by 3 and the threshold was 2. The prompt on KU is byte-identical between the two runs
+(`evidence-ask-reach.test.ts`, 37 assertions), so nothing about the change can produce the movement — but
+"it is noise" is an assertion unless the noise is measured.
+
+**The four untouched capabilities are the measurement.** Same prompt, same configuration, two draws: of their 379
+questions, **23 changed state** (correct ↔ decline ↔ one of the failure shapes) — **6.1%**. MR, whose prompt did
+change, moved 24 of 121 — **19.8%**, three times as much, which is the independent evidence that the sentence was
+not inert.
+
+At 6.1%, the expected number of state changes in KU's 72 questions is **4.4**. The registered tolerance was 2.
+**The tolerance was below the instrument's resolution**, for every capability: IE's is 9.2, TR's is 7.7. So
+prediction 4 is falsified as written, and the falsification says the threshold was wrong rather than that the
+change leaked. Both halves of that sentence belong in the record; the second does not cancel the first.
+
+### 13.56.5 Prediction 2 fails, so the sentence is retired — and the replacement is not a second guess
+
+The registered reading rule was: *"If 2 fails while 1 and 3 hold, the trade is real and negative: the right
+response is to revert the sentence and record that the declines were largely correct."*
+
+Prediction 2 failed. Prediction 1 failed too, so the rule's premise is not met exactly — but the conclusion is
+the same and stronger: **the sentence changed the right population and moved nothing**, because its position
+made it advisory. It is retired.
+
+**What is not retired is the defect it named.** The census is a measurement, not a hypothesis:
+
+| | §13.45 | §13.55 | what it means |
+| --- | --- | --- | --- |
+| MR declines | 28 | 23 | — |
+| …with a non-empty list and a number in Step 2 | 19 | **12** | the contract forbids this state and it persists |
+| …with an empty list | 6 | 9 | honest, and no wording repairs them |
+| …with no Step 1 at all | 1 | 1 | the older sentence forbids this outright |
+
+Twelve records where the model listed items, computed a number, and declined. Priced at **MR's own accuracy on
+the questions it does answer in the same coverage band** — 68.3% at 50–74%, 38.3% at 25–49% — those twelve are
+worth **8.5 correct answers**, or **+1.7pp**. That is the prize, and it is now measured rather than inferred from
+§13.53's 47.
+
+**The cheaper repair was priced and declined.** If the number is already in Step 2, the parser could salvage it
+instead of asking the model to change. Of the 13 such records in this run (12 plus `ba358f49`, which has a list
+and no number), the gold number appears anywhere in Step 2 in **2** — and one of those two is a coincidence
+(`51c32626`, gold `February 1st`, matched by a session number `1`). A parser-side salvage is therefore worth **at
+most one question and probably zero**, and it would answer where the model said it could not. Not adopted: the
+cheap repair is cheap because it does almost nothing.
+
+### 13.56.6 Verification
+
+- Every number above comes from a committed tool: `--reference` and `--coverage` for the headline and band
+  tables, and the new `--declines` for the census. `python3 -m pytest tools/__tests__ -q` → **426 passed,
+  40 subtests**.
+- `--declines` is §13.52's argument applied a fourth time: this census chose a variable, and a variable chosen by
+  an inline script is a prediction its reader cannot re-derive (§13.38). Its 14 tests pin the four states, the
+  negation rule that separates an honest empty list from a listed one, the heading shapes the model writes, and
+  the near-misses it must not split on.
+- The paired transitions are a cross-draw comparison — each report carries **one** repetition's roster — and are
+  stated as such. The 6.1% control is the same comparison on questions whose prompt did not move, which is what
+  makes it a control.
+
+---
+
+## 13.57 The closing line is the one that decides
+
+### 13.57.1 The change
+
+The multi-session block's **last line** is replaced. Nothing else in the prompt moves.
+
+| | line |
+| --- | --- |
+| §13.45–§13.55 | `Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.` |
+| §13.57 | `Reply with the Step 2 number alone. If the Step 1 list is empty because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.` |
+
+### 13.57.2 Why replacement rather than another sentence
+
+§13.55 treated the block as a place to put a rule and lost to position. A rule that has to decide cannot be a
+second statement placed near the first; it has to **be** the first. The new line carries both halves the control
+line carried — *reply with the answer alone* and *reply with the token when there is no answer* — with the
+condition for the second moved from the evidence to the list.
+
+That is also why `withReplacedClose` takes no `old` argument. "The closing line" is a position, not a string; a
+function that named the text would let the prompt and the replacement drift apart silently, which is the
+consolidation-clock shape this package removes elsewhere.
+
+### 13.57.3 Reach, which is what keeps it one variable
+
+`ENUMERATED_MULTI_SESSION_INSTRUCTION` is built by `buildSessionPrompt` under `ask: enumerated` and by nothing
+else, so the reach is §13.55.3's table unchanged: multi-session only, ABS/IE/KU/TR byte-identical to `computed`.
+`evidence-ask-reach.test.ts` asserts it byte for byte and passes unchanged (37 tests).
+
+The one claim this section makes about its own size is a test: every line of `computed`'s prompt except its last
+appears in `enumerated`'s, and the last does not. A future edit that adds a line to the contract breaks nothing;
+an edit that lets the two closing lines agree again fails.
+
+### 13.57.4 Registration
+
+**One variable**: the block's closing line. Every input held at §13.45's values, `k = 64`, `promptContract:
+abstention-evidence-blocks`. The control is run `39035438120`, because this run differs from it by exactly one
+line.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **The state the contract forbids collapses**: MR declines with a non-empty list and a number in Step 2 fall from **12 to ≤ 4** | ≥ 9 |
+| **2** | **MR's declines fall from 23 to ≤ 15** | ≥ 20 |
+| **3** | **MR's correct count rises from 61 to ≥ 66** — the 12 convert at more than half of 8.5, because a converted decline still has to be counted right | ≤ 63 |
+| **4** | **The four untouched capabilities hold**: ABS+IE+KU+TR combined correct stays within ±6 of **293** | outside ±6 |
+| **5** | **MR's declines' median coverage does not fall below 50%** | below 50% |
+
+**Prediction 1 is the mechanism and 3 is the money**, and they are registered together for the reason §13.55.4
+gives: a run that showed 1 without 3 would mean the converted declines were answered from worse evidence than the
+ones it already answers, which is a trade rather than a repair.
+
+**Prediction 3 is deliberately below the 8.5 the census prices**, because §13.53's band rates are the accuracy of
+questions the model chose to answer — and the twelve are questions it chose to refuse. Half of the band rate is
+the honest expectation, and it is stated as a choice rather than derived.
+
+**The reading rule.** If 1 holds and 3 does not, the model is answering from the same evidence and counting it
+wrongly, which makes the arithmetic — 27 `numeric_mismatch` in this run — the target, and no further contract
+wording. If 1 fails again, then the closing line is not the operative instruction either, and the remaining
+reading is that these twelve declines are **judgements about the evidence** that no prompt position overrides;
+the next variable would then be on the retrieval side, where a gold turn that is present but not decisive is the
+thing to measure. Both outcomes are informative, which is why the run is worth its 1h54m.
+
+### 13.57.5 Verification
+
+- **Red first, on the three assertions that state the change**: with `prompt.ts` at `6d13ab5`, `ends the
+  multi-session block with the conditional line`, `no longer contains the unconditional licence anywhere` and
+  `differs from the control by additions and exactly one replaced line` all fail; the two invariant tests —
+  `computed` is byte-identical, a bare decline is still refused — pass before and after, which is what makes them
+  invariants rather than restatements.
+- `pnpm check` **exit 0**; `cortex-memory` **350 tests** (+3 net: two §13.55 assertions replaced by five);
+  four coverage dimensions **100%** on every package except `cortex-node`'s branch column at 98.64%, which is
+  §13.47's known and unrelated gap.
+- The changed block is **one line shorter in effect**: §13.55's sentence is retained but the control's closing
+  line is gone, so the prompt carries the same rule twice and the second statement is the one in the deciding
+  position. If this run holds, a follow-up can delete the first — as its own registered variable, not as
+  housekeeping.
+
+### 13.57.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The closing-line change is **dispatched**; §13.57.4's five predictions are registered | yes (in flight) |
+| **P0 (done)** | §13.55.4 read in full: 1 and 2 falsified, 3 and 5 met, 4 falsified by a threshold finer than the instrument; the sentence retired; the defect located in the closing line | no |
+| **P0 (done)** | `--declines`, the census that chose this variable, with 14 tests | no |
+| **P1** | If 1 holds: **TR's 42 declines**, all bare, at 39.7% median coverage, on a route the contract does not reach — the same two-step treatment, and the first experiment where coverage says the evidence is *not* there | yes |
+| **P1** | A better no-signal control (§13.50.4): random turns, turning −64.30pp from an upper bound into a contribution | yes |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P2 | The §13.55 sentence, now redundant, as its own variable once the closing line is settled | yes |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |

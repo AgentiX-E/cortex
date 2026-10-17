@@ -151,49 +151,86 @@ describe('a stepped response is scored by its answer, not by its transcript', ()
 });
 
 /**
- * The Step 1 list is the licence to decline, and a non-empty list withdraws it.
+ * The rule that decides is the last line, so the rule moved there.
  *
- * ## The measurement behind this
+ * ## What §13.55 built, and why it lost
  *
- * §13.53 priced run `39005914398`'s 82 declines against what their own coverage band is
- * worth in the same capability: MR's 28 declines sit at 52.8% median coverage, inside the
- * band where MR answers 67% correctly, so about 19 of them would have been right. TR's 41
- * at 39.7% sit in a 48% band (about 20), IE's 13 at 42.9% in a 60% band (about 8).
+ * §13.55 added the sentence *"Reply INSUFFICIENT_EVIDENCE only when the Step 1 list is
+ * empty."* and inserted it **before** the block's closing line —
+ * `Reply with the answer alone. If the evidence does not contain the answer, reply
+ * exactly INSUFFICIENT_EVIDENCE.` — on the argument that an exception belongs adjacent to
+ * the rule it excepts. Run `39035438120` priced that argument: the delta did not move
+ * (`+26.90pp` against `+26.95pp`), and of the 28 MR declines it inherited, **21 declined
+ * again — 12 of them with a non-empty Step 1 list**. The model read the exception, then
+ * read the rule, and followed the rule, because the rule was last.
  *
- * ## What the contract said, and what it now says
+ * The witness is `7024f17c`: it listed the jog, computed *"Total = 0.5 hours of jogging"*,
+ * and appended the sentinel. The gold is `0.5 hours`. The answer was in Step 2 and the
+ * closing line took it away.
  *
- * It said: *"Do not reply INSUFFICIENT_EVIDENCE without first writing the Step 1 list."*
- * That forbids a bare decline and **permits declining after a list** — and the lists the
- * model writes are long. Of MR's 28 declines, every one names at least 7 gold turns and
- * carries a median of 12, so the model is enumerating evidence and then declining with it
- * in hand.
+ * ## The repair, which is one line in one position
  *
- * The repair does not tell the model to answer more. It makes the list the deciding fact:
- * **decline only when the list is empty.** An empty list is a real state — §13.51.2's
- * 0-coverage band declines 100% of the time and is right to — while a non-empty list means
- * there is a number to compute, even if the list is short.
+ * The closing line is **replaced**, not qualified, and it is the last thing the model
+ * reads. `computed` keeps the original line unchanged, so the pair of tests below is also
+ * the reach assertion at line granularity: everything `enumerated` adds is additive, and
+ * the one line it does not share is the only line this section changes.
+ *
+ * ## Why that is not the same experiment as §13.55
+ *
+ * §13.55 added a competitor to a rule and the competitor lost on position. This makes the
+ * rule itself conditional, in the position where a conditional wins. The wording of the
+ * condition is unchanged — the list decides — so the mechanism under test is placement,
+ * and the prompt is one line shorter than it would be if both statements were kept.
  */
-describe('a non-empty Step 1 list withdraws the licence to decline', () => {
+describe('the closing line makes the decline conditional on the list', () => {
   const session: AdmittedSession = {
     index: 0,
     size: 2,
     turns: [turn('I planned a project in Nigeria.'), turn('I was promoted.')],
   };
 
-  const sessionPrompt = (): string =>
-    buildSessionPrompt('How many events are there?', [session], { ask: 'enumerated' }).prompt;
+  const promptFor = (ask: 'enumerated' | 'computed'): string =>
+    buildSessionPrompt('How many events are there?', [session], { ask }).prompt;
 
-  it('says a decline needs an empty list, not merely a written one', () => {
-    const prompt = sessionPrompt();
-    expect(prompt).toContain('only when the Step 1 list is empty');
-    // The stronger sentence does not replace the older one: a bare decline is still refused,
-    // because an empty Step 1 must be WRITTEN as well as be empty.
-    expect(prompt).toContain('without first writing the Step 1 list');
+  it('ends the multi-session block with the conditional line', () => {
+    const lines = promptFor('enumerated').trimEnd().split('\n');
+    expect(lines.at(-1)).toContain('If the Step 1 list is empty');
+    expect(lines.at(-1)).toContain('Reply with the Step 2 number alone');
   });
 
-  it('says what Step 2 must do with a list that has items', () => {
-    const prompt = sessionPrompt();
-    expect(prompt).toContain('Step 2 must state the number computed from it');
-    expect(prompt).toContain('even when you believe the list is incomplete');
+  it('no longer contains the unconditional licence anywhere', () => {
+    // The line, not the fragment: the conditional line legitimately contains "the evidence
+    // does not contain the answer", and a substring assertion would forbid the repair.
+    expect(promptFor('enumerated')).not.toContain(
+      'Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.',
+    );
+  });
+
+  it('leaves the control ask byte-identical', () => {
+    const computed = promptFor('computed').trimEnd();
+    expect(
+      computed.endsWith(
+        'Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.',
+      ),
+    ).toBe(true);
+  });
+
+  it('differs from the control by additions and exactly one replaced line', () => {
+    // The claim this section makes about itself. `enumerated` is `computed` plus the
+    // two-step contract, with the closing line replaced -- so every line of `computed`
+    // except its last must appear in `enumerated`, and the last must not.
+    const enumerated = promptFor('enumerated').trimEnd().split('\n');
+    const computed = promptFor('computed').trimEnd().split('\n');
+    const replaced = computed.at(-1) as string;
+    for (const line of computed.slice(0, -1)) {
+      expect(enumerated).toContain(line);
+    }
+    expect(enumerated).not.toContain(replaced);
+  });
+
+  it('still refuses a bare decline', () => {
+    // An empty Step 1 has to be WRITTEN as well as be empty, and removing the
+    // unconditional closing line must not remove that requirement with it.
+    expect(promptFor('enumerated')).toContain('without first writing the Step 1 list');
   });
 });

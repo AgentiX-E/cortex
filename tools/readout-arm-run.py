@@ -30,12 +30,15 @@ Usage:
 
     python3 tools/readout-arm-run.py path/to/benchmark-cortex-memory-ablation-report.json
     python3 tools/readout-arm-run.py --reference path/to/report.json
+    python3 tools/readout-arm-run.py --coverage path/to/report.json
+    python3 tools/readout-arm-run.py --declines path/to/report.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -314,6 +317,134 @@ def coverage_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(measured)
 
 
+# The heading `parse.ts` splits a stepped response on, restated here because the parser is
+# TypeScript and this is Python. The two must agree: a heading the parser recognises and this
+# does not would report a listed decline as an unlisted one, which is the direction that
+# hides the defect instead of the direction that invents it. `parse-stepped.test.ts` pins the
+# pattern against the contract's own lines; the cases below pin it against the model's.
+STEP_HEADING = re.compile(r'^\s*step\s*(\d+)\s*[\u2014:-]', re.IGNORECASE | re.MULTILINE)
+
+# A bullet, in the three shapes the artifacts use.
+BULLET = re.compile(r'^\s*(?:[-*\u2022]|\d+[.)])\s+(.*\S)\s*$')
+
+# A bullet that asserts absence rather than naming an item.
+#
+# This is the distinction the whole table turns on. "No items in the evidence mention a
+# camping trip" is a bullet, and the list that contains only it is EMPTY -- the model wrote
+# a line to say there was nothing to write. Counting bullets would report an honest empty
+# list as a non-empty one and send the campaign after a defect that is not there.
+ABSENCE = re.compile(
+    r'^(?:no\b|none\b|not\b|n/?a\b|cannot\b|nothing\b|there (?:is|are) no\b)',
+    re.IGNORECASE,
+)
+
+DIGIT = re.compile(r'\d')
+
+# The states a decline can be in, in the order the table prints them.
+#
+# `no-step` is not a degenerate `empty-list`: it means the model declined without writing
+# Step 1 at all, which the contract's own sentence forbids, and it is what every decline on
+# a route the contract does not reach looks like.
+DECLINE_STATES = (
+    'empty-list',
+    'non-empty-list',
+    'no-step',
+    'no-output',
+)
+
+
+def step_sections(raw: str) -> dict[int, str]:
+    """`{step number: the text after its heading, up to the next heading}`.
+
+    The first occurrence of a number wins: a model that writes `Step 1` twice is answered
+    from the first list it wrote, which is the one it built before reasoning about it.
+    """
+    headings = list(STEP_HEADING.finditer(raw))
+    sections: dict[int, str] = {}
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(raw)
+        sections.setdefault(int(heading.group(1)), raw[heading.end():end])
+    return sections
+
+
+def decline_state(record: dict) -> tuple[str, int, bool]:
+    """`(state, items listed, whether Step 2 stated a number)` for one decline.
+
+    Reads `rawOutput`, which is the inverse of `failure_shape`'s choice and for a reason
+    that is the same reason: that function classifies **how the answer was wrong**, and this
+    one classifies **what the model did before declining** -- which is only in the raw text.
+    """
+    raw = record.get('rawOutput')
+    if not isinstance(raw, str) or not raw.strip():
+        return 'no-output', 0, False
+    sections = step_sections(raw)
+    if 1 not in sections:
+        return 'no-step', 0, False
+    items = 0
+    for line in sections[1].splitlines():
+        bullet = BULLET.match(line)
+        if bullet and not ABSENCE.match(bullet.group(1)):
+            items += 1
+    stated = bool(DIGIT.search(sections.get(2, '')))
+    return ('empty-list' if items == 0 else 'non-empty-list'), items, stated
+
+
+def declines_section(questions: list[dict]) -> tuple[str, int]:
+    """The decline table by Step 1 content, per capability, plus how many declines were read.
+
+    ## Why the table exists
+
+    §13.56 chose its variable from it. §13.55 forbade declining with a non-empty list, and
+    run `39035438120` declined anyway: of the 21 MR declines it inherited, **12 carried a
+    non-empty list**, and `7024f17c` listed the jog, computed `Total = 0.5 hours` against a
+    gold of `0.5 hours`, and appended the sentinel. A table that said "23 declines" could not
+    have told that apart from an honest empty list, and the two need opposite repairs: the
+    first is a prompt-placement defect, the second is retrieval.
+
+    ## Why every capability is printed
+
+    TR's and IE's declines are all `no-step`, because the contract does not reach those
+    routes. Printing them makes the reach visible from the artifact, which is the same
+    argument `askRoutes` makes about the config block.
+    """
+    by_capability: dict[str, list[dict]] = {}
+    for question in questions:
+        if question.get('correct'):
+            continue
+        if question.get('answer') is not None:
+            continue
+        by_capability.setdefault(str(question.get('capability', '?')), []).append(question)
+
+    if not by_capability:
+        return '', 0
+
+    lines = ['', 'declines by Step 1 content (field: rawOutput)']
+    total = 0
+    for capability in sorted(by_capability):
+        rows = by_capability[capability]
+        total += len(rows)
+        tallies: dict[tuple[str, bool], int] = {}
+        for row in rows:
+            state, _, stated = decline_state(row)
+            tallies[(state, stated)] = tallies.get((state, stated), 0) + 1
+        lines.append(f'  {capability}: declines {len(rows)}')
+        for state in DECLINE_STATES:
+            for stated in (True, False):
+                count = tallies.get((state, stated), 0)
+                if not count:
+                    continue
+                if state == 'non-empty-list':
+                    label = 'non-empty list, number in Step 2' if stated else 'non-empty list, no number'
+                elif state == 'empty-list':
+                    label = 'empty list, number in Step 2' if stated else 'empty list'
+                elif state == 'no-step':
+                    label = 'no Step 1 section'
+                else:
+                    label = state
+                lines.append(f'     {label:<32} {count}')
+    return '\n'.join(lines), total
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -326,6 +457,11 @@ def main(argv: list[str]) -> int:
         '--coverage',
         action='store_true',
         help='print the gold-coverage table instead of the run summary',
+    )
+    parser.add_argument(
+        '--declines',
+        action='store_true',
+        help='print the decline table by Step 1 content instead of the run summary',
     )
     args = parser.parse_args(argv)
 
@@ -353,6 +489,15 @@ def main(argv: list[str]) -> int:
             )
             return 2
         print(f'records with coverage: {measured} of {len(questions)}')
+        print(section)
+        return 0
+
+    if args.declines:
+        section, read = declines_section(questions)
+        if read == 0:
+            print(f'{args.report}: no declines in this roster.', file=sys.stderr)
+            return 2
+        print(f'declines read: {read}')
         print(section)
         return 0
 

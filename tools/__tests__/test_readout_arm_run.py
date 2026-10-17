@@ -290,3 +290,159 @@ class TestTheCoverageTable:
         r = self._run(tmp_path, report, '--coverage')
         assert r.returncode == 0, r.stderr
         assert 'excluded' in r.stdout or 'n=  1' in r.stdout or 'n=1' in r.stdout
+
+
+class TestTheDeclinesAndTheListTheyCarry:
+    """§13.56's variable was chosen from this table, so the table is a tool.
+
+    §13.55 added a sentence forbidding a decline after a non-empty Step 1 list, and run
+    `39035438120` showed the model declining anyway: of the 21 MR declines it inherited,
+    **12 carried a non-empty list**, and `7024f17c` computed the exact gold in Step 2 and
+    appended the sentinel. The measurement that turned "declines" into "declines of two
+    different kinds" is what selected the next variable, and it took an inline script --
+    the fourth time this campaign has paid for one.
+
+    ## The distinction the table has to get right
+
+    A list containing only *assertions of absence* -- "No items in the evidence mention a
+    camping trip." -- is an **empty** list. The model wrote a bullet, and the bullet says
+    there is nothing. Counting bullets would classify an honest empty list as non-empty and
+    send the campaign after a defect that is not there, which is the same failure mode in
+    the other direction as missing the real one.
+    """
+
+    STEP_ONE = 'Step 1 \u2014 list every item in the evidence that matches the question.'
+    STEP_TWO = 'Step 2 \u2014 compute the answer from that list.'
+
+    def _report(self, rows: list[tuple[str, bool, str]]) -> dict:
+        """(capability, correct, rawOutput) -> a report with a roster."""
+        questions = []
+        for index, (capability, correct, raw) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None if not correct else 'x',
+                'rawOutput': raw,
+                'correct': correct,
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--declines', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def _declined_with_list(self) -> str:
+        return '\n'.join([
+            self.STEP_ONE, '',
+            '- the user went to Kyoto in May',
+            '- the user went to Osaka in June', '',
+            self.STEP_TWO, '',
+            'The list has 2 items, so the total is 2.',
+            'INSUFFICIENT_EVIDENCE',
+        ])
+
+    def _declined_with_empty_list(self) -> str:
+        return '\n'.join([
+            self.STEP_ONE, '',
+            '- No items in the evidence mention a camping trip.',
+            '- None of the turns state a duration.', '',
+            self.STEP_TWO, '',
+            'The list is empty, so the answer is INSUFFICIENT_EVIDENCE.',
+        ])
+
+    def test_it_separates_a_list_with_items_from_a_list_that_asserts_absence(
+        self, tmp_path: Path,
+    ) -> None:
+        report = self._report([
+            ('MR', False, self._declined_with_list()),
+            ('MR', False, self._declined_with_empty_list()),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'non-empty list' in r.stdout
+        assert 'empty list' in r.stdout
+        # One of each, so the counts must both be 1 -- and a table that lumped them would
+        # print 2 against one of the two labels.
+        assert '1' in r.stdout
+
+    def test_an_absence_assertion_in_a_bullet_is_not_an_item(self, tmp_path: Path) -> None:
+        # The whole reason the negation list exists. Two bullets, no items.
+        report = self._report([('MR', False, self._declined_with_empty_list())])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'non-empty list' not in r.stdout or 'non-empty list            0' in r.stdout.replace('  ', ' ')
+
+    def test_a_decline_with_no_step_one_section_is_its_own_state(self, tmp_path: Path) -> None:
+        # Run `39035438120` had one: the bare sentinel, which the contract's older sentence
+        # already forbids. It is not an empty list -- there is no list at all.
+        report = self._report([('MR', False, 'INSUFFICIENT_EVIDENCE')])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'no Step 1' in r.stdout
+
+    def test_it_says_whether_step_two_stated_a_number(self, tmp_path: Path) -> None:
+        # §13.56's direct target: a list, a computed number, and a decline anyway.
+        report = self._report([
+            ('MR', False, self._declined_with_list()),
+            ('MR', False, '\n'.join([
+                self.STEP_ONE, '', '- a', '',
+                self.STEP_TWO, '', 'The evidence does not state the amount.',
+                'INSUFFICIENT_EVIDENCE',
+            ])),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'number in Step 2' in r.stdout
+
+    def test_a_capability_the_contract_does_not_reach_is_still_listed(self, tmp_path: Path) -> None:
+        # TR and IE never receive the contract, so every one of their declines has no Step 1.
+        # Printing them makes the reach visible from the table instead of from a document.
+        report = self._report([
+            ('MR', False, self._declined_with_list()),
+            ('TR', False, 'INSUFFICIENT_EVIDENCE'),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'MR' in r.stdout and 'TR' in r.stdout
+
+    def test_correct_answers_are_not_counted_as_declines(self, tmp_path: Path) -> None:
+        report = self._report([
+            ('MR', True, self._declined_with_list()),
+            ('MR', False, 'INSUFFICIENT_EVIDENCE'),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'declines 1' in r.stdout.replace('  ', ' ') or 'declines: 1' in r.stdout
+
+    @pytest.mark.parametrize(
+        'heading',
+        ['Step 1 \u2014 list', 'Step 1: list', 'Step 1 - list', 'step 1 \u2014 compute', ' Step 1 : list'],
+    )
+    def test_it_recognises_the_headings_the_model_writes(self, heading: str, tmp_path: Path) -> None:
+        # The two shapes in the artifacts are the em dash (the contract's own) and the colon
+        # (the model's paraphrase). Both have to split, or a list-containing decline reads as
+        # a list-less one.
+        raw = f'{heading}\n\n- an item\n\nStep 2 \u2014 compute\n\n3\nINSUFFICIENT_EVIDENCE'
+        report = self._report([('MR', False, raw)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'non-empty list' in r.stdout
+
+    @pytest.mark.parametrize('not_a_heading', ['Steps 1 of 2', 'Step 1.5', 'Stepping'])
+    def test_it_does_not_split_on_a_near_miss(self, not_a_heading: str, tmp_path: Path) -> None:
+        raw = f'{not_a_heading}\n\n- an item\n\nINSUFFICIENT_EVIDENCE'
+        report = self._report([('MR', False, raw)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'no Step 1' in r.stdout
