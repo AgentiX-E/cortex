@@ -7411,3 +7411,80 @@ thing to measure. Both outcomes are informative, which is why the run is worth i
 | **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
 | P2 | The §13.55 sentence, now redundant, as its own variable once the closing line is settled | yes |
 | P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+---
+
+## 13.58 The union of the two sides is the target line, and it is 86.20%
+
+### 13.58.1 What was being measured instead
+
+Every section since §13.26 has ranked work by **delta**, and delta is a difference of two totals: the feature's
+correct count against the reference pipeline's. That number is 71.40% against 44.20%, and it says the arm wins —
+but it cannot say **where**, and §13.56's own reading shows why that matters: the per-capability table of the same
+run has the feature **33.89 points behind** the reference on MR and **13.38 behind** on TR.
+
+The two facts are not in tension. The feature wins IE and KU by 88.67 and 80.56 points, against a reference that
+scores 1.33% and 0%. **The delta is a capability-coverage win, and nothing in it argues that any single capability
+is better than the reference's.**
+
+### 13.58.2 The number that does say where work is worth doing
+
+For each question, ask whether **either** side answered it correctly. That set is proof the information was
+available to *some* pipeline on this exact input, which makes it recoverable in a way that "the reference is
+better" is not.
+
+| capability | n | reference | feature | **union** | gap |
+| --- | --- | --- | --- | --- | --- |
+| ABS | 30 | 30 | 29 | **30** | 1 |
+| IE | 150 | 2 | 135 | **136** | 1 |
+| KU | 72 | 0 | 58 | **58** | 0 |
+| MR | 121 | 102 | 61 | **108** | **47** |
+| TR | 127 | 88 | 71 | **99** | **28** |
+| **total** | 500 | 222 | 354 | **431 = 86.20%** | **77** |
+
+**75 of the 77 recoverable questions are in MR and TR.** The other three capabilities are 2 questions from
+closed. So "make the union into one system" and "fix MR and TR" are the same sentence, and that is a much stronger
+statement than either capability's delta.
+
+### 13.58.3 Why it took a guard to get the number right
+
+The roster carries the **feature's** correctness only; the reference's side has to be reconstructed from
+`discordantQuestions`' two lists. The first attempt at that reconstruction had a sign wrong and read the
+reference as **431/500** instead of 222 — which made the union look like 100%, a table with no gap in it at all.
+Every number in it was individually plausible.
+
+So `--union` recomputes the reference's total and **refuses to print** when it disagrees with the report's own
+`baselineMetrics.correct`. The guard is not decoration: it is the only thing that distinguishes a derivation from
+a coincidence, and §13.38's rule applies to a target line more than to a prediction — a target nobody can
+re-derive is a target nobody can dispute.
+
+### 13.58.4 What it changes about the campaign
+
+- **The objective is 86.20%, not the next delta.** §13.57's five predictions stay as registered — they are about
+  one line in one prompt and they will be read either way — but the ranking of what comes after them changes:
+  MR's arithmetic (27 `numeric_mismatch`) outranks any further contract wording, and TR's 39.7%-coverage declines
+  become "why is the gold turn not in the window", not "why will the model not answer".
+- **The "beats all competitors" claim is now stated as false for this reading**, in the only form that can be
+  argued with: 50.41% against 84.30% on the capability the benchmark is cited for. §13.56's finding is the first
+  step of closing it, not a step towards a bigger total.
+
+### 13.58.5 Verification
+
+- `--union` is `readout-arm-run.py`'s fourth mode, with 3 tests: the union and the gap, and the guard firing on a
+  report whose discordant lists do not describe its roster.
+- `python3 -m pytest tools/__tests__ -q` → **429 passed, 40 subtests**. `pnpm check` **exit 0**, four coverage
+  dimensions **100%** (`cortex-node` branch 98.64%).
+- The table above is that tool's output on run `39035438120`'s artifact, unedited.
+
+### 13.58.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Run `39076055833` (the closing line) is **in flight**; §13.57.4's five predictions stand | yes (in flight) |
+| **P0 (done)** | The target line exists and is re-derivable; the roadmap's §11 is rewritten around it | no |
+| **P1** | MR's arithmetic — 27 `numeric_mismatch`, and no variable has yet pointed at it | yes |
+| **P1** | TR's evidence gap — 42 declines at 39.7% median coverage, measured before any prompt change | yes |
+| **P1** | A better no-signal control (§13.50.4) | yes |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |

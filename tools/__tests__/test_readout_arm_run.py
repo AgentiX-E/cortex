@@ -446,3 +446,97 @@ class TestTheDeclinesAndTheListTheyCarry:
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert 'no Step 1' in r.stdout
+
+
+class TestTheUnionOfTheTwoSides:
+    """The roadmap's target line is a derived number, so it is a tool.
+
+    §110's reading of run `39035438120` produced the number that now sets the project's
+    goal: **431/500 = 86.20%** of questions are answered correctly by *one of the two
+    systems*, and 75 of the 77 the feature misses are in MR and TR. A target line computed
+    by an inline script is a target no reader can check, which is §13.38 exactly.
+
+    ## Why the derivation needs a self-check rather than a comment
+
+    The roster carries the **feature** side's correctness only. The baseline side has to be
+    reconstructed from the two discordant lists -- `baselineCorrectFeatureIncorrect` and
+    `baselineIncorrectFeatureCorrect` -- and a reconstruction with the wrong sign on either
+    list produces a plausible table with a wrong number in it (this happened: the first
+    attempt read the baseline as 431/500 instead of 222/500). So the tool recomputes the
+    baseline's total and **refuses to print** if it disagrees with `baselineMetrics.correct`.
+    """
+
+    @staticmethod
+    def _report(feature_true: int, baseline_true: int, both_true: int) -> dict:
+        """Three questions: only-feature, only-baseline, both -- all others neither.
+
+        `feature_true` is how many questions the feature got right, `baseline_true` the same
+        for the baseline, and `both_true` the overlap. The discordant lists are built from
+        those, so the reconstruction has something to reconstruct.
+        """
+        total = 6
+        feature_ids = [f'q{i}' for i in range(feature_true)]
+        baseline_ids = [f'q{i}' for i in range(both_true)] + [
+            f'q{i}' for i in range(feature_true, feature_true + baseline_true - both_true)
+        ]
+        feature_set = set(feature_ids)
+        baseline_set = set(baseline_ids)
+        questions = [
+            {
+                'questionId': f'q{i}',
+                'capability': 'MR',
+                'groundTruth': 'x',
+                'answer': 'x' if f'q{i}' in feature_set else None,
+                'rawOutput': 'x',
+                'correct': f'q{i}' in feature_set,
+            }
+            for i in range(total)
+        ]
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': baseline_true / total, 'correct': baseline_true}},
+            'feature': {'metrics': {'accuracy': feature_true / total}},
+            'ablation': {
+                'delta': 0.1,
+                'questions': None,
+                'baselineMetrics': {'correct': baseline_true},
+                'discordantQuestions': {
+                    'baselineCorrectFeatureIncorrect': sorted(baseline_set - feature_set),
+                    'baselineIncorrectFeatureCorrect': sorted(feature_set - baseline_set),
+                },
+            },
+            'questions': questions,
+        }
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--union', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_prints_the_union_and_the_gap(self, tmp_path: Path) -> None:
+        # feature 4, baseline 3, overlap 2 -> union 5 of 6.
+        r = self._run(tmp_path, self._report(feature_true=4, baseline_true=3, both_true=2))
+        assert r.returncode == 0, r.stderr
+        assert 'union' in r.stdout
+        assert '5/6' in r.stdout.replace(' ', '')
+
+    def test_it_reports_the_gap_from_the_feature_to_the_union(self, tmp_path: Path) -> None:
+        # The number the roadmap ranks on: feature 4, union 5 -> a gap of 1, not 2.
+        r = self._run(tmp_path, self._report(feature_true=4, baseline_true=3, both_true=2))
+        assert r.returncode == 0, r.stderr
+        assert 'gap' in r.stdout.lower()
+
+    def test_a_reconstruction_that_disagrees_with_the_report_refuses_to_print(
+        self, tmp_path: Path,
+    ) -> None:
+        # The defect this guard exists for. Flip one id between the two discordant lists and
+        # the reconstruction still produces a table -- with the wrong number in it.
+        report = self._report(feature_true=4, baseline_true=3, both_true=2)
+        report['ablation']['baselineMetrics']['correct'] = 5
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'baseline' in r.stderr

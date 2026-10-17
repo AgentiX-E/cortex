@@ -32,6 +32,7 @@ Usage:
     python3 tools/readout-arm-run.py --reference path/to/report.json
     python3 tools/readout-arm-run.py --coverage path/to/report.json
     python3 tools/readout-arm-run.py --declines path/to/report.json
+    python3 tools/readout-arm-run.py --union path/to/report.json
 """
 
 from __future__ import annotations
@@ -445,6 +446,91 @@ def declines_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), total
 
 
+def union_section(report: dict, questions: list[dict]) -> tuple[str, int]:
+    """The union of the two sides, per capability, and the feature's distance from it.
+
+    ## Why this is the number the roadmap ranks on
+
+    A capability where the feature loses is not automatically worth work: what is recoverable
+    is the set of questions **one of the two systems already answers correctly**, because that
+    set is proof the information was available to some pipeline on this exact input. On run
+    `39035438120` that union is **431/500 = 86.20%** against the feature's 354, and **75 of the
+    77** the feature misses are in MR and TR -- which is the whole of the case for putting those
+    two first (§110, `07-sota-roadmap.md` §11).
+
+    ## Why the baseline side has to be reconstructed, and why that needs a guard
+
+    The roster carries the feature's correctness only. The baseline is recovered from the two
+    discordant lists, and getting a sign wrong produces a **plausible table with a wrong number
+    in it** -- the first attempt at this read the baseline as 431/500 instead of 222/500 and the
+    union looked like 100%. The reconstruction is therefore checked against the report's own
+    `baselineMetrics.correct` and the caller refuses to print on disagreement. An invariant
+    asserted after the number is printed is not a check.
+    """
+    ablation = report.get('ablation') or {}
+    baseline_metrics = ablation.get('baselineMetrics') or {}
+    expected = baseline_metrics.get('correct')
+    discordant = ablation.get('discordantQuestions') or {}
+    only_baseline = set(discordant.get('baselineCorrectFeatureIncorrect') or ())
+    only_feature = set(discordant.get('baselineIncorrectFeatureCorrect') or ())
+
+    by_capability: dict[str, list[dict]] = {}
+    for question in questions:
+        by_capability.setdefault(str(question.get('capability', '?')), []).append(question)
+
+    rows: list[tuple[str, int, int, int, int]] = []
+    baseline_total = 0
+    for capability in sorted(by_capability):
+        feature = baseline = union = 0
+        for question in by_capability[capability]:
+            identifier = question.get('questionId')
+            feature_correct = bool(question.get('correct'))
+            if feature_correct and identifier in only_feature:
+                baseline_correct = False
+            elif (not feature_correct) and identifier in only_baseline:
+                baseline_correct = True
+            else:
+                baseline_correct = feature_correct
+            feature += feature_correct
+            baseline += baseline_correct
+            union += feature_correct or baseline_correct
+        rows.append((capability, len(by_capability[capability]), baseline, feature, union))
+        baseline_total += baseline
+
+    if isinstance(expected, int) and expected != baseline_total:
+        raise ValueError(
+            f'the reconstructed baseline is {baseline_total}, and the report says {expected}. '
+            'The two discordant lists do not describe this roster, so every union number '
+            'derived from them would be wrong in a way that looks plausible.'
+        )
+
+    lines = ['', 'union of the two sides (either side correct), per capability']
+    lines.append(f'  {"capability":<10} {"n":>4} {"baseline":>9} {"feature":>8} {"union":>6} {"gap":>5}')
+    totals = [0, 0, 0, 0]
+    for capability, count, baseline, feature, union in rows:
+        lines.append(
+            f'  {capability:<10} {count:>4} {baseline:>9} {feature:>8} {union:>6} {union - feature:>5}'
+        )
+        totals[0] += count
+        totals[1] += baseline
+        totals[2] += feature
+        totals[3] += union
+    lines.append(
+        f'  {"TOTAL":<10} {totals[0]:>4} {totals[1]:>9} {totals[2]:>8} {totals[3]:>6} '
+        f'{totals[3] - totals[2]:>5}'
+    )
+    lines.append(
+        f'  union {totals[3]}/{totals[0]} = {totals[3] / totals[0]:.2%}; '
+        f'feature {totals[2]}/{totals[0]} = {totals[2] / totals[0]:.2%}; '
+        f'gap {totals[3] - totals[2]} questions'
+    )
+    lines.append(
+        '  gap = questions one of the two sides already answers correctly and the feature '
+        'does not. It is the recoverable set, not the union of two ceilings.'
+    )
+    return '\n'.join(lines), totals[3] - totals[2]
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -462,6 +548,11 @@ def main(argv: list[str]) -> int:
         '--declines',
         action='store_true',
         help='print the decline table by Step 1 content instead of the run summary',
+    )
+    parser.add_argument(
+        '--union',
+        action='store_true',
+        help='print the union of the two sides per capability instead of the run summary',
     )
     args = parser.parse_args(argv)
 
@@ -489,6 +580,15 @@ def main(argv: list[str]) -> int:
             )
             return 2
         print(f'records with coverage: {measured} of {len(questions)}')
+        print(section)
+        return 0
+
+    if args.union:
+        try:
+            section, gap = union_section(report, questions)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
         print(section)
         return 0
 
