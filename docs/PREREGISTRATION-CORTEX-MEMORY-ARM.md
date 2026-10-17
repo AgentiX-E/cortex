@@ -5577,3 +5577,178 @@ What is *not* changed: the deadline's value, the retry count, the backoff, and t
 The three ways this run could have kept its work were: the cache (fixed in §13.37 — and it did keep it: `261165`
 vectors), the completed repetitions (fixed here), and the abort (fixed here). The next dispatch is the same
 request with strictly more of its own work protected, which is the whole of what this iteration bought.
+
+---
+
+## 13.40 Run `38953157688`: the reading, and the channel the register did not name
+
+### 13.40.1 The run
+
+`ask: enumerated`, `19:12:17Z` → `21:05:50Z`, **1h53m33s**, `success`, artifact 6,917,136 bytes. The §13.37
+cache repair delivered what §13.39 predicted it would:
+
+| line | value |
+| --- | --- |
+| `Cache hit for restore-key` | `…-38941095220-1` — the previous run's entry, resolved by prefix ✓ |
+| `Restored` | **261,165** vectors |
+| `Relevance index: 32000 scored …` | built in **26 seconds** — against **26m51s** in §13.39, a **62x** change |
+| `Embedding cache: persisted` | 261,354 (189 new) |
+
+**The index build is now effectively free.** The 79-minute run of §13.39 and this 114-minute run differ by a
+factor of 62 on the pass that used to dominate, and the difference is one repaired key.
+
+### 13.40.2 The five predictions
+
+| # | registered | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR abstentions **22 → ≤ 12** | **33** | **falsified**, and with the opposite sign to the prediction |
+| **2** | MR numeric mismatches **41 of 47 → ≤ 25** | **not adjudicable** | the bucket names a population that no longer exists — see §13.40.3 |
+| **3** | MR **≥ 48%** (58/121) | **58/121 = 47.93%** | **met by the count spelling, missed by 0.07pp on the percentage spelling** — and not attributable to the contract (below) |
+| **4** | arm delta **> +25.75pp** | **+26.75pp** (0.7000 vs 0.4460; McNemar p = 3.911e-14; 207 won / 80 lost; over four repetitions min 0.700, max 0.728, median 0.711) | **met — the arm's best delta** |
+| **5** | IE, KU, TR within **±3 questions** of §13.26 | IE 133→132 (−1), KU 62→61 (−1), TR 72→70 (−2), ABS 29→29 (0) | **met, and clean** — §13.40.4 |
+
+The register's own arithmetic is worth a line because it decided a verdict: it wrote **both** "≥ 48%" and
+"(58/121)", and those disagree by a rounding step — 58/121 is **47.934%**. One spelling is met and the other is
+missed by 0.07pp, and this section reports the miss rather than the match.
+
+Its falsifier list is also incomplete in a way that this run met: every falsifier for prediction 1 covers the
+abstentions **falling** too little, or the accuracy not moving. None covers the abstentions **rising**, which is
+what happened, so the prediction was falsified by a direction the register had not written down.
+
+### 13.40.3 Why prediction 2 cannot be read, and it is not a formality
+
+`numeric_mismatch` requires the *answer* to carry a number. Under `enumerated` the arm's answer for MR is a
+**349-character transcript** (§13.40.5), so the taxonomy classifies transcript shapes, not the model's
+arithmetic: `plan_output` 30, `numeric_mismatch` **0**, abstention 33. The §13.38 instrument is doing exactly
+what it is specified to do; the field it reads stopped meaning what the register assumed it means.
+
+So prediction 2 is **not adjudicated**, and the reason is recorded: its baseline (41) and its subject (the
+number the model computed) are both expressed in terms of a field that this run's ask replaced. Fixing the
+field is §13.40.5; re-reading this run through the fix is §13.40.7.
+
+### 13.40.4 The confound: the ask changed which scorer decides
+
+This is the finding the register did not name, and it bounds every MR number above.
+
+| run | MR correct | gate-decided | gate-true | judge-decided | median answer length |
+| --- | --- | --- | --- | --- | --- |
+| `38595325261` `computed` | 51 | 86 | **37** | 35 | **3** |
+| `38828538851` `session-fill` | 52 | 89 | **36** | 32 | **2** |
+| **`38953157688` `enumerated`** | **58** | **33** | **0** | **88** | **349** |
+
+Per capability, `computed` → `enumerated`:
+
+| capability | correct | gate (true) | judge | step headings in the raw |
+| --- | --- | --- | --- | --- |
+| ABS | 29 → 29 | 30 (29) → 30 (29) | 0 → 0 | 0 → 0 |
+| IE | 133 → 132 | 90 (75) → 88 (73) | 60 → 62 | 0 → 0 |
+| KU | 62 → 61 | 28 (26) → 27 (23) | 44 → 45 | 0 → 0 |
+| **MR** | **51 → 58** | **86 (37) → 33 (0)** | **35 → 88** | **0 → 117** |
+| TR | 72 → 70 | 35 (0) → 42 (0) | 92 → 85 | 0 → 0 |
+
+The gates are the mechanical channels -- normalized equality and the numeric gate -- and they decide **every
+verdict they can**. Under `enumerated` they decided 27% of MR's verdicts against 71% before, and **not one of
+them was a true verdict**. MR's +7 is therefore entirely judge-accepted, and the judge was asked whether a
+349-character transcript "matches" a gold like `3.5 weeks`.
+
+So **prediction 3 is not attributable to the answer contract.** It is a joint statement about the contract and
+about `judgeScorer`'s tolerance of a long enumerated list, and the register treated it as the former.
+
+Predictions 4 and 5 inherit this only where MR contributes: prediction 4's delta is MR's movement plus four
+controls that did not move, and prediction 5's three controls are the part that is clean.
+
+### 13.40.5 The defect under all of it: the answer was the transcript
+
+`parseAnswer` returns the **whole** trimmed response as the answer. `computed`'s MR responses have a median
+length of **3 characters**, so "the whole response" and "the answer" were the same thing and the difference was
+invisible for four runs. `enumerated` made them differ by two orders of magnitude:
+
+```
+Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. …
+- [2023/05/21 (Sun) 09:03] I am planning a project in Nigeria that connects 100 rural villages to running water.
+…
+Step 2 — compute the answer from that list, exactly as the question asks: …
+3
+```
+
+The model writes the contract back out, fills in the list, and puts its answer on the final line. **41 of the
+121 responses end with a line that IS the gold.** The arm returned all 349 characters.
+
+**The repair**: when a response contains a step heading, the answer is what follows the **last** one, and the
+abstention rule is still read **first** -- 29 of those responses write the Step 1 list and then the sentinel, and
+a heading rule running first would score them as answers and move prediction 1's number from 33 to 4.
+
+**Why it cannot change a published number.** A step heading appears in **0 of the 1,000** questions of runs
+`38595325261` and `38828538851`, and in **118** of run `38953157688`'s 121 multi-session questions. The rule is
+keyed on the heading rather than on length, so a long prose answer with no step in it is still returned whole,
+and every archived number stays exactly as it was. That is measured, and the coupling is guarded: the test
+builds a **real** `enumerated` multi-session prompt, reads the headings out of it, and requires the parser to
+parse an echo of them -- which also fails if the contract stops reaching that route at all.
+
+**The boundary, stated rather than guessed.** Of the 118 step-headed responses, **118** put the answer on its
+own line after the last heading and **0** put it on the heading line. A heading with nothing after it is
+therefore scored as a **blank answer**, which scores nothing, and never as the transcript. The unobserved shape
+is answered conservatively, because the alternative is the defect this repair exists to remove.
+
+### 13.40.6 What the repair does and does not restore, measured
+
+Applying the repaired parser to this run's raw outputs, offline, and re-running the real scorer with the judge
+stubbed so that only the gates can decide:
+
+| | gate-decided | gate-true | judge-decided | median answer |
+| --- | --- | --- | --- | --- |
+| as run | 33 | 0 | 88 | 349 |
+| **repaired parser** | **74** | **6** | **47** | **23** |
+
+So the repair moves 41 verdicts back to the gates, and the gates verify **6** of them. `computed`'s gates
+verified 37 of 86, so the contract's own answer *format* -- "3 days" where the gold is "3", "the total is 45
+minutes" where it is "45" -- is also less mechanically checkable than a bare value. The repair recovers the
+structure; it does not restore like-for-like, and §13.40.7 says so before the number exists.
+
+### 13.40.7 Registration: the same dispatch with the repaired parser
+
+Dispatched before this section was written, one variable against §13.40's configuration: the arm's parser.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| 1 | **The abstention count is unchanged at 33.** The abstention rule is read before the heading rule, so the repair cannot move it; a movement means the precedence is not what §13.40.5 says it is | outside 30–36 |
+| 2 | **The gate-decided share of MR rises to about 74 of 121** and the judge-decided share falls to about 47 | gate below 60 |
+| 3 | **MR's accuracy falls below 47.93%.** The judge stops being asked to accept a transcript; the offline bound is 6 gate-true, so unless the judge accepts almost all of the 47 it still sees, MR lands far below 58 correct | MR stays at or above 58 |
+| 4 | **The delta falls below +26.75pp**, most of the movement being MR's | delta stays at or above +26.75pp |
+| 5 | **IE, KU, TR and ABS are unchanged** — the repair is inert on them: 0 step headings each | any of them moves by more than 3 questions |
+
+**The reading rule, registered with the predictions.** If MR falls, then §13.34's contract did not improve MR:
+its 47.93% was a transcript being judged, and the honest comparison for `enumerated` becomes the repaired number
+against §13.26's **42.15%**. A fall to around 30–40% would make the two-step contract a **regression on MR**,
+and the next thing to isolate would be the contract's answer format (§13.40.6) rather than its two-step
+structure.
+
+### 13.40.8 Verification
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s branch
+  column (§13.29). `cortex-memory` **345** tests (+7).
+- **Red first**: the six behavioural tests failed against the unfixed parser, and the seventh -- the coupling
+  guard -- failed on the export that was removed rather than kept.
+- **Two of my own assertions were wrong and were corrected from measurement rather than worked around.** The
+  first assumed a test fixture could share one call counter across both systems; the second asserted a
+  "heading with the answer on the same line" shape that **0 of 118** responses produce. Both were replaced by
+  what the data supports, and the unobserved shape is now covered as a stated boundary instead of a guess.
+- The new exports the first draft introduced were removed rather than added to the census ledger: the guard now
+  drives a real prompt, so nothing is exported for a test's benefit alone.
+
+### 13.40.9 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The repaired-parse dispatch is **in flight**; §13.40.7's five predictions are registered | no (in flight) |
+| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); the finished-repetition loss (§13.39.3); the body-deadline hole (§13.39.4); the transcript answer (§13.40.5) | no |
+| **P1** | **The register's comparison discipline**: `ask` changes the answer's *shape*, which changes *which scorer decides*. Every future ask registration must state the expected gate/judge split, or its accuracy number cannot be attributed | no |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+**The first honest reading of `ask: enumerated` is that it is not yet a reading of `ask: enumerated`.** Two of
+its five predictions were answered (4 and 5, both met, one of them cleanly), one was falsified (1), one could
+not be adjudicated (2), and one moved through a scoring channel the register did not name (3). The next number
+is the one that removes the channel from MR.
