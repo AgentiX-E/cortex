@@ -6577,3 +6577,67 @@ That is the same shape as every other defect this iteration found. §13.38's tax
 wrong field. §13.41's gate was correct and read the wrong number. §13.47's dispatch worked and could not be
 imported. **A thing can do its job and be unable to answer a question about itself**, and the only way to find out
 is to ask the question in a place where the answer is not prearranged.
+
+---
+
+## 13.49 Three CI failures in three iterations, and the third one was the tests
+
+### 13.49.1 The sequence
+
+| commit | what failed | what it was |
+| --- | --- | --- |
+| (`c1f3dcb9`, `4317c70c`) | PyYAML not declared | a test's **dependency** was not in the requirements |
+| `9fcb7fe1` (§13.47) | `SystemExit: no oauth2 token` on ten tests | the **code** read a credential at import |
+| `c980a5d8` (§13.48) | the same message on **two of the four tests I had just added** | the **tests** read a credential |
+
+The third one is the one worth recording, because of what it was: four tests asserting the accessors still work,
+three of them written to say `len(module.token()) > 20` and `module.repo() == 'AgentiX-E/cortex'` against **this**
+checkout. They passed here, where `.git/config` carries a token, and failed on a runner, where it does not.
+
+**Three tests making the same mistake as the code they had just been written to guard**, one commit after the
+section that named the mistake. The section is §13.47, whose whole argument is that a test depending on a
+credential can only run on a developer's machine.
+
+### 13.49.2 Why it happened, stated plainly
+
+A user token is the most available thing in this environment and its absence is invisible from inside it. The
+question "would this pass without the token" is not one that occurs while writing an assertion that starts
+`assert module.token()` — the assertion *looks* like a test of the code, and it is a test of the machine.
+
+The same is true of every environment fact: a working directory, a git remote, a running server, a populated
+cache. **A test that reads one of them describes the environment and calls it a property.**
+
+### 13.49.3 The repair, and the shape of the replacement
+
+A **synthetic checkout**: `git init` in a temp directory plus
+
+```
+git remote add origin https://oauth2:checkout-token@github.com/AgentiX-E/cortex
+```
+
+whose URL carries the token a real config would carry. Then `repo() == 'AgentiX-E/cortex'`,
+`branch() == 'master'` and `token() == 'checkout-token'` are assertions about the **parser** — which is the part
+that has logic — rather than about the machine, which has none.
+
+That is also strictly stronger than what it replaced. `len(token()) > 20` would pass for any 21-character string;
+`== 'checkout-token'` fails unless the `oauth2:` prefix was found, split on `@`, and truncated where it should be.
+
+### 13.49.4 The verification that should have come first
+
+Before pushing, the tree was copied to `/tmp/ci-sim`, `git init` + `git add -A` + `git commit` was run **and an
+origin added without a token**, and all 408 tests were run there. Green.
+
+The first attempt at that simulation was wrong and worth recording: it fabricated a `.git/config` in an empty
+directory instead of making a repository, and two tests failed on `test_every_mapped_workflow_is_tracked_by_git`
+— which needs `git ls-files`. **A simulation that is easier than the real environment is a simulation of a
+different environment.** The second attempt committed the tree and removed only the token, which is exactly what
+`actions/checkout` produces.
+
+### 13.49.5 What changes in practice
+
+`pnpm check` green is a claim about **this machine**, and this iteration produced three counterexamples to reading
+it as a claim about the runner. The gate that would have caught all three is the same one: **run the suite once
+per iteration in a directory that is not a checkout, with no credential in it.**
+
+That is not a new tool. It is `tar` + `git init` + `git remote add` + `pytest`, four commands, and it now has a
+recorded reason to be run before a push rather than after a red CI.
