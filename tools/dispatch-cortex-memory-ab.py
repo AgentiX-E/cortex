@@ -364,14 +364,48 @@ def parse_argv(argv: list[str]) -> list[str]:
     return sets
 
 
+_TOKEN: str | None = None
+
+
 def token() -> str:
-    for line in open(".git/config"):
-        if "oauth2:" in line:
-            return line.split("oauth2:", 1)[1].split("@", 1)[0]
-    sys.exit("no oauth2 token in .git/config")
+    """The PAT from `.git/config`, read on first use rather than at import.
 
+    ## Why this is lazy, and the CI failure that made it so
 
-TOKEN = token()
+    It used to be `TOKEN = token()` at module level, which made **importing this module**
+    require a credential. That was invisible until `tools/__tests__/test_dispatch_overrides.py`
+    imported it to test `apply_overrides`, and CI failed with
+
+        SystemExit: no oauth2 token in .git/config
+
+    on all ten new tests: a test suite that cannot import the function it tests on a machine
+    that has no token. `tools/__tests__` is collected on every push, so the failure was not
+    about dispatch at all -- it was about a module-level side effect in a file whose pure
+    parts are worth testing.
+
+    The parts that matter here -- `apply_overrides`, `parse_argv`, `INPUTS` -- take no
+    credential. Only `req` does, so only `req` pays for one.
+    """
+    global _TOKEN
+    if _TOKEN is None:
+        # A missing file and a file without a token are different problems and get
+        # different sentences. `open` raising `FileNotFoundError` out of here would print a
+        # traceback about a path, when what the reader needs to know is "you are not in the
+        # checkout" -- and the fix for that is a different one from "this config has no
+        # token".
+        try:
+            config = open(".git/config").read().splitlines()
+        except FileNotFoundError:
+            sys.exit(
+                "no .git/config in the working directory: dispatch reads the token from the "
+                "checkout's own config, so run this from the repository root"
+            )
+        for line in config:
+            if "oauth2:" in line:
+                _TOKEN = line.split("oauth2:", 1)[1].split("@", 1)[0]
+                return _TOKEN
+        sys.exit("no oauth2 token in .git/config")
+    return _TOKEN
 
 
 def req(method: str, path: str, payload=None, allow_empty: bool = False):
@@ -383,7 +417,7 @@ def req(method: str, path: str, payload=None, allow_empty: bool = False):
     """
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(f"https://api.github.com{path}", data=body, method=method)
-    request.add_header("Authorization", f"Bearer {TOKEN}")
+    request.add_header("Authorization", f"Bearer {token()}")
     request.add_header("Accept", "application/vnd.github+json")
     if body:
         request.add_header("Content-Type", "application/json")

@@ -117,3 +117,55 @@ class TestTheRefusals:
         declared.add('cortex_memory')  # sent as `1`, and read by the bench entry point
         unknown = sorted(set(module.INPUTS) - declared)
         assert not unknown, f'INPUTS carries keys the workflow does not declare: {unknown}'
+
+
+class TestImportingNeedsNoCredential:
+    """The CI failure this script caused, reproduced in a test.
+
+    `dispatch-cortex-memory-ab.py` used to read the PAT at module level
+    (`TOKEN = token()`), so **importing** it required a credential. Nothing noticed until
+    this file imported it to test `apply_overrides`, and `Verify` failed with
+    `SystemExit: no oauth2 token in .git/config` on all ten tests -- on a runner, which
+    has no `.git/config` with an oauth2 token in it.
+
+    The reproduction is the point: run from a directory that is not a checkout, where the
+    import must succeed and only the accessor may fail.
+    """
+
+    def test_the_import_succeeds_outside_a_checkout(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        module = _module()
+        # Nothing was read at import time, and the module is usable.
+        assert module._TOKEN is None
+        assert module.apply_overrides(module.INPUTS, []) == module.INPUTS
+
+    def test_the_accessor_says_which_problem_it_has(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Two different problems, two different sentences.
+
+        A missing `.git/config` and a config without a token need different fixes, so the
+        first says "run this from the repository root" rather than reporting a path in a
+        traceback. Both are `SystemExit` because this is a script, and a script that cannot
+        dispatch should say so in one line.
+        """
+        monkeypatch.chdir(tmp_path)
+        module = _module()
+        with pytest.raises(SystemExit, match='no .git/config'):
+            module.token()
+
+        (tmp_path / '.git').mkdir()
+        (tmp_path / '.git' / 'config').write_text('[remote "origin"]\n', encoding='utf-8')
+        module = _module()
+        with pytest.raises(SystemExit, match='no oauth2 token'):
+            module.token()
+
+    def test_the_accessor_caches_a_token_it_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Read once rather than once per request, and reading a second time would pick up a
+        # rotated file rather than the token the run started with.
+        (tmp_path / '.git').mkdir()
+        (tmp_path / '.git' / 'config').write_text(
+            '[remote "origin"]\n\turl = https://oauth2:abc123@github.com/x/y\n', encoding='utf-8'
+        )
+        monkeypatch.chdir(tmp_path)
+        module = _module()
+        assert module.token() == 'abc123'
+        assert module._TOKEN == 'abc123'
