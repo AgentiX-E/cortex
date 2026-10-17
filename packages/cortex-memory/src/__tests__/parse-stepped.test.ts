@@ -149,3 +149,51 @@ describe('a stepped response is scored by its answer, not by its transcript', ()
     expect(parseAnswer(echoed)).toBe('2');
   });
 });
+
+/**
+ * The Step 1 list is the licence to decline, and a non-empty list withdraws it.
+ *
+ * ## The measurement behind this
+ *
+ * §13.53 priced run `39005914398`'s 82 declines against what their own coverage band is
+ * worth in the same capability: MR's 28 declines sit at 52.8% median coverage, inside the
+ * band where MR answers 67% correctly, so about 19 of them would have been right. TR's 41
+ * at 39.7% sit in a 48% band (about 20), IE's 13 at 42.9% in a 60% band (about 8).
+ *
+ * ## What the contract said, and what it now says
+ *
+ * It said: *"Do not reply INSUFFICIENT_EVIDENCE without first writing the Step 1 list."*
+ * That forbids a bare decline and **permits declining after a list** — and the lists the
+ * model writes are long. Of MR's 28 declines, every one names at least 7 gold turns and
+ * carries a median of 12, so the model is enumerating evidence and then declining with it
+ * in hand.
+ *
+ * The repair does not tell the model to answer more. It makes the list the deciding fact:
+ * **decline only when the list is empty.** An empty list is a real state — §13.51.2's
+ * 0-coverage band declines 100% of the time and is right to — while a non-empty list means
+ * there is a number to compute, even if the list is short.
+ */
+describe('a non-empty Step 1 list withdraws the licence to decline', () => {
+  const session: AdmittedSession = {
+    index: 0,
+    size: 2,
+    turns: [turn('I planned a project in Nigeria.'), turn('I was promoted.')],
+  };
+
+  const sessionPrompt = (): string =>
+    buildSessionPrompt('How many events are there?', [session], { ask: 'enumerated' }).prompt;
+
+  it('says a decline needs an empty list, not merely a written one', () => {
+    const prompt = sessionPrompt();
+    expect(prompt).toContain('only when the Step 1 list is empty');
+    // The stronger sentence does not replace the older one: a bare decline is still refused,
+    // because an empty Step 1 must be WRITTEN as well as be empty.
+    expect(prompt).toContain('without first writing the Step 1 list');
+  });
+
+  it('says what Step 2 must do with a list that has items', () => {
+    const prompt = sessionPrompt();
+    expect(prompt).toContain('Step 2 must state the number computed from it');
+    expect(prompt).toContain('even when you believe the list is incomplete');
+  });
+});

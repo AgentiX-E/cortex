@@ -7019,3 +7019,174 @@ that is already in flight.
 - The "expected recoverable" column multiplies a count by a rate from the same band of the same capability. It is
   labelled an **upper bound** because it assumes each decline would have behaved like its band's average, which is
   the assumption §13.53.2 refuses to make on the model's behalf.
+
+---
+
+## 13.54 `k = 256`: the pool widened, the coverage did not, and the delta is inside the noise
+
+### 13.54.1 The run
+
+`795077a9`, `11:05:26Z` → `12:56:27Z`, **1h51m01s**, `success`, artifact 6,911,452 bytes. One variable against
+§13.45's configuration: `relevanceTopK` from 64 to 256.
+
+| line | value |
+| --- | --- |
+| `Restored` | 262,456 vectors |
+| `Relevance index: 128000 scored …` | **21 seconds**, at `topK=256` — four times the pairs, three seconds more than `k = 64` |
+| `Embedding cache: persisted` | 262,607 (151 new) |
+| `scorer channels` | `structural 1433, exact 789, numeric 362, judge 1416/4000 = 35.4%` — against `k = 64`'s `1444 / 791 / 340 / 1425` |
+
+The channel line is almost unchanged, and that was the first sign: **`structural` is the door an absent answer
+leaves by, and it did not move.**
+
+### 13.54.2 The five predictions
+
+| # | registered in §13.51.4 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | median coverage rises: MR ≥ 60%, TR's declines ≥ 50% | MR **54.5%**, TR's declines **32.8%** | **falsified, and TR moved the wrong way** |
+| **2** | the delta rises above +26.95pp | **+28.15pp** | **met**, by +1.20pp |
+| **3** | the declines fall: TR ≤ 30, MR ≤ 24 | TR **37**, MR **32** | **falsified** — MR *rose* by 4 |
+| **4** | ABS, IE, KU do not regress beyond 3 | ABS 0, IE **−2**, KU **−1** | **met** |
+| **5** | the index build stays under 5 minutes | **21 seconds** | **met** |
+
+### 13.54.3 What the falsification means: the pool was not the constraint
+
+§13.51 reasoned that `topK` is a candidate pool and that widening it would put more gold turns in front of the
+ranking. **The coverage did not rise.** MR's median coverage on the questions it answers is 54.5% against 54.2%,
+and TR's decline median **fell** from 39.7% to 32.8%.
+
+The coverage table still predicts accuracy — it did at `k = 64` and it does here, band for band — so coverage is
+still the constraint. **What is falsified is that `k` is the lever on it.** A plausible reading, and it is a reading
+rather than a finding: the window is bound by the **character budget**, not by the pool, so the 47 turns admitted
+are chosen from 64 or from 256 and the extra 192 candidates are turns whose similarity score is close to the 47th's
+— substitutes, not additions. Reciprocal-rank fusion over more candidates can reorder the same window without
+enlarging it.
+
+### 13.54.4 The delta, and why it is not adopted
+
+`+28.15pp` against `+26.95pp` is a difference of **1.20pp**, and three facts say it is not evidence:
+
+- **The repetitions disagree more than the runs do.** `k = 256`'s four repetitions span `0.708–0.738` (3.0pp) and
+  `k = 64`'s span `0.714–0.726` (1.2pp), so the run-to-run difference is smaller than one run's own spread.
+- **The baselines moved by 0.7pp** (0.4495 → 0.4425), which is more than half of the delta's movement, and the
+  baseline is not under treatment.
+- **The capabilities trade rather than improve**: MR −2, IE −2, KU −1, TR +2. A real improvement in the mechanism
+  the registration named would not cost two questions in MR, which is the capability whose coverage it was
+  supposed to raise.
+
+So `k = 256` is **not adopted**. `k = 64` stays the registered value, and the reason is stated rather than the
+`+28.15pp` being quoted: **the higher delta belongs to a configuration that regressed on the capability the
+hypothesis was about.**
+
+This is the campaign's own rule applied to a number that went the right way — §13.45 adopted `+26.95pp` over
+`+25.75pp` on a mechanism the channel table supported, and this one has no such support.
+
+### 13.54.5 What it settles, and the decision rule it triggers
+
+§13.53.3 registered a decision rule rather than a prediction: *"if the declines barely move, the evidence for a
+contract change is this table, and it is strong."*
+
+**The declines barely moved, and in the wrong directions.** Total declines 82 → 83 (MR 28 → 32, TR 41 → 37, IE 13
+→ 13, KU 0 → 1). §13.53 priced 82 declines at roughly 47 recoverable questions; nothing in `k = 256` recovered any
+of them.
+
+**So the next variable is the contract, not the pool.** That is §13.55.
+
+### 13.54.6 Verification
+
+- `pnpm check` **exit 0** at `cdc046fd`; `Verify` **success**. No code changed in this section.
+- Every number came from the two committed tools: `python3 tools/readout-arm-run.py --reference` for the delta and
+  the per-capability counts, and `--coverage` for the band and median tables. The `k = 64` comparison numbers are
+  the same tools run on run `39005914398`'s artifact.
+- **Predictions 1 and 3 are reported as falsified**, including the sign of prediction 1's TR movement, and the
+  `+1.20pp` delta is declined on three stated grounds rather than on a preference.
+
+---
+
+## 13.55 The contract made the list the licence to decline, and a non-empty list withdraws it
+
+### 13.55.1 What it said
+
+```text
+Do not reply INSUFFICIENT_EVIDENCE without first writing the Step 1 list:
+a bare INSUFFICIENT_EVIDENCE with no list is not a valid response.
+```
+
+That forbids a **bare** decline and permits declining **after a list** — and the lists this contract produces are
+long. Of run `39005914398`'s 28 MR declines, **every one names at least 7 gold turns** (median 24) and carries a
+median of 12. The model is enumerating evidence and then declining with it in hand.
+
+### 13.55.2 What it says
+
+```text
+Reply INSUFFICIENT_EVIDENCE only when the Step 1 list is empty. If it has at least one item,
+Step 2 must state the number computed from it — the count of the items you listed, the total
+of the amounts you listed, or the value it names — even when you believe the list is incomplete.
+```
+
+**It does not ask the model to answer more.** It makes the list the deciding fact. An **empty** list is a real
+state and declining on it is right — §13.51.2's 0-coverage band declines 100% of the time and is correct to. A
+non-empty list means there is a number to compute, whatever the list is missing.
+
+The older sentence stays, because an empty Step 1 must be **written** as well as be empty, and the two together
+say: write the list, and let its contents decide.
+
+### 13.55.3 Reach, which is what makes this a single variable
+
+The sentence is inserted into `ENUMERATION_CONTRACT`, which reaches **the multi-session route alone** — the
+property §13.34 established and `evidence-ask-reach.test.ts` asserts byte-for-byte: on `flat` and `temporal`,
+`enumerated` and `computed` build the same prompt. So:
+
+| route | affected | why |
+| --- | --- | --- |
+| multi-session (MR) | **yes** | the only route that receives the two-step contract |
+| flat, temporal (IE, KU, TR) | no | byte-identical to `computed` |
+| abstention (ABS) | no | its own block, and §13.34 deliberately keeps `abstention` out of reach |
+
+### 13.55.4 Registration
+
+**One variable**: the contract sentence. Every input held at §13.45's values, `k = 64` (§13.54 declined `k = 256`).
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **MR's declines fall by at least a third**: 28 → **≤ 18** | above 22 |
+| **2** | **The delta rises above +26.95pp** — the net of declines recovered against answers newly wrong | at or below +26.95pp |
+| **3** | **Some declines become wrong answers**, and the taxonomy shows it: MR's `numeric_mismatch` rises above **24** | `numeric_mismatch` does not rise |
+| **4** | **Nothing outside MR moves**: ABS, IE, KU, TR within 2 questions | any moves by more than 2 |
+| **5** | **MR's median coverage on its declines does not fall.** A forced answer should be computed from the same evidence, not from worse evidence | declines' median coverage drops below 50% |
+
+**Predictions 1 and 3 are a pair and that is the point.** §13.53 priced the declines at ≈47 recoverable questions
+and called it an **upper bound** precisely because a contract that pushes the model to answer converts some correct
+declines into wrong answers. A run that showed only prediction 1 and not 3 would be suspicious: it would mean the
+declines had no evidence behind them at all, which §13.53's band table says is false for at least half of them.
+
+**Prediction 5 is the one that distinguishes two mechanisms.** If the forced answers come with a coverage drop, the
+model is answering from worse evidence — guessing — and the contract is trading accuracy for answers. If coverage
+holds, it is computing from what it had and declining less often, which is the intended change.
+
+**The reading rule.** If 2 holds, the contract is adopted and the next question is whether the same trick helps TR
+(whose declines are 41 and whose block is a different one). If 2 fails while 1 and 3 hold, the trade is real and
+negative: the right response is to revert the sentence and record that the declines were largely correct. Either
+way the `numeric_mismatch` movement is the number that says what the trade cost.
+
+### 13.55.5 Verification
+
+- `pnpm check` **exit 0**; `cortex-memory` **347 tests** (+2); four coverage dimensions **100%**.
+- **Red first in the sense that matters**: the two new assertions are about text the prompt did not contain, and
+  the third test — that the sentence does not reach the flat route — was written, found to duplicate a property
+  `evidence-ask-reach.test.ts` already asserts byte-for-byte, and **removed rather than kept as a weaker copy**.
+  Its 37 tests pass unchanged, which is the check that this section's change is confined.
+- The reach table is not an assertion in this section; it is `evidence-ask-reach.test.ts`'s existing one, and the
+  reason it is quoted is that this change would be a two-variable dispatch if it were false.
+
+### 13.55.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The contract change is **dispatched**; §13.55.4's five predictions are registered | yes (in flight) |
+| **P0 (done)** | Configuration (§13.45), its load-bearing signal (§13.50), `k` excluded as the lever (§13.54), the declines priced (§13.53) | no |
+| **P1** | If the contract holds: the same question for **TR**, whose 41 declines are the largest block and whose block is not the enumerated one | yes |
+| **P1** | A better no-signal control (§13.50.4): random turns, turning −64.30pp from an upper bound into a contribution | yes |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |

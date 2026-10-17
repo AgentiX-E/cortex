@@ -519,6 +519,19 @@ const ENUMERATION_CONTRACT = [
   `Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.`,
   'Step 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.',
   `Do not reply ${ABSTAIN_TOKEN} without first writing the Step 1 list: a bare ${ABSTAIN_TOKEN} with no list is not a valid response.`,
+  // §13.55: the list is the LICENCE to decline, and a list with items withdraws it.
+  //
+  // The sentence above forbids a bare decline and permits declining after a list, and the
+  // lists this contract produces are long -- every one of run `39005914398`'s 28 MR declines
+  // names at least 7 gold turns and carries a median of 12. So the model was enumerating
+  // evidence and then declining with it in hand, and §13.53 priced those declines at roughly
+  // 47 correct answers across three capabilities at their own coverage bands' rates.
+  //
+  // This does not ask the model to answer more. It makes the list the deciding fact: an
+  // EMPTY list is a real state and declining on it is right (§13.51.2's 0-coverage band
+  // declines 100% of the time and is correct to); a non-empty list means there is a number
+  // to compute, whatever the list is missing.
+  `Reply ${ABSTAIN_TOKEN} only when the Step 1 list is empty. If it has at least one item, Step 2 must state the number computed from it -- the count of the items you listed, the total of the amounts you listed, or the value it names -- even when you believe the list is incomplete.`,
 ].join('\n');
 
 /** The multi-session block under `enumerated`: computed's, plus the two-step contract. */
