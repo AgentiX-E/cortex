@@ -695,6 +695,12 @@ forwarded into a step's `env`. Three injections were run against it:
   ask is held at §13's value rather than reverted, because reverting it would restore
   the shipped per-route blocks and change the surface the evidence capture is being
   read from.
+  *(**status: provisional.** §13.41.6 registers the dispatch that decides it, and prediction 3
+  is that decision: above `+25.75pp` this ask is the arm's registered configuration, at or
+  below it `computed` is restored and `enumerated` becomes an ablation reference. Until that
+  number exists, this entry states what has been **sent**, not what has been **established**.
+  The two readings that made it provisional are §13.40's `+26.75pp`, which was a transcript
+  being judged, and §13.41's `+23.25pp`, which was a gate reading an operand.)*
   **That reason expired, and §13.20 is what expired it.** The capture is independent of
   the ask since §13.19 -- `goldOverlap` is measured against the captured context, not
   against the prompt -- so the fixed surface is no longer load-bearing. What replaced it
