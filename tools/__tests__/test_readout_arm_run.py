@@ -632,3 +632,92 @@ class TestWhetherTheModelCountedWhatItListed:
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert '1 of 1' in r.stdout
+
+
+class TestThePairedTransitionBetweenTwoRuns:
+    """Two rosters, one question at a time, because a count cannot show a mechanism.
+
+    §13.56.3 needed this and wrote it inline; §13.59.5 then needed it again. That is the
+    fourth time this campaign has paid for the same script, and §13.38's rule is the reason
+    it belongs here: a comparison that decides a reading has to be re-derivable.
+
+    ## The instrument it measures
+
+    The same comparison on questions whose **prompt did not move** is the cross-draw noise
+    floor -- 6.1% of them change state between two runs (§13.56.4). Without that number the
+    movement on the capability under treatment has nothing to be compared against, and a
+    registered tolerance of "two questions" is unverifiable in both directions.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, bool, object]]) -> dict:
+        questions = [
+            {
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': '3',
+                'answer': answer,
+                'rawOutput': answer if isinstance(answer, str) else None,
+                'correct': correct,
+            }
+            for index, (capability, correct, answer) in enumerate(rows)
+        ]
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, before: dict, after: dict) -> 'subprocess.CompletedProcess[str]':
+        first = tmp_path / 'before.json'
+        second = tmp_path / 'after.json'
+        first.write_text(json.dumps(before), encoding='utf-8')
+        second.write_text(json.dumps(after), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--paired', str(second), str(first)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_reports_a_decline_that_became_correct(self, tmp_path: Path) -> None:
+        before = self._report([('MR', False, None)])
+        after = self._report([('MR', True, '3')])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 0, r.stderr
+        assert 'abstention' in r.stdout
+        assert 'correct' in r.stdout
+        assert '1' in r.stdout
+
+    def test_it_separates_a_decline_that_became_a_wrong_answer(self, tmp_path: Path) -> None:
+        # §13.56.3's finding, in one row: the contract moved two declines into wrong answers
+        # and three into correct ones, and only the transition table can say that.
+        before = self._report([('MR', False, None), ('MR', False, None)])
+        after = self._report([('MR', False, '2'), ('MR', True, '3')])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 0, r.stderr
+        assert 'numeric_mismatch' in r.stdout
+
+    def test_it_counts_the_state_changes_so_the_noise_floor_is_computable(
+        self, tmp_path: Path,
+    ) -> None:
+        # The number §13.56.4 uses as the instrument: how many questions changed state at all,
+        # per capability, over the questions that had a state to change.
+        before = self._report([('TR', True, '3'), ('TR', True, '3')])
+        after = self._report([('TR', True, '3'), ('TR', False, None)])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 0, r.stderr
+        assert 'changed state' in r.stdout
+        assert '1 of 2' in r.stdout
+
+    def test_a_question_that_is_missing_from_one_side_is_not_a_transition(
+        self, tmp_path: Path,
+    ) -> None:
+        # Two rosters of the same dataset must name the same questions. A missing id is a
+        # defect in one of the reports, and counting it as a change would inflate the noise
+        # floor in the direction that hides a real effect.
+        before = self._report([('MR', True, '3'), ('MR', True, '3')])
+        after = self._report([('MR', True, '3')])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 2
+        assert 'missing' in r.stderr.lower()

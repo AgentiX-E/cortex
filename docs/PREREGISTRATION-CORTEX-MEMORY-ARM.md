@@ -7278,6 +7278,22 @@ At 6.1%, the expected number of state changes in KU's 72 questions is **4.4**. T
 prediction 4 is falsified as written, and the falsification says the threshold was wrong rather than that the
 change leaked. Both halves of that sentence belong in the record; the second does not cancel the first.
 
+**The 6.1% is an average, and that is the second half of the correction.** `--paired` prints the rate per
+capability, and the four untouched capabilities do not share one:
+
+| capability | questions | changed state | rate |
+| --- | --- | --- | --- |
+| ABS | 30 | **0** | 0.0% |
+| IE | 150 | 2 | 1.3% |
+| KU | 72 | 6 | 8.3% |
+| TR | 127 | 15 | **11.8%** |
+
+So "two questions" is far below resolution for TR (15 expected) and KU (6), and it is **above** it for ABS and
+IE. A single number would have been a better instrument than a guess and a worse one than four, and it is worth
+saying which one this is: **the noise floor is a property of the capability, not of the run.** Every future
+tolerance in this document is registered per capability with that capability's own rate beside it, or it is
+registered as a direction rather than a count.
+
 ### 13.56.5 Prediction 2 fails, so the sentence is retired — and the replacement is not a second guess
 
 The registered reading rule was: *"If 2 fails while 1 and 3 hold, the trade is real and negative: the right

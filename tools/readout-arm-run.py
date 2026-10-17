@@ -34,6 +34,7 @@ Usage:
     python3 tools/readout-arm-run.py --declines path/to/report.json
     python3 tools/readout-arm-run.py --union path/to/report.json
     python3 tools/readout-arm-run.py --counted path/to/report.json
+    python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
 from __future__ import annotations
@@ -621,6 +622,72 @@ def _as_int(token: str) -> int | None:
         return None
 
 
+def paired_section(
+    after: list[dict], before: list[dict]
+) -> tuple[str, dict[str, int]]:
+    """The state-transition matrix between two rosters, per capability.
+
+    ## What this answers that a count cannot
+
+    A per-capability count says a capability moved from 28 declines to 23. It cannot say
+    whether the five that stopped declining became correct, became wrong answers, or became
+    prose -- and §13.56.3's whole finding was that 3 of them became correct while 2 became
+    `numeric_mismatch`. Two runs with the same totals can have those rows swapped.
+
+    ## The noise floor is the same number on untouched questions
+
+    `changed state` is printed per capability so the comparison can be made against the
+    capabilities whose prompt did not move. That is the 6.1% of §13.56.4, and without it a
+    registered tolerance of two questions has nothing to be measured against.
+
+    ## Missing ids are a defect, not a transition
+
+    Two rosters of one dataset name the same questions. Counting an id that appears on one
+    side only as "changed state" would inflate the noise floor in the direction that hides a
+    real effect, so it raises instead.
+    """
+    classifier = _load_classifier()
+    before_by_id = {str(question.get('questionId')): question for question in before}
+    after_by_id = {str(question.get('questionId')): question for question in after}
+    if set(before_by_id) != set(after_by_id):
+        missing = sorted(set(before_by_id) ^ set(after_by_id))
+        raise ValueError(
+            f'the two rosters do not name the same questions: {len(missing)} id(s) are missing '
+            f'from one side ({", ".join(missing[:5])}{"..." if len(missing) > 5 else ""}). '
+            'A missing id counted as a transition would inflate the noise floor.'
+        )
+
+    def state(question: dict) -> str:
+        return 'correct' if question.get('correct') else classifier.failure_shape(question)
+
+    by_capability: dict[str, list[str]] = {}
+    for identifier, question in after_by_id.items():
+        by_capability.setdefault(str(question.get('capability', '?')), []).append(identifier)
+
+    lines = ['', 'state transitions, before -> after (states from the shared taxonomy)']
+    changed_totals: dict[str, int] = {}
+    for capability in sorted(by_capability):
+        identifiers = by_capability[capability]
+        transitions: dict[tuple[str, str], int] = {}
+        changed = 0
+        for identifier in identifiers:
+            was = state(before_by_id[identifier])
+            now = state(after_by_id[identifier])
+            transitions[(was, now)] = transitions.get((was, now), 0) + 1
+            if was != now:
+                changed += 1
+        changed_totals[capability] = changed
+        lines.append(
+            f'  {capability}: changed state {changed} of {len(identifiers)} '
+            f'({changed / len(identifiers):.1%})'
+        )
+        for (was, now), count in sorted(transitions.items(), key=lambda item: -item[1]):
+            if was == now:
+                continue
+            lines.append(f'     {was:>18} -> {now:<18} {count}')
+    return '\n'.join(lines), changed_totals
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -648,6 +715,12 @@ def main(argv: list[str]) -> int:
         '--counted',
         action='store_true',
         help='print whether MR wrong answers equal the length of their own Step 1 list',
+    )
+    parser.add_argument(
+        '--paired',
+        type=Path,
+        metavar='BEFORE',
+        help='print the state transitions from the BEFORE report to this one',
     )
     args = parser.parse_args(argv)
 
@@ -681,6 +754,24 @@ def main(argv: list[str]) -> int:
     if args.union:
         try:
             section, gap = union_section(report, questions)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.paired:
+        try:
+            previous = json.loads(args.paired.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.paired}: {error}', file=sys.stderr)
+            return 2
+        before_questions = _questions(previous)
+        if before_questions is None:
+            print(f'{args.paired}: no per-question roster in this report', file=sys.stderr)
+            return 2
+        try:
+            section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
