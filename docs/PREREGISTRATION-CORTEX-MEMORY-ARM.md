@@ -6759,3 +6759,120 @@ as good — and it is one variable.
 **The campaign's oldest open question is answered, and the answer is bigger than the question.** §13.22.8 asked
 whether the arm's gain came from the extra turns or from the ordering. It came from the ordering — so completely
 that without it there is no arm left to measure: 6.35%, two correct answers outside ABS, one per capability.
+
+---
+
+## 13.51 What actually limits the arm, measured before the next dispatch
+
+### 13.51.1 The failure taxonomy of the configuration, per capability
+
+Run `39005914398`'s roster, classified by `tools/classify-raw-outputs.py --failures` (§13.42's field — the graded
+answer, not the transcript):
+
+| capability | correct | abstention | numeric | long_prose | other | plan |
+| --- | --- | --- | --- | --- | --- | --- |
+| ABS | 29/30 | — | — | — | 1 | — |
+| IE | 135/150 | **13** | — | 2 | — | — |
+| KU | 61/72 | — | 7 | 1 | 3 | — |
+| **MR** | **62/121** | **28** | **24** | 1 | 6 | — |
+| **TR** | **70/127** | **41** | 5 | 9 | 1 | 1 |
+
+**82 of the 143 failures are declines**, and they are not evenly spread: TR declines on 41 of its 57 failures
+(72%), MR on 28 of 59 (47%), IE on 13 of 15 (87%). The campaign has spent six sections on MR's arithmetic and the
+largest single failure mode is a model that says it cannot answer.
+
+### 13.51.2 Whether that is "the evidence is not there" or "it is there and unused"
+
+Every record carries `goldOverlap: {carried, total}` — the share of the question's gold turns that were in the
+window the reader was shown. Across all 500 questions:
+
+| gold coverage | n | correct | declined |
+| --- | --- | --- | --- |
+| 0% | 2 | 0.0% | **100.0%** |
+| 1–24% | 43 | 37.2% | 46.5% |
+| 25–49% | 120 | 55.0% | 20.0% |
+| 50–74% | 183 | 77.0% | 13.1% |
+| 75–99% | 99 | 82.8% | 12.1% |
+| **100%** | 53 | **98.1%** | **0.0%** |
+
+**Coverage predicts accuracy monotonically, from 0% to 98.1%, and at full coverage there are no declines at all.**
+That is the strongest single relationship this campaign has measured, and it says the arm's ceiling is set by what
+reaches the window.
+
+Split by outcome:
+
+| | MR median coverage | TR median coverage |
+| --- | --- | --- |
+| correct | 54.2% | 58.3% |
+| **declined** | **52.8%** | **39.7%** |
+| answered wrong | 37.0% | 45.8% |
+
+**The two capabilities' declines have different causes, and that is the finding:**
+
+- **TR's declines are a coverage problem.** 39.7% against 58.3% for the questions it answers correctly — a 19-point
+  gap. The evidence is not in the window, so declining is right.
+- **MR's declines are not.** 52.8% against 54.2% — a 1.4-point gap, inside the noise. The evidence **is** there at
+  the same rate as on the questions it answers, and the model declines anyway.
+- **MR's wrong answers sit at 37.0%**, below its declines. So MR has two distinct populations: questions whose
+  evidence is largely missing (answered wrong, 37%), and questions whose evidence is present (answered or
+  declined, ~53%), where the split is a decision rather than a retrieval failure.
+
+### 13.51.3 What that makes the next variable, and it is not the one §13.50.5 proposed
+
+§13.50.5 named `k = 16` as the follow-on, on the theory "does the ranking need a wide field". The coverage table
+says the opposite question is the live one: **the field may be too narrow, not too wide.**
+
+`relevanceTopK: 64` is a **candidate pool**, not the room. `retrieveTopKByQueries` fuses the per-query rankings and
+takes `slice(0, topK)`, so a question's 47 admitted turns were chosen from 64 candidates — **a 27% filter**. The
+room holds 256 turns and the character budget binds first, so widening the pool does not enlarge the window; it
+changes **which** 47 turns are in it.
+
+That is exactly the lever the coverage table responds to. Widening `k` raises the chance that a question's gold
+turns are among the candidates at all, and 100% coverage is worth 98.1% accuracy.
+
+### 13.51.4 Registration
+
+**One variable**: `cortex_memory_relevance_top_k` from **64** to **256**. Every other input held at §13.45's values.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **Median gold coverage rises.** MR from 52.8% (declines) / 54.2% (correct) to at least **60%**, and TR's declines from 39.7% to at least **50%** | MR median below 56%, or TR's decline median below 45% |
+| **2** | **The delta rises above +26.95pp**, because coverage is the mechanism and the table is monotone | at or below +26.95pp |
+| **3** | **The declines fall**, most of the drop in TR: TR's 41 declines fall to at most **30**, MR's 28 to at most **24** | either unchanged or higher |
+| **4** | **The other capabilities do not regress beyond 3 questions**: widening a pool should not take anything away | any of ABS, IE, KU falls by more than 3 |
+| **5** | **The index build stays under 5 minutes.** It was 18s at `k = 64`; `k = 256` is four times the per-question candidates and the same 32,000 scored pairs | over 5 minutes |
+
+**Prediction 5 is a guard rather than a hypothesis**, and it is registered because the alternative is discovering a
+20-minute index in the run's timing rather than in advance. The embedding cache is converged (`262,456` vectors,
+138 new in the last run), so this run's index cost is the only new work.
+
+**The reading rule.** If prediction 1 holds and 2 holds, `k` becomes a parameter to tune rather than a constant,
+and the next dispatch is `k = 1024` or a two-point curve. If prediction 1 holds and 2 **fails**, then coverage is
+not the mechanism after all — the table is correlational — and the honest next step is to read the records where
+coverage rose but accuracy did not. If prediction 1 fails, `k = 64` is not the constraint, and the coverage table's
+monotonicity has some other cause that this dispatch cannot see.
+
+### 13.51.5 Verification
+
+- The taxonomy and the coverage table are **not** from an inline script: the census is
+  `tools/classify-raw-outputs.py`'s `failure_census` (§13.42), and the coverage table reads `goldOverlap` straight
+  off the artifact, which is what `QuestionRecord` writes for the memory arm (§13.33.3).
+- `pnpm check` **exit 0** at `231a49f6`, `Verify` **success**; no code changes in this section, so the coverage
+  numbers are unchanged from the run that produced them.
+
+### 13.51.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | `relevanceTopK: 256` is **dispatched**; §13.51.4's five predictions are registered | yes (in flight) |
+| **P0 (done)** | The configuration (§13.45), its load-bearing signal (§13.50), and now the measured reason `k` is the constraint (§13.51.2) | no |
+| **P1** | **MR's declines are not a coverage problem** (§13.51.2): 52.8% coverage against 54.2% on correct answers. Once `k` is settled, the next question is why a model shown the same amount of evidence declines on some questions and answers on others — a contract question, and the same shape as §13.40's | yes |
+| **P1** | A better no-signal control (§13.50.4): random turns, to turn −64.30pp from an upper bound into a contribution | yes |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+**The uncomfortable part, stated plainly:** §13.50.5 named the wrong next variable, one section ago, on a theory
+rather than a measurement. The coverage table took twenty minutes to produce and would have saved a dispatch.
+**That is the argument for reading the records before choosing the variable**, and it is why §13.41's and §13.50's
+mistakes look different from this one: those were instruments misreading, and this was a plan made without looking.
