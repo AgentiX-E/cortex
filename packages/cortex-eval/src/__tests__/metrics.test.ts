@@ -8,6 +8,8 @@ import {
   mcnemarPValue,
   exactMatchScorer,
   judgeScorer,
+  describeScorerChannels,
+  scorerChannelStats,
   extractLeadingNumber,
   isCountingQuestion,
   numericAnswerVerdict,
@@ -407,5 +409,157 @@ describe('cohensD and tTestPValue', () => {
 
   it('tTestPValue is tiny for clearly separated samples', () => {
     expect(tTestPValue([0.1, 0.2, 0.15], [0.9, 0.95, 0.85])).toBeLessThan(0.01);
+  });
+});
+
+/**
+ * The scorer reports WHICH channel decided each verdict.
+ *
+ * ## Why this is an instrument and not a convenience
+ *
+ * Run `38953157688` (`ask: enumerated`) raised MR's accuracy by 4.95pp, and the
+ * rise was entirely decided by the LLM judge: across MR the mechanical channels --
+ * normalized equality and the numeric gate -- decided 86 of 121 verdicts before the
+ * ask changed and 33 after, and **not one of their post-change verdicts was true**,
+ * while the median answer length went from 3 characters to 349. Every number the
+ * register recorded for that ask was therefore a joint statement about the answer
+ * contract and about `judgeScorer`'s tolerance of a long enumerated list, and the
+ * register named only the first half.
+ *
+ * That split had to be reverse-engineered from the artifact offline, with a stubbed
+ * judge, because nothing in the run reported it. This makes the run report it.
+ *
+ * ## What is counted, and why the four are enough
+ *
+ * A verdict leaves `judgeScorer` through one of exactly four doors: the structural
+ * rule for a gold that expects an abstention, normalized equality, the numeric gate,
+ * or the judge. Counting the doors is therefore exhaustive by construction rather
+ * than by a convention a later edit could break, and the test below asserts the
+ * identity so that a fifth door cannot be added without being counted.
+ */
+describe('scorerChannelStats', () => {
+  const judge = async (): Promise<boolean> => true;
+
+  /**
+   * The change in each channel across `body`.
+   *
+   * A delta rather than an absolute, because the counters are cumulative and have no
+   * reset: that is deliberate (one arm's process serves one run), and asserting the
+   * change is the stronger form anyway -- a counter that had been zeroed between the
+   * two reads would satisfy an absolute assertion and would prove less.
+   */
+  async function delta(body: () => Promise<void>): Promise<{
+    structural: number;
+    exact: number;
+    numeric: number;
+    judge: number;
+    verdicts: number;
+  }> {
+    const before = scorerChannelStats();
+    await body();
+    const after = scorerChannelStats();
+    return {
+      structural: after.structural - before.structural,
+      exact: after.exact - before.exact,
+      numeric: after.numeric - before.numeric,
+      judge: after.judge - before.judge,
+      verdicts: after.verdicts - before.verdicts,
+    };
+  }
+
+  it('attributes each verdict to the door it left by', async () => {
+    const scorer = judgeScorer(judge as never);
+    const moved = await delta(async () => {
+      // structural: the gold expects an abstention, decided without any comparison.
+      await scorer({ question: 'q', expected: null, questionType: undefined } as never, null);
+      // exact: normalized equality, decided without the judge.
+      await scorer({ question: 'q', expected: 'Paris', questionType: undefined } as never, 'paris');
+      // numeric: the counting gate, decided without the judge.
+      await scorer(
+        { question: 'How many books?', expected: '3', questionType: undefined } as never,
+        '3 books',
+      );
+      // judge: nothing mechanical could decide it. The stub returns true.
+      await scorer(
+        { question: 'Why did they move?', expected: 'for work', questionType: undefined } as never,
+        'because of a new job',
+      );
+    });
+
+    expect(moved).toEqual({ structural: 1, exact: 1, numeric: 1, judge: 1, verdicts: 4 });
+  });
+
+  it('does not charge a mechanically decided verdict to the judge', async () => {
+    // The precision the whole instrument rests on. A counter that incremented
+    // `judge` on every call would report the same total and would say nothing about
+    // the shift that made run 38953157688 unreadable.
+    let judgeCalls = 0;
+    const counting = async (): Promise<boolean> => {
+      judgeCalls += 1;
+      return true;
+    };
+    const scorer = judgeScorer(counting as never);
+    const moved = await delta(async () => {
+      await scorer({ question: 'q', expected: 'Paris', questionType: undefined } as never, 'paris');
+    });
+
+    expect(judgeCalls).toBe(0);
+    expect(moved.judge).toBe(0);
+    expect(moved.exact).toBe(1);
+  });
+
+  it('the four doors partition the verdicts', async () => {
+    // Asserted as an identity rather than intended, for the reason `RetryStats`
+    // gives one package down: a partition that is only intended lets a fifth door
+    // report nothing and leave the total still looking complete.
+    const scorer = judgeScorer(judge as never);
+    const cases: [string | null, string | null][] = [
+      [null, null],
+      [null, 'an answer where none was wanted'],
+      ['Paris', 'paris'],
+      ['Paris', 'London'],
+      ['3', '4'],
+      ['3', ''],
+      ['for work', 'because of a new job'],
+      ['for work', null],
+    ];
+    const moved = await delta(async () => {
+      for (const [expected, answer] of cases) {
+        await scorer(
+          { question: 'How many books?', expected, questionType: undefined } as never,
+          answer as never,
+        );
+      }
+    });
+
+    expect(moved.structural + moved.exact + moved.numeric + moved.judge).toBe(moved.verdicts);
+    expect(moved.verdicts).toBe(cases.length);
+    // Both abstention shapes are structural, and neither is scored as a match.
+    expect(moved.structural).toBe(3);
+  });
+});
+
+describe('describeScorerChannels', () => {
+  it('names the share the judge decided, which is the number a reader needs', () => {
+    const line = describeScorerChannels({
+      structural: 0,
+      exact: 37,
+      numeric: 0,
+      judge: 35,
+      verdicts: 72,
+    });
+    expect(line).toContain('judge 35/72 = 48.6%');
+    expect(line).toContain('exact 37');
+  });
+
+  it('does not divide by zero before any verdict', () => {
+    const line = describeScorerChannels({
+      structural: 0,
+      exact: 0,
+      numeric: 0,
+      judge: 0,
+      verdicts: 0,
+    });
+    expect(line).toContain('judge 0/0 = n/a');
   });
 });

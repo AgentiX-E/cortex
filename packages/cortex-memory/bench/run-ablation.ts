@@ -71,7 +71,12 @@ import {
   type PromptContract,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { REDUCED_TURNS_MARKER, serializeReportOrReduce } from '@agentix-e/cortex-eval';
+import {
+  REDUCED_TURNS_MARKER,
+  describeScorerChannels,
+  scorerChannelStats,
+  serializeReportOrReduce,
+} from '@agentix-e/cortex-eval';
 
 /**
  * The evidence bound used when the dispatch did not name one.
@@ -518,6 +523,15 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(result.report.abstentionReasons));
   }
 
+  // Which channel decided each verdict, printed beside the run that produced them.
+  //
+  // Run `38953157688` raised MR's accuracy by 4.95pp and the entire rise came from
+  // the LLM judge: the mechanical channels decided 86 of MR's 121 verdicts before the
+  // ask changed and 33 after, none of the latter true. Nothing in that run said so,
+  // and the split had to be reconstructed offline from the artifact with a stubbed
+  // judge. §13.40.9 registers this line as the fix.
+  console.log(`=== ${describeScorerChannels(scorerChannelStats())} ===`);
+
   console.log('=== cortex-memory ablation ===');
   console.log(result.markdown);
 }
@@ -579,6 +593,10 @@ main().catch((error: unknown) => {
     console.error('=== exhausted provider call ===');
     console.error(JSON.stringify(exhaustion));
   }
+  // The channel split matters MOST on a failure: a run that died mid-pass has no
+  // artifact to reconstruct it from, and this is the only record of which scorer the
+  // answers it did grade went through.
+  console.error(`=== ${describeScorerChannels(scorerChannelStats())} ===`);
   console.error('=== transport retry accounting (process-wide) ===');
   console.error(JSON.stringify(retryStats()));
   console.error(summary);

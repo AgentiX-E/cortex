@@ -297,20 +297,103 @@ function countDistinctEvaluableNumbers(value: unknown): number {
   return new Set(matches.map((m) => m.replace(/,/g, ''))).size;
 }
 
+/**
+ * The four ways a verdict leaves `judgeScorer`.
+ *
+ * A union rather than a runtime list, because nothing iterates it: the partition is
+ * enforced by `counted`'s parameter type, so a fifth door cannot be added without
+ * naming a channel, and `ScorerChannelStats` then requires a counter for it. An
+ * array that nothing reads was flagged by lint as a value used only as a type, which
+ * is the same observation made mechanically.
+ */
+type ScorerChannel = 'structural' | 'exact' | 'numeric' | 'judge';
+
+/**
+ * Process-wide per-channel verdict counts.
+ *
+ * Cumulative, with no reset: one arm's process serves one run, so what a run prints
+ * describes that run and nothing needs zeroing. A reset exported for a test's
+ * convenience would be an export with no production caller, which is what the census
+ * in `tools/export-census.mjs` exists to refuse -- so the tests assert the CHANGE
+ * between two reads instead, which is stronger, because a counter that had been
+ * cleared could satisfy the weaker form.
+ *
+ * ## Why the run has to report this itself
+ *
+ * Run `38953157688` (`ask: enumerated`) raised MR's accuracy by 4.95pp and the rise
+ * was entirely judge-decided: the mechanical channels decided 86 of MR's 121
+ * verdicts under `computed` and 33 under `enumerated`, **none** of the latter true,
+ * while the median answer length went from 3 characters to 349. Every number that
+ * ask produced was therefore a joint statement about the answer contract and about
+ * the judge's tolerance of a long enumerated list -- and nothing in the run said so.
+ * The split had to be reconstructed offline from the artifact with a stubbed judge.
+ *
+ * A counter here is the smallest thing that makes the next run say it, and it is
+ * observation only: no verdict changes and no artifact field is added.
+ *
+ * Mirrors `retryStats()` in `cortex-llm` down to the reset, and for the same reason:
+ * a process-wide aggregate is what the layers above can read without being threaded
+ * a parameter they do not otherwise want.
+ */
+const scorerChannels: ReturnType<typeof scorerChannelStats> = {
+  structural: 0,
+  exact: 0,
+  numeric: 0,
+  judge: 0,
+  verdicts: 0,
+};
+
+/** A copy, so a caller holding it cannot mutate numbers already read. */
+export function scorerChannelStats(): {
+  structural: number;
+  exact: number;
+  numeric: number;
+  judge: number;
+  verdicts: number;
+} {
+  return { ...scorerChannels };
+}
+
+/** One line naming each channel's share, for an entry point to print. */
+export function describeScorerChannels(stats: ReturnType<typeof scorerChannelStats>): string {
+  const share =
+    stats.verdicts === 0 ? 'n/a' : `${((stats.judge / stats.verdicts) * 100).toFixed(1)}%`;
+  return (
+    `scorer channels: structural ${stats.structural}, exact ${stats.exact}, ` +
+    `numeric ${stats.numeric}, judge ${stats.judge}/${stats.verdicts} = ${share}`
+  );
+}
+
+/**
+ * Record which door a verdict left by, and return it.
+ *
+ * A helper rather than four `scorerChannels[...] += 1` statements, so that a return
+ * path added later without a channel is a type error rather than a silent fifth
+ * door -- which is what makes the four exhaustive by construction.
+ */
+function counted(channel: ScorerChannel, verdict: boolean): boolean {
+  scorerChannels[channel] += 1;
+  scorerChannels.verdicts += 1;
+  return verdict;
+}
+
 /** LLM-judge scorer: abstentions are graded structurally, others via the judge. */
 export function judgeScorer(judge: AnswerJudge): AnswerScorer {
   return async (question, answer) => {
     if (question.expected === null) {
-      return answer === null;
+      return counted('structural', answer === null);
     }
     if (answer === null) {
-      return false;
+      // Structural too: the absence of an answer decided it, and neither a
+      // comparison nor the judge was consulted. Counting it as `exact` would
+      // overstate the channel that proves a match, and this one can never prove one.
+      return counted('structural', false);
     }
     // Normalized string equality is the strongest equivalence signal and needs
     // no LLM: an exact answer is always correct. This short-circuit also cuts
     // the dominant LLM cost of the benchmark, since exact matches are frequent.
     if (normalizeAnswer(answer) === normalizeAnswer(question.expected)) {
-      return true;
+      return counted('exact', true);
     }
     // Counting questions are graded numerically first, so a verbose answer
     // cannot trick the LLM judge into accepting "5" for "2". The gate refuses to
@@ -319,13 +402,16 @@ export function judgeScorer(judge: AnswerJudge): AnswerScorer {
     // that matches one of the sanctioned alternatives.
     const numeric = numericAnswerVerdict(question.question, answer, question.expected);
     if (numeric !== undefined) {
-      return numeric;
+      return counted('numeric', numeric);
     }
-    return judge(
-      question.question,
-      answer,
-      question.expected,
-      toJudgeQuestionType(question.questionType ?? '', question.expected === null),
+    return counted(
+      'judge',
+      await judge(
+        question.question,
+        answer,
+        question.expected,
+        toJudgeQuestionType(question.questionType ?? '', question.expected === null),
+      ),
     );
   };
 }

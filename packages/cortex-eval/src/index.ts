@@ -27,6 +27,8 @@ export {
   aggregate,
   cohensD,
   tTestPValue,
+  scorerChannelStats,
+  describeScorerChannels,
   type AnswerScorer,
   type ScoredEvaluation,
 } from './metrics.js';
