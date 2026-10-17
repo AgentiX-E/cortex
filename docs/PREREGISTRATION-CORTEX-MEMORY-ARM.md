@@ -695,12 +695,12 @@ forwarded into a step's `env`. Three injections were run against it:
   ask is held at §13's value rather than reverted, because reverting it would restore
   the shipped per-route blocks and change the surface the evidence capture is being
   read from.
-  *(**status: provisional.** §13.41.6 registers the dispatch that decides it, and prediction 3
-  is that decision: above `+25.75pp` this ask is the arm's registered configuration, at or
-  below it `computed` is restored and `enumerated` becomes an ablation reference. Until that
-  number exists, this entry states what has been **sent**, not what has been **established**.
-  The two readings that made it provisional are §13.40's `+26.75pp`, which was a transcript
-  being judged, and §13.41's `+23.25pp`, which was a gate reading an operand.)*
+  *(**status: decided, by run `39005914398` (§13.45).** `+26.95pp` against `computed`'s
+  `+25.75pp`, MR 51.24% against 42.15%, McNemar p = 6.053e-15 over four repetitions. The
+  dispatch that decided it was §13.41.6's, and it required two instrument repairs first:
+  §13.40's `+26.75pp` was a transcript being judged (gate-true **0** of 33 gate decisions)
+  and §13.41's `+23.25pp` was a gate reading an operand. **Both of those numbers are in this
+  document and neither is a measurement of this ask**; the third is.)*
   **That reason expired, and §13.20 is what expired it.** The capture is independent of
   the ask since §13.19 -- `goldOverlap` is measured against the captured context, not
   against the prompt -- so the fixed surface is no longer load-bearing. What replaced it
@@ -6189,3 +6189,128 @@ a paragraph establishing which was which after the fact. The readout says it up 
 
 No change to the P0 row: §13.41.6's five predictions remain the thing being read. What changed is that the next
 reading is reproducible by anyone who has the artifact, which is what §13.38 was written to establish and did not.
+
+---
+
+## 13.45 Run `39005914398`: the configuration is decided, and the register had it wrong twice
+
+### 13.45.1 The run
+
+`3df6a7d7`, `05:21:25Z` → `07:07:48Z`, **1h46m23s**, `success`, artifact 6,902,025 bytes. One variable against
+§13.41's dispatch: the numeric gate.
+
+| line | value |
+| --- | --- |
+| `Cache hit for restore-key` | `…-38985220145-1` |
+| `Restored` | **261,738** vectors |
+| `Relevance index: 32000 scored …` | **18 seconds** |
+| `Embedding cache: persisted` | 262,318 (**580 new**) |
+| **`scorer channels`** | `structural 1444, exact 791, numeric 340, judge 1425/4000 = 35.6%` |
+
+The last line is §13.40.9's instrument **reporting itself for the first time**. Until this run the channel split
+had to be reconstructed offline from the artifact with a stubbed judge, twice; now the run says it.
+
+### 13.45.2 The five predictions
+
+| # | registered in §13.41.6 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR ≈ 57 of 121 (falsified outside 51–63) | **62** | **met** |
+| **2** | gate ≈ 77 decided, ≈ 31 true (falsified below 60 / 20) | gate **68**, gate-true **31** | **met** |
+| **3** | delta **above +25.75pp** — the number `computed` must be beaten by | **+26.95pp** | **met** |
+| **4** | the other four capabilities within 2 questions | ABS +0, IE **+2**, KU −1, TR **−2** | **met**, two on the boundary |
+| **5** | abstentions ≈ 35, falsified outside 32–38 | **28** | **falsified** |
+
+**Prediction 3 is the one that decides the configuration, and it is met.** The registered statistic reads
+`+26.95pp` (baseline avg 0.4495, feature avg 0.719 over four repetitions spanning 0.714–0.726; McNemar
+p = 6.053e-15; 212 won / 80 lost), against §13.26's `+25.75pp` for `computed`. **`ask: enumerated`, with the
+repaired parser and the repaired gate, is the arm's best measured configuration.**
+
+### 13.45.3 The table the whole iteration was for
+
+| capability | `computed` §13.26 | `enumerated` transcript §13.40 | `enumerated` + parser §13.41 | **`enumerated` + parser + gate §13.45** |
+| --- | --- | --- | --- | --- |
+| ABS | 29/30 | 29/30 | 30/30 | 29/30 |
+| IE | 133/150 | 132/150 | 132/150 | **135/150** |
+| KU | 62/72 | 61/72 | 61/72 | 61/72 |
+| **MR** | **51/121 = 42.15%** | 58/121 = 47.93% ✗ | 29/121 = 23.97% | **62/121 = 51.24%** |
+| TR | 72/127 | 70/127 | 75/127 | 70/127 |
+| total | 347/500 | 350/500 | 327/500 | **357/500 = 71.40%** |
+| **delta** | **+25.75pp** | +26.75pp ✗ | +23.25pp | **+26.95pp** |
+
+The ✗ marks the reading that was not a measurement: §13.40's 58 was a transcript being accepted by a judge, and
+§13.41.2's decision to treat it as evidence was the iteration's first mistake. **MR is now 51.24%, +9.09pp over
+`computed`**, and it is a figure the mechanical channels verify rather than a judge's tolerance:
+
+| configuration | MR correct | gate decided | gate **true** | judge decided | judge true |
+| --- | --- | --- | --- | --- | --- |
+| `computed` | 51 | 86 | **37** | 35 | 14 |
+| `enumerated`, transcript | 58 | 33 | **0** | 88 | 58 |
+| `enumerated` + parser | 29 | 77 | **31** | 44 | 26 |
+| **`enumerated` + parser + gate** | **62** | **68** | **31** | **53** | **31** |
+
+The transcript row is the one that reads as a success and is not: `gate true 0` means **not one** of MR's verdicts
+was decided by a mechanical comparison. The last row is the configuration: 31 provable verdicts from the gate and
+31 from the judge, in near-equal proportion, which is what a contract that produces checkable answers looks like.
+
+### 13.45.4 Prediction 5 was falsified, and the falsification is about the register
+
+Abstentions fell 35 → 28, outside the registered 32–38. **Nothing in this dispatch can move the abstention rate**:
+the parser is unchanged from §13.41 and the gate decision happens strictly after a decline is recognised
+(`answer is None` is `structural`, which no numeric rule reads). So the -7 is **sampling variance**, and the
+register's tolerance was derived from **one** prior observation of the same quantity.
+
+That is the defect the falsification exposes, and it is not about the arm. §13.40.7 predicted 33 from a single
+reading of 33; §13.41.6 predicted 35 from a single reading of 35; the truth ranges 28–35 across four runs of the
+same configuration. **A tolerance derived from one observation is a tolerance the size of the noise**, and a
+register that states one as a range the mechanism cannot violate will be falsified by noise at a rate that says
+nothing about the mechanism.
+
+The four capabilities show the same thing more quietly: `temperature: 0` does not make the repetitions identical.
+`featureAggregate` spans 0.714–0.726 within one run and 0.654–0.706 within another, so **a single repetition's
+accuracy carries several points of provider variance** — which is also why §13.41.5 refused to re-derive the delta
+from one roster.
+
+### 13.45.5 What the arm now is
+
+| | value |
+| --- | --- |
+| `ask` | `enumerated` — `computed` plus a two-step contract on the multi-session route alone |
+| `relevanceSignal` | `retrieval` |
+| `relevanceUnits` | `turn` |
+| `relevanceTopK` | 64 |
+| `promptContract` | `abstention-evidence-blocks` |
+| registered delta | **+26.95pp**, McNemar p = 6.053e-15, N = 500, 4 repetitions |
+| per capability | ABS 96.67%, IE 90.00%, KU 84.72%, **MR 51.24%**, TR 55.12% |
+| cost | 1h46m per run, of which 18s is the relevance index and 580 embeddings |
+
+Compared with §13.26's run (`+25.75pp`, 3h21m, 170,095 re-embedded vectors every time), the arm is **+1.20pp more
+accurate and roughly twice as cheap per run** — the second of which is §13.37's repair, and it is what makes four
+repetitions of a single-variable dispatch affordable at all.
+
+### 13.45.6 Verification
+
+- `pnpm check` **exit 0** at `3df6a7d7`; `Verify` **success**. `tools` **358**; four coverage dimensions **100%**
+  except `cortex-node`'s branch column.
+- **The readout is the committed tool**, not an inline script: `python3 tools/readout-arm-run.py --reference` on
+  this run's artifact produced every number in §13.45.2 and §13.45.3, including the per-capability counts and the
+  taxonomy. §13.44 was written for exactly this.
+- The channel table is the one number the tool deliberately does not compute (§13.44.3); it comes from the run's own
+  `scorer channels` line for the whole benchmark and from a `judgeScorer` replay for MR alone. The two agree where
+  they overlap: the log's `numeric 340` and the replay's per-capability counts are computed by the same counter.
+- **Prediction 5's falsification is reported as a falsification.** It is not reinterpreted as "close enough", and
+  the reason it was falsified is analysed (§13.45.4) rather than explained away.
+
+### 13.45.7 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0 (done)** | The configuration is **decided**: `enumerated` + repaired parser + repaired gate, `+26.95pp`, MR 51.24%. §10.3's provisional marker is lifted | no |
+| **P1** | The **no-signal control** (§13.22.8): `relevanceSignal: none` against this configuration separates "the ranking" from "the room". Its mechanism exists and is the arm's default, so this is a one-variable dispatch | yes |
+| **P1** | **Register tolerances from repetition spread, not from one observation** (§13.45.4). A prediction whose range is narrower than the configuration's own variance cannot be falsified by a mechanism | no |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3 — a registered dispatch, not a cleanup) | no |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+**Three readings of one configuration, and only the third is a measurement.** `+26.75pp` was a judge accepting
+transcripts; `+23.25pp` was a gate reading operands; `+26.95pp` is both instruments reading what they were built to
+read. The difference between the last two is 3.70pp, and it was entirely an instrument.
