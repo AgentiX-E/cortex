@@ -18,6 +18,35 @@ import type { Answer } from '@agentix-e/cortex-eval';
  */
 export const ABSTAIN_TOKEN = 'INSUFFICIENT_EVIDENCE';
 
+/**
+ * The reader of the two-step contract's headings.
+ *
+ * ## Why the parser owns it rather than the prompt
+ *
+ * `prompt.ts` imports `ABSTAIN_TOKEN` from here, so a reader imported from
+ * `prompt.ts` would close a cycle. The heading is a **reader** rule in any case --
+ * the prompt writes "Step 1" because that is how a two-step instruction is written,
+ * and this is the pattern that recognises one. That the two agree is pinned by
+ * `parse-stepped.test.ts`, which builds a real `enumerated` multi-session prompt,
+ * reads its headings out of the prompt text, and drives this parser with a response
+ * that echoes them. The guard is the coupling, which is §13.36's rule applied to a
+ * pair that cannot share a literal.
+ *
+ * ## Why a heading and not a length
+ *
+ * A length rule would rewrite prose answers, and the numbers of every archived run
+ * were produced with prose answers intact. A heading rule fires only on a response
+ * that writes the contract out: measured at **0 of the 1,000** questions in runs
+ * `38595325261` and `38828538851`, and 118 of run `38953157688`'s 121 multi-session
+ * questions. So this cannot change a number that has been published, and it repairs
+ * the ask that produced the shape it recognises.
+ *
+ * A **line that opens** with the heading, not a mention anywhere: "I followed Step 1
+ * of the method and the answer is 7" is an answer, and splitting on the mention would
+ * delete it.
+ */
+const ENUMERATION_STEP_HEADING = /^\s*step\s*\d+\s*[\u2014:-]/i;
+
 /** `Answer: X` or `Answer - X`, the label shapes models emit unprompted. */
 const LABEL_PREFIX = /^[A-Za-z ]{0,20}[:-]\s*/;
 
@@ -39,7 +68,41 @@ export function parseAnswer(raw: string): Answer {
 
   if (isAbstention(trimmed)) return null;
 
-  return stripWrappingQuotes(collapseWhitespaceEdges(trimmed));
+  // The abstention rule is read first and deliberately: 29 of run `38953157688`'s
+  // responses write the Step 1 list and then the sentinel, and if the heading rule
+  // ran first those 29 would be scored as answers. The decline is a decision about
+  // the whole response, so it outranks any reading of the response's parts.
+  return stripWrappingQuotes(collapseWhitespaceEdges(afterLastStepHeading(trimmed) ?? trimmed));
+}
+
+/**
+ * The text after the LAST step heading, or `undefined` when there is none.
+ *
+ * The last one, because the contract's headings are a sequence and the answer is
+ * what follows the final step. `undefined` rather than the input, so the caller
+ * decides what "no heading" means and a reader of the call site can see that the
+ * unchanged path is explicit.
+ *
+ * A heading with nothing after it (the model stopped after writing it) returns the
+ * empty string, which is an *answer* in this package -- a blank, wrong one -- and not
+ * an abstention. Falling back to the whole transcript there would score the
+ * transcript, which is the defect this exists to remove.
+ */
+function afterLastStepHeading(text: string): string | undefined {
+  const lines = text.split('\n');
+  let start: number | undefined;
+  let offset = 0;
+  for (const line of lines) {
+    if (ENUMERATION_STEP_HEADING.test(line)) {
+      start = offset + line.length + 1;
+    }
+    offset += line.length + 1;
+  }
+  // The leading whitespace of the slice is the newline that ended the heading line,
+  // and `collapseWhitespaceEdges` deliberately trims only spaces and tabs at the front
+  // (a leading newline cannot occur on any other path, because `parseAnswer` trims the
+  // whole response first). Removed here so the answer does not begin with a line break.
+  return start === undefined ? undefined : text.slice(start).replace(/^[ \t\n]+/, '');
 }
 
 /**

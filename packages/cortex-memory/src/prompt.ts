@@ -503,6 +503,17 @@ function withInsertedBeforeClose(block: string, text: string): string {
  * "I looked and here is what I found". It is the same move §13.21's merging sentence
  * makes in one line; this one names the artefact it requires.
  */
+/**
+ * The two-step contract.
+ *
+ * Not exported, and the parser must not import it: this file imports `ABSTAIN_TOKEN`
+ * from `parse.js`, so the direction would close a cycle. The coupling is therefore a
+ * TEST rather than a shared literal -- `parse-stepped.test.ts` builds a real
+ * `enumerated` multi-session prompt, reads the headings out of it, and requires the
+ * parser to parse a response that echoes them. A reworded contract fails there
+ * instead of silently ceasing to be parsed, which is §13.36's rule for a pair that
+ * cannot share a constant.
+ */
 const ENUMERATION_CONTRACT = [
   'Work in two steps, and write both of them out.',
   `Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.`,
