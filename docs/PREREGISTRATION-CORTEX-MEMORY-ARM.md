@@ -7488,3 +7488,97 @@ re-derive is a target nobody can dispute.
 | **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+---
+
+## 13.59 MR's arithmetic is not the defect: in ten of twenty-seven the model counted its list correctly
+
+### 13.59.1 What §13.58.4 said, and why it was one reading too early
+
+§13.58.4 ranked MR's arithmetic first: *"27 `numeric_mismatch`, and no variable has pointed at it."* That
+statement is true about the count and wrong about the mechanism, and the artifact settles it. This section
+records the correction before the next dispatch rather than after it.
+
+### 13.59.2 The measurement
+
+`--counted` reads two fields that every other readout reads one at a time: the length of the model's own Step 1
+list (`rawOutput`) and the first number in the graded answer (`answer`). For MR's 27 wrong numeric answers:
+
+```
+  question       listed answered  gold gold-ans    cov
+  0a995998            2        2     3       +1   0.59  <- counted its list
+  gpt4_15e38248       1        1     4       +3   0.17  <- counted its list
+  88432d0a            2        2     4       +2   0.27  <- counted its list
+  d23cf73b            3        3     4       +1   0.40  <- counted its list
+  2ce6a0f2            3        3     4       +1   0.46  <- counted its list
+  gpt4_31ff4165       3        3     4       +1   0.27  <- counted its list
+  bf659f65            2        2     3       +1   0.41  <- counted its list
+  81507db6            2        2     3       +1   0.29  <- counted its list
+  21d02d0d            1        1     2       +1   0.27  <- counted its list
+  gpt4_7fce9456       3        3     1       -2   0.35  <- counted its list
+  …
+  counted its list: 10 of 27 -- the answer is exactly the number of items Step 1 listed
+  off by exactly one (gold one higher): 10 of 27
+```
+
+**Ten of the twenty-seven answers are exactly the number of items the model listed.** It counted its own list
+faithfully; the list was short. Nine of the ten have a positive difference, and **eight of those nine are off by
+exactly one**. Their coverage is 0.17–0.59 — the two lowest bands, where this run's MR answers correctly 28.6%
+and 38.3% of the time.
+
+(The tenth, `gpt4_7fce9456`, is a parse artifact rather than a data point: its gold is a sentence naming *four*
+properties and `numbers_in` reads the `1` in `1-bedroom`. The counter is faithful there too; the ground truth is
+not a number. Recorded rather than silently excluded, because it is one of the ten.)
+
+### 13.59.3 What it settles
+
+**Step 2 is not where MR fails.** In a third of MR's numeric errors the arithmetic is exactly right and the
+input to it is short. So "ask the model to count more carefully" is aimed at a defect that is not occurring, and
+the two candidate repairs are now distinguishable:
+
+| defect | evidence | repair |
+| --- | --- | --- |
+| the model counts wrongly | **17 of 27** — answer differs from the listed count | arithmetic, a prompt or a verifier |
+| the model is shown too little to count | **10 of 27** — answer = listed count, and gold is higher | enumeration recall, a selection problem |
+
+And §13.34.3 already measured the second one's shape: **the room holds a median of 26 turns against a median
+gold set of 24**, so a perfect selector at this room would reach **0.917** median coverage. The turns are not
+missing for want of space. A faithful count of a 0.40-coverage window is therefore **the expected output of a
+selector that finds two of four pieces**, and no instruction inside Step 2 can change it.
+
+### 13.59.4 The correction it forces
+
+§13.58.4 put MR's arithmetic first. **It moves below the selection question**, and MR's 47-question gap is not
+recoverable by wording. What remains ranked is:
+
+1. **The closing line** (in flight, `39076055833`) — unaffected: it targets the 12 refusals, which are a
+   different population, and its prediction 1 counts that population rather than accuracy.
+2. **The selector** — §13.26–13.34 have now excluded the pool size, the unit and the room; what is left is the
+   **signal** that ranks a turn for a counting question. That is the largest open question in the campaign and
+   it is a research question, not a registration.
+3. **The arithmetic** — 17 questions, real, and downstream of the refusal/selection work rather than ahead of it.
+
+This is the fourth time a measurement has demoted a variable that a plausible reading had promoted (`k`, the
+sentence, the units, the arithmetic). The pattern is worth naming: **every one of those readings was about how
+the model behaves, and every correction came from measuring what it was given.**
+
+### 13.59.5 Verification
+
+- `--counted` is `readout-arm-run.py`'s fifth mode, with 4 tests: the predicate, the population it excludes, the
+  sign of the difference (a faithful short count reads positive, and a column that read −1 would say the model
+  over-counted), and the capability filter.
+- `python3 -m pytest tools/__tests__ -q` → **433 passed, 40 subtests**.
+- The table is the tool's output on run `39035438120`'s artifact, unedited and untruncated in the rows that
+  matter; the `…` above hides rows whose answer differs from their list, which are the 17.
+
+### 13.59.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Run `39076055833` (the closing line) — read when it lands; §13.57.4's five predictions are unchanged | yes (in flight) |
+| **P1** | **The selector's signal**, now the largest open question: pool, unit and room are excluded and the room is sufficient | no, to design; yes, to measure |
+| **P1** | MR's 17 arithmetic errors — real, downstream | yes |
+| **P1** | TR's 42 declines at 39.7% coverage — the same coverage story in a capability the contract does not reach | yes |
+| **P1** | A better no-signal control (§13.50.4) | yes |
+| P2 | The §13.55 sentence as its own variable | yes |
+| P3 | `PATH` ordering | no |

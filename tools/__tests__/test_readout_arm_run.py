@@ -540,3 +540,95 @@ class TestTheUnionOfTheTwoSides:
         r = self._run(tmp_path, report)
         assert r.returncode == 2
         assert 'baseline' in r.stderr
+
+
+class TestWhetherTheModelCountedWhatItListed:
+    """The measurement that decides between "cannot count" and "was shown too little".
+
+    Run `39035438120`'s MR has 27 `numeric_mismatch`, and 10 of them are off by exactly one.
+    In 9 of the 27 the answer **is the length of the model's own Step 1 list** -- it counted
+    its list faithfully and the list was short. That is a different defect from arithmetic,
+    and the two need opposite repairs: one is a prompt, the other is retrieval.
+
+    So the predicate is a tool. It reads `rawOutput` for the list and `answer` for the number,
+    which is the one place the two fields are both needed: `failure_shape` grades the answer,
+    `decline_state` reads the reasoning, and this asks whether the second produced the first.
+    """
+
+    STEP_ONE = 'Step 1 \u2014 list every item in the evidence that matches the question.'
+    STEP_TWO = 'Step 2 \u2014 compute the answer from that list.'
+
+    def _report(self, rows: list[tuple[str, bool, str, object, str]]) -> dict:
+        """(capability, correct, rawOutput, answer, groundTruth) -> a report."""
+        questions = []
+        for index, (capability, correct, raw, answer, gold) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': gold,
+                'answer': answer,
+                'rawOutput': raw,
+                'correct': correct,
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _raw(self, items: int, answer_line: str) -> str:
+        lines = [self.STEP_ONE, '']
+        lines += [f'- item {index}' for index in range(items)]
+        lines += ['', self.STEP_TWO, '', answer_line]
+        return '\n'.join(lines)
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--counted', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_marks_the_records_that_counted_their_own_list(self, tmp_path: Path) -> None:
+        # Two items, answer 2, gold 3: it counted exactly what it listed, and the list is short.
+        report = self._report([('MR', False, self._raw(2, '2'), '2', '3')])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'counted its list' in r.stdout
+        # The summary has to say how many of how many, because the ratio is the finding.
+        assert '1 of 1' in r.stdout
+
+    def test_it_does_not_mark_an_answer_that_differs_from_the_list(self, tmp_path: Path) -> None:
+        # Five items, answer 3: this one mis-counted, which is the other defect.
+        report = self._report([('MR', False, self._raw(5, '3'), '3', '3')])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '0 of 1' in r.stdout
+
+    def test_it_says_by_how_much_the_answer_missed(self, tmp_path: Path) -> None:
+        # The distribution matters: ten records off by exactly one is a coverage signature,
+        # while a spread of differences is an arithmetic one.
+        report = self._report([
+            ('MR', False, self._raw(2, '2'), '2', '3'),
+            ('MR', False, self._raw(4, '70 hours'), '70 hours', '140 hours'),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        # `gold - answered`, so a short count reads positive: 3-2 = +1, 140-70 = +70. The
+        # sign is worth pinning because the reading rule is "the list was short", and a
+        # column that read -1 would say the model over-counted.
+        assert '+1' in r.stdout
+        assert '+70' in r.stdout
+        assert 'off by exactly one' in r.stdout
+
+    def test_only_the_capability_asked_for_is_read(self, tmp_path: Path) -> None:
+        report = self._report([
+            ('MR', False, self._raw(2, '2'), '2', '3'),
+            ('TR', False, self._raw(2, '2'), '2', '3'),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '1 of 1' in r.stdout

@@ -33,6 +33,7 @@ Usage:
     python3 tools/readout-arm-run.py --coverage path/to/report.json
     python3 tools/readout-arm-run.py --declines path/to/report.json
     python3 tools/readout-arm-run.py --union path/to/report.json
+    python3 tools/readout-arm-run.py --counted path/to/report.json
 """
 
 from __future__ import annotations
@@ -531,6 +532,95 @@ def union_section(report: dict, questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), totals[3] - totals[2]
 
 
+def counted_section(questions: list[dict], capability: str = 'MR') -> tuple[str, int, int]:
+    """Whether the answer equals the length of the model's own Step 1 list.
+
+    ## The defect this separates
+
+    Run `39035438120`'s MR has 27 `numeric_mismatch`. Ten are off by exactly one, and in 9 of
+    the 27 the answer **is** the number of items the model listed -- it counted its list
+    faithfully and the list was one short. "The model cannot count" and "the model was shown
+    too little to count" need opposite repairs, and this is the measurement that tells them
+    apart: a short list with a faithful count is a coverage finding, a mismatched count is an
+    arithmetic one.
+
+    ## Why both fields
+
+    Every other readout of this artifact reads one of them. `failure_shape` grades `answer`,
+    `decline_state` reads `rawOutput`, and this is the only question that needs both: did the
+    reasoning produce the graded answer?
+
+    Returns `(section, counted_its_list, records_read)`.
+    """
+    classifier = _load_classifier()
+    rows: list[tuple[str, int, int, int, float | None]] = []
+    for question in questions:
+        if str(question.get('capability', '')) != capability:
+            continue
+        if question.get('correct'):
+            continue
+        if question.get('answer') is None:
+            continue
+        state, listed, _ = decline_state(question)
+        if state not in ('empty-list', 'non-empty-list'):
+            continue
+        gold = classifier.numbers_in(question.get('groundTruth'))
+        answered = classifier.numbers_in(question.get('answer'))
+        if not gold or not answered:
+            continue
+        rows.append((
+            str(question.get('questionId')),
+            _as_int(gold[0]),
+            _as_int(answered[0]),
+            listed,
+            coverage_of(question),
+        ))
+
+    if not rows:
+        return '', 0, 0
+
+    lines = ['', f'{capability} wrong answers that carry a Step 1 list (field: rawOutput + answer)']
+    lines.append(f'  {"question":<14}{"listed":>7}{"answered":>9}{"gold":>6}{"gold-ans":>9}{"cov":>7}')
+    counted = 0
+    for identifier, gold, answered, listed, coverage in rows:
+        equal = listed == answered
+        counted += equal
+        difference = '' if gold is None or answered is None else f'{gold - answered:+d}'
+        mark = '  <- counted its list' if equal else ''
+        shown = '-' if coverage is None else f'{coverage:.2f}'
+        lines.append(
+            f'  {identifier:<14}{listed:>7}{answered if answered is not None else "-":>9}'
+            f'{gold if gold is not None else "-":>6}{difference:>9}{shown:>7}{mark}'
+        )
+    lines.append('')
+    lines.append(
+        f'  counted its list: {counted} of {len(rows)} -- the answer is exactly the number of '
+        'items Step 1 listed'
+    )
+    differences = [
+        gold - answered for _, gold, answered, _, _ in rows
+        if gold is not None and answered is not None
+    ]
+    if differences:
+        by_one = sum(1 for difference in differences if difference == 1)
+        lines.append(f'  off by exactly one (gold one higher): {by_one} of {len(differences)}')
+    return '\n'.join(lines), counted, len(rows)
+
+
+def _as_int(token: str) -> int | None:
+    """A numeric token as an int, or `None`.
+
+    The taxonomy compares strings, which is right for a verdict and wrong for a difference.
+    `70` and `70.0` are the same answer; `3,000` and `3000` are the same answer after
+    `numbers_in` strips the separator; `1/48` is not a number this can difference, and `None`
+    is the honest answer for it rather than a zero that would read as "off by the gold".
+    """
+    try:
+        return int(float(token))
+    except (TypeError, ValueError):
+        return None
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -553,6 +643,11 @@ def main(argv: list[str]) -> int:
         '--union',
         action='store_true',
         help='print the union of the two sides per capability instead of the run summary',
+    )
+    parser.add_argument(
+        '--counted',
+        action='store_true',
+        help='print whether MR wrong answers equal the length of their own Step 1 list',
     )
     args = parser.parse_args(argv)
 
@@ -588,6 +683,14 @@ def main(argv: list[str]) -> int:
             section, gap = union_section(report, questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.counted:
+        section, counted, read = counted_section(questions)
+        if read == 0:
+            print(f'{args.report}: no MR wrong answers carrying a Step 1 list.', file=sys.stderr)
             return 2
         print(section)
         return 0
