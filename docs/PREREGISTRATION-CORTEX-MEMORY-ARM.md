@@ -6641,3 +6641,121 @@ per iteration in a directory that is not a checkout, with no credential in it.**
 
 That is not a new tool. It is `tar` + `git init` + `git remote add` + `pytest`, four commands, and it now has a
 recorded reason to be run before a push rather than after a red CI.
+
+---
+
+## 13.50 The no-signal control: the ranking is not decoration, it is the arm
+
+### 13.50.1 The run
+
+`9fcb7fe1`, `07:24:20Z` → `08:56:32Z`, **1h32m12s**, `success`, artifact 6,718,654 bytes. One variable against
+§13.45's configuration: `cortex_memory_relevance` from `retrieval` to `none`.
+
+| line | value |
+| --- | --- |
+| `Cache hit for restore-key` | `…-39005914398-1` |
+| `Restored` | 262,318 vectors |
+| `Embedding cache: persisted` | 262,456 (**138 new**) |
+| `scorer channels` | `structural 2884, exact 348, numeric 220, judge 548/4000 = 13.7%` |
+
+The channel line said it before the accuracy did: `structural` **doubled** against §13.45's 1444, and `structural`
+is the door an absent answer leaves by.
+
+### 13.50.2 The result
+
+| | `retrieval` §13.45 | `none` §13.50 | difference |
+| --- | --- | --- | --- |
+| delta | **+26.95pp** | **−37.35pp** | **−64.30pp** |
+| feature accuracy | 0.719 | **0.0635** | |
+| ABS | 29/30 | 30/30 | +1 |
+| IE | 135/150 | **1/150** | −134 |
+| KU | 61/72 | **0/72** | −62 |
+| MR | 62/121 | **1/121** | −61 |
+| TR | 70/127 | **0/127** | −70 |
+| MR abstentions | 28 | **113** | +85 |
+
+**The arm scores 6.35%.** Its non-ABS capabilities are 2 of 470 questions. It does not degrade — it stops
+answering: 113 of MR's 121 questions decline, and the declines are correct declines to make, because the evidence
+the question is about is not in the window.
+
+### 13.50.3 The three predictions
+
+| # | registered | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | the ranking's contribution is measurable, `\|delta − 26.95pp\| > 3pp` | **−64.30pp** | **met**, by a factor of 21 over the tolerance |
+| **2** | if measurable, MR is where it shows: ≥ 5 questions | MR −61 | **met literally, and the framing was wrong** |
+| **3** | `none` is not catastrophically worse: delta not below +15pp | **−37.35pp** | **falsified** |
+
+Prediction 3 was written as the guard against exactly this and it is the one that failed, which is the register
+working: I thought a collapse was unlikely enough to be worth naming, and it happened.
+
+**Prediction 2's framing was wrong and the data says so.** It assumed the ranking's contribution would be
+concentrated in the capability the campaign has been working on — MR, the multi-session one. It is not: IE loses
+134 questions, TR 70, KU 62, MR 61. **The ranking carries every capability that reads evidence**, which is all of
+them but ABS. That is a different claim from the one I registered, and it is the more important one.
+
+### 13.50.4 Why the collapse, and it is not "the ranking is good"
+
+`relevanceSignal: none` spends the budget on the **first N turns that arrived**, and arrival order is the
+sessionizer's chronological order. LongMemEval's haystack is hundreds of turns per question and the answer is
+somewhere inside it, so "the first 64" is a window that almost never contains the evidence. The model then declines
+— correctly, given what it was shown.
+
+So this control measures **whether the evidence is in the window at all**, not **whether the ranking is better than
+a good alternative**. Those are different questions and the difference matters:
+
+- as evidence that `retrieval` is load-bearing, **−64.30pp is conclusive**: nothing else in the configuration
+  changed, and the arm stopped working.
+- as a **measurement of the ranking's contribution**, it is an **upper bound**. A control that put *random* turns
+  in the window, or one that deliberately included the gold session, would land between `none` and `retrieval`, and
+  the ranking's contribution against those is smaller than 64.30pp by an amount this run cannot tell us.
+
+**Registered as a limitation rather than a footnote**, because the natural reading of "the ranking contributes
+64pp" is the wrong one. What this run establishes is that a window built by arrival order **does not contain the
+answers** on this benchmark, and that a similarity ranking is what makes the arm able to answer at all.
+
+### 13.50.5 What it changes about the configuration
+
+**Nothing is dropped.** The reading rule §13.46.3 registered for "prediction 1 falsified" — drop `retrieval`,
+18 seconds per run and an embedding dependency for nothing measurable — does not apply, because prediction 1 was
+met in the opposite direction from the one that rule anticipated.
+
+| input | status after this run |
+| --- | --- |
+| `ask: enumerated` | held; §13.45 |
+| `relevanceSignal: retrieval` | **load-bearing**, established here: without it the arm scores 6.35% |
+| `relevanceUnits: turn` | held; §13.32–13.34 |
+| `relevanceTopK: 64` | **the next thing worth isolating**, and see below |
+| `promptContract` | held |
+
+**`relevanceTopK: 64` is the natural follow-on and this run says why.** If arrival order fails because 64
+chronological turns do not contain the evidence, then the width is doing real work alongside the ranking, and the
+interesting question is where the knee is: §13.26 measured `recall = 0.921` at `k = 50` with a flattened curve, but
+that was recall over the *index*, not accuracy over the *arm*. A `k = 16` run against this configuration would say
+whether the ranking's value depends on being able to choose from a wide field or whether a narrow ranked window is
+as good — and it is one variable.
+
+### 13.50.6 Verification
+
+- `pnpm check` **exit 0** at `9fcb7fe1`; `Verify` passed at `a7f6a580` (the next commit, which touched only tests).
+- Every number came from `python3 tools/readout-arm-run.py --reference` on the run's artifact.
+- The `scorer channels` line — the instrument §13.40.9 added and §13.45 saw work for the first time — predicted the
+  result before the accuracy table did: `structural` doubling is a decline rate doubling, and the declines are what
+  the accuracy measures.
+- **Prediction 3 is reported as falsified**, and the limitation in §13.50.4 is registered rather than left for a
+  reader to discover: the −64.30pp is an upper bound on the ranking's contribution, not the contribution.
+
+### 13.50.7 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0 (done)** | The configuration (§13.45) and its load-bearing input (§13.50): `enumerated` + `retrieval` + `turn`, `+26.95pp`, MR 51.24% | no |
+| **P1** | **`relevanceTopK`**: a `k = 16` run against this configuration, to separate "the ranking chooses well" from "the ranking needs a wide field to choose from" (§13.50.5) | yes |
+| **P1** | A **better no-signal control**: random turns, or a window that includes the gold session, to turn §13.50.4's upper bound into a contribution | yes |
+| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+**The campaign's oldest open question is answered, and the answer is bigger than the question.** §13.22.8 asked
+whether the arm's gain came from the extra turns or from the ordering. It came from the ordering — so completely
+that without it there is no arm left to measure: 6.35%, two correct answers outside ABS, one per capability.
