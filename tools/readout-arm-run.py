@@ -202,6 +202,118 @@ def describe(report: dict, reference: bool) -> str:
     return '\n'.join(lines)
 
 
+
+# The bands are wide at the bottom because that is where the relationship is steepest:
+# §13.51's table goes 0% -> 37.2% -> 55.0% -> 77.0% -> 82.8% -> 98.1%, and a band of 10
+# points at the top would hide that the last step is the largest.
+COVERAGE_BANDS = (
+    (0.0, 0.001, '0%'),
+    (0.001, 0.25, '1-24%'),
+    (0.25, 0.5, '25-49%'),
+    (0.5, 0.75, '50-74%'),
+    (0.75, 0.999, '75-99%'),
+    (0.999, 1.01, '100%'),
+)
+
+
+def coverage_of(question: dict) -> float | None:
+    """The share of a question's gold turns that reached the window, or `None`.
+
+    `None` covers two different absences and the caller distinguishes them by counting:
+    a record without `goldOverlap` (a producer that does not measure it, or a dataset with
+    no gold turns) and a record whose `total` is zero. Neither is 0% coverage -- 0% means
+    "the question names gold turns and none of them arrived", which is a measurement.
+    """
+    overlap = question.get('goldOverlap')
+    if not isinstance(overlap, dict):
+        return None
+    total = overlap.get('total')
+    if not isinstance(total, int) or total <= 0:
+        return None
+    carried = overlap.get('carried')
+    if not isinstance(carried, int):
+        return None
+    return carried / total
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
+
+
+def coverage_section(questions: list[dict]) -> tuple[str, int]:
+    """The coverage table and the per-outcome medians, plus how many records were read.
+
+    ## Why this is a section of the readout and not a one-off
+
+    §13.51 chose the next variable from this table and built it inline, twenty minutes
+    before dispatching. It separated TR's declines -- a coverage problem, 39.7% against
+    58.3% on the questions it answers -- from MR's, which are not one: 52.8% against 54.2%,
+    inside the noise. **The two capabilities' declines have different causes**, and that
+    distinction changed which variable was dispatched.
+
+    A measurement that decides a dispatch belongs in a tool, for the reason §13.44 gives.
+    """
+    measured = [(question, coverage_of(question)) for question in questions]
+    measured = [(question, coverage) for question, coverage in measured if coverage is not None]
+    if not measured:
+        return '', 0
+
+    excluded = len(questions) - len(measured)
+    lines: list[str] = ['', 'coverage (gold turns carried / stated)']
+
+    tallies = {label: [0, 0, 0] for _, _, label in COVERAGE_BANDS}
+    for question, coverage in measured:
+        for low, high, label in COVERAGE_BANDS:
+            if low <= coverage < high:
+                row = tallies[label]
+                row[0] += 1
+                if question.get('correct'):
+                    row[1] += 1
+                elif question.get('answer') is None:
+                    row[2] += 1
+                break
+
+    for _, _, label in COVERAGE_BANDS:
+        count, correct, declined = tallies[label]
+        if count == 0:
+            continue
+        lines.append(
+            f'  {label:7} n={count:3}  correct {correct / count:6.1%}  declined {declined / count:6.1%}'
+        )
+
+    lines.append('')
+    lines.append('by capability and outcome, median coverage')
+    by_capability: dict[str, list[tuple[dict, float]]] = {}
+    for question, coverage in measured:
+        by_capability.setdefault(str(question.get('capability', '?')), []).append((question, coverage))
+
+    for capability in sorted(by_capability):
+        rows = by_capability[capability]
+        groups = {
+            'correct': [c for q, c in rows if q.get('correct')],
+            'declined': [c for q, c in rows if not q.get('correct') and q.get('answer') is None],
+            'wrong': [c for q, c in rows if not q.get('correct') and q.get('answer') is not None],
+        }
+        parts = []
+        for label in ('correct', 'declined', 'wrong'):
+            values = groups[label]
+            median = _median(values)
+            if median is None:
+                continue
+            parts.append(f'{label} {median:6.1%} (n={len(values):3})')
+        if parts:
+            lines.append(f'  {capability}: ' + '  '.join(parts))
+
+    if excluded:
+        lines.append(
+            f'  {excluded} record(s) excluded: no goldOverlap, or the dataset names no gold turns'
+        )
+    return '\n'.join(lines), len(measured)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -209,6 +321,11 @@ def main(argv: list[str]) -> int:
         '--reference',
         action='store_true',
         help=f'compare per-capability counts against run {REFERENCE_RUN}',
+    )
+    parser.add_argument(
+        '--coverage',
+        action='store_true',
+        help='print the gold-coverage table instead of the run summary',
     )
     args = parser.parse_args(argv)
 
@@ -225,6 +342,19 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.coverage:
+        section, measured = coverage_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no goldOverlap in this roster. A producer that does not '
+                'measure coverage, or a dataset that names no gold turns, cannot be read for it.',
+                file=sys.stderr,
+            )
+            return 2
+        print(f'records with coverage: {measured} of {len(questions)}')
+        print(section)
+        return 0
 
     print(describe(report, args.reference))
     return 0

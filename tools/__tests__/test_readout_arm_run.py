@@ -204,3 +204,89 @@ class TestAgainstAnArchivedRoster:
         assert 'MR: 29/121' in r.stdout
         assert 'abstention: 35' in r.stdout
         assert 'numeric_mismatch: 52' in r.stdout
+
+
+class TestTheCoverageTable:
+    """§13.51 chose the next variable from this table, and built it inline.
+
+    The measurement is `goldOverlap: {carried, total}` — the share of a question's gold
+    turns that reached the window — and the table is what separated TR's declines (a
+    coverage problem, 39.7% against 58.3%) from MR's (not one, 52.8% against 54.2%). It
+    took twenty minutes to write and it would have saved a dispatch, which is exactly the
+    argument for it living here rather than in a shell history.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, bool, int, int]]) -> dict:
+        """(capability, correct, carried, total) -> a report with a roster."""
+        questions = []
+        for index, (capability, correct, carried, total) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': 'x' if correct else None,
+                'rawOutput': 'x',
+                'correct': correct,
+                'goldOverlap': {'carried': carried, 'total': total},
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict, *args: str) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), *args, str(path)], capture_output=True, text=True, check=False,
+        )
+
+    def test_it_bands_by_coverage_and_reports_both_rates(self, tmp_path: Path) -> None:
+        report = self._report([
+            ('MR', True, 10, 10),    # 100%, correct
+            ('MR', True, 10, 10),    # 100%, correct
+            ('MR', False, 0, 10),    # 0%, declined
+            ('MR', False, 5, 10),    # 50%, declined
+        ])
+        r = self._run(tmp_path, report, '--coverage')
+        assert r.returncode == 0, r.stderr
+        assert '100%' in r.stdout
+        assert '0%' in r.stdout
+        # Two correct of two at full coverage; one declined of one at zero.
+        assert '100.0%' in r.stdout
+
+    def test_it_reports_the_median_coverage_per_capability_and_outcome(self, tmp_path: Path) -> None:
+        # §13.51.2's finding, in the shape that made it visible: the comparison is between
+        # outcomes WITHIN a capability, because the two capabilities' declines have
+        # different causes.
+        report = self._report([
+            ('TR', True, 6, 10),     # correct at 60%
+            ('TR', True, 6, 10),
+            ('TR', False, 4, 10),    # declined at 40%
+            ('TR', False, 4, 10),
+        ])
+        r = self._run(tmp_path, report, '--coverage')
+        assert r.returncode == 0, r.stderr
+        assert 'correct' in r.stdout and 'declined' in r.stdout
+        assert '60.0%' in r.stdout
+        assert '40.0%' in r.stdout
+
+    def test_a_report_without_gold_overlap_says_so(self, tmp_path: Path) -> None:
+        report = self._report([('MR', True, 10, 10)])
+        del report['questions'][0]['goldOverlap']
+        r = self._run(tmp_path, report, '--coverage')
+        assert r.returncode == 2
+        assert 'no goldOverlap' in r.stderr
+
+    def test_zero_total_does_not_divide_by_zero(self, tmp_path: Path) -> None:
+        # A question whose dataset names no gold turns has `total: 0`, and it must be
+        # excluded rather than counted as 0% coverage.
+        report = self._report([('MR', True, 0, 0), ('MR', True, 5, 10)])
+        r = self._run(tmp_path, report, '--coverage')
+        assert r.returncode == 0, r.stderr
+        assert 'excluded' in r.stdout or 'n=  1' in r.stdout or 'n=1' in r.stdout

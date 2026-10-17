@@ -6876,3 +6876,73 @@ monotonicity has some other cause that this dispatch cannot see.
 rather than a measurement. The coverage table took twenty minutes to produce and would have saved a dispatch.
 **That is the argument for reading the records before choosing the variable**, and it is why §13.41's and §13.50's
 mistakes look different from this one: those were instruments misreading, and this was a plan made without looking.
+
+---
+
+## 13.52 The coverage table is a tool now, and it found a third case
+
+### 13.52.1 Why it moved
+
+§13.51 chose the next variable from a table it built inline, twenty minutes before dispatching. That is §13.44's
+argument one section later: **a measurement that decides a dispatch belongs in a tool.** `readout-arm-run.py`
+gains `--coverage`, and running it on the same artifact reproduces §13.51.2 **every number**:
+
+```
+records with coverage: 500 of 500
+
+coverage (gold turns carried / stated)
+  0%      n=  2  correct   0.0%  declined 100.0%
+  1-24%   n= 43  correct  37.2%  declined  46.5%
+  25-49%  n=120  correct  55.0%  declined  20.0%
+  50-74%  n=183  correct  77.0%  declined  13.1%
+  75-99%  n= 99  correct  82.8%  declined  12.1%
+  100%    n= 53  correct  98.1%  declined   0.0%
+
+by capability and outcome, median coverage
+  ABS: correct  54.2% (n= 29)  wrong  70.8% (n=  1)
+  IE: correct  83.3% (n=135)  declined  42.9% (n= 13)  wrong 100.0% (n=  2)
+  KU: correct  62.5% (n= 61)  wrong  66.7% (n= 11)
+  MR: correct  54.2% (n= 62)  declined  52.8% (n= 28)  wrong  37.0% (n= 31)
+  TR: correct  58.3% (n= 70)  declined  39.7% (n= 41)  wrong  45.8% (n= 16)
+```
+
+### 13.52.2 The case §13.51 did not check, and it is the largest
+
+§13.51.2 compared MR and TR, because those are the two capabilities the campaign has been working on. The tool
+prints every capability, and **IE's gap is twice TR's**:
+
+| capability | correct | declined | gap |
+| --- | --- | --- | --- |
+| **IE** | 83.3% | **42.9%** | **40.4 points** |
+| TR | 58.3% | 39.7% | 18.6 points |
+| MR | 54.2% | 52.8% | 1.4 points |
+
+**Thirteen of IE's fifteen failures are declines, and their median coverage is 42.9% against 83.3% on the
+questions IE answers.** So IE's declines are the same phenomenon as TR's, at twice the magnitude:
+the evidence is missing, and the model correctly says so.
+
+That strengthens §13.51's reasoning rather than changing it — wider `k` should recover all three — and it does so
+**by finding a case I did not think to look at**, which is what a table printed by a tool does and a table printed
+for a section does not.
+
+**One cell is misleading and is left in rather than filtered:** IE's `wrong 100.0% (n=2)` is two questions at full
+coverage answered wrongly. With n=2 the median is the value, and a reader who took it for a rate would conclude the
+opposite of what the rest of the row says. It says `n=2`, which is the guard.
+
+### 13.52.3 Verification
+
+- `tools` **412 passed + 40 subtests** (was 408; +4). `pnpm check` **exit 0**.
+- **Red first**: all four coverage tests failed against the tool without `--coverage`.
+- Two boundary tests that exist because the measurement can be absent in two different ways: a record with **no
+  `goldOverlap`** makes the whole report unreadable for coverage (exit 2 with a sentence saying why), and a record
+  whose **`total` is 0** — a dataset that names no gold turns — is **excluded rather than counted as 0%**. Those are
+  different states: 0% means "gold turns were named and none arrived", which is a measurement; `total: 0` means
+  there was nothing to measure.
+- The reproduction of §13.51.2's numbers is the acceptance test, and it is what §13.51.5 claimed without being able
+  to check.
+
+### 13.52.4 Status
+
+The `k = 256` dispatch (§13.51.4) is in flight; nothing in this section changes its registration. What changed is
+that its prediction 1 — "median coverage rises" — can now be checked with one command on the run that lands, and
+the same command will show whether the IE recovery §13.52.2 predicts actually happened.
