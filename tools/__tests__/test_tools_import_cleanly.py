@@ -74,17 +74,44 @@ def test_imports_from_a_directory_that_is_not_a_checkout(
         )
 
 
+def _synthetic_checkout(directory: Path) -> None:
+    """A git repository with an `origin` that carries a token in its URL.
+
+    Built rather than borrowed from the real checkout, and that is the whole point: the
+    first version of these tests asserted `len(token()) > 20` against **this** repository,
+    so they passed here and failed on the runner with `SystemExit: no oauth2 token in
+    .git/config` — three tests making the same mistake as the code they were guarding.
+    A test that needs the environment is a test that only describes the environment.
+    """
+    import subprocess
+
+    subprocess.run(['git', 'init', '-q', str(directory)], check=True)
+    subprocess.run(
+        ['git', 'remote', 'add', 'origin', 'https://oauth2:checkout-token@github.com/AgentiX-E/cortex'],
+        check=True,
+        cwd=directory,
+    )
+
+
 class TestTheAccessorsStillWork:
     """Lazy is not optional: the values must still be the right ones in a checkout."""
 
-    def test_the_pusher_finds_its_own_repository(self) -> None:
+    def test_the_pusher_finds_its_own_repository(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _synthetic_checkout(tmp_path)
+        monkeypatch.chdir(tmp_path)
         module = _import(TOOLS / 'push-via-api.py')
         assert module.repo() == 'AgentiX-E/cortex'
         assert module.branch() == 'master'
 
-    def test_the_pusher_reads_a_token_in_a_checkout(self) -> None:
+    def test_the_pusher_reads_the_token_its_origin_carries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _synthetic_checkout(tmp_path)
+        monkeypatch.chdir(tmp_path)
         module = _import(TOOLS / 'push-via-api.py')
-        assert len(module.token()) > 20
+        assert module.token() == 'checkout-token'
 
     def test_the_pusher_says_which_problem_it_has_outside_one(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -95,9 +122,14 @@ class TestTheAccessorsStillWork:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit, match='no .git/config'):
             module.token()
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit, match='cannot read'):
             module.origin()
 
-    def test_the_b7_dispatcher_reads_a_token_in_a_checkout(self) -> None:
+    def test_the_b7_dispatcher_reads_the_token_its_origin_carries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _synthetic_checkout(tmp_path)
+        monkeypatch.chdir(tmp_path)
         module = _import(TOOLS / 'dispatch-b7-ab.py')
-        assert len(module.token()) > 20
+        assert module.token() == 'checkout-token'
+
