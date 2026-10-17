@@ -6492,3 +6492,88 @@ This is also the second CI failure in two iterations caused by a dependency the 
 rather than on the code — §13.36's was PyYAML, undeclared, failing at collection. Both were found by CI rather
 than by the local gate, which is what CI is for, and both are recorded because **the gate's green is a claim
 about the gate's environment**.
+
+---
+
+## 13.48 The defect was in three files, and only one of them had a test
+
+### 13.48.1 The sweep
+
+§13.47 fixed the dispatch script's module-level token read because a test that imported it broke CI. The obvious
+follow-up question is **whether that script was the only one**, so: import every `tools/*.py` from a directory that
+is not a checkout.
+
+```
+32 scripts; 3 fail to import from an empty directory
+  dispatch-b7-ab.py:   FileNotFoundError: '.git/config'
+  inject-b7-cohort.py: AttributeError: 'NoneType' object has no attribute '__dict__'
+  push-via-api.py:     CalledProcessError: 'git remote get-url origin' returned non-zero
+```
+
+Two of those are the **same defect** as §13.47 and one is an artefact:
+
+| file | what the top level did | verdict |
+| --- | --- | --- |
+| `dispatch-b7-ab.py` | `TOKEN = token()` — reads `.git/config` | **real** |
+| `push-via-api.py` | `REPO, BRANCH = _origin()` — runs `git remote get-url origin`, and `TOKEN = token()` | **real** |
+| `inject-b7-cohort.py` | nothing; the `AttributeError` is `@dataclass` looking itself up in `sys.modules`, which the loader had not populated | **artefact of the test** |
+
+Neither of the two real ones had failed, and the reason is the same as §13.47's: **no test imported them.**
+`push-via-api.py` is used by every push in this campaign and had never been imported by anything but the
+interpreter running it as a script.
+
+### 13.48.2 The repair, and the three problems behind one message
+
+Both files move their reads behind cached accessors. `push-via-api.py` gains `origin()`, `repo()`, `branch()` and
+keeps `token()`; `dispatch-b7-ab.py` gains `token()`. And all three accessors now **distinguish the problems they
+used to conflate**, because each needs a different fix:
+
+| situation | before | after |
+| --- | --- | --- |
+| no `.git` directory | `FileNotFoundError` about a path | "run this from the repository root" |
+| `.git` but no `origin` | `CalledProcessError` about a subprocess | "run this from the repository root, in a checkout whose origin is the repository you mean to push" |
+| `origin` but no token | `SystemExit` (already correct) | unchanged |
+
+The middle one is the newly-named case, and it matters because `_origin`'s docstring already records a near-miss:
+a push from the wrong checkout would have pushed cortex-docs content into the cortex repository. **"Which
+repository am I pushing to" is exactly the question a `CalledProcessError` answers worst.**
+
+### 13.48.3 The guard is over the directory, not the file
+
+`tools/__tests__/test_tools_import_cleanly.py` parametrises **every** `tools/*.py` and imports it from a temp
+directory. Per-script tests would have found the two defects §13.47 and §13.48 fixed; only a directory-wide sweep
+finds the third one without someone thinking to look.
+
+Three details make it honest:
+
+- **A non-empty check.** `assert len(SCRIPTS) >= 20` — a parametrisation over zero files passes vacuously, which
+  is the failure mode a sweep is most likely to have.
+- **The loader registers each module in `sys.modules` before executing it**, because a `@dataclass` looks itself
+  up there. Without that, `inject-b7-cohort.py` fails with an `AttributeError` that has nothing to do with the
+  script — a test artefact that would have been reported as a finding.
+- **The failure message says what to do**: naming §13.47 and "move it behind an accessor", so the next person
+  who adds a module-level `git` call does not have to rediscover why it is refused.
+
+Four further tests assert the accessors still return the right values **in** a checkout — `repo() ==
+'AgentiX-E/cortex'`, `branch() == 'master'`, a token longer than 20 characters — because "lazy" would otherwise be
+indistinguishable from "broken", and the file it was made lazy in is the one every push depends on.
+
+### 13.48.4 Verification
+
+- `tools` **408 passed + 40 subtests** (was 371; +37 — one parametrisation per script plus the four accessor
+  tests). `pnpm check` **exit 0**.
+- **The repair to the pusher was verified by pushing with it.** The commit that contains the change is the first
+  one pushed by the changed code, which is the only test that matters for a file whose whole job is the push.
+- Before committing, the accessors were checked by hand in the repository: `repo() = AgentiX-E/cortex`,
+  `branch() = master`, `token()` 93 characters. Then from an empty directory: import succeeds for all 32.
+
+### 13.48.5 What this says about the campaign's own tooling
+
+The three files had been in the repository, working, for the whole campaign. They were not broken — **they were
+untestable**, and nothing said so because nothing had tried. `pnpm check` green was never evidence about them:
+their only execution path is "python3 tools/x.py" from a checkout.
+
+That is the same shape as every other defect this iteration found. §13.38's taxonomy was correct and read the
+wrong field. §13.41's gate was correct and read the wrong number. §13.47's dispatch worked and could not be
+imported. **A thing can do its job and be unable to answer a question about itself**, and the only way to find out
+is to ask the question in a place where the answer is not prearranged.
