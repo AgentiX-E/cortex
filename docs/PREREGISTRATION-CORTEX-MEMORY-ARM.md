@@ -6946,3 +6946,76 @@ opposite of what the rest of the row says. It says `n=2`, which is the guard.
 The `k = 256` dispatch (§13.51.4) is in flight; nothing in this section changes its registration. What changed is
 that its prediction 1 — "median coverage rises" — can now be checked with one command on the run that lands, and
 the same command will show whether the IE recovery §13.52.2 predicts actually happened.
+
+---
+
+## 13.53 The declines, priced against what the same coverage is worth
+
+### 13.53.1 Correcting §13.51.2
+
+§13.51.2 said "MR's declines are not a coverage problem: 52.8% against 54.2% on the questions it answers". The
+comparison is right and the conclusion drawn from it was too strong. Two further readings of the same artifact:
+
+**The declines are questions with many gold turns.** Every one of MR's 28 declines names **at least 7** gold turns
+(median **24**, range 18–36) and carries a median of **12**. For a counting question, half the evidence is not
+"enough to try" — it is a number that cannot be computed. That part of §13.51.2 stands.
+
+**But the same coverage is worth 67% elsewhere in the same capability.** MR's correct rate by coverage band:
+
+| coverage | MR | TR | IE | KU |
+| --- | --- | --- | --- | --- |
+| 1–24% | 2/14 = 14% | 3/18 = 17% | 3/5 = 60% | 2/2 |
+| 25–49% | 20/46 = 43% | 19/40 = 48% | 9/15 = 60% | 11/12 = 92% |
+| **50–74%** | **28/42 = 67%** | 37/54 = 69% | **30/32 = 94%** | 35/43 = 81% |
+| 75–99% | 12/19 = 63% | 9/13 = 69% | 43/47 = 91% | 13/15 = 87% |
+
+**MR's declines sit at a 52.8% median — inside the band where MR answers 67% correctly.** If the 28 declines
+behaved like the rest of their band, **19 of them would be right**. They are not a coverage story; they are a
+**more conservative decision than the capability's own average at the same coverage**.
+
+The same arithmetic prices the other two:
+
+| capability | declines | median coverage | its band's rate | expected recoverable |
+| --- | --- | --- | --- | --- |
+| MR | 28 | 52.8% | 67% | **≈ 19** |
+| TR | 41 | 39.7% | 48% | **≈ 20** |
+| IE | 13 | 42.9% | 60% | **≈ 8** |
+| **total** | **82** | | | **≈ 47 questions ≈ +9.4pp** |
+
+**So the largest recoverable loss in the configuration is not retrieval and not arithmetic — it is 82 declines
+whose evidence is worth roughly 47 correct answers at the rate the same coverage already achieves.**
+
+### 13.53.2 What this does not license
+
+It does not license "tell the model to answer more". The declines are *correct* decisions on the questions whose
+evidence really is missing — §13.51.2's 0-coverage band declines 100% of the time and is right to. A contract that
+pushes the model to answer would convert those into wrong answers, and the 47 above is an **upper bound** computed
+by assuming every decline behaves like its band's average, which includes questions far better covered than they
+are.
+
+The distinction that would make this actionable is the one §13.40's contract already draws — **decline only when the
+enumerated list is empty** — against what it currently permits, which is declining when the list is *incomplete*.
+Those are different instructions and the run cannot tell them apart from the outside.
+
+### 13.53.3 Why this is written now and not dispatched now
+
+`k = 256` is in flight (§13.51.4) and it moves exactly the quantity this section prices: a wider candidate pool
+raises coverage, and **higher coverage is worth more per question** (the 50–74% band is 67% against 43% for
+25–49%). So the decline count after that run is the number that decides whether a contract change is the next
+variable or a redundant one:
+
+- if `k = 256` cuts the declines to §13.51.4's registered ≤ 30 (TR) and ≤ 24 (MR), a contract change buys less and
+  the curve of `k` is worth more;
+- if the declines barely move, the evidence for a contract change is this table, and it is strong.
+
+**Registered as a decision rule rather than a prediction**, because the quantity it governs is measured by a run
+that is already in flight.
+
+### 13.53.4 Verification
+
+- Every number comes from the roster of run `39005914398` read two ways: `python3 tools/readout-arm-run.py
+  --coverage` for the band and median tables, and `failure_census` for the decline counts. No inline arithmetic is
+  quoted that the tool does not reproduce.
+- The "expected recoverable" column multiplies a count by a rate from the same band of the same capability. It is
+  labelled an **upper bound** because it assumes each decline would have behaved like its band's average, which is
+  the assumption §13.53.2 refuses to make on the model's behalf.
