@@ -6050,3 +6050,61 @@ What changed is that **the taxonomy can now be read against an enumerated run at
 `tools/classify-raw-outputs.py --failures` on such a run reported `numeric_mismatch: 0`, and a reader comparing that
 with §13.34.5's registered prediction would have concluded the contract had eliminated numeric errors — which is the
 opposite of what happened.
+
+---
+
+## 13.43 A report has to say which field it counted
+
+### 13.43.1 What the two reports said, and how a reader would have read them
+
+After §13.42 the tool has two reports that classify **two different strings**:
+
+| invocation | field | run `38985220145`, MR |
+| --- | --- | --- |
+| default | `rawOutput` — the text the model wrote | `bare 2 / prose-then-token 33 / other 86` |
+| `--failures` | `answer` — the string the scorer graded | `abstention 35 / plan_output 0 / numeric_mismatch 52 / long_prose 1 / other 4` |
+
+On every roster published before §13.40 those two strings are the same value, so the tables agree and the
+distinction is invisible. On an enumerated run they disagree about **86 of 121** records — and neither report said
+which string it had counted. A reader who took the first table for the second would conclude that 71% of MR's
+answers are neither numeric nor prose, when the truth is that 71% of its *raw outputs* are transcripts.
+
+**This is the fifth instance of one class in this campaign and the cheapest to close**: §13.24's docstring, §13.34.6's
+text-grep, §13.36's rendering comment, §13.37's workflow comment, and §13.40–13.42's field confusion. A report is a
+claim about a field, so it names the field.
+
+### 13.43.2 The change
+
+Each report now prints one line before its table:
+
+```
+field: rawOutput -- the text the model wrote, not necessarily the graded answer. Pass --failures for the answer-level taxonomy.
+field: answer -- the string the scorer graded (null where the arm declined)
+```
+
+And the `--failures` definitions block, which still described the rules as reading `rawOutput`, now describes them
+as they are:
+
+| shape | was | is |
+| --- | --- | --- |
+| `abstention` | "the last non-empty line of rawOutput is INSUFFICIENT_EVIDENCE" | "the arm returned no answer (`answer` is null)" |
+| `plan_output` | "rawOutput opens with 'Let me gather' or 'Step 1'" | "the answer opens with …" |
+| `soft_refusal` | "a refusal written out in prose, in the answer or the raw output" | "a refusal written out in prose, in the answer" |
+
+**The definitions block is what a reader uses to decide whether a table means what they need**, and it was the one
+part of §13.42's repair that still described the old rules. It would have been possible to change `failure_shape`
+and leave the block alone — the numbers would have been right and the explanation of them wrong, which is the exact
+failure this campaign keeps finding.
+
+### 13.43.3 Verification
+
+- `tools` **350 passed + 40 subtests** (was 347; +3, which is the three new tests in this section).
+- **Red first**: all three new tests failed against the unrepaired tool — the two `field:` lines did not exist, and
+  the census assertion could not match.
+- **One of my own assertions was wrong and is corrected rather than worked around.** The first version pinned the
+  column padding (`'other                86'`) and `'numeric_mismatch   52'`, both of which are the report's
+  business rather than its meaning; the second of those failed on a count of spaces. They are now whitespace-loose
+  matches, because a test that breaks on a cosmetic change while the defect it guards stays invisible is worse than
+  no test.
+- The `--failures` definitions block is asserted to name the answer, so a later edit that reverts the wording fails
+  in CI rather than in a reader's understanding.

@@ -349,6 +349,17 @@ def summarise(path: Path, dataset: str | None) -> int:
     # have landed in one `?` bucket while the tool reported success -- a plausible
     # table computed from a field that does not exist. Section 61's own defect
     # class, one layer up in the reading tool.
+    # Which string this report counted. Two reports in this file classify two
+    # different fields, and on every roster published before §13.40 the two are the
+    # same string, so a reader could not tell them apart. Run `38985220145` makes them
+    # disagree about almost every record -- its raw outputs are transcripts and its
+    # answers are totals -- and a report that does not say which it counted invites
+    # the misreading. See `--failures` for the answer-level taxonomy.
+    print(
+        'field: rawOutput -- the text the model wrote, not necessarily the graded answer. '
+        'Pass --failures for the answer-level taxonomy.'
+    )
+
     selected = [q for q in questions if dataset is None or q.get('capability') == dataset]
     if dataset is not None:
         print(f'capability filter: {dataset}')
@@ -410,6 +421,12 @@ def failures_report(path: Path, dataset: str | None) -> int:
     if dataset is not None:
         questions = [q for q in questions if q.get('capability') == dataset]
 
+    # The other half of the pair whose first half is `summarise`'s line: this report
+    # classifies the ANSWER, the string the scorer graded. On five of the six archived
+    # rosters that is the same string as `rawOutput`; on run `38985220145` it is not,
+    # and this is the report that says what the model actually answered.
+    print('field: answer -- the string the scorer graded (null where the arm declined)')
+
     by_capability: dict[str, list[dict]] = {}
     for question in questions:
         by_capability.setdefault(str(question.get('capability', '?')), []).append(question)
@@ -425,9 +442,9 @@ def failures_report(path: Path, dataset: str | None) -> int:
             share = f'{n / non_correct:6.1%}' if non_correct else '     -'
             print(f'  {shape:18} {n:4}  {share}')
         print('\n  definitions (precedence, first match wins)')
-        print('    abstention        the last non-empty line of rawOutput is INSUFFICIENT_EVIDENCE')
-        print('    plan_output       rawOutput opens with "Let me gather" or "Step 1"')
-        print('    soft_refusal      a refusal written out in prose, in the answer or the raw output')
+        print('    abstention        the arm returned no answer (`answer` is null)')
+        print('    plan_output       the answer opens with "Let me gather" or "Step 1"')
+        print('    soft_refusal      a refusal written out in prose, in the answer')
         print('    numeric_mismatch  both sides carry a number and the FIRST of each differ')
         print(f'    long_prose        the answer is {LONG_PROSE_CHARS} characters or more')
         print('    other             none of the above')

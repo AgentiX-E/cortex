@@ -569,3 +569,49 @@ class TestTheRostersTheFieldChangeMustNotMove:
         assert census['long_prose'] == 1
         assert census['other'] == 4
         assert sum(census.values()) == 92
+
+
+class TestEachReportNamesTheFieldItReads:
+    """Two reports in one file, and they classify two different strings.
+
+    `--failures` reads `answer` (§13.42); the default report reads `rawOutput`. On the
+    rosters where the two are the same string a reader could not tell them apart, and
+    under `ask: enumerated` they disagree about almost every record: run
+    `38985220145`'s raw outputs are transcripts, so the default report says
+    `bare 2 / prose-then-token 33 / other 86` while the answer-level report says
+    `abstention 35 / numeric_mismatch 52`.
+
+    A report that does not say which string it counted invites exactly that
+    misreading, so each one names its field in its own output.
+    """
+
+    @staticmethod
+    def _run(*args: str) -> 'subprocess.CompletedProcess[str]':
+        return subprocess.run(
+            [sys.executable, str(TOOL), *args], capture_output=True, text=True, check=False,
+        )
+
+    def test_the_default_report_says_it_classifies_the_raw_output(self) -> None:
+        r = self._run('--capability', 'MR', str(FIXTURES / 'mr-roster-38985220145.json'))
+        assert r.returncode == 0, r.stderr
+        assert 'field: rawOutput' in r.stdout
+        assert '--failures' in r.stdout
+
+    def test_the_failures_report_says_it_classifies_the_answer(self) -> None:
+        r = self._run('--failures', '--capability', 'MR', str(FIXTURES / 'mr-roster-38985220145.json'))
+        assert r.returncode == 0, r.stderr
+        assert 'field: answer' in r.stdout
+
+    def test_the_two_reports_disagree_on_this_roster_and_that_is_the_point(self) -> None:
+        """The measurement the labels exist for: same roster, two different tables."""
+        import re as _re
+
+        raw = self._run('--capability', 'MR', str(FIXTURES / 'mr-roster-38985220145.json')).stdout
+        answer = self._run(
+            '--failures', '--capability', 'MR', str(FIXTURES / 'mr-roster-38985220145.json'),
+        ).stdout
+        # Matched loosely on whitespace: the column widths are the report's business,
+        # and a test that pins them would fail on a cosmetic change while the defect it
+        # guards -- two reports counting two strings -- stayed invisible.
+        assert _re.search(r'^\s+other\s+86\b', raw, _re.MULTILINE), raw
+        assert _re.search(r'^\s+numeric_mismatch\s+52\b', answer, _re.MULTILINE), answer
