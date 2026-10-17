@@ -276,18 +276,29 @@ class TestTheFailureShapes:
     """
 
     def test_every_abstention_shape_is_the_abstention_shape(self) -> None:
+        """A decline is the ARM returning nothing, and each raw shape still reads so.
+
+        The four raw shapes are the sentinel classifier's (`classify`), which is what
+        the rosters were built from and is still the tool's other report. A decline is
+        now recognised from `answer is None` -- see `TestTheShapeIsReadFromTheAnswer`
+        for why the field had to move -- and this asserts that the four shapes still
+        produce a decline when the arm reports one.
+        """
         for raw in (SUM, f'Answer: {SUM}', f'prose\n{SUM}', f'prose\nAnswer: {SUM}'):
-            assert _MODULE.failure_shape({'rawOutput': raw, 'groundTruth': '3', 'answer': '2'}) == 'abstention', raw
+            assert _MODULE.failure_shape({'rawOutput': raw, 'groundTruth': '3', 'answer': None}) == 'abstention', raw
 
     def test_a_plan_output_is_its_own_shape(self) -> None:
+        # On all four archived rosters `answer` and `rawOutput` carry the same string,
+        # so a plan output is a plan output whichever field is read. Written with both
+        # set, which is the shape the taxonomy was calibrated against.
+        plan = 'Let me gather all model kits mentioned across sessions:\n\n1. Session 2: ...'
         assert _MODULE.failure_shape({
-            'rawOutput': 'Let me gather all model kits mentioned across sessions:\n\n1. Session 2: ...',
-            'groundTruth': 'five', 'answer': '4'}) == 'plan_output'
+            'rawOutput': plan, 'groundTruth': 'five', 'answer': plan}) == 'plan_output'
 
     def test_step_1_is_a_plan_output(self) -> None:
+        plan = 'Step 1: enumerate the sessions\n- Session 3: ...'
         assert _MODULE.failure_shape({
-            'rawOutput': 'Step 1: enumerate the sessions\n- Session 3: ...',
-            'groundTruth': '3', 'answer': '2'}) == 'plan_output'
+            'rawOutput': plan, 'groundTruth': '3', 'answer': plan}) == 'plan_output'
 
     def test_a_plan_output_outranks_the_numbers_in_its_own_body(self) -> None:
         """The whole of the disagreement between the two published tables.
@@ -445,3 +456,116 @@ class TestTheFailuresReport:
 
     def test_a_missing_file_is_an_error(self, tmp_path: Path) -> None:
         assert self._run('--failures', str(tmp_path / 'nope.json')).returncode == 2
+
+
+class TestTheShapeIsReadFromTheAnswer:
+    """The field the taxonomy reads, and the run that proved it was the wrong one.
+
+    §13.38 fixed *which rules* classify a non-correct answer and left *which field*
+    they read unexamined, because on the two rosters it was calibrated against the
+    two fields are the same string. Run `38953157688` broke that: under
+    `ask: enumerated` the arm's answer was the whole response, so the taxonomy was
+    classifying transcripts and reported `plan_output 30 / numeric_mismatch 0` --
+    a number that says nothing about the model's arithmetic.
+    """
+
+    def test_a_step_headed_transcript_is_classified_by_its_answer(self) -> None:
+        """The raw output opens with the contract; the answer is the model's total."""
+        record = {
+            'rawOutput': 'Step 1 — list every item in the evidence that matches the question…\n'
+                         '- [2023/05/21] I am planning a project in Nigeria…\n'
+            'Step 2 — compute the answer from that list…\n'
+            '3',
+            'answer': '3',
+            'groundTruth': '5',
+        }
+        assert _MODULE.failure_shape(record) == 'numeric_mismatch'
+
+    def test_a_step_headed_transcript_with_the_right_answer_is_not_numeric(self) -> None:
+        assert _MODULE.failure_shape({
+            'rawOutput': 'Step 1 — list the items\n- one\nStep 2 — compute\n3',
+            'answer': '3',
+            'groundTruth': '3',
+        }) == 'other'
+
+    def test_a_null_answer_is_an_abstention_whatever_the_raw_output_said(self) -> None:
+        """`parseAnswer` is what decides a decline, and a decline has no answer.
+
+        Reading the sentinel out of the raw output was equivalent for four runs and
+        is not equivalent in principle: a raw output that lists evidence and then
+        declines is an abstention because the ARM returned null, not because a
+        string ended a certain way. The taxonomy should read the decision.
+        """
+        assert _MODULE.failure_shape({
+            'rawOutput': 'Step 1 — list the items\n- one\n- two\nStep 2 — compute\nINSUFFICIENT_EVIDENCE',
+            'answer': None,
+            'groundTruth': '3',
+        }) == 'abstention'
+
+    def test_a_record_without_an_answer_key_is_an_error_rather_than_an_abstention(self) -> None:
+        """A schema change must fail loudly, not silently reclassify every question.
+
+        `.get('answer')` returning `None` for a missing key is indistinguishable from
+        a record that declined, so a report that stopped emitting the field would
+        report a 100% abstention rate and look like a contract working perfectly.
+        """
+        with pytest.raises(KeyError, match='answer'):
+            _MODULE.failure_shape({'rawOutput': '3', 'groundTruth': '3'})
+
+    def test_a_missing_raw_output_does_not_change_the_shape(self) -> None:
+        """`rawOutput` is no longer read for any rule, so its absence is not a shape."""
+        with_answer = {'answer': '2', 'groundTruth': '3'}
+        with_raw = {'answer': '2', 'groundTruth': '3', 'rawOutput': '3'}
+        assert _MODULE.failure_shape(with_answer) == _MODULE.failure_shape(with_raw)
+
+
+class TestTheRostersTheFieldChangeMustNotMove:
+    """The three runs whose published tables were produced with the old field.
+
+    On every one of them the answer and the raw output are the same string (or the
+    answer is null and the raw output ends in the sentinel), which is the property
+    that makes reading the answer a **no-op** for them and a repair for the fourth.
+    """
+
+    @staticmethod
+    def _census(run: str) -> 'Counter[str]':
+        from collections import Counter
+
+        report = json.loads((FIXTURES / f'mr-roster-{run}.json').read_text(encoding='utf-8'))
+        return Counter(_MODULE.failure_shape(q) for q in report['questions'] if not q['correct'])
+
+    def test_the_computed_roster_is_unchanged(self) -> None:
+        assert dict(self._census('38595325261')) == {
+            'abstention': 24, 'plan_output': 4, 'soft_refusal': 2,
+            'numeric_mismatch': 31, 'long_prose': 2, 'other': 7,
+        }
+
+    def test_the_session_fill_roster_is_unchanged(self) -> None:
+        census = self._census('38828538851')
+        assert census['abstention'] == 22
+        assert census['numeric_mismatch'] == 39
+        assert census['numeric_mismatch'] + census['plan_output'] == 41
+
+    def test_the_transcript_scored_roster_is_unchanged(self) -> None:
+        """Run `38953157688`, whose answer WAS the transcript: 33 declines, 30 plans."""
+        census = self._census('38953157688')
+        assert census['abstention'] == 33
+        assert census['plan_output'] == 30
+        assert census['numeric_mismatch'] == 0
+        assert sum(census.values()) == 63
+
+    def test_the_repaired_parser_roster_reads_its_arithmetic(self) -> None:
+        """Run `38985220145`: the first roster where the two fields differ.
+
+        `plan_output` falls 57 -> 0 and `numeric_mismatch` rises 0 -> 52, because the
+        answer is now the model's total rather than its transcript. The 52 is the
+        number §13.41.3 reads, and it is the number this classifier must produce or
+        the document and the tool disagree.
+        """
+        census = self._census('38985220145')
+        assert census['abstention'] == 35
+        assert census['plan_output'] == 0
+        assert census['numeric_mismatch'] == 52
+        assert census['long_prose'] == 1
+        assert census['other'] == 4
+        assert sum(census.values()) == 92

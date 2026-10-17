@@ -1,0 +1,981 @@
+{
+ "provenance": {
+  "run": "38985220145",
+  "workflow": "benchmark-cortex-memory.yml",
+  "artifact": "longmemeval-s-report > benchmark-cortex-memory-ablation-report.json",
+  "capability": "MR",
+  "questions": 121,
+  "config": "ask=enumerated, relevanceUnits=turn, promptContract=abstention-evidence-blocks",
+  "note": "only the fields tools/classify-raw-outputs.py reads; the report is not committed"
+ },
+ "questions": [
+  {
+   "questionId": "0a995998",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "Step 1 — Items of clothing to pick up or return from a store:\n\n- Navy blue blazer — dry cleaning to pick up (stated 2023/02/15, Sessions 12 and earlier)\n- Boots from Zara — exchanged on February 5th, new pair to pick up (stated 2023/02/15, Sessions 20 and 31)\n\nStep 2 — Count distinct items: 2\n\n2",
+   "correct": false
+  },
+  {
+   "questionId": "6d550036",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "The number of distinct projects I have led or am currently leading is 3.",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Project in Nigeria that connects 100 rural villages to running water — 2023/05/21 (Sun) 09:03.\n- Web design project for a large company — 2023/05/21 (Sun) 22:09.\n- New product feature launch project — 2023/05/28 (Sun) 03:42.\n\nStep 2 — compute the answer from that list:\nThe number of distinct projects I have led or am currently leading is 3.",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_59c863d7",
+   "capability": "MR",
+   "groundTruth": "I have worked on or bought five model kits. The scales of the models are: Revell F-15 Eagle (scale not mentioned), Tamiya 1/48 scale Spitfire Mk.V, 1/16 scale German Tiger I tank, 1/72 scale B-29 bomber, and 1/24 scale '69 Camaro.",
+   "answer": "Distinct model kits worked on or bought: B-29, '69 Camaro, Revell F-15 Eagle, Tamiya Spitfire Mk.V = 4.\n\n4",
+   "rawOutput": "Step 1:\n- 1/72 scale B-29 bomber model kit — bought at a model show [2023/05/20]\n- 1/24 scale '69 Camaro model kit — bought at a model show [2023/05/20]\n- Revell F-15 Eagle kit — picked up on a whim during a trip to the hobby store in late April [2023/05/27]\n- Tamiya 1/48 scale Spitfire Mk.V — recently finished [2023/05/30]\n- (Planned) 1/72 scale B-29 bomber — next project being worked on/planned [2023/05/27, 2023/05/30]\n\nStep 2:\nDistinct model kits worked on or bought: B-29, '69 Camaro, Revell F-15 Eagle, Tamiya Spitfire Mk.V = 4.\n\n4",
+   "correct": false
+  },
+  {
+   "questionId": "b5ef892d",
+   "capability": "MR",
+   "groundTruth": "8 days.",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- 2023/04/29: camping spots in the Rocky Mountains in Colorado recommended (no camping trip duration stated)\n- 2023/04/29: \"planning your trip\" to Moab, with camping tips (no camping trip duration stated)\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "e831120c",
+   "capability": "MR",
+   "groundTruth": "3.5 weeks",
+   "answer": "Two weeks = 14 days.  \nA week and a half = 10.5 days.  \nTotal = 14 + 10.5 = 24.5 days = 3.5 weeks.  \n\n3.5 weeks",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.  \n- I watched all 22 Marvel Cinematic Universe movies in two weeks — stated 2023/05/23 (Tue).  \n- I just finished a Star Wars marathon, watched all the main films in a week and a half — stated 2023/05/25 (Thu).  \n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.  \nTwo weeks = 14 days.  \nA week and a half = 10.5 days.  \nTotal = 14 + 10.5 = 24.5 days = 3.5 weeks.  \n\n3.5 weeks",
+   "correct": true
+  },
+  {
+   "questionId": "3a704032",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": null,
+   "rawOutput": "Step 1 — items matching “acquired in the last month”:\n- peace lily, acquired from the nursery two weeks before 2023/05/20 (stated 2023/05/20)\n- succulent, acquired from the nursery two weeks before 2023/05/20 (stated 2023/05/20)\n- snake plant, got from my sister last month (stated 2023/05/25)\n\nStep 2 — count the distinct items:\n3\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_d84a3211",
+   "capability": "MR",
+   "groundTruth": "$185",
+   "answer": "$25 + $40 = $65\n\n$65",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Chain replacement: $25 — stated 2023/05/05\n- New set of bike lights installed: $40 — stated 2023/05/05\n\nStep 2 — compute the answer from that list:\n$25 + $40 = $65\n\n$65",
+   "correct": false
+  },
+  {
+   "questionId": "aae3761f",
+   "capability": "MR",
+   "groundTruth": "15 hours for getting to the three destinations (or 30 hours for the round trip)",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/05/21 (Sun) 16:32] user: \"it only took me four hours to drive there from my place\" — drive to Outer Banks in North Carolina (road trip destination)\n- [2023/05/26 (Fri) 16:58] user: \"when I drove for six hours to Washington D.C. recently\" — drove for six hours to Washington D.C. (road trip destination)\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\n4 hours + 6 hours = 10 hours\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_f2262a51",
+   "capability": "MR",
+   "groundTruth": "I visited three different doctors: a primary care physician, an ENT specialist, and a dermatologist.",
+   "answer": "Dr. Patel, Dr. Lee, Dr. Smith = 3",
+   "rawOutput": "Step 1 — list every item in the evidence that matches \"different doctors did I visit\":\n- Dr. Patel [2023/05/20]\n- Dr. Lee [2023/05/20]\n- Dr. Smith [2023/05/21]\n\nStep 2 — count the distinct doctors listed:\nDr. Patel, Dr. Lee, Dr. Smith = 3",
+   "correct": true
+  },
+  {
+   "questionId": "dd2973ad",
+   "capability": "MR",
+   "groundTruth": "2 AM",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated.\n\n- [Session 23, 2] [2023/05/24 (Wed) 08:18] user: had a doctor's appointment at 10 AM last Thursday\n- [Session 45, 1] [2023/05/29 (Mon) 15:16] user: didn't get to bed until 2 AM last Wednesday\n\nStep 2 — compute the answer from that list, exactly as the question asks.\n\nThe doctor's appointment was \"last Thursday\" as stated on Wednesday 2023/05/24, so it occurred on Thursday 2023/05/18. The day before that is Wednesday 2023/05/17. The bedtime stated for \"last Wednesday\" on Monday 2023/05/29 refers to Wednesday 2023/05/24, not Wednesday 2023/05/17. No bedtime is given for Wednesday 2023/05/17.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "c4a1ceb8",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "Distinct citrus fruits: orange, lemon, lime, grapefruit, yuzu = 5\n\nAnswer: 5",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- Orange bitters made using orange peels — [2023/05/21 (Sun) 04:58]\n- Freshly squeezed lemon juice — [2023/05/21 (Sun) 04:58]\n- Freshly squeezed orange juice — [2023/05/21 (Sun) 04:58]\n- Fresh lime juice — [2023/05/25 (Thu) 13:21]\n- Lime wheel — [2023/05/25 (Thu) 13:21]\n- Orange wheels and twists — [2023/05/25 (Thu) 13:21]\n- Lemon wheels and twists — [2023/05/25 (Thu) 13:21]\n- Slice of orange or lemon — [2023/05/27 (Sat) 03:44]\n- Slices of orange and lemon — [2023/05/27 (Sat) 03:44]\n- Citrus slices — [2023/05/27 (Sat) 03:44]\n- Freshly squeezed orange juice — [2023/05/30 (Tue) 23:20]\n- Slice of orange — [2023/05/30 (Tue) 23:20]\n- Lime wheel or twist — [2023/05/30 (Tue) 23:20]\n- Grapefruit twist — [2023/05/30 (Tue) 23:20]\n- Cucumber-lime slice — [2023/05/30 (Tue) 23:20]\n- Grapefruit soda — [2023/05/30 (Tue) 23:20]\n- Yuzu soda — [2023/05/30 (Tue) 23:20]\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nDistinct citrus fruits: orange, lemon, lime, grapefruit, yuzu = 5\n\nAnswer: 5",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_a56e767c",
+   "capability": "MR",
+   "groundTruth": "I attended four movie festivals.",
+   "answer": "Distinct film festivals the user attended: Austin Film Festival, Portland Film Festival, AFI Fest = 3\n\nAnswer: 3",
+   "rawOutput": "Step 1:\n- Austin Film Festival (48-hour film challenge) — 2023/05/21\n- Portland Film Festival (volunteer, masterclass with Rachel Morrison) — 2023/05/25\n- Sundance Film Festival (mentioned as recommendation, not attended) — 2023/05/25\n- Toronto International Film Festival (TIFF) (mentioned as recommendation, not attended) — 2023/05/25\n- SXSW Film Festival (mentioned as recommendation, not attended) — 2023/05/25\n- AFI Fest (attended, saw \"Joker,\" Q&A with Todd Phillips and Joaquin Phoenix) — 2023/05/26\n\nStep 2:\nDistinct film festivals the user attended: Austin Film Festival, Portland Film Festival, AFI Fest = 3\n\nAnswer: 3",
+   "correct": false
+  },
+  {
+   "questionId": "6cb6f249",
+   "capability": "MR",
+   "groundTruth": "17 days",
+   "answer": "10 days + 7 days = 17 days\n\n17",
+   "rawOutput": "Step 1:\n- 10-day break from social media, stated 2023/03/14 (Session 22, turn 1)\n- week-long break from social media in mid-January, stated 2023/03/14 (Session 23, turn 1)\n\nStep 2:\n10 days + 7 days = 17 days\n\n17",
+   "correct": false
+  },
+  {
+   "questionId": "46a3abf7",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "4 tanks",
+   "rawOutput": "Step 1:\n- 2023/05/21: 1-gallon tank set up for a friend's kid\n- 2023/05/23: old 5-gallon tank that had Finley the betta\n- 2023/05/23: new 20-gallon community tank\n- 2023/05/27: Amazonia tank\n\nStep 2:\n4 tanks",
+   "correct": false
+  },
+  {
+   "questionId": "36b9f61e",
+   "capability": "MR",
+   "groundTruth": "$2,500",
+   "answer": "$800 + $1,200 + $500 = $2,500\n\n$2,500",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Luxury evening gown, $800 — stated 2023/05/24 (Session 14)\n- Designer handbag from Gucci, $1,200 — stated 2023/05/25 (Session 16)\n- Leather boots from a high-end Italian designer, $500 — stated 2023/05/28 (Session 33)\n\nStep 2 — compute the answer:\n$800 + $1,200 + $500 = $2,500\n\n$2,500",
+   "correct": false
+  },
+  {
+   "questionId": "28dc39ac",
+   "capability": "MR",
+   "groundTruth": "140 hours",
+   "answer": "5 + 30 + 10 + 25 = 70 hours\n\n70",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- Hyper Light Drifter — 5 hours to finish — stated 2023/05/23\n- The Last of Us Part II — completed on normal and hard difficulties — stated 2023/05/23\n- Assassin's Creed Odyssey — completed — stated 2023/05/23\n- The Last of Us Part II — completed on hard difficulty — 30 hours to finish — stated 2023/05/25\n- Celeste — took 10 hours to complete — stated 2023/05/27\n- The Last of Us Part II — finished on normal difficulty — 25 hours to complete — stated 2023/05/29\n\nStep 2 — compute the answer:\n\n5 + 30 + 10 + 25 = 70 hours\n\n70",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_2f8be40d",
+   "capability": "MR",
+   "groundTruth": "I attended three weddings. The couples were Rachel and Mike, Emily and Sarah, and Jen and Tom.",
+   "answer": "The evidence mentions five weddings, but some may not have occurred \"this year.\" The question asks how many weddings the user attended \"in this year.\" Emily's wedding is referenced as a past event where she and Sarah tied the knot, the college roommate's wedding is mentioned as a past comparison, the sister's wedding is discussed as recently planned and successful, the cousin's vineyard wedding was in August, and Jen's barn wedding was last weekend. Since all are framed as recent or current-year events, the count is 5.\n\n5",
+   "rawOutput": "Step 1:\n- My cousin's wedding at a vineyard in August [2023/10/15 05:48]\n- My friend Jen's wedding at a rustic barn last weekend [2023/10/15 19:23]\n- My sister's wedding (planning with her) [2023/10/15 10:57]\n- My college roommate's wedding with about 50 guests [2023/10/15 04:44]\n- My friend Emily's rooftop garden wedding [2023/10/15 04:44]\n\nStep 2:\nThe evidence mentions five weddings, but some may not have occurred \"this year.\" The question asks how many weddings the user attended \"in this year.\" Emily's wedding is referenced as a past event where she and Sarah tied the knot, the college roommate's wedding is mentioned as a past comparison, the sister's wedding is discussed as recently planned and successful, the cousin's vineyard wedding was in August, and Jen's barn wedding was last weekend. Since all are framed as recent or current-year events, the count is 5.\n\n5",
+   "correct": false
+  },
+  {
+   "questionId": "2e6d26dc",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "Jasper, Max, Charlotte, Ava, Lily = 5 babies.\n\n5",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- David had a baby boy named Jasper a few weeks ago (2023/05/13)\n- Rachel's son Max was born in March (2023/05/13)\n- Mike and Emma's daughter Charlotte was born around the same time (2023/05/13)\n- Aunt's twins Ava and Lily were born in April (2023/05/13)\n- Sarah's adopted daughter Aaliyah (2023/05/13)\n- David and his wife just had their third child, a baby boy named Jasper, a few weeks ago (2023/05/13)\n- Mike and Emma welcomed their first baby, a girl named Charlotte, a few weeks after Rachel's baby shower (2023/05/13)\n- Aunt's new twin girls Ava and Lily (2023/05/13)\n- Sarah recently adopted a child from Ethiopia, a girl named Aaliyah (2023/05/13)\n\nStep 2 — After treating repeated mentions as single items and excluding adopted children (Aaliyah) since the question asks about babies born:\nJasper, Max, Charlotte, Ava, Lily = 5 babies.\n\n5",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_15e38248",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "2",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- 2023/05/23: scratch guards from IKEA bought to protect furniture from Luna's scratching\n- 2023/05/29: IKEA bookshelf assembled\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\n2",
+   "correct": false
+  },
+  {
+   "questionId": "88432d0a",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- Baked a chocolate cake (mentioned 2023/05/21)\n- Baked cookies last Thursday (mentioned 2023/05/24; Thursday before 2023/05/24 = 2023/05/18)\n- Baked a whole wheat baguette / rustic Italian bread (mentioned 2023/05/24)\n- Baked an apple pie in cast iron skillet (mentioned 2023/05/20)\n- Baked a pizza in cast iron skillet (planned/mentioned 2023/05/20)\n- Made cornbread in cast iron skillet (suggested, not stated as baked by user)\n- Baked brownies, skillet cookie, pineapple upside-down cake, cobbler (suggested, not stated as baked by user)\n- Baked sourdough bread (mentioned 2023/05/21, baked Tuesday 2023/05/16)\n- Baked strawberry tart (mentioned 2023/05/30, planned)\n- Baked Garlic and Herb Whole Wheat Focaccia (mentioned 2023/05/28, planned)\n- Baked whole wheat bread (mentioned 2023/05/28, planned)\n\nStep 2 — compute the answer from that list, exactly as the question asks:\n\nThe question asks how many times the user baked something in the past two weeks. The evidence covers dates from 2023/05/20 to 2023/05/30. Two weeks before 2023/05/30 is 2023/05/16. So the relevant window is 2023/05/16 through 2023/05/30.\n\nDistinct baking events stated by the user as actually done:\n1. Sourdough bread baked Tuesday (2023/05/16)\n2. Cookies baked Thursday (2023/05/18)\n3. Apple pie baked in cast iron skillet (2023/05/20)\n4. Chocolate cake baked (2023/05/21)\n5. Whole wheat baguette / rustic Italian bread baked (2023/05/24)\n\nPlanned or suggested but not stated as completed: pizza in cast iron skillet, strawberry tart, focaccia, whole wheat bread.\n\nCount of completed baking events: 5.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "80ec1f4f",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "The question asks for museums or galleries visited in February. The Modern Art Museum visit was in January, so it does not count. The Natural History Museum visit on 2/8 and The Art Cube visit on 2/15 both fall in February.\n\nAnswer: 2",
+   "rawOutput": "Step 1:\n- Visited The Art Cube on 2/15 (mentioned Session 28, turn 1, stated 2023/03/03)\n- Took niece to the Natural History Museum on 2/8 (mentioned Session 33, turn 1, stated 2023/03/03)\n- Attended a guided workshop at the Modern Art Museum in January (mentioned Session 35, turn 1, stated 2023/03/03)\n\nStep 2:\nThe question asks for museums or galleries visited in February. The Modern Art Museum visit was in January, so it does not count. The Natural History Museum visit on 2/8 and The Art Cube visit on 2/15 both fall in February.\n\nAnswer: 2",
+   "correct": true
+  },
+  {
+   "questionId": "d23cf73b",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "6",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- Thai cuisine tried at Pok Pok, including Fish Sauce Wings and other Thai dishes [2023/05/21]\n- Ethiopian restaurant tried, and Ethiopian-inspired dishes (misir wot, injera) [2023/05/24]\n- Indian cuisine cooked, including chicken tikka masala, naan bread, and saag paneer [2023/05/26]\n- Korean bibimbap tried from a cooking class’s online recipe library [2023/05/29]\n- Korean kimchi made and Korean-inspired dishes planned [2023/05/29]\n- Vegan stir-fry with tofu or tempeh alternatives [2023/05/30]\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items.\n\n6",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_7fce9456",
+   "capability": "MR",
+   "groundTruth": "I viewed four properties before making an offer on the townhouse in the Brookside neighborhood. The reasons I didn't make an offer on them were: the kitchen of the bungalow needed serious renovation, the property in Cedar Creek was out of my budget, the noise from the highway was a deal-breaker for the 1-bedroom condo, and my offer on the 2-bedroom condo was rejected due to a higher bid.",
+   "answer": "The question asks how many properties were viewed before making an offer on the townhouse in Brookside. The Brookside townhouse was viewed on February 22nd. Properties viewed before that date:\n- Cedar Creek property viewed February 1st\n- 1-bedroom condo viewed February 10th\n- 2-bedroom condo viewed February 15th\n\nThat is 3 properties.\n\n**3**",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/03/08] user: I actually fell in love with a 2-bedroom condo on February 15th... but unfortunately, my offer got rejected on the 17th due to a higher bid.\n- [2023/03/08] user: I viewed a 1-bedroom condo on February 10th, but the noise from the highway was a deal-breaker.\n- [2023/03/08] user: I saw the 3-bedroom townhouse in the Brookside neighborhood on February 22nd. I put in an offer on February 25th...\n- [2023/03/08] user: I've been house hunting for a while, and I've seen some properties that just didn't fit my budget, like that one in Cedar Creek on February 1st.\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nThe question asks how many properties were viewed before making an offer on the townhouse in Brookside. The Brookside townhouse was viewed on February 22nd. Properties viewed before that date:\n- Cedar Creek property viewed February 1st\n- 1-bedroom condo viewed February 10th\n- 2-bedroom condo viewed February 15th\n\nThat is 3 properties.\n\n**3**",
+   "correct": false
+  },
+  {
+   "questionId": "d682f1a2",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "3",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- 2023/05/22: Domino's Pizza (food delivery service)\n- 2023/05/27: Uber Eats (food delivery service)\n- 2023/05/30: Fresh Fusion (food delivery service)\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\n3",
+   "correct": true
+  },
+  {
+   "questionId": "7024f17c",
+   "capability": "MR",
+   "groundTruth": "0.5 hours",
+   "answer": "The only completed item in the evidence matching the question is one 30-minute jog. No completed yoga sessions last week are stated. Therefore, the total is 30 minutes, or 0.5 hours.\n\n0.5 hours",
+   "rawOutput": "Step 1:\n- 2023/05/20: jogging — 30-minute jog around the neighborhood (stated as done on Saturday)\n- 2023/05/22: yoga — used to practice yoga three times a week, each time for 2 hours (past routine, not stated as done last week)\n- 2023/05/22: yoga — “I've been slacking off this month and I'm trying to get back into it” (no completed yoga sessions last week stated)\n- 2023/05/23: yoga — mentions “getting back into yoga,” “starting with one or two sessions a week,” and prior yoga practice, but no completed yoga sessions last week stated\n- 2023/05/29: hiking/running shoes — related fitness gear, not jogging or yoga\n\nStep 2:\nThe only completed item in the evidence matching the question is one 30-minute jog. No completed yoga sessions last week are stated. Therefore, the total is 30 minutes, or 0.5 hours.\n\n0.5 hours",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_5501fe77",
+   "capability": "MR",
+   "groundTruth": "TikTok",
+   "answer": "Twitter gained 540 − 420 = 120 followers over the past month. TikTok gained around 200 followers over the past three weeks. The largest gain over the past month is TikTok.",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Twitter follower count jumped from 420 to 540 over the past month — stated 2023/05/29 (Mon)\n- TikTok gained around 200 followers over the past three weeks — stated 2023/05/29 (Mon)\n\nStep 2 — compute the answer:\nTwitter gained 540 − 420 = 120 followers over the past month. TikTok gained around 200 followers over the past three weeks. The largest gain over the past month is TikTok.",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_2ba83207",
+   "capability": "MR",
+   "groundTruth": "Thrive Market",
+   "answer": "Grocery store spending:\n- Walmart: $120\n- Publix: $60\n\nHighest amount: $120 at Walmart.\n\nWalmart",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- 2023/05/20: spent around $80 on a silver necklace for my sister's birthday three weeks ago (not a grocery store)\n- 2023/05/26: went grocery shopping last Saturday, exactly a week ago, and spent around $120 at Walmart\n- 2023/05/30: ordered from Publix last week and spent around $60 (Instacart)\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nGrocery store spending:\n- Walmart: $120\n- Publix: $60\n\nHighest amount: $120 at Walmart.\n\nWalmart",
+   "correct": false
+  },
+  {
+   "questionId": "2318644b",
+   "capability": "MR",
+   "groundTruth": "$270",
+   "answer": null,
+   "rawOutput": "Step 1:\n- [fdb4d39d-45a0-4851-be84-2ce8e7553a40] [2023/05/24] user: \"I'm staying at a luxurious resort in Maui that costs over $300 per night\"\n- [3509bb74-23ad-4b16-b3d6-38d1e5d920f4] [2023/05/26] user: \"I stayed in a hostel in Tokyo that cost around $30 per night\"\n\nStep 2:\nHawaii: over $300 per night. Tokyo: around $30 per night. Difference: over $270 more per night.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "2ce6a0f2",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "3",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- \"Women in Art\" exhibition, attended on February 10th (mentioned on 2023/03/08 in Session 39)\n- \"The Evolution of Street Art\" lecture at the Art Gallery, attended on March 3rd (mentioned on 2023/03/08 in Session 25)\n- Guided tour at the History Museum, attended on February 24th (mentioned on 2023/03/08 in Session 41)\n\nStep 2 — compute the answer: There are 3 distinct art-related events.\n\n3",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_d12ceb0e",
+   "capability": "MR",
+   "groundTruth": "59.6",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/05/20 (Sat) 11:56] user mentions \"my grandma's favorite food\"\n- [2023/05/20 (Sat) 11:56] user mentions \"my mom and dad\"\n- [2023/05/20 (Sat) 11:56] user mentions \"Grandma loved classic American comfort food\"\n- [2023/05/22 (Mon) 10:09] user mentions \"My grandma is 75\"\n- [2023/05/22 (Mon) 10:09] user mentions \"my grandpa is 78\"\n- [2023/05/23 (Tue) 21:28] user mentions \"my mom is 55\"\n- [2023/05/23 (Tue) 21:28] user mentions \"my dad is 58\"\n- [2023/05/26 (Fri) 10:10] user mentions \"I just turned 32 on February 12th\"\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nAges found: me = 32; mom = 55; dad = 58; grandma = 75; grandpa = 78.\n\nAverage = (32 + 55 + 58 + 75 + 78) / 5 = 298 / 5 = 59.6\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "00ca467f",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "The question asks how many doctor's appointments the user went to in March. \nThe primary care physician appointment was attended (\"I had an appointment with my primary care physician, but the antibiotic didn't fully clear it up\"). \nThe EMG test with Dr. Johnson is scheduled for April 1st, which is in April, not March, and it is a future appointment. \nThe appointments with Dr. Smith and Dr. Johnson are future appointments the user plans to schedule, not appointments already attended in March.\nTherefore, only 1 appointment was attended in March.\n\n1",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- [2023/03/27] user had an appointment with their primary care physician (Session 13, Turn 1)\n- [2023/03/27] user has an EMG test scheduled with Dr. Johnson on April 1st (Session 13, Turn 1)\n- [2023/03/27] user will schedule an appointment with Dr. Smith (Session 41, Turn 4)\n- [2023/03/27] user will schedule an appointment with Dr. Johnson (Session 41, Turn 4)\n\nStep 2 — compute the answer:\nThe question asks how many doctor's appointments the user went to in March. \nThe primary care physician appointment was attended (\"I had an appointment with my primary care physician, but the antibiotic didn't fully clear it up\"). \nThe EMG test with Dr. Johnson is scheduled for April 1st, which is in April, not March, and it is a future appointment. \nThe appointments with Dr. Smith and Dr. Johnson are future appointments the user plans to schedule, not appointments already attended in March.\nTherefore, only 1 appointment was attended in March.\n\n1",
+   "correct": false
+  },
+  {
+   "questionId": "b3c15d39",
+   "capability": "MR",
+   "groundTruth": "5 days. 6 days (including the last day) is also acceptable.",
+   "answer": "The order was placed on February 5th and the remote shutter release arrived on February 10th. February 5th to February 10th is 5 days.\n\n5",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- [2023/03/01] user: I also ordered a new remote shutter release online on February 5th, after I realized I lost my old one during a photo walk. It's been working great so far. (Session 1, turn 4)\n- [2023/03/01] user: I did mention that I got a new remote shutter release that arrived on February 10th, and it's been a game-changer. (Session 29, turn 4)\n\nStep 2 — compute the answer from that list:\nThe order was placed on February 5th and the remote shutter release arrived on February 10th. February 5th to February 10th is 5 days.\n\n5",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_31ff4165",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question:\n\n- Fitbit Versa 3 smartwatch (2023/05/21)\n- hearing aids (2023/05/22)\n- Fitbit Versa 3 (2023/05/27)\n- nebulizer machine (2023/05/30)\n\nStep 2 — compute the answer:\nDistinct health-related devices = 4\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "eeda8a6d",
+   "capability": "MR",
+   "groundTruth": "17",
+   "answer": "10 + 5 + 1 + 1 = 17\n\n17",
+   "rawOutput": "Step 1 — list every item matching the question, one per line, with the date:\n\n- 20-gallon tank: 10 neon tetras [2023/05/22]\n- 20-gallon tank: 5 golden honey gouramis [2023/05/22]\n- 20-gallon tank: 1 small pleco catfish [2023/05/22]\n- 10-gallon tank: 1 betta fish, Bubbles [2023/05/27]\n\nStep 2 — compute the answer:\n\n10 + 5 + 1 + 1 = 17\n\n17",
+   "correct": false
+  },
+  {
+   "questionId": "2788b940",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "The distinct fitness classes attended in a typical week are:\n1. Zumba (Tuesdays and Thursdays)\n2. BodyPump (Mondays)\n3. Yoga (Sundays)\n4. Hip Hop Abs (Saturdays)\n\nDistinct classes: 4\n\nAnswer: 4",
+   "rawOutput": "Step 1:\n- Zumba classes on Tuesdays and Thursdays at 7:00 PM (2023/05/20)\n- BodyPump class on Mondays (2023/05/20)\n- BodyPump class on Mondays at 6:30 PM (2023/05/30)\n- yoga class on Sundays at 6:00 PM (2023/05/29)\n- Hip Hop Abs class on Saturday morning at 10:00 AM (2023/05/30)\n- yoga classes on Sundays (2023/05/30)\n\nStep 2:\nThe distinct fitness classes attended in a typical week are:\n1. Zumba (Tuesdays and Thursdays)\n2. BodyPump (Mondays)\n3. Yoga (Sundays)\n4. Hip Hop Abs (Saturdays)\n\nDistinct classes: 4\n\nAnswer: 4",
+   "correct": false
+  },
+  {
+   "questionId": "60bf93ed",
+   "capability": "MR",
+   "groundTruth": "5 days. 6 days (including the last day) is also acceptable.",
+   "answer": "January 15 to January 20 is 5 days.\n\n5",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- I bought it from Amazon on 1/15. [2023/01/24 (Tue) 07:19]\n- It arrived on 1/20. [2023/01/24 (Tue) 09:37]\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nJanuary 15 to January 20 is 5 days.\n\n5",
+   "correct": true
+  },
+  {
+   "questionId": "9d25d4e0",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": null,
+   "rawOutput": "Step 1:\n- No item in the evidence states a specific piece of jewelry acquired in the last two months. The evidence mentions accumulating \"quite a few pieces over the years\" and getting an engagement ring \"a month ago,\" but it does not state the number of pieces acquired in the last two months.\n\nStep 2:\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "129d1232",
+   "capability": "MR",
+   "groundTruth": "$5,850",
+   "answer": "$250 + $5,000 = $5,250\n\n$5,250",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n- [2023/05/01 (Mon) 10:42] charity walk: raised $250\n- [2023/05/01 (Mon) 22:24] Bike-a-Thon for Cancer Research: team managed to raise $5,000\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n$250 + $5,000 = $5,250\n\n$5,250",
+   "correct": false
+  },
+  {
+   "questionId": "60472f9c",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "Step 1:\n- Data Mining project [2023/05/25 (Thu)]\n- Database Systems project [2023/05/25 (Thu)]\n\nStep 2:\n2",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_194be4b3",
+   "capability": "MR",
+   "groundTruth": "I currently own 4 musical instruments. I've had the Fender Stratocaster electric guitar for 5 years, the Yamaha FG800 acoustic guitar for 8 years, the 5-piece Pearl Export drum set for an unspecified amount of time, and the Korg B1 piano for 3 years.",
+   "answer": "Distinct instruments the user currently owns:\n1. Black Fender Stratocaster electric guitar\n2. Acoustic guitar\n3. 5-piece Pearl Export drum set\n4. Korg B1 piano\n\nThe violin is for the niece, not owned by the user. The ukulele is only being considered, not owned. The \"guitar\" mentioned in Session 9 is the same guitar-playing fact as the Stratocaster/acoustic context, and the piano appears once as an owned instrument.\n\n4",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated.\n\n- Black Fender Stratocaster electric guitar — [2023/05/20]\n- Acoustic guitar — [2023/05/20]\n- Old drum set, a 5-piece Pearl Export — [2023/05/22]\n- Piano, a Korg B1 — [2023/05/22]\n- Guitar (played for a while) — [2023/05/22]\n- Violin (for niece) — [2023/05/22]\n- Acoustic guitar (referenced in accessories discussion) — [2023/05/22]\n- Piano (Korg B1, keys sticking) — [2023/05/29]\n\nStep 2 — compute the answer from that list.\n\nDistinct instruments the user currently owns:\n1. Black Fender Stratocaster electric guitar\n2. Acoustic guitar\n3. 5-piece Pearl Export drum set\n4. Korg B1 piano\n\nThe violin is for the niece, not owned by the user. The ukulele is only being considered, not owned. The \"guitar\" mentioned in Session 9 is the same guitar-playing fact as the Stratocaster/acoustic context, and the piano appears once as an owned instrument.\n\n4",
+   "correct": true
+  },
+  {
+   "questionId": "a9f6b44c",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "The distinct bikes are: road bike (items 1, 3, 4 refer to the same bike) and commuter bike (item 2). That gives 2 distinct bikes.\n\nAnswer: 2",
+   "rawOutput": "Step 1 — items matching \"bikes I service or plan to service in March\":\n\n1. Road bike — cleaned and lubricated the chain on March 2nd (stated Session 18, 2023/03/20 10:35).\n2. Commuter bike — plan to replace the front tire this month, before April (stated Session 14, 2023/03/20 07:32).\n3. Road bike — serviced at Pedal Power on March 10th, brake pads and cables replaced (stated Session 36, 2023/03/20 18:33).\n4. Road bike — cleaned and lubricated the bike chain on March 22nd (stated Session 18, 2023/03/20 10:35).\n\nStep 2 — compute:\n\nThe distinct bikes are: road bike (items 1, 3, 4 refer to the same bike) and commuter bike (item 2). That gives 2 distinct bikes.\n\nAnswer: 2",
+   "correct": true
+  },
+  {
+   "questionId": "d851d5ba",
+   "capability": "MR",
+   "groundTruth": "$3,750",
+   "answer": null,
+   "rawOutput": "Step 1:\n- $1,000+ raised for the local children's hospital at a charity bake sale (stated 2023/03/20, Session 8)\n- $250 raised for a local food bank at the \"Run for Hunger\" charity event on March 12th (stated 2023/03/20, Session 15)\n- $500 raised for the American Cancer Society through a charity fitness challenge in February (stated 2023/03/20, Session 32)\n- $2,000 raised for a local animal shelter on January 20th (stated 2023/03/20, Session 37)\n\nStep 2:\nSince one amount is stated as \"over $1,000,\" the exact total cannot be computed. Using the stated amounts: $1,000 + $250 + $500 + $2,000 = $3,750, plus an unknown amount above $1,000.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "5a7937c8",
+   "capability": "MR",
+   "groundTruth": "3 days.",
+   "answer": "2",
+   "rawOutput": "Step 1:\n- [2024/01/10 (Wed) 12:30] midnight mass on Christmas Eve at St. Mary’s Church on December 24th\n- [2024/01/10 (Wed) 19:48] Bible study on the book of Matthew at church on December 17th\n\nStep 2:\n2",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_ab202e7f",
+   "capability": "MR",
+   "groundTruth": "I replaced or fixed five items: the kitchen faucet, the kitchen mat, the toaster, the coffee maker, and the kitchen shelves.",
+   "answer": "2",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- kitchen shelves — fixed — 2023/05/20 (Sat)\n- old toaster — replaced with a toaster oven — 2023/05/26 (Fri)\n- old toaster — replaced with a toaster oven — 2023/05/30 (Tue)\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items.\n\n2",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_e05b82a6",
+   "capability": "MR",
+   "groundTruth": "10 times",
+   "answer": "3 + 3 = 6\n\n6",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- [Session 5] Revenge of the Mummy rollercoaster, ridden three times in a row at Universal Studios Hollywood on October 15th — stated 2023/11/04.\n- [Session 38] Space Mountain: Ghost Galaxy, ridden three times at Disneyland on September 24th during Mickey's Halloween Party — stated 2023/11/04.\n\nStep 2 — compute the answer:\n\n3 + 3 = 6\n\n6",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_731e37d7",
+   "capability": "MR",
+   "groundTruth": "$720",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Mindfulness workshop at a yoga studio near home on December 12 — $20 — stated 2023/02/26\n- Two-day writing workshop at a literary festival in November — $200 — stated 2023/02/26\n- Two-day digital marketing workshop at the city convention center — stated 2023/02/26 (no cost stated in Session 22)\n- Digital marketing workshop at the city convention center on March 15–16 — $500 — stated 2023/02/26\n\nStep 2 — compute the answer:\n$20 + $200 + $500 = $720\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "edced276",
+   "capability": "MR",
+   "groundTruth": "15 days",
+   "answer": null,
+   "rawOutput": "Step 1:\n- 2023/05/21: solo trip to New York City for five days\n- 2023/05/24: island-hopping trip to Hawaii with family\n\nStep 2:\n5 days + unknown number of days in Hawaii = INSUFFICIENT_EVIDENCE for a total number of days, because the Hawaii trip duration is not stated.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "10d9b85a",
+   "capability": "MR",
+   "groundTruth": "3 days",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "e3038f8c",
+   "capability": "MR",
+   "groundTruth": "99",
+   "answer": "Distinct rare item categories mentioned: rare figurines, rare coins, rare records, grandmother's antique vase, rare book collection, rare items (general), rare vinyl records.\n\nThat is 7 distinct rare items/types.\n\nAnswer: 7",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- 12 rare figurines — 2023/05/22\n- rare coins — 2023/05/22\n- 57 rare records — 2023/05/22\n- grandmother's antique vase — 2023/05/22\n- 57 rare records — 2023/05/22\n- grandmother's antique vase — 2023/05/22\n- 57 rare records — 2023/05/22\n- grandmother's antique vase — 2023/05/22\n- rare coins — 2023/05/23\n- rare book collection — 2023/05/23\n- rare records — 2023/05/23\n- rare items (general collection) — 2023/05/25\n- rare vinyl records — 2023/05/25\n- rare 1967 pressing of The Beatles' Sgt. Pepper's Lonely Hearts Club Band — 2023/05/25\n\nStep 2 — compute the answer from that list:\n\nDistinct rare item categories mentioned: rare figurines, rare coins, rare records, grandmother's antique vase, rare book collection, rare items (general), rare vinyl records.\n\nThat is 7 distinct rare items/types.\n\nAnswer: 7",
+   "correct": false
+  },
+  {
+   "questionId": "2b8f3739",
+   "capability": "MR",
+   "groundTruth": "$495",
+   "answer": "$225 + (20 × $7.5) + $120 = $225 + $150 + $120 = $495.\n\nThe total amount earned is $495.",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/06/01 (Thu) 07:48] sold 15 jars of homemade jam at the Homemade and Handmade Market on May 29th, earning $225.\n- [2023/06/01 (Thu) 22:01] sold 20 potted herb plants at the Summer Solstice Market for $7.5 each.\n- [2023/06/01 (Thu) 23:14] sold 12 bunches of fresh organic herbs from my backyard garden at the farmers' market on May 15th, earning a total of $120.\n\nStep 2 — compute the answer.\n\n$225 + (20 × $7.5) + $120 = $225 + $150 + $120 = $495.\n\nThe total amount earned is $495.",
+   "correct": false
+  },
+  {
+   "questionId": "1a8a66a6",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "The evidence mentions a Forbes subscription (canceled) and a New Yorker subscription (active). Since the Forbes subscription was canceled, it is not a current subscription. Therefore, the number of current magazine subscriptions is 1.\n\n1",
+   "rawOutput": "Step 1 — list every item that matches the question:\n\n- Forbes magazine subscription — canceled in early March (mentioned 2023/04/01)\n- The New Yorker subscription — subscribed in early February (mentioned 2023/04/01)\n\nStep 2 — compute the answer:\n\nThe evidence mentions a Forbes subscription (canceled) and a New Yorker subscription (active). Since the Forbes subscription was canceled, it is not a current subscription. Therefore, the number of current magazine subscriptions is 1.\n\n1",
+   "correct": false
+  },
+  {
+   "questionId": "c2ac3c61",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "3 + 2 = 5\n\n5",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [Session 16, 2023/05/23] user: I've completed three courses on Coursera.\n- [Session 52, 2023/05/30] user: I've completed two courses on edX so far.\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\n3 + 2 = 5\n\n5",
+   "correct": false
+  },
+  {
+   "questionId": "bf659f65",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "2",
+   "rawOutput": "Step 1:\n- “Happier Than Ever” (Billie Eilish album) — downloaded on Spotify — stated 2023/05/20\n- “Midnight Sky” (The Whiskey Wanderers EP) — bought at the festival merchandise booth — stated 2023/05/29\n\nStep 2:\n2",
+   "correct": false
+  },
+  {
+   "questionId": "gpt4_372c3eed",
+   "capability": "MR",
+   "groundTruth": "10 years",
+   "answer": "High school: 2010 to 2014 = 4 years.\nBachelor's degree: from 2014 (after high school) to 2020 = 6 years.\nTotal: 4 + 6 = 10 years.\n\n10 years",
+   "rawOutput": "Step 1:\n- 2021/08/20 (Session 6): Completed Bachelor's in Computer Science from UCLA in 2020.\n- 2021/08/20 (Session 39): Attended Arcadia High School from 2010 to 2014.\n- 2021/08/20 (Session 39): Attended UCLA for undergrad.\n\nStep 2:\nHigh school: 2010 to 2014 = 4 years.\nBachelor's degree: from 2014 (after high school) to 2020 = 6 years.\nTotal: 4 + 6 = 10 years.\n\n10 years",
+   "correct": true
+  },
+  {
+   "questionId": "gpt4_2f91af09",
+   "capability": "MR",
+   "groundTruth": "23",
+   "answer": "17 + 5 + 1 = 23\n\n23",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- 17 poems in two weeks (stated 2023/05/21)\n- five short stories (stated 2023/05/28)\n- one piece titled \"The Smell of Old Books\" for the writing challenge prompt \"forgotten memories\" (stated 2023/05/30)\n\nStep 2 — compute the answer:\n17 + 5 + 1 = 23\n\n23",
+   "correct": false
+  },
+  {
+   "questionId": "81507db6",
+   "capability": "MR",
+   "groundTruth": "3",
+   "answer": "The question asks how many graduation ceremonies I have attended in the past three months. The evidence explicitly states the user attended:\n- Emma's preschool graduation (about two months ago)\n- Rachel's master's degree graduation (a couple of weeks ago)\n\nThe nephew's graduation was missed, not attended. Alex's graduation was mentioned by the assistant, but the user did not state attending it.\n\nNumber of distinct attended graduation ceremonies in the past three months: 2\n\n2",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/07/21 (Fri) 06:56] graduation ceremony: user missed their nephew's graduation ceremony (mentioned in assistant's reply)\n- [2023/07/21 (Fri) 09:29] graduation ceremony: user attended their little cousin Emma's preschool graduation ceremony about two months ago\n- [2023/07/21 (Fri) 14:52] graduation ceremony: user attended their best friend Rachel's master's degree graduation ceremony a couple of weeks ago\n- [2023/07/21 (Fri) 13:23] graduation ceremony: assistant congratulates Alex on their graduation (not stated as attended by user)\n\nStep 2 — compute the answer from that list.\n\nThe question asks how many graduation ceremonies I have attended in the past three months. The evidence explicitly states the user attended:\n- Emma's preschool graduation (about two months ago)\n- Rachel's master's degree graduation (a couple of weeks ago)\n\nThe nephew's graduation was missed, not attended. Alex's graduation was mentioned by the assistant, but the user did not state attending it.\n\nNumber of distinct attended graduation ceremonies in the past three months: 2\n\n2",
+   "correct": false
+  },
+  {
+   "questionId": "d3ab962e",
+   "capability": "MR",
+   "groundTruth": "8 miles",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated.\n- No item states a hike done on a weekend, nor two hikes on two consecutive weekends, nor any distance for such hikes.\n\nStep 2 — compute the answer from that list.\nSince the list contains no relevant hikes or distances, there is nothing to total or compute.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "2311e44b",
+   "capability": "MR",
+   "groundTruth": "190",
+   "answer": "440 total pages − 250 pages read = 190 pages left.\n\n190",
+   "rawOutput": "Step 1 — items matching the question:\n1. Session 38, 2023/05/28: “The Nightingale” is 440 pages long.\n2. Session 46, 2023/05/30: Currently on page 250 of “The Nightingale.”\n\nStep 2 — compute:\n440 total pages − 250 pages read = 190 pages left.\n\n190",
+   "correct": false
+  },
+  {
+   "questionId": "cc06de0d",
+   "capability": "MR",
+   "groundTruth": "$6",
+   "answer": "$12 (taxi ride) − $6 (daily train fare) = $6 more expensive.\n\nThe taxi ride was $6 more expensive than the train fare.",
+   "rawOutput": "Step 1:\n- Taxi ride cost $12 when user missed the train by 5 minutes — stated 2023/05/25 (Session 20, turns 1, 2, 4, 5)\n- Daily train fare is actually $6 — stated 2023/05/28 (Session 33, turn 3)\n\nStep 2:\n$12 (taxi ride) − $6 (daily train fare) = $6 more expensive.\n\nThe taxi ride was $6 more expensive than the train fare.",
+   "correct": false
+  },
+  {
+   "questionId": "a11281a2",
+   "capability": "MR",
+   "groundTruth": "100",
+   "answer": "The question asks for the approximate increase in Instagram followers experienced in two weeks. The evidence states 350 followers after two weeks, and a starting point of 250 followers at the start of the year. Computing the increase: 350 - 250 = 100 followers.\n\n100",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- I've noticed that after two weeks of posting regularly, I had around 350 followers on Instagram [2023/05/23 (Tue) 21:44]\n- I started the year with 250 followers on Instagram [2023/05/28 (Sun) 08:53]\n\nStep 2 — compute the answer:\nThe question asks for the approximate increase in Instagram followers experienced in two weeks. The evidence states 350 followers after two weeks, and a starting point of 250 followers at the start of the year. Computing the increase: 350 - 250 = 100 followers.\n\n100",
+   "correct": true
+  },
+  {
+   "questionId": "4f54b7c9",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- antique tea set from cousin Rachel — 2023/05/25\n- vintage typewriter that belonged to dad — 2023/05/25\n- grandmother's vintage diamond necklace — 2023/05/30\n- antique music box from great-aunt — 2023/05/30\n- set of depression-era glassware from mom — 2023/05/30\n\nStep 2 — compute the answer: 5 distinct antique items.",
+   "correct": false
+  },
+  {
+   "questionId": "85fa3a3f",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$15 + $5 + $10 + $20 = $50\n\n$50",
+   "rawOutput": "Step 1:\n- new food bowl: $15 (Session 31, 2023/05/26)\n- measuring cup: $5 (Session 31, 2023/05/26)\n- dental chews: $10 (Session 8, 2023/05/22)\n- flea and tick collar: $20 (Session 8, 2023/05/22)\n\nStep 2:\n$15 + $5 + $10 + $20 = $50\n\n$50",
+   "correct": false
+  },
+  {
+   "questionId": "9aaed6a3",
+   "capability": "MR",
+   "groundTruth": "$0.75",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- [2023/05/23 (Tue) 19:31] user: “I spent $75 on groceries at SaveMart last Thursday.”\n\nStep 2 — compute the answer from that list:\n\nThe question asks how much cashback was earned at SaveMart last Thursday. The evidence only states a $75 grocery spend at SaveMart; it does not state the cashback amount earned for that purchase. No cashback rate or calculation for that specific SaveMart trip is given in the evidence.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "1f2b8d4f",
+   "capability": "MR",
+   "groundTruth": "$750",
+   "answer": "$800 − $50 = $750\n\n$750",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Luxury boots purchase price: $800 — stated 2023/05/22 (Session 12).\n- Similar boots found at a budget store for $50 — stated 2023/05/22 (Session 13).\n\nStep 2 — compute the answer:\n$800 − $50 = $750\n\n$750",
+   "correct": true
+  },
+  {
+   "questionId": "e6041065",
+   "capability": "MR",
+   "groundTruth": "40%",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/05/20 (Sat) 07:46] user: I packed a lot of shoes for my last trip, but I ended up only wearing two - my sneakers and sandals.\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nThe evidence states that on the last trip, the user packed a lot of shoes but only wore two: sneakers and sandals. However, the total number of packed shoes is not stated as a specific number, so the percentage of packed shoes worn cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "51c32626",
+   "capability": "MR",
+   "groundTruth": "February 1st",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [4f6277fa-e512-4e5c-9327-265d85e48e3a] [2023/05/22 (Mon) 05:30] user: I submitted a research paper on sentiment analysis to ACL.\n- [7675eeb6-095e-4f38-a8ab-2e86c46c509d] [2023/05/22 (Mon) 05:30] assistant: submitting a research paper on sentiment analysis to EACL.\n- [c786f653-0a03-4c5b-8a81-1c5c1460fce6] [2023/05/30 (Tue) 01:51] user: I'm reviewing for ACL, and their submission date was February 1st.\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nThe evidence does not state when the user submitted their research paper on sentiment analysis.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "d905b33f",
+   "capability": "MR",
+   "groundTruth": "20%",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- Book from favorite author originally priced at $30 (2023/05/27)\n\nStep 2 — compute the answer:\nThe evidence states the book was originally priced at $30 and that the user got \"a great deal\" and \"what a great deal you got with the discount,\" but it never states the actual discount percentage or the sale price paid. Without the sale price or discount percentage, the percentage cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "7405e8b1",
+   "capability": "MR",
+   "groundTruth": "Yes.",
+   "answer": null,
+   "rawOutput": "Step 1:\n- [2023/05/23 (Tue) 07:40] user received a 40% discount on their first HelloFresh order.\n- [2023/05/23 (Tue) 07:40] assistant stated first-time UberEats users can get $5 off their first order with code EATS5.\n\nStep 2:\nThe HelloFresh first-order discount was 40%. The UberEats first-order discount was $5 off, not a percentage, so the two cannot be compared as percentages. Therefore, the evidence does not provide a comparable percentage discount for the first UberEats order.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "f35224e0",
+   "capability": "MR",
+   "groundTruth": "27",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- [2023/05/26 (Fri)] Listened to episode 12 of the \"My Favorite Murder\" podcast.\n- [2023/05/26 (Fri)] Listens to at least one episode a week of \"My Favorite Murder.\"\n\nStep 2 — compute the answer:\nThe question asks for the total number of episodes listened to from \"How I Built This\" and \"My Favorite Murder.\" The evidence states that the user listened to episode 12 of \"My Favorite Murder\" and listens to at least one episode a week, but it does not provide a total count of episodes listened to from either podcast. No number of episodes listened to from \"How I Built This\" is given. Therefore, the evidence does not contain the answer.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "6456829e",
+   "capability": "MR",
+   "groundTruth": "8",
+   "answer": null,
+   "rawOutput": "Step 1:\n- No items in the evidence state how many tomato plants the user initially planted.\n- No items in the evidence state how many cucumber plants the user initially planted.\n\nStep 2:\nThe evidence does not contain the number of tomato plants or cucumber plants initially planted.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a4996e51",
+   "capability": "MR",
+   "groundTruth": "50",
+   "answer": "The question asks how many hours I work in a typical week during peak campaign seasons. The evidence states a usual 40-hour week, increased by 10 hours weekly during peak campaign seasons. 40 + 10 = 50.\n\n50 hours per week",
+   "rawOutput": "Step 1 — relevant items:\n- [2023/05/24 (Wed) 07:36] user: \"I usually work 40 hours a week, but some weeks can go up to 45 hours or so.\"\n- [2023/05/29 (Mon) 02:54] user: \"During peak campaign seasons, I increase my work hours by 10 hours weekly to accommodate the additional workload.\"\n\nStep 2 — compute the answer:\nThe question asks how many hours I work in a typical week during peak campaign seasons. The evidence states a usual 40-hour week, increased by 10 hours weekly during peak campaign seasons. 40 + 10 = 50.\n\n50 hours per week",
+   "correct": true
+  },
+  {
+   "questionId": "3c1045c8",
+   "capability": "MR",
+   "groundTruth": "2.5 years",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question:\n\n- [2023/05/24 (Wed) 22:18] user: Considering the average age of employees in my department is 29.5 years old, I think I'm not too far off from that demographic.\n\nStep 2 — compute the answer:\nThe evidence states the average age of employees in the department is 29.5 years old, but it does not state the user's age. Without the user's age, the difference cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "60036106",
+   "capability": "MR",
+   "groundTruth": "12,000",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- Facebook ad campaign reached around 2,000 people — stated 2023/05/29 (Mon) 03:00\n- Facebook ad campaign resulted in 50 clicks to website — stated 2023/05/29 (Mon) 03:00\n- Facebook ad campaign reached around 2,000 people and resulted in 50 clicks to website — restated 2023/05/29 (Mon) 10:53\n\nStep 2 — compute the answer:\nThe question asks for the total number of people reached by the Facebook ad campaign and Instagram influencer collaboration. The evidence contains only one reach figure: 2,000 people reached by the Facebook ad campaign. There is no evidence of an Instagram influencer collaboration or its reach. Therefore, the evidence does not contain the answer.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "681a1674",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "2",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question (\"How many Marvel movies did I re-watch?\"), using the question's wording for the action and the date stated:\n\n- Re-watched Avengers: Endgame (2023/05/21)\n- Re-watched Spider-Man: No Way Home (2023/05/27)\n\nStep 2 — compute the answer: the number of distinct items is 2.\n\n2",
+   "correct": true
+  },
+  {
+   "questionId": "e25c3b8d",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- [2023/05/21] User got a designer handbag and said it was originally $500 (no purchase price or savings stated for TK Maxx in this turn).\n- [2023/05/24] User said they got a designer handbag at TK Maxx for $200.\n- [2023/05/24] User said they’ve had luck finding great deals at TK Maxx before, like that designer handbag they got for $200.\n\nStep 2 — compute the answer from that list:\nThe evidence only states the TK Maxx handbag price as $200. The only original price mentioned is $500, but that is from Session 12 and is not tied to the TK Maxx purchase. Therefore, the savings amount is not stated.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "4adc0475",
+   "capability": "MR",
+   "groundTruth": "5",
+   "answer": "Total = 3 goals + 2 assists = 5\n\n5",
+   "rawOutput": "Step 1:\n- Scored 3 goals in the recreational indoor soccer league — stated 2023/05/26 (Fri)\n- Two assists in the league so far (indoor soccer with colleagues) — stated 2023/05/28 (Sun)\n\nStep 2:\nTotal = 3 goals + 2 assists = 5\n\n5",
+   "correct": true
+  },
+  {
+   "questionId": "4bc144e2",
+   "capability": "MR",
+   "groundTruth": "$65",
+   "answer": "$15 + $50 = $65\n\n$65",
+   "rawOutput": "Step 1 — list every item matching \"car wash\" and \"parking ticket\":\n- Car wash on February 3rd, cost $15 (stated 2023/05/21 in Session 6)\n- Parking ticket on January 5th near work, cost $50 (stated 2023/05/29 in Session 41)\n\nStep 2 — compute the total:\n$15 + $50 = $65\n\n$65",
+   "correct": false
+  },
+  {
+   "questionId": "ef66a6e5",
+   "capability": "MR",
+   "groundTruth": "two",
+   "answer": "The two distinct sports played competitively in the past are swimming and tennis.\n\nAnswer: 2",
+   "rawOutput": "Step 1:\n- Session 29, [f1ef45e8...] [2023/05/26]: user mentions they \"used to swim competitively in college\"\n- Session 29, [e5c6cde3...] [2023/05/26]: user mentions they \"used to play tennis competitively in high school\"\n\nStep 2:\nThe two distinct sports played competitively in the past are swimming and tennis.\n\nAnswer: 2",
+   "correct": true
+  },
+  {
+   "questionId": "5025383b",
+   "capability": "MR",
+   "groundTruth": "photography and cooking",
+   "answer": "Treating the cooking mentions (items 2 and 3) as one event, the distinct hobbies that led the user to join online communities are:\n- Photography\n- Cooking\n\nAnswer: Photography and cooking.",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question (\"led me to join online communities\"), one per line, with the date it was stated:\n\n1. [2023/05/29 (Mon) 18:43] user: \"I've learned a lot from online communities and I'd like to give back to the community\" (photography — indicated joining/participation in photography online communities)\n2. [2023/05/30 (Tue) 18:40] user: \"I've already joined a few online communities related to cooking, which led me to engage in discussions about recipe techniques and share my thoughts on food-related posts\" (cooking — explicitly joined online communities)\n3. [2023/05/30 (Tue) 18:40] user: \"I've already joined a few online communities, which led me to engage in discussions about recipe techniques and share my thoughts on food-related posts\" (cooking — same event as item 2, mentioned in another turn)\n\nStep 2 — compute the answer:\n\nTreating the cooking mentions (items 2 and 3) as one event, the distinct hobbies that led the user to join online communities are:\n- Photography\n- Cooking\n\nAnswer: Photography and cooking.",
+   "correct": true
+  },
+  {
+   "questionId": "a1cc6108",
+   "capability": "MR",
+   "groundTruth": "11",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- No item states the user’s age when Alex was born.\n- No item states the user’s birth date or birth year.\n- No item states Alex’s birth date or birth year.\n- No item states Alex’s current age except that Alex is a 21-year-old intern, stated 2023/05/21.\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "9ee3ecd6",
+   "capability": "MR",
+   "groundTruth": "100",
+   "answer": "The single value named is 300 points.",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- [2023/05/29 (Mon) 08:31] user: \"I'm really close to redeeming a free skincare product from Sephora, I just need a total of 300 points and I'm all set!\"\n\nStep 2 — compute the answer from that list:\nThe single value named is 300 points.",
+   "correct": false
+  },
+  {
+   "questionId": "3fdac837",
+   "capability": "MR",
+   "groundTruth": "11 days (or 12 days, if April 15th to 22nd is considered as 8 days)",
+   "answer": "The Japan trip length is April 15–22 = 8 days. The Chicago trip is described as a 4-day trip in March, so it is 4 days. Total = 8 + 4 = 12 days.\n\n12",
+   "rawOutput": "Step 1 —\n- Japan trip: April 15th to 22nd (stated 2023/05/29)\n- Chicago trip: 4-day trip (stated 2023/05/23)\n- Chicago trip: last trip in March (stated 2023/05/23)\n\nStep 2 —\nThe Japan trip length is April 15–22 = 8 days. The Chicago trip is described as a 4-day trip in March, so it is 4 days. Total = 8 + 4 = 12 days.\n\n12",
+   "correct": true
+  },
+  {
+   "questionId": "91b15a6e",
+   "capability": "MR",
+   "groundTruth": "$5,150",
+   "answer": "$5,000 + $150 = $5,150\n\n$5,150",
+   "rawOutput": "Step 1:\n- Vintage diamond necklace, stated 2023/05/23 (Tue): worth $5,000\n- Antique vanity, stated 2023/05/25 (Thu): bought for $150 and seller believes worth at least $150 after restoration\n\nStep 2:\n$5,000 + $150 = $5,150\n\n$5,150",
+   "correct": true
+  },
+  {
+   "questionId": "27016adc",
+   "capability": "MR",
+   "groundTruth": "10%",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- I plan to do renovations on my current house: estimated cost around $20,000, includes adding a deck and a patio [2023/05/26]\n- 5-acre property / countryside property price: not stated in the evidence [no date]\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nThe renovations cost is $20,000, but the 5-acre countryside property’s price is never stated in the evidence. Because the property price needed for the percentage calculation is missing, the percentage cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "720133ac",
+   "capability": "MR",
+   "groundTruth": "$75",
+   "answer": "$50 + $25 = $75\n\n$75",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n- Lola's vet visit: $50 (stated 2023/05/25 in Session 23, turn 10)\n- flea medication: $25 for a 3-month supply (stated 2023/05/30 in Session 46, turn 1)\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n$50 + $25 = $75\n\n$75",
+   "correct": false
+  },
+  {
+   "questionId": "77eafa52",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "$2,800 − $2,500 = $300\n\n$300",
+   "rawOutput": "Step 1:\n- Initial quote for the entire trip: $2,500 (stated 2023/05/27)\n- Corrected price for the entire trip: $2,800 (stated 2023/05/21)\n\nStep 2:\n$2,800 − $2,500 = $300\n\n$300",
+   "correct": false
+  },
+  {
+   "questionId": "8979f9ec",
+   "capability": "MR",
+   "groundTruth": "8 meals",
+   "answer": "3 + 5 = 8\n\n8",
+   "rawOutput": "Step 1:\n- Session 21, 2023/05/24: chicken fajitas with sautéed onions and bell peppers — \"the third meal I got from my chicken fajitas\" (lunch).\n- Session 30, 2023/05/26: lentil soup — \"lasted me for 5 lunches\" (lunch meals).\n\nStep 2:\n3 + 5 = 8\n\n8",
+   "correct": false
+  },
+  {
+   "questionId": "0100672e",
+   "capability": "MR",
+   "groundTruth": "$12",
+   "answer": "$60 total ÷ 5 coffee mugs = $12 per coffee mug.\n\n$12",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- [2023/05/27 (Sat) 22:31] I spent $60 on coffee mugs for my coworkers.\n- [2023/05/28 (Sun) 19:13] I purchased 5 coffee mugs with funny quotes related to our profession, one for each of them.\n\nStep 2 — compute the answer from that list:\n$60 total ÷ 5 coffee mugs = $12 per coffee mug.\n\n$12",
+   "correct": false
+  },
+  {
+   "questionId": "a96c20ee",
+   "capability": "MR",
+   "groundTruth": "Harvard University",
+   "answer": "The question asks at which university the poster was presented. The evidence links the first research conference to Harvard University in Session 13, and Session 9 identifies the same first research conference as where the poster on the thesis research was presented. Therefore, the university is Harvard University.\n\nHarvard University",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question:\n- [2023/05/21 (Sun) 10:23] user: presented a poster on my thesis research on education technology at my first research conference over the summer.\n- [2023/05/21 (Sun) 17:29] user: been to Harvard University to attend my first research conference and saw some interesting projects on AI in education.\n\nStep 2 — compute the answer:\nThe question asks at which university the poster was presented. The evidence links the first research conference to Harvard University in Session 13, and Session 9 identifies the same first research conference as where the poster on the thesis research was presented. Therefore, the university is Harvard University.\n\nHarvard University",
+   "correct": true
+  },
+  {
+   "questionId": "92a0aa75",
+   "capability": "MR",
+   "groundTruth": "1 year and 5 months",
+   "answer": "The evidence states 3 years and 9 months of experience in the company. This is the only item matching the question about how long I have been working in my current role.\n\n3 years and 9 months",
+   "rawOutput": "Step 1:\n- [58a22aae-75d6-446d-bb9c-6736e9b0e393] [2023/05/29 (Mon) 18:32] user: \"my 3 years and 9 months experience in the company\"\n\nStep 2:\nThe evidence states 3 years and 9 months of experience in the company. This is the only item matching the question about how long I have been working in my current role.\n\n3 years and 9 months",
+   "correct": false
+  },
+  {
+   "questionId": "3fe836c9",
+   "capability": "MR",
+   "groundTruth": "$25,000",
+   "answer": "$350,000 − $325,000 = $25,000\n\n$25,000",
+   "rawOutput": "Step 1 — items matching the question:\n- Final sale price of the house: $325,000 — stated 2023/05/23 (Session 17)\n- Mortgage pre-approval amount: up to $350,000 — stated 2023/05/29 (Session 41)\n\nStep 2 — compute the difference:\n$350,000 − $325,000 = $25,000\n\n$25,000",
+   "correct": false
+  },
+  {
+   "questionId": "1c549ce4",
+   "capability": "MR",
+   "groundTruth": "$140",
+   "answer": "$120 + $20 = $140\n\n$140",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- car cover: [2023/05/25 (Thu) 12:36] — \"I recently got a waterproof car cover\" / \"it cost me $120\"\n- detailing spray: [2023/05/28 (Sun) 14:56] — \"the one I got from Amazon for $20 that removed tar and bug stains\"\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\n$120 + $20 = $140\n\n$140",
+   "correct": false
+  },
+  {
+   "questionId": "6c49646a",
+   "capability": "MR",
+   "groundTruth": "3,000 miles",
+   "answer": "Total for three road trips stated in Session 18: 1,800 miles.\nYellowstone trip from Session 29: 1,200 miles.\nTotal covered across four road trips: 1,800 + 1,200 = 3,000 miles.\n\n3,000 miles",
+   "rawOutput": "Step 1:\n- Solo trip to Durango — 2023/05/23\n- Weekend trip to Breckenridge — 2023/05/23\n- Family trip to Santa Fe — 2023/05/23\n- Yellowstone trip (mentioned as visited; 1,200 miles total, with 300 miles on first day to Jackson) — 2023/05/26\n\nStep 2:\nTotal for three road trips stated in Session 18: 1,800 miles.\nYellowstone trip from Session 29: 1,200 miles.\nTotal covered across four road trips: 1,800 + 1,200 = 3,000 miles.\n\n3,000 miles",
+   "correct": true
+  },
+  {
+   "questionId": "1192316e",
+   "capability": "MR",
+   "groundTruth": "an hour and a half",
+   "answer": "1 hour (get ready) + 0.5 hours (commute) = 1.5 hours (90 minutes)\n\n1.5 hours",
+   "rawOutput": "Step 1:\n- Session 4, turn 1 [2023/05/20]: \"My daily commute to work takes about 30 minutes\"\n- Session 12, turn 1 [2023/05/23]: \"it takes me about an hour to get ready\"\n\nStep 2:\n1 hour (get ready) + 0.5 hours (commute) = 1.5 hours (90 minutes)\n\n1.5 hours",
+   "correct": true
+  },
+  {
+   "questionId": "0ea62687",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "30 - 28 = 2 miles per gallon more.\n\n2 miles per gallon",
+   "rawOutput": "Step 1:\n- 2023/05/20: My car was getting 30 miles per gallon in the city a few months ago.\n- 2023/05/24: I've been getting around 28 miles per gallon in the city lately.\n\nStep 2:\n30 - 28 = 2 miles per gallon more.\n\n2 miles per gallon",
+   "correct": false
+  },
+  {
+   "questionId": "67e0d0f2",
+   "capability": "MR",
+   "groundTruth": "20",
+   "answer": "Distinct completed online course totals mentioned:\n- 8 edX courses completed\n- 12 Coursera courses completed\n\nTotal online courses completed = 8 + 12 = 20.\n\n20",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- 2023/05/21 (Sun): \"I've already built a solid foundation in data analysis through online courses on edX\" — 8 edX courses completed\n- 2023/05/21 (Sun): \"the assignments... 11 assignments\" (not completed online courses)\n- 2023/05/27 (Sat): \"I've already completed some courses on Coursera\" — courses completed on Coursera (unspecified number)\n- 2023/05/27 (Sat): \"Since I've already completed 12 courses on Coursera\" — 12 courses completed on Coursera\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nDistinct completed online course totals mentioned:\n- 8 edX courses completed\n- 12 Coursera courses completed\n\nTotal online courses completed = 8 + 12 = 20.\n\n20",
+   "correct": true
+  },
+  {
+   "questionId": "bb7c3b45",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/05/23 (Tue) 11:48] user: I was thinking of wearing my new Jimmy Choo heels that I got at the outlet mall for $200 - do you have any outfit suggestions that would complement them well?\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "ba358f49",
+   "capability": "MR",
+   "groundTruth": "33",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [3bf67755-e24b-42e9-be5f-2b055a9f7a48] [2022/09/01 (Thu) 03:06] assistant: Congratulations to Rachel on her upcoming wedding!\n- [5dadbd3a-8670-4b8a-8106-e924102dd130] [2022/09/01 (Thu) 03:06] user: my friend Rachel's getting married next year\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nThe evidence states that Rachel is getting married next year, but it does not state the user's age or birth year, so the user's age at that time cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "61f8c8f8",
+   "capability": "MR",
+   "groundTruth": "10 minutes",
+   "answer": null,
+   "rawOutput": "Step 1:\n- 5K run completed in 45 minutes (stated 2023/10/01, Session 32)\n- 5K run completed in 35 minutes (stated 2023/10/01, Session 24)\n\nStep 2:\n45 minutes − 35 minutes = 10 minutes faster.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "60159905",
+   "capability": "MR",
+   "groundTruth": "three",
+   "answer": "3",
+   "rawOutput": "Step 1:\n- Session 5: user mentions attending dinner parties at Alex's place yesterday (potluck, different cuisines) [2023/05/21]\n- Session 5: user mentions attending Mike's place (BBQ and football game) [2023/05/21]\n- Session 9: user mentions attending a lovely Italian feast at Sarah's place last week [2023/05/22]\n- Session 18: user mentions having a big party with at least 15 people to watch the Super Bowl about a month ago [2023/05/24]\n\nStep 2: The question asks for dinner parties attended in the past month. From the list, the distinct dinner party events are Alex's place, Mike's place, and Sarah's place — 3 dinner parties. The Super Bowl party is a watch party, not described as a dinner party.\n\n3",
+   "correct": true
+  },
+  {
+   "questionId": "ef9cf60a",
+   "capability": "MR",
+   "groundTruth": "$300",
+   "answer": "$200 + $100 = $300\n\n$300",
+   "rawOutput": "Step 1 — list every item that matches \"gifts for my sister\":\n- Silver necklace with a small pendant from Tiffany's, around $200 — stated 2023/05/22\n- Gift card to her favorite spa, $100 — stated 2023/05/30\n\nStep 2 — compute the total:\n$200 + $100 = $300\n\n$300",
+   "correct": false
+  },
+  {
+   "questionId": "73d42213",
+   "capability": "MR",
+   "groundTruth": "9:00 AM",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:  \n- [6f60663f-28ba-43b4-ae05-7c4a744d5ed3] [2023/05/20 (Sat) 23:43] user: I had a doctor's appointment last Monday, so I took a half-day off from work and got back to the office around 1:00 PM.  \n- [ce4f30b9-ff91-4968-a9b4-4312a9d483e0] [2023/05/20 (Sat) 23:43] user: I left home at 7 AM on Monday for my doctor's appointment, and I'm still trying to get my rhythm back.  \n\nStep 2 — compute the answer from that list:  \nThe evidence says the user left home at 7 AM on Monday for the doctor's appointment and got back to the office around 1:00 PM, but it does not state what time the user reached the clinic.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "bc149d6b",
+   "capability": "MR",
+   "groundTruth": "70 pounds",
+   "answer": "The evidence states the feed was a 50-pound batch, so the total weight is 50 pounds.\n\n50 pounds",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- 50-pound batch of layer feed purchased, stated 2023/05/22.\n\nStep 2 — compute the answer from that list:\nThe evidence states the feed was a 50-pound batch, so the total weight is 50 pounds.\n\n50 pounds",
+   "correct": false
+  },
+  {
+   "questionId": "099778bb",
+   "capability": "MR",
+   "groundTruth": "20%",
+   "answer": "The question asks what percentage of leadership positions women hold in the user's company. The evidence says women occupy 20 leadership positions. It also separately states there are 100 leadership positions across the company, but that statement appears in a different session (2023/05/30). The question requires combining evidence, so: 20 / 100 = 20%.\n\n20%",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated.\n\n- Women occupy 20 of the leadership positions in our company — stated 2023/05/21 (Sun).\n\nStep 2 — compute the answer.\n\nThe question asks what percentage of leadership positions women hold in the user's company. The evidence says women occupy 20 leadership positions. It also separately states there are 100 leadership positions across the company, but that statement appears in a different session (2023/05/30). The question requires combining evidence, so: 20 / 100 = 20%.\n\n20%",
+   "correct": true
+  },
+  {
+   "questionId": "09ba9854",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": null,
+   "rawOutput": "Step 1:\n- 2023/05/22: Train from Narita Airport to Shinjuku costs around $28 (N'EX) or around $23 (Keisei Skyliner), or around $9–11 for the cheapest train option.\n- 2023/05/22: Taxi from Narita Airport to Shinjuku costs around $180–270.\n- 2023/05/26: Taxi from Narita Airport to Tokyo costs around $140–180 daytime, or $160–220 late night.\n- 2023/05/26: Taxi from Haneda Airport to Tokyo costs around $55–90 daytime, or $70–125 late night.\n- 2023/05/26: Train/subway from the airport to a hotel in Tokyo would likely cost around $20–30.\n- 2023/05/26: Airport Limousine Bus fare is around $10–20.\n- 2023/05/26: Shared ride services start from around $20–30.\n- 2023/05/26: Private car service booked in advance might cost around $40–50.\n\nStep 2:\nThe evidence does not provide a single consistent airport-hotel pair or a single train price and taxi price that can be subtracted to compute one savings amount. It gives multiple alternatives—Narita vs. Haneda, train vs. subway/bus/shared ride/private car, and different taxi estimates—without specifying which one the user will actually use. Because the question asks “how much will I save” but the evidence lacks a determinate train fare and determinate taxi fare for the same route, the savings cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "d6062bb9",
+   "capability": "MR",
+   "groundTruth": "1,998",
+   "answer": "1,456 + 542 = 1,998\n\n1,998",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n\n- [2023/05/22 (Mon) 20:16] TikTok video of Luna chasing a laser pointer — 1,456 views\n- [2023/05/23 (Tue) 23:22] YouTube tutorial on social media analytics — 542 views\n\nStep 2 — compute the answer from that list:\n\n1,456 + 542 = 1,998\n\n1,998",
+   "correct": false
+  },
+  {
+   "questionId": "157a136e",
+   "capability": "MR",
+   "groundTruth": "43",
+   "answer": null,
+   "rawOutput": "INSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "c18a7dc8",
+   "capability": "MR",
+   "groundTruth": "7",
+   "answer": null,
+   "rawOutput": "Step 1:\n- No items in the evidence state when I graduated from college or give my current age.\n\nStep 2:\n- Since neither my college graduation date nor my current age appears in the evidence, the number of years older cannot be computed.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a3332713",
+   "capability": "MR",
+   "groundTruth": "$200",
+   "answer": "$100 + $100 = $200\n\n$200",
+   "rawOutput": "Step 1:\n- Coworker's baby shower gift (set of baby clothes and toys from Buy Buy Baby, ~$100) — stated 2023/05/28\n- Brother's graduation gift ($100 gift card to electronics store) — stated 2023/05/28\n\nStep 2:\n$100 + $100 = $200\n\n$200",
+   "correct": false
+  },
+  {
+   "questionId": "55241a1f",
+   "capability": "MR",
+   "groundTruth": "33",
+   "answer": "12 + 21 = 33\n\n33",
+   "rawOutput": "Step 1:\n- Facebook Live session about cooking vegan recipes got 12 comments — stated 2023/05/23 (Tue) 22:14\n- Most popular YouTube video has 21 comments — stated 2023/05/24 (Wed) 16:54\n\nStep 2:\n12 + 21 = 33\n\n33",
+   "correct": false
+  },
+  {
+   "questionId": "a08a253f",
+   "capability": "MR",
+   "groundTruth": "4 days.",
+   "answer": null,
+   "rawOutput": "Step 1:\n- Zumba class on Tuesdays at 6:30 pm [2023/05/27]\n- Zumba class on Thursdays at 6:30 pm [2023/05/27]\n- Weightlifting class on Saturdays at 10 am [2023/05/27]\n- Yoga class on Wednesdays [2023/05/26]\n\nStep 2:\n4 distinct fitness classes per week\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "f0e564bc",
+   "capability": "MR",
+   "groundTruth": "$1,300",
+   "answer": "$800 + $500 = $1,300\n\n$1,300",
+   "rawOutput": "Step 1 — items matching the question:\n- Coach handbag — $800 — stated 2023/05/23 (Session 12, turn 1)\n- high-end skincare products — $500 — stated 2023/05/28 (Session 35, turn 1)\n\nStep 2 — total:\n$800 + $500 = $1,300\n\n$1,300",
+   "correct": false
+  },
+  {
+   "questionId": "078150f1",
+   "capability": "MR",
+   "groundTruth": "$50",
+   "answer": "$250 − $200 = $50\n\n$50",
+   "rawOutput": "Step 1:\n- 2023/05/20: user aimed to raise $200 in donations for the local children's hospital at the charity cycling event.\n- 2023/05/28: user raised $250 in donations at the charity cycling event.\n\nStep 2:\n$250 − $200 = $50\n\n$50",
+   "correct": false
+  },
+  {
+   "questionId": "8cf4d046",
+   "capability": "MR",
+   "groundTruth": "3.83",
+   "answer": null,
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n\n- [2023/05/24 (Wed) 10:17] user: “I recently completed my Master's degree in Data Science from the University of Illinois at Urbana-Champaign, where I maintained a GPA of 3.8 out of 4.0.”\n- [2023/05/30 (Tue) 04:37] user: “my strong foundation in computer science from my undergraduate studies at the University of Mumbai, where I graduated with a First-Class distinction”\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter the list at this step.\n\nThe evidence gives the graduate GPA as 3.8 out of 4.0, but it does not give a numeric undergraduate GPA; it only states “First-Class distinction.” Therefore, the average GPA of undergraduate and graduate studies cannot be computed from the evidence.\n\nINSUFFICIENT_EVIDENCE",
+   "correct": false
+  },
+  {
+   "questionId": "a346bb18",
+   "capability": "MR",
+   "groundTruth": "12",
+   "answer": "4 hours 22 minutes − 4 hours 10 minutes = 12 minutes\n\n12 minutes",
+   "rawOutput": "Step 1:\n- Target time for the marathon: 4 hours 10 minutes (2023/05/20)\n- Completed first full marathon: 4 hours 22 minutes (2023/05/25)\n\nStep 2:\n4 hours 22 minutes − 4 hours 10 minutes = 12 minutes\n\n12 minutes",
+   "correct": false
+  },
+  {
+   "questionId": "37f165cf",
+   "capability": "MR",
+   "groundTruth": "856",
+   "answer": "440 + 416 = 856.\n\n856",
+   "rawOutput": "Step 1:\n- Session 10: historical fiction novel \"The Nightingale\" by Kristin Hannah had 440 pages.\n- Session 34: a 416-page novel finished before \"The Power\" by Naomi Alderman.\n\nStep 2:\n440 + 416 = 856.\n\n856",
+   "correct": false
+  },
+  {
+   "questionId": "8e91e7d9",
+   "capability": "MR",
+   "groundTruth": "4",
+   "answer": "3 sisters + 1 brother = 4 siblings.\n\n4",
+   "rawOutput": "Step 1 —\n- 2023/05/24: user mentions coming from a family with 3 sisters.\n- 2023/05/25: user mentions having a brother.\n\nStep 2 —\n3 sisters + 1 brother = 4 siblings.\n\n4",
+   "correct": false
+  },
+  {
+   "questionId": "87f22b4a",
+   "capability": "MR",
+   "groundTruth": "$120",
+   "answer": "40 dozen eggs × $3 per dozen = $120.\n\n$120",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated:\n- [2023/05/22] Sold 40 dozen eggs so far this month (quantity only; no price for these sales).\n- [2023/05/26] Selling eggs to my neighbor for $3 a dozen (price per dozen).\n\nStep 2 — compute the answer from that list:\n40 dozen eggs × $3 per dozen = $120.\n\n$120",
+   "correct": false
+  },
+  {
+   "questionId": "e56a43b9",
+   "capability": "MR",
+   "groundTruth": "$5",
+   "answer": "The evidence contains conflicting discount rates: 100 points = $1 (2023/05/27), and 500 points = $5 (2023/05/27). Both are consistent with each other (500 points / 100 points × $1 = $5). However, the question asks how much discount the user will get, and the user states they reached 500 points (2023/05/24), which meets the minimum for a discount. Based on the stated rate, 500 points = $5 discount.\n\n$5",
+   "rawOutput": "Step 1:\n- 2023/05/24: user reached 500 points, the minimum points required for a discount at FreshMart\n- 2023/05/27: user says 500 points gets them a $5 discount on their next purchase\n- 2023/05/27: user had mentioned 100 points translate to a $1 discount on their next purchase\n\nStep 2:\nThe evidence contains conflicting discount rates: 100 points = $1 (2023/05/27), and 500 points = $5 (2023/05/27). Both are consistent with each other (500 points / 100 points × $1 = $5). However, the question asks how much discount the user will get, and the user states they reached 500 points (2023/05/24), which meets the minimum for a discount. Based on the stated rate, 500 points = $5 discount.\n\n$5",
+   "correct": true
+  },
+  {
+   "questionId": "efc3f7c2",
+   "capability": "MR",
+   "groundTruth": "30 minutes",
+   "answer": "6:30 AM - 6:00 AM = 30 minutes earlier.\n\n30 minutes earlier.",
+   "rawOutput": "Step 1:\n- 2023/05/24 (Wed): user wakes up at 6:30 AM on weekdays\n- 2023/05/29 (Mon): user says on Fridays they wake up at 6:00 AM\n\nStep 2:\n6:30 AM - 6:00 AM = 30 minutes earlier.\n\n30 minutes earlier.",
+   "correct": false
+  },
+  {
+   "questionId": "21d02d0d",
+   "capability": "MR",
+   "groundTruth": "2",
+   "answer": "- 1\n\n1",
+   "rawOutput": "Step 1 — list every item in the evidence that matches the question, one per line, with the date it was stated. Use the question's own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one.\n- 2023/04/26 (Wed) 01:52: missed a few events, including a 5K fun run on March 26th\n\nStep 2 — compute the answer from that list, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names.\n- 1\n\n1",
+   "correct": false
+  }
+ ]
+}

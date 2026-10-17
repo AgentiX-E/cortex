@@ -255,6 +255,12 @@ describe('numeric answer helpers', () => {
   it('accepts a numeric answer stored as a JSON number', () => {
     // Some datasets store counting answers as JSON numbers, not strings.
     expect(extractLeadingNumber(3)).toBe(3);
+    // A value that is neither a string nor a number has no leading number, and the
+    // exported reader has to say so rather than throw: it is public API, and the
+    // gate's own narrowing means nothing else in this package reaches this arm.
+    expect(extractLeadingNumber(null)).toBeUndefined();
+    expect(extractLeadingNumber(undefined)).toBeUndefined();
+    expect(extractLeadingNumber({})).toBeUndefined();
     expect(numericAnswerVerdict('How many?', 3, 3)).toBe(true);
     expect(numericAnswerVerdict('How many?', 5, 2)).toBe(false);
   });
@@ -302,6 +308,106 @@ describe('numeric answer helpers', () => {
 
   it('defers a gold that offers several distinct values to the judge', () => {
     expect(numericAnswerVerdict('How many?', '4', '3 or 4')).toBeUndefined();
+  });
+
+  it('accepts a total that follows its own arithmetic', () => {
+    // ## The defect this closes, and how it was found
+    //
+    // Run `38985220145` was the first run whose answers were the model's ANSWER
+    // rather than its transcript (§13.40.5's repair). Its multi-session answers
+    // therefore became ledgers:
+    //
+    //     10 days + 7 days = 17 days
+    //     17
+    //
+    // and the gate read the LEADING number -- 10 -- compared it with the gold's 17
+    // and returned false. Each of the quotes below is a record from that run that
+    // the run itself marked wrong while the arithmetic in it is right:
+    //
+    //     gold "17 days"   answer "10 days + 7 days = 17 days / 17"
+    //     gold "$2,500"    answer "$800 + $1,200 + $500 = $2,500 / $2,500"
+    //     gold "$495"      answer "$225 + (20 x $7.5) + $120 = ... = $495."
+    //     gold "190"       answer "440 total pages - 250 pages read = 190 pages left."
+    //
+    // 28 multi-session records flipped from false to true under this rule and
+    // **none** flipped the other way, which is what makes it a correction rather
+    // than a trade: the rule only ever accepts more, never less.
+    expect(numericAnswerVerdict('How many days?', '10 days + 7 days = 17 days', '17 days')).toBe(
+      true,
+    );
+    expect(
+      numericAnswerVerdict('How much did I spend?', '$800 + $1,200 + $500 = $2,500', '$2,500'),
+    ).toBe(true);
+  });
+
+  it('still rejects a wrong total however it was reached', () => {
+    // The other half, and the reason the rule is "a number the answer states"
+    // rather than "the last number it states": run `38985220145` also contains
+    // `5 + 30 + 10 + 25 = 70 hours` against a gold of `140 hours`, and
+    // `Distinct citrus fruits: orange, lemon, lime, grapefruit, yuzu = 5` against
+    // a gold of `3`. Both are wrong totals and both must stay wrong.
+    expect(
+      numericAnswerVerdict('How many hours?', '5 + 30 + 10 + 25 = 70 hours', '140 hours'),
+    ).toBe(false);
+    expect(numericAnswerVerdict('How many citrus fruits?', '5 citrus fruits', '3')).toBe(false);
+    // And the citrus record from that run, which does NOT lead with a number and
+    // is therefore not this gate's to decide -- it defers, and the judge rejects
+    // it. Written as `undefined` rather than `false` because the first version of
+    // this test asserted `false` and was wrong: the gate that reads a leading
+    // number cannot reject an answer that has none.
+    expect(
+      numericAnswerVerdict(
+        'How many citrus fruits?',
+        'Distinct citrus fruits: orange, lemon, lime, grapefruit, yuzu = 5',
+        '3',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('still rejects a leading number that is not the gold', () => {
+    expect(numericAnswerVerdict('How many tanks?', '4 tanks', '3')).toBe(false);
+    expect(numericAnswerVerdict('How many?', '5 distinct projects', '2')).toBe(false);
+  });
+
+  it('still defers an answer that does not lead with a number', () => {
+    // The property that makes the widening monotone. `extractLeadingNumber` is
+    // anchored to the start precisely so a verbose answer that embeds a digit is
+    // not mistaken for a numeric one, and that deferral is load-bearing: the three
+    // archived runs contain answers whose only numbers appear mid-prose, and they
+    // reach the judge today. Accepting them here would make the gate answer
+    // questions it was built to decline.
+    expect(
+      numericAnswerVerdict('How many?', 'Based on the evidence: five in total', '5'),
+    ).toBeUndefined();
+  });
+
+  it('defers when an operand is not a value at all', () => {
+    // `judgeScorer` returns before reaching here for a null answer, so this is the
+    // gate's own contract rather than the scorer's: a value it cannot read is a
+    // question it declines. Pinned because the narrowing that keeps `statedNumbers`
+    // branch-total is only honest if its declining arm is exercised.
+    expect(numericAnswerVerdict('How many?', null, '3')).toBeUndefined();
+    expect(numericAnswerVerdict('How many?', '3', {})).toBeUndefined();
+  });
+
+  it('is a no-op for an answer whose leading number is its only number', () => {
+    // The inertness that keeps every archived number comparable. Runs
+    // `38595325261`, `38828538851` and `38953157688` were re-graded against this
+    // rule offline: **0 verdicts change** in any of the three, because their
+    // answers lead with the value the question asks for. Only run `38985220145`
+    // shows a difference, and only in the direction this rule exists to fix.
+    const cases: [string, string][] = [
+      ['3', '3'],
+      ['5', '2'],
+      ['$2,500', '$2,500'],
+      ['3.5 weeks', '3.5 weeks'],
+      ['5 distinct projects', '2'],
+    ];
+    for (const [predicted, expected] of cases) {
+      expect(numericAnswerVerdict('How many?', predicted, expected)).toBe(
+        extractLeadingNumber(predicted) === extractLeadingNumber(expected),
+      );
+    }
   });
 
   it('handles a gold that carries no number at all', () => {

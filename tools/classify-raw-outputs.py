@@ -242,23 +242,53 @@ def numeric_mismatch_by_multiset(gold: object, answer: object) -> bool:
 def failure_shape(record: dict) -> str:
     """One of `FAILURE_SHAPES` for a non-correct question record.
 
-    `record` is a `QuestionRecord` from a benchmark report: `groundTruth`,
-    `answer` and `rawOutput` are the only keys read, and each may be absent. The
-    three absent states collapse here rather than being reported separately --
-    `classify` is what keeps them apart, and it is consulted first.
+    ## Which field, and why it is `answer`
+
+    Every rule below reads **`answer`** -- the string the scorer graded -- and none of
+    them reads `rawOutput`. For four runs the two were the same value and the
+    distinction was invisible; §13.38 calibrated the rules against two of those runs
+    and produced a table that reproduces exactly. Run `38953157688` broke the
+    coincidence: under `ask: enumerated` the arm's *answer* was the model's whole
+    response, and this function classified transcripts -- reporting
+    `plan_output 30 / numeric_mismatch 0` for a run whose answers were full of
+    arithmetic. A taxonomy of "how the answer was wrong" has to read the answer.
+
+    The three runs whose published tables exist are **unmoved** by the change, and
+    that is asserted rather than assumed: on all three, `answer` is either the raw
+    output itself or `None`, so every rule returns what it returned before. The fourth
+    run -- `38985220145`, the first with a repaired parser -- moves from
+    `plan_output 57 / numeric 0` to `plan_output 0 / numeric 52`.
+
+    ## Why an absent `answer` key is an error and not an abstention
+
+    `record.get('answer')` returning `None` cannot distinguish a record that declined
+    from a record whose schema dropped the field, and the second reading would report
+    a **100% abstention rate** -- which looks exactly like a contract working
+    perfectly. So the key is required. `None` is an abstention, because `parseAnswer`
+    is what decides a decline and a decline has no answer; a missing key is a defect
+    in the report.
+
+    `rawOutput` is not read at all any more, which is why a record may omit it. It is
+    still carried in the rosters because the four runs' raw outputs are the only
+    record of what the model actually wrote.
     """
-    raw = record['rawOutput'] if 'rawOutput' in record else MISSING
-    # `classify` owns the sentinel rules; this function must not re-derive them.
-    if classify(raw) in ABSTENTION_SHAPES:
+    if 'answer' not in record:
+        raise KeyError(
+            "a question record must carry `answer` -- null for a decline. Reading a "
+            "missing key as null would report every question as an abstention, which "
+            "is indistinguishable from a contract that works."
+        )
+
+    answer = record['answer']
+    if answer is None:
         return 'abstention'
 
-    answer = record.get('answer')
-    answer_text = answer if isinstance(answer, str) else ''
+    answer_text = answer if isinstance(answer, str) else str(answer)
     gold = record.get('groundTruth')
 
-    if isinstance(raw, str) and PLAN_OUTPUT.match(raw):
+    if PLAN_OUTPUT.match(answer_text):
         return 'plan_output'
-    if SOFT_REFUSAL.search(answer_text) or (isinstance(raw, str) and SOFT_REFUSAL.search(raw)):
+    if SOFT_REFUSAL.search(answer_text):
         return 'soft_refusal'
     if numeric_mismatch(gold, answer_text):
         return 'numeric_mismatch'

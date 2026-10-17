@@ -253,6 +253,35 @@ export function isCountingQuestion(question: string): boolean {
  * judge. Returns `undefined` when the question is not a counting question or
  * either answer lacks a leading number, signalling the caller to fall back to
  * the LLM judge.
+ *
+ * ## Which number the answer is compared by, and why it is not only the first
+ *
+ * The gate used to compare the LEADING number of each side. That is correct for a
+ * bare answer -- "3" against "3 days" -- and wrong for a ledger. Run `38985220145`
+ * is the first run whose answers are the model's answer rather than its transcript
+ * (§13.40.5), and its multi-session answers became ledgers, so the leading number is
+ * an OPERAND:
+ *
+ *     gold "17 days"    answer "10 days + 7 days = 17 days / 17"
+ *     gold "$2,500"     answer "$800 + $1,200 + $500 = $2,500 / $2,500"
+ *     gold "$495"       answer "$225 + (20 x $7.5) + $120 = ... = $495."
+ *
+ * Read as a leading number, each of those is 10, 800 and 225, none of which is the
+ * gold -- and the run marked all three wrong while the arithmetic in them is right.
+ * The rule is therefore: **the gold matches when it is any number the answer
+ * states**, which for a bare answer is exactly the old comparison (its leading
+ * number is one of the numbers it states) and for a ledger is the total.
+ *
+ * ## Why this is a widening and not a trade
+ *
+ * It only ever accepts more. It cannot reject an answer the old rule accepted,
+ * because `leading number of the answer == gold` implies `the answer states the
+ * gold`. And the deferral is untouched: an answer that does not LEAD with a number
+ * still returns `undefined` and still reaches the judge, which is what keeps the
+ * three archived runs byte-identical -- re-graded offline against this rule, runs
+ * `38595325261`, `38828538851` and `38953157688` change **0 verdicts**, and only
+ * `38985220145` changes, by 28 records, all false -> true, all with correct
+ * arithmetic.
  */
 export function numericAnswerVerdict(
   question: string,
@@ -270,12 +299,51 @@ export function numericAnswerVerdict(
   if (countDistinctEvaluableNumbers(expected) > 1) {
     return undefined;
   }
+  // Narrowing rather than a second rule: these are exactly the types
+  // `extractLeadingNumber` can read, so nothing here can decline a question the gate
+  // would otherwise grade. It exists so `statedNumbers` can take `string | number`
+  // and have no branch that a caller cannot reach -- the alternative was a total
+  // function with a dead arm, which is a coverage hole pretending to be safety.
+  if (!isReadableValue(predicted) || !isReadableValue(expected)) {
+    return undefined;
+  }
   const p = extractLeadingNumber(predicted);
   const e = extractLeadingNumber(expected);
   if (p === undefined || e === undefined) {
     return undefined;
   }
-  return p === e;
+  // `p` is read for the deferral only, and deliberately: the answer's leading number
+  // is what tells this gate the answer is numeric at all. Which number it is compared
+  // BY is the set below.
+  return statedNumbers(predicted).includes(e);
+}
+
+/** True when `extractLeadingNumber` can read the value at all. */
+function isReadableValue(value: unknown): value is string | number {
+  return typeof value === 'string' || typeof value === 'number';
+}
+
+/**
+ * Every number an answer states, in order, with thousands separators removed.
+ *
+ * A narrower reader than the one the gold uses on purpose: the gold's reader only
+ * needs to know whether the dataset sanctioned an alternative, while this one
+ * decides a verdict, so it takes the same shape `extractLeadingNumber` accepts --
+ * digits with optional grouping and an optional decimal part -- and nothing else.
+ * A number word is not a number here; that is measured rather than careless, because
+ * the archived runs' word answers reach the judge and must keep reaching it.
+ */
+function statedNumbers(value: string | number): number[] {
+  if (typeof value === 'number') {
+    return [value];
+  }
+  // `matchAll` rather than `match`, so there is no `?? []` arm: the caller has already
+  // established that this string leads with a number, which makes a null result
+  // impossible and an `?? []` branch unreachable. A dead arm is a coverage hole that
+  // reads like safety.
+  return [...value.matchAll(/\d[\d,]*(?:\.\d+)?/g)].map(([token]) =>
+    Number(token.replace(/,/g, '')),
+  );
 }
 
 /**

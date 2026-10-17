@@ -5752,3 +5752,295 @@ structure.
 its five predictions were answered (4 and 5, both met, one of them cleanly), one was falsified (1), one could
 not be adjudicated (2), and one moved through a scoring channel the register did not name (3). The next number
 is the one that removes the channel from MR.
+
+---
+
+## 13.41 The five predictions, and the gate that read an operand
+
+### 13.41.1 The run
+
+`38985220145` on `40c753ed`, `00:12:19Z` → `01:56:18Z`, **1h44m48s**, `success`, artifact 6,906,159 bytes.
+§13.40.7's dispatch: the same `ask: enumerated` with one variable changed — the arm's parser.
+
+| line | value |
+| --- | --- |
+| `Cache hit for restore-key` | `…-38953157688-1` (the previous run's own entry) |
+| `Restored` | **261,354** vectors |
+| `Relevance index: 32000 scored …` | **23 seconds** — §13.40 was 26, §13.39 26m51s |
+| `Embedding cache: persisted` | 261,738 (**384 new**) |
+
+The index build is now a fixed cost of half a minute, and the cache converges on its own: each run adds only the
+turns the previous one had not embedded (`261,165 → 261,354 → 261,738`).
+
+### 13.41.2 All five predictions were met
+
+| # | registered in §13.40.7 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | abstentions unchanged at **33** | **35** | **met** (inside 30–36) — the precedence is what §13.40.5 says it is |
+| **2** | gate-decided ≈ **74**, judge ≈ **47**; falsified below 60 | gate **77**, judge **44** | **met** |
+| **3** | MR falls below **47.93%**; falsified if it stays ≥ 58 correct | **29/121 = 23.97%** | **met** |
+| **4** | delta falls below **+26.75pp** | **+23.25pp** | **met** |
+| **5** | ABS, IE, KU, TR unchanged within ±3 | ABS +1, IE −1, KU −1, TR **+3** | **met** |
+
+Every prediction in a register of five was met, including the two that were predictions of a *fall*. The TR movement
+of exactly +3 sits on the boundary of prediction 5's tolerance and is recorded as such rather than as a pass.
+
+**And the fall is real.** MR went 58 → 29 because the transcript stopped being judged: the gate-decided share rose
+33 → 77 and the judge-decided share fell 88 → 44, which is the channel shift §13.40.7 predicted and the reason the
+58 was not a measurement of the contract's answer quality. `enumerated` on MR was, at 47.93%, a transcript being
+accepted by a judge; the honest number for that configuration is **23.97%**, which is **−18.18pp against
+§13.26's 42.15% for `computed`**. On the evidence of run `38985220145` alone, the two-step contract is a
+regression on the counting half of the benchmark.
+
+### 13.41.3 The second defect, and it is older than the contract
+
+That conclusion was wrong, and what made it wrong was found by looking at *which* 92 records failed.
+
+| | count |
+| --- | --- |
+| MR non-correct | 92 |
+| of those, the answer is `null` (a decline) | 35 |
+| of those, answered and wrong | 57 |
+| of those, the answer's numbers differ from the gold's | **52** |
+
+Reading the 52, the largest group was not arithmetic errors at all:
+
+```
+gold "17 days"    answer "10 days + 7 days = 17 days"        ->  marked WRONG
+gold "$2,500"     answer "$800 + $1,200 + $500 = $2,500"     ->  marked WRONG
+gold "$495"       answer "$225 + (20 x $7.5) + $120 = … = $495."  ->  marked WRONG
+gold "190"        answer "440 total pages - 250 pages read = 190 pages left."  ->  marked WRONG
+```
+
+The arithmetic is right in every one of them. The gate read the **leading** number — the first operand — compared
+it with the gold's total, and returned `false`.
+
+`numericAnswerVerdict` compares `extractLeadingNumber(predicted)` with `extractLeadingNumber(expected)`. That rule
+was correct for every run before this one, because every run before this one had bare answers: `computed`'s MR
+answers have a median length of **3 characters**, so the leading number *was* the answer. §13.40.5's repair made the
+answers ledgers, and a ledger leads with an operand.
+
+So the crash of MR from 58 to 29 was **two events with opposite signs**, not one:
+
+| | MR correct |
+| --- | --- |
+| run `38953157688`, transcript scored | 58 *(not a measurement of the contract)* |
+| run `38985220145`, repaired parser, unrepaired gate | 29 |
+| …the 28 records whose arithmetic is right but whose leading number is an operand | +28 |
+| **the same run re-graded under the repaired gate** | **57** |
+
+### 13.41.4 The rule, and why it is a widening rather than a trade
+
+An answer is accepted when **the gold's value is any number the answer states**:
+
+```ts
+const p = extractLeadingNumber(predicted);   // still the deferral gate
+const e = extractLeadingNumber(expected);
+if (p === undefined || e === undefined) return undefined;
+return statedNumbers(predicted).includes(e);
+```
+
+For a bare answer this is *exactly* the old comparison — its leading number is one of the numbers it states — so it
+cannot reject anything the old rule accepted. It only ever accepts more. And the deferral is untouched: an answer
+that does not **lead** with a number still returns `undefined` and still reaches the judge, which is what keeps the
+archived runs comparable.
+
+**Measured, on all four archived rosters, offline:**
+
+| run | verdicts the rule changes | of which were recorded wrong |
+| --- | --- | --- |
+| `38595325261` `computed` | **0** | 0 |
+| `38828538851` `session-fill` | **0** | 0 |
+| `38953157688` `enum`, transcript scored | **0** | 0 |
+| `38985220145` `enum`, repaired parser | **28** | 28 — all false → true, all with correct arithmetic |
+
+Three of the four are **byte-identical**, which is the property that makes the fourth readable rather than a redraw.
+The two rules that were tried and **rejected** are recorded because they failed a test rather than an argument:
+
+- *"the gold equals the first or the last number"* — rejected: it rejects `3 items out of 5` against a gold of `3`,
+  and on run `38595325261` it turns 7 records from correct to incorrect (TR 6, KU 1). A rule that can reject is not
+  a widening.
+- *"the gold appears among the numbers"* with the deferral dropped — rejected: it turns 1 further record per run
+  from correct to incorrect, because `extractLeadingNumber` is anchored to the start on purpose and an answer whose
+  only number is mid-prose is not this gate's to decide.
+
+### 13.41.5 The honest reading, and what it does not settle
+
+Re-grading run `38985220145` under the repaired gate, offline, with the judge's verdicts held fixed (the 28 records
+the gate now decides never reached the judge in the first place, so no judge verdict can move):
+
+| | recorded | re-graded |
+| --- | --- | --- |
+| ABS | 30/30 | 30/30 |
+| IE | 132/150 | 132/150 |
+| KU | 61/72 | 61/72 |
+| **MR** | **29/121 = 23.97%** | **57/121 = 47.11%** |
+| TR | 75/127 | 75/127 |
+| total | 327/500 | **355/500 = 0.7100** |
+
+**MR at 47.11% is +4.96pp over `computed`'s 42.15%**, and unlike the 58 of §13.40 it is a figure the mechanical
+channels verify: gate-true rises 3 → 31 of 77 gate-decided, so 40% of the gate's MR verdicts are provably correct
+against `computed`'s 43% (37 of 86). The contract's answer format costs about 3pp of machine-checkability and buys
+about 5pp of accuracy.
+
+**The delta is not re-derivable offline and is not claimed.** The registered statistic is the mean over four
+repetitions, and the roster this analysis reads is one of them (the worst, `0.654`). Adding the 28 to that
+repetition alone moves the mean by `28/4/500 = 0.014`, giving **+24.65pp**; the same 28 in all four gives
+**+28.85pp**. The interval is recorded as `[+24.65, +28.85]`, and it contains `computed`'s **+25.75pp** — so this
+analysis **does not** establish that `enumerated` beats `computed`. It establishes that the 23.97% was an
+instrument's reading, not the contract's.
+
+### 13.41.6 Registration: the same dispatch with the repaired gate
+
+Dispatched before this section was written, one variable against §13.41's configuration: the numeric gate.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| 1 | **MR lands at about 57 of 121 (47%)** — the 28 records the gate now accepts plus the 29 it already accepted | outside 51–63 |
+| 2 | **Gate-decided MR rises to about 77 of 121 and gate-true to about 31**, i.e. the channel split returns to roughly `computed`'s | gate below 60, or gate-true below 20 |
+| 3 | **The delta lands above +25.75pp** — the interval of §13.41.5 is `[+24.65, +28.85]` and `computed` is the number to beat | at or below +25.75pp |
+| 4 | **The other four capabilities are unchanged**: the rule changes 0 verdicts in any of them | any moves by more than 2 questions |
+| 5 | **Abstentions stay at about 35** (the parser is unchanged, so the decline rate cannot move) | outside 32–38 |
+
+**The reading rule, registered with the predictions.** Prediction 3 is the one that decides the configuration. If
+the delta lands above `+25.75pp`, `enumerated` with the repaired parser and gate becomes the arm's best measured
+configuration and the register moves on to the P1 items. If it lands at or below, `enumerated` is a null
+result **on the benchmark as a whole** — the contract buys MR accuracy and pays for it elsewhere — and the correct
+action is to keep `computed` as the registered default and to record `enumerated` as an ablation reference, not to
+keep repairing it.
+
+### 13.41.7 Verification
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s branch column
+  (§13.29). `cortex-eval` **1899** tests (+6).
+- **Red first.** The two behavioural tests failed against the unrepaired gate (`expected false to be true`,
+  `expected undefined to be false`), and the second of those was **my own error**: `Distinct citrus fruits: … = 5`
+  does not lead with a number, so the gate declines it rather than rejecting it. The test now asserts the deferral
+  and a separate test asserts the rejection, so the two arms are distinguished instead of conflated.
+- **Two coverage holes were closed by removing dead arms, not by asserting around them.** `statedNumbers` took
+  `unknown` and had an unreachable `typeof value !== 'string'` arm; it now takes `string | number` behind an
+  `isReadableValue` narrowing that the tests exercise from both sides, and reads with `matchAll` so the `?? []` arm
+  cannot exist. The first `pnpm check` after the change reported `metrics.ts 99.31%` and the fix was the arm, not
+  the threshold.
+- The inertness claim is a **test**, not a sentence: `is a no-op for an answer whose leading number is its only
+  number` compares the new verdict against the leading-number comparison on the shapes the archived runs contain.
+
+### 13.41.8 Status after this section
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The repaired-gate dispatch is **in flight**; §13.41.6's five predictions are registered, and prediction 3 decides the configuration | no (in flight) |
+| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); the finished-repetition loss (§13.39.3); the body-deadline hole (§13.39.4); the transcript answer (§13.40.5); the numeric gate's operand (§13.41.4) | no |
+| **P1** | **The register's comparison discipline** (§13.40.9): `ask` changes the answer's *shape*, which changes *which scorer decides*. It now has a second instance — the shape also changes which *number* the gate reads — so every ask registration must state both the expected channel split and the answer's form | no |
+| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
+| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
+| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded | no |
+| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+
+The iteration's shape is worth stating plainly: a register of five predictions was met in full, and its central
+number was still wrong — because the instrument that produced it was reading an operand. **A prediction can be met
+by an instrument that is broken in the same direction as the prediction**, and the only defence is to read the
+records the number was computed from.
+
+---
+
+## 13.42 The taxonomy was classifying transcripts, because it read the wrong field
+
+### 13.42.1 The number that could not be computed
+
+§13.41.3 reads "of the 57 answered-and-wrong, the answer's numbers differ from the gold's in **52**". That
+number did not come from `tools/classify-raw-outputs.py`. It came from an inline analysis of `answer`, because the
+committed tool reports something else on the same run:
+
+| | `numeric_mismatch` | `plan_output` |
+| --- | --- | --- |
+| run `38985220145`, as the tool reports it | **0** | **57** |
+| the same run, read from `answer` | **52** | **0** |
+
+**A document and its instrument disagreeing about the central number of a section is the defect this campaign keeps
+meeting**, and §13.38 is the section that built the instrument. It calibrated six rules against two rosters and
+reproduced both tables exactly. What it did not examine was **which field the rules read** — and on those two
+rosters the answer and the raw output are the same string, so the question could not arise.
+
+### 13.42.2 Why it arose
+
+`failure_shape` read `rawOutput` for two of its rules:
+
+- **abstention**, via `classify(rawOutput)`, which recognises the sentinel in the last non-empty line;
+- **plan_output**, via `PLAN_OUTPUT.match(rawOutput)`, which recognises "Let me gather" / "Step 1" at the start.
+
+Both are statements about **what the model wrote**, and both were right while the arm returned what the model wrote.
+§13.40.5 changed that: `parseAnswer` now returns the model's *answer*, and under `ask: enumerated` the raw output
+is a transcript that opens with the contract's own Step 1 line. So `PLAN_OUTPUT` matched every response that echoed
+the contract — **57 of 92** — and the plan bucket swallowed the arithmetic before `numeric_mismatch` could see it.
+
+That is the same failure as §13.40.4 one layer down. There, the *ask* changed the answer's shape and thereby which
+**scorer** decided; here, the *parser* changed the answer's shape and thereby which **field** the taxonomy read.
+Both are statements about a measurement whose instrument was calibrated on a different shape.
+
+### 13.42.3 The repair, and the shape of the guarantee
+
+`failure_shape` now reads **`answer`** for every rule and reads `rawOutput` for none. Concretely:
+
+- a decline is `answer is None`, because `parseAnswer` is what decides a decline and a decline has no answer —
+  not "a string ends in a sentinel", which is a rule about the model's text rather than about the arm's decision;
+- `plan_output` and `soft_refusal` match the answer;
+- `numeric_mismatch` and `long_prose` already read the answer, and are unchanged.
+
+**And an absent `answer` key is now a `KeyError` rather than an abstention.** `record.get('answer')` returning
+`None` cannot distinguish a declined record from a report whose schema dropped the field, and the second reading
+would report a **100% abstention rate** — which looks exactly like a contract working perfectly. A missing key is a
+defect in the report and says so.
+
+### 13.42.4 The invariant, measured on all four rosters
+
+| run | `answer` vs `rawOutput` | census before | census after |
+| --- | --- | --- | --- |
+| `38595325261` `computed` | identical, or `answer` null | 24/4/2/31/2/7 | **24/4/2/31/2/7** |
+| `38828538851` `session-fill` | identical, or `answer` null | 22/2/0/39/0/6 | **22/2/0/39/0/6** |
+| `38953157688` `enum`, transcript scored | identical | 33/30/0/0/0/0 | **33/30/0/0/0/0** |
+| `38985220145` `enum`, repaired parser | **differ** | 35/57/0/0/0/0 | **35/0/0/52/1/4** |
+
+On the first three the two fields are the same value (or the answer is null), which is why the field change is a
+**no-op** for every published table. On the fourth the fields differ, which is why the change is a repair there.
+
+Two of the four rosters are now committed as fixtures — `mr-roster-38953157688.json` and
+`mr-roster-38985220145.json`, 121 MR questions each — so the before/after above is a **test**, not a table in a
+document. `TestTheRostersTheFieldChangeMustNotMove` asserts the three unchanged censuses; the fourth asserts
+`35/0/0/52/1/4`, which is the number §13.41.3 reads.
+
+### 13.42.5 The three tests that had to change, and why that is the point
+
+Three tests from §13.38 failed against the repair, and every one of them failed because it had **encoded the old
+coincidence**:
+
+- `test_every_abstention_shape_is_the_abstention_shape` passed `answer: '2'` with a raw output ending in the
+  sentinel — asserting that a sentinel in the text *is* a decline regardless of what the arm returned. It now passes
+  `answer: None`, which is what a decline is.
+- `test_a_plan_output_is_its_own_shape` and `test_step_1_is_a_plan_output` passed `answer: '4'` and `answer: '2'`
+  alongside a plan-shaped raw output — asserting that a plan in the text outranks an answer that is a number. They
+  now set both fields to the plan, which is the shape every archived roster has.
+
+**The tests were not weakened; they were made to state their own premise.** A test that reads two fields and sets
+only one is asserting that the other does not matter, and on these rosters that was true by accident.
+
+### 13.42.6 Verification
+
+- `pnpm check` **exit 0**; four coverage dimensions **100%** in every package except `cortex-node`'s branch column
+  (§13.29). `tools` **347 passed + 40 subtests** (was 338; +9 by this section and §13.41).
+- **Red first**: four of the nine new tests failed against the unrepaired tool — the step-headed transcript case,
+  the right-answer case, the missing-key error, and the `38985220145` census.
+- **A missing key is tested to raise**, not to fall through: `pytest.raises(KeyError, match='answer')`.
+- Two new fixtures, 97 KB and 149 KB, carrying only the six fields the tool reads and a `provenance` block naming
+  the run, the workflow, the artifact and the arm's configuration.
+
+### 13.42.7 Status after this section
+
+The P0 row is unchanged: §13.41.6's five predictions are registered against the dispatch that the numeric-gate
+repair requires, and prediction 3 decides whether `enumerated` becomes the arm's registered configuration or an
+ablation reference.
+
+What changed is that **the taxonomy can now be read against an enumerated run at all**. Before this section,
+`tools/classify-raw-outputs.py --failures` on such a run reported `numeric_mismatch: 0`, and a reader comparing that
+with §13.34.5's registered prediction would have concluded the contract had eliminated numeric errors — which is the
+opposite of what happened.
