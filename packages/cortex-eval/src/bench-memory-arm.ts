@@ -275,6 +275,28 @@ const RELEVANCE_SIGNALS = {
   none: 'none',
   /** Cosine against the question, from the same bi-encoder the reference pipeline uses. */
   retrieval: 'retrieval',
+  /**
+   * Dense cosine fused with a rare-keyword channel, by reciprocal rank.
+   *
+   * ## Why this is a second value and not an edit to `retrieval`
+   *
+   * §13.62's partition put the loss where it had not been located before: across MR's 3663
+   * gold turns, **1026 were never surfaced by the ranker** and 903 were surfaced and cut by
+   * the budget, and the same ordering holds for all five capabilities. So the pool's reach
+   * is the larger constraint, and `k = 256` failing to raise coverage (§13.54) says the
+   * missing turns are not merely just below the cut -- they score far below it.
+   *
+   * `retrieveTopKByQueriesHybrid` already exists in `retrieval.ts`: it adds the turns
+   * carrying a rare keyword from the question and fuses the two rankings by reciprocal
+   * rank, so a turn that is BOTH lexically identifying and semantically close outranks one
+   * with a single signal. It was written for the reference pipeline's own recall curve and
+   * has never been the arm's ranking.
+   *
+   * Editing `retrieval`'s meaning instead would make every archived artifact ambiguous
+   * about which mechanism produced it, which is the rule `RELEVANCE_UNITS` states for
+   * `session`: a value whose meaning changed between two runs makes both unreadable.
+   */
+  'retrieval-hybrid': 'retrieval-hybrid',
 } as const;
 
 /** The signal a run gets when it does not name one. */

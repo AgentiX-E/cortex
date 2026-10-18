@@ -43,7 +43,7 @@
  * query per question is the cheap, deterministic instrument.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
-import { retrieveTopKByQueries } from './retrieval.js';
+import { retrieveTopKByQueries, type RetrievalHit } from './retrieval.js';
 
 /**
  * What a turn scores when the index holds no measurement for it.
@@ -110,7 +110,37 @@ export type RelevanceIndexOptions = {
    * configuration reaches an artifact.
    */
   readonly topK?: number;
+  /**
+   * How a question's candidates are retrieved. Defaults to dense cosine alone.
+   *
+   * ## Why the retriever is a seam
+   *
+   * §13.62's partition measured where the gold goes: on MR, **1026 gold turns were never
+   * surfaced and 903 were surfaced and cut**, so the pool's reach is the larger of the two
+   * losses and the next variable is *how candidates are chosen*. A module that hardwired
+   * `retrieveTopKByQueries` could only express that variable by being edited, and an edited
+   * module cannot hold both arms of a comparison.
+   *
+   * The signature is the one the two provided retrievers already share --
+   * `retrieveTopKByQueries` (dense) and `retrieveTopKByQueriesHybrid` (dense fused with a
+   * rare-keyword channel by reciprocal rank) -- so a caller names a mechanism rather than
+   * writing one. It is a callback here and a *name* one layer up (the arm's
+   * `relevanceSignal`), because the artifact has to record which mechanism ran and the
+   * config line can only hold a string.
+   *
+   * Defaulting to dense rather than requiring it keeps every archived artifact's signal
+   * reproducible from the code: a required parameter would make the default a decision each
+   * caller makes again, and one of them would eventually make a different one.
+   */
+  readonly retrieve?: Retrieval;
 };
+
+/** The shape both provided retrievers have: queries and a context in, ranked hits out. */
+export type Retrieval = (
+  queries: readonly string[],
+  context: readonly string[],
+  topK: number,
+) => Promise<readonly RetrievalHit[]>;
 
 /**
  * The built signal: a synchronous lookup, plus how much it measured.
@@ -187,11 +217,16 @@ export async function buildRetrievalRelevanceIndex(
   options: RelevanceIndexOptions = {},
 ): Promise<RelevanceIndex> {
   const topK = options.topK ?? DEFAULT_RELEVANCE_TOP_K;
+  // Resolved once, outside the loop, so a run cannot mix two mechanisms across questions.
+  const retrieve: Retrieval =
+    options.retrieve ??
+    ((queries, context, width) =>
+      retrieveTopKByQueries(embedding, [...queries], [...context], width));
   const scores = new Map<string, Map<string, number>>();
   let scoredPairs = 0;
 
   for (const entry of cases) {
-    const hits = await retrieveTopKByQueries(embedding, [entry.question], [...entry.context], topK);
+    const hits = await retrieve([entry.question], entry.context, topK);
     const byTurn = new Map<string, number>();
     for (const hit of hits) {
       byTurn.set(hit.text, hit.score);

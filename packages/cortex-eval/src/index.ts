@@ -327,6 +327,7 @@ export {
   type RelevanceCase,
   type RelevanceIndex,
   type RelevanceIndexOptions,
+  type Retrieval,
 } from './relevance-index.js';
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';

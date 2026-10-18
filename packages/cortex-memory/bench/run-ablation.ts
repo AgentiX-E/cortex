@@ -41,6 +41,8 @@ import {
   createLlmFromEnv,
   createEmbeddingWithProvenanceFromEnv,
   describeFailure,
+  retrieveTopKByQueriesHybrid,
+  type Retrieval,
 } from '@agentix-e/cortex-eval';
 import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-llm';
 import {
@@ -307,9 +309,22 @@ async function main(): Promise<void> {
     context: question.context,
   }));
   const relevanceOptions: RelevanceIndexOptions = { topK: armOptions.relevanceTopK };
+  // §13.63. Two mechanisms behind one name-typed switch, so the artifact's
+  // `relevanceSignal` says which one ranked the turns and the two arms are comparable
+  // across runs. `retrieval` is dense cosine alone and is what every archived run used;
+  // `retrieval-hybrid` fuses that ranking with a rare-keyword channel by reciprocal rank.
+  // Both share `Retrieval`'s signature, so the index takes a mechanism rather than a flag.
+  const retriever: Retrieval | undefined =
+    armOptions.relevanceSignal === 'retrieval-hybrid'
+      ? (queries, context, topK) =>
+          retrieveTopKByQueriesHybrid(embedding, [...queries], [...context], topK)
+      : undefined;
   const relevance: RelevanceIndex | null =
-    armOptions.relevanceSignal === 'retrieval'
-      ? await buildRetrievalRelevanceIndex(embedding, relevanceCases, relevanceOptions)
+    armOptions.relevanceSignal === 'retrieval' || armOptions.relevanceSignal === 'retrieval-hybrid'
+      ? await buildRetrievalRelevanceIndex(embedding, relevanceCases, {
+          ...relevanceOptions,
+          ...(retriever === undefined ? {} : { retrieve: retriever }),
+        })
       : null;
   if (relevance !== null) {
     console.log(

@@ -74,6 +74,30 @@ describe('buildRetrievalRelevanceIndex', () => {
     expect(relevant).toBeGreaterThan(distract);
   });
 
+  it('uses the retriever it is given, so the signal can move without moving the index', async () => {
+    // §13.63. The partition §13.62 built says the pool's reach is the larger loss -- 1026
+    // MR gold turns never surfaced against 903 cut by the budget -- so the next variable is
+    // *how candidates are retrieved*, and the index has to accept one rather than hardwire
+    // the dense ranker. The injected retriever below returns a fixed pool, which is what
+    // makes "the index used it" observable without an embedding.
+    const seen: { queries: readonly string[]; topK: number }[] = [];
+    const index = await buildRetrievalRelevanceIndex(
+      embedding(),
+      [{ question: 'how many bikes do I own', context: ['the answer turn', 'a near turn'] }],
+      {
+        topK: 7,
+        retrieve: (queries, _context, topK) => {
+          seen.push({ queries, topK });
+          return Promise.resolve([{ id: 't-1', text: 'an injected turn', score: 0.5, index: 0 }]);
+        },
+      },
+    );
+
+    expect(seen).toEqual([{ queries: ['how many bikes do I own'], topK: 7 }]);
+    expect([...index.candidatesFor('how many bikes do I own')]).toEqual(['an injected turn']);
+    expect(index.scoredPairs).toBe(1);
+  });
+
   it('names the turns it scored, which is what makes the pool measurable', async () => {
     // §13.61.7: the campaign could not ask "did the budget cut this gold turn, or did the
     // ranking never surface it", because the artifact recorded what was delivered and not

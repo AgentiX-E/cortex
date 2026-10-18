@@ -8045,3 +8045,128 @@ the impossible row — `carried > pool` is reported, not clamped.
 
 Verified against the adopted run's artifact before the diagnostic was dispatched: it exits **2** with the message
 that the artifact predates the field. That is the refusal working on a real file rather than on a fixture.
+
+---
+
+## 13.63 The pool's reach is the larger loss, so the variable is the ranking and not the order
+
+### 13.63.1 The run
+
+`39098246215`, `04:46:18Z` → `06:30:51Z`, **1h44m33s**, `success`, artifact `12127901203`, 6,870,784 bytes.
+A diagnostic: the configuration §13.61 adopted, plus the pool capture. Drift check first —
+**500 of 500 records, 0 differences**.
+
+### 13.63.2 The partition, which is the first time this table has existed
+
+`--pool`, on the run's own records:
+
+| capability | n | gold | never surfaced | cut by the budget | delivered |
+| --- | --- | --- | --- | --- | --- |
+| ABS | 30 | 672 | 253 (37.6%) | 95 (14.1%) | 324 (48.2%) |
+| IE | 150 | 1709 | 266 (15.6%) | 141 (8.3%) | 1302 (76.2%) |
+| KU | 72 | 1688 | 360 (21.3%) | 284 (16.8%) | 1044 (61.8%) |
+| **MR** | 121 | 3663 | **1026 (28.0%)** | **903 (24.7%)** | 1734 (47.3%) |
+| **TR** | 127 | 3228 | **1056 (32.7%)** | **694 (21.5%)** | 1478 (45.8%) |
+| **total** | 500 | 10960 | **2961 (27.0%)** | **2117 (19.3%)** | 5882 (53.7%) |
+
+### 13.63.3 The five predictions of §13.62.4
+
+| # | registered | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | the roster stays within **±11** of 365, and `pool` is on every record with gold | **357**, `pool` on all 500, none missing | **met** |
+| **2** | `carried ≤ pool ≤ total` on every record | **no violations reported** | **met** |
+| **3** | on MR, `pool − carried` > `total − pool` | **903 against 1026** | **falsified** |
+
+Prediction 1's −8 is inside the tolerance §13.62.4 built from the four untouched capabilities' own rates, and
+the per-capability counts — ABS 29, IE 136, KU 60, MR 64, TR 68 — are all inside the rates the last two paired
+comparisons measured (ABS 3.3%, IE 3.3%, KU 9.7%, TR 17.3%). **The instrument is inert**, which is what a
+diagnostic run has to establish before its measurement means anything.
+
+### 13.63.4 What the falsification says, and it is not a disappointment
+
+§13.62.5 wrote: *"Falsifying 3 would be the more interesting outcome … it would mean the 0.921 curve does not hold
+at this width on this configuration, the ranking's reach is the constraint after all, and the next variable would
+be the signal rather than the order."*
+
+That is what happened, and it holds for **every** capability, not only MR — the never-surfaced column is the
+larger one in all five rows. Two consequences, and they agree with measurements this campaign already had:
+
+- **`k = 256` could not have helped, and §13.54's reading was right for a reason it could not state.** Widening a
+  pool from 64 to 256 does nothing when the missing turns are not merely below the cut but far below it. §13.54
+  concluded "the pool is not the lever" from coverage that did not move; this says **why**.
+- **The loss is roughly 27% of gold never seen, 19% seen and cut, 54% delivered.** Both channels matter, the
+  first more, and the first is the ranking's *recall* rather than its ordering.
+
+So the next variable is **how a candidate is retrieved**, and the campaign already contains the mechanism:
+`retrieveTopKByQueriesHybrid` in `retrieval.ts` fuses the dense ranking with a **rare-keyword channel** by
+reciprocal rank — turns carrying a keyword from the question that appears in very few turns
+(`MAX_KEYWORD_DOC_FREQUENCY = 5`). It was written for the reference pipeline's own recall curve and **has never
+been the arm's ranking**.
+
+### 13.63.5 The change: the index takes a mechanism instead of hardwiring one
+
+| seam | before | after |
+| --- | --- | --- |
+| `RelevanceIndexOptions` | `topK` | `topK`, and an optional `retrieve` of type `Retrieval` |
+| `buildRetrievalRelevanceIndex` | calls `retrieveTopKByQueries` inside the loop | resolves the retriever **once**, outside the loop |
+| `RELEVANCE_SIGNALS` | `none`, `retrieval` | `none`, `retrieval`, **`retrieval-hybrid`** |
+| the artifact | `relevanceSignal=retrieval` | says which mechanism ranked |
+
+**Why a new value rather than editing `retrieval`.** A value whose meaning changes between two runs makes both
+artifacts ambiguous, which is the rule `RELEVANCE_UNITS` already states for `session`. The name is what the
+artifact carries, so the mechanism has to be a name.
+
+**Why the retriever is a callback here and a name one layer up.** The index cannot hold a string and pick a
+function without importing every mechanism; the bench cannot carry a string into `memoryArmConfig` if the
+config is a function. Each layer keeps the representation it can honestly record.
+
+### 13.63.6 Registration
+
+**One variable**: the relevance signal, from `retrieval` to `retrieval-hybrid`. Everything else held at §13.61's
+adopted configuration. The control is `39098246215` — the same tree, the same configuration, only the ranking
+differs — and every prediction is read on the two instruments §13.62 built.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **MR's pool reach improves**: `total − pool` falls from 1026 to **≤ 820** (−20%) | ≥ 1026 |
+| **2** | **MR's correct count rises from 64 to ≥ 68** | ≤ 64 |
+| **3** | **MR's median coverage rises from 54.2% to ≥ 58%** | ≤ 54.2% |
+| **4** | **No capability loses more than its own measured cross-draw rate**: ABS 1, IE 5, KU 7, TR 22 questions | outside any of the four |
+
+**Prediction 1 is the mechanism, 2 is the money, 3 is the channel.** They are separated because the hybrid can
+raise reach without raising accuracy — a lexical channel can surface a turn that matches a keyword and is not
+gold — and the campaign has learned to price that possibility before dispatching rather than after (§13.55,
+§13.57).
+
+**Prediction 4 is per capability with each one's own rate beside it**, which is the rule §13.61.3 established
+after violating it. The four rates are measured, not chosen: they are the state-change counts of the last two
+paired comparisons (`39035438120`→`39083274990` and that→`39098246215`), and the larger of each pair is used.
+
+**The reading rule.** If 1 holds and 2 does not, the lexical channel is reaching turns that are not gold — a
+precision cost — and the next question is which keywords, which `MAX_KEYWORD_DOC_FREQUENCY` bounds and which a
+count of non-gold surfaced turns can answer. If 1 fails, then the never-surfaced turns are not reachable by a
+keyword channel either, and the reading is that they are **semantically distant** from their question — which
+would make the next variable a different embedding, not a different fusion.
+
+### 13.63.7 Verification
+
+- **Red first**: `uses the retriever it is given, so the signal can move without moving the index` fails on the
+  old index, which had no way to be handed one.
+- The four coverage dimensions stay **100%**; the new `retrieve` branch is covered by that test, and the default
+  branch by every test that builds an index without one.
+- `pnpm check` **exit 0**; `cortex-eval` **1908 tests** (+1).
+- `retrieveTopKByQueriesHybrid` is **not new code**: it has shipped since the reference pipeline's recall work,
+  with its own tests, and this run is the first time the arm's ranking has used it. That is worth stating plainly
+  because it changes what the run can fail for: a null result indicts the *fusion*, not an untested kernel.
+
+### 13.63.8 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The hybrid run is **dispatched**; §13.63.6's four predictions are registered | yes (in flight) |
+| **P0 (done)** | The partition is measured on all five capabilities; prediction 3 falsified; the signal is the variable | no |
+| **P1** | If reach rises and accuracy does not: which keywords, and what the non-gold surfaced turns cost | yes |
+| **P1** | If reach does not rise: the never-surfaced turns are semantically distant, and the variable is the embedding | yes |
+| **P1** | MR's 33 `numeric_mismatch` — still real, still downstream | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
