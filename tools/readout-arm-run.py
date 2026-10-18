@@ -36,6 +36,7 @@ Usage:
     python3 tools/readout-arm-run.py --counted path/to/report.json
     python3 tools/readout-arm-run.py --pool path/to/report.json
     python3 tools/readout-arm-run.py --ranks path/to/report.json
+    python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
@@ -860,6 +861,65 @@ def ranks_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(rows)
 
 
+# The per-turn caps the length table reports.
+#
+# Four, and they bracket the delivered median of 272 characters: 200 is below it, 400 and
+# 600 are the region where most of the tail disappears, and 900 is the point where the
+# saving falls under half. A sweep finer than this would describe the curve without
+# changing the choice the table feeds.
+TURN_CAPS = (200, 400, 600, 900)
+
+
+def turns_section(questions: list[dict]) -> tuple[str, int]:
+    """How long the delivered turns are, and how many more would fit under a per-turn cap.
+
+    ## Why the distribution is the measurement, not the count
+
+    §13.34.3 concluded the room is sufficient because it holds a median of 26 turns against
+    a median gold set of 24. §13.67 found the other half: the delivered turns have a
+    **median of 272 characters**, so 26 of them are 7,072 characters in a 24,000-character
+    room. The room is not spent on turns of typical size -- it is spent on a tail, and a
+    per-turn cap buys back most of it.
+
+    The saving is computed on the turns the artifact actually carries, so "2.76x more turns
+    would fit" is arithmetic over this run rather than an assumption about a corpus.
+    """
+    lengths: list[int] = []
+    rosters: list[int] = []
+    for question in questions:
+        turns = question.get('turns')
+        if not isinstance(turns, list):
+            continue
+        texts = [turn['text'] for turn in turns if isinstance(turn, dict) and isinstance(turn.get('text'), str)]
+        if not texts:
+            continue
+        rosters.append(len(texts))
+        lengths.extend(len(text) for text in texts)
+
+    if not lengths:
+        return '', 0
+
+    ordered = sorted(lengths)
+    total = sum(lengths)
+    median = ordered[len(ordered) // 2]
+    lines = ['', 'turn lengths (the character budget is spent on these)']
+    lines.append(f'  turns {len(lengths)}, median {median} chars, mean {total / len(lengths):.0f}, '
+                 f'roster median {sorted(rosters)[len(rosters) // 2]} per question')
+    lines.append(f'  total {total} chars; p90 {ordered[int(len(ordered) * 0.9)]}, max {ordered[-1]}')
+    lines.append('')
+    lines.append(f'  {"cap":>6}{"chars saved":>14}{"share":>8}{"turns that would fit":>22}')
+    for cap in TURN_CAPS:
+        saved = sum(max(0, length - cap) for length in lengths)
+        share = saved / total if total else 0
+        factor = 1 / (1 - share) if share < 1 else float('inf')
+        lines.append(f'  {cap:>6}{saved:>14}{share:>8.1%}{f"{factor:.2f}x":>22}')
+    lines.append(
+        '  "turns that would fit" is the same character room holding turns truncated to the '
+        'cap, i.e. what a per-turn cap buys in exchange for cutting each turn at that length.'
+    )
+    return '\n'.join(lines), len(rosters)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -892,6 +952,11 @@ def main(argv: list[str]) -> int:
         '--pool',
         action='store_true',
         help='print where the gold went: never surfaced, cut by the budget, delivered',
+    )
+    parser.add_argument(
+        '--turns',
+        action='store_true',
+        help='print the delivered turn lengths and what a per-turn cap would buy',
     )
     parser.add_argument(
         '--ranks',
@@ -956,6 +1021,14 @@ def main(argv: list[str]) -> int:
             section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.turns:
+        section, measured = turns_section(questions)
+        if measured == 0:
+            print(f'{args.report}: no record carries turns.', file=sys.stderr)
             return 2
         print(section)
         return 0

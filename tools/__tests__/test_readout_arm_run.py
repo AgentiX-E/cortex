@@ -807,3 +807,63 @@ class TestThePoolPartition:
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert 'violate' in r.stdout or 'impossible' in r.stdout
+
+
+class TestTheTurnLengthDistribution:
+    """What the character budget is spent on, which §13.67 found was a long tail.
+
+    The roster holds a median of 26 turns in a 24,000-character room while the delivered
+    turns have a **median of 272 characters**. Twenty-six median turns are 7,072 characters,
+    so the room is not being spent on turns of typical size -- it is being spent on a tail,
+    and capping a turn's contribution would fit two to four times as many.
+
+    A claim about a distribution is worth a table, and this one decides the next variable.
+    """
+
+    @staticmethod
+    def _report(lengths: list[int]) -> dict:
+        questions = [{
+            'questionId': 'q1',
+            'capability': 'MR',
+            'groundTruth': 'x',
+            'answer': None,
+            'rawOutput': None,
+            'correct': False,
+            'turns': [{'index': i, 'text': 'x' * length} for i, length in enumerate(lengths)],
+        }]
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--turns', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_reports_the_median_and_the_tail(self, tmp_path: Path) -> None:
+        report = self._report([100, 100, 100, 10000])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'median' in r.stdout
+        assert '4' in r.stdout  # turn count
+
+    def test_it_says_how_many_more_turns_a_cap_would_fit(self, tmp_path: Path) -> None:
+        # The number the decision needs: one row per candidate cap.
+        report = self._report([100, 400, 4000])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'cap' in r.stdout
+        assert '400' in r.stdout
+
+    def test_a_roster_without_turns_refuses(self, tmp_path: Path) -> None:
+        report = self._report([])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'turn' in r.stderr

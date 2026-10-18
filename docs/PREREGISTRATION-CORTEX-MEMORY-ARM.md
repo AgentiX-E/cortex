@@ -8475,3 +8475,106 @@ sharper: the hybrid's +18 could not have been evidence variance, because there w
 | **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+---
+
+## 13.67 The room is spent on a long tail, not on turns
+
+### 13.67.1 The measurement that changes what "the room is sufficient" means
+
+§13.34.3 concluded the evidence room is not the constraint: it holds a median of **26 turns** against a median
+gold set of **24**, so a perfect selector would reach 0.917 coverage. That argument is about **counts**, and
+`--turns` on the adopted run's artifact shows the other half of the room's arithmetic:
+
+| | value |
+| --- | --- |
+| delivered turns | 14,115 across 500 questions |
+| **median turn** | **272 characters** |
+| mean | 743 |
+| p90 | 2,305 |
+| max | 15,369 |
+| roster median | **26 turns per question** |
+
+Twenty-six turns of median size are **7,072 characters**. The room is 24,000. So the room is **not** being spent
+on turns of typical size — it is being spent on a tail, and the median turn is carrying a seventh of the space
+its count suggests.
+
+### 13.67.2 What a per-turn cap would buy, in arithmetic rather than in hope
+
+| cap | characters saved | share | turns that would fit in the same room |
+| --- | --- | --- | --- |
+| 200 | 8,015,463 | 76.5% | **4.25×** |
+| **400** | 6,682,968 | **63.7%** | **2.76×** |
+| 600 | 5,753,658 | 54.9% | 2.22× |
+| 900 | 4,516,877 | 43.1% | 1.76× |
+
+At a 400-character cap the same room holds **2.76 times as many turns** — 26 becomes 72, which is more than the
+64-wide pool contains. And §13.66 measured exactly what that would buy: the pool holds **73.2%** of the gold while
+the delivery holds **54.2%**, because the cut falls at rank 26 and the band from 26 to 64 holds another **15%**
+of the gold.
+
+So the two measurements meet: **the gold is in the pool, the cut is by rank, and the rank cut is by characters.**
+Capping a turn's contribution moves the cut, which is the one thing the rank curve said would help.
+
+### 13.67.3 Why this is a different variable from the three already excluded
+
+- **Not `k`.** §13.54 and §13.66: the cut band is inside the pool, so widening the pool cannot reach it.
+- **Not the units.** §13.34: `session` and `session-fill` allocated whole sessions and moved coverage by nothing.
+- **Not the order.** §13.66 said the order is the lever, and this **is** an ordering instrument — but of a
+  different kind: it does not reorder candidates, it changes **how many of the ranked candidates fit**. The two
+  are complementary and the cap is the cheaper one to measure, because it needs no similarity function.
+
+### 13.67.4 What it costs, stated before the run
+
+A cap cuts each turn at that length. For a counting question the gold turn is usually a short statement
+(*"I went to Lisbon in May"*), so cutting at 400 characters loses little. For a turn whose decisive fact sits deep
+in a long narrative, the cap destroys it. **That is the trade, and the prediction below prices it**: coverage and
+counts should rise, and any capability whose answers live in long text should lose more than it gains.
+
+### 13.67.5 Registration
+
+**One variable**: a per-turn character cap of **400**, applied where the prompt renders each turn, with
+`undefined` meaning no cap so every archived run stays byte-identical.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its total | ≤ 54.2% |
+| **2** | **MR's correct count rises from 62 to ≥ 66** | ≤ 62 |
+| **3** | **The roster rises from 371 to ≥ 379** | ≤ 371 |
+| **4** | **The long-text capabilities hold**: IE and KU stay within their own measured rates (IE 5, KU 7 questions) | outside either |
+
+**Prediction 1 is the mechanism, 2 and 3 are the money, 4 is the price.** They are separated because a cap that
+raises coverage but loses IE would be a capability trade rather than an improvement, and the campaign has
+learned — §13.64.6, §13.63.3 — that a total can hide a regression the instrument is fine enough to see.
+
+**Prediction 3 is registered against a single run**, which §13.66 has now made defensible: retrieval is
+deterministic on this arm, so the only cross-run noise this variable meets is model sampling, measured at ±4.
+
+### 13.67.6 Why the run is not dispatched in this section
+
+The change is not a switch: it touches the render path in `prompt.ts`, the option surface, the arm's env reader
+and the workflow input — four files plus their tests, and the render path is where §13.15's byte-compatibility
+guarantees live. Writing it in the last minutes of an iteration is how a byte-identical promise gets broken
+silently.
+
+So this section delivers the measurement, the arithmetic and the registration, and the implementation is the next
+iteration's first task with its predictions already fixed. **A registered experiment that has not run is worth
+more than an unregistered change that has**, which is the order this campaign has paid to learn four times.
+
+### 13.67.7 Verification
+
+- `--turns` is `readout-arm-run.py`'s seventh mode, with 3 tests: the median and the count, the cap table, and a
+  roster without turns refusing.
+- The numbers above are that tool's output on the adopted run's artifact — 14,115 turns, median 272, cap 400
+  saving 63.7% — computed on the turns the run actually carried, not on an assumption about a corpus.
+- `python3 -m pytest tools/__tests__ -q` → **445 passed, 40 subtests**.
+
+### 13.67.8 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | **Implement the 400-character per-turn cap** and dispatch it under §13.67.5's four predictions | no, to build; yes, to measure |
+| **P0 (done)** | The room's arithmetic is measured: median turn 272 against a 24,000-character room, and the cap table | no |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
