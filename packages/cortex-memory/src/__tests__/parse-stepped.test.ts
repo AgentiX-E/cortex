@@ -87,16 +87,32 @@ describe('a stepped response is scored by its answer, not by its transcript', ()
     expect(answer.length).toBeLessThan(20);
   });
 
-  it('returns a blank answer when the heading is all there is', () => {
-    // The boundary, measured before it was written: of run `38953157688`'s 118
-    // step-headed multi-session responses, **118** put the answer on its own line
-    // after the last heading, and **0** put it on the heading line itself. So the
-    // unobserved shape is answered conservatively rather than guessed at: a heading
-    // with nothing after it is a blank answer, which scores nothing, and never the
-    // transcript, which is what this repair exists to stop being scored.
-    const headingOnly = 'Step 1 — list the items\n\nStep 2 — compute the answer from that list';
+  it('reads an answer that shares the heading line', () => {
+    // §13.60. The boundary the previous version of this file called *unobserved* — "118
+    // put the answer on its own line after the last heading, and 0 put it on the heading
+    // line itself" — has now been observed: **8** records of run `39035438120` and **18**
+    // of run `39076055833`. The conservative answer (`''`) threw every one away, and in
+    // the second run they were the digits the closing line had just asked the model to
+    // put there. A blank answer and a wrong answer score the same; a blank answer and a
+    // *correct* one do not.
+    expect(parseAnswer('Step 1 — list the items\n\nStep 2 — 2')).toBe('2');
+    expect(parseAnswer('Step 2: 50 hours per week.')).toBe('50 hours per week.');
+    expect(parseAnswer('Step 1 — list\n- a\n\nStep 2 — the total is 2.')).toBe('the total is 2.');
+  });
+
+  it('prefers what follows the heading line when there is anything there', () => {
+    // The shape the heading repair was built for, unchanged: a model that copies the
+    // instruction and answers below it is scored on the answer, never on the echo.
+    expect(parseAnswer('Step 2 — compute the answer from that list\n\n3')).toBe('3');
+  });
+
+  it('returns a blank answer when the heading carries nothing at all', () => {
+    // What the old test was really guarding, and all it can still guard: the transcript
+    // is never the answer. A heading with no content after the marker has nothing to
+    // read, and `''` is an answer -- a blank, wrong one -- not an abstention.
+    const headingOnly = 'Step 1 — list the items\n\nStep 2 —';
     expect(parseAnswer(headingOnly)).toBe('');
-    expect(parseAnswer(headingOnly)).not.toContain('Step 2');
+    expect(parseAnswer(headingOnly)).not.toContain('Step');
   });
 
   it('still declines when the response declines, list and all', () => {

@@ -7613,3 +7613,133 @@ shortfall replicates, the *attribution* to faithful counting does not replicate 
 | **P1** | A better no-signal control (§13.50.4) | yes |
 | P2 | The §13.55 sentence as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+---
+
+## 13.60 Run `39076055833`: the closing line worked, and the reader threw the answers away
+
+### 13.60.1 The run
+
+`39076055833`, `22:40:53Z` → `00:24:25Z`, **1h43m32s**, `success`, artifact `12119497195`, 6,869,579 bytes.
+One variable against `39035438120`: the block's closing line.
+
+### 13.60.2 The five predictions
+
+| # | registered in §13.57.4 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR declines with a non-empty list and a number in Step 2: 12 → **≤ 4** | **9** | **falsified** (at the line) |
+| **2** | MR's declines fall from 23 to **≤ 15** | **20** | **falsified** (at the line) |
+| **3** | MR's correct count rises from 61 to **≥ 66** | **55** | **falsified**, by 6 in the wrong direction |
+| **4** | ABS+IE+KU+TR combined within ±6 of 293 | **298** (29+134+62+73) | **met** |
+| **5** | MR's declines' median coverage ≥ 50% | **50.0%** | **met** |
+
+**And those verdicts are not the run's verdict on the closing line**, which is the rest of this section.
+
+### 13.60.3 What the artifact showed instead: a reader defect the run exposed
+
+The transition table (`--paired` against `39035438120`) had one row nobody predicted:
+
+| MR transition | n |
+| --- | --- |
+| **correct → other** | **11** |
+| numeric_mismatch → other | 6 |
+| abstention → correct | 3 |
+| abstention → numeric_mismatch | 3 |
+| other → correct | 3 |
+| … | … |
+
+Eleven *previously correct* MR answers became "other". Reading them is decisive: **nine of the eleven have an
+empty answer** (`''`), and the raw output that produced them is not empty:
+
+```text
+Step 1 — items matching "plants I acquired in the last month":
+- Peace lily and a succulent plant, obtained from the nursery two weeks before 2023/05/20 (Session 2)
+- Snake plant, got from sister last month (Session 3)
+
+Step 2 — 2
+```
+
+The answer is `2`, on the heading's line. The parser returned `''`.
+
+**The defect.** `afterLastStepHeading` sliced from `offset + line.length + 1` — after the heading **line**,
+because that is what skips an echoed instruction. The `+ 1` is the newline that ends the line. When the heading
+line is the **last** line there is no such newline, `slice` starts past the end of the text, and every answer
+written *beside* the heading reads as blank. The rule's own comment recorded the shape as unobserved — *"118 put
+the answer on its own line after the last heading, and 0 put it on the heading line itself"* — so `''` was a
+conservative answer rather than an error. **It is now observed, and it is the shape the closing line produces.**
+
+### 13.60.4 The measurement, which is why this is not a bug report but a verdict
+
+`parseAnswer` was rebuilt with the repair and run over the stored `rawOutputs` of three artifacts. This re-reads
+**the same model outputs** — it is not a re-run, and it cannot re-derive the headline (the roster carries one
+repetition and the registered statistic is a mean over four). What it does measure is exact:
+
+| run | answers whose parse changes | of which were scored correct | gold number matches the new answer |
+| --- | --- | --- | --- |
+| `39005914398` (§13.45, the decided config) | 2 | 0 | 0 |
+| `39035438120` (§13.55) | 8 | 0 | **1** |
+| `39076055833` (§13.57) | **18** | 0 | **7** |
+
+Three things follow, and the first is the verdict:
+
+1. **The closing line worked.** The shape "the number beside the Step 2 heading" goes **2 → 8 → 18** across the
+   three runs, and the closing line is what asks for it: *reply with the Step 2 number alone*. §13.57 asked the
+   model to put the number there and it did. The reader then deleted it.
+2. **The run's prediction 3 was measured through a broken instrument.** MR's observed 55 carries 7 questions the
+   numeric gate would have accepted and 18 blanks that should not exist. So the honest reading of 55 is
+   **"not less than 62"**, and the run **does not adjudicate §13.57**.
+3. **The two published runs were slightly light too** — 2 and 8 answers — but in `39005914398` the gold never
+   matched, so §13.45's headline is unaffected, and in `39035438120` at most one question of one repetition is,
+   which is at most **0.2pp** on that repetition. Stated rather than left out, because the defect was in the
+   tree when both numbers were produced.
+
+### 13.60.5 The repair, and why the old test had to change
+
+The rule is now: **if anything follows the heading line, the answer begins after that line** (the echo case,
+unchanged); **otherwise it begins after the heading marker**, where the only content left is what the model
+wrote.
+
+The old test asserted `parseAnswer('Step 1 — …\n\nStep 2 — compute the answer from that list') === ''`, i.e. that
+a heading-only response is blank. Under the new rule that response yields the echoed instruction, which is a
+wrong answer rather than a blank one — and **the two score identically**: neither is `null`, so neither is an
+abstention, and both classify as `other`. What the test was really guarding is that **the transcript is never the
+answer**, and it is rewritten to assert exactly that, with a second test for the genuinely empty case
+(`'Step 2 —'` with nothing after the marker). The three shapes are pinned separately: answer beside the heading,
+answer below an echoed heading, and nothing at all.
+
+**Red first**: `reads an answer that shares the heading line` fails on the old `parse.ts` and the other two pass
+before and after, which is what makes them the invariants and the first one the change.
+
+### 13.60.6 What this changes about the campaign
+
+- **A run can be invalidated by a reader that no test covered**, and this one was: the parser had 6 tests and
+  none of them had a heading as the last line with content beside it, because no archived artifact had ever
+  produced that shape. **The closing line created the shape.** So the ordering rule this campaign has followed —
+  register the prediction, dispatch, read — needs one more step that is cheap and was skipped: **before reading a
+  run, re-parse its raw outputs with the current parser and confirm the answers the artifact carries are the
+  answers it would produce today.** Two lines of `--` and a node script; it would have caught this in a minute.
+- **The next dispatch is a re-run, not a new variable.** The closing line has never been measured. Its effect is
+  bounded below by the 7 recovered questions in one repetition, and the 18 blanks are gone.
+- **The re-read is not the number.** It is a lower bound on what the run would have shown, produced by one gate,
+  and the section says so; the number comes from the next run.
+
+### 13.60.7 Verification
+
+- `cortex-memory` **352 tests** (+2 net); `pnpm check` is re-run before the dispatch and its result is in §13.61.
+- The re-read used the **built** `dist/parse.js` of the repaired package rather than a Python re-implementation,
+  so the "what would today's parser say" column is the parser's own answer and not a second definition of it.
+- §13.60.3's transition table and §13.60.4's column are from `tools/readout-arm-run.py --paired` and the node
+  script named above respectively; the script is two lines of `parseAnswer` over `rawOutput` and is reproducible
+  from the artifact.
+
+### 13.60.8 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | **Re-dispatch the closing line** on the repaired parser; the five predictions of §13.57.4 stand unchanged, because they were never read | yes |
+| **P0 (done)** | The reader defect is fixed with three pinned shapes, and the two earlier runs are priced against it (0 and ≤1 question) | no |
+| **P1** | The selector's signal (§13.59.4) — unchanged and still the largest open question | no, to design |
+| **P1** | TR's 36 declines at 39.7% coverage — unchanged by this run, whose TR movement was inside its own 11.8% | yes |
+| P1 | Add the re-parse step to the readout, so a run is never read through a stale parser again | no |
+| P2 | The §13.55 sentence as its own variable | yes |
+| P3 | `PATH` ordering | no |

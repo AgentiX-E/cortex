@@ -87,21 +87,43 @@ export function parseAnswer(raw: string): Answer {
  * empty string, which is an *answer* in this package -- a blank, wrong one -- and not
  * an abstention. Falling back to the whole transcript there would score the
  * transcript, which is the defect this exists to remove.
+ *
+ * ## §13.60: an answer may share the heading's line, and the `+ 1` assumed it never did
+ *
+ * The slice used to start after the heading **line**, so that a model that copies the
+ * instruction and answers below it is scored on the answer. The `+ 1` is the newline that
+ * ends the heading line -- and when the heading line is the last line there is no such
+ * newline, so the slice began past the end of the text and every answer written *beside*
+ * the heading was read as blank.
+ *
+ * That shape was called unobserved when the rule was written ("118 put the answer on its
+ * own line after the last heading, and 0 put it on the heading line itself"), so the blank
+ * reading was a conservative choice rather than an error. It has now been observed: **8**
+ * records of run `39035438120` and **18** of run `39076055833`. The second run's closing
+ * line asks the model to "reply with the Step 2 number alone", and ten of those eighteen
+ * wrote it exactly there. The reader then discarded it.
+ *
+ * So the rule is: if anything follows the heading line, the answer begins after that line
+ * (the echo case, unchanged); otherwise it begins after the heading marker, where the only
+ * content left is what the model wrote. Neither branch can see the transcript.
  */
 function afterLastStepHeading(text: string): string | undefined {
   const lines = text.split('\n');
   let start: number | undefined;
   let offset = 0;
   for (const line of lines) {
-    if (ENUMERATION_STEP_HEADING.test(line)) {
-      start = offset + line.length + 1;
+    const heading = ENUMERATION_STEP_HEADING.exec(line);
+    if (heading) {
+      const afterLine = offset + line.length + 1;
+      start = text.slice(afterLine).trim().length > 0 ? afterLine : offset + heading[0].length;
     }
     offset += line.length + 1;
   }
-  // The leading whitespace of the slice is the newline that ended the heading line,
-  // and `collapseWhitespaceEdges` deliberately trims only spaces and tabs at the front
-  // (a leading newline cannot occur on any other path, because `parseAnswer` trims the
-  // whole response first). Removed here so the answer does not begin with a line break.
+  // The leading whitespace of the slice is the newline that ended the heading line, or the
+  // space that separated the marker from the answer, and `collapseWhitespaceEdges`
+  // deliberately trims only spaces and tabs at the front (a leading newline cannot occur on
+  // any other path, because `parseAnswer` trims the whole response first). Removed here so
+  // the answer does not begin with a line break.
   return start === undefined ? undefined : text.slice(start).replace(/^[ \t\n]+/, '');
 }
 
