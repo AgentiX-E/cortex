@@ -8392,3 +8392,86 @@ works on a real file before it is needed.
 | **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+---
+
+## 13.66 The rank curve: the head is shallow, so the lever is the order
+
+### 13.66.1 The run
+
+`39116387165`, `09:42:20Z` → `11:32:53Z`, **1h50m33s**, `success`, artifact `12135385585`, 7,084,521 bytes.
+The configuration §13.64 adopted, plus the rank capture. Drift check: **500 of 500, 0 differences**.
+
+### 13.66.2 The three predictions
+
+| # | registered in §13.65.3 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | the roster stays within **±11** of 375 | **371** (−4) | **met** |
+| **2** | `pool` equals the count of non-negative `goldRanks` on every record | no record disagrees | **met** |
+| **3** | top 32 captures **< 85%** of the surfaced gold | **79.7%** | **met** |
+
+### 13.66.3 The curve
+
+| capability | gold | top 8 | top 16 | top 32 | surfaced |
+| --- | --- | --- | --- | --- | --- |
+| ABS | 672 | 121 (18.0%) | 213 (31.7%) | 322 (47.9%) | 420 (62.5%) |
+| IE | 1709 | 685 (40.1%) | 1037 (60.7%) | 1294 (75.7%) | 1444 (84.5%) |
+| KU | 1688 | 455 (27.0%) | 774 (45.9%) | 1099 (65.1%) | 1327 (78.6%) |
+| **MR** | 3663 | 664 (18.1%) | 1225 (33.4%) | **1984 (54.2%)** | 2632 (71.9%) |
+| **TR** | 3228 | 659 (20.4%) | 1135 (35.2%) | 1694 (52.5%) | 2195 (68.0%) |
+| **total** | 10960 | **2584 (23.6%)** | **4384 (40.0%)** | **6393 (58.3%)** | **8018 (73.2%)** |
+
+**The head is shallow.** A third of the gold the ranker *can* find sits between rank 32 and the cut, and the first
+eight turns of a 64-wide pool carry under a quarter of it. So the campaign's oldest suspicion — that the ranking is
+the constraint — is now measurable in the currency the argument needs.
+
+### 13.66.4 The decision, by the rule §13.65.3 registered before the number existed
+
+The rule: *if the median rank of the surfaced-but-cut gold is below 2× the room (≈52), the lever is the order.*
+
+MR's cut gold occupies ranks 26–63 with a median near **45**, and the run-wide picture is the same shape: top 32
+holds 58.3% of the gold, the cut band holds another 14.9%, and the room is ~26 turns. **45 < 52. The lever is the
+order.**
+
+That closes the branch §13.64.7 opened: **the embedding is not the next variable.** The gold the model is missing
+was found by the ranker and ordered below the cut, and a better order is a change to one function rather than a
+re-embedding that would invalidate every archived comparison.
+
+### 13.66.5 A second finding the run produced for free, about noise
+
+**The pool and the delivered counts are identical to run `39106951421` to the turn** — 2942 never surfaced, 2565
+cut, 5453 delivered, and the same per capability. Retrieval on this arm is **deterministic** given the dataset and
+the configuration, so the evidence is byte-identical between the two runs.
+
+Which means the two runs' accuracy difference — 375 against 371 — is **entirely model sampling**. That is the
+cleanest separation of the two noise sources this campaign has had, and it makes §13.64's adoption arithmetic
+sharper: the hybrid's +18 could not have been evidence variance, because there was none.
+
+### 13.66.6 What the next variable is, and what it is not
+
+- **Not the embedding.** The rule decided.
+- **Not the room.** §13.34.3 measured the room holding 26 turns against a median gold set of 24; with a perfect
+  order the room is sufficient, and top 32 already holds more gold than the room can buy.
+- **Not `k`.** §13.54, and now for a second reason: the cut band is *inside* the pool.
+- **The order.** A function that decides which 26 of the 64 scored candidates the model reads. The campaign has
+  the artifact to argue about it — `goldRanks` says how far off each choice was — but the ordering signal itself
+  is a design question that deserves its own registration rather than a reuse of `relevanceUnits`, which is
+  frozen at `turn` for a measured reason.
+
+### 13.66.7 Verification
+
+- **Drift before reading**: 500 of 500, 0 differences.
+- Prediction 2 is the invariant that keeps `pool` and `goldRanks` one fact; it is asserted at unit level
+  (`pool` **is** the count of non-negative ranks) and checked here at run level on all 500 records.
+- Every number is `--ranks`, `--pool`, `--union` and `--reference` on the artifact.
+- `pnpm check` **exit 0** before the run; four coverage dimensions **100%**.
+
+### 13.66.8 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0 (done)** | The rank curve exists and decided: **the order**, not the embedding | no |
+| **P0** | **Design the ordering function** and register it — the whole of MR's 49 and TR's 17 | no, to design |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
