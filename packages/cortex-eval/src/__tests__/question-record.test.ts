@@ -590,12 +590,14 @@ describe('goldOverlapOf', () => {
       carried: 1,
       total: 2,
       pool: 2,
+      goldRanks: [0, 1],
     });
     // In the pool's reach and cut by the budget: the row the campaign has never had.
     expect(goldOverlapOf([A], [A, B], [A, 'something else'])).toEqual({
       carried: 1,
       total: 2,
       pool: 1,
+      goldRanks: [0, -1],
     });
     // Outside the pool entirely -- a ranking failure, not a budget one. `pool: 0` is a
     // measurement and must be present, not omitted.
@@ -603,6 +605,26 @@ describe('goldOverlapOf', () => {
       carried: 1,
       total: 2,
       pool: 0,
+      goldRanks: [-1, -1],
+    });
+  });
+
+  it('records where each gold turn sits in the ranking, which is what a curve needs', () => {
+    // The ordered pool is the one argument that produces both facts: `pool` is its
+    // intersection size and `goldRanks` is the position of each gold in it. `-1` is outside
+    // the pool, so the array is the same length as `total` and a reader can sum it into any
+    // cut point without a second field per cut.
+    expect(goldOverlapOf([], [A, B], [A, 'x', B])).toEqual({
+      carried: 0,
+      total: 2,
+      pool: 2,
+      goldRanks: [0, 2],
+    });
+    expect(goldOverlapOf([], [A, B], ['x'])).toEqual({
+      carried: 0,
+      total: 2,
+      pool: 0,
+      goldRanks: [-1, -1],
     });
   });
 
@@ -643,7 +665,7 @@ describe('goldOverlapOf', () => {
     // row is visible (`carried` above `pool`) and a reader can act on it, while a clamped
     // row reads as a ranking that surfaced two gold turns when it surfaced none.
     const overlap = goldOverlapOf([A, B], [A, B], []);
-    expect(overlap).toEqual({ carried: 2, total: 2, pool: 0 });
+    expect(overlap).toEqual({ carried: 2, total: 2, pool: 0, goldRanks: [-1, -1] });
   });
 
   it('reports nothing to measure as null rather than as a zero', () => {

@@ -193,6 +193,25 @@ export type RelevanceIndex = {
    * {@link UNSCORED_RELEVANCE} -- and that equivalence is asserted rather than assumed.
    */
   candidatesFor(question: string): ReadonlySet<string>;
+  /**
+   * The same turns, **in the ranker's own order**, best first.
+   *
+   * ## Why both views, and why they are one structure
+   *
+   * `candidatesFor` answers "was this turn a candidate"; this answers "where was it", and the
+   * second question is the one §13.64.7 could not ask: MR's 903 budget-cut gold turns are
+   * either ranked just under the cut -- where the order is the lever -- or far under it,
+   * where no order helps, and a set cannot distinguish them.
+   *
+   * The selection still does **not** consume this order: `CortexMemory` sorts the admitted
+   * turns by `relevanceFor`, so a caller that wanted to rank by position would have to say
+   * so. That separation is deliberate and unchanged -- what is new is that the ranking is
+   * *reachable* for measurement instead of being discarded at the door.
+   *
+   * Backed by one ordered array that the set is built from, so "in the set" and "has a
+   * position" cannot disagree; `relevance-index.test.ts` asserts the two agree.
+   */
+  rankedCandidatesFor(question: string): readonly string[];
 };
 
 /**
@@ -223,14 +242,20 @@ export async function buildRetrievalRelevanceIndex(
     ((queries, context, width) =>
       retrieveTopKByQueries(embedding, [...queries], [...context], width));
   const scores = new Map<string, Map<string, number>>();
+  // The ranker's own order, kept for measurement. `scores` stays because the lookup is by
+  // turn and must remain O(1); this array is what gives a turn a position.
+  const ranked = new Map<string, string[]>();
   let scoredPairs = 0;
 
   for (const entry of cases) {
     const hits = await retrieve([entry.question], entry.context, topK);
     const byTurn = new Map<string, number>();
+    const order: string[] = [];
     for (const hit of hits) {
+      if (!byTurn.has(hit.text)) order.push(hit.text);
       byTurn.set(hit.text, hit.score);
     }
+    ranked.set(entry.question, order);
     scoredPairs += byTurn.size;
     // Last write wins for a repeated question. The arm asks each question once, so
     // the case is not one the run creates; what matters is that the lookup stays a
@@ -246,10 +271,15 @@ export async function buildRetrievalRelevanceIndex(
       return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
     },
     candidatesFor(question: string): ReadonlySet<string> {
-      // The map's own keys, so the set and the lookup cannot disagree: both are reads of
-      // one structure, and a second structure would be the consolidation-clock defect this
+      // The ordered array read as a set, so the two views cannot disagree: one structure,
+      // two questions. A second structure would be the consolidation-clock defect this
       // package has removed at three other layers.
-      return new Set(scores.get(question)?.keys() ?? []);
+      return new Set(ranked.get(question) ?? []);
+    },
+    rankedCandidatesFor(question: string): readonly string[] {
+      // Copied so a caller cannot mutate the index's own array -- the reason is the same as
+      // `candidatesFor`'s defensive `new Set`.
+      return [...(ranked.get(question) ?? [])];
     },
   };
 }

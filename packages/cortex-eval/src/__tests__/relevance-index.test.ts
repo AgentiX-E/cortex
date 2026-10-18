@@ -116,6 +116,26 @@ describe('buildRetrievalRelevanceIndex', () => {
     }
   });
 
+  it('keeps the ranking it was given, so a gold turn has a position and not only a membership', async () => {
+    // §13.65. §13.64.7 left one question unanswerable: MR's 903 budget-cut gold turns are
+    // either ordered below the cut -- where the order is the lever -- or far below it, where
+    // no order helps. A set cannot say which. The index discards the ranking for *selection*
+    // (the consumer orders by score), but it must keep it for *measurement*, and the two
+    // views are one ordered array rather than two structures.
+    const index = await buildRetrievalRelevanceIndex(embedding(), [
+      {
+        question: 'how many bikes do I own',
+        context: ['an orthogonal turn', 'the answer turn', 'a near turn'],
+      },
+    ]);
+
+    const ranked = index.rankedCandidatesFor('how many bikes do I own');
+    // Best-first by cosine: 1.0, 0.8, 0.0.
+    expect(ranked).toEqual(['the answer turn', 'a near turn', 'an orthogonal turn']);
+    // The set is the same array read as membership, so the two cannot disagree.
+    expect([...index.candidatesFor('how many bikes do I own')].sort()).toEqual([...ranked].sort());
+  });
+
   it('answers with an empty pool for a question it never scored', async () => {
     // Total, like `relevanceFor`: an unknown question is a real state -- a caller reading
     // a record whose question the index did not cover -- and throwing there would turn a
@@ -125,6 +145,9 @@ describe('buildRetrievalRelevanceIndex', () => {
     ]);
 
     expect(index.candidatesFor('a question the index never saw').size).toBe(0);
+    // The ordered view answers the same way, because it is the same array: a caller that
+    // measured ranks for an unknown question gets no positions rather than a throw.
+    expect(index.rankedCandidatesFor('a question the index never saw')).toEqual([]);
   });
 
   it('gives a turn outside the index the unscored floor', async () => {

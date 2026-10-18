@@ -423,6 +423,17 @@ export type GoldOverlap = {
    * clamped row would read as a finding.
    */
   readonly pool?: number | undefined;
+  /**
+   * Where each gold turn sits in the ranking, or `-1` when the ranking did not surface it.
+   *
+   * Same length as `total`, in the gold turns' own order, so a reader can count any prefix
+   * without a field per cut point. `pool` is the number of non-negative entries, which is a
+   * redundancy the tests assert rather than a second measurement.
+   *
+   * §13.65: this is the instrument that separates "ordered just below the cut" from "never
+   * reachable". `pool` says how many arrived; this says how nearly.
+   */
+  readonly goldRanks?: readonly number[] | undefined;
 };
 
 export type AblationResult = {

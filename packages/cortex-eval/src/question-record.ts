@@ -641,7 +641,13 @@ export function goldOverlapOf(
   retrieved: RetrievedTurns,
   goldTurns: readonly string[] | undefined,
   /**
-   * The gold turns the ranking offered, or `undefined` when no ranking was consulted.
+   * The gold turns the ranking offered, **best first**, or `undefined` when no ranking was
+   * consulted.
+   *
+   * The order is now load-bearing: `pool` counts it and `goldRanks` records each gold turn's
+   * position in it. A caller that passes an unordered set produces a `pool` that is right and
+   * a `goldRanks` that is arbitrary, which the index's `rankedCandidatesFor` exists to make
+   * impossible.
    *
    * A `readonly string[]` rather than a predicate over one, because the caller already
    * holds the index's candidates and a predicate here would invite a second definition of
@@ -657,15 +663,22 @@ export function goldOverlapOf(
   // class of defect as `§13.18.2`'s answer-text search, and it cannot recur here: a
   // bare substring search is not expressible against a list of units.
   const carried = goldTurns.filter((gold) => retrieved.includes(gold)).length;
+  const ranks =
+    poolGold === undefined ? undefined : goldTurns.map((gold) => poolGold.indexOf(gold));
   return {
     carried,
     total: goldTurns.length,
     // Spread rather than assigned `undefined`, so a caller that consulted no ranking
     // gets the two-field object it got before this parameter existed -- byte-identical in
     // JSON, which is what keeps every archived artifact's meaning unchanged.
-    ...(poolGold === undefined
+    ...(ranks === undefined
       ? {}
-      : { pool: goldTurns.filter((gold) => poolGold.includes(gold)).length }),
+      : {
+          pool: ranks.filter((rank) => rank >= 0).length,
+          // `indexOf` returns -1 for a gold turn the ranking did not surface, which is
+          // exactly the encoding `goldRanks` documents: the array is the curve.
+          goldRanks: ranks,
+        }),
   };
 }
 

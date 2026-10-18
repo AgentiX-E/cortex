@@ -35,6 +35,7 @@ Usage:
     python3 tools/readout-arm-run.py --union path/to/report.json
     python3 tools/readout-arm-run.py --counted path/to/report.json
     python3 tools/readout-arm-run.py --pool path/to/report.json
+    python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
@@ -774,6 +775,91 @@ def pool_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), measured
 
 
+# The cut points the rank curve reports.
+#
+# Three, and they are the three the argument needs rather than a sweep: 8 is roughly the
+# head of a window a model reads attentively, 16 is a third of the pool, and 32 is half of
+# it. A deeper sweep would describe the curve without changing the decision it feeds.
+RANK_CUTS = (8, 16, 32)
+
+
+def ranks_section(questions: list[dict]) -> tuple[str, int]:
+    """How many of a question's gold turns sit in the top 8 / 16 / 32 of the ordered pool.
+
+    ## The question this answers, and why a count could not
+
+    `--pool` says how many gold turns the ranking surfaced and how many the budget then cut.
+    It cannot say whether the cut ones were **ordered just below the cut** -- where a better
+    order is the lever -- or **far below it**, where no order helps and the room is. §13.64.7
+    left MR's 903 budget-cut gold turns exactly there.
+
+    A rank makes the difference one subtraction. Gold at rank 30 against a room of 26 is a
+    near miss; gold at rank 500 is not in the argument at all.
+
+    ## Why the percentages are of the gold, not of the questions
+
+    A question with 24 gold turns and one with 2 should not weigh the same when the claim is
+    about how much of the gold a cut reaches. The per-question median is printed beside it so
+    a reader can see whether the aggregate is carried by a few large questions.
+    """
+    rows: list[tuple[str, list[int]]] = []
+    for question in questions:
+        overlap = question.get('goldOverlap')
+        if not isinstance(overlap, dict):
+            continue
+        ranks = overlap.get('goldRanks')
+        if not isinstance(ranks, list):
+            continue
+        rows.append((str(question.get('capability', '?')), [r for r in ranks if isinstance(r, int)]))
+
+    if not rows:
+        return '', 0
+
+    by_capability: dict[str, list[list[int]]] = {}
+    for capability, ranks in rows:
+        by_capability.setdefault(capability, []).append(ranks)
+
+    lines = ['', f'gold ranks in the ordered pool (cuts {", ".join(str(c) for c in RANK_CUTS)}, -1 = not surfaced)']
+    header = f'  {"capability":<10}{"n":>5}{"gold":>7}'
+    for cut in RANK_CUTS:
+        header += f'{f"top {cut}":>9}'
+    header += f'{"surfaced":>10}'
+    lines.append(header)
+
+    totals = {'n': 0, 'gold': 0, **{cut: 0 for cut in RANK_CUTS}, 'surfaced': 0}
+    for capability in sorted(by_capability):
+        groups = by_capability[capability]
+        gold = [rank for ranks in groups for rank in ranks]
+        counts = {cut: sum(1 for rank in gold if 0 <= rank < cut) for cut in RANK_CUTS}
+        surfaced = sum(1 for rank in gold if rank >= 0)
+        line = f'  {capability:<10}{len(groups):>5}{len(gold):>7}'
+        for cut in RANK_CUTS:
+            line += f'{counts[cut]:>9}'
+        line += f'{surfaced:>10}'
+        lines.append(line)
+        totals['n'] += len(groups)
+        totals['gold'] += len(gold)
+        for cut in RANK_CUTS:
+            totals[cut] += counts[cut]
+        totals['surfaced'] += surfaced
+
+    line = f'  {"TOTAL":<10}{totals["n"]:>5}{totals["gold"]:>7}'
+    for cut in RANK_CUTS:
+        line += f'{totals[cut]:>9}'
+    line += f'{totals["surfaced"]:>10}'
+    lines.append(line)
+
+    lines.append('')
+    for cut in RANK_CUTS:
+        share = totals[cut] / totals['gold'] if totals['gold'] else 0
+        lines.append(f'  top {cut:>2}: {totals[cut]:>5} of {totals["gold"]} gold turns = {share:6.1%}')
+    lines.append(
+        '  the gap between top 8 and top 32 is what a better ORDER could buy; the gap between '
+        'top 32 and surfaced is what a larger ROOM could buy; below surfaced, only the ranking can.'
+    )
+    return '\n'.join(lines), len(rows)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -806,6 +892,11 @@ def main(argv: list[str]) -> int:
         '--pool',
         action='store_true',
         help='print where the gold went: never surfaced, cut by the budget, delivered',
+    )
+    parser.add_argument(
+        '--ranks',
+        action='store_true',
+        help='print how many gold turns sit in the top 8 / 16 / 32 of the ordered pool',
     )
     parser.add_argument(
         '--paired',
@@ -865,6 +956,19 @@ def main(argv: list[str]) -> int:
             section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.ranks:
+        section, measured = ranks_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries a goldOverlap.goldRanks. A run that '
+                'consulted no ranking has none, and an artifact produced before §13.65 '
+                'predates the field.',
+                file=sys.stderr,
+            )
             return 2
         print(section)
         return 0

@@ -8302,3 +8302,93 @@ comparison.
 | **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+---
+
+## 13.65 A gold turn's rank, so "just below the cut" and "never close" stop being one number
+
+### 13.65.1 The question §13.64 left open
+
+`--pool` established where MR's gold goes: 1031 never surfaced, 1075 surfaced and cut, 1557 delivered. The middle
+number is the one that matters for the next decision and it is **ambiguous by construction**:
+
+| if the cut gold sits at | then the lever is | and the cost is |
+| --- | --- | --- |
+| rank 28 against a room of 26 | **the order** | one prompt-shaped change |
+| rank 500 | **nothing an order can reach** | a different embedding, and every archived comparison |
+
+A count cannot tell them apart. **A rank can**, and the campaign had thrown the rank away: `buildRetrievalRelevanceIndex`
+kept `Map<turn, score>` and the design note said the ranking is discarded *because the consumer's own selection
+is the only thing that should be ordering turns*. That argument is right about **selection** and was never about
+**measurement**, which is the distinction this section adds.
+
+### 13.65.2 The change
+
+- **`RelevanceIndex.rankedCandidatesFor(question)`** returns the turns in the ranker's own order. `candidatesFor`
+  now builds its `Set` from the same array, so "in the pool" and "has a position" cannot disagree — the
+  equivalence is asserted, as is the unknown-question answer for both.
+- **`GoldOverlap.goldRanks`** records each gold turn's position, `-1` when the ranking did not surface it. Same
+  length as `total`, so any cut point is a prefix count rather than a field per cut. `pool` is the number of
+  non-negative entries, and **that redundancy is asserted rather than assumed**.
+- **`relevancePoolFor` must now be ordered.** The doc on `goldOverlapOf`'s third parameter says so, and
+  `bench/run-ablation.ts` passes `rankedCandidatesFor` instead of `[...candidatesFor]` — a pool built from the
+  set would have the right size and arbitrary ranks, which is the failure this section exists to prevent.
+
+The selection still orders by `relevanceFor`, so **no behaviour moved**: this run changes what the artifact
+records and nothing about what the model reads.
+
+### 13.65.3 Registration
+
+**One variable**: the rank capture, on §13.64's adopted configuration (`retrieval-hybrid`). A diagnostic, so the
+predictions are about the instrument and about the question it makes askable.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **The instrument is inert**: the roster stays within **±11** of 375 | outside |
+| **2** | **The two encodings agree**: `pool` equals the count of non-negative `goldRanks` on every record | any record disagrees |
+| **3** | **The curve is shallow at the head and steep after it**: across the whole run, top 32 captures **less than 85%** of the gold the ranking surfaced | top 32 ≥ 85% |
+
+**Prediction 3 is a real bet and it is the one that decides the next variable.** If the head of the ranking is
+already dense with gold — top 32 capturing nearly everything surfaced — then what the budget cuts is a long tail
+and **the order cannot help**; the next variable is the embedding. If top 32 captures much less, then a better
+order is leaving gold in the second half of a 64-wide pool and **a re-ranking is the cheap lever**.
+
+**The decision rule, registered as a rule rather than a prediction**, in §13.53.3's form:
+
+> If the median rank of the surfaced-but-cut gold is **below 2× the room** (≈52), the lever is **the order**.
+> If it is **above 4× the room** (≈104 — which cannot happen inside a 64-wide pool, so this arm would read
+> "never surfaced" instead), the lever is **the room**. Anything between is a mixed regime and is reported as one
+> rather than rounded to a side.
+
+### 13.65.4 Why the readout had to exist before the run this time
+
+`--ranks` prints, per capability, how many gold turns sit in the top 8, 16 and 32 of the ordered pool, plus the
+surfaced total. The three cuts are the three the argument needs rather than a sweep, and the percentages are of
+**the gold**, not of the questions, because a 24-gold question and a 2-gold question should not weigh the same.
+
+Verified against the adopted run's artifact, which predates the field: it exits **2** and says so. The refusal
+works on a real file before it is needed.
+
+### 13.65.5 Verification
+
+- **Red first**: `keeps the ranking it was given, so a gold turn has a position and not only a membership` fails
+  on the old index; `records where each gold turn sits in the ranking` fails on the old `goldOverlapOf`. Four
+  existing assertions were **extended** rather than relaxed — they now name `goldRanks` beside `pool` — because
+  the schema grew and a test that stopped at `pool` would no longer pin the object it produces.
+- One branch was uncovered on the first pass (the unknown-question fallback in `rankedCandidatesFor`, 92.3% in
+  that file); the test above closes it and the file returns to **100%**.
+- `pnpm check` **exit 0**; `cortex-eval` **1910 tests** (+2); four coverage dimensions **100%** on every package
+  except `cortex-node`'s branch column at 98.64% (§13.47).
+- The rank capture touches **no prompt and no selection**, so the run is single-variable by construction rather
+  than by an assertion about reach.
+
+### 13.65.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The rank diagnostic is **dispatched**; §13.65.3's three predictions and the decision rule are registered | yes (in flight) |
+| **P0 (done)** | The rank is recorded, the two encodings are asserted equal, and `--ranks` refuses an artifact that predates it | no |
+| **P1** | The order-or-embedding decision, which is the whole of MR's 49 | yes |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |

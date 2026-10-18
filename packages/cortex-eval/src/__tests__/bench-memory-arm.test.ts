@@ -2792,8 +2792,18 @@ describe('the arm records how much of the gold the ranking offered', () => {
     // The pool holds the gold and the delivery does not: `total - pool = 0` (the ranking
     // found it) and `pool - carried = 1` (the budget cut it). That row is the one the
     // campaign has never been able to read.
-    expect(await overlapWith(() => [OTHER])).toEqual({ carried: 0, total: 1, pool: 0 });
-    expect(await overlapWith(() => [GOLD, OTHER])).toEqual({ carried: 0, total: 1, pool: 1 });
+    expect(await overlapWith(() => [OTHER])).toEqual({
+      carried: 0,
+      total: 1,
+      pool: 0,
+      goldRanks: [-1],
+    });
+    expect(await overlapWith(() => [GOLD, OTHER])).toEqual({
+      carried: 0,
+      total: 1,
+      pool: 1,
+      goldRanks: [0],
+    });
   });
 
   it('omits the pool when the run consulted no ranking', async () => {
