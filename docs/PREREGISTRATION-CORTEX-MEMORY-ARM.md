@@ -672,6 +672,13 @@ forwarded into a step's `env`. Three injections were run against it:
   mechanism, not on the `+29.45pp` run that followed: the forbidden state fell 12 → 7,
   MR's declines fell 23 → 20, and the predicted cost appeared as `numeric_mismatch`
   27 → 32. §13.61.5 states what that decision does not claim.
+* **`relevanceSignal: retrieval-hybrid` — adopted by §13.64.** Dense cosine fused with a
+  rare-keyword channel by reciprocal rank (`retrieveTopKByQueriesHybrid`). Adopted on TR's
+  +17 (85/127, eighteen declines turned into correct answers), no capability regressed, and
+  the grounding share of TR's correct answers rose rather than fell. **Its three registered
+  mechanism predictions were falsified** — the pool's reach did not improve — and §13.64.4
+  records that the coverage instrument measures quantity while the effect moved *which*
+  turn decides. A run with `relevanceSignal=retrieval` is the pre-§13.64 configuration.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -8168,5 +8175,130 @@ would make the next variable a different embedding, not a different fusion.
 | **P1** | If reach rises and accuracy does not: which keywords, and what the non-gold surfaced turns cost | yes |
 | **P1** | If reach does not rise: the never-surfaced turns are semantically distant, and the variable is the embedding | yes |
 | **P1** | MR's 33 `numeric_mismatch` — still real, still downstream | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
+
+---
+
+## 13.64 Run `39106951421`: the hybrid is adopted, and not for the reason it was dispatched
+
+### 13.64.1 The run
+
+`39106951421`, `07:15:01Z` → `09:15:58Z`, **2h00m57s**, `success`, artifact `12131284784`, 7,035,877 bytes.
+Config line confirms the dispatch took: **`relevanceSignal=retrieval-hybrid`**.
+
+`scorer channels`: `structural 1340, exact 836, numeric 408, judge 1416/4000 = 35.4%`, against the dense control's
+`1394 / 833 / 405 / 1368 = 34.2%`.
+
+### 13.64.2 The four predictions
+
+| # | registered in §13.63.6 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's `total − pool` falls from 1026 to **≤ 820** | **1031** | **falsified**, and it rose |
+| **2** | MR's correct count rises from 64 to **≥ 68** | **64** | **falsified** |
+| **3** | MR's median coverage rises from 54.2% to **≥ 58%** | **54.2%** | **falsified** |
+| **4** | no capability loses more than its own rate (ABS 1, IE 5, KU 7, TR 22) | ABS 0, IE 0, KU +1, TR **+17** | **met** — nothing lost |
+
+**All three of the mechanism's predictions failed and the accuracy rose.** That is the finding, and it is worth
+stating before the numbers that follow: the campaign registered "reach" as the channel and the effect came through
+a different one.
+
+### 13.64.3 What moved
+
+| | dense control (`39098246215`) | hybrid | Δ |
+| --- | --- | --- | --- |
+| registered delta | +28.75pp | **+29.60pp** | +0.85pp |
+| roster | 357/500 | **375/500 = 75.00%** | **+18** |
+| ABS | 29 | 29 | 0 |
+| IE | 136 | 136 | 0 |
+| KU | 60 | 61 | +1 |
+| MR | 64 | **64** | **0** |
+| **TR** | 68 | **85** | **+17** |
+| declines | 66 | **59** | −7 |
+| union | 436 = 87.20% | **442 = 88.40%** | +6 |
+
+**TR is the whole of the gain**, and its mechanism is in the transitions: **abstention → correct 18**, against
+five correct answers lost. Not a reshuffle — eighteen questions TR used to decline are now answered.
+
+### 13.64.4 The partition says the reach did not move, and the partition is right
+
+| | dense | hybrid |
+| --- | --- | --- |
+| never surfaced | 2961 | **2942** (−19) |
+| cut by the budget | 2117 | **2565** (+448) |
+| delivered | 5882 | **5453** (−429) |
+
+The keyword channel did not find more gold — it **reordered** what was already reachable, and the budget then cut
+more of it. TR's correct answers arrive with a **lower** median coverage than before (58.3% → 50.0%) and fewer
+delivered gold turns. So the effect is not "more evidence"; it is **more decisive evidence at lower coverage**.
+
+**That is a defect in the instrument, not in the run.** `carried` counts gold turns, and a temporal question needs
+*one specific* turn: carrying two of four rather than three of four is worth less than carrying the one that
+states the date. The partition measures **quantity** and the mechanism moved **which**, so the campaign now has a
+measurement that can be right and irrelevant at the same time — recorded here because it will happen again.
+
+### 13.64.5 The check that decides adoption, because "+17 on a judge-scored capability" invites suspicion
+
+Eighteen recovered answers, of which **ten are grounded** — and the question is whether that is normal. It is:
+among TR's correct answers, the grounded share is **51.5%** in the dense run and **55.3%** in the hybrid, and the
+recovered eighteen sit at 10/18 = 55.6%. MR's grounded share *rose* (56.2% → 67.2%). So the gain is not the judge
+accepting unsupported text: **the hybrid's correct answers are more grounded than the dense run's, not less.**
+
+The median coverage of the eighteen recovered answers is **36.9%** — the model usually answers TR from a minority
+of the gold, which agrees with §13.64.4: the decisive turn is what it needed, not the full set.
+
+### 13.64.6 The decision
+
+**`retrieval-hybrid` is adopted.** On three facts, in this order:
+
+1. **No capability regressed.** ABS 0, IE 0, MR 0, KU +1 — all inside their own measured rates, and TR +17
+   exceeds any net movement this arm has recorded between two draws of one configuration (±8).
+2. **The gain has a named mechanism in the per-question transitions** — eighteen TR declines became correct, not
+   a diffuse swap — and the grounding check says the answers are as supported as the ones it already had.
+3. **The union rose to 88.40%** and the remaining gap narrowed from 71 to **67**, of which **MR is 49**.
+
+**What the adoption does not claim.** It does not claim the registered mechanism; predictions 1–3 were falsified
+and are recorded as falsified. It does not claim the delta's +0.85pp, which is inside the repetition spread
+(0.730–0.750). And it does not claim TR is now solved — 66.93% against the reference's 67.72%, which is parity
+rather than a lead, and parity arrived with lower coverage.
+
+**The cost, stated rather than buried**: MR's churn more than doubled (19.8% → 30.6% of its questions changed
+state) with **zero net gain**, and 429 fewer gold turns reached the model overall. The keyword channel makes the
+window more volatile on the capability that matters most and does not help it.
+
+### 13.64.7 What the falsification leaves as the next question
+
+§13.63.6's reading rule said: *"if 1 fails, the never-surfaced turns are not reachable by a keyword channel
+either, and the reading is that they are semantically distant — which would make the next variable a different
+embedding."*
+
+That rule was written before this run showed its own incompleteness. What is now measurable is a **second split**
+the partition cannot make: of MR's gold turns the ranker *did* find in the dense control — 2637 of 3663 —
+**903 are cut by the budget, which is 34% of what was found**. If those are cut because they rank 30th against a
+room of 26 turns, the order is the lever; if they rank 500th, no order helps and the room is the lever. **Neither can be read from a count** — it needs the gold turn's
+**rank**, and the index discards the ranking today (`candidatesFor` returns a set, deliberately).
+
+So the next instrument is a **gold-rank curve**: how many of a question's gold turns appear in the top 8, 16 and
+32 of the ordered pool. Four integers per question, and they separate "the order is wrong above the cut" from
+"the gold is far below any cut we would pay for" — which is the difference between an ordering change and an
+embedding change, and the difference between a cheap run and a re-embedding that invalidates every archived
+comparison.
+
+### 13.64.8 Verification
+
+- Drift check before reading: **500 of 500, 0 differences**.
+- Every number above is `tools/readout-arm-run.py` (`--pool`, `--coverage`, `--paired`, `--union`, `--counted`)
+  on the artifact, plus the two log lines. The grounded shares are the records' own `grounded` field, which is
+  `classifyTrFailure`'s verdict computed by the arm.
+- `pnpm check` **exit 0** before the run; four coverage dimensions **100%**.
+
+### 13.64.9 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0 (done)** | `retrieval-hybrid` **adopted**; its three mechanism predictions recorded as falsified; the coverage instrument's blind spot recorded | no |
+| **P0** | **The gold-rank curve** (top 8/16/32), the instrument that separates order from room for MR's 49 | no, to build |
+| **P1** | MR is now **49 of the 67** remaining gap; nothing else is close | yes |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
