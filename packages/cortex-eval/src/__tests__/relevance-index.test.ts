@@ -74,6 +74,35 @@ describe('buildRetrievalRelevanceIndex', () => {
     expect(relevant).toBeGreaterThan(distract);
   });
 
+  it('names the turns it scored, which is what makes the pool measurable', async () => {
+    // §13.61.7: the campaign could not ask "did the budget cut this gold turn, or did the
+    // ranking never surface it", because the artifact recorded what was delivered and not
+    // what was chosen from. `candidatesFor` is that missing half -- the set a selection
+    // chose from -- and it is the index's own answer rather than a second derivation.
+    const index = await buildRetrievalRelevanceIndex(embedding(), [
+      { question: 'how many bikes do I own', context: ['the answer turn', 'a near turn'] },
+    ]);
+
+    const pool = index.candidatesFor('how many bikes do I own');
+    expect([...pool].sort()).toEqual(['a near turn', 'the answer turn']);
+    // The membership is the same predicate `relevanceFor` answers with, so a turn the
+    // lookup scores cannot be absent from the pool, and one at the floor cannot be in it.
+    for (const turn of pool) {
+      expect(index.relevanceFor('how many bikes do I own', turn)).toBeGreaterThan(floorOf(index));
+    }
+  });
+
+  it('answers with an empty pool for a question it never scored', async () => {
+    // Total, like `relevanceFor`: an unknown question is a real state -- a caller reading
+    // a record whose question the index did not cover -- and throwing there would turn a
+    // reporting gap into a failed run. Empty is the statement, not `undefined`.
+    const index = await buildRetrievalRelevanceIndex(embedding(), [
+      { question: 'how many bikes do I own', context: ['a near turn'] },
+    ]);
+
+    expect(index.candidatesFor('a question the index never saw').size).toBe(0);
+  });
+
   it('gives a turn outside the index the unscored floor', async () => {
     const index = await buildRetrievalRelevanceIndex(embedding(), [
       { question: 'how many bikes do I own', context: ['a near turn'] },

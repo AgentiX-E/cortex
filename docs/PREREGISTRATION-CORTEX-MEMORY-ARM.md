@@ -7929,3 +7929,108 @@ not carry the evidence. Both are cheap to fix and expensive to discover late.
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P2 | Register targets whose falsifier is the negation of the prediction, and tolerances per capability (§13.61.3) | no |
 | P3 | `PATH` ordering | no |
+
+---
+
+## 13.62 The candidate pool as a third count, so the next question can be asked once
+
+### 13.62.1 The question six runs could not ask
+
+`goldOverlap` has carried two numbers since §13.16: how many of the question's gold turns the reader
+**received**, out of how many the dataset names. §13.61.7 is where the campaign noticed what those two cannot
+say — **where the rest went** — and that the two destinations need opposite repairs:
+
+| destination | what it means | what fixes it |
+| --- | --- | --- |
+| the ranking never surfaced it | the signal does not rank this turn for this question | a different signal |
+| the ranking held it and the budget cut it | the order is wrong above the cut | a different order, or a bigger room |
+
+`k = 64` and `k = 256` were both dispatched and both read without this distinction (§13.54 declined the second
+on a coverage argument that could not name which of the two it had failed to move). So the instrument comes before
+the next variable.
+
+### 13.62.2 The change, which is three numbers and no behaviour
+
+`GoldOverlap` gains an optional `pool`: the gold turns the ranking **offered**. With it the gold set partitions:
+
+```text
+total - pool      the ranking never surfaced it
+pool  - carried   the ranking had it and the budget cut it
+carried           it reached the reader
+```
+
+Three seams, each with its reason for being where it is:
+
+- **`RelevanceIndex.candidatesFor(question)`** returns the turns the index holds a score for. It is the *keys of
+  the map `relevanceFor` reads*, not a second structure, so "in the pool" and "scored above the floor" cannot
+  disagree — the equivalence is asserted in `relevance-index.test.ts` rather than left to two implementations.
+  A `Set` and not a ranked list, because the order belongs to the selection and this module deliberately discards
+  the ranking `retrieveTopKByQueries` returns.
+- **`goldOverlapOf(retrieved, goldTurns, poolGold?)`** counts the third membership. The parameter is spread rather
+  than assigned, so a caller that consulted no ranking gets the two-field object it got before this existed —
+  byte-identical in JSON, which is what keeps every archived artifact's meaning unchanged.
+- **`CortexMemoryArmRunOptions.relevancePoolFor`** is the one option in this arm that is a **handle rather than a
+  setting**. Eval owns the index and eval owns the gold, and the arm is the only place both are in scope; putting
+  the pool on `CortexMemoryOptions` instead would put the dataset's annotation one field away from the selection,
+  which is the boundary `relevance-index.ts` spends a paragraph defending.
+
+### 13.62.3 The absence, which is the part that had to be right
+
+With `relevanceSignal: none` there is no ranking and therefore no pool. That run's record must **omit** `pool`,
+because a `0` would read as "the ranking surfaced none of the gold" — a measured miss standing in for a
+measurement that never happened. This is the same rule as `goldOverlap: null` and the same rule `§13.11.2`
+established, applied one field further out.
+
+And the function does **not clamp**. A caller that passes a pool the retrieval did not produce gets
+`carried > pool`, which is impossible and therefore visible. A clamp would turn a caller defect into a plausible
+row that reads as a finding — the failure mode this package refuses everywhere else.
+
+### 13.62.4 Registration
+
+**One variable** — the pool capture — and it is **instrumentation, not a treatment**. Every input held at
+§13.61's adopted configuration. Because it touches no prompt and no selection, the predictions are about the
+instrument and about the question it makes askable, not about accuracy.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **The instrument is inert**: the roster total stays within **±11** of 365, and `pool` is present on every record whose question names gold turns | outside ±11, or a record with gold and no `pool` |
+| **2** | **The partition is well formed**: `carried ≤ pool ≤ total` on **every** record | any record violates it |
+| **3** | **The loss is in the order, not the ranking's reach**: summed over MR, `pool − carried` **>** `total − pool` | the reverse |
+
+**Prediction 1's tolerance is ±11 for a stated reason**, and it is the rule §13.61.3 said I would follow: the four
+capabilities this change cannot reach have measured cross-draw rates of 0%, 1.3%, 8.3% and 11.8%, which over
+379 questions is up to 8 state changes, plus MR's 3. A tighter tolerance would be a fence built below the
+instrument again.
+
+**Prediction 3 is a bet with a reason, and the reason is an existing measurement.** `MEASURE-B2-RECALL-CURVE.md`
+reads **recall = 0.921 at k = 50** — the pool already contains 92% of the gold — while §13.34.3 reads a perfect
+selector at this room reaching **0.917** median coverage and the actual order reaching **0.55**. A pool that holds
+92% of the gold, feeding a room that could hold 92% of it, delivering 55%, is a pipeline whose loss is **in the
+order between the two**. So the expectation is that `total − pool` is small and `pool − carried` is large.
+
+**Falsifying 3 would be the more interesting outcome**, and it is worth saying why: it would mean the 0.921 curve
+does not hold at this width on this configuration, the ranking's reach is the constraint after all, and the next
+variable would be the signal rather than the order.
+
+### 13.62.5 Verification
+
+- **Red first**: `counts the gold turns a ranking offered` and `keeps carried <= pool <= total` fail on the old
+  `goldOverlapOf`; `omits the pool when no ranking was consulted` passes before and after, which is what makes it
+  the invariant rather than a restatement. `names the turns it scored` fails on the old index.
+- A fifth test pins the shape the invariant cannot cover: an inconsistent delivery is **reported, not clamped**.
+- `pnpm check` **exit 0**; `cortex-eval` **1907 tests** (+8); four coverage dimensions **100%** on every package
+  except `cortex-node`'s branch column at 98.64% (§13.47).
+- The arm's wiring is tested at the seam that actually carries it — `runCortexMemoryArm` with and without
+  `relevancePoolFor` — rather than by asserting that a type has a field.
+
+### 13.62.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The diagnostic run is **dispatched**; §13.62.4's three predictions are registered | yes (in flight) |
+| **P0 (done)** | The third count exists, with the absence and the no-clamp rules pinned by tests | no |
+| **P1** | The order between pool and room — what prediction 3 decides, and the largest open question in the campaign | depends on the read |
+| **P1** | MR's 32 `numeric_mismatch`, of which 21 differ from the model's own listed count (§13.59) | yes |
+| **P1** | A no-signal control with random turns (§13.50.4) | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |

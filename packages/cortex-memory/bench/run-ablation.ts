@@ -450,6 +450,18 @@ async function main(): Promise<void> {
     ...(Number.isFinite(armOptions.evidenceTurnsPerRecord)
       ? { evidenceBound: { maxTurnsPerRecord: armOptions.evidenceTurnsPerRecord } }
       : {}),
+    // §13.62. The candidate pool, so a record can say whether a gold turn it did not
+    // receive was never ranked or was ranked and cut by the budget. Absent when no ranking
+    // was built, which is the truth: with `relevanceSignal: none` there is no pool, and a
+    // record that reported `pool: 0` would describe a ranking that surfaced nothing.
+    //
+    // The set arrives from `candidatesFor`, which returns the keys `relevanceFor` is built
+    // from, so the two counts cannot disagree. Copied to an array here rather than handed
+    // through as a `Set` because `goldOverlapOf` takes the same list type as the delivery
+    // it counts against -- one shape for the two memberships it tests.
+    ...(relevance === null
+      ? {}
+      : { relevancePoolFor: (question: string) => [...relevance.candidatesFor(question)] }),
     onProgress,
     // §13.30, and it is set by the workflow rather than defaulted here: an absent value
     // means no ceiling, which is what every archived run was produced under, so a default

@@ -2722,3 +2722,86 @@ describe('the arm reports groundedness with the published classifier', () => {
     expect(record.turns.some((turn: { text: string }) => turn.text.includes('Lisbon'))).toBe(false);
   });
 });
+
+/**
+ * The candidate pool, as the third count in `goldOverlap`.
+ *
+ * §13.61.7: for six runs the campaign could say how much gold reached the reader and not
+ * where the rest went, so "the ranking never surfaced it" and "the ranking had it and the
+ * budget cut it" were one number. They need opposite repairs -- a signal change and an
+ * allocation change -- and every candidate-pool level tried (`k = 64`, `k = 256`) was
+ * measured without being able to tell them apart.
+ *
+ * These two tests pin the wiring at the only seam where the index and the gold are both
+ * in scope: the arm's options, which the bench fills from `candidatesFor`.
+ */
+describe('the arm records how much of the gold the ranking offered', () => {
+  const GOLD = 'user: I went to Lisbon.';
+  const OTHER = 'user: I bought a bike.';
+
+  function dataset(): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: [GOLD, OTHER],
+          sessions: [[GOLD, OTHER]],
+          goldTurns: [GOLD],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+  }
+
+  async function overlapWith(
+    relevancePoolFor: ((question: string) => readonly string[] | undefined) | undefined,
+  ): Promise<unknown> {
+    const { report } = await runCortexMemoryArm(
+      dataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      constantSystem('cortex-memory', 'Lisbon'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+        },
+        ...(relevancePoolFor === undefined ? {} : { relevancePoolFor }),
+      },
+    );
+    return report.questions![0]!.goldOverlap;
+  }
+
+  it('counts the gold the ranking offered, beside the gold that arrived', async () => {
+    // The pool holds the gold and the delivery does not: `total - pool = 0` (the ranking
+    // found it) and `pool - carried = 1` (the budget cut it). That row is the one the
+    // campaign has never been able to read.
+    expect(await overlapWith(() => [OTHER])).toEqual({ carried: 0, total: 1, pool: 0 });
+    expect(await overlapWith(() => [GOLD, OTHER])).toEqual({ carried: 0, total: 1, pool: 1 });
+  });
+
+  it('omits the pool when the run consulted no ranking', async () => {
+    // `relevanceSignal: none` has no candidates, and the record must say so by absence.
+    // The delivery here is empty because this fixture's system answers from nothing; what
+    // is under assertion is that `pool` is not among the keys.
+    const overlap = (await overlapWith(undefined)) as Record<string, number> | null;
+    expect(overlap).not.toBeNull();
+    expect(Object.keys(overlap!).sort()).toEqual(['carried', 'total']);
+  });
+});

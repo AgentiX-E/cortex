@@ -388,6 +388,41 @@ export type GoldOverlap = {
   readonly carried: number;
   /** Gold turns the dataset names for this question. */
   readonly total: number;
+  /**
+   * Gold turns the ranking offered, when a ranking was consulted.
+   *
+   * ## Why the third number exists, and what its absence means
+   *
+   * `carried` and `total` say how much gold reached the reader out of the gold the
+   * dataset names. They cannot say **where the rest went**, and those are two different
+   * failures with opposite repairs: a gold turn the ranking never surfaced is a signal
+   * problem, and one the ranking held but the budget did not buy is an allocation
+   * problem. Until this field existed the campaign could measure `k = 64` and `k = 256`
+   * and still not tell them apart (`§13.61.7`).
+   *
+   * With `pool` present the three numbers partition the gold set:
+   *
+   * ```text
+   * total - pool      the ranking never surfaced it
+   * pool  - carried   the ranking had it and the budget cut it
+   * carried           it reached the reader
+   * ```
+   *
+   * ## Absent, never zero
+   *
+   * A run with `relevanceSignal: none` spends an arrival-order prefix and consults no
+   * ranking, so it has no pool -- and a `0` there would read as "the ranking surfaced
+   * nothing", which is a measured miss standing in for a measurement that never
+   * happened. Same rule as `goldOverlap` itself and for the same reason.
+   *
+   * ## The precondition it assumes
+   *
+   * `carried <= pool <= total` holds when the delivery came from the pool, which is what
+   * the budget does. A caller that passes a pool the retrieval did not produce gets an
+   * impossible row rather than a clamped one: the impossible row is visible, and a
+   * clamped row would read as a finding.
+   */
+  readonly pool?: number | undefined;
 };
 
 export type AblationResult = {

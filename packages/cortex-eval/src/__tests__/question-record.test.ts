@@ -578,6 +578,74 @@ describe('goldOverlapOf', () => {
     expect(goldOverlapOf(['x', 'one', 'two', 'y'], [multi])).toEqual({ carried: 0, total: 1 });
   });
 
+  it('counts the gold turns a ranking offered, which is what separates ranking from budget', () => {
+    // Three numbers, three different failures, and only their difference is readable:
+    //   total - pool      the ranking never surfaced the gold turn at all
+    //   pool - carried    the ranking had it and the budget did not buy it
+    //   carried           it reached the reader
+    // §13.61.7 records that the campaign has been unable to distinguish the first two for
+    // six runs, and that every candidate pool level tried -- `k = 64`, `k = 256` -- was
+    // measured without them.
+    expect(goldOverlapOf([A], [A, B], [A, B, 'something else'])).toEqual({
+      carried: 1,
+      total: 2,
+      pool: 2,
+    });
+    // In the pool's reach and cut by the budget: the row the campaign has never had.
+    expect(goldOverlapOf([A], [A, B], [A, 'something else'])).toEqual({
+      carried: 1,
+      total: 2,
+      pool: 1,
+    });
+    // Outside the pool entirely -- a ranking failure, not a budget one. `pool: 0` is a
+    // measurement and must be present, not omitted.
+    expect(goldOverlapOf([A], [A, B], ['something else'])).toEqual({
+      carried: 1,
+      total: 2,
+      pool: 0,
+    });
+  });
+
+  it('omits the pool when no ranking was consulted', () => {
+    // `relevanceSignal: none` runs an arrival-order prefix and has no pool, and a `0`
+    // there would read as "the ranking surfaced nothing" -- a measured miss where the
+    // truth is that nothing was measured. Absent, never zero, for the reason the null
+    // case below states.
+    const overlap = goldOverlapOf([A, B], [A]);
+    expect(overlap).toEqual({ carried: 1, total: 1 });
+    expect(overlap === null ? true : 'pool' in overlap).toBe(false);
+  });
+
+  it('keeps carried <= pool <= total whenever the delivery came from the pool', () => {
+    // The identity the three numbers have to satisfy for the two subtractions to mean
+    // anything. It is asserted over **consistent** inputs -- every delivered turn is one
+    // of the candidates -- because that is the only case a real run produces: the budget
+    // selects from the pool, so a delivery outside it is a caller defect, not a datum.
+    const pools: readonly (readonly string[])[] = [[], [A], [B], [A, B], ['x']];
+    for (const pool of pools) {
+      const deliveries: readonly (readonly string[])[] = [
+        [],
+        ...pool.map((turn) => [turn] as const),
+        pool,
+      ];
+      for (const retrieved of deliveries) {
+        const overlap = goldOverlapOf(retrieved, [A, B], pool);
+        expect(overlap).not.toBeNull();
+        expect(overlap!.carried).toBeLessThanOrEqual(overlap!.pool!);
+        expect(overlap!.pool!).toBeLessThanOrEqual(overlap!.total);
+      }
+    }
+  });
+
+  it('does not clamp a delivery that did not come from the pool', () => {
+    // A function that clamped here would turn a caller defect into a plausible number,
+    // which is the one failure mode this package refuses everywhere else: the impossible
+    // row is visible (`carried` above `pool`) and a reader can act on it, while a clamped
+    // row reads as a ranking that surfaced two gold turns when it surfaced none.
+    const overlap = goldOverlapOf([A, B], [A, B], []);
+    expect(overlap).toEqual({ carried: 2, total: 2, pool: 0 });
+  });
+
   it('reports nothing to measure as null rather than as a zero', () => {
     // `{carried: 0, total: 0}` would render "no annotation" as a measured miss, which
     // is the collapse §13.11.2 forbids. Both spellings of "nothing" -- an absent field

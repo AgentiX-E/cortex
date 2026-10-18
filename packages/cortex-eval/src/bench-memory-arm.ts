@@ -1155,6 +1155,35 @@ export type CortexMemoryArmRunOptions = {
    * silently omit it and run the control configuration while believing it enabled
    * the feature."
    */
+  /**
+   * The turns the ranking offered under a question, or `undefined` when it offered none.
+   *
+   * ## Why this one field is a handle rather than a value
+   *
+   * Every other field here is a setting read from the environment, and the reason is
+   * stated beside `relevanceSignal`: a callback parsed from a string does not exist, and
+   * moving the signal into the CLI would put it in the one file coverage cannot reach.
+   * This is the opposite kind of thing -- **a measurement handle**, not a configuration.
+   * The index that holds the candidates is built in `bench/run-ablation.ts` and consumed
+   * by `CortexMemory`, so the arm is the only place where the candidates and the gold
+   * turns are both in scope, and passing the set is the smallest way to get them to meet.
+   *
+   * The set is the ranking's own answer, not a second derivation: `candidatesFor` returns
+   * the keys the lookup is built from, so "in the pool" and "scored above the floor" are
+   * one fact with two readers.
+   *
+   * ## Why it is not on `CortexMemoryOptions`
+   *
+   * The memory package must not learn the gold. A pool-carrying option there would put
+   * the dataset's annotation one field away from the selection, and `relevance-index.ts`
+   * spends a paragraph on keeping it out of the signal at all. Eval owns both the index
+   * and the gold, so eval is where they may meet.
+   *
+   * Absent means **no ranking was consulted** -- `relevanceSignal: none` -- and the record
+   * then omits `goldOverlap.pool` rather than reporting a zero, which would read as a
+   * ranking that surfaced nothing.
+   */
+  relevancePoolFor?: (question: string) => readonly string[] | undefined;
   memoryArmConfig: MemoryArmConfig;
   /**
    * Optional per-question progress sink, forwarded to the report runner.
@@ -1328,6 +1357,7 @@ export async function runCortexMemoryArm(
     report.ablation,
     options.featureConfig,
     options.evidenceBound,
+    options.relevancePoolFor,
   );
   // Derived from the records rather than tallied while building them, so the
   // manifest and the records it describes cannot disagree (`evidenceReductionOf`).
@@ -1460,6 +1490,14 @@ function buildArmRoster(
   ablation: AblationResult,
   featureConfig: FeatureConfig | undefined,
   evidenceBound?: EvidenceBoundOptions,
+  /**
+   * The candidates the ranking offered under a question, or `undefined` when none was.
+   *
+   * Passed in rather than captured here because this function holds the gold and not the
+   * index; the caller holds the index. `MemoryArmOptions.relevancePoolFor` documents why
+   * the two meet at this seam.
+   */
+  poolFor?: (question: string) => readonly string[] | undefined,
 ): readonly QuestionRecord[] {
   const answers = ablation.featureAnswers!;
   // Captured per question inside the answer loop and carried alongside the
@@ -1565,7 +1603,14 @@ function buildArmRoster(
       // The units are the accessor's own turns since §13.16.6, so this is a membership
       // test between two applications of `turnText` rather than a search through a
       // rendered string -- the gold turn either is one of the carried turns or is not.
-      goldOverlap: goldOverlapOf(retrievedContexts[i] ?? [], question.goldTurns),
+      // The third count, when a ranking was consulted: how much of this question's gold
+      // the ranking offered at all. `total - pool` is the ranking's miss, `pool - carried`
+      // is the budget's. §13.61.7 is what six runs could not say without it.
+      goldOverlap: goldOverlapOf(
+        retrievedContexts[i] ?? [],
+        question.goldTurns,
+        poolFor?.(question.question),
+      ),
     })),
     featureConfig,
     ablation.featureCorrect,

@@ -138,6 +138,31 @@ export type RelevanceIndex = {
    * than an error.
    */
   relevanceFor(question: string, turn: string): number;
+  /**
+   * The turns this index holds a score for under `question`.
+   *
+   * ## Why the candidate set is exposed at all
+   *
+   * The selection spends a character budget on an order, so "the gold turn did not reach
+   * the reader" has two causes that need opposite repairs -- the ranking never surfaced
+   * it, or the ranking held it and the budget cut it -- and the artifact could not tell
+   * them apart. §13.61.7 records what that cost: `k = 64` and `k = 256` were both
+   * measured, and neither could say which of the two it had changed.
+   *
+   * ## Why a set of texts rather than a ranked list
+   *
+   * The consumer of this method asks one question -- is this gold turn a candidate -- and
+   * a ranked list would answer it while inviting a second question the index cannot
+   * honestly serve: what order the candidates were in. That order belongs to the
+   * selection, which is `CortexMemory`'s, and this module deliberately discards the
+   * ranking `retrieveTopKByQueries` returns for exactly that reason.
+   *
+   * Total, like `relevanceFor`: an unknown question is a question this index did not
+   * score, and an empty set says so rather than throwing. The two answers agree by
+   * construction -- a turn is in this set if and only if `relevanceFor` scores it above
+   * {@link UNSCORED_RELEVANCE} -- and that equivalence is asserted rather than assumed.
+   */
+  candidatesFor(question: string): ReadonlySet<string>;
 };
 
 /**
@@ -184,6 +209,12 @@ export async function buildRetrievalRelevanceIndex(
     topK,
     relevanceFor(question: string, turn: string): number {
       return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
+    },
+    candidatesFor(question: string): ReadonlySet<string> {
+      // The map's own keys, so the set and the lookup cannot disagree: both are reads of
+      // one structure, and a second structure would be the consolidation-clock defect this
+      // package has removed at three other layers.
+      return new Set(scores.get(question)?.keys() ?? []);
     },
   };
 }

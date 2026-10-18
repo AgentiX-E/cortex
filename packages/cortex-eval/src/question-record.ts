@@ -640,6 +640,15 @@ export function buildQuestionRecords(
 export function goldOverlapOf(
   retrieved: RetrievedTurns,
   goldTurns: readonly string[] | undefined,
+  /**
+   * The gold turns the ranking offered, or `undefined` when no ranking was consulted.
+   *
+   * A `readonly string[]` rather than a predicate over one, because the caller already
+   * holds the index's candidates and a predicate here would invite a second definition of
+   * membership beside this one. `GoldOverlap.pool` documents the partition the three
+   * counts make and why an absent pool is absent rather than zero.
+   */
+  poolGold?: readonly string[] | undefined,
 ): GoldOverlap | null {
   if (goldTurns === undefined || goldTurns.length === 0) return null;
   // Membership on the carried units themselves. The test is "this gold text is one of
@@ -647,9 +656,16 @@ export function goldOverlapOf(
   // asked of the list rather than reconstructed by padding a joined string. The same
   // class of defect as `§13.18.2`'s answer-text search, and it cannot recur here: a
   // bare substring search is not expressible against a list of units.
+  const carried = goldTurns.filter((gold) => retrieved.includes(gold)).length;
   return {
-    carried: goldTurns.filter((gold) => retrieved.includes(gold)).length,
+    carried,
     total: goldTurns.length,
+    // Spread rather than assigned `undefined`, so a caller that consulted no ranking
+    // gets the two-field object it got before this parameter existed -- byte-identical in
+    // JSON, which is what keeps every archived artifact's meaning unchanged.
+    ...(poolGold === undefined
+      ? {}
+      : { pool: goldTurns.filter((gold) => poolGold.includes(gold)).length }),
   };
 }
 
