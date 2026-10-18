@@ -1,7 +1,7 @@
 {
   "name": "@agentix-e/cortex-memory",
   "version": "0.1.0",
-  "description": "cortex-memory — composes cortex-core's value gates into a runnable, conformance-passing MemorySystem",
+  "description": "cortex-memory \u2014 composes cortex-core's value gates into a runnable, conformance-passing MemorySystem",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -22,7 +22,8 @@
     "lint": "eslint src/ bench/",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.bench.json",
     "clean": "rm -rf dist *.tsbuildinfo coverage",
-    "bench": "node --import tsx bench/run-ablation.ts"
+    "bench": "node --import tsx bench/run-ablation.ts",
+    "drift": "node --import tsx bench/reparse-report.ts"
   },
   "dependencies": {
     "@agentix-e/cortex-core": "workspace:*"

@@ -7725,7 +7725,12 @@ before and after, which is what makes them the invariants and the first one the 
 
 ### 13.60.7 Verification
 
-- `cortex-memory` **352 tests** (+2 net); `pnpm check` is re-run before the dispatch and its result is in §13.61.
+- `cortex-memory` **352 tests** (+2 net); `pnpm check` **exit 0**; four coverage dimensions **100%**.
+- **The new rule is a command, not a note.** `bench/reparse-report.ts` (run by `pnpm --filter
+  @agentix-e/cortex-memory drift <report>`) prints every record whose stored `answer` differs from what today's
+  parser produces, how many of those the gold's first number matches, and **exits 1**. On this run's artifact it
+  reads 18 drifted records, 7 gold matches, and one example is enough to see the defect:
+  `3a704032 stored "" -> today "2"` against a raw output that ends `Step 2 — 2`.
 - The re-read used the **built** `dist/parse.js` of the repaired package rather than a Python re-implementation,
   so the "what would today's parser say" column is the parser's own answer and not a second definition of it.
 - §13.60.3's transition table and §13.60.4's column are from `tools/readout-arm-run.py --paired` and the node
@@ -7740,6 +7745,6 @@ before and after, which is what makes them the invariants and the first one the 
 | **P0 (done)** | The reader defect is fixed with three pinned shapes, and the two earlier runs are priced against it (0 and ≤1 question) | no |
 | **P1** | The selector's signal (§13.59.4) — unchanged and still the largest open question | no, to design |
 | **P1** | TR's 36 declines at 39.7% coverage — unchanged by this run, whose TR movement was inside its own 11.8% | yes |
-| P1 | Add the re-parse step to the readout, so a run is never read through a stale parser again | no |
+| **P1 (done)** | The re-parse step: `pnpm --filter @agentix-e/cortex-memory drift <report>` compares every stored `answer` against today's parser and **exits 1 on any drift**, so a run cannot be read through a reader that no longer agrees with it | no |
 | P2 | The §13.55 sentence as its own variable | yes |
 | P3 | `PATH` ordering | no |
