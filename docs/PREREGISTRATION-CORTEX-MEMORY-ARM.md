@@ -664,6 +664,14 @@ forwarded into a step's `env`. Three injections were run against it:
   p = 2.039e-56). The pre-committed recovery for that outcome is the revert to `0`, so
   until a replacement arming is registered with its own prediction, the registered value
   is the control.
+* **The multi-session block's closing line — adopted by §13.61.** Under `enumerated` the
+  block's last line is `Reply with the Step 2 number alone. If the Step 1 list is empty
+  because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.`
+  It replaces the `extractive` block's unconditional close, which was the last thing the
+  model read and re-licensed the decline after every qualifier above it. Adopted on
+  mechanism, not on the `+29.45pp` run that followed: the forbidden state fell 12 → 7,
+  MR's declines fell 23 → 20, and the predicted cost appeared as `numeric_mismatch`
+  27 → 32. §13.61.5 states what that decision does not claim.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -7747,4 +7755,177 @@ before and after, which is what makes them the invariants and the first one the 
 | **P1** | TR's 36 declines at 39.7% coverage — unchanged by this run, whose TR movement was inside its own 11.8% | yes |
 | **P1 (done)** | The re-parse step: `pnpm --filter @agentix-e/cortex-memory drift <report>` compares every stored `answer` against today's parser and **exits 1 on any drift**, so a run cannot be read through a reader that no longer agrees with it | no |
 | P2 | The §13.55 sentence as its own variable | yes |
+| P3 | `PATH` ordering | no |
+
+---
+
+## 13.61 Run `39083274990`: the closing line is adopted on its mechanism, not on its delta
+
+### 13.61.1 The run
+
+`39083274990`, `00:34:44Z` → `02:24:18Z`, **1h49m34s**, `success`, artifact `12121877664`, 6,907,133 bytes.
+Same variable as `39076055833` (§13.57), re-dispatched on the repaired parser (`d4eef555`). Its predecessor
+is **not** a measurement of this variable and is not used as a control; the control is `39035438120`, the run the
+closing line replaced.
+
+**Drift check first**, per §13.60.6: `pnpm --filter @agentix-e/cortex-memory drift` → **500 of 500 records,
+0 answers differ from today's parser**. So the roster this section reads is the roster today's reader produces,
+which is the check that was missing last time.
+
+| log line | value |
+| --- | --- |
+| `Restored` | 262,841 vectors |
+| `Relevance index: 32000 scored …` | `topK=64`, 500 questions |
+| `Embedding cache: persisted` | 263,098 (257 new) |
+| `scorer channels` | `structural 1394, exact 833, numeric 405, judge 1368/4000 = **34.2%**` |
+
+Against `39035438120`'s `1424 / 773 / 373 / 1430 = 35.8%`: **structural fell 30, numeric rose 32, judge fell
+62**. Fewer declines, more answers decided by a number, and less work for the judge — the three moves the line was
+written to produce, in one line of log.
+
+### 13.61.2 The headline
+
+| | `39035438120` control | `39083274990` | Δ |
+| --- | --- | --- | --- |
+| registered delta | +26.90pp | **+29.45pp** | **+2.55pp** |
+| feature avg (4 reps) | 0.7115 | **0.7330** (0.724–0.740) | +2.15pp |
+| baseline avg | 0.4425 | 0.4385 | −0.40pp |
+| roster total | 354/500 | **365/500 = 73.00%** | +11 |
+| ABS | 29 | **30/30** | +1 |
+| IE | 135 | 134 | −1 |
+| KU | 58 | 61 | +3 |
+| **MR** | 61 | **64** | **+3** |
+| TR | 71 | 76 | +5 |
+| declines | 80 | **66** | −14 |
+| McNemar | 3.0e-15 | **2.3e-18** | — |
+
+**Every number in the table is the campaign's best except IE**, and the delta is 2.55pp above the configuration
+§13.45 adopted. That is exactly the situation §13.54 was written for, and it is not enough.
+
+### 13.61.3 The five predictions, including the band I failed to close
+
+| # | registered in §13.57.4 | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | forbidden state 12 → **≤ 4**; falsified if ≥ 9 | **7** | **neither** — fell 42%, missed the target, cleared the falsifier |
+| **2** | MR declines 23 → **≤ 15**; falsified if ≥ 20 | **20** | **falsified**, at the line |
+| **3** | MR correct 61 → **≥ 66**; falsified if ≤ 63 | **64** | **neither** — the band 64–65 decides nothing |
+| **4** | ABS+IE+KU+TR within **±6** of 293 | **301** | **falsified** (+8) |
+| **5** | MR declines' median coverage **≥ 50%** | **50.0%** | **met** |
+
+**Two of these are defects in the registration rather than findings, and both are mine.**
+
+- **Prediction 3 left 64–65 undecided.** I wrote a target and a falsifier with a gap between them and then
+  produced an observation that landed in the gap. A prediction whose "met" and "falsified" conditions do not
+  partition the integers is not a prediction; it is a wish with a tripwire. The rule going forward is the one
+  §13.56.4 already stated for tolerances and this section states for targets: **the falsifier is the negation of
+  the prediction**, not a second, looser number.
+- **Prediction 4 contradicted the rule I had just written.** §13.56.4 concluded that *"every future tolerance is
+  registered per capability with that capability's own rate beside it"*, and the very next registration pooled
+  four capabilities into a ±6 band. TR's own cross-draw rate is **17.3%** this run (22 of 127 changed state), so
+  TR +5 was inside its instrument before the run started; pooling made a noise floor look like a fence. The
+  prediction is falsified as written and **it should not have been written that way.**
+
+### 13.61.4 What actually moved, and how little of it the change can explain
+
+The four capabilities whose prompts are **byte-identical** to the control moved **+8 questions** (ABS +1, IE −1,
+KU +3, TR +5). The only capability the closing line reaches moved **+3**. So of the 11 questions that lifted the
+roster, **MR accounts for 3 and 8 are on prompts this run did not change.**
+
+That is the whole argument against reading the delta. Its rise is real as a number and **unattributable as an
+effect**: the same 8 questions would have arrived from a run of the unchanged configuration, and TR's 17.3%
+churn rate says so before any inference is attempted.
+
+What *is* attributable is MR, and the paired transitions say how it got there:
+
+| MR, `39035438120` → `39083274990` | n |
+| --- | --- |
+| numeric_mismatch → correct | **4** |
+| other → correct | **3** |
+| abstention → correct | **3** |
+| **correct → numeric_mismatch** | **4** |
+| correct → other | 2 |
+| correct → abstention | 1 |
+| other → numeric_mismatch | 2 |
+| other → abstention | 2 |
+| abstention → numeric_mismatch | 3 |
+
+**Ten questions became correct and seven stopped being correct.** The seven are the cost §13.57.4 predicted —
+*"some declines become wrong answers"* — and it is larger than a strict reading of the sentence would suggest,
+because four of them were **already correct** and became wrong. Making the model commit to a bare number costs it
+the answers that were right inside a longer sentence.
+
+And `numeric_mismatch` rose **27 → 32**, which is that cost counted.
+
+### 13.61.5 The decision, and what it rests on
+
+**The closing line is adopted.** Not on `+29.45pp`, which §13.61.4 disassembles, but on three facts about MR that
+all moved the way the registration said they would:
+
+| the registration said | before | after |
+| --- | --- | --- |
+| the forbidden state collapses | 12 | **7** (−42%) |
+| the declines fall | 23 | **20** |
+| the cost appears as wrong answers | 27 `numeric_mismatch` | **32** |
+
+Plus: the capability is +3 correct, no capability regressed beyond its own instrument, and the prompt is the same
+length as the line it replaced.
+
+**The caveat is part of the adoption.** +3 of 121 is inside a single draw's resolution — MR moved 24 questions
+between two draws of *unchanged* configuration (§13.56.4). So this is a decision on mechanism, taken because three
+independent predictions of the same intervention came true together, and it is deliberately **not** a claim that
+MR is now 52.89%. If a later run of this configuration reads 61 again, that is consistent with everything here and
+the mechanism numbers are what would disagree.
+
+**What is explicitly not adopted**: any statement that the arm improved by 2.55pp. The number is recorded, the
+attribution is refused, and the reason is in §13.61.4.
+
+### 13.61.6 The union, which moves the roadmap's target again
+
+| capability | n | reference | feature | union | gap |
+| --- | --- | --- | --- | --- | --- |
+| ABS | 30 | 30 | **30** | 30 | **0** |
+| IE | 150 | 1 | 134 | 134 | **0** |
+| KU | 72 | 0 | 61 | 61 | **0** |
+| MR | 121 | 101 | 64 | 109 | **45** |
+| TR | 127 | 87 | 76 | 102 | **26** |
+| **total** | 500 | 219 | 365 | **436 = 87.20%** | **71** |
+
+**Three of five capabilities now have a gap of zero** — the feature matches or beats the reference on ABS, IE and
+KU, which it did not do in §13.58. The remaining 71 questions are **MR 45 and TR 26**, and nothing else. The
+target line moves from 86.20% to **87.20%**, and the work is unchanged in kind: the two capabilities whose
+evidence the selector does not find.
+
+### 13.61.7 What the next iteration needs, and it is not another prompt
+
+MR's 45 and TR's 26 have been localised as far as this artifact can take them: §13.59 showed the count is faithful
+and the list is short, and §13.34.3 showed the room holds more turns than the gold set contains. What is missing
+is **what the selector was choosing between** — the candidate pool and its scores. The artifact records what was
+delivered (`featureRetrievedContexts`), what it cost (`promptChars`) and how much gold arrived (`goldOverlap`);
+it does not record the ranked candidates the budget chose from, so the question "did the budget cut this gold
+turn, or did the ranking never surface it" **cannot be asked of any run so far**.
+
+That is the next piece of work: record the pool, with the gold membership of each candidate, so that the selector
+question is answerable once instead of re-argued. It is the same lesson as §13.60 in a different place — the run
+could not be read because the reader disagreed with it; this question cannot be asked because the artifact does
+not carry the evidence. Both are cheap to fix and expensive to discover late.
+
+### 13.61.8 Verification
+
+- **Drift check passed before reading**: 500 of 500 records, 0 differences.
+- `pnpm check` **exit 0**; `cortex-memory` **352 tests**; four coverage dimensions **100%** (`cortex-node`
+  branch 98.64%, §13.47's known gap).
+- Every number in this section is `tools/readout-arm-run.py`'s output on the artifact — `--reference`,
+  `--coverage`, `--declines`, `--union`, `--counted`, `--paired` — plus the two log lines, which are the arm's
+  own accounting.
+
+### 13.61.9 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0 (done)** | The closing line is **adopted** on mechanism; run `39076055833` is retired as a measurement; drift is a command | no |
+| **P0** | **Record the candidate pool** with gold membership, so "budget or ranking" becomes answerable | no, to build |
+| **P1** | MR's 45 + TR's 26 (the whole of the remaining gap) — blocked on the pool measurement | yes, to measure |
+| **P1** | A no-signal control with random turns (§13.50.4) | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P2 | Register targets whose falsifier is the negation of the prediction, and tolerances per capability (§13.61.3) | no |
 | P3 | `PATH` ordering | no |
