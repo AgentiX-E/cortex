@@ -8034,3 +8034,14 @@ variable would be the signal rather than the order.
 | **P1** | A no-signal control with random turns (§13.50.4) | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+### 13.62.7 The readout, which had to exist before the run landed
+
+The partition is two subtractions and it decides the next variable, so it is `--pool` in
+`tools/readout-arm-run.py` rather than a shell line. Its four rules are the ones the field's own doc gives, and
+each has a test: the three sums, the per-capability split, records **without** a pool counted rather than summed
+as zero, and an artifact with no pool anywhere **refusing** instead of printing a table of zeroes. A fifth pins
+the impossible row — `carried > pool` is reported, not clamped.
+
+Verified against the adopted run's artifact before the diagnostic was dispatched: it exits **2** with the message
+that the artifact predates the field. That is the refusal working on a real file rather than on a fixture.

@@ -721,3 +721,89 @@ class TestThePairedTransitionBetweenTwoRuns:
         r = self._run(tmp_path, before, after)
         assert r.returncode == 2
         assert 'missing' in r.stderr.lower()
+
+
+class TestThePoolPartition:
+    """Where the gold went, in three numbers, per capability.
+
+    §13.62 registered that the loss is in the order rather than the ranking's reach. That
+    claim is readable only as the difference between two sums, and it decides the next
+    variable -- so it is a mode of this tool rather than an inline subtraction, for the
+    reason §13.38 gives and which this campaign has now paid for five times.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, int, int, int | None]]) -> dict:
+        """(capability, total, carried, pool) -> a report whose records carry coverage."""
+        questions = []
+        for index, (capability, total, carried, pool) in enumerate(rows):
+            overlap: dict[str, int] = {'carried': carried, 'total': total}
+            if pool is not None:
+                overlap['pool'] = pool
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+                'goldOverlap': overlap,
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--pool', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_splits_the_gold_set_into_three_sums(self, tmp_path: Path) -> None:
+        # total 10, pool 7, carried 4 -> never surfaced 3, cut by the budget 3, delivered 4.
+        report = self._report([('MR', 10, 4, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'never surfaced' in r.stdout
+        assert 'cut by the budget' in r.stdout
+        assert 'delivered' in r.stdout
+
+    def test_it_reports_the_two_lost_sums_separately_per_capability(self, tmp_path: Path) -> None:
+        # The comparison prediction 3 makes, stated as the tool states it: two sums, one row.
+        report = self._report([
+            ('MR', 24, 13, 22),   # never surfaced 2, cut 9
+            ('TR', 10, 4, 6),     # never surfaced 4, cut 2
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'MR' in r.stdout and 'TR' in r.stdout
+
+    def test_a_record_without_a_pool_is_counted_as_unmeasured(self, tmp_path: Path) -> None:
+        # An artifact produced before the pool existed, or by a run with no ranking, has no
+        # `pool` and must not be summed as zero -- that would report a ranking that surfaced
+        # nothing where no ranking ran.
+        report = self._report([('MR', 10, 4, None), ('MR', 10, 5, 6)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'without a pool' in r.stdout
+
+    def test_an_artifact_with_no_pool_at_all_refuses(self, tmp_path: Path) -> None:
+        report = self._report([('MR', 10, 4, None)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'pool' in r.stderr
+
+    def test_an_impossible_partition_is_reported_not_hidden(self, tmp_path: Path) -> None:
+        # `carried > pool` cannot happen when the delivery came from the pool, so a record
+        # showing it is a caller defect. The table says so instead of clamping.
+        report = self._report([('MR', 10, 8, 2)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'violate' in r.stdout or 'impossible' in r.stdout

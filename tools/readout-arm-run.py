@@ -34,6 +34,7 @@ Usage:
     python3 tools/readout-arm-run.py --declines path/to/report.json
     python3 tools/readout-arm-run.py --union path/to/report.json
     python3 tools/readout-arm-run.py --counted path/to/report.json
+    python3 tools/readout-arm-run.py --pool path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
@@ -688,6 +689,91 @@ def paired_section(
     return '\n'.join(lines), changed_totals
 
 
+def pool_section(questions: list[dict]) -> tuple[str, int]:
+    """Where the gold went: never surfaced, cut by the budget, or delivered.
+
+    ## The question this answers, and why it needed a new field
+
+    `goldOverlap` carried `carried` and `total` from §13.16 onward, which says how much gold
+    reached the reader and not where the rest went -- and the two destinations need opposite
+    repairs. §13.62 added `pool` so the gold set partitions:
+
+        total - pool      the ranking never surfaced it
+        pool  - carried   the ranking had it and the budget cut it
+        carried           it reached the reader
+
+    ## The absence, which is why this is not a subtraction over zeroes
+
+    A record with no `pool` was produced by a run that consulted no ranking, or before the
+    field existed. Summing those as zero would report a ranking that surfaced none of the
+    gold where no ranking ran, so they are counted separately and said so. An artifact with
+    no pool anywhere refuses rather than printing a table of zeroes.
+
+    ## The impossible row
+
+    `carried > pool` cannot happen when the delivery came from the pool. It is counted and
+    printed rather than clamped or dropped: a caller defect that reads as a plausible row is
+    the failure mode the campaign has spent seven sections removing.
+    """
+    by_capability: dict[str, list[tuple[int, int, int]]] = {}
+    without_pool = 0
+    impossible = 0
+    for question in questions:
+        overlap = question.get('goldOverlap')
+        if not isinstance(overlap, dict):
+            continue
+        total = overlap.get('total')
+        carried = overlap.get('carried')
+        if not isinstance(total, int) or not isinstance(carried, int):
+            continue
+        pool = overlap.get('pool')
+        if not isinstance(pool, int):
+            without_pool += 1
+            continue
+        if carried > pool or pool > total:
+            impossible += 1
+        capability = str(question.get('capability', '?'))
+        by_capability.setdefault(capability, []).append((total, carried, pool))
+
+    measured = sum(len(rows) for rows in by_capability.values())
+    if measured == 0:
+        return '', 0
+
+    lines = ['', 'where the gold went (goldOverlap: total, carried, pool)']
+    lines.append(
+        f'  {"capability":<10}{"n":>5}{"gold":>7}{"never surfaced":>16}{"cut by the budget":>19}{"delivered":>11}'
+    )
+    totals = [0, 0, 0, 0]
+    for capability in sorted(by_capability):
+        rows = by_capability[capability]
+        gold = sum(row[0] for row in rows)
+        carried = sum(row[1] for row in rows)
+        pool = sum(row[2] for row in rows)
+        lines.append(
+            f'  {capability:<10}{len(rows):>5}{gold:>7}{gold - pool:>16}{pool - carried:>19}{carried:>11}'
+        )
+        totals[0] += gold
+        totals[1] += carried
+        totals[2] += pool
+    lines.append(
+        f'  {"TOTAL":<10}{measured:>5}{totals[0]:>7}{totals[0] - totals[2]:>16}'
+        f'{totals[2] - totals[1]:>19}{totals[1]:>11}'
+    )
+    lines.append(
+        '  "never surfaced" is the ranking\'s reach; "cut by the budget" is the order above '
+        'the cut. §13.62 registered that the second is the larger.'
+    )
+    if without_pool:
+        lines.append(f'  {without_pool} record(s) without a pool: no ranking was consulted, '
+                     'or the artifact predates the field')
+    if impossible:
+        lines.append(
+            f'  {impossible} record(s) violate carried <= pool <= total: a delivery outside '
+            'the pool is a caller defect, reported rather than clamped'
+        )
+    return '\n'.join(lines), measured
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -715,6 +801,11 @@ def main(argv: list[str]) -> int:
         '--counted',
         action='store_true',
         help='print whether MR wrong answers equal the length of their own Step 1 list',
+    )
+    parser.add_argument(
+        '--pool',
+        action='store_true',
+        help='print where the gold went: never surfaced, cut by the budget, delivered',
     )
     parser.add_argument(
         '--paired',
@@ -774,6 +865,18 @@ def main(argv: list[str]) -> int:
             section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.pool:
+        section, measured = pool_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries a goldOverlap.pool. A run that consulted '
+                'no ranking has none, and an artifact produced before §13.62 predates the field.',
+                file=sys.stderr,
+            )
             return 2
         print(section)
         return 0
