@@ -39,6 +39,7 @@ Usage:
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
     python3 tools/readout-arm-run.py --lists path/to/report.json
+    python3 tools/readout-arm-run.py --reach path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
@@ -1184,6 +1185,119 @@ def lists_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(correct) + len(mismatched)
 
 
+# The rank bands `--reach` reports.
+#
+# 64 is the width every run before §13.78 used, 128 is the midpoint of the widened pool, and 256 is
+# the widened pool itself. Three cuts, because the three answers they separate need three different
+# repairs: inside 64 is what the campaign already had, 64-127 is a near miss a wider pool fixes,
+# 128-255 is the edge of the widened pool, and beyond it the ranker cannot reach its own answer.
+REACH_BANDS = (64, 128, 256)
+
+
+def reach_section(questions: list[dict]) -> tuple[str, int]:
+    """Where the gold sits in the ranking, banded, with the median of what the old width could not see.
+
+    ## The two readings `-1` conflates
+
+    `goldRanks` records `-1` for a gold turn the ranking never surfaced, and a `-1` produced at
+    `k = 64` could be rank 65 or rank 900. Those need opposite repairs — a wider pool, or a better
+    ranker — and no artifact produced at `k = 64` can tell them apart. This table reads an artifact
+    produced at a **wider** `k`, where the same gold turn carries its true rank, and bands the
+    ranks so the question has one number.
+
+    ## Why the median is of the gold beyond the old width, and not of all gold
+
+    The median of all ranks describes the pool; the median of the ranks **≥ 64** describes the part
+    the campaign could not previously reach, which is the thing under study. When an artifact was
+    produced at `k = 64` that band is empty, and the table says **not measured** rather than `0` —
+    a zero would read as "no gold sits there" when the truth is that nothing was scored there.
+    """
+    by_capability: dict[str, list[int]] = {}
+    for question in questions:
+        overlap = question.get('goldOverlap')
+        if not isinstance(overlap, dict):
+            continue
+        ranks = overlap.get('goldRanks')
+        if not isinstance(ranks, list):
+            continue
+        capability = str(question.get('capability', '?'))
+        by_capability.setdefault(capability, []).extend(
+            rank for rank in ranks if isinstance(rank, int)
+        )
+
+    if not by_capability:
+        return '', 0
+
+    def median_rank(values: list[int]) -> float:
+        """The ordinary median: average the middle pair when the count is even.
+
+        The module's `_median` takes the upper middle, which is right for the coverage table (a
+        band boundary is a count, not a distance). Here the number feeds a claim about *how far*
+        the unreachable gold sits, and with two values the upper one overstates it by half their
+        gap — the gap being the thing under study. So this averages, and the difference is stated
+        rather than inherited.
+        """
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return float(ordered[middle])
+        return (ordered[middle - 1] + ordered[middle]) / 2
+
+    header = f'  {"capability":<10}{"gold":>6}'
+    for cut in REACH_BANDS:
+        lower = 0 if cut == REACH_BANDS[0] else REACH_BANDS[REACH_BANDS.index(cut) - 1]
+        header += f'{f"{lower}-{cut - 1}":>9}'
+    header += f'{"never":>7}{"median>=64":>12}'
+
+    lines = ['', 'where the gold sits in the ranking (goldRanks, banded)']
+    lines.append(header)
+    totals = {cut: 0 for cut in REACH_BANDS}
+    total_gold = 0
+    total_never = 0
+    beyond: list[int] = []
+    for capability in sorted(by_capability):
+        ranks = by_capability[capability]
+        total_gold += len(ranks)
+        line = f'  {capability:<10}{len(ranks):>6}'
+        previous = 0
+        for cut in REACH_BANDS:
+            count = sum(1 for rank in ranks if previous <= rank < cut)
+            totals[cut] += count
+            line += f'{count:>9}'
+            previous = cut
+        never = sum(1 for rank in ranks if rank < 0 or rank >= REACH_BANDS[-1])
+        total_never += never
+        line += f'{never:>7}'
+        here = [rank for rank in ranks if rank >= REACH_BANDS[0]]
+        beyond.extend(here)
+        if here:
+            line += f'{median_rank(here):>12.0f}'
+        else:
+            line += f'{"not measured":>12}'
+        lines.append(line)
+
+    line = f'  {"TOTAL":<10}{total_gold:>6}'
+    for cut in REACH_BANDS:
+        line += f'{totals[cut]:>9}'
+    line += f'{total_never:>7}'
+    if beyond:
+        line += f'{median_rank(beyond):>12.0f}'
+    else:
+        line += f'{"not measured":>12}'
+    lines.append(line)
+
+    lines.append('')
+    for cut in REACH_BANDS:
+        lower = 0 if cut == REACH_BANDS[0] else REACH_BANDS[REACH_BANDS.index(cut) - 1]
+        share = totals[cut] / total_gold if total_gold else 0
+        lines.append(f'  rank {lower:>3}-{cut - 1:<3}: {totals[cut]:>5} of {total_gold} = {share:6.1%}')
+    lines.append(
+        f'  "never" is rank >= {REACH_BANDS[-1]}, or a -1 from a run whose k was narrower than '
+        'that band -- which is why it is not the same statement as "0 gold sits there".'
+    )
+    return '\n'.join(lines), len(by_capability)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -1216,6 +1330,11 @@ def main(argv: list[str]) -> int:
         '--pool',
         action='store_true',
         help='print where the gold went: never surfaced, cut by the budget, delivered',
+    )
+    parser.add_argument(
+        '--reach',
+        action='store_true',
+        help='print the ranked gold banded by rank, with the median beyond the old pool width',
     )
     parser.add_argument(
         '--lists',
@@ -1295,6 +1414,14 @@ def main(argv: list[str]) -> int:
             section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.reach:
+        section, measured = reach_section(questions)
+        if measured == 0:
+            print(f'{args.report}: no record carries goldRanks.', file=sys.stderr)
             return 2
         print(section)
         return 0

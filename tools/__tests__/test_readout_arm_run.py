@@ -1108,3 +1108,78 @@ class TestWhatTheStepOneListHeld:
         assert r.returncode == 0, r.stderr
         assert 'truncated' in r.stdout
         assert '0.0%' in r.stdout and '100.0%' in r.stdout
+
+
+class TestWhereTheUnreachableGoldSits:
+    """§13.78's measurement: `-1` is not a distance, and this is the table that makes it one.
+
+    At `k = 64` every gold turn the ranker never surfaced is recorded as `-1`, whether it was rank
+    65 — a near miss a wider pool would fix — or rank 900, where the ranker cannot reach its own
+    answer and the pool width is irrelevant. `--reach` reads an artifact produced at a wider `k` and
+    bands the ranks, so the question "how far away is the gold we cannot reach" has one number
+    instead of an argument.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, list[int]]]) -> dict:
+        """(capability, goldRanks) -> a report with one question per row."""
+        questions = [
+            {
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+                'goldOverlap': {
+                    'carried': sum(1 for r in ranks if r >= 0),
+                    'total': len(ranks),
+                    'pool': sum(1 for r in ranks if r >= 0),
+                    'goldRanks': ranks,
+                },
+            }
+            for index, (capability, ranks) in enumerate(rows)
+        ]
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--reach', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_bands_the_ranks_the_way_the_decision_needs(self, tmp_path: Path) -> None:
+        # 3 gold inside 64, 1 in 64-127, 1 in 128-255, 1 never surfaced at 256. Four bands, because
+        # the repair differs between "just outside the old pool" and "at the edge of the new one".
+        report = self._report([('MR', [5, 30, 63, 70, 200, -1])])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '64' in r.stdout and '128' in r.stdout and '256' in r.stdout
+
+    def test_it_reports_the_median_rank_of_the_gold_beyond_the_old_pool(
+        self, tmp_path: Path,
+    ) -> None:
+        # The number §13.78 registered: median of ranks >= 64. Here 70, 200 -> 135.
+        report = self._report([('MR', [5, 30, 63, 70, 200, -1])])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '135' in r.stdout
+
+    def test_an_artifact_from_the_old_width_reports_the_band_as_unmeasured(
+        self, tmp_path: Path,
+    ) -> None:
+        # At k = 64 every unseen gold is -1, so the bands above 64 are all zero and the median is
+        # absent. Saying so is the point: a table that printed `0` would read as "no gold sits
+        # there" when the truth is that nothing was scored there.
+        report = self._report([('MR', [5, 30, 63, -1, -1])])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'not measured' in r.stdout or 'unmeasured' in r.stdout
