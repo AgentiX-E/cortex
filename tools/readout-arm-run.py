@@ -38,6 +38,7 @@ Usage:
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
+    python3 tools/readout-arm-run.py --lists path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
@@ -1055,6 +1056,134 @@ def window_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(every)
 
 
+# The Step 1 heading shapes, and the bullet shape, for the list census.
+#
+# The same two patterns `decline_state` uses, restated here rather than shared, because this
+# function asks a different question of them: how many bullets are in the list, not whether the
+# list is empty. A shared helper would have to return both and would then be two functions in one.
+_LISTS_STEP = re.compile(r'^\s*step\s*(\d+)\s*[\u2014:-]', re.I | re.M)
+_LISTS_BULLET = re.compile(r'^\s*(?:[-*\u2022]|\d+[.)])\s+(.*\S)\s*$')
+
+# Language with which a model says it decided *not* to count something.
+#
+# Deliberately narrow: "not included", "excluded", "already owned". A broad pattern would match
+# every hedge and report that every failure explains itself, which is the opposite of the finding
+# this column exists to support.
+_LISTS_EXCLUSION = re.compile(
+    r'not (?:included|counted|stated as|considered)|do not (?:count|include)|excluded|'
+    r'already owned|so they are not',
+    re.I,
+)
+
+
+def _step_one_items(raw: str) -> int:
+    """How many bullets the response wrote under its Step 1 heading, or 0 when there is none."""
+    headings = list(_LISTS_STEP.finditer(raw))
+    for index, heading in enumerate(headings):
+        if int(heading.group(1)) != 1:
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(raw)
+        body = raw[heading.end() : end]
+        return sum(1 for line in body.splitlines() if _LISTS_BULLET.match(line))
+    return 0
+
+
+def lists_section(questions: list[dict]) -> tuple[str, int]:
+    """What Step 1 held, what the model said, and the gold — for the answers that were wrong.
+
+    ## The question this answers, and the name it corrected
+
+    §13.76.6 called the next variable "MR's arithmetic", reading the taxonomy: 33
+    `numeric_mismatch` of 45 wrong answers. This table says that is the wrong name. The lists are
+    **1–6 items** deep while the window holds 60–79 turns, and the stated number is usually **not**
+    the list length — the model aggregates a short list correctly. The failure is which items got
+    onto the list, not what was done with them.
+
+    ## Why the truncation share is beside it
+
+    A 400-character cap cuts four turns in ten, so "the missing item was cut away" is the first
+    competing explanation. It is priced per outcome instead of argued: if failures carried more
+    truncated turns than successes, the cap would be implicated. They do not (40.8% against 38.8%
+    on run `39205060432`), and that is what removes it.
+
+    ## What it deliberately does not claim
+
+    That the list is short *relative to the evidence* — this tool cannot see the gold turns' text,
+    only how many of them were carried. It reports the list against itself and against the stated
+    answer, which is what separates "faithful count of a short list" from "aggregation".
+    """
+    correct: list[tuple[int, float]] = []
+    mismatched: list[tuple[int, float, str, str, str, bool]] = []
+    for question in questions:
+        if question.get('capability') != 'MR':
+            continue
+        turns = question.get('turns') or []
+        lengths = [len(turn['text']) for turn in turns if isinstance(turn, dict)]
+        share = (sum(1 for length in lengths if length > 400) / len(lengths)) if lengths else 0.0
+        if question.get('correct'):
+            correct.append((_step_one_items(question.get('rawOutput') or ''), share))
+            continue
+        if question.get('answer') is None:
+            continue
+        raw = question.get('rawOutput') or ''
+        # The failures this table is about: a number was stated and it was not the gold. The
+        # taxonomy lives in another module and is imported there rather than re-derived here; the
+        # filter is stated as "stated an answer and got it wrong", which is what the section reads.
+        mismatched.append((
+            _step_one_items(raw),
+            share,
+            str(question.get('answer'))[:18],
+            str(question.get('groundTruth'))[:20],
+            raw,
+            bool(_LISTS_EXCLUSION.search(raw)),
+        ))
+
+    if not correct and not mismatched:
+        return '', 0
+
+    def median(values: list[int]) -> float:
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return float(ordered[middle])
+        return (ordered[middle - 1] + ordered[middle]) / 2
+
+    lines = ['', 'what Step 1 held (MR: items listed, the number stated, the gold)']
+    for label, rows in (('correct', correct), ('wrong', mismatched)):
+        if not rows:
+            continue
+        items = [row[0] for row in rows]
+        shares = [row[1] for row in rows]
+        lines.append(
+            f'  {label:<8} n={len(rows):>3}  median list {median(items):.1f}  '
+            f'median truncated turns {median(shares) * 100:.1f}%'
+        )
+    if correct:
+        faithful = sum(1 for count, _ in correct if count > 0)
+        lines.append(f'  correct with a parsable Step 1 list: {faithful} of {len(correct)}')
+
+    if mismatched:
+        lines.append('')
+        lines.append(f'  {"items":>6}{"trunc":>7}{"stated":>10}{"gold":>10}  flags')
+        counts_list = 0
+        for count, share, stated, gold, _raw, excluded in mismatched:
+            flags = []
+            if stated.strip() == str(count):
+                flags.append('counts its list')
+                counts_list += 1
+            if excluded:
+                flags.append('states an exclusion')
+            lines.append(
+                f'  {count:>6}{share * 100:>6.0f}%{stated:>10}{gold:>10}  {", ".join(flags)}'
+            )
+        lines.append('')
+        lines.append(
+            f'  counts its list: {counts_list} of {len(mismatched)} — the rest aggregate a short '
+            'list into a sum or a duration, which is why "arithmetic" was the wrong name for this.'
+        )
+    return '\n'.join(lines), len(correct) + len(mismatched)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -1087,6 +1216,11 @@ def main(argv: list[str]) -> int:
         '--pool',
         action='store_true',
         help='print where the gold went: never surfaced, cut by the budget, delivered',
+    )
+    parser.add_argument(
+        '--lists',
+        action='store_true',
+        help='print what the Step 1 list held beside the stated number and the gold, MR only',
     )
     parser.add_argument(
         '--window',
@@ -1161,6 +1295,14 @@ def main(argv: list[str]) -> int:
             section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.lists:
+        section, measured = lists_section(questions)
+        if measured == 0:
+            print(f'{args.report}: no MR record carries a Step 1 list.', file=sys.stderr)
             return 2
         print(section)
         return 0

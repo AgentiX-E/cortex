@@ -1014,3 +1014,97 @@ class TestWhenTheRoomIsWiderThanThePool:
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert 'pool > total' in r.stdout
+
+
+class TestWhatTheStepOneListHeld:
+    """The measurement that moved MR's next variable from "arithmetic" to "the list".
+
+    §13.76.6 named MR's arithmetic as the next variable, reading the taxonomy —
+    `numeric_mismatch 33` of 45 wrong answers. This table says that is the wrong name. The lists
+    are 1–6 items deep while the window holds 60–79 turns, and the model's stated number is
+    usually **not** its list length: it sums or aggregates a **short** list correctly.
+
+    ## Why the truncation column exists
+
+    The 400-character cap cuts four turns in ten, so "the missing item was cut away" is the first
+    competing explanation and it has to be priced before anything else. It comes out *flat*
+    (correct 40.8%, mismatch 38.8% of turns truncated), which is what removes it.
+
+    A table that reported only list lengths would leave that explanation standing.
+    """
+
+    STEP_ONE = 'Step 1 \\u2014 list every item'
+    STEP_TWO = 'Step 2 \\u2014 compute'
+
+    @staticmethod
+    def _report(rows: list[tuple[str, bool, str, str, str, list[int]]]) -> dict:
+        """(capability, correct, rawOutput, answer, groundTruth, turnLengths) -> a report."""
+        questions = []
+        for index, (capability, correct, raw, answer, gold, lengths) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': gold,
+                'answer': answer,
+                'rawOutput': raw,
+                'correct': correct,
+                'turns': [{'index': i, 'text': 'x' * length} for i, length in enumerate(lengths)],
+                'goldOverlap': {'carried': 1, 'total': 2},
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated', 'maxTurnChars': 400},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--lists', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def _raw(self, items: int, statement: str) -> str:
+        lines = [self.STEP_ONE, '']
+        lines += [f'- item {index}' for index in range(items)]
+        lines += ['', self.STEP_TWO, '', statement]
+        return '\\n'.join(lines)
+
+    def test_it_reports_the_list_length_beside_the_gold(self, tmp_path: Path) -> None:
+        report = self._report([('MR', False, self._raw(2, '2'), '2', '3', [100, 100])])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'list' in r.stdout and 'gold' in r.stdout
+        # The row has to carry both numbers, because the finding is their difference.
+        assert '2' in r.stdout and '3' in r.stdout
+
+    def test_it_separates_a_list_that_matches_the_statement_from_one_that_does_not(
+        self, tmp_path: Path,
+    ) -> None:
+        # The distinction §13.59 turned on: a stated number equal to the list length is a faithful
+        # count of a short list; anything else is an aggregation, which needs a different repair.
+        report = self._report([
+            ('MR', False, self._raw(2, '2'), '2', '3', [100]),
+            ('MR', False, self._raw(4, '70 hours'), '70 hours', '140 hours', [100]),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'counts its list' in r.stdout
+
+    def test_it_prices_the_cap_by_outcome_so_the_competing_explanation_is_visible(
+        self, tmp_path: Path,
+    ) -> None:
+        # One correct question whose turns are all short, one failing question whose turns are all
+        # long. The table must report a different truncation share for the two groups, or the
+        # reader cannot rule the cap out (or in).
+        report = self._report([
+            ('MR', True, self._raw(2, '2'), '2', '2', [100, 100]),
+            ('MR', False, self._raw(2, '2'), '2', '3', [900, 900]),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'truncated' in r.stdout
+        assert '0.0%' in r.stdout and '100.0%' in r.stdout

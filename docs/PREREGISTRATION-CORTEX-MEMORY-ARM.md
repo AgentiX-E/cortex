@@ -9476,3 +9476,53 @@ pool. There is nothing left to retrieve that the ranking could find.
 | **P1** | The 11 MR abstentions that remain — with 72.2% coverage, why does the model still decline on ten? | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+## 13.77 "MR's arithmetic" was the wrong name: three explanations tested and three eliminated
+
+### 13.77.1 What §13.76.6 said, and what the measurement says instead
+
+§13.76.6 named the next variable *MR's arithmetic*, reading the taxonomy — `numeric_mismatch 33` of 45 wrong
+answers, three quarters of them a number that is not the gold number. `--lists` (this section's instrument) puts
+four candidate explanations against the artifact, and **three of them fail**:
+
+| # | explanation | what would have to be true | measured | verdict |
+| --- | --- | --- | --- | --- |
+| 1 | **the list is short** | lists shorter for failures than for correct answers | median **2.0** items in both groups | **eliminated** |
+| 2 | **the cap cut the item away** | failures carry more truncated turns | 39.1% of turns truncated in failures against **40.8%** in correct answers | **eliminated** |
+| 3 | **the room cut the gold turn** | gold turns at rank ≥ room | **69 of 72** correct and **31 of 33** numeric failures have **no** excluded gold at all | **eliminated** |
+| 4 | **coverage** | failures show less of the gold | correct **86.8%** median, numeric **70.8%**, abstention **50.0%** | **survives** |
+
+So the model is not miscounting a list it built, the cap is not eating the deciding fact, and the window is not
+cutting gold — it is **showing less gold on the questions it fails**, and the list it writes from what it sees is
+the same length either way.
+
+### 13.77.2 Why explanation 3 is the surprising one
+
+The cap took MR's window from 23 turns to 68 against a 64-wide pool, so the room is now **larger than the pool**:
+every ranked candidate fits, and the selection spills into unscored turns (12 gold turns arrived "beyond the
+pool" in §13.76). `goldRanks` makes this checkable per question, and it comes out stronger than expected — for
+**100 of 105** MR questions, every gold turn the ranker surfaced is already inside the window.
+
+That means the cut has stopped being the mechanism. The window has absorbed the pool, and the remaining loss is
+the **28% of gold the ranker never surfaces at all** (§13.76.1: 1031 of 3663 turns for MR).
+
+### 13.77.3 What `--lists` had to be able to see
+
+Three tests, red first: the list length beside the gold (the row has to carry both numbers, because the finding
+is their difference); the distinction between a statement that equals its own list length and one that does not
+(§13.59's split, which is what separates "faithful count of a short list" from "aggregation"); and the
+truncation share **per outcome**, because a table that reported only list lengths would leave explanation 2
+standing. The exclusion-language column exists for the same reason — it is what identified
+`3a704032`'s snake plant as a *judgement* about the date range rather than a missed turn, and it comes out
+**2 of 33**, so "the model decided not to count it" is not the general shape either.
+
+### 13.77.4 The one number the campaign still cannot read
+
+`goldRanks` records `-1` for a gold turn the ranking did not surface, and **-1 does not say how far away it
+was**. A gold turn at rank 65 of a 64-wide pool is a near miss that a wider pool would fix; one at rank 900 is a
+ranking failure that no width reaches. §13.66 answered that question for the *aggregate* (the median rank of
+surfaced-but-cut gold was ≈ 45 against a room of 26); it cannot be asked of the 28% that never surfaced, because
+their ranks were never computed.
+
+That is the instrument gap §13.78 closes, and it is the reason the next run is a **diagnostic** rather than a
+test of a hypothesis.
