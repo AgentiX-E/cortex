@@ -403,6 +403,11 @@ async function main(): Promise<void> {
     // artifact's config: a spread deleted here would leave the run's own log and its own
     // config claiming a treatment the prompt never received.
     ...(armOptions.maxTurnChars === undefined ? {} : { maxTurnChars: armOptions.maxTurnChars }),
+    // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
+    // number raises the room without touching a single turn, which is the only lever §13.80 left.
+    ...(armOptions.maxPromptChars === undefined
+      ? {}
+      : { maxPromptChars: armOptions.maxPromptChars }),
     // §13.73's reach, passed beside the width and for the same reason. `undefined` on the arm's
     // side means every route, which is what §13.68 shipped; an explicit six-route list is the same
     // state reached by a different path, and the product treats both as "reaches everything". The
@@ -462,7 +467,8 @@ async function main(): Promise<void> {
       // Printed on every run, unlike the width and the unit: this one is a property of the
       // evidence section rather than of a ranking, so `none` is a fact about the prompt. It
       // is also the log's only record of the one spread in this file that no test covers.
-      `, maxTurnChars=${armOptions.maxTurnChars ?? 'none'}`,
+      `, maxTurnChars=${armOptions.maxTurnChars ?? 'none'}` +
+      `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

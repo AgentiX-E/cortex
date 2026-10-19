@@ -279,6 +279,15 @@ export type CortexMemoryArmOptions = {
    * kept distinct from absent so the config line can tell a reader which of the two it was.
    */
   maxTurnCharsRoutes?: readonly string[] | undefined;
+  /**
+   * The evidence budget in UTF-16 code units, or absent for the product default (24,000).
+   *
+   * A separate axis from `maxTurnChars`, and the pair is what §13.80 separated: the cap decides how
+   * much of one turn is shown, the budget decides how many turns fit. Lowering the cap buys room by
+   * destroying text; raising the budget buys room by spending tokens — and only the second has no
+   * measured floor.
+   */
+  maxPromptChars?: number | undefined;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -436,6 +445,22 @@ const RELEVANCE_TOP_K_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_TOP_K';
 const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
 
 /**
+ * The evidence budget in UTF-16 code units: how many characters one prompt may hold.
+ *
+ * ## Why this input did not exist until §13.81
+ *
+ * `DEFAULT_MAX_PROMPT_CHARS` is 24,000 and every run in this campaign used it, so every experiment
+ * traded truncation against room **inside** that budget. §13.80 found the trade's floor: at a
+ * 200-character cap the room reached 100 turns and MR fell to 29 of 121, because a 223-character
+ * mean turn is a fragment and the model declines from fragments. The only way past the floor is to
+ * raise the budget, and until this variable existed the arm could not express that.
+ *
+ * Absent means the product default, which is what every archived run used — so an artifact without
+ * this field is a run at 24,000 rather than an unrecorded budget.
+ */
+const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
+
+/**
  * Which routes the per-turn cap reaches: `all`, `none`, or a comma-separated list of route names.
  *
  * §13.72 measured one cap over every route and got `+13` on MR and `−30` on IE in the same run, so
@@ -567,6 +592,12 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
     relevanceUnits: readRelevanceUnits(env[RELEVANCE_UNITS_VARIABLE]),
     maxTurnCharsRoutes: readMaxTurnCharsRoutes(env[MAX_TURN_CHARS_ROUTES_VARIABLE]),
+    // Spread conditionally, because "the product default" is an absent field rather than a number
+    // this module would have to keep in step with `prompt.ts`.
+    ...(() => {
+      const budget = readMaxPromptChars(env[MAX_PROMPT_CHARS_VARIABLE]);
+      return budget === undefined ? {} : { maxPromptChars: budget };
+    })(),
     // Spread rather than assigned, because "no cap" is an absent field on this type rather
     // than an infinite one -- see `CortexMemoryArmOptions.maxTurnChars`.
     ...(() => {
@@ -994,6 +1025,30 @@ function readMaxTurnChars(raw: string | undefined): number | undefined {
 }
 
 /**
+ * Read the evidence budget, defaulting to the product's 24,000.
+ *
+ * ## Why a smaller budget is accepted but zero is not
+ *
+ * A run may legitimately want a smaller room — it is the cheapest way to test whether the room
+ * matters at all — so any positive integer is allowed. `0` is refused because the allocator would
+ * fail at its first step and every question would answer from no evidence while the artifact
+ * recorded a budget; that is a defect reading as a configuration, which is §7.4's failure mode.
+ */
+function readMaxPromptChars(raw: string | undefined): number | undefined {
+  const value = readNumeric(raw);
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${MAX_PROMPT_CHARS_VARIABLE} must be a positive integer or unset, got ` +
+        `${JSON.stringify(raw)}. The unit is UTF-16 code units of the whole prompt; a budget of 0 ` +
+        'leaves the allocator nothing to spend and every question answers from no evidence, while ' +
+        'the artifact would record a budget rather than a defect.',
+    );
+  }
+  return value;
+}
+
+/**
  * Read the routes the cap reaches: `all` (default), `none`, or a comma-separated list of names.
  *
  * ## Why three spellings rather than two
@@ -1155,6 +1210,9 @@ export function toMemoryArmConfig(
     // configured to every `!== undefined` check downstream and as pre-dating-the-field to a
     // reader of the JSON.
     ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
+    // §13.81. Absent means the product's 24,000, which is what every archived run used, so the
+    // absence is a fact about the run rather than a missing field.
+    ...(options.maxPromptChars === undefined ? {} : { maxPromptChars: options.maxPromptChars }),
     // §13.73. Always present, unlike the width: the reach is a statement about the run's intent
     // that survives the cap being absent, and a reader comparing two artifacts needs to see that
     // the second one reached two routes where the first reached six.

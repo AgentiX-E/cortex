@@ -290,6 +290,14 @@ export type MemoryArmConfig = {
    */
   readonly maxTurnChars?: number | undefined;
   /**
+   * The evidence budget in UTF-16 code units, or absent for the product default (24,000).
+   *
+   * Recorded because it is the one input that changes the room without changing any turn: §13.80
+   * showed the room cannot be bought by truncating, so a run that raises the budget and a run that
+   * lowers the cap are different experiments with the same coverage and different text.
+   */
+  readonly maxPromptChars?: number | undefined;
+  /**
    * The routes that cap reached. Every route when the run named none.
    *
    * Recorded even when `maxTurnChars` is absent, because the two answer different questions: the
@@ -698,6 +706,9 @@ export function formatAblationReport(report: AblationReport): string {
         // Omitted entirely by an artifact that predates the field, which is why the value is
         // spelled "none" here and the field is absent there.
         `, \`maxTurnChars=${memoryArm.maxTurnChars ?? 'none'}\`` +
+        // `default` rather than `none`: there is always a budget, and the absent state means the
+        // product's 24,000 -- the value every archived run used.
+        `, \`maxPromptChars=${memoryArm.maxPromptChars ?? 'default'}\`` +
         // The reach, rendered on every run beside the width and joined with `+` rather than a
         // comma: the line already separates fields with commas, so a comma inside a value would
         // make one field look like three.

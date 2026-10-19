@@ -128,6 +128,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_max_prompt_chars:
+        description: 'Evidence budget in UTF-16 code units: how many characters one prompt may hold (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.81). Empty = the product default of 24000, which is what every archived run used; a positive integer = that budget. This input did not exist until section 13.81 because every experiment traded truncation against room INSIDE 24000, and section 13.80 found that trade floor: at a 200-character cap the room reached 100 turns and MR fell to 29 of 121, with 42 abstentions at a median coverage of 86.1 percent -- a 223-character mean turn is a fragment and the model declines from fragments. Raising the budget buys the same room with no additional truncation, which no smaller cap can do. A budget of 0 is REJECTED rather than clamped, because the allocator would fail at its first step and every question would answer from no evidence while the artifact recorded a budget'
+        required: false
+        default: ''
+        type: string
       cortex_memory_max_turn_chars_routes:
         description: 'Which routes the per-turn cap reaches (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.73): empty or all = every route, which is what section 13.68 shipped and what run 39180819474 measured; none = a cap that reaches nothing; a comma-separated list of multi-session, temporal, flat, knowledge-update, abstention, assistant = exactly those. Section 13.72 is why this is a separate variable rather than a different width: one cap over every route produced +13 on MR and -30 on IE in the same run, and the loss is not a matter of degree -- IE thirty lost questions went correct to abstention at a MEDIAN COVERAGE OF 100%, so the model was given complete evidence and withdrew forty-two times instead of fifteen, because the flat route never received the conditional closing line and seventy-three turns of noise give its unconditional decline more chances to be true. No smaller cap turns a complete window into a partial one on a question that needs one turn, so a width sweep would find a compromise between two capabilities rather than a setting that is right for both. The reach is the campaign own pattern for route-varying behaviour (renderingRoutes, askRoutes): an explicit list, recorded in the artifact, with the untouched routes byte-identical to their-control. An unrecognised route name is REJECTED rather than ignored, because a run that applied the cap to five of six routes would report every number consistent with having applied it to six'
         required: false
@@ -335,6 +340,9 @@ jobs:
           # section 13.68 shipped; the arm also accepts `all` and `none`, and rejects any name it
           # does not know rather than ignoring it.
           CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: ${{ github.event.inputs.cortex_memory_max_turn_chars_routes }}
+          # Section 13.81's budget. Blank means the product's 24000; the arm rejects 0 rather than
+          # reading it as "unset".
+          CORTEX_MEMORY_MAX_PROMPT_CHARS: ${{ github.event.inputs.cortex_memory_max_prompt_chars }}
           # The per-pass ceiling, passed the same way. Blank means no ceiling, and the
           # arm rejects a non-positive one rather than reading it as "unset".
           CORTEX_MEMORY_BUDGET_MINUTES: ${{ github.event.inputs.cortex_memory_budget_minutes }}

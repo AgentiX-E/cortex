@@ -3067,3 +3067,69 @@ describe('the per-turn cap reach', () => {
     expect(line).toContain('maxTurnCharsRoutes=all');
   });
 });
+
+/**
+ * The evidence budget, which no run in this campaign has ever moved.
+ *
+ * Every experiment has traded truncation against room *inside* 24,000 characters, because
+ * `DEFAULT_MAX_PROMPT_CHARS` says so and the arm had no input for it. §13.80 showed the trade has a
+ * floor — at a 200-character cap the room reached 100 turns and MR fell to 29 of 121 — so the only
+ * way past it is to raise the budget itself.
+ */
+describe('the evidence budget', () => {
+  it('is absent by default, so every archived run keeps the product default', () => {
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).maxPromptChars).toBeUndefined();
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_PROMPT_CHARS: '' })
+        .maxPromptChars,
+    ).toBeUndefined();
+  });
+
+  it('accepts a doubled budget and reports it', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_PROMPT_CHARS: '48000' })
+        .maxPromptChars,
+    ).toBe(48000);
+  });
+
+  it('rejects a budget that cannot hold a prompt', () => {
+    // `0` would make every prompt fail the allocator's first step and answer from no evidence at
+    // all, while the artifact recorded a budget rather than a defect.
+    for (const bad of ['0', '-1', 'abc', '1.5']) {
+      expect(() =>
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_PROMPT_CHARS: bad }),
+      ).toThrow(/CORTEX_MEMORY_MAX_PROMPT_CHARS/);
+    }
+  });
+
+  it('projects the budget into the config and onto the line', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_MAX_PROMPT_CHARS: '48000',
+    });
+    expect(toMemoryArmConfig(options).maxPromptChars).toBe(48000);
+
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(options),
+    });
+    expect(line).toContain('maxPromptChars=48000');
+
+    const inherited = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+    // `default`, not `none`: there is always a budget, and the absent state means the product's.
+    expect(inherited).toContain('maxPromptChars=default');
+  });
+});

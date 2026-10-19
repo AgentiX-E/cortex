@@ -701,6 +701,11 @@ forwarded into a step's `env`. Three injections were run against it:
   expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
   fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
   overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
+* `maxPromptChars: 24000` — **the evidence budget, registered by §13.81** at the product default every
+  archived run used. It is written down because §13.80 showed the room cannot be bought by truncating: at a
+  200-character cap the room reached 100 turns and MR fell to 29 of 121. The budget is the only lever that
+  grows the room without touching a turn, and a value a run depends on should not live in another package's
+  constant.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -9691,3 +9696,128 @@ next experiment expressible at all — a room of 121 turns is only meaningful wi
   rather than the cap, and the band table would have to be re-read on the new run's own bands.
 - **1 fails**: turning 65% of turns into 200-character stumps destroys more than the extra turns deliver, and the
   400-character cap from §13.76 is the right one — a result the registration makes visible instead of arguable.
+
+## 13.80 A 200-character cap buys the room and destroys the reading: coverage 80.9%, accuracy 29/121
+
+### 13.80.1 The reading
+
+Run `39243030337`, 1h56m02s, `drift` 500/500, `maxTurnChars=200` on the two routes with the rest at §10.3.
+
+| # | registered (§13.79.4) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's delivered share 72.9% → **≥ 79%** | **80.9%** (2963 of 3663) | **met** |
+| **2** | MR's correct 78 → **≥ 81** | **29** | **falsified**, by 52 |
+| **3** | roster 394 → **≥ 397** | **302** | **falsified** |
+| **4** | TR ≥ 84 | **48** | **falsified** |
+
+The room grew exactly as the arithmetic said: **68 → 100 turns** for MR, 72 → 106 for TR, `promptChars` still
+22,248 of 24,000. Coverage rose 8 points. And accuracy collapsed.
+
+### 13.80.2 The mechanism is abstention, and the band table is what names it
+
+MR's failure taxonomy: **abstention 42** (was 11), `numeric_mismatch` 40, other 10 — 29 correct out of 121. The
+declines' median coverage is **86.1%**: the evidence is in the window and the model declines anyway.
+
+More decisive is what happened to §13.79.3's step:
+
+| coverage band | §13.79 (cap 400) | §13.80 (cap 200) |
+| --- | --- | --- |
+| 0–50% | 50.0% | **18.2%** |
+| 50–70% | 50.0% | **17.6%** |
+| 70–85% | 50.0% | **15.0%** |
+| 85–95% | 81.0% | **25.0%** |
+| 95–100% | 86.7% | **31.7%** |
+
+The step **is gone at every band**, including the top one where coverage is complete. So the previous section's
+reading was right about the shape and wrong about what it was made of: the step is a property of turns that are
+**whole enough to read**, and a 200-character cap is below that threshold. At 200 characters the mean delivered
+turn is 223 characters — a fragment — and the model does not answer from fragments.
+
+### 13.80.3 What this buys, stated as a negative result worth keeping
+
+- **The room cannot be bought with truncation.** 65.5% of MR's turns were cut, and the model's response was to
+  decline on 42 of 121 questions at 86% coverage. Any future width below 400 has this result as its prior.
+- **A step function is conditional on evidence quality.** §13.79.3's 50% → 81% step was measured at 400
+  characters and does not survive a change to the text. Repeating the band table on a new run is now a required
+  step rather than an optional one, because the same numbers mean different things at different widths.
+- **Prediction 1 was met while the run was a disaster.** Coverage is a property of the *selection*; accuracy is a
+  property of what the selection was worth. The registration separated them (§13.79.4 said "1 is the mechanism,
+  2 and 3 are the money") and the separation is what made the failure legible in one reading.
+
+### 13.80.4 The knob that has never been touched
+
+The evidence room is **24,000 characters** because `DEFAULT_MAX_PROMPT_CHARS` says so, and no run in this
+campaign has moved it — every experiment has traded truncation against room *inside* that budget. §13.80 shows
+the trade has a floor at 400; the only way past it is to **raise the budget**.
+
+At 400 characters a 48,000-character room holds ≈ 136 turns, which is past the median unreachable rank of 114
+and past the 128 band's midpoint — with **no additional truncation at all**. That is §13.81.
+
+### 13.80.5 Verification
+
+- `drift` 500/500, zero answers differing; config line confirms `maxTurnChars=200` and `relevanceTopK=256`.
+- The three untouched capabilities held as §13.75 requires: IE 29.5 turns, KU 27.0, ABS 33.5 — the cap reached
+  two routes and the measurement says so on a run that otherwise went badly, which is when a reach check is worth
+  having.
+- §13.76's adopted configuration is **restored** as part of §13.81's registration: cap 400, reach two routes.
+
+## 13.81 The room has to be bought with budget: 48,000 characters at the 400-character cap
+
+### 13.81.1 Why this is the only lever left
+
+§13.80 closed two of the three ways to grow the room:
+
+| lever | measured outcome |
+| --- | --- |
+| lower the cap to 200 | room 68 → 100, coverage 80.9%, accuracy **29/121**, 42 abstentions at 86% median coverage |
+| widen the pool | 64 → 256 done (§13.79); `never surfaced` 5.0%, delivery unchanged at 72.9% |
+| **raise the budget** | **never tried — the arm had no input for it until this section** |
+
+And the third is the one that does not touch a single turn. At 400 characters the delivered turns pack at
+**327 characters each** (§13.80's room of 68 in 22,248 characters), so a 48,000-character budget holds
+**≈ 146 turns** — past the median unreachable rank of **114** and past the whole 64–127 band.
+
+### 13.81.2 The registration
+
+**One variable**: `maxPromptChars: 48000`, with everything else restored to §10.3 — `maxTurnChars: 400` on
+`multi-session,temporal`, `relevanceTopK: 256`, `retrieval-hybrid`, both thresholds `0`.
+
+Geometry from this campaign's own rank table: gold at rank < 146 is 73.2% + 11.9% + (18/128)·9.7% ≈ **86.4%**;
+the same estimator over-predicted the last two runs by 2–3 points, so the calibrated expectation is **≈ 83–84%**
+delivered on MR.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **MR's delivered share rises from 72.9% to ≥ 83%** | < 83% |
+| **2** | **MR's correct count rises from 78 to ≥ 86** — §13.79.3's step says the questions pushed past 85% coverage are worth 31 points each, and ~40 cross it | ≤ 85 |
+| **3** | **The roster rises from 394 to ≥ 402** | ≤ 394 |
+| **4** | **TR rises from 89 to ≥ 94** | ≤ 89 |
+
+**The price, in the unit that actually pays it**: the prompt roughly doubles in characters, so each pass costs
+about twice the input tokens and takes longer. The per-pass ceiling is 90 minutes and the last four runs used
+103–116 minutes for **four** passes, i.e. ~26–29 minutes each — a doubled prompt puts a pass near 50, which is
+inside the ceiling but is the first run where the ceiling is worth watching. If it fires, that is a cost reading,
+not a falsification of any prediction above.
+
+### 13.81.3 What each outcome would mean
+
+- **1 and 2 hold**: the room is the lever and the budget is how to buy it; the next question is how much further
+  it goes before the model's attention degrades — the same shape as §13.80 but from the other side.
+- **1 holds and 2 does not**: coverage crosses the step and accuracy does not, which would mean §13.79.3's step
+  was a property of *that* run's evidence rather than of coverage — and the band table would have to be rebuilt
+  on the new run before anything else is concluded.
+- **1 fails**: the room does not grow as the character arithmetic says, which would point at the allocator rather
+  than at the data — `fitToBudget` spends the budget in priority order and a doubled budget is the first case
+  where the instruction block's share becomes small enough to check.
+
+### 13.81.4 Why the arm had no such input, and what that says
+
+`DEFAULT_MAX_PROMPT_CHARS` is 24,000 and §13.15's byte-compatibility guarantee is built on it: every archived
+prompt was assembled under that constant, and moving it changes the rendering of every question. That is why the
+arm never exposed it — the option existed on `CortexMemoryOptions` and nowhere in the benchmark plumbing, so no
+dispatch could have reached it.
+
+The cost of that omission is now measurable: **twelve sections** of experiments traded truncation against room
+inside 24,000 characters, and the one lever that does not destroy text was unreachable. The input added here is
+the same shape as every other one — read, reject a value that cannot work, project it into the config, print it
+on the line — and it is registered at 24,000 so that a run which does not name it is still on the record.
