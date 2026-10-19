@@ -37,6 +37,7 @@ Usage:
     python3 tools/readout-arm-run.py --pool path/to/report.json
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
+    python3 tools/readout-arm-run.py --window path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
 """
 
@@ -920,6 +921,107 @@ def turns_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(rosters)
 
 
+# The prompt budget the arm assembles under, in UTF-16 code units.
+#
+# `DEFAULT_MAX_PROMPT_CHARS` in `packages/cortex-memory/src/prompt.ts`, restated here because
+# this tool reads a JSON artifact and cannot import TypeScript. It is asserted in that
+# package's tests, so the copy cannot drift silently: a change there fails a test there, and
+# this constant would then disagree with the artifacts it is used to describe -- which is the
+# state the fill share exists to make visible, not to hide.
+PROMPT_BUDGET_CHARS = 24_000
+
+
+def window_section(questions: list[dict]) -> tuple[str, int]:
+    """How many turns the prompt held, and how much of the budget they spent.
+
+    ## The two readings a coverage number cannot separate
+
+    A per-turn cap can raise coverage because the room now holds more turns, or it can raise
+    nothing because the roster already fitted and the cap only shortened turns that were not
+    the constraint. `--coverage` reports the outcome; this reports the mechanism, and the two
+    only mean something together (§13.68's prediction 1 is the outcome, this table is why).
+
+    ## Why medians and not means
+
+    The artifacts are skewed: a question carrying one 15,369-character turn and one carrying
+    twenty short ones are both real, and means over them describe a prompt nobody sent. Median
+    turns, median characters, and the median turn length are each a statement about the
+    typical question -- and the per-capability split exists because §13.66 measured that the
+    capabilities differ by more than one standard error.
+
+    ## Why a missing `promptChars` refuses rather than counting as zero
+
+    Zero would read as "this prompt spent none of its budget", which is a measurement. The
+    field's absence means either that the artifact predates it or that the route assembled no
+    prompt, and neither is a fill of 0%.
+    """
+    by_capability: dict[str, list[tuple[int, int]]] = {}
+    without = 0
+    for question in questions:
+        turns = question.get('turns')
+        chars = question.get('promptChars')
+        if not isinstance(turns, list):
+            continue
+        if not isinstance(chars, int):
+            without += 1
+            continue
+        by_capability.setdefault(str(question.get('capability', '?')), []).append(
+            (len(turns), chars)
+        )
+
+    if not by_capability:
+        return '', 0
+
+    def median(values: list[int]) -> float:
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        if len(ordered) % 2:
+            return float(ordered[middle])
+        return (ordered[middle - 1] + ordered[middle]) / 2
+
+    lines = ['', 'what the prompt window held (turns carried, characters spent)']
+    lines.append(
+        f'  {"capability":<10}{"n":>5}{"turns":>8}{"chars":>9}{"chars/turn":>12}{"budget":>9}'
+    )
+    def per_turn(rows: list[tuple[int, int]]) -> float:
+        """Median of each question's own chars-per-turn, not the ratio of the two medians.
+
+        The difference is not pedantry: dividing the median characters by the median turns
+        answers "what would a median prompt spend on a median count", which no single question
+        is. The median of the per-question ratios answers "how long is a typical turn in the
+        prompt", which is the quantity a per-turn cap acts on.
+        """
+        return median([int(chars / turns) for turns, chars in rows if turns > 0])
+
+    for capability in sorted(by_capability):
+        rows = by_capability[capability]
+        turns = median([row[0] for row in rows])
+        chars = median([row[1] for row in rows])
+        fill = chars / PROMPT_BUDGET_CHARS
+        lines.append(
+            f'  {capability:<10}{len(rows):>5}{turns:>8.1f}{chars:>9.0f}'
+            f'{per_turn(rows):>12.0f}{fill:>8.1%}'
+        )
+    every = [row for rows in by_capability.values() for row in rows]
+    turns = median([row[0] for row in every])
+    chars = median([row[1] for row in every])
+    fill = chars / PROMPT_BUDGET_CHARS
+    lines.append(
+        f'  {"TOTAL":<10}{len(every):>5}{turns:>8.1f}{chars:>9.0f}'
+        f'{per_turn(every):>12.0f}{fill:>8.1%}'
+    )
+    lines.append(
+        f'  medians, and "budget" is the share of {PROMPT_BUDGET_CHARS} characters used: a '
+        'prompt near 100% is at the cut, which is the state a per-turn cap changes.'
+    )
+    if without:
+        lines.append(
+            f'  {without} record(s) without promptChars: the artifact predates the field, or '
+            'the route assembled no prompt -- not a fill of zero'
+        )
+    return '\n'.join(lines), len(every)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -952,6 +1054,11 @@ def main(argv: list[str]) -> int:
         '--pool',
         action='store_true',
         help='print where the gold went: never surfaced, cut by the budget, delivered',
+    )
+    parser.add_argument(
+        '--window',
+        action='store_true',
+        help='print how many turns the prompt held and how much of the budget they spent',
     )
     parser.add_argument(
         '--turns',
@@ -1021,6 +1128,17 @@ def main(argv: list[str]) -> int:
             section, _ = paired_section(questions, before_questions)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.window:
+        section, measured = window_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries both turns and promptChars.',
+                file=sys.stderr,
+            )
             return 2
         print(section)
         return 0

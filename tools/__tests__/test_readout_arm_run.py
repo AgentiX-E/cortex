@@ -867,3 +867,74 @@ class TestTheTurnLengthDistribution:
         r = self._run(tmp_path, report)
         assert r.returncode == 2
         assert 'turn' in r.stderr
+
+
+class TestHowMuchTheWindowActuallyHeld:
+    """The instrument §13.68's variable is read with, beside coverage.
+
+    A cap can raise coverage for a reason the coverage number cannot name: the room holds more
+    turns, so the gold turn that used to be cut now arrives. Or it can raise nothing, because
+    the roster already fitted and the cap only shortened turns that were not the constraint.
+
+    Those two are distinguished by one table -- turns carried, prompt characters, and the share
+    of the budget spent -- and this run is the first where the arm's own artifact can produce
+    it. `promptChars` was recorded from §13.11 onward for a different question (how much of the
+    budget a prompt used); the count beside it is what turns it into a window measurement.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, int, int]]) -> dict:
+        """(capability, carriedTurns, promptChars) -> a report with one question per row."""
+        questions = [
+            {
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+                'turns': [{'index': i, 'text': 'x' * 100} for i in range(carried)],
+                'promptChars': chars,
+            }
+            for index, (capability, carried, chars) in enumerate(rows)
+        ]
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--window', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_reports_turns_carried_beside_the_characters_they_spent(self, tmp_path: Path) -> None:
+        report = self._report([('MR', 26, 21_000), ('MR', 30, 23_000)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'turns' in r.stdout
+        # The median of 26 and 30, and the median of the two character counts -- a table that
+        # reported means would be answering a different question about a skewed distribution.
+        assert '28' in r.stdout
+
+    def test_it_reports_the_share_of_the_budget_the_prompt_used(self, tmp_path: Path) -> None:
+        # The number that says whether the room was the constraint: 21,000 of 24,000 is 87.5%.
+        report = self._report([('MR', 26, 21_000)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '87.5%' in r.stdout
+
+    def test_a_record_without_prompt_chars_is_counted_as_unmeasured(self, tmp_path: Path) -> None:
+        # An artifact produced before the field existed, or by a route that does not assemble a
+        # prompt, must not be summed as zero: a 0% fill would read as an empty prompt.
+        report = self._report([('MR', 26, 21_000)])
+        del report['questions'][0]['promptChars']
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'promptChars' in r.stderr

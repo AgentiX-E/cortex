@@ -8795,3 +8795,77 @@ does the same job for the artifact.
   `--set cortex_memory_relevance=retrieval`, which is what a re-measurement of that comparison would use.
 - The dispatch table now sends what §10.3 registers for every concept, and the test that says so can no longer be
   satisfied by a stale second statement.
+
+## 13.70 The window table, so the cap's mechanism is readable and not only its outcome
+
+### 13.70.1 What a coverage number cannot say
+
+§13.68 registered the cap on **coverage** (prediction 1: MR's delivered gold share 54.2% → ≥62%) and on
+**money** (prediction 2: MR correct 62 → ≥66). Both are outcomes. A cap can raise either for a reason neither
+number names — the room now holds more turns, so a gold turn that used to be cut arrives — or it can raise
+nothing because the roster already fitted and the cap only shortened turns that were not the constraint.
+
+The artifact has carried both halves since §13.11 without anyone putting them side by side: `promptChars` (what
+the assembled prompt spent) and `turns` (what it held). `--window` prints them together, per capability, as
+medians:
+
+| capability | n | turns | chars | chars/turn | budget |
+| --- | --- | --- | --- | --- | --- |
+| ABS | 30 | 33.5 | 22,768 | 687 | 94.9% |
+| IE | 150 | 29.5 | 23,050 | 763 | 96.0% |
+| KU | 72 | 27.0 | 22,638 | 822 | 94.3% |
+| **MR** | 121 | **23.0** | **21,657** | **947** | **90.2%** |
+| TR | 127 | 26.0 | 22,540 | 855 | 93.9% |
+| **TOTAL** | 500 | **26.0** | **22,406** | **842** | **93.4%** |
+
+Run `39116387165`, the control this variable is measured against.
+
+### 13.70.2 What the table says that §13.67 could not
+
+§13.67 measured the **delivered turns'** lengths across the whole roster: median 272 characters, p90 2,305. That
+is a statement about the corpus. This table is a statement about the **prompts**: the turns that actually reach
+the model average **842 characters** in a 24,000-character room, and the room is **93.4% spent**. So the cap is
+not acting on a hypothetical tail — it is acting on the population that fills the room, and there is almost no
+unused budget for it to compete with.
+
+For MR specifically: 23 turns at 947 characters. Under a 400-character cap the same 21,657 characters hold
+**≈ 53** turns, against a pool of 64 and the arm's 256-turn bound.
+
+### 13.70.3 A diagnostic expectation, labelled as one
+
+Before the run is read, and with the four registered predictions unchanged, the window table must show
+**MR's median turns rising from 23 toward 50**. That is a **diagnostic expectation, not a prediction**: it does
+not participate in accepting or rejecting the variable, it exists so that a run whose coverage moved without its
+window moving is visible as a contradiction rather than read as a result. §13.59 wrote the same distinction down
+after promoting a variable on a plausible reading.
+
+### 13.70.4 Why medians, and why the per-turn column is a median of ratios
+
+The artifacts are skewed — one question carries a 15,369-character turn and one carries twenty short statements
+— so a mean describes a prompt nobody sent. More subtly, the `chars/turn` column is the **median of each
+question's own ratio**, not the ratio of the two medians: the second answers "what would a median prompt spend on
+a median count", which no single question is, while the first answers "how long is a typical turn in the
+prompt", which is the quantity a cap acts on. The first draft used the ratio of medians and the difference was
+visible in MR (942 against 947), which is small here and would not have been for a capability with a wider
+spread.
+
+### 13.70.5 Verification
+
+- Three tests, red first: the turns-and-characters table, the budget share (a fixture at 21,000 of 24,000 is
+  87.5%), and a record without `promptChars` **refusing** with exit 2 rather than counting as a 0% fill — zero
+  would read as "this prompt spent none of its budget", which is a measurement rather than an absence.
+- `PROMPT_BUDGET_CHARS = 24_000` is a copy of `DEFAULT_MAX_PROMPT_CHARS`, and the copy is safe because that
+  constant is asserted in `cortex-memory`'s own tests: a change there fails a test there, and this tool would
+  then describe artifacts with the wrong denominator — which the printed share makes visible rather than hides.
+- `tools` **451 passed + 42 subtests**; `pnpm check` re-run before the readout is used to accept anything.
+
+### 13.70.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read run `39180819474` (cap 400 on the adopted hybrid baseline) against §13.68.6, with `--window` beside `--coverage` | yes, in flight |
+| **P0 (done)** | The window instrument, and the diagnostic expectation it makes checkable | no |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
+| P1 | The order function, now measurable per selection through `goldRanks` | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
