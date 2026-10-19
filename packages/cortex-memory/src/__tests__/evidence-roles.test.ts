@@ -170,6 +170,35 @@ describe('evidence roles', () => {
     expect(seen[0]).not.toContain(ASSISTANT_TURN);
   });
 
+  it('spends the session budget on the sessions the filter can use', async () => {
+    // The budget and the filter are two spenders of one room, and the order between them is a
+    // behaviour: if the budget selects first, it can spend the whole room on a session the filter
+    // then empties, and the question is declined with admissible evidence sitting in the next
+    // session. Found by this test, not by a run -- the registered configuration's session budget
+    // is unbounded, so the defect was latent rather than visible.
+    const seen: string[] = [];
+    const byRole: ValueFunction = (memory: MemoryValue) =>
+      memory.content.includes('assistant') ? 1 : 0.2;
+    const memory = new CortexMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: 1,
+        valueFunction: byRole,
+      },
+      evidenceRoles: ['user'],
+      evidenceRolesRoutes: ['multi-session'],
+      roleOf,
+    });
+
+    const answer = await memory.answerSessions('What do I need?', [[ASSISTANT_TURN], [USER_TURN]]);
+
+    expect(answer).not.toBeNull();
+    expect(seen[0]).toContain(USER_TURN);
+  });
+
   it('reports the filtered list as the offer, so the artifact describes what was shown', async () => {
     // The record's `retrieved` is the delivery and `admittedEvidence` is the offer. Both are
     // measured after the filter because both describe the evidence the reader could have been

@@ -636,12 +636,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
 
     if (admitted.length === 0) return this.#declinedEmpty();
 
+    // §13.83's filter runs **before** the budget, because both spend the same room. With the
+    // budget first, a session the filter would empty can win the whole budget on the strength of
+    // a turn the reader will never see, and the question is then declined with admissible
+    // evidence sitting in the session behind it. The registered configuration's session budget is
+    // unbounded, so this order was latent rather than visible -- `evidence-roles.test.ts` found it
+    // with a budget of one session and a value function that prefers the excluded turn.
+    const eligible = this.#sessionsForRoute(admitted, 'multi-session');
+    if (eligible.length === 0) return this.#declinedEmpty();
+
     // `selectSessionBudget` never returns empty for a non-empty input: when no
     // session fits the budget it admits the highest-value one anyway, because
     // answering from no evidence is worse than exceeding a prompt budget. An
     // earlier version carried a `selected.length === 0` guard here that no test
     // could reach, which is how the redundancy was found.
-    const selected = selectSessionBudget(admitted, this.#options.gate.sessionBudget);
+    const selected = selectSessionBudget(eligible, this.#options.gate.sessionBudget);
 
     // The boundary label is the reason this path exists. Flattening the
     // sessions here would reproduce exactly the behaviour of the flat path and
@@ -899,14 +908,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
-    // The filter runs per session, because this route's unit is the session: a session left
-    // with no turn loses its boundary with it, and a boundary with nothing behind it would be
-    // printed as a heading and paid for out of the evidence budget.
-    const keptSessions = this.#sessionsForRoute(sessions, 'multi-session');
-    if (keptSessions.length === 0) return this.#declinedEmpty();
     const assembled = buildSessionPrompt(
       question,
-      keptSessions,
+      sessions,
       // The multi-session route, named here rather than defaulted: this builder is the one
       // §13.72 measured at +13, so a default would make the measurement's route the one route
       // whose reach is never written down.
@@ -919,7 +923,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // admission produced, and `lastAdmittedEvidence` counts them in the record's own
     // unit.
     this.#recordEvidence(
-      keptSessions.flatMap((session) => session.turns),
+      sessions.flatMap((session) => session.turns),
       assembled,
     );
     return this.#consult(assembled.prompt);
