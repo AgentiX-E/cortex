@@ -679,9 +679,9 @@ forwarded into a step's `env`. Three injections were run against it:
   mechanism predictions were falsified** — the pool's reach did not improve — and §13.64.4
   records that the coverage instrument measures quantity while the effect moved *which*
   turn decides. A run with `relevanceSignal=retrieval` is the pre-§13.64 configuration.
-* `maxTurnChars: none` — **the adopted configuration carries no per-turn cap** (the global 400 that §13.68
-  implemented and §13.72 measured was **rejected as a default**: roster 357 against 371, union 80.20% against
-  87.40%, IE −30 while MR +13; §13.73 registers the route-scoped form as the next variable), and it is
+* `maxTurnChars: 400` — **adopted by §13.76.** The global form was rejected by §13.72 (roster 357 against 371,
+  union 80.20% against 87.40%, IE −30 while MR +13); the route-scoped form was registered by §13.73 and met all
+  five of its predictions in run `39205060432`: IE 135, MR 72, KU 59, TR 94, roster **389**. It is
   written down rather than omitted because §13.67 registered the cap as a variable and
   §13.68 implemented it. `none` means each turn contributes its whole text, which is what
   every archived run did; `400` is the registered treatment under measurement. Absent,
@@ -690,11 +690,13 @@ forwarded into a step's `env`. Three injections were run against it:
   default. §13.67.1 is why the variable exists at all: the evidence room is spent on a
   **tail** of long turns (median 272 characters, p90 2,305) rather than on turns, so the cut
   that decides coverage falls at rank 26 of a 64-wide pool.
-* `maxTurnCharsRoutes: all` — **the adopted reach is every route**, registered by §13.73 and written
-  down for the reason the width is: the pair of `maxTurnChars` (no cap) and this field is the
-  state every archived run was produced under, and a reach that reached five routes while the artifact
-  said six is the one failure no number in the run could show. The accepted spellings are `all`,
-  `none` and a comma-separated list of the six route names; anything else is rejected.
+* `maxTurnCharsRoutes: multi-session,temporal` — **adopted by §13.76 with the width above.** The two routes
+  whose questions need cross-turn evidence, and the only two where the cap has been measured twice above the
+  control (MR 75 then 72 against 62; TR 92 then 94 against 85). The three untouched capabilities reproduce their
+  control's window **to the turn**, which is the check §13.75 registered before the run existed. The accepted
+  spellings are `all`, `none` and a comma-separated list of the six route names; anything else is rejected, and
+  a reach that reached five routes while the artifact said six is the one failure no number in the run could
+  show.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -9361,3 +9363,116 @@ It exists so that the first thing read from the artifact is the thing that canno
 window on the four untouched capabilities. If IE's turn count moves, the run has measured something other than
 what it registered, and every capability number in it becomes a statement about an unknown configuration — which
 is §13.69's failure mode, caught this time before publication rather than after.
+
+## 13.76 The reach is adopted: five predictions met, and the IE collapse reverses
+
+### 13.76.1 The reading
+
+Run `39205060432`, 1h49m29s, `drift` 500/500 with zero answers differing, config line
+`maxTurnChars=400 maxTurnCharsRoutes=multi-session+temporal`, everything else at §10.3.
+
+| # | registered (§13.73.3) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | IE ≥ **130** of 150 | **135** | **met** — and above the control's 133 |
+| **2** | MR ≥ **70** | **72** | **met** |
+| **3** | KU ≥ **58** | **59** | **met** |
+| **4** | TR ≥ **80** | **94** | **met**, +9 over the control |
+| **5** | roster ≥ **378** | **389** | **met**, +18 over the control |
+
+**Roster 389/500 = 77.80%**, the campaign's best by 14 questions; registered delta **+32.95pp**, also the best;
+union **439/500 = 87.80%**, above the previous high of 437.
+
+### 13.76.2 The check that had to come first, and it came out exact
+
+§13.75 registered the reach's cheapest falsifier: the three untouched capabilities must reproduce their control
+**to the turn**, because the window is a property of the prompt and not of the model.
+
+| capability | control turns / chars | this run | |
+| --- | --- | --- | --- |
+| IE | 29.5 / 23,050 | **29.5 / 23,050** | identical |
+| KU | 27.0 / 22,638 | **27.0 / 22,638** | identical |
+| ABS | 33.5 / 22,768 | **33.5 / 22,768** | identical |
+| MR | 23.0 / 21,657 | 68.0 / 22,149 | capped |
+| TR | 26.0 / 22,540 | 72.0 / 23,112 | capped |
+
+Three identical windows is the strongest statement available that the reach did what its name says, and it was
+made before any accuracy number was read.
+
+### 13.76.3 The reversal, which is stronger evidence than the original effect
+
+§13.72's run capped every route and IE's declines went **15 → 42**, losing thirty questions to
+`correct → abstention` at a median coverage of 100%. This run removes the flat route from the reach and IE's
+declines go **15 → 13**, with its accuracy **133 → 135**.
+
+| | control | cap on all six | cap on two |
+| --- | --- | --- | --- |
+| IE correct | 133 | **103** | **135** |
+| IE declines | 15 | **42** | **13** |
+| MR correct | 62 | 75 | **72** |
+| MR declines | 18 | 10 | **11** |
+| TR correct | 85 | 92 | **94** |
+| TR declines | 25 | 26 | **24** |
+| KU correct | 61 | 57 | **59** |
+| ABS correct | 30 | 30 | 29 |
+| **roster** | **371** | **357** | **389** |
+
+A correlation can be explained by a third variable; a **reversal** of the same quantity in the same direction
+twice cannot. The cap on the flat route caused the decline spike, and taking it off removed it.
+
+### 13.76.4 What the two runs of the capped routes now say together
+
+MR and TR have each been measured at this cap twice — once with every route capped, once with two:
+
+| | control | cap, all routes | cap, two routes |
+| --- | --- | --- | --- |
+| MR | 62 | 75 | 72 |
+| TR | 85 | 92 | 94 |
+
+Both are above the control in **both** draws, and the two draws bracket each other within their noise. That is
+2-of-2 on each route, which is the strongest claim this campaign can make without repetitions on the same
+configuration — and it is what adopts TR's inclusion, which §13.73.2 labelled "the one judgement in the table"
+and justified on shape rather than on its +7.
+
+### 13.76.5 Adopted, and what the adoption does not claim
+
+**Adopted**: `maxTurnChars: 400` with `maxTurnCharsRoutes: multi-session,temporal`. Both move into §10.3 and into
+the dispatch table, so a future run that forgets the reach would be caught by
+`test_preregistration_config.py` rather than by a reader.
+
+Not claimed:
+
+- **Not** that the numbers are the *best* setting. 400 was registered by §13.67 from the turn-length
+  distribution and has now been measured twice; nothing here says 300 or 600 is worse.
+- **Not** that TR is settled. Its own cross-draw rate is 15 questions of 127, and two draws above the control is
+  evidence of a sign, not of a magnitude.
+- **Not** that ABS's 30 → 29 is a cost. ABS's prompt is byte-identical to the control's (33.5 turns, 22,768
+  characters), so its one lost question is model sampling and nothing else — and the same reading makes IE's
+  133 → 135 and KU's 61 → 59 sampling too. The +18 is MR **+10** and TR **+9** with the untouched three at −1
+  between them.
+- **Not** that the union is the SOTA line. 439/500 = 87.80% is what the two sides together can already do, and it
+  belongs to no single system.
+
+### 13.76.6 What this leaves, and in what order
+
+The remaining gap is **50 questions**: MR 35, TR 14, and ABS 1. MR is 70% of it, and MR's failure taxonomy is now
+`numeric_mismatch 33`, `abstention 11`, `long_prose 1` — 45 wrong answers of which three quarters are a number
+that is not the gold number.
+
+That is §13.59's finding, on the largest window the arm has ever had, and §13.70.8 predicted it in advance: *the
+same change that puts more gold in the window also makes the counting task harder, and a rise in
+`numeric_mismatch` is the expected companion of a longer list rather than evidence against the cap*. It rose
+31 → 33 while coverage rose 42.5% → 72.2%, exactly as registered.
+
+So the next variable is **MR's arithmetic**, and for the first time it is not competing with a retrieval
+question: the window holds 72.2% of MR's gold, the pool's own ceiling is 71.9%, and the room now reaches past the
+pool. There is nothing left to retrieve that the ranking could find.
+
+### 13.76.7 Verification and status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | MR's 33 `numeric_mismatch` on a 72.2%-coverage window (§13.59's 11 short-list counts, re-measured) | yes |
+| **P0 (done)** | The reach: five predictions met, IE's collapse reversed, adopted into §10.3 | — |
+| **P1** | The 11 MR abstentions that remain — with 72.2% coverage, why does the model still decline on ten? | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
