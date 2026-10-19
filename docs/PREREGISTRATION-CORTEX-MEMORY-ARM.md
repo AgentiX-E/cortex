@@ -8894,3 +8894,24 @@ stated before the numbers arrive:
   population rather than on an edge case. Prediction 4 is what keeps that honest: if IE or KU falls outside its
   own measured rate while MR rises, the run has bought coverage with capability, and §13.68.7 says that needs its
   own argument rather than an adoption.
+
+### 13.70.8 An interaction this variable creates, named before the run
+
+The cap does not only move the cut. It also **lengthens the list the enumeration contract asks the model to
+write**: MR's window goes from 23 turns to roughly 53, and under `ask: enumerated` every one of them has to be
+considered for Step 1. So the same change that puts more gold in the window also makes the counting task harder,
+and §13.59 measured that MR's failures are already of that kind — 14 of 27 numeric failures answer exactly the
+number of items they listed, 10 of those off by exactly one.
+
+Two consequences, both stated before the numbers:
+
+- **Prediction 1 and prediction 2 can dissociate in a way that is not a failure of either.** Coverage is about
+  what arrived; the correct count is about what the model did with it. A run reading *coverage 62%, correct 63*
+  would say the window grew and the reader did not improve — which is §13.59's finding restated on a bigger
+  window, and would move the next variable to the arithmetic without contradicting anything here.
+- **A rise in `numeric_mismatch` is therefore not evidence against the cap.** It is the expected companion of a
+  longer list. §13.61's cost accounting made the same distinction when the closing line moved: the cost appeared
+  as `numeric_mismatch` and was counted as the price rather than as a refutation.
+
+This is written down now because it is the explanation that would otherwise be available after the fact, and an
+explanation available only after the fact is not a measurement.
