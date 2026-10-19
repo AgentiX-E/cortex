@@ -9526,3 +9526,70 @@ their ranks were never computed.
 
 That is the instrument gap §13.78 closes, and it is the reason the next run is a **diagnostic** rather than a
 test of a hypothesis.
+
+## 13.78 Widening the pool is a different experiment now, and its purpose is a rank the campaign has never seen
+
+### 13.78.1 Why this is not §13.54 again
+
+§13.54 dispatched `relevanceTopK: 256` and read it as a refutation: coverage did not rise, MR's declines rose by
+4, TR's coverage fell 39.7% → 32.8%. The mechanism was clear in hindsight and is recorded in §13.66: with a
+**26-turn room** and a 64-wide pool, the extra 192 candidates could not enter the window at all, so widening the
+pool changed nothing except which floor-scored turns happened to occupy the last few slots.
+
+That mechanism is gone. The room now holds **68** turns (§13.76.2) and the pool is **64**, so:
+
+- every ranked candidate fits, and the selection already spills into unscored turns (12 gold turns arrived
+  "beyond the pool");
+- **the pool has become the cut** — §13.77.2's measurement that 100 of 105 MR questions have no excluded gold
+  turn is a statement about the pool's width, not about the room.
+
+So the same input value is a different experiment, and §4's no-redraw rule is about not re-running a hypothesis
+that was refuted *under the configuration it was refuted in*. The configuration changed by measurement, not by
+argument.
+
+### 13.78.2 What the run is actually for
+
+`goldRanks` records `-1` for a gold turn the ranking never surfaced, and **`-1` is not a distance**. The two
+readings it conflates need opposite repairs:
+
+| if the missing gold sits at rank … | the repair is |
+| --- | --- |
+| 65–90 | a wider pool — a knob |
+| 300–900 | a better ranker — a research problem |
+
+At `k = 64` the artifact cannot tell them apart for the 28% of MR's gold that never surfaces. At `k = 256` every
+gold turn up to rank 255 gets a **number**, which means the question "how far away is the gold we cannot reach"
+becomes answerable once, for the whole arm, instead of being argued from medians.
+
+### 13.78.3 Registration
+
+**One variable**: `relevanceTopK: 256`, everything else at §10.3 — including the adopted `maxTurnChars: 400` with
+`maxTurnCharsRoutes: multi-session,temporal`, `relevanceSignal: retrieval-hybrid`, and both thresholds at 0.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **`never surfaced` falls**: MR's share of gold the ranker does not surface drops from **28.1%** to **≤ 22%** | > 28.1% |
+| **2** | **Delivery barely moves**: MR's delivered share changes by **≤ 5 points** in either direction (the room holds 68 of 256, so a wider pool mostly re-orders the same 68) | outside ±5 |
+| **3** | **The instrument is otherwise inert**: roster within **±6** of 389 | outside |
+| **4** | **The measurement, not a prediction**: the median true rank of the gold turns that `k = 64` could not surface — reported as a number for the first time | n/a |
+
+Prediction 1 is the mechanism ("a wider pool surfaces more"), prediction 2 is its **ceiling** and is why this is
+not expected to be an accuracy win, 3 is the instrument's neutrality, and 4 is the point of the run.
+
+### 13.78.4 What each outcome would mean
+
+- **1 and 2 hold, and the median rank is 65–90**: the missing gold is a near miss, a wider pool is the lever, and
+  §13.54's refutation is narrowed to "a wide pool is useless when the room is narrow" — which is a better
+  statement than the one it replaced.
+- **1 holds and the median rank is 300+**: the ranker cannot reach its own gold, the pool width is irrelevant, and
+  the next variable is the ranker — a research problem, registered separately.
+- **1 fails**: the extra 192 candidates are worse than the floor-scored turns they displace, which would say the
+  ranking's tail is noise and that 64 is already generous.
+
+### 13.78.5 Cost, stated because it is the one thing that can go wrong
+
+Scoring 256 candidates per question is four times the pairs of 64 (32,000 → 128,000 over the dataset). The index
+build is a separate phase from the passes and is bounded by the same 90-minute per-pass ceiling; on the
+`39116387165` run the build logged 32,000 pairs in well under a minute, so four times that is still small against
+a 100-minute pass. If the build does dominate, the artifact's own timings say so rather than the run failing
+silently.
