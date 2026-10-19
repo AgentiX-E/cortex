@@ -9019,3 +9019,14 @@ python3 tools/readout-arm-run.py --coverage <artifact> # medians by band: the sh
 Both are printed, and §13.71's correction exists because the second was used to write down a target for the first.
 This costs nothing to state and is the only way the sentence "coverage rose" can be checked by a reader who has
 the tool rather than the prose.
+
+### 13.71.7 Which readout shows the cap, and which deliberately does not
+
+`--turns` reports the lengths of the **roster's** turns, and §13.68.2 keeps that roster uncapped on purpose — a
+truncated roster would fail to match the gold turns it delivered, because `goldOverlap` compares by text. So
+`--turns` on a capped run will look **unchanged**, and that is the instrument working rather than the cap
+failing.
+
+What changes is `--window`: the turn **count** rises while `promptChars` stays at the budget, which is what
+"more turns in the same room" means. A reader who saw `--turns` unchanged and concluded the cap was inert would
+be reading the corpus measure and expecting it to describe a prompt.
