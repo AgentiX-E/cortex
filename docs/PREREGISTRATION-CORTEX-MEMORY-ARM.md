@@ -9315,3 +9315,49 @@ capability's own rate beside its bound. The dispatch overrides two inputs and ho
 | **P1** | MR's 31 `numeric_mismatch` (11 counting their own short list) — untouched by the cap, as §13.70.8 said | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+## 13.75 What the window table has to show for the reach to be what the run claims
+
+### 13.75.1 The claim that is easy to assert and hard to check
+
+The registration says the cap reaches **two** routes. The artifact will say so on its config line
+(`maxTurnCharsRoutes=multi-session+temporal`), and a config line is a claim about intent — §13.69 exists because
+one of those claims was wrong while every assertion passed.
+
+The reach is falsifiable from the artifact without any new instrument, because `--window` reports turns carried
+and characters spent **per capability**, and the four uncapped capabilities must reproduce their control:
+
+| capability | route | expected under the reach |
+| --- | --- | --- |
+| MR | multi-session | turns 23 → ~53–68, coverage 42.5% → rising |
+| TR | temporal | turns 26 → ~53–68, coverage 43.6% → rising |
+| IE | flat | **unchanged**: 29.5 turns, 23,050 chars |
+| KU | knowledge-update | **unchanged**: 27.0 turns, 22,638 chars |
+| ABS | abstention | **unchanged**: 33.5 turns, 22,768 chars |
+
+A reach that leaked would show up as a moved turn count on IE, KU or ABS, and would do so **before** any accuracy
+number moved — the window is a property of the prompt, not of the model. That makes it the cheapest check in the
+run and the first one to perform.
+
+### 13.75.2 The geometry, computed on the control before the result
+
+From the control artifact's `goldRanks`, the in-pool gold captured by the top *k* of the pool:
+
+| k | MR | TR |
+| --- | --- | --- |
+| 23 / 26 (control rooms) | 44.9% | 47.1% |
+| 40 | 60.9% | 57.5% |
+| 53 | 67.8% | 63.8% |
+| 64 | 71.9% | 68.0% |
+
+The control's measured delivered shares are MR **42.5%** and TR **43.6%**, each a couple of points under its
+k-figure because the room is characters rather than turns (§13.71.3). At a 400-character cap the same rooms hold
+roughly 53 turns, so **MR ≈ 65% and TR ≈ 61%** are the geometry's expectation — again a **diagnostic band, not a
+prediction**, and §13.73.3's five predictions are what decide the variable.
+
+### 13.75.3 What this section is for
+
+It exists so that the first thing read from the artifact is the thing that cannot be argued with afterwards: the
+window on the four untouched capabilities. If IE's turn count moves, the run has measured something other than
+what it registered, and every capability number in it becomes a statement about an unknown configuration — which
+is §13.69's failure mode, caught this time before publication rather than after.
