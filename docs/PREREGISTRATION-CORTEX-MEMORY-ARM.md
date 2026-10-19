@@ -9907,3 +9907,22 @@ So a 3-failure beside 2- and 4-successes is not noise: it would mean IE, KU and 
 than the two repaired routes gained, on a change that only ever *added* evidence to them. That is the reading
 that would make §13.81.6's attribution limit load-bearing rather than a caveat, and it is why prediction 3 is
 left as registered instead of being restated as "MR + TR net".
+
+**Prediction 2's arithmetic, counted before the run.** Using the k=256 artifact's `goldRanks`, each MR question's
+coverage at a 146-turn window can be computed exactly (gold at rank < 146 over the question's gold), which
+partitions the 121 MR questions without any modelling:
+
+| partition | questions | correct now | what the room can do |
+| --- | --- | --- | --- |
+| already ≥ 85% at 68 turns | 50 | **41 (82.0%)** | nothing — the room is not their constraint |
+| crosses 85% only at 146 turns | **35** | 17 (48.6%) | this is prediction 2's whole subject |
+| never reaches 85% at 146 turns | 36 | 20 (55.6%) | needs a better ranker, not a bigger room |
+
+So prediction 2 (**78 → ≥ 86**) needs **at least 8 of the 35 crossers** to be repaired, and the 85–95% band's
+measured rate (81.0% on §13.79's run) implies about **28 of 35** — a prediction of 89 rather than 86. The
+registered threshold is the conservative side of its own arithmetic, which is the right direction for a
+prediction whose mechanism was measured on one previous run only.
+
+The third row is the one to remember afterwards: **36 MR questions cannot be reached by any budget**, because
+their gold never enters the pool at all or enters above rank 146. That is the size of the ranking problem that
+survives this experiment, and it is comparable to the 29-question gap to the reference pipeline.
