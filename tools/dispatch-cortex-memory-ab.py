@@ -307,10 +307,12 @@ INPUTS = {
     # reach with no width is a statement about a cap that is not applied.
     "cortex_memory_max_turn_chars": "400",
     "cortex_memory_max_turn_chars_routes": "multi-session,temporal",
-    # §13.81's budget. `24000` is the product default every archived run used, sent explicitly for
+    # §13.82's adopted budget. `24000` was the product default every run before §13.81 used; the run
+    # that raised it to 48,000 (`39260774611`) delivered 86.9% of MR's gold against 72.9% and added
+    # nine questions to the roster, so this line and §10.3 move together. Sent explicitly for
     # the reason every other registered value is: a run's room should not depend on a constant that
-    # lives in another package. The experiment raises it.
-    "cortex_memory_max_prompt_chars": "24000",
+    # lives in another package.
+    "cortex_memory_max_prompt_chars": "48000",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
     # pass any completed run has produced on this arm (a full run is about 3h32m for eight
     # passes), so it is a hang detector rather than a slow-run detector.

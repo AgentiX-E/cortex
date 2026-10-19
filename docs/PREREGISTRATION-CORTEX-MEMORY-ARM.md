@@ -701,11 +701,13 @@ forwarded into a step's `env`. Three injections were run against it:
   expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
   fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
   overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
-* `maxPromptChars: 24000` — **the evidence budget, registered by §13.81** at the product default every
-  archived run used. It is written down because §13.80 showed the room cannot be bought by truncating: at a
-  200-character cap the room reached 100 turns and MR fell to 29 of 121. The budget is the only lever that
-  grows the room without touching a turn, and a value a run depends on should not live in another package's
-  constant.
+* `maxPromptChars: 48000` — **the evidence budget, adopted by §13.82** (registered at the product's 24,000 by
+  §13.81 and raised by that section's run). It is written down because §13.80 showed the room cannot be bought
+  by truncating: at a 200-character cap the room reached 100 turns and MR fell to 29 of 121. The budget is the
+  only lever that grows the room without touching a turn, and a value a run depends on should not live in
+  another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
+  delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
+  §13.82.3 states what its two failed predictions do to the step hypothesis.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -9926,3 +9928,159 @@ prediction whose mechanism was measured on one previous run only.
 The third row is the one to remember afterwards: **36 MR questions cannot be reached by any budget**, because
 their gold never enters the pool at all or enters above rank 146. That is the size of the ranking problem that
 survives this experiment, and it is comparable to the 29-question gap to the reference pipeline.
+
+## 13.82 The budget buys the room exactly, and the 85% step does not survive it
+
+### 13.82.1 The readings (`39260774611`, 2h02m36s, drift 500/500)
+
+| # | prediction (§13.81.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's delivered share 72.9% → **≥ 83%** | **86.92%** | **holds** (estimator said 87.11%, error 0.19pp) |
+| **2** | MR's correct count 78 → **≥ 86** | **83** | **falsified**, short by 3 |
+| **3** | roster 394 → **≥ 402** | **403** | **holds** |
+| **4** | TR 89 → **≥ 94** | **93** | **falsified**, short by 1 |
+
+Registered statistic **+35.10pp** (was +33.50pp), McNemar p = 1.79e-31. Union **444/500 = 88.80%**, the
+campaign's best (was 438, best 439). Per capability: ABS 29, IE 135, KU 63, MR 83, TR 93.
+
+### 13.82.2 The mechanism is exact, and the gain is located where the arithmetic said
+
+`--window` reads **144 turns on MR and 151 on TR** against 68 and 74, at **46,165 and 47,129 characters**
+against 22,180 and 23,150 — a 2.1× room spending 2.0× the characters, with no over-budget record. The partition
+§13.81.6 wrote down before the run, scored after it:
+
+| group | n | was | now | delta |
+| --- | --- | --- | --- | --- |
+| already ≥ 85% at 68 turns | 50 | 41 | **40** | **−1** |
+| crosses 85% only at 146 turns | 35 | 17 | **22** | **+5** |
+| never reaches 85% at 146 turns | 36 | 20 | **21** | **+1** |
+
+The whole MR gain is the middle row, which is the row §13.81.6 said prediction 2 was about. The crossers
+converted at **62.9%** (22 of 35) against the 48.6% they converted at before — a +14.3pp lift — while the
+already-covered group **lost one question**. That is the shape of dilution: more room buys more gold and also
+more noise, and the two effects are within one question of cancelling outside the crossing group.
+
+### 13.82.3 The step was a property of that run's evidence, and this is what retired it
+
+MR's accuracy by coverage band, this run against §13.79's:
+
+| band | §13.79 (68 turns) | §13.82 (144 turns) |
+| --- | --- | --- |
+| 25–50% | 50.0% | 20.0% |
+| 50–75% | 50.0% | 55.6% |
+| 75–85% | 50.0% | 75.0% |
+| **85–95%** | **81.0%** | **64.0%** |
+| **95–100%** | **86.7%** | **77.0%** |
+| exactly 100% | — | **88.6%** (31 of 35) |
+
+**The step does not replicate.** §13.81.3's second branch is the one that happened: coverage crossed and the count
+did not follow. What replaces it is a slope — 20%, 56%, 75%, 64%, 77% — with a jump only at **exactly complete**
+coverage, where the reader is at 88.6% and therefore at parity with the reference pipeline's 85.1% on that
+capability. Two consequences follow and both are load-bearing:
+
+- **coverage is not a sufficient statistic.** The same 86.9% delivery buys 68.6% accuracy here and bought 64.5%
+  at 72.9%; the composition of the window matters as much as its coverage, which is why the band table has to be
+  recomputed on every run rather than carried forward (§130.3 said the same and this is the second confirmation).
+- **the reader is not the deficit.** When every gold turn is carried the reader answers 31 of 35. MR's gap to the
+  reference pipeline is retrieval, not comprehension, and §13.82.6 prices how much of it any budget can still buy.
+
+### 13.82.4 The price was not what the registration said
+
+§13.81.2 predicted passes "near 50 minutes" and called the 90-minute ceiling worth watching. The run took
+**2h02m36s** against the previous 1h58m — **four minutes** for double the evidence. Prefill is not the binding
+cost on this workload; decode is, and decode is one short answer either way. The cost line in §13.81 was
+therefore wrong in the direction that matters: raising the budget is nearly free in wall clock, so the ceiling
+that decides where the room stops is scientific rather than operational.
+
+### 13.82.5 Adoption
+
+Adopted. Predictions 1 and 3 hold and both are about the quantity the campaign is scored on — delivered gold and
+the roster — while 2 and 4 miss by 3 and 1 on counts whose direction was right (+5, +4). The two regressions are
+IE 136 → 135 and ABS 30 → 29, each **one question**, inside the ±2-per-capability resolution §109.4 measured;
+KU rose 61 → 63. Roster 394 → 403, union 438 → 444, delta +33.50pp → +35.10pp.
+
+What the adoption does **not** claim: that the budget is why MR gained. The partition in §13.82.2 locates the
+gain in the crossing group and the loss in the covered group, which is consistent with the room and inconsistent
+with any reader change — but there was no second room to compare against, so the magnitude carries one run's
+noise. The next section is designed around what the partition says the room cannot reach.
+
+### 13.82.6 The room is nearly exhausted; the next lever is in the retrieved set's composition
+
+`--pool` on this artifact: MR's gold partitions into 182 never surfaced, **297 cut by the budget** (median rank
+**189**), 3,180 delivered. Raising the window to ~250 turns would deliver **94.68%** of MR's gold, but only
+**22 more questions** would cross 85% and **16 of those 22 are already correct** — so the expected gain is about
+three questions for another 70% of evidence. The room's marginal return has fallen from +5 (68 → 144) to ~+3
+(144 → 250), and the next doubling would be smaller again.
+
+What the budget cannot fix is visible in the same table: **182 gold turns never surface at all**, and the 38 MR
+errors are not dominated by "the gold was one rank away":
+
+| missing gold turns | 0 | 1 | 2 | 3 | ≥4 |
+| --- | --- | --- | --- | --- | --- |
+| wrong MR questions (38) | **4** | 9 | 3 | 2 | 20 |
+| correct MR questions (83) | 31 | 15 | 8 | 7 | 22 |
+
+Four questions are wrong with **complete** evidence, and "missing one" is as common among the correct as among the
+wrong — so the deficit is not a missing neighbour. It is that **the window's 144 slots are not all worth having**.
+
+## 13.83 The room is half full of the assistant's own words
+
+### 13.83.1 The measurement that names the next lever
+
+The window is now 144 turns on MR and it spends 46,165 characters. Reading the roles out of those turns —
+the `[date] role:` prefix the dataset's haystack carries — gives the composition of the room:
+
+| capability | rendered characters from user turns | from assistant turns | cap in force |
+| --- | --- | --- | --- |
+| **MR** | **48.1%** | **51.9%** | 400 |
+| **TR** | **49.9%** | **50.1%** | 400 |
+| IE | 22.7% | 77.3% | none |
+| KU | 22.7% | 77.3% | none |
+| ABS | 24.2% | 75.8% | none |
+
+**On the two routes that decide the SOTA gap, half the evidence room is the assistant's own prose.** The
+reference pipeline does not have this problem, and its source says why in one sentence: retrieval is *"restricted
+to user turns because the facts live in the user's statements; assistant turns are verbose generated chatter that
+dilutes the answer signal (and for temporal questions, drown the date-bearing turns)"*
+(`natural-language-memory.ts`, `answer`). That pipeline reaches 85.1% on MR with a **24,000**-character budget,
+against this arm's 68.6% with 48,000.
+
+This is not a hypothesis about what might help. It is the one structural difference between a system that scores
+85% on this capability and one that scores 69%, stated in the code of both, and it is measurable in the artifact
+as the table above.
+
+### 13.83.2 The registration
+
+**One variable, two inputs, the same shape as §13.73**: `evidenceRoles: user` reaches
+`multi-session,temporal`. Everything else is §10.3's adopted configuration, including the 48,000 budget.
+
+The reach is scoped rather than global for a measured reason: IE, KU and ABS are at 135, 63 and 29 of 150, 72 and
+30, and a global filter would move three capabilities the experiment is not asking about — with 77% of *their*
+characters coming from assistant turns, that is not a neutral change for them. The scoping also gives this
+section its internal control: the three untouched capabilities must reproduce **61.0, 62.0 and 72.0 turns** and
+their `promptChars` to the character, exactly as §13.75 required of the previous reach.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | MR's rendered user share rises 48.1% → **≥ 95%**, and its window grows 144 → **≥ 170** turns | < 95% or < 170 |
+| **2** | MR's delivered share rises 86.92% → **≥ 92%** | < 92% |
+| **3** | MR's correct count rises 83 → **≥ 90** | ≤ 89 |
+| **4** | TR 93 → **≥ 96** | ≤ 95 |
+| **5** | IE, KU and ABS reproduce 135/63/29, 61.0/62.0/72.0 turns and their `promptChars` | any changes |
+| **6** | The roster rises 403 → **≥ 410** | ≤ 409 |
+
+Prediction 2 is derived, not guessed: the filtered ranking puts user turns at 242 characters each against the
+400-character cap, so 48,000 characters hold about **190** user turns, and the 95%-coverage rank in a *user-only*
+ranking is not computable from this artifact's ranks — which is why the prediction is stated as a threshold and
+its mechanism (prediction 1) is measured separately.
+
+### 13.83.3 What each outcome would mean
+
+- **1–4 hold**: the composition of the retrieved set is the lever, the room is not, and the next question becomes
+  whether the assistant turns carry anything the user turns do not — which is measurable by adding back only the
+  assistant turns that share a session with a retrieved user turn.
+- **1 holds, 3 does not**: the filter moved the room as designed and the reader still misses, which would locate
+  the deficit in the ranking *within* user turns and make the expansion channel the next experiment.
+- **1 fails**: the filter did not do what the arithmetic says, which would point at the selection's interaction
+  with the cap rather than at the roles — the same failure mode §13.81.5 was written to catch, and `--window` is
+  again the first thing to read.
