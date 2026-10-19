@@ -61,6 +61,22 @@ import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
  * arithmetically rather than by joining, because joining builds the whole string -- up
  * to 506,338 characters on this arm -- to call `.length` on it.
  */
+/**
+ * The role filter, resolved once at construction.
+ *
+ * Resolved rather than read from the options per call because "roles without a classifier" is
+ * a state the constructor refuses: keeping the three fields together is what lets the filter
+ * be a total function of a turn and a route instead of a sequence of presence checks.
+ */
+type RoleFilter = {
+  /** The roles whose turns may reach the prompt. */
+  readonly roles: ReadonlySet<string>;
+  /** How a turn's role is read. `undefined` means the format could not be read at all. */
+  readonly roleOf: (turn: string) => string | undefined;
+  /** The routes the filter reaches. Absent means all six. */
+  readonly routes?: readonly TurnCapRoute[];
+};
+
 function admittedEvidenceOf(admitted: readonly AdmittedTurn[]): { turns: number; chars: number } {
   let chars = 0;
   for (const turn of admitted) chars += turn.content.length;
@@ -82,6 +98,8 @@ export class CortexMemory implements SessionAwareMemorySystem {
   readonly #llm: LLM;
   readonly #now: number;
   readonly #options: CortexMemoryOptions;
+  /** The resolved role filter, or `undefined` when no roles were named. */
+  readonly #roleFilter: RoleFilter | undefined;
 
   /**
    * Why each abstention happened, accumulated across every route that can decline.
@@ -307,10 +325,94 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #lastAdmittedEvidence: { turns: number; chars: number } | null = null;
 
   constructor(options: CortexMemoryOptions) {
+    // A filter that cannot run is refused here rather than silently kept. `evidenceRoles`
+    // without a classifier would leave the artifact recording a filter the run never applied,
+    // which is the inert-configuration class §10.10 recorded for the retrieval gate; an empty
+    // list would admit nothing on every reached route, which is a decline every time.
+    if (options.evidenceRoles !== undefined) {
+      if (options.roleOf === undefined) {
+        throw new Error(
+          'evidenceRoles was named without roleOf: the filter has no way to read a role, so ' +
+            'it would keep every turn while the configuration said it kept some. Supply the ' +
+            'classifier, or drop evidenceRoles.',
+        );
+      }
+      if (options.evidenceRoles.length === 0) {
+        throw new Error(
+          'evidenceRoles must name at least one role: an empty list admits no evidence on ' +
+            'every route it reaches, which spends a decline per question and reads as a ' +
+            'dataset with nothing in it. Omit the option to disable the filter.',
+        );
+      }
+      // Resolved once, with `roleOf` narrowed to non-optional by the throw above, so no
+      // later reader has to treat "roles without a classifier" as a state. A guard further
+      // down would be unreachable through the public type and would cost a branch that no
+      // test can enter -- §57.6's rule against safety nets that read as behaviour.
+      this.#roleFilter = {
+        roles: new Set(options.evidenceRoles),
+        roleOf: options.roleOf,
+        ...(options.evidenceRolesRoutes === undefined
+          ? {}
+          : { routes: options.evidenceRolesRoutes }),
+      };
+    }
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
     this.#now = options.now;
     this.#options = options;
+  }
+
+  /**
+   * The resolved role filter, or `undefined` when this route's evidence is unfiltered.
+   *
+   * Reach is resolved per route rather than once at construction because one instance serves
+   * every route in a run: a filter decided at construction would either reach all six or none,
+   * and §13.83 registers two.
+   */
+  #roleFilterForRoute(route: TurnCapRoute): RoleFilter | undefined {
+    const filter = this.#roleFilter;
+    if (filter === undefined) return undefined;
+    if (filter.routes !== undefined && !filter.routes.includes(route)) return undefined;
+    return filter;
+  }
+
+  /**
+   * The turns a route may build its evidence from: the admitted ones, minus the roles the
+   * filter excludes.
+   *
+   * Applied **after admission and before selection**, which is where the room is spent. A
+   * filter applied at admission would move the write gate, and one applied after capture
+   * would leave the artifact describing evidence the reader never saw.
+   *
+   * The order is preserved and no turn is rewritten, so the surviving turns keep their
+   * ordinals and the selection sees the same content it would have seen.
+   */
+  #turnsForRoute(turns: readonly AdmittedTurn[], route: TurnCapRoute): AdmittedTurn[] {
+    const filter = this.#roleFilterForRoute(route);
+    if (filter === undefined) return [...turns];
+    return turns.filter((turn) => {
+      const role = filter.roleOf(turn.content);
+      return role === undefined || filter.roles.has(role);
+    });
+  }
+
+  /**
+   * The sessions a route may build its evidence from, with each session filtered and any
+   * session left empty dropped.
+   *
+   * `size` is recomputed rather than carried: it is the cached count the session budget spends
+   * against, so a stale size would make the budget reserve room for turns the filter removed
+   * and spend it on nothing -- a defect that shows up as a window wider than the evidence in it.
+   */
+  #sessionsForRoute(sessions: readonly AdmittedSession[], route: TurnCapRoute): AdmittedSession[] {
+    if (this.#roleFilterForRoute(route) === undefined) return [...sessions];
+    const kept: AdmittedSession[] = [];
+    for (const session of sessions) {
+      const turns = this.#turnsForRoute(session.turns, route);
+      if (turns.length === 0) continue;
+      kept.push({ index: session.index, size: turns.length, turns });
+    }
+    return kept;
   }
 
   /**
@@ -764,8 +866,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // one -- and on MR it would invite abstention on questions that must be
     // answered. The rendering is resolved in `#promptOptions` instead, so every
     // route keeps its own ask and only the evidence presentation moves.
-    const assembled = buildPrompt(question, turns, contract, this.#promptOptions(route));
-    this.#recordEvidence(turns, assembled);
+    // Filtered here rather than at admission: the gate decides what may be *answered from*,
+    // this decides what may be *shown among the turns already kept*, and §13.83 registers the
+    // second. An emptied list is the same state as admitting nothing, so it declines before
+    // spending a request.
+    const kept = this.#turnsForRoute(turns, route);
+    if (kept.length === 0) return this.#declinedEmpty();
+    const assembled = buildPrompt(question, kept, contract, this.#promptOptions(route));
+    this.#recordEvidence(kept, assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -776,11 +884,13 @@ export class CortexMemory implements SessionAwareMemorySystem {
     questionDate: string | undefined,
   ): Promise<Answer> {
     const base = this.#promptOptions('temporal');
-    const assembled = buildPrompt(question, turns, contract, {
+    const kept = this.#turnsForRoute(turns, 'temporal');
+    if (kept.length === 0) return this.#declinedEmpty();
+    const assembled = buildPrompt(question, kept, contract, {
       ...base,
       ...(questionDate === undefined ? {} : { questionDate }),
     });
-    this.#recordEvidence(turns, assembled);
+    this.#recordEvidence(kept, assembled);
     return this.#consult(assembled.prompt);
   }
 
@@ -789,9 +899,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
+    // The filter runs per session, because this route's unit is the session: a session left
+    // with no turn loses its boundary with it, and a boundary with nothing behind it would be
+    // printed as a heading and paid for out of the evidence budget.
+    const keptSessions = this.#sessionsForRoute(sessions, 'multi-session');
+    if (keptSessions.length === 0) return this.#declinedEmpty();
     const assembled = buildSessionPrompt(
       question,
-      sessions,
+      keptSessions,
       // The multi-session route, named here rather than defaulted: this builder is the one
       // §13.72 measured at +13, so a default would make the measurement's route the one route
       // whose reach is never written down.
@@ -804,7 +919,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // admission produced, and `lastAdmittedEvidence` counts them in the record's own
     // unit.
     this.#recordEvidence(
-      sessions.flatMap((session) => session.turns),
+      keptSessions.flatMap((session) => session.turns),
       assembled,
     );
     return this.#consult(assembled.prompt);

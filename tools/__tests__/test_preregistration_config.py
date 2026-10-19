@@ -75,6 +75,11 @@ CONCEPT_TO_INPUT = {
     "maxTurnCharsRoutes": "cortex_memory_max_turn_chars_routes",
     # §13.81's budget: the one input that changes the room without changing a turn.
     "maxPromptChars": "cortex_memory_max_prompt_chars",
+    # §13.83's filter and its reach: the two inputs that decide which turns may enter the room at
+    # all. Registered at the identity (`all`/`all`), because the experiment that narrows them is
+    # the section's own dispatch and the adopted state has to be on the record meanwhile.
+    "evidenceRoles": "cortex_memory_evidence_roles",
+    "evidenceRolesRoutes": "cortex_memory_evidence_roles_routes",
     "budgetMinutes": "cortex_memory_budget_minutes",
     "limit": "limit",
     "ablation_runs": "ablation_runs",

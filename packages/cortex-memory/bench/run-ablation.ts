@@ -56,6 +56,7 @@ import {
   describeEmbeddingCachePersist,
   persistEmbeddingCache,
   restoreArmEmbeddingCache,
+  roleOfTurn,
   preflightEmbedding,
   runCortexMemoryArm,
   sampleInstances,
@@ -416,6 +417,20 @@ async function main(): Promise<void> {
     ...(armOptions.maxTurnCharsRoutes === undefined
       ? {}
       : { maxTurnCharsRoutes: armOptions.maxTurnCharsRoutes as readonly TurnCapRoute[] }),
+    // §13.83's filter. The classifier is passed with the roles rather than beside them, because
+    // a role filter without one is refused by the product: the arm knows this dataset's prefix
+    // and the product does not, which is the boundary the option exists to keep. Both reach and
+    // classifier travel only when a filter was named, so an unfiltered run's options are
+    // byte-identical to the previous run's.
+    ...(armOptions.evidenceRoles === undefined
+      ? {}
+      : {
+          evidenceRoles: armOptions.evidenceRoles,
+          roleOf: roleOfTurn,
+          ...(armOptions.evidenceRolesRoutes === undefined
+            ? {}
+            : { evidenceRolesRoutes: armOptions.evidenceRolesRoutes as readonly TurnCapRoute[] }),
+        }),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this

@@ -1120,6 +1120,125 @@ def window_section(questions: list[dict], budget: int, source: str) -> tuple[str
     return '\n'.join(lines), len(every)
 
 
+# Which route each capability answers on. The mapping is the runner's (`benchmark.ts` routes MR
+# to `answerSessions`, TR to `answerTemporal`, ABS to `answerAbstention`, KU to
+# `answerKnowledgeUpdate` and everything else to `answer`), restated here because this tool reads
+# a JSON artifact and cannot import it. Only MR and TR are load-bearing today: they are the two
+# routes the cap reaches, so they are the two whose rendered size depends on this table.
+CAPABILITY_ROUTE = {
+    'MR': 'multi-session',
+    'TR': 'temporal',
+    'ABS': 'abstention',
+    'KU': 'knowledge-update',
+    'IE': 'flat',
+}
+
+# The role prefix this dataset's haystack rendering uses. Anchored at the start with a non-empty
+# bracketed stamp, so a turn that merely mentions `assistant:` later is not mislabelled -- the
+# same shape the arm's classifier uses, restated for the reason the route map is.
+ROLE_PREFIX = re.compile(r'^\[[^\]]+\]\s*(user|assistant)\s*:', re.I)
+
+
+def turn_cap(report: dict) -> tuple[int | None, list[str] | None]:
+    """The per-turn cap this run applied, and the routes it reached, both read from the artifact.
+
+    §13.81.5's rule, applied to a second quantity: a reader that assumed the cap would describe a
+    prompt nobody sent. `maxTurnChars` is absent when no cap ran, and `maxTurnCharsRoutes`
+    is absent when the reach was every route.
+    """
+    config = report.get('memoryArmConfig')
+    if not isinstance(config, dict):
+        return None, None
+    cap = config.get('maxTurnChars')
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap <= 0:
+        cap = None
+    reach = config.get('maxTurnCharsRoutes')
+    if not isinstance(reach, list) or not all(isinstance(name, str) for name in reach):
+        reach = None
+    return cap, reach
+
+
+def roles_section(
+    questions: list[dict], cap: int | None, reach: list[str] | None
+) -> tuple[str, int]:
+    """How much of the rendered evidence room came from each role.
+
+    ## The question this answers
+
+    §13.82 measured the composition of the 48,000-character room by hand and found 51.9% of the
+    multi-session route's rendered characters were assistant turns, while the reference pipeline
+    reaches 85.95% on that capability at half the budget by reading user turns only. §13.83
+    registers that filter and its first prediction is a mechanism claim -- the user share rises
+    above 95% -- that no number in the artifact states. This table states it.
+
+    ## Why the cap is applied here rather than assumed absent
+
+    The record's `turns` carry the turns as they were selected, **before** the per-turn cap; the
+    prompt printed them capped. A share computed from the raw texts would describe a prompt
+    nobody sent, and it would do so in the direction that overstates the assistant's share --
+    assistant turns are the long ones, so the uncapped arithmetic would make the problem look
+    worse than it was and the treatment look better than it is.
+
+    ## Why an unreadable role is its own column
+
+    Folding it into either role is the same defect as a filter that drops the turn it cannot
+    classify: a classifier failure would read as a measurement. The column exists so a bug in the
+    reader or in the data shows up as a number rather than as a share.
+    """
+    totals: dict[str, dict[str, int]] = {}
+    counts: dict[str, int] = {}
+    for question in questions:
+        turns = question.get('turns')
+        if not isinstance(turns, list):
+            continue
+        capability = str(question.get('capability', '?'))
+        route = CAPABILITY_ROUTE.get(capability)
+        capped = cap if (cap is not None and (reach is None or route in reach)) else None
+        row = totals.setdefault(capability, {'user': 0, 'assistant': 0, 'unreadable': 0})
+        counts[capability] = counts.get(capability, 0) + 1
+        for turn in turns:
+            text = turn.get('text') if isinstance(turn, dict) else None
+            if not isinstance(text, str):
+                continue
+            match = ROLE_PREFIX.match(text)
+            role = match.group(1).lower() if match is not None else 'unreadable'
+            row[role] += len(text) if capped is None else min(len(text), capped)
+
+    measured = sum(counts.values())
+    if measured == 0:
+        return '', 0
+
+    lines = ['', 'what the evidence room is made of (rendered characters by role)']
+    lines.append(
+        f'  {"capability":<10}{"n":>5}{"user":>9}{"assistant":>11}{"unreadable":>12}{"cap":>7}'
+    )
+    overall = {'user': 0, 'assistant': 0, 'unreadable': 0}
+    for capability in sorted(totals):
+        row = totals[capability]
+        total = row['user'] + row['assistant'] + row['unreadable']
+        for role in overall:
+            overall[role] += row[role]
+        route = CAPABILITY_ROUTE.get(capability)
+        cap_label = 'none' if (cap is None or (reach is not None and route not in reach)) else str(cap)
+        lines.append(
+            f'  {capability:<10}{counts[capability]:>5}'
+            f'{row["user"] / total:>8.1%}{row["assistant"] / total:>11.1%}'
+            f'{row["unreadable"] / total:>12.1%}{cap_label:>7}'
+        )
+    total = overall['user'] + overall['assistant'] + overall['unreadable']
+    lines.append(
+        f'  {"TOTAL":<10}{measured:>5}{overall["user"] / total:>8.1%}'
+        f'{overall["assistant"] / total:>11.1%}{overall["unreadable"] / total:>12.1%}'
+    )
+    lines.append(
+        '  shares of the characters the prompt would print, with the run\'s own per-turn cap '
+        'applied where its reach covers the route. "unreadable" is turns whose role prefix this '
+        'reader could not match -- a column rather than folded into either role, because a '
+        'classifier failure must not read as a composition.'
+    )
+    return '\n'.join(lines), measured
+
+
 # The Step 1 heading shapes, and the bullet shape, for the list census.
 #
 # The same two patterns `decline_state` uses, restated here rather than shared, because this
@@ -1415,6 +1534,11 @@ def main(argv: list[str]) -> int:
         help='print the delivered turn lengths and what a per-turn cap would buy',
     )
     parser.add_argument(
+        '--roles',
+        action='store_true',
+        help='print how much of the rendered evidence room came from each role',
+    )
+    parser.add_argument(
         '--ranks',
         action='store_true',
         help='print how many gold turns sit in the top 8 / 16 / 32 of the ordered pool',
@@ -1493,6 +1617,26 @@ def main(argv: list[str]) -> int:
         section, measured = lists_section(questions)
         if measured == 0:
             print(f'{args.report}: no MR record carries a Step 1 list.', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.roles:
+        if questions is None:
+            print(
+                f'{args.report}: no per-question roster, so the composition of the evidence '
+                'cannot be read. A reduced report drops the turns this table is made of.',
+                file=sys.stderr,
+            )
+            return 2
+        cap, reach = turn_cap(report)
+        section, measured = roles_section(questions, cap, reach)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries turns. A producer that does not capture the '
+                'context, or an artifact whose roster was emptied, cannot be read for composition.',
+                file=sys.stderr,
+            )
             return 2
         print(section)
         return 0

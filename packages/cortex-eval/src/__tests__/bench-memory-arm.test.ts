@@ -49,6 +49,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   cortextMemoryArmOptions,
+  roleOfTurn,
   runCortexMemoryArm,
   toMemoryArmConfig,
 } from '../bench-memory-arm.js';
@@ -744,6 +745,7 @@ describe('source trust reaches the artifact', () => {
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
       maxTurnCharsRoutes: ALL_ROUTES,
+      evidenceRolesRoutes: ALL_ROUTES,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -909,6 +911,7 @@ describe('runCortexMemoryArm', () => {
           relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
           relevanceUnits: 'turn',
           maxTurnCharsRoutes: ALL_ROUTES,
+          evidenceRolesRoutes: ALL_ROUTES,
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -926,6 +929,7 @@ describe('runCortexMemoryArm', () => {
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
       maxTurnCharsRoutes: ALL_ROUTES,
+      evidenceRolesRoutes: ALL_ROUTES,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -1649,6 +1653,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
       maxTurnCharsRoutes: ALL_ROUTES,
+      evidenceRolesRoutes: ALL_ROUTES,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     });
   });
@@ -1673,6 +1678,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
       maxTurnCharsRoutes: ALL_ROUTES,
+      evidenceRolesRoutes: ALL_ROUTES,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -3131,5 +3137,155 @@ describe('the evidence budget', () => {
     });
     // `default`, not `none`: there is always a budget, and the absent state means the product's.
     expect(inherited).toContain('maxPromptChars=default');
+  });
+});
+
+/**
+ * The evidence roles, which §13.82 measured and §13.83 registered.
+ *
+ * The reading that put this axis on the table: on the 48,000-character run the multi-session
+ * route's rendered room was **51.9% assistant turns**, and the reference pipeline — 85.95% on
+ * that capability at half the budget — restricts retrieval to user turns. The arm's job here is
+ * only to carry the configuration and to read this dataset's role prefix; the filter itself is
+ * the product's, tested in `cortex-memory`'s `evidence-roles.test.ts`.
+ */
+describe('the evidence roles', () => {
+  it('is absent by default, blank and `all`, so every archived run keeps every turn', () => {
+    // `all` is the identity rather than an empty list: the product refuses an empty list because
+    // it would admit nothing, so "no filter" has to be spelled as absence.
+    for (const raw of [undefined, '', '   ', 'all', 'ALL']) {
+      const options = cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        ...(raw === undefined ? {} : { CORTEX_MEMORY_EVIDENCE_ROLES: raw }),
+      });
+      expect(options.evidenceRoles).toBeUndefined();
+    }
+  });
+
+  it('reads a named set, de-duplicated and in the dataset order', () => {
+    // One spelling per reach in the config line: `assistant,user` and `user,assistant` must not
+    // produce two artifacts that read as different configurations.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_EVIDENCE_ROLES: ' assistant , user ,user',
+    });
+    expect(options.evidenceRoles).toEqual(['user', 'assistant']);
+  });
+
+  it('rejects a spelling that names no role at all', () => {
+    // `','` splits to two empty parts; with whitespace filtering that is an empty set, which the
+    // product refuses because it would admit nothing. Rejecting it here names the input instead of
+    // failing later with a message about a different layer.
+    for (const bad of [',', ' , ']) {
+      expect(() =>
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_EVIDENCE_ROLES: bad }),
+      ).toThrow(/CORTEX_MEMORY_EVIDENCE_ROLES/);
+    }
+  });
+
+  it('rejects a role this dataset cannot produce', () => {
+    // `system` never appears in a haystack turn, so a filter naming it would drop every parsed
+    // turn and leave the run declining on almost every question -- a defect that reads as a
+    // dataset with no evidence.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_EVIDENCE_ROLES: 'system' }),
+    ).toThrow(/CORTEX_MEMORY_EVIDENCE_ROLES/);
+  });
+
+  it('rejects `none`, which would admit nothing', () => {
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_EVIDENCE_ROLES: 'none' }),
+    ).toThrow(/CORTEX_MEMORY_EVIDENCE_ROLES/);
+  });
+
+  it('scopes the reach through the same reader the cap uses', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_EVIDENCE_ROLES: 'user',
+      CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: 'temporal,multi-session',
+    });
+    expect(options.evidenceRolesRoutes).toEqual(['multi-session', 'temporal']);
+  });
+
+  it('rejects a route name the product does not have', () => {
+    expect(() =>
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_EVIDENCE_ROLES: 'user',
+        CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: 'multi-session,multihop',
+      }),
+    ).toThrow(/CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES/);
+  });
+
+  it('projects both fields into the config and onto the line', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_EVIDENCE_ROLES: 'user',
+      CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: 'multi-session,temporal',
+    });
+    const config = toMemoryArmConfig(options);
+    expect(config.evidenceRoles).toEqual(['user']);
+    expect(config.evidenceRolesRoutes).toEqual(['multi-session', 'temporal']);
+
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: config,
+    });
+    // `+` inside the reach, for the reason `maxTurnCharsRoutes` uses it: the line already
+    // separates fields with commas, so a comma inside a value would read as two fields.
+    expect(line).toContain('evidenceRoles=user');
+    expect(line).toContain('evidenceRolesRoutes=multi-session+temporal');
+  });
+
+  it('says `all` on the line when no filter was named', () => {
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+    expect(line).toContain('evidenceRoles=all');
+    expect(line).toContain('evidenceRolesRoutes=all');
+  });
+});
+
+/**
+ * The classifier for this dataset's role prefix, which is the arm's knowledge and not the
+ * product's.
+ *
+ * Every assertion is on a string taken from the real haystack rendering, because the format is
+ * the thing being read: a regex that is right about an invented example and wrong about
+ * `[2023/02/15 (Wed) 03:14] user:` would pass a test that never saw the data.
+ */
+describe("reading a turn's role", () => {
+  it('reads both roles from the haystack prefix', () => {
+    expect(roleOfTurn('[2023/02/15 (Wed) 03:14] user: I need a jacket.')).toBe('user');
+    expect(roleOfTurn('[2023/02/15 (Wed) 03:15] assistant: Here are three ideas.')).toBe(
+      'assistant',
+    );
+  });
+
+  it('is case-insensitive about the role and exact about the prefix', () => {
+    expect(roleOfTurn('[2024/01/02 (Tue) 11:00] User: hello')).toBe('user');
+    // The word appears, but not as this turn's role: a substring match would mislabel the turn
+    // and the filter would drop evidence that was kept evidence.
+    expect(
+      roleOfTurn('[2023/02/15 (Wed) 03:14] system notice: the assistant: replied earlier'),
+    ).toBeUndefined();
+  });
+
+  it('returns nothing for a turn whose role cannot be read', () => {
+    expect(roleOfTurn('no prefix at all')).toBeUndefined();
+    expect(roleOfTurn('[2023/02/15] tool: a function returned 3')).toBeUndefined();
+    // An empty prefix is not a role either.
+    expect(roleOfTurn('[] user: hello')).toBeUndefined();
   });
 });

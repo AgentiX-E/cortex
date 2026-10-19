@@ -708,6 +708,14 @@ forwarded into a step's `env`. Three injections were run against it:
   another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
   delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
   §13.82.3 states what its two failed predictions do to the step hypothesis.
+* `evidenceRoles: all` — **registered by §13.83 at the identity**: every role reaches the prompt, which
+  is the state every run before that section was in. The filter exists because §13.82 measured the
+  composition rather than the size of the 48,000-character room — 51.9% of multi-session's rendered
+  characters are assistant turns — and `all` is what the line must say on a run that filtered nothing,
+  for the same reason `maxTurnChars` is spelled `none` rather than omitted.
+* `evidenceRolesRoutes: all` — the filter's reach, registered at every route beside the identity above.
+  §13.83's experiment narrows it to `multi-session,temporal` so the other three capabilities reproduce
+  their control windows to the turn; until that run reads, the registered reach is every route.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -10084,3 +10092,51 @@ its mechanism (prediction 1) is measured separately.
 - **1 fails**: the filter did not do what the arithmetic says, which would point at the selection's interaction
   with the cap rather than at the roles — the same failure mode §13.81.5 was written to catch, and `--window` is
   again the first thing to read.
+
+### 13.83.4 What was built, and why the boundary sits where it does
+
+**The product owns the filter; the arm owns the format.** `CortexMemoryOptions` gained `evidenceRoles`,
+`evidenceRolesRoutes` and `roleOf`, and the product never learns that a haystack prefixes `[date] role:` —
+`roleOf` is a callback. That boundary is the whole point: a parser in `cortex-memory` would make the product's
+behaviour a fact about one dataset, and the next dataset would be either unsupported or silently unfiltered. The
+arm supplies `roleOfTurn`, whose regex is anchored at the start with a non-empty bracketed stamp so a turn that
+merely *mentions* `assistant:` is not mislabelled.
+
+**Three states, each refused or kept for a stated reason.**
+
+| state | behaviour | why |
+| --- | --- | --- |
+| `evidenceRoles` absent | no filter runs; the prompt is byte-identical to the archived one | every prior artifact has to stay reproducible |
+| `roleOf` returns `undefined` | the turn is **kept** | a classifier failure must not read as an empty dataset |
+| `evidenceRoles: []` | **refused at construction** | it admits nothing on every reached route: a decline every time |
+
+A filter without a classifier is refused at construction as well, which is §10.10's class — a value the artifact
+records and the run does not apply. The check is at the seam where the two arrive together, so the state is
+unrepresentable rather than invisible.
+
+**Where it applies, and what it therefore measures.** After admission and before selection, on all three prompt
+paths (`#prompt`, `#promptWithDate`, `#promptSessionAware`), and on the session path **per session** — a session
+the filter empties is dropped, because a boundary with nothing behind it would be printed as a heading and paid
+for out of the budget. `lastRetrievedContext` and `admittedEvidence` are recorded **after** the filter, so the
+artifact's `retrieved` is what the reader could have been shown; a filter applied after the capture would leave
+every coverage count describing a room the model never saw.
+
+**The instrument the mechanism prediction needs.** `readout-arm-run.py --roles` reports the rendered characters
+by role per capability, with the run's own `maxTurnChars` applied where its reach covers the route — read from the
+artifact, for §13.81.5's reason. An unreadable role is **its own column** rather than folded into either role,
+because that folding is the same defect as a filter that drops what it cannot classify. On `39260774611` it
+reproduces §13.82's hand-computed numbers exactly: MR 48.1% user / 51.9% assistant / 0.0% unreadable.
+
+**The two inputs are registered at the identity.** `§10.3` records `evidenceRoles: all` and
+`evidenceRolesRoutes: all`, which is the state every prior run is in; the experiment overrides both through
+`--set`, and the parity test that binds §10.3 to the dispatch table therefore keeps passing on a run that is not
+this experiment.
+
+**Tests, and what each pins.** `cortex-memory`'s `evidence-roles.test.ts` covers the filter per route, byte
+equality on an unreached route, the unknown-role case, the emptied-list decline on both the flat and temporal
+paths, the session path including the all-sessions-empty decline, the offer recorded after the filter, and both
+construction refusals. `cortex-eval`'s arm tests cover the readers (identity, dedupe, unknown role, `none`,
+`named-no-role`), the shared reach reader, the config projection and line, the disabled-arm projection, and the
+classifier's prefix rule. `tools/__tests__/test_readout_arm_run.py` covers the composition table: the split, the
+cap applied, the cap not applied because its reach does not cover the route, the unreadable column, and the
+refusal on a roster without turns.

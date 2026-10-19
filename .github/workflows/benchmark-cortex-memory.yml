@@ -138,6 +138,16 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_evidence_roles:
+        description: 'Turn roles the evidence may be built from (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.83): empty or all = every turn, which is the state every run before section 13.83 was in; user or assistant or a comma-separated list of the two = only those roles reach the prompt on the routes named by the next input. Section 13.82 is the measurement: on the 48,000-character run the multi-session route rendered 48.1 percent user characters and 51.9 percent assistant, while the reference pipeline reaches 85.95 percent on that capability at half the budget by restricting retrieval to user turns -- its own source states the reason, that the facts live in the user statements and assistant turns are verbose generated chatter that dilutes the answer signal. The filter is applied after admission and before selection, so the room is spent only on turns that may reach it, and lastRetrievedContext and every coverage count describe the filtered list because that is what the reader could have been shown. none is REJECTED rather than read as an empty set, because an empty role set admits no evidence at all and would spend a decline per question while the artifact recorded a filter'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_evidence_roles_routes:
+        description: 'Which routes the role filter reaches (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.83): empty or all = every route; none = a filter that reaches nothing; a comma-separated list of multi-session, temporal, flat, knowledge-update, abstention, assistant = exactly those. Scoped from the start for the two reasons section 13.73 scoped the cap: a global filter moves three capabilities that are not part of this experiment, where 75.8 to 77.3 percent of their rendered characters are assistant turns, and the untouched routes are the experiment own control -- they must reproduce their control window to the turn. An unrecognised route name is REJECTED rather than ignored, because a run that applied the filter to five of six routes would report every number consistent with having applied it to six'
+        required: false
+        default: ''
+        type: string
       cortex_memory_budget_minutes:
         description: 'Per-pass wall-clock ceiling in minutes (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.30): empty = no ceiling, which is what every archived run was produced under; a positive number = abandon any single pass that exceeds it. Section 13.30 is why this exists: run 38725510400 hung for OVER FIVE HOURS inside the reference pipeline first question and never ended -- the job-level timeout-minutes: 240 did not fire -- so its durable record was EMPTY rather than thin, which is worse than the run before it, whose TimeoutError at least reached catch and produced a benchmark-error.log. The ceiling is enforced between questions by the pass itself, so a hang ends with a record naming the question it stopped at; it cannot interrupt a request already in flight, and cortex-llm per-attempt timeout bounds that one. Set well above what any healthy pass has measured (a completed run is about 3h32m for eight passes): a ceiling that fires on a slow pass destroys the measurement it was meant to protect. A value of 0 or below is REJECTED rather than treated as no ceiling, because it would abandon every pass before its first question -- a failed run reading as a healthy configuration'
         required: false
@@ -343,6 +353,13 @@ jobs:
           # Section 13.81's budget. Blank means the product's 24000; the arm rejects 0 rather than
           # reading it as "unset".
           CORTEX_MEMORY_MAX_PROMPT_CHARS: ${{ github.event.inputs.cortex_memory_max_prompt_chars }}
+          # Section 13.83's filter. Blank means every role, which is the state every archived run
+          # is in; the arm rejects an unknown role and rejects `none`, because an empty role set
+          # admits nothing and would be reported as a dataset with no evidence.
+          CORTEX_MEMORY_EVIDENCE_ROLES: ${{ github.event.inputs.cortex_memory_evidence_roles }}
+          # Section 13.83's reach, passed the same way. Blank means every route; the untouched
+          # routes are this experiment's control.
+          CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
           # The per-pass ceiling, passed the same way. Blank means no ceiling, and the
           # arm rejects a non-positive one rather than reading it as "unset".
           CORTEX_MEMORY_BUDGET_MINUTES: ${{ github.event.inputs.cortex_memory_budget_minutes }}

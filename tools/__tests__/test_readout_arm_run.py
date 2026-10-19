@@ -1008,6 +1008,106 @@ class TestHowMuchTheWindowActuallyHeld:
         assert 'maxPromptChars' in r.stderr
 
 
+class TestTheRoleComposition:
+    """Which role the evidence room is made of, measured in characters.
+
+    §13.82 is why this table exists: on the 48,000-character run the multi-session route spent
+    **51.9% of its rendered characters on assistant turns**, and the reference pipeline reaches
+    85.95% on that capability at half the budget by restricting retrieval to user turns. §13.83
+    registers that filter, and its first prediction is a mechanism claim -- the user share rises
+    above 95% -- which nothing in the artifact states directly. This reads it.
+
+    Two properties are the reason it is a tool rather than a one-off script:
+
+    - **the cap comes from the artifact.** `promptChars` is post-cap and the turn texts are not,
+      so a share computed from raw text would describe a prompt nobody sent. The divisor and the
+      cap are both read from `memoryArmConfig` for §13.81.5's reason.
+    - **an unreadable role is its own column.** Folding it into either role would let a
+      classifier bug read as a composition measurement -- the same defect as a filter that drops
+      the turn it cannot classify.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, str, int]], **config: object) -> dict:
+        """(capability, role, characters) -> a report whose turns carry role prefixes."""
+        questions = []
+        for index, (capability, role, chars) in enumerate(rows):
+            # Padded to an exact total, prefix included: the assertion is about a share of
+            # characters, and a prefix that silently adds 31 to one side would make every
+            # expected percentage wrong by a few points while still looking plausible.
+            prefix = f'[2023/02/15 (Wed) 03:14] {role}: '
+            text = prefix + 'x' * max(0, chars - len(prefix))
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': 'x',
+                'correct': False,
+                'turns': [{'index': 0, 'text': text}],
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated', **config},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--roles', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_splits_the_room_by_role(self, tmp_path: Path) -> None:
+        report = self._report([('MR', 'user', 300), ('MR', 'assistant', 100)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '75.0%' in r.stdout
+        assert '25.0%' in r.stdout
+
+    def test_it_applies_the_cap_the_run_was_configured_with(self, tmp_path: Path) -> None:
+        # A 1,000-character assistant turn under a 400-character cap contributes 400, not 1,000:
+        # the share is a property of the prompt, and the prompt was capped.
+        report = self._report(
+            [('MR', 'user', 400), ('MR', 'assistant', 1_000)],
+            maxTurnChars=400,
+            maxTurnCharsRoutes=['multi-session', 'temporal'],
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '50.0%' in r.stdout
+
+    def test_a_cap_that_does_not_reach_the_route_is_not_applied(self, tmp_path: Path) -> None:
+        # The reach is part of the configuration, so a reader that applied the cap everywhere
+        # would recompute a prompt for a route the run never capped.
+        report = self._report(
+            [('MR', 'user', 400), ('MR', 'assistant', 1_000)],
+            maxTurnChars=400,
+            maxTurnCharsRoutes=['temporal'],
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '28.6%' in r.stdout
+
+    def test_an_unreadable_role_is_its_own_column(self, tmp_path: Path) -> None:
+        # `tool:` is not a role this reader knows. Summing it into assistant would report a
+        # composition the artifact does not support.
+        report = self._report([('MR', 'user', 100), ('MR', 'tool', 100)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'unreadable' in r.stdout.lower()
+        assert '50.0%' in r.stdout
+
+    def test_a_report_with_no_turns_refuses(self, tmp_path: Path) -> None:
+        report = self._report([])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'turns' in r.stderr
+
+
 class TestWhenTheRoomIsWiderThanThePool:
     """The regime §13.68 created and §13.72's run was the first to enter.
 

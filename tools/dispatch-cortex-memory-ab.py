@@ -313,6 +313,13 @@ INPUTS = {
     # the reason every other registered value is: a run's room should not depend on a constant that
     # lives in another package.
     "cortex_memory_max_prompt_chars": "48000",
+    # §13.83's filter. `all` is the state every archived run is in and is sent explicitly for the
+    # reason every registered value is: the run's filter should not depend on an absent input
+    # meaning "every role". The experiment overrides it with `--set
+    # cortex_memory_evidence_roles=user` and, beside it, the reach that keeps the other three
+    # capabilities untouched.
+    "cortex_memory_evidence_roles": "all",
+    "cortex_memory_evidence_roles_routes": "all",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
     # pass any completed run has produced on this arm (a full run is about 3h32m for eight
     # passes), so it is a hang detector rather than a slow-run detector.

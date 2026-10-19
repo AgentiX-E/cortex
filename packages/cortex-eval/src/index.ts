@@ -340,6 +340,7 @@ export {
   describeEmbeddingCachePersist,
   persistEmbeddingCache,
   restoreArmEmbeddingCache,
+  roleOfTurn,
   runCortexMemoryArm,
   toMemoryArmConfig,
   type CortexMemoryArmEnv,

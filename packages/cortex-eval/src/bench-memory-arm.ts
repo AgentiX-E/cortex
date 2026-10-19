@@ -288,6 +288,25 @@ export type CortexMemoryArmOptions = {
    * measured floor.
    */
   maxPromptChars?: number | undefined;
+  /**
+   * The turn roles the evidence may be built from, or absent for every role.
+   *
+   * §13.82's measurement, not a hypothesis: 51.9% of the multi-session route's rendered room is
+   * assistant turns, while the reference pipeline reaches 85.95% on that capability at half the
+   * budget by reading user turns only. `['user']` is the treatment §13.83 registers.
+   *
+   * Absent rather than an all-roles list, for the reason `maxTurnChars` is absent rather than
+   * infinite: every archived run is the absent state, and a present list would make the config
+   * line claim a filter on runs that had none.
+   */
+  evidenceRoles?: readonly string[] | undefined;
+  /**
+   * Which routes the role filter reaches. Every route when the run names none.
+   *
+   * Projected even when {@link CortexMemoryArmOptions.evidenceRoles} is absent, so the artifact
+   * always answers what the filter *would* have reached.
+   */
+  evidenceRolesRoutes?: readonly string[] | undefined;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -472,6 +491,62 @@ const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
 const MAX_TURN_CHARS_ROUTES_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES';
 
 /**
+ * Which turn roles the evidence may be built from: `all` (the identity), or a comma-separated
+ * list drawn from the roles this dataset's haystack can carry.
+ *
+ * §13.82 measured the composition of the 48,000-character room and found **51.9% of the
+ * multi-session route's rendered characters are assistant turns**, against a reference pipeline
+ * that reaches 85.95% on the same capability at half the budget by restricting retrieval to user
+ * turns. §13.83 registers this as the variable.
+ *
+ * `all` rather than `none` for the identity, because the product refuses an empty role list: an
+ * empty list admits nothing and would spend a decline per question, so "no filter" has to be
+ * expressible and it is expressed by naming no roles.
+ */
+const EVIDENCE_ROLES_VARIABLE = 'CORTEX_MEMORY_EVIDENCE_ROLES';
+
+/**
+ * Which routes the role filter reaches: `all`, `none`, or a comma-separated list of route names.
+ *
+ * Scoped from the start for §13.73's two reasons: a global filter moves three capabilities that
+ * are not part of the experiment (75.8-77.3% of *their* rendered characters are assistant
+ * turns), and the untouched routes are the experiment's own control.
+ */
+const EVIDENCE_ROLES_ROUTES_VARIABLE = 'CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES';
+
+/**
+ * The roles a haystack turn can carry, in the order the config line spells them.
+ *
+ * The vocabulary is this dataset's, and it is closed here rather than open, because a run that
+ * named a role the classifier can never return would filter out every parsed turn -- a run that
+ * declines on almost every question while its artifact records a filter rather than a defect.
+ */
+const EVIDENCE_ROLE_ORDER: readonly string[] = ['user', 'assistant'];
+
+/** The same vocabulary as a membership test, so validation and lookup are one operation. */
+const EVIDENCE_ROLES: Record<string, true> = { user: true, assistant: true };
+
+/**
+ * The role a haystack turn carries, read from the prefix this dataset's rendering uses.
+ *
+ * `[2023/02/15 (Wed) 03:14] user: ...` is the shape, and it is **this package's** knowledge:
+ * `cortex-memory` takes a classifier rather than parsing a format, so that the product's
+ * behaviour is not a fact about one dataset. `undefined` means this turn's role could not be
+ * read, and the product keeps such a turn -- a classifier failure must not empty the evidence.
+ *
+ * Anchored at the start with a non-empty bracketed prefix, so a turn that merely *mentions*
+ * `assistant:` later in its text is not mislabelled, and so `[] user:` (an empty prefix) is not
+ * read as a timestamp.
+ */
+export function roleOfTurn(turn: string): string | undefined {
+  const match = EVIDENCE_ROLE_PREFIX.exec(turn);
+  return match?.[1]?.toLowerCase();
+}
+
+/** The prefix `roleOfTurn` reads. Exported nowhere: the shape is stated by the function. */
+const EVIDENCE_ROLE_PREFIX = /^\[[^\]]+\]\s*(user|assistant)\s*:/i;
+
+/**
  * The route names a reach may name, and the arm's own copy of the product's `TURN_CAP_ROUTES`.
  *
  * A table rather than an array because the value is a *set membership test*, and a table keyed by
@@ -570,6 +645,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // would the cap have reached" -- and so a run whose cap was removed cannot leave a stale
       // reach behind it. `all` is the shipped state.
       maxTurnCharsRoutes: ALL_TURN_CAP_ROUTES,
+      // §13.83's reach, projected in the disabled state for the same reason: an artifact always
+      // answers where the filter would have applied, and a run that turned the arm off cannot
+      // leave a stale reach behind it.
+      evidenceRolesRoutes: ALL_TURN_CAP_ROUTES,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -604,6 +683,20 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       const cap = readMaxTurnChars(env[MAX_TURN_CHARS_VARIABLE]);
       return cap === undefined ? {} : { maxTurnChars: cap };
     })(),
+    // §13.83's filter. Absent for the same reason the cap is: "every role" is the state every
+    // archived run was produced under, and a present-but-empty list would be a filter that
+    // admits nothing.
+    ...(() => {
+      const roles = readEvidenceRoles(env[EVIDENCE_ROLES_VARIABLE]);
+      return roles === undefined ? {} : { evidenceRoles: roles };
+    })(),
+    // Projected even when the roles are absent, for the reason `maxTurnCharsRoutes` is: an
+    // artifact always answers "what would the filter have reached", and a run whose filter was
+    // removed cannot leave a stale reach behind it.
+    evidenceRolesRoutes: readRouteReach(
+      env[EVIDENCE_ROLES_ROUTES_VARIABLE],
+      EVIDENCE_ROLES_ROUTES_VARIABLE,
+    ),
   };
 }
 
@@ -1066,6 +1159,17 @@ function readMaxPromptChars(raw: string | undefined): number | undefined {
  * side-channel defect, in the one field where the artifact is the only witness.
  */
 function readMaxTurnCharsRoutes(raw: string | undefined): readonly string[] {
+  return readRouteReach(raw, MAX_TURN_CHARS_ROUTES_VARIABLE);
+}
+
+/**
+ * Read a route reach: `all`, `none`, or a comma-separated list of route names.
+ *
+ * Shared by the cap's reach and the role filter's, because the semantics are identical and two
+ * copies would eventually disagree about `none` or about ordering. The variable name is a
+ * parameter so each caller's rejection names the input the operator actually set.
+ */
+function readRouteReach(raw: string | undefined, variable: string): readonly string[] {
   const trimmed = (raw ?? '').trim();
   if (trimmed === '' || trimmed.toLowerCase() === 'all') return ALL_TURN_CAP_ROUTES;
   if (trimmed.toLowerCase() === 'none') return [];
@@ -1073,19 +1177,57 @@ function readMaxTurnCharsRoutes(raw: string | undefined): readonly string[] {
   for (const name of named) {
     if (!(name in TURN_CAP_ROUTES)) {
       throw new Error(
-        `${MAX_TURN_CHARS_ROUTES_VARIABLE} must be "all", "none", or a comma-separated list of ` +
+        `${variable} must be "all", "none", or a comma-separated list of ` +
           `${Object.keys(TURN_CAP_ROUTES)
             .map((route) => JSON.stringify(route))
             .join(', ')}; ` +
           `got ${JSON.stringify(raw)}. An unrecognised route is rejected rather than ignored, ` +
-          'because a run that applied the cap to five of six routes would report every number ' +
-          'consistent with having applied it to six.',
+          'because a run that applied the filter to five of six routes would report every ' +
+          'number consistent with having applied it to six.',
       );
     }
   }
   // De-duplicated and ordered by the product's own list, so two spellings of one reach produce
   // one config line and the artifact does not distinguish `flat,temporal` from `temporal,flat`.
   return ALL_TURN_CAP_ROUTES.filter((route) => named.includes(route));
+}
+
+/**
+ * Read the roles the evidence may be built from, or `undefined` for no filter.
+ *
+ * Blank and `all` are the identity, which is the state every archived run is in. `none` is
+ * **refused** rather than read as the empty list: the product rejects an empty list because it
+ * admits no evidence at all, so a run that spelled `none` would fail at construction with a
+ * message about a different layer. Rejecting it here names the input.
+ */
+function readEvidenceRoles(raw: string | undefined): readonly string[] | undefined {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '' || trimmed.toLowerCase() === 'all') return undefined;
+  const named = trimmed
+    .split(',')
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.length > 0);
+  if (named.length === 0) {
+    throw new Error(
+      `${EVIDENCE_ROLES_VARIABLE} must be "all" or a comma-separated list of ` +
+        `${EVIDENCE_ROLE_ORDER.map((role) => JSON.stringify(role)).join(', ')}; ` +
+        `got ${JSON.stringify(raw)}.`,
+    );
+  }
+  for (const name of named) {
+    if (!(name in EVIDENCE_ROLES)) {
+      throw new Error(
+        `${EVIDENCE_ROLES_VARIABLE} must be "all" or a comma-separated list of ` +
+          `${EVIDENCE_ROLE_ORDER.map((role) => JSON.stringify(role)).join(', ')}; ` +
+          `got ${JSON.stringify(raw)}. \`none\` is refused because an empty role set admits ` +
+          'no evidence at all: omit the input to run unfiltered, which is the state every ' +
+          'archived run is in.',
+      );
+    }
+  }
+  // De-duplicated and in the vocabulary's order, for the reason the reach is: one configuration
+  // must have one spelling in the artifact's line.
+  return EVIDENCE_ROLE_ORDER.filter((role) => named.includes(role));
 }
 
 /**
@@ -1219,6 +1361,12 @@ export function toMemoryArmConfig(
     ...(options.maxTurnCharsRoutes === undefined
       ? {}
       : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
+    // §13.83. Absent means every role, which is what every archived run read; the routes are
+    // always present for the reason the cap's are.
+    ...(options.evidenceRoles === undefined ? {} : { evidenceRoles: options.evidenceRoles }),
+    ...(options.evidenceRolesRoutes === undefined
+      ? {}
+      : { evidenceRolesRoutes: options.evidenceRolesRoutes }),
     // Spread conditionally rather than assigned, for the reason the two options above
     // are spread conditionally in the constructor: an always-present key holding
     // `undefined` is indistinguishable from a missing one under this workspace's

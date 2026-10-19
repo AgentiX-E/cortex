@@ -291,4 +291,65 @@ export type CortexMemoryOptions = {
    * every prior artifact was produced with.
    */
   ask?: EvidenceAsk;
+  /**
+   * The kinds of turn the evidence may be built from. Absent means every turn.
+   *
+   * ## The measurement this answers
+   *
+   * §13.82 read the 48,000-character run and measured the **composition** of the room rather
+   * than its size: on the multi-session route **51.9% of the rendered characters are assistant
+   * turns**, on temporal 50.1%, and on the three uncapped routes 75.8-77.3%. The reference
+   * pipeline, which reaches 85.95% on multi-session with a 24,000-character budget, restricts
+   * retrieval to user turns and states the reason in its own source: *"the facts live in the
+   * user's statements; assistant turns are verbose generated chatter that dilutes the answer
+   * signal"*. This arm reaches 68.60% with 48,000 and reads everything.
+   *
+   * ## Why the product takes a classifier instead of parsing roles itself
+   *
+   * `[date] role:` is one dataset's format, not a property of a turn. A parser here would make
+   * the product's behaviour a fact about that dataset and would leave the next one silently
+   * unfiltered -- the §10.10 class, a recorded configuration that never reaches the decision it
+   * names. So the product owns the **filter** and the caller owns the **format**, through
+   * {@link CortexMemoryOptions.roleOf}.
+   *
+   * ## `undefined` from the classifier is not an excluded role
+   *
+   * A turn whose role cannot be read is **kept**. Dropping it would turn a classifier bug into
+   * an empty prompt, which reads as a dataset with no evidence rather than as the defect it is.
+   *
+   * ## An empty list is refused rather than honoured
+   *
+   * It would admit nothing on every reached route, which is a decline every time; §13.80's
+   * lesson is that a value which cannot work is rejected at the boundary instead of producing a
+   * run whose reading looks like a measurement. Naming no roles at all (absent) is how a run
+   * expresses "no filter".
+   */
+  evidenceRoles?: readonly string[] | undefined;
+  /**
+   * Which routes {@link CortexMemoryOptions.evidenceRoles} reaches. Absent means all of them.
+   *
+   * ## Why the reach exists before the filter has been measured
+   *
+   * Two reasons, and the second is the one that decides it. First, §13.73's pattern: a filter
+   * that reaches every route moves three capabilities the experiment is not asking about, and
+   * 75.8-77.3% of *their* rendered characters are assistant turns -- a global filter is not a
+   * neutral change for them. Second, the reach is the experiment's own internal control: the
+   * untouched routes must reproduce their control's window **to the turn**, which is a check no
+   * number in the treated routes can supply.
+   *
+   * Absent means every route, so a run that names no reach reproduces the shipped behaviour, and
+   * an empty list reaches nothing -- a legitimate way to disable the filter without removing the
+   * classifier.
+   */
+  evidenceRolesRoutes?: readonly TurnCapRoute[] | undefined;
+  /**
+   * How to read a turn's role. Required whenever {@link CortexMemoryOptions.evidenceRoles} is
+   * named, and refused at construction otherwise.
+   *
+   * A filter without a classifier is an inert configuration: the artifact would record
+   * `evidenceRoles: ["user"]` while the run kept every turn, which is exactly the shape §10.10
+   * recorded for the retrieval gate and §13.69 for a stale dispatch value. Throwing at
+   * construction makes that state unrepresentable rather than invisible.
+   */
+  roleOf?: (turn: string) => string | undefined;
 };

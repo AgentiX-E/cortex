@@ -252,6 +252,21 @@ export type FeatureConfig = Readonly<Record<string, boolean>>;
  * `tools/__tests__/test_ask_table_parity.py`, which fails if a seventh route is added without
  * updating this -- so the number is guarded rather than merely written down.
  */
+/**
+ * A reach as the config line spells it: `all`, `none`, or the sorted names joined with `+`.
+ *
+ * `+` rather than a comma because the line already separates fields with commas, so a comma
+ * inside a value would make one field read as three. `all` covers both the absent reach and the
+ * full list, because they are the same state reached by two spellings and the artifact must not
+ * distinguish them.
+ */
+function renderReach(reach: readonly string[] | undefined): string {
+  if (reach === undefined) return 'all';
+  if (reach.length === 0) return 'none';
+  if (reach.length === TURN_CAP_ROUTE_COUNT) return 'all';
+  return [...reach].sort().join('+');
+}
+
 const TURN_CAP_ROUTE_COUNT = 6;
 
 export type MemoryArmConfig = {
@@ -306,6 +321,22 @@ export type MemoryArmConfig = {
    * comparison itself -- and without it both would read as the same run.
    */
   readonly maxTurnCharsRoutes?: readonly string[] | undefined;
+  /**
+   * The turn roles the evidence was built from, or absent for every role.
+   *
+   * §13.83's field, and it is recorded for the reason the cap's width is: the treatment is a
+   * statement about what the reader was allowed to see, and a run that filtered to user turns
+   * and one that did not differ in every number below this line while both claim the same
+   * budget. Absent is the state every run before §13.83 was in.
+   */
+  readonly evidenceRoles?: readonly string[] | undefined;
+  /**
+   * Which routes the role filter reached. Every route when the run named none.
+   *
+   * Recorded even when {@link MemoryArmConfig.evidenceRoles} is absent, so two artifacts can be
+   * compared on where a filter *would* have applied -- the same rule the cap's reach follows.
+   */
+  readonly evidenceRolesRoutes?: readonly string[] | undefined;
   /**
    * Source trust stamped on every memory admission constructs. In `[0, 1]`.
    *
@@ -712,15 +743,16 @@ export function formatAblationReport(report: AblationReport): string {
         // The reach, rendered on every run beside the width and joined with `+` rather than a
         // comma: the line already separates fields with commas, so a comma inside a value would
         // make one field look like three.
-        `, \`maxTurnCharsRoutes=${
-          memoryArm.maxTurnCharsRoutes === undefined
+        `, \`maxTurnCharsRoutes=${renderReach(memoryArm.maxTurnCharsRoutes)}\`` +
+        // §13.83, rendered on every run for the reason the cap is: `all` is a fact about the
+        // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
+        // two artifacts must be able to see which of them filtered.
+        `, \`evidenceRoles=${
+          memoryArm.evidenceRoles === undefined
             ? 'all'
-            : memoryArm.maxTurnCharsRoutes.length === 0
-              ? 'none'
-              : memoryArm.maxTurnCharsRoutes.length === TURN_CAP_ROUTE_COUNT
-                ? 'all'
-                : [...memoryArm.maxTurnCharsRoutes].sort().join('+')
+            : [...memoryArm.evidenceRoles].sort().join('+')
         }\`` +
+        `, \`evidenceRolesRoutes=${renderReach(memoryArm.evidenceRolesRoutes)}\`` +
         // The unit, under the same rule as the width and for the same reason: it has no
         // meaning without a ranking to act on, because with `relevanceSignal=none` the
         // budget buys the arrival-order prefix and there is no ordering for a unit to
