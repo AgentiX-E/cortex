@@ -8869,3 +8869,28 @@ spread.
 | P1 | The order function, now measurable per selection through `goldRanks` | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+### 13.70.7 The exposure, measured before the run rather than assumed
+
+A cap is only a variable if it binds, and its cost is only real if the turns it cuts are the ones carrying the
+facts. Both are answerable from the control artifact, per **turn** rather than per question:
+
+| capability | carried turns | longer than 400 | share | characters removed |
+| --- | --- | --- | --- | --- |
+| ABS | 991 | 321 | 32.4% | 386,719 |
+| IE | 4,639 | 1,555 | 33.5% | 2,002,633 |
+| KU | 2,097 | 730 | 34.8% | 960,842 |
+| **MR** | 2,909 | **1,202** | **41.3%** | **1,609,132** |
+| TR | 3,479 | 1,301 | 37.4% | 1,723,642 |
+| **TOTAL** | 14,115 | **5,109** | **36.2%** | **6,682,968** |
+
+So the cap binds on **36.2%** of the turns the model currently reads, and on **41.3%** of MR's. Two consequences
+stated before the numbers arrive:
+
+- **The variable is not inert by construction.** A cap that touched 2% of turns could not move coverage and a
+  null result would say nothing; this one removes 6.68 million characters from the delivered evidence.
+- **The cost is not hypothetical either.** Four in ten of MR's turns will lose text, so §13.67.4's stated trade —
+  *a turn whose decisive fact sits deep in a long narrative loses it* — is being tested on a large minority of the
+  population rather than on an edge case. Prediction 4 is what keeps that honest: if IE or KU falls outside its
+  own measured rate while MR rises, the run has bought coverage with capability, and §13.68.7 says that needs its
+  own argument rather than an adoption.
