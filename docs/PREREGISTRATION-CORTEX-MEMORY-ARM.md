@@ -697,6 +697,10 @@ forwarded into a step's `env`. Three injections were run against it:
   spellings are `all`, `none` and a comma-separated list of the six route names; anything else is rejected, and
   a reach that reached five routes while the artifact said six is the one failure no number in the run could
   show.
+* `relevanceTopK: 256` — **adopted by §13.79.** The pool reaches rank 255, which is what makes a 121-turn room
+  expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
+  fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
+  overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -815,7 +819,7 @@ forwarded into a step's `env`. Three injections were run against it:
   has no ground-truth parameter, so this is structural rather than promised, and
   `relevance-index.test.ts` measures it by building two indices from cases that differ only
   in an unread field.
-* `relevanceTopK: 64` — **added by §13.17.** The width the index scores at, registered
+* **The index width — added by §13.17 at 64, superseded by §13.79's 256.** Registered
   separately because the signal's name and the signal's extent are different claims: a
   `retrieval` signal built at a width of `8` ranks almost nothing, and an artifact naming
   only the signal would make that run and this one look like the same experiment.
@@ -823,9 +827,13 @@ forwarded into a step's `env`. Three injections were run against it:
   already flattened, so any width at or above the knee is complete for this dataset's
   purpose and 64 is that with a margin for the six-question floor being an artifact of a
   different sample. It is also below the budget's own capacity of roughly one hundred and
-  sixty-seven turns, which is the property that makes the width inert with respect to the
-  budget: every scored turn survives selection, so widening the index would reorder the
-  low-scoring turns rather than admit more high-scoring ones. Sent explicitly rather than
+  sixty-seven turns, which was the property §13.17 argued made the width inert with respect to
+  the budget: every scored turn survives selection, so widening the index would reorder the
+  low-scoring turns rather than admit more high-scoring ones. **§13.79 measured that argument
+  when the room grew to 68 turns and it split in two**: delivery moved 72.2% → 72.9%, which is
+  the "reorder, not admit" half holding; and the share of MR's gold the ranker never *surfaced*
+  fell 28.1% → 5.0%, which is the half that was false. The width was adopted for the second half
+  and for the reason §13.79.5 gives — a 121-turn room is not expressible on a 64-wide pool. Sent explicitly rather than
   left blank for the reason `sourceTrust` is: a value that never reaches the environment is
   a value this guard cannot compare against the registration.
 * `relevanceUnits: turn` — **added by §13.27, refuted by §13.31, and held at the shipped
@@ -9593,3 +9601,93 @@ build is a separate phase from the passes and is bounded by the same 90-minute p
 `39116387165` run the build logged 32,000 pairs in well under a minute, so four times that is still small against
 a 100-minute pass. If the build does dominate, the artifact's own timings say so rather than the run failing
 silently.
+
+## 13.79 The unreachable gold sits at rank 114, and MR's accuracy is a step function at 85% coverage
+
+### 13.79.1 The reading
+
+Run `39228533156`, 1h43m12s, `drift` 500/500 with zero answers differing, config line
+`relevanceTopK=256` with `maxTurnChars=400 maxTurnCharsRoutes=multi-session+temporal`.
+
+| # | registered (§13.78.3) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's never-surfaced ≤ **22%** | **5.0%** (182 of 3663) | **met**, by 23 points |
+| **2** | MR's delivered share within **±5** of 72.2% | **72.9%** (2670 of 3663) | **met** |
+| **3** | roster within **±6** of 389 | **394** | **met** |
+| **4** | the median true rank beyond the old width | **114** (MR), 119 (all) | the number the run existed for |
+
+Per capability: **ABS 30, IE 136, KU 61, MR 78, TR 89** — roster **394/500 = 78.80%**, the campaign's best;
+registered delta **+33.50pp**, also the best; and `beyond the pool` is **0** on every capability, which is
+prediction 3 of §13.72 finally satisfied by construction: the room is smaller than the pool again.
+
+### 13.79.2 The rank table, which is why the run was dispatched
+
+| rank band | ABS | IE | KU | MR | TR | all | share |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0–63 | 420 | 1444 | 1327 | 2632 | 2195 | 8018 | 73.2% |
+| **64–127** | 110 | 104 | 188 | **484** | 417 | 1303 | **11.9%** |
+| **128–255** | 88 | 93 | 119 | **365** | 399 | 1064 | **9.7%** |
+| ≥ 256 | 54 | 68 | 54 | 182 | 217 | 575 | 5.2% |
+| median beyond 64 | 114 | 116 | 112 | **114** | 127 | **119** | |
+
+So the gold the campaign could not reach is **not** at rank 900. Its median is **114**, a quarter of it sits
+between 64 and 127, and only 5.2% is beyond 256. §13.78.4's decision rule had two branches — "65–90 means a knob,
+300+ means a research problem" — and the answer lands between them, which is the one outcome the rule did not
+name: **the pool is wide enough to hold the median unreachable gold, and the room is not**.
+
+The room holds 68 turns. The median unreachable gold is at 114. So the next variable is the **room**, and the
+arithmetic that sets it is already known: at 400 characters the room is 68, and the character budget is fixed.
+
+### 13.79.3 What the coverage bands say about *how* the room buys anything
+
+MR's accuracy by coverage band on this run:
+
+| coverage | n | correct | rate |
+| --- | --- | --- | --- |
+| 0–50% | 18 | 9 | 50.0% |
+| 50–70% | 26 | 13 | 50.0% |
+| 70–85% | 26 | 13 | 50.0% |
+| **85–95%** | 21 | 17 | **81.0%** |
+| **95–100%** | 30 | 26 | **86.7%** |
+
+**Flat at 50% for everything below 85%, then a step.** That is a different shape from every earlier reading in
+this campaign — §13.26 saw a smooth climb across bands — and it changes what a room has to do: not raise coverage
+on average, but **push questions over the step**. A question at 60% that becomes 80% is worth nothing by this
+table; one that goes from 80% to 90% is worth 31 points.
+
+### 13.79.4 Registered: a 200-character cap on the two routes
+
+**One variable**: `maxTurnChars: 200`, reach unchanged (`multi-session,temporal`), `relevanceTopK: 256` held.
+
+The width is chosen by arithmetic on this run's own data: the mean capped turn at 200 is 175 characters, which in
+a 22,000-character evidence room holds **≈ 121 turns** — just past the median unreachable rank of 114. Geometry
+from `goldRanks` at that room gives MR **84.4%** delivered before calibration; the same model over-predicts the
+current run (79 turns against 68 measured), so the calibrated expectation is **≈ 81%**.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **MR's delivered share rises from 72.9% to ≥ 79%** | < 79% |
+| **2** | **MR's correct count rises from 78 to ≥ 81**, by the band arithmetic above (25 questions cross 85%) | ≤ 78 |
+| **3** | **The roster rises from 394 to ≥ 397** | ≤ 394 |
+| **4** | **TR holds at ≥ 84** (it is 89; its own cross-draw rate is ±15, so this is a floor rather than a prediction) | ≤ 83 |
+
+**The price, stated first**: at 200 characters **65.5%** of MR's turns are truncated, against 38.9% at 400, and
+the characters removed rise from 4.49M to 5.31M in the same 121 questions. A fact that sits past the 200th
+character of its turn is now lost, and §13.77.1's test — that truncation share does **not** separate correct from
+failing answers — was run at 400, where the share was 40% either way. At 200 nothing guarantees it stays flat, and
+prediction 4 is the only place that would show.
+
+### 13.79.5 Adopted: the pool width
+
+`relevanceTopK: 256` is **adopted** alongside the width and reach from §13.76: predictions 1–3 all met, the
+roster is +5, the delta is the campaign's best, and `beyond the pool` reaches zero. It is also what makes the
+next experiment expressible at all — a room of 121 turns is only meaningful with a pool that can fill it.
+
+### 13.79.6 What each outcome of the next run would mean
+
+- **1 and 2 hold**: the step is the mechanism, the room is the lever, and the next question is how far the step
+  moves — i.e. whether 150 characters buys the 39 crossings the arithmetic predicts (+6.5 questions).
+- **1 holds and 2 does not**: coverage crosses 85% and accuracy does not follow, which would falsify the step
+  rather than the cap, and the band table would have to be re-read on the new run's own bands.
+- **1 fails**: turning 65% of turns into 200-character stumps destroys more than the extra turns deliver, and the
+  400-character cap from §13.76 is the right one — a result the registration makes visible instead of arguable.

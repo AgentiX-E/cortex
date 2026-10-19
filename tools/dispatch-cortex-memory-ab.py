@@ -263,7 +263,10 @@ INPUTS = {
     # exposed it: dispatched on `retrieval` against an adopted `retrieval-hybrid`, which
     # would have moved the ranking and the cap at once.
     "cortex_memory_relevance": "retrieval-hybrid",
-    "cortex_memory_relevance_top_k": "64",
+    # §13.79's adoption. The pool now reaches rank 255, which is what makes the two-route room
+    # expressible: at 400 characters the room holds 68 turns against a pool of 256, and the gold
+    # that k = 64 could not surface has a median rank of 114 -- inside the pool, outside the room.
+    "cortex_memory_relevance_top_k": "256",
     # §13.27's single variable.
     #
     # §13.26 read the artifact the previous dispatch produced and found the mechanism rather
