@@ -9004,3 +9004,18 @@ carry the sentence *"the pool holds 73.2% of the gold and the delivery 54.2%"*, 
 control, is **pool 73.2% all-capabilities against delivered 49.8% all-capabilities**, and **MR pool 71.9%
 against MR delivered 42.5%**. Both are stated here so the earlier sentences have a correction in the record
 rather than a silent successor.
+
+### 13.71.6 Where the corrected statistic is read from, stated so it cannot be confused again
+
+The aggregate share is `--pool`'s **delivered ÷ gold** column, per capability. `--coverage` reports
+**per-question medians by band**, which is a different statistic and is the one the wrong baseline was taken
+from. So the reading for prediction 1 is:
+
+```text
+python3 tools/readout-arm-run.py --pool  <artifact>   # aggregate: MR delivered / MR gold
+python3 tools/readout-arm-run.py --coverage <artifact> # medians by band: the shape, not the level
+```
+
+Both are printed, and §13.71's correction exists because the second was used to write down a target for the first.
+This costs nothing to state and is the only way the sentence "coverage rose" can be checked by a reader who has
+the tool rather than the prose.
