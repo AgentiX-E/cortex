@@ -801,12 +801,15 @@ class TestThePoolPartition:
         assert 'pool' in r.stderr
 
     def test_an_impossible_partition_is_reported_not_hidden(self, tmp_path: Path) -> None:
-        # `carried > pool` cannot happen when the delivery came from the pool, so a record
-        # showing it is a caller defect. The table says so instead of clamping.
-        report = self._report([('MR', 10, 8, 2)])
+        # `pool > total` cannot happen -- the ranking cannot surface more gold than the dataset
+        # names -- so a record showing it is a caller defect, and the table says so rather than
+        # clamping. This fixture used to be `carried > pool`, which §13.72 showed is a legitimate
+        # state once the window is wider than the pool; that case now has its own class and its
+        # own column, and keeping it here would have preserved a belief the run falsified.
+        report = self._report([('MR', 10, 8, 12)])
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
-        assert 'violate' in r.stdout or 'impossible' in r.stdout
+        assert 'pool > total' in r.stdout
 
 
 class TestTheTurnLengthDistribution:
@@ -938,3 +941,76 @@ class TestHowMuchTheWindowActuallyHeld:
         r = self._run(tmp_path, report)
         assert r.returncode == 2
         assert 'promptChars' in r.stderr
+
+
+class TestWhenTheRoomIsWiderThanThePool:
+    """The regime §13.68 created and §13.72's run was the first to enter.
+
+    `--pool` was written when the window held ~26 turns against a 64-wide pool, so every delivered
+    turn was a candidate and `carried > pool` could only be a caller defect. A 400-character cap
+    fits ~68 turns, which is **more than the pool is wide**, so the selection continues past the
+    pool into turns the ranking never scored. The artifact then honestly records
+    `carried > pool`, and the tool called it a violation.
+
+    It is not a violation, it is a different regime, and the two need different words: below the
+    pool width, `pool - carried` is gold the budget refused; above it, `carried - pool` is gold the
+    room reached that the ranking never offered. Reporting the second as a negative first would
+    describe a budget cut that ran backwards.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, int, int, int]]) -> dict:
+        questions = []
+        for index, (capability, total, carried, pool) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+                'goldOverlap': {'carried': carried, 'total': total, 'pool': pool,
+                                'goldRanks': [-1] * total},
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--pool', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_a_delivery_wider_than_the_pool_is_reported_as_beyond_it(self, tmp_path: Path) -> None:
+        # 10 gold, 7 surfaced, 9 delivered: two gold turns arrived that the ranking never offered.
+        report = self._report([('MR', 10, 9, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'arrived from outside the pool' in r.stdout
+        # And the cut column must not be negative, because a negative cut is not a quantity.
+        assert '-2' not in r.stdout
+
+    def test_below_the_pool_width_the_note_is_absent(self, tmp_path: Path) -> None:
+        # The regime every run before §13.72 was in. The column exists in the header either way --
+        # it is one table -- so what has to be absent is the *note*, which is what a reader uses to
+        # know the window overflowed the pool.
+        report = self._report([('MR', 10, 4, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'cut by the budget' in r.stdout
+        assert 'arrived from outside the pool' not in r.stdout
+
+    def test_only_a_pool_wider_than_the_gold_is_a_defect(self, tmp_path: Path) -> None:
+        # `pool > total` cannot happen: the ranking cannot surface more gold than the dataset
+        # names. That is a caller defect and stays one; `carried > pool` is not.
+        report = self._report([('MR', 5, 4, 9)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'pool > total' in r.stdout

@@ -679,7 +679,9 @@ forwarded into a step's `env`. Three injections were run against it:
   mechanism predictions were falsified** — the pool's reach did not improve — and §13.64.4
   records that the coverage instrument measures quantity while the effect moved *which*
   turn decides. A run with `relevanceSignal=retrieval` is the pre-§13.64 configuration.
-* `maxTurnChars: none` — **the adopted configuration carries no per-turn cap**, and it is
+* `maxTurnChars: none` — **the adopted configuration carries no per-turn cap** (the global 400 that §13.68
+  implemented and §13.72 measured was **rejected as a default**: roster 357 against 371, union 80.20% against
+  87.40%, IE −30 while MR +13; §13.73 registers the route-scoped form as the next variable), and it is
   written down rather than omitted because §13.67 registered the cap as a variable and
   §13.68 implemented it. `none` means each turn contributes its whole text, which is what
   every archived run did; `400` is the registered treatment under measurement. Absent,
@@ -9030,3 +9032,198 @@ failing.
 What changes is `--window`: the turn **count** rises while `promptChars` stays at the budget, which is what
 "more turns in the same room" means. A reader who saw `--turns` unchanged and concluded the cap was inert would
 be reading the corpus measure and expecting it to describe a prompt.
+
+## 13.72 The cap moved every mechanism it was registered for, and cost thirty IE questions to do it
+
+### 13.72.1 The reading, prediction by prediction
+
+Run `39180819474`, 1h37m43s, `drift` 500/500 with zero answers differing, config line
+`relevanceSignal=retrieval-hybrid relevanceTopK=64 relevanceUnits=turn`, and `maxTurnChars=400` in both the log
+and the artifact.
+
+| # | registered | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's delivered share 42.5% → **≥ 50.2%** (corrected, §13.71) | **72.2%** (2644/3663) | **met**, by 22 points |
+| 1′ | the original form: 54.2% → ≥ 62% | 72.2% | met — but the original baseline was the wrong statistic |
+| **2** | MR correct 62 → **≥ 66** | **75** | **met**, +13 |
+| **3** | roster 371 → **≥ 379** | **357** | **falsified**, −14 |
+| **4** | IE and KU inside their own measured rates (5 / 7) | IE **−30**, KU −4 | **falsified** on IE, met on KU |
+
+The precondition held and must be read first: MR's median turns went **23 → 68** and `promptChars` stayed at
+22,149 of 24,000. The cap bound, the window nearly tripled, and the diagnostic band §13.71.3 registered
+(≈ 65%) was exceeded for a reason the next paragraph gives.
+
+Per capability, against the control (`39116387165`):
+
+| capability | control | cap 400 | Δ |
+| --- | --- | --- | --- |
+| ABS | 30 | 30 | 0 |
+| IE | 133 | **103** | **−30** |
+| KU | 61 | 57 | −4 |
+| **MR** | 62 | **75** | **+13** |
+| TR | 85 | **92** | +7 |
+| **roster** | **371** | **357** | **−14** |
+| registered delta | +30.45pp | +26.80pp | −3.65pp |
+| union | 437/500 = 87.40% | 401/500 = **80.20%** | **−36** |
+
+### 13.72.2 The mechanism worked better than it was predicted to, and the reason is new
+
+§13.71.3's geometry said a room holding ~53 turns would capture ~67.8% of MR's gold, and predicted ≈ 65% after the
+offset the control showed. The run delivered **72.2%** — above the pool's own 71.9% ceiling.
+
+It can go above the ceiling because **the room is now wider than the pool**: 68 turns against 64 scored
+candidates, so the selection continues past the ranked set into turns the ranking never offered. Fifty-four gold
+turns arrived that way across the arm (MR 12, TR 13, ABS 22, KU 7). That was not predicted, and it is only visible
+because `goldOverlap` carries `pool` — the field exists for exactly this kind of surprise rather than for the
+question it was built for.
+
+### 13.72.3 The price, and its shape: thirty questions that stopped being answered
+
+IE's loss is not diffuse. Of its 150 questions, **30 went `correct → abstention`**, and its declines rose
+**15 → 42**. Their median coverage is **100%** — every gold turn was in the window when the model declined.
+
+So the model was given complete evidence and withdrew. This is not the §13.51 "declining with the evidence in
+hand" defect returning by accident: IE is on the **flat** route, which never received §13.57's conditional closing
+line, so its block still ends with the unconditional *"If the evidence does not contain the answer, reply exactly
+INSUFFICIENT_EVIDENCE."* Seventy-three turns of mostly-irrelevant text give that sentence more opportunities to be
+true, and the model takes them.
+
+The contrast inside one run makes the point better than any aggregate:
+
+| | declines | coverage among declines | correct |
+| --- | --- | --- | --- |
+| **MR** (multi-session, conditional close) | 18 → **10** | 21% → **54%** | 62 → **75** |
+| **IE** (flat, unconditional close) | 15 → **42** | 43% → **100%** | 133 → **103** |
+
+**The same intervention moved abstention in opposite directions on two capabilities**, and the difference tracks
+the closing line rather than the coverage.
+
+### 13.72.4 The instrument that broke, and it broke correctly
+
+`GoldOverlap.pool` and `--pool` were built on an assumption stated as an invariant: `carried ≤ pool ≤ total`,
+because the delivery is a prefix of the ranked pool. With the room wider than the pool, `carried > pool` is a
+**legitimate** state — gold delivered from turns the ranking never scored — and the table printed it as a
+**negative** "cut by the budget" and called fourteen records a caller defect.
+
+Both were fixed in this iteration, with tests, and the honest reading of the failure is that the invariant was a
+property of the *regime* rather than of the data: it held for every run while the window was smaller than the
+pool, and it stopped holding the first time a variable made the window larger. The table now carries both
+directions as separate columns clamped at zero, and only `pool > total` / `carried > total` remain defects.
+
+### 13.72.5 The verdict
+
+**Rejected as a global default.** The roster fell 371 → 357, the union fell 87.40% → 80.20%, and the price is
+concentrated in one capability at a measured rate of −30 against a cross-draw noise floor of ±2 for IE.
+
+**Not rejected as a mechanism.** Every mechanism prediction was met or exceeded: delivered share +29.7 points,
+declines on MR halved, window nearly tripled, `promptChars` unchanged. The cap does exactly what §13.67 said the
+room was doing — it is simply not true that every capability wants the same room.
+
+That is the finding worth keeping, and it is the first time in this campaign that a variable has been **accepted
+on one capability and rejected on another within a single run**: MR +13 and TR +7 are named transitions
+(`numeric_mismatch → correct` 14, `other → correct` 4, `abstention → correct` 6 on MR), and IE's −30 is thirty
+named transitions the other way. Neither is noise, and a single switch cannot express both.
+
+### 13.72.6 What this changes about the campaign's picture
+
+- **The evidence room is not one number.** §13.34.3's count argument and §13.67's character argument were both
+  right, and both were answering for the arm as a whole. This run says the optimum is per route.
+- **Abstention is a function of list length as well as of coverage.** IE declines at 100% coverage, 42 times.
+  That is §13.51's question — *why does a model with the evidence decline?* — answered for a second capability in
+  a different direction.
+- **MR's remaining gap is now 32, not 49.** Union 107 on MR against a baseline of 102: the feature answers 75
+  where the reference answers 102. The cap moved the coverage constraint a long way and left the counting
+  constraint where §13.59 found it — `numeric_mismatch` 31, of which 11 count their own short list.
+
+### 13.72.7 Verification and status
+
+- `drift`: 500 of 500 records, 0 answers differing — the read was not through a stale parser (§13.60's rule).
+- `--pool` and its three tests were **changed in this iteration** because the run falsified the invariant they
+  encoded; `tools` **454 passed + 42 subtests**; one pre-existing fixture was rewritten rather than kept green.
+- `pnpm check` is re-run before this section is committed.
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | The **route-scoped cap**: register and measure a window that widens where it helps and not where it hurts (§13.73) | yes |
+| **P0 (done)** | The global cap's reading: 1 and 2 met, 3 and 4 falsified, mechanism confirmed and rejected as a default | — |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list — unchanged by the cap, as §13.70.8 predicted | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
+
+## 13.73 The next variable is the cap's reach, and it is one variable
+
+### 13.73.1 Why reach rather than a different width
+
+§13.72 measured the cap at one width (400) over every route and found both a large gain and a large loss. The
+obvious next question is whether some *other* width is better for everyone, and the run already answers it: the
+loss is not a matter of degree. IE's thirty questions went `correct → abstention` with **100%** coverage — the
+evidence was complete and the model withdrew. No smaller cap turns a complete window into a partial one on a
+capability whose questions need one turn; it only changes how many distractors surround it. So a sweep would
+find a width that is a compromise between two capabilities rather than a setting that is right for both.
+
+The reach is the variable because the two behaviours are on different routes, and the campaign's own pattern for
+route-varying behaviour is a reach set: `renderingRoutes` (§12.9) and `askRoutes` (§13) are both explicit lists
+of which routes an option reaches, recorded in the artifact, with the untouched routes asserted to be
+byte-identical.
+
+### 13.73.2 Which routes, and the evidence for each
+
+| route | capability whose questions land there | evidence |
+| --- | --- | --- |
+| **multi-session** | MR | +13 correct, declines 18 → 10, coverage 21% → 54% among declines. The only move in this run far outside any capability's own noise |
+| **temporal** | TR | +7 correct, declines flat at 25 → 26 while their coverage rose 40% → 62%. Low-risk, plausibly real, and **inside** TR's own 15-question churn — so it is included for its *shape*, not its count |
+| flat | IE | **−30**, all as `correct → abstention` at 100% coverage. Excluded because of this |
+| knowledge-update | KU | −4, inside its own rate, on a route with its own block. Excluded as the conservative reading of a move the instrument cannot separate from noise |
+| abstention | ABS | 0 in both runs. Excluded because nothing moved |
+
+**TR's inclusion is the one judgement in this table**, and the registration says so: its own cross-draw rate is
+15 of 127, so +7 is not evidence. What justifies including it is that the temporal route's block also ends with
+the conditional close §13.57 introduced, and its declines did not rise while their coverage did — the opposite
+of the signature that cost IE thirty questions. If the run contradicts that, the reach is one route and the
+finding is narrower than this section's argument.
+
+### 13.73.3 Registration
+
+**One variable**: `maxTurnChars: 400` applied on the multi-session and temporal routes, and on no others.
+Everything else is held: `ask: enumerated`, `relevanceSignal: retrieval-hybrid`, `relevanceTopK: 64`,
+`relevanceUnits: turn`, both thresholds `0`, `sourceTrust 0.5`, `promptContract abstention-evidence-blocks`.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **IE returns**: ≥ **130** of 150 (control 133; the cap run 103; IE's own rate ±2) | ≤ 129 |
+| **2** | **MR keeps the gain**: ≥ **70** (control 62; cap run 75; MR's rate ±4) | ≤ 69 |
+| **3** | **KU holds**: ≥ **58** (control 61; KU's rate ±7) | ≤ 57 |
+| **4** | **TR holds**: ≥ **80** (control 85; cap run 92; TR's rate ±15) | ≤ 79 |
+| **5** | **the roster rises**: ≥ **378** (control 371, dispatched on §13.66's deterministic retrieval) | ≤ 377 |
+
+Prediction 1 is the **price restored** and prediction 2 is the **mechanism kept**; they are the two that carry the
+argument, and 3–5 exist so that a total cannot hide a trade the instrument is fine enough to see — §13.64.6's
+rule, and §13.68.6's.
+
+**Not implemented in this section.** §13.67 did the same thing one iteration earlier and it was right for a
+reason this run has now demonstrated twice: the change touches `#promptOptions`, which is where a field becomes
+inert without anything failing (§13.68.1's third layer), and the route a prompt is built for is not currently an
+input to that method. Doing that in the closing minutes of an iteration is how a byte-identity guarantee breaks —
+and the byte-identity here is what keeps the three unchanged routes comparable to their own control runs.
+
+### 13.73.4 What each outcome would mean, decided before the run
+
+- **1, 2 and 5 hold**: the reach is the finding, the roster is near 391, and the next variable is MR's
+  arithmetic (§13.59's 11 short-list counts) rather than retrieval.
+- **2 holds and 1 does not**: the cap's effect is not route-shaped and the scope assumption is wrong; the next
+  step is per-capability width rather than per-route reach, which is a different mechanism (a rule inside the
+  prompt rather than a reach set).
+- **1 holds and 2 does not**: the gain was an artefact of the same flooding that cost IE, and the cap is
+  rejected outright.
+- **4 fails while 1–3 hold**: TR's +7 was noise, the reach narrows to one route, and the documented finding is
+  that only multi-session wants a wider window.
+
+### 13.73.5 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Implement the route-scoped cap and dispatch it under §13.73.3's five predictions | yes |
+| **P0 (done)** | The global cap read in full: mechanism confirmed, default rejected, instrument corrected | — |
+| **P1** | MR's 31 `numeric_mismatch` (11 counting their own short list) — the constraint the cap did not move | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |

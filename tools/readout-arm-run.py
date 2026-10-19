@@ -712,11 +712,21 @@ def pool_section(questions: list[dict]) -> tuple[str, int]:
     gold where no ranking ran, so they are counted separately and said so. An artifact with
     no pool anywhere refuses rather than printing a table of zeroes.
 
+    ## The two directions, and the regime that has both
+
+    Below the pool's width the room refuses gold the ranking offered; above it the room reaches
+    gold the ranking never offered, because the selection continues past the scored set. §13.68's
+    cap is what first put a window above the pool width (68 turns against 64), and the first
+    version of this table printed the second direction as a **negative** cut on run `39180819474`
+    -- and called it a caller defect. Both columns are now clamped at zero and both are labelled,
+    so a row says which of the two it is instead of leaving a minus sign to mean one of them.
+
     ## The impossible row
 
-    `carried > pool` cannot happen when the delivery came from the pool. It is counted and
-    printed rather than clamped or dropped: a caller defect that reads as a plausible row is
-    the failure mode the campaign has spent seven sections removing.
+    `pool > total` and `carried > total` cannot happen: the ranking cannot surface more gold than
+    the dataset names, and a prompt cannot deliver more than it was shown. Those are counted and
+    printed rather than clamped or dropped, because a caller defect that reads as a plausible row
+    is the failure mode the campaign has spent seven sections removing.
     """
     by_capability: dict[str, list[tuple[int, int, int]]] = {}
     without_pool = 0
@@ -733,7 +743,11 @@ def pool_section(questions: list[dict]) -> tuple[str, int]:
         if not isinstance(pool, int):
             without_pool += 1
             continue
-        if carried > pool or pool > total:
+        # `carried > pool` is NOT a defect: with a window wider than the pool the selection
+        # continues into unscored turns and delivers gold the ranking never offered. Only these
+        # two are impossible -- a ranking cannot surface more gold than the dataset names, and a
+        # prompt cannot deliver more than it was shown.
+        if pool > total or carried > total:
             impossible += 1
         capability = str(question.get('capability', '?'))
         by_capability.setdefault(capability, []).append((total, carried, pool))
@@ -744,35 +758,54 @@ def pool_section(questions: list[dict]) -> tuple[str, int]:
 
     lines = ['', 'where the gold went (goldOverlap: total, carried, pool)']
     lines.append(
-        f'  {"capability":<10}{"n":>5}{"gold":>7}{"never surfaced":>16}{"cut by the budget":>19}{"delivered":>11}'
+        f'  {"capability":<10}{"n":>5}{"gold":>7}{"never surfaced":>16}{"cut by the budget":>19}'
+        f'{"beyond the pool":>17}{"delivered":>11}'
     )
     totals = [0, 0, 0, 0]
+    beyond_total = 0
     for capability in sorted(by_capability):
         rows = by_capability[capability]
         gold = sum(row[0] for row in rows)
         carried = sum(row[1] for row in rows)
         pool = sum(row[2] for row in rows)
+        # The two directions are different quantities and only one of them can be positive.
+        # Below the pool's width the room refuses gold the ranking offered; above it the room
+        # reaches gold the ranking never offered, because the selection continues past the
+        # scored set. Printing the second as a negative first would report a cut that ran
+        # backwards -- which is what the first version of this table did on run `39180819474`.
+        cut = max(0, pool - carried)
+        beyond = max(0, carried - pool)
         lines.append(
-            f'  {capability:<10}{len(rows):>5}{gold:>7}{gold - pool:>16}{pool - carried:>19}{carried:>11}'
+            f'  {capability:<10}{len(rows):>5}{gold:>7}{gold - pool:>16}{cut:>19}'
+            f'{beyond:>17}{carried:>11}'
         )
         totals[0] += gold
         totals[1] += carried
         totals[2] += pool
+        beyond_total += beyond
     lines.append(
         f'  {"TOTAL":<10}{measured:>5}{totals[0]:>7}{totals[0] - totals[2]:>16}'
-        f'{totals[2] - totals[1]:>19}{totals[1]:>11}'
+        f'{max(0, totals[2] - totals[1]):>19}{beyond_total:>17}{totals[1]:>11}'
     )
     lines.append(
         '  "never surfaced" is the ranking\'s reach; "cut by the budget" is the order above '
-        'the cut. §13.62 registered that the second is the larger.'
+        'the cut; "beyond the pool" is gold the room reached that the ranking never offered, '
+        'which is possible only when the window is wider than the pool.'
     )
     if without_pool:
         lines.append(f'  {without_pool} record(s) without a pool: no ranking was consulted, '
                      'or the artifact predates the field')
+    if beyond_total:
+        lines.append(
+            f'  {beyond_total} gold turn(s) arrived from outside the pool: the window holds '
+            'more turns than the ranking scored, so selection continues past the scored set '
+            'rather than stopping at it (§13.72).'
+        )
     if impossible:
         lines.append(
-            f'  {impossible} record(s) violate carried <= pool <= total: a delivery outside '
-            'the pool is a caller defect, reported rather than clamped'
+            f'  {impossible} record(s) have pool > total or carried > total: the ranking '
+            'cannot surface more gold than the dataset names, and no prompt can deliver more '
+            'than it was shown -- a caller defect, reported rather than clamped'
         )
     return '\n'.join(lines), measured
 
