@@ -255,7 +255,14 @@ INPUTS = {
     # §13.34: `computed` plus the two-step enumeration contract on multi-session alone.
     "cortex_memory_ask": "enumerated",
     "cortex_memory_evidence_turns": "256",
-    "cortex_memory_relevance": "retrieval",
+    # §13.64's adopted ranking: dense cosine fused with a rare-keyword channel by reciprocal
+    # rank. This line said `retrieval` for six sections after that adoption, because §10.3
+    # held BOTH the adoption bullet and §13.17's original one and the registration parser
+    # read the last one -- so this table and the stale bullet agreed with each other and
+    # disagreed only with the section that decided the question. §13.69 records the run that
+    # exposed it: dispatched on `retrieval` against an adopted `retrieval-hybrid`, which
+    # would have moved the ranking and the cap at once.
+    "cortex_memory_relevance": "retrieval-hybrid",
     "cortex_memory_relevance_top_k": "64",
     # §13.27's single variable.
     #

@@ -780,7 +780,15 @@ forwarded into a step's `env`. Three injections were run against it:
   discovered, because a bound that decides what the artifact contains is a measurement
   decision, and a measurement decision taken after the fact is what pre-registration
   exists to prevent.
-* `relevanceSignal: retrieval` — **added by §13.17, and it is the selection variable.**
+* **The selection signal — added by §13.17, and superseded by §13.64's hybrid.** Its opening
+  line used to spell the concept and its value in one backticked pair, and §13.64's
+  adoption bullet appears ABOVE this one, so the parser in
+  `tools/__tests__/test_preregistration_config.py` read this stale line last and took it as
+  the registration. It did so for six sections: the dispatch table kept `retrieval` while the
+  adopted value was the hybrid, and every check passed because the two agreed with each other
+  and disagreed only with the section that decided the question. §13.69 records the run that
+  exposed it and the guard that now refuses a second statement of one concept. The historical
+  argument below is kept verbatim, because it is still why the signal exists.
   §13.16 read run `38142407062` and found the prompt spending its entire budget correctly
   while buying the wrong turns: the delivered context contained the gold turn for **11.6%**
   of questions (14 of 121) against a ceiling of **92.1%**, the share of questions whose
@@ -8713,3 +8721,77 @@ the only noise this variable meets is model sampling (±4 on the roster).
 | P1 | The order function §13.66 left as the lever, now measurable per selection via `goldRanks` | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |
+
+## 13.69 The registration held two answers to one question, and a dispatch printed the wrong one
+
+### 13.69.1 What happened, in the order it happened
+
+`dispatch-cortex-memory-ab.py` prints every input it sends before it sends it. On the dispatch for §13.68's cap
+that print read:
+
+```text
+dispatching cortex-memory A/B at master (84e828e3)
+  cortex_memory_max_turn_chars = 400 *
+  cortex_memory_relevance = retrieval
+```
+
+`retrieval` — but §13.64 adopted `retrieval-hybrid` nine sections ago, on TR's eighteen recovered declines, and
+`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`'s §10.3 says so **in its own first bullet**. The run was cancelled
+(`39180563526`, 40 seconds in) before it had asked a question, and nothing about §13.68's cap was measured by
+it.
+
+### 13.69.2 The mechanism: last-wins over a document that stated one concept twice
+
+§13.64 appended an adoption bullet near the **top** of §10.3 and left §13.17's original bullet near the
+**bottom**. After that section the document named `relevanceSignal` twice:
+
+| position | statement |
+| --- | --- |
+| top | `relevanceSignal: retrieval-hybrid` — adopted by §13.64 |
+| bottom | `relevanceSignal: retrieval` — added by §13.17 |
+
+`test_preregistration_config.py` parsed the block with `found[concept] = value` in a loop, so **last wins** and
+the stale bullet won. The dispatch table also said `retrieval`. So the test compared the dispatch against the
+stale bullet, found agreement, and passed — for six sections. Every layer of that chain was behaving correctly
+except the one thing no layer owned: the document was answering one question twice.
+
+**Nothing published is invalid.** Every dispatch since §13.64 carried `--set cortex_memory_relevance=retrieval-hybrid`
+explicitly, so the runs that produced §13.64's and §13.66's numbers ran the adopted ranking. What was wrong was
+the **default**, and a default that is wrong is invisible precisely until a dispatch forgets the override — which
+is what happened here.
+
+### 13.69.3 The repair, in three parts, each of which alone would be insufficient
+
+1. **The stale bullet is retired**, and its opening line no longer spells a `concept: value` pair. The historical
+   argument stays verbatim underneath, because it is still why the signal exists.
+2. **A duplicate is now an error** rather than a precedence rule. `parse_block` raises, names the concept and
+   prints both values, because the reader's next step is deciding which of the two to retire. A precedence rule
+   would have been the wrong repair in either direction: whichever order it chose, the document would still
+   contain two answers and a reader would still have to know the rule.
+3. **The dispatch table names the adopted value**, with the reason and this section's number beside it.
+
+The guard is a function over **text**, not over the document, and that is the part worth stating: asserting it
+against the real §10.3 would pass forever once the duplicate is fixed, and a guard that only ever sees the fixed
+input proves nothing about the state it exists to catch. Three tests: a synthetic duplicate is refused with both
+values in the message, a clean block parses normally (the control, so the guard is not vacuous), and the real
+registration states each concept exactly once.
+
+### 13.69.4 Why the dispatch's own print is what caught it
+
+The table's docstring argues that a value a run depends on should not arrive by accident, and that an absent key
+cannot be shown to be wrong. Both arguments are about **omission**. This defect is about **contradiction**, and
+the thing that caught it was not an assertion but the habit of printing the payload before sending it — the same
+habit that made `cortex_memory_threshold = 0` visible instead of implicit.
+
+So the lesson is narrower than "add more tests": a value printed on every dispatch is a second reader of the
+configuration, and a second reader is what finds a document that disagrees with itself. §13.68's own config line
+does the same job for the artifact.
+
+### 13.69.5 What this does not change
+
+- §13.64's adoption, §13.66's rank curve and §13.68's cap are unaffected: the first two ran with the override
+  sent explicitly, and the third had not run.
+- The `retrieval` signal is **not** refuted. It is the pre-§13.64 configuration and stays reachable by
+  `--set cortex_memory_relevance=retrieval`, which is what a re-measurement of that comparison would use.
+- The dispatch table now sends what §10.3 registers for every concept, and the test that says so can no longer be
+  satisfied by a stale second statement.

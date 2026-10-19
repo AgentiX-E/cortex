@@ -97,14 +97,83 @@ def registered() -> dict[str, str]:
     if block is None:
         raise AssertionError("PREREGISTRATION-CORTEX-MEMORY-ARM.md has no §10.3 block")
 
+    return parse_block(block.group(1))
+
+
+def parse_block(text: str) -> dict[str, str]:
+    """`concept: value` pairs from a §10.3 block, refusing to state one concept twice.
+
+    ## The defect that made duplication an error rather than a precedence rule
+
+    The first version of this parser was `found[concept] = value` in a loop, so a second
+    statement of a concept silently **overwrote** the first. That is not a theoretical
+    hazard: §13.64's adoption bullet sits near the top of the list and §13.17's original
+    bullet sits near the bottom, and after §13.64 the document named `relevanceSignal`
+    twice -- `retrieval-hybrid` at the top, `retrieval` at the bottom. Last-wins therefore
+    read the **stale** value, the dispatch table agreed with it, and every assertion in this
+    file passed for six sections while the registration's own first line said something
+    else. A run was dispatched on the stale baseline and had to be cancelled (§13.69).
+
+    A precedence rule is the wrong repair: whichever order it chose, the document would
+    still contain two answers to one question and a reader would have to know the rule to
+    know which. So a duplicate raises, and the message names the concept -- the fix is to
+    retire the older statement, which is what §13.64's adoption should have done to §13.17's.
+
+    ## Why it is a function over `text` rather than over the document
+
+    Because the guard has to be testable on a document that has the defect. Asserting it
+    against the real §10.3 would pass forever once the duplicate is fixed, and a guard that
+    only ever sees the fixed input proves nothing about the state it exists to catch.
+    """
     found: dict[str, str] = {}
     # `concept: value` inside backticks, anywhere in the bullet list. The value is
     # captured up to the closing backtick so a trailing ` — explanation` is excluded.
-    for concept, value in re.findall(
-        r"`([A-Za-z_][A-Za-z0-9_]*):\s*([^`]+)`", block.group(1)
-    ):
-        found[concept] = value.strip()
+    for match in re.finditer(r"`([A-Za-z_][A-Za-z0-9_]*):\s*([^`]+)`", text):
+        concept, value = match.group(1), match.group(2).strip()
+        if concept in found:
+            raise AssertionError(
+                f"§10.3 names `{concept}` twice -- {found[concept]!r} then {value!r}. A "
+                "second statement of one concept makes the registration ambiguous: whichever "
+                "the parser prefers, the document contains two answers and a reader has to "
+                "know the rule to know which is the registration. Retire the older bullet "
+                "instead of appending a new one beside it."
+            )
+        found[concept] = value
     return found
+
+
+class TestTheRegistrationStatesEachConceptOnce(unittest.TestCase):
+    """The guard that the six-section drift of §13.64 needed and did not have.
+
+    The defect was not a wrong number anywhere: §10.3 said `retrieval-hybrid` at the top and
+    `retrieval` at the bottom, the parser read the bottom, the dispatch table agreed with the
+    bottom, and the test suite was green. Nothing in that chain was a lie except the
+    document holding two answers.
+    """
+
+    def test_a_duplicate_is_refused_and_the_message_names_the_concept(self) -> None:
+        with self.assertRaises(AssertionError) as caught:
+            parse_block(
+                "* `ask: enumerated` -- adopted.\n"
+                "* `ask: computed` -- the value it replaced.\n"
+            )
+        self.assertIn("ask", str(caught.exception))
+        # Both values, because the reader's next step is deciding which of the two to retire
+        # and the message is all they have.
+        self.assertIn("enumerated", str(caught.exception))
+        self.assertIn("computed", str(caught.exception))
+
+    def test_one_statement_per_concept_parses_normally(self) -> None:
+        # The control. A parser that raised on everything would make the guard vacuous in the
+        # direction that hides a real duplicate.
+        found = parse_block("* `ask: enumerated` -- adopted.\n* `limit: 0`, `runs: 4`.\n")
+        self.assertEqual(found, {"ask": "enumerated", "limit": "0", "runs": "4"})
+
+    def test_the_real_registration_states_each_concept_once(self) -> None:
+        # The assertion the drift would have failed: `registered()` raises on a duplicate, so
+        # simply calling it is the check -- and calling it here means the failure names the
+        # concept rather than surfacing as a confusing mismatch further down.
+        self.assertEqual(len(registered()), len(CONCEPT_TO_INPUT))
 
 
 def dispatched() -> dict[str, str]:
