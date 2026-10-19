@@ -1095,8 +1095,10 @@ def window_section(questions: list[dict], budget: int, source: str) -> tuple[str
         else 'the default, since the artifact names no `maxPromptChars`'
     )
     lines.append(
-        f'  medians, and "budget" is the share of {budget:,} characters used ({divisor}): a '
-        'prompt near 100% is at the cut, which is the state a per-turn cap changes.'
+        f'  medians, and "budget" is the evidence carried as a share of the {budget:,}-character '
+        f'prompt budget ({divisor}); instructions, the question and the section header sit '
+        'outside it, so a prompt near 100% is at the cut, which is the state a per-turn cap '
+        'changes.'
     )
     # The impossible state, counted rather than clamped. `promptChars` is the evidence the prompt
     # carried AFTER the budget cut, so it cannot exceed the budget the run assembled under: a
