@@ -104,6 +104,30 @@ export type GateOptions = {
   confidenceFor?: (turn: string) => number;
 };
 
+/**
+ * The routes a prompt is built for, and therefore the routes a per-turn cap can be aimed at.
+ *
+ * ## Why a list and a derived union rather than a union alone
+ *
+ * The reach is dispatched as a comma-separated list of names and validated against the arm's own
+ * copy of them (`cortex-eval` cannot import this package -- the dependency runs the other way), so
+ * the names have to exist **at runtime** here as well. Deriving the union from the list means the
+ * six names are declared once and a seventh cannot be added to one form without the other, which
+ * is the failure `test_ask_table_parity.py` was written for after `enumerated` was added to a
+ * union and to no table.
+ */
+export const TURN_CAP_ROUTES = [
+  'multi-session',
+  'temporal',
+  'flat',
+  'knowledge-update',
+  'abstention',
+  'assistant',
+] as const;
+
+/** One of the six paths `CortexMemory` builds a prompt for. */
+export type TurnCapRoute = (typeof TURN_CAP_ROUTES)[number];
+
 /** Construction options for {@link CortexMemory}. */
 export type CortexMemoryOptions = {
   /**
@@ -150,6 +174,31 @@ export type CortexMemoryOptions = {
    * whose decisive fact sits deep inside a long narrative loses it.
    */
   maxTurnChars?: number | undefined;
+  /**
+   * Which routes the per-turn cap reaches. Absent means all of them.
+   *
+   * ## Why reach is a separate field rather than a second value of `maxTurnChars`
+   *
+   * §13.72 measured the 400-character cap over every route and found **+13 on MR and −30 on IE**
+   * in the same run: MR's declines halved as their coverage rose (21% → 54%), while IE's thirty
+   * lost questions went `correct → abstention` at a median coverage of **100%** — complete
+   * evidence, and the model withdrew forty-two times instead of fifteen. A single switch cannot
+   * express both, and the difference is not a matter of degree: no smaller cap turns a complete
+   * window into a partial one on a question that needs one turn.
+   *
+   * So the width stays where §13.67 registered it and the **reach** moves, which is the pattern
+   * `renderingRoutes` (§12.9) and the ask's own route table (§13) already use — an explicit list,
+   * recorded in the artifact, with the untouched routes byte-identical to their control.
+   *
+   * ## Why absent means all
+   *
+   * Because that is what §13.68 shipped and what run `39180819474` measured: an absent list must
+   * reproduce the previous behaviour exactly, or the run that rejected the global cap could not be
+   * compared against the one that tests the narrowed form. An empty list is the other end — a cap
+   * configured to reach nothing — and it is a legitimate way to disable the option without
+   * removing it.
+   */
+  maxTurnCharsRoutes?: readonly TurnCapRoute[] | undefined;
   /**
    * Which turns the prompt budget is spent on, as a score over the question and
    * the turn. Absent leaves the budget character-clipped exactly as before.

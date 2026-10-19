@@ -243,6 +243,17 @@ export type FeatureConfig = Readonly<Record<string, boolean>>;
  * real configuration ("gates open"), so a defaulted object would make "this arm did
  * not run" indistinguishable from "this arm ran with the identity gate".
  */
+/**
+ * How many routes the cap vocabulary has, for the `all` shorthand on the config line.
+ *
+ * A count rather than a list, because this module only needs to answer "is this the whole
+ * vocabulary" and duplicating the six names here would be a third copy of a vocabulary that
+ * already exists twice for a documented reason. The count is tied to the vocabulary by
+ * `tools/__tests__/test_ask_table_parity.py`, which fails if a seventh route is added without
+ * updating this -- so the number is guarded rather than merely written down.
+ */
+const TURN_CAP_ROUTE_COUNT = 6;
+
 export type MemoryArmConfig = {
   /** Admission threshold handed to `decideWrite`. In `[0, 1]`. */
   readonly threshold: number;
@@ -278,6 +289,15 @@ export type MemoryArmConfig = {
    * is the §7.4 defect this type exists to prevent.
    */
   readonly maxTurnChars?: number | undefined;
+  /**
+   * The routes that cap reached. Every route when the run named none.
+   *
+   * Recorded even when `maxTurnChars` is absent, because the two answer different questions: the
+   * width says how much of a turn the prompt may show, and this says where the run intended it to
+   * apply. §13.73's experiment changes only this, so two artifacts differing here are the
+   * comparison itself -- and without it both would read as the same run.
+   */
+  readonly maxTurnCharsRoutes?: readonly string[] | undefined;
   /**
    * Source trust stamped on every memory admission constructs. In `[0, 1]`.
    *
@@ -678,6 +698,18 @@ export function formatAblationReport(report: AblationReport): string {
         // Omitted entirely by an artifact that predates the field, which is why the value is
         // spelled "none" here and the field is absent there.
         `, \`maxTurnChars=${memoryArm.maxTurnChars ?? 'none'}\`` +
+        // The reach, rendered on every run beside the width and joined with `+` rather than a
+        // comma: the line already separates fields with commas, so a comma inside a value would
+        // make one field look like three.
+        `, \`maxTurnCharsRoutes=${
+          memoryArm.maxTurnCharsRoutes === undefined
+            ? 'all'
+            : memoryArm.maxTurnCharsRoutes.length === 0
+              ? 'none'
+              : memoryArm.maxTurnCharsRoutes.length === TURN_CAP_ROUTE_COUNT
+                ? 'all'
+                : [...memoryArm.maxTurnCharsRoutes].sort().join('+')
+        }\`` +
         // The unit, under the same rule as the width and for the same reason: it has no
         // meaning without a ranking to act on, because with `relevanceSignal=none` the
         // budget buys the arrival-order prefix and there is no ordering for a unit to

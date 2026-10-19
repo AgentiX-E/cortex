@@ -300,6 +300,10 @@ INPUTS = {
     # cortex_memory_max_turn_chars=400` -- and adoption moves this line and §10.3 together,
     # which is what `test_preregistration_config.py` enforces.
     "cortex_memory_max_turn_chars": "none",
+    # §13.73's reach. `all` is the shipped state and is sent explicitly for the reason the width is:
+    # the adopted configuration reaches every route, and a value the run depends on should not
+    # arrive through the `''`-to-default path. The experiment overrides both this and the width.
+    "cortex_memory_max_turn_chars_routes": "all",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
     # pass any completed run has produced on this arm (a full run is about 3h32m for eight
     # passes), so it is a hang detector rather than a slow-run detector.

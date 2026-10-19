@@ -690,6 +690,11 @@ forwarded into a step's `env`. Three injections were run against it:
   default. §13.67.1 is why the variable exists at all: the evidence room is spent on a
   **tail** of long turns (median 272 characters, p90 2,305) rather than on turns, so the cut
   that decides coverage falls at rank 26 of a 64-wide pool.
+* `maxTurnCharsRoutes: all` — **the adopted reach is every route**, registered by §13.73 and written
+  down for the reason the width is: the pair of `maxTurnChars` (no cap) and this field is the
+  state every archived run was produced under, and a reach that reached five routes while the artifact
+  said six is the one failure no number in the run could show. The accepted spellings are `all`,
+  `none` and a comma-separated list of the six route names; anything else is rejected.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -9225,5 +9230,88 @@ and the byte-identity here is what keeps the three unchanged routes comparable t
 | **P0** | Implement the route-scoped cap and dispatch it under §13.73.3's five predictions | yes |
 | **P0 (done)** | The global cap read in full: mechanism confirmed, default rejected, instrument corrected | — |
 | **P1** | MR's 31 `numeric_mismatch` (11 counting their own short list) — the constraint the cap did not move | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
+
+## 13.74 The reach is implemented, and the compiler is what enforces it
+
+### 13.74.1 Six routes, named by argument rather than defaulted
+
+`#promptOptions` used to take no arguments and apply every prompt option to every route. It now takes the
+`TurnCapRoute` the caller is building for, and `#prompt` — the shared path for flat, abstention, assistant and
+knowledge-update — takes it as a **required fourth parameter**. The two builders that are one route by
+construction name theirs inline (`temporal`, `multi-session`).
+
+Required rather than defaulted, and that is the whole mechanism: a seventh route added later cannot compile
+without naming itself, so it cannot silently inherit a cap the artifact says reaches two routes. §13.68.5
+recorded the one spread in `bench/run-ablation.ts` that no test reaches; this change removes the analogous risk
+from the product side by making the omission a type error rather than a missing line.
+
+The six names live in **one** place per package, and in the product they are one declaration:
+
+```ts
+export const TURN_CAP_ROUTES = ['multi-session', 'temporal', 'flat', 'knowledge-update', 'abstention', 'assistant'] as const;
+export type TurnCapRoute = (typeof TURN_CAP_ROUTES)[number];
+```
+
+A list **and** a union rather than a union alone, because the names have to exist at runtime to be validated
+against a dispatched reach. Deriving the union from the list means a seventh route cannot be added to one form
+without the other.
+
+### 13.74.2 Three spellings, and why `none` is not `absent`
+
+| spelling | meaning | why it exists |
+| --- | --- | --- |
+| absent or `all` | every route | the shipped state; `all` so a dispatch can send what §10.3 registers |
+| `none` | no route | a run that configures a cap it does not apply — a different claim from absence |
+| `a,b,c` | those routes | the experiment |
+
+The config line renders all three distinctly (`all` / `none` / `multi-session+temporal`), joined with `+`
+because the line already separates fields with commas. A renderer that collapsed `none` into `all` would
+describe the one run that did nothing as the one that did everything, and there is a test for exactly that.
+
+An unrecognised route name is **rejected**, and the message lists the six. Accepted-and-ignored is the failure
+that matters here: a typo would apply the cap to five routes while the artifact said six, and every number in
+the run would be consistent with the claim.
+
+### 13.74.3 The parity guard was missing, and §13.69's new guard caught me in a minute
+
+`bench-memory-arm.ts` has said since §13.35 that `tools/__tests__/test_ask_table_parity.py` "compares the two
+key sets by source". It did not: the module existed **only as a `.pyc`**, so the guard had not run since the
+source went missing, and the sentence kept asserting an assertion that no longer existed — the same defect the
+module was written for, one level up.
+
+It is restored from its own compiled form, with its two original tests and the same regexes, and extended to the
+route vocabulary and to `report.ts`'s `TURN_CAP_ROUTE_COUNT`. Then it did its job immediately: the first
+version of §10.3's new bullet quoted the pair `(`maxTurnChars: none`, `maxTurnCharsRoutes: all`)` in prose, the
+duplicate detector fired on `maxTurnChars` before the commit existed, and the fix was one rephrasing. A guard
+that catches its author within a minute of being restored is worth more than one that has never fired.
+
+### 13.74.4 What is registered, and what the run will decide
+
+Registration is §13.73.3's, unchanged: cap 400 on **multi-session + temporal**, five predictions with each
+capability's own rate beside its bound. The dispatch overrides two inputs and holds everything else at §10.3.
+
+### 13.74.5 Verification
+
+- **Red first through the product**: three reach tests failed before `#capReaches` existed, and they assert
+  **byte equality** of the prompt on every unreached route — not "shorter", not "uncapped text absent", because
+  only equality shows the route is comparable to its own control.
+- **Red first through the arm**: seven tests failed before the reader existed, including the rejection of a
+  mistyped route and the three renderings of the config line.
+- **Four pre-existing whole-shape assertions were extended, not relaxed**: the arm's config grew a field, and a
+  test that pins the shape has to pin the new member or it stops describing the object.
+- `cortex-memory` **368** (+5), `cortex-eval` **1922** (+7), `tools` **459 passed + 44 subtests**, `pnpm check`
+  **exit 0**, four coverage dimensions **100%** (`cortex-node` branch 98.64%, §13.47's known gap).
+- Byte-identity for archived runs: `maxTurnChars` absent still means no cap anywhere; a cap with no reach still
+  reaches all six, which is what §13.68's run measured.
+
+### 13.74.6 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Run `3918…`'s successor: cap 400 on multi-session + temporal, against §13.73.3's five predictions | yes, dispatched |
+| **P0 (done)** | The reach: six routes named by argument, three spellings, a guarded vocabulary | no |
+| **P1** | MR's 31 `numeric_mismatch` (11 counting their own short list) — untouched by the cap, as §13.70.8 said | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |

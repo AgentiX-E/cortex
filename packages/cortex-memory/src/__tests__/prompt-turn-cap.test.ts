@@ -255,3 +255,152 @@ describe('the cap reaches the model through the system', () => {
     expect(capped[0]).toBe(uncapped[0]);
   });
 });
+
+/**
+ * The cap's **reach**: which of the six routes it applies to.
+ *
+ * §13.72 measured the same cap on every route at once and got `+13` on MR and `−30` on IE in a
+ * single run. MR's declines halved as their coverage rose; IE's thirty lost questions went
+ * `correct → abstention` at a **median coverage of 100%** — complete evidence, and the model
+ * withdrew forty-two times instead of fifteen. One switch cannot express both, so §13.73
+ * dispatches the width unchanged and the reach narrowed.
+ *
+ * ## What these tests have to prove, and why byte equality is the assertion
+ *
+ * "The cap does not reach this route" is not "the cap is inert here" — it is that the prompt is
+ * the **same string** a run without the option would have sent. Anything weaker (a shorter prompt,
+ * a prompt without the truncated text) would pass on a route where the cap had been applied and
+ * then compensated somewhere else, which is not the claim.
+ */
+describe('the cap reaches the routes it names and no others', () => {
+  const ROUTES = [
+    'multi-session',
+    'temporal',
+    'flat',
+    'knowledge-update',
+    'abstention',
+    'assistant',
+  ] as const;
+
+  function recordingLlm(seen: string[]): LLM {
+    return {
+      complete: async (prompt: string) => {
+        seen.push(prompt);
+        return 'Lisbon';
+      },
+      completeStructured: async () => {
+        throw new Error('unused by this package');
+      },
+    };
+  }
+
+  function system(options: Partial<CortexMemoryOptions> & { llm: LLM }): CortexMemory {
+    return new CortexMemory({
+      now: 1_759_470_000_000,
+      gate: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: Number.POSITIVE_INFINITY,
+        valueFunction: () => 1,
+      },
+      ...options,
+    });
+  }
+
+  /** Drive one route with one long turn, and return the prompt the model was given. */
+  async function promptOn(
+    route: (typeof ROUTES)[number],
+    options: Partial<CortexMemoryOptions> = {},
+  ): Promise<string> {
+    const seen: string[] = [];
+    const memory = system({ llm: recordingLlm(seen), ...options });
+    const content = longTurn().content;
+
+    switch (route) {
+      case 'multi-session':
+        await memory.answerSessions('Where?', [[content]]);
+        break;
+      case 'temporal':
+        await memory.answerTemporal('When?', [content], '2023-05-20');
+        break;
+      case 'flat':
+        await memory.answer('Where?', [content]);
+        break;
+      case 'knowledge-update':
+        await memory.answerKnowledgeUpdate('Where now?', [content]);
+        break;
+      case 'abstention':
+        await memory.answerAbstention('Where?', [content]);
+        break;
+      case 'assistant':
+        await memory.answerAssistant('Where?', [content]);
+        break;
+    }
+
+    expect(seen).toHaveLength(1);
+    return seen[0]!;
+  }
+
+  it('caps every route when no reach is named, which is what §13.68 shipped', async () => {
+    for (const route of ROUTES) {
+      const capped = await promptOn(route, { maxTurnChars: CAP });
+      expect(capped, route).toContain(truncateCodePointSafe(longTurn().content, CAP));
+      expect(capped, route).not.toContain(longTurn().content);
+    }
+  });
+
+  it('leaves a route byte-identical when the reach does not name it', async () => {
+    // The assertion the registration rests on: an unreached route must be comparable to its own
+    // control run, not merely "similar".
+    for (const route of ROUTES) {
+      if (route === 'multi-session') continue;
+      const reached = await promptOn(route, {
+        maxTurnChars: CAP,
+        maxTurnCharsRoutes: ['multi-session'],
+      });
+      expect(reached, route).toBe(await promptOn(route));
+      expect(reached, route).toContain(longTurn().content);
+    }
+  });
+
+  it('caps exactly the named route', async () => {
+    const options = {
+      maxTurnChars: CAP,
+      maxTurnCharsRoutes: ['multi-session', 'temporal'],
+    } as const;
+
+    for (const route of ['multi-session', 'temporal'] as const) {
+      const prompt = await promptOn(route, options);
+      expect(prompt, route).toContain(truncateCodePointSafe(longTurn().content, CAP));
+      expect(prompt, route).not.toContain(longTurn().content);
+    }
+    for (const route of ['flat', 'knowledge-update', 'abstention', 'assistant'] as const) {
+      expect(await promptOn(route, options), route).toBe(await promptOn(route));
+    }
+  });
+
+  it('reaches nothing when the reach is empty, which is how the option is disabled', async () => {
+    for (const route of ROUTES) {
+      expect(await promptOn(route, { maxTurnChars: CAP, maxTurnCharsRoutes: [] }), route).toBe(
+        await promptOn(route),
+      );
+    }
+  });
+
+  it('keeps the reported roster uncapped on reached routes', async () => {
+    // The reach changes where the *presentation* is capped, and nothing about what is recorded:
+    // `goldOverlap` matches by text, so a capped roster would fail to match gold it delivered.
+    const seen: string[] = [];
+    const memory = system({
+      llm: recordingLlm(seen),
+      maxTurnChars: CAP,
+      maxTurnCharsRoutes: ['multi-session'],
+    });
+    const content = longTurn().content;
+
+    await memory.answerSessions('Where?', [[content]]);
+
+    expect(seen[0]).not.toContain(content);
+    expect(memory.lastRetrievedContext()?.[0]).toHaveLength(1_000);
+  });
+});

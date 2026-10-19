@@ -67,6 +67,22 @@ import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } 
  * a thinner report. These tests are the first callers, so they demonstrate the
  * obligation rather than being exempt from it.
  */
+/**
+ * The route vocabulary, in the order the arm's `TURN_CAP_ROUTES` table declares it.
+ *
+ * Three whole-shape assertions below compare a full `MemoryArmConfig`, and the reach is part of
+ * that shape from §13.73. Written once rather than three times because the order matters to
+ * `toEqual` and three copies of it are three chances to get the order wrong in one of them.
+ */
+const ALL_ROUTES = [
+  'multi-session',
+  'temporal',
+  'flat',
+  'knowledge-update',
+  'abstention',
+  'assistant',
+];
+
 const GATE = {
   threshold: 0,
   retrievalThreshold: 0,
@@ -727,6 +743,7 @@ describe('source trust reaches the artifact', () => {
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
+      maxTurnCharsRoutes: ALL_ROUTES,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -891,6 +908,7 @@ describe('runCortexMemoryArm', () => {
           relevanceSignal: 'none',
           relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
           relevanceUnits: 'turn',
+          maxTurnCharsRoutes: ALL_ROUTES,
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
@@ -907,6 +925,7 @@ describe('runCortexMemoryArm', () => {
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
+      maxTurnCharsRoutes: ALL_ROUTES,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -1629,6 +1648,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
+      maxTurnCharsRoutes: ALL_ROUTES,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
     });
   });
@@ -1652,6 +1672,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       relevanceSignal: 'none',
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: 'turn',
+      maxTurnCharsRoutes: ALL_ROUTES,
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
@@ -2902,5 +2923,147 @@ describe('the per-turn cap', () => {
     // not a property of the ranking: it applies to every run, so "no cap" is a fact the
     // artifact should state rather than one a reader has to infer from a missing field.
     expect(line(undefined)).toContain('maxTurnChars=none');
+  });
+});
+
+/**
+ * The cap's reach, as the arm reads it and as the artifact records it.
+ *
+ * §13.72 measured one cap over every route and got `+13` on MR and `−30` on IE. §13.73 dispatches
+ * the width unchanged and the reach narrowed, so the reach is a dispatched value with the same
+ * two obligations as every other one on this arm: an unrecognised spelling is **rejected** rather
+ * than defaulted, and what the run used is on the artifact's config line.
+ */
+describe('the per-turn cap reach', () => {
+  const ROUTES = [
+    'abstention',
+    'assistant',
+    'flat',
+    'knowledge-update',
+    'multi-session',
+    'temporal',
+  ];
+
+  it('reaches every route by default, which is what §13.68 shipped', () => {
+    expect(
+      [...(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).maxTurnCharsRoutes ?? [])].sort(),
+    ).toEqual(ROUTES);
+    // `all` is the same state and is the spelling §10.3 registers, so the dispatch can send the
+    // value the registration names instead of relying on a blank resolving to it elsewhere.
+    expect(
+      [
+        ...(cortextMemoryArmOptions({
+          CORTEX_MEMORY: '1',
+          CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'all',
+        }).maxTurnCharsRoutes ?? []),
+      ].sort(),
+    ).toEqual(ROUTES);
+  });
+
+  it('accepts the two-route reach this experiment dispatches', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'multi-session,temporal',
+    });
+    expect([...(options.maxTurnCharsRoutes ?? [])].sort()).toEqual(['multi-session', 'temporal']);
+  });
+
+  it('accepts a reach of none, which is how the cap is disabled without removing it', () => {
+    // Distinct from blank: blank means "every route", and a reader must be able to tell one from
+    // the other on the config line -- `none` is a claim about the run, absence is not.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'none' })
+        .maxTurnCharsRoutes,
+    ).toEqual([]);
+  });
+
+  it('rejects a route name the product does not have', () => {
+    // Accepted-and-ignored is the failure that matters: a typo would run a cap on five routes
+    // while the artifact said six, and nothing in the output could show it.
+    for (const bad of ['multi-sesion', 'flat,foo', 'session']) {
+      expect(() =>
+        cortextMemoryArmOptions({
+          CORTEX_MEMORY: '1',
+          CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: bad,
+        }),
+      ).toThrow(/CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES/);
+    }
+  });
+
+  it('lists the accepted names in the rejection, so a typo is fixable without the source', () => {
+    expect(() =>
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'nope',
+      }),
+    ).toThrow(/multi-session/);
+  });
+
+  it('projects the reach into the config and onto the config line', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_MAX_TURN_CHARS: '400',
+      CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'multi-session,temporal',
+    });
+    expect([...(toMemoryArmConfig(options).maxTurnCharsRoutes ?? [])].sort()).toEqual([
+      'multi-session',
+      'temporal',
+    ]);
+
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(options),
+    });
+    expect(line).toContain('maxTurnChars=400');
+    // `+` rather than `,` because the line is already comma-separated between fields.
+    expect(line).toContain('maxTurnCharsRoutes=multi-session+temporal');
+  });
+
+  it('says `none` on the line for a reach of nothing, and `all` for an absent field', () => {
+    // Three states, three renderings, and the distinction is the point: `none` is a run that
+    // configured a cap it does not apply, `all` is the shipped state, and a config that predates
+    // the field is also `all` because that is what those runs did. A renderer that collapsed
+    // `none` into `all` would describe the one run that did nothing as the one that did
+    // everything.
+    const render = (memoryArmConfig: Record<string, unknown>): string =>
+      formatAblationReport({
+        dataset: 'fixture',
+        questionCount: 0,
+        baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+        feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+        ablation: emptyAblation('cortex-memory'),
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: memoryArmConfig as never,
+      });
+
+    const none = toMemoryArmConfig(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_MAX_TURN_CHARS: '400',
+        CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'none',
+      }),
+    );
+    expect(render(none)).toContain('maxTurnCharsRoutes=none');
+
+    const { maxTurnCharsRoutes: _omitted, ...withoutField } = none;
+    expect(render(withoutField)).toContain('maxTurnCharsRoutes=all');
+  });
+
+  it('says `all` on the line when the reach is every route', () => {
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+    expect(line).toContain('maxTurnCharsRoutes=all');
   });
 });

@@ -270,6 +270,15 @@ export type CortexMemoryArmOptions = {
    * number that looks like a coverage measurement.
    */
   maxTurnChars?: number | undefined;
+  /**
+   * Which routes the per-turn cap reaches. Every route when the run names none.
+   *
+   * Present rather than folded into `maxTurnChars`, because §13.72's result is that the width and
+   * the reach are different claims about the same cap and this experiment moves only the second.
+   * An empty list is a reach of nothing -- a run that configures a cap it does not apply -- and is
+   * kept distinct from absent so the config line can tell a reader which of the two it was.
+   */
+  maxTurnCharsRoutes?: readonly string[] | undefined;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -427,6 +436,36 @@ const RELEVANCE_TOP_K_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_TOP_K';
 const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
 
 /**
+ * Which routes the per-turn cap reaches: `all`, `none`, or a comma-separated list of route names.
+ *
+ * §13.72 measured one cap over every route and got `+13` on MR and `−30` on IE in the same run, so
+ * the reach is a separate dispatched value rather than a wider default or a different width. The
+ * accepted names are `TURN_CAP_ROUTES` below, which is this package's copy of the product's
+ * vocabulary -- the dependency runs the other way, so the names are declared twice and
+ * `tools/__tests__/test_ask_table_parity.py` asserts the two copies agree.
+ */
+const MAX_TURN_CHARS_ROUTES_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES';
+
+/**
+ * The route names a reach may name, and the arm's own copy of the product's `TURN_CAP_ROUTES`.
+ *
+ * A table rather than an array because the value is a *set membership test*, and a table keyed by
+ * the name makes a lookup the same operation as the validation -- an array would need `includes`
+ * at one site and `find` at another, and the two would eventually disagree about case.
+ */
+const TURN_CAP_ROUTES: Record<string, true> = {
+  'multi-session': true,
+  temporal: true,
+  flat: true,
+  'knowledge-update': true,
+  abstention: true,
+  assistant: true,
+};
+
+/** Every route, in the order the product declares them. */
+const ALL_TURN_CAP_ROUTES: readonly string[] = Object.keys(TURN_CAP_ROUTES);
+
+/**
  * The contract a run gets when it does not name one.
  *
  * A local literal, and this file's own boundary rule requires it: `cortex-eval` depends
@@ -502,6 +541,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       relevanceSignal: DEFAULT_RELEVANCE_SIGNAL,
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: DEFAULT_RELEVANCE_UNITS,
+      // The reach is projected even when the cap is absent, so an artifact always answers "what
+      // would the cap have reached" -- and so a run whose cap was removed cannot leave a stale
+      // reach behind it. `all` is the shipped state.
+      maxTurnCharsRoutes: ALL_TURN_CAP_ROUTES,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -523,6 +566,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
     relevanceUnits: readRelevanceUnits(env[RELEVANCE_UNITS_VARIABLE]),
+    maxTurnCharsRoutes: readMaxTurnCharsRoutes(env[MAX_TURN_CHARS_ROUTES_VARIABLE]),
     // Spread rather than assigned, because "no cap" is an absent field on this type rather
     // than an infinite one -- see `CortexMemoryArmOptions.maxTurnChars`.
     ...(() => {
@@ -950,6 +994,46 @@ function readMaxTurnChars(raw: string | undefined): number | undefined {
 }
 
 /**
+ * Read the routes the cap reaches: `all` (default), `none`, or a comma-separated list of names.
+ *
+ * ## Why three spellings rather than two
+ *
+ * `all` is the shipped state and is what §10.3 registers, so a dispatch can send the value the
+ * registration names rather than relying on a blank resolving to it through a different path --
+ * the defect §13.69 records for `maxTurnChars: none`. `none` is a reach of **nothing**, which is a
+ * different statement from absence and is the only way to configure a cap the run does not apply.
+ * Collapsing them into one would make the config line unable to say which it was.
+ *
+ * ## Why an unknown name is rejected
+ *
+ * Because the failure is silent otherwise. A typo would run the cap on five routes while the
+ * artifact said six, and every number in the run would be consistent with the claim -- the §7.4
+ * side-channel defect, in the one field where the artifact is the only witness.
+ */
+function readMaxTurnCharsRoutes(raw: string | undefined): readonly string[] {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '' || trimmed.toLowerCase() === 'all') return ALL_TURN_CAP_ROUTES;
+  if (trimmed.toLowerCase() === 'none') return [];
+  const named = trimmed.split(',').map((part) => part.trim());
+  for (const name of named) {
+    if (!(name in TURN_CAP_ROUTES)) {
+      throw new Error(
+        `${MAX_TURN_CHARS_ROUTES_VARIABLE} must be "all", "none", or a comma-separated list of ` +
+          `${Object.keys(TURN_CAP_ROUTES)
+            .map((route) => JSON.stringify(route))
+            .join(', ')}; ` +
+          `got ${JSON.stringify(raw)}. An unrecognised route is rejected rather than ignored, ` +
+          'because a run that applied the cap to five of six routes would report every number ' +
+          'consistent with having applied it to six.',
+      );
+    }
+  }
+  // De-duplicated and ordered by the product's own list, so two spellings of one reach produce
+  // one config line and the artifact does not distinguish `flat,temporal` from `temporal,flat`.
+  return ALL_TURN_CAP_ROUTES.filter((route) => named.includes(route));
+}
+
+/**
  * Read how many turns a session budget admits, defaulting to unbounded.
  *
  * The blank rule is `readNumeric`'s; `Infinity` is the honest default because
@@ -1071,6 +1155,12 @@ export function toMemoryArmConfig(
     // configured to every `!== undefined` check downstream and as pre-dating-the-field to a
     // reader of the JSON.
     ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
+    // §13.73. Always present, unlike the width: the reach is a statement about the run's intent
+    // that survives the cap being absent, and a reader comparing two artifacts needs to see that
+    // the second one reached two routes where the first reached six.
+    ...(options.maxTurnCharsRoutes === undefined
+      ? {}
+      : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
     // Spread conditionally rather than assigned, for the reason the two options above
     // are spread conditionally in the constructor: an always-present key holding
     // `undefined` is indistinguishable from a missing one under this workspace's

@@ -39,7 +39,7 @@ import {
   type AssembledPrompt,
 } from './prompt.js';
 import { parseAnswer } from './parse.js';
-import type { CortexMemoryOptions } from './types.js';
+import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
 /**
  * The offer's size, counted the way the record counts the delivery.
@@ -621,7 +621,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // The model outcome is NOT tallied here. It was, and once `#consult` began
     // tallying every route the abstention route counted each decline twice --
     // overstating the one route that was already correct.
-    const answer = await this.#prompt(question, turns, 'abstention');
+    const answer = await this.#prompt(question, turns, 'abstention', 'abstention');
     return answer;
   }
 
@@ -664,7 +664,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return this.#declinedEmpty();
 
-    return this.#prompt(question, turns, 'assistant');
+    return this.#prompt(question, turns, 'assistant', 'assistant');
   }
 
   /**
@@ -684,7 +684,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return this.#declinedEmpty();
 
-    return this.#prompt(question, turns, 'knowledge-update');
+    return this.#prompt(question, turns, 'knowledge-update', 'knowledge-update');
   }
 
   /**
@@ -739,13 +739,22 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const turns = this.#admit(context);
     if (turns.length === 0) return this.#declinedEmpty();
 
-    return this.#prompt(question, turns, contract);
+    return this.#prompt(question, turns, contract, 'flat');
   }
 
   async #prompt(
     question: string,
     turns: AdmittedTurn[],
     contract: PromptContract,
+    /**
+     * Which route is asking.
+     *
+     * Required rather than defaulted, so a seventh route added later cannot compile without
+     * naming itself -- and therefore cannot silently inherit a cap the artifact says reaches
+     * something else. The contract is not a route: `#respond` builds the flat prompt with the
+     * `extractive` contract, and `#prompt` is the path all four flat-ish routes share.
+     */
+    route: TurnCapRoute,
   ): Promise<Answer> {
     // `contract` names this route's ASK and is not overridden. Overriding it here
     // is what the first fix did, and §12.9 records why that was wrong: naming the
@@ -755,7 +764,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // one -- and on MR it would invite abstention on questions that must be
     // answered. The rendering is resolved in `#promptOptions` instead, so every
     // route keeps its own ask and only the evidence presentation moves.
-    const assembled = buildPrompt(question, turns, contract, this.#promptOptions());
+    const assembled = buildPrompt(question, turns, contract, this.#promptOptions(route));
     this.#recordEvidence(turns, assembled);
     return this.#consult(assembled.prompt);
   }
@@ -766,7 +775,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     contract: PromptContract,
     questionDate: string | undefined,
   ): Promise<Answer> {
-    const base = this.#promptOptions();
+    const base = this.#promptOptions('temporal');
     const assembled = buildPrompt(question, turns, contract, {
       ...base,
       ...(questionDate === undefined ? {} : { questionDate }),
@@ -780,7 +789,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
-    const assembled = buildSessionPrompt(question, sessions, this.#promptOptions());
+    const assembled = buildSessionPrompt(
+      question,
+      sessions,
+      // The multi-session route, named here rather than defaulted: this builder is the one
+      // §13.72 measured at +13, so a default would make the measurement's route the one route
+      // whose reach is never written down.
+      this.#promptOptions('multi-session'),
+    );
     // Flattened for the two measurements the builder cannot report, which are about
     // the **offer** and not the delivery: the prompt keeps its boundaries, the offer
     // is one list of admitted turns, and the boundary is presentation. A reader
@@ -846,7 +862,20 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * a rendering or deliberately does not, and the default reproduces the baseline
    * byte for byte so prior artifacts stay comparable.
    */
-  #promptOptions(): PromptOptions {
+  /**
+   * Whether the per-turn cap reaches this route.
+   *
+   * One predicate for the six paths, and the reason it is not inlined at each of them is
+   * §13.72's result: the same cap is worth **+13 on MR and −30 on IE**, so the reach is not a
+   * detail of one call site. Absent means every route (what §13.68 shipped); an empty list
+   * reaches none.
+   */
+  #capReaches(route: TurnCapRoute): boolean {
+    const routes = this.#options.maxTurnCharsRoutes;
+    return routes === undefined || routes.includes(route);
+  }
+
+  #promptOptions(route: TurnCapRoute): PromptOptions {
     // `promptContract` is absent on every pre-switch construction, and an absent
     // contract means the baseline rendering -- which is the same answer as naming
     // `abstention`. The lookup is guarded rather than defaulted so the record stays a
@@ -863,14 +892,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...(this.#options.maxPromptChars === undefined
         ? {}
         : { maxChars: this.#options.maxPromptChars }),
-      // §13.68's single variable, forwarded from the same place and for the same reason:
-      // three routes build prompts and one of them (`buildSessionPrompt`) is where MR's
-      // loss lives, so a cap applied at one call site would leave the measurement route
-      // untouched while the other two reported a change. Spread conditionally because
-      // `prompt.ts` tests `=== undefined` to mean "no cap", and an always-present key
-      // holding `undefined` is the state `types.ts` records as indistinguishable from
-      // absent under `exactOptionalPropertyTypes`.
-      ...(this.#options.maxTurnChars === undefined
+      // §13.68's width, now reached through §13.73's route list. The decision is made HERE
+      // rather than at the six call sites, so a route cannot be added and silently receive a
+      // cap that the run's artifact says reaches two routes. `undefined` means "every route"
+      // and reproduces §13.68 byte for byte; `[]` reaches none and is how the option is
+      // disabled without being removed. Spread conditionally because `prompt.ts` tests
+      // `=== undefined` to mean "no cap", and an always-present key holding `undefined` is the
+      // state `types.ts` records as indistinguishable from absent.
+      ...(this.#options.maxTurnChars === undefined || !this.#capReaches(route)
         ? {}
         : { maxTurnChars: this.#options.maxTurnChars }),
       ...(rendering === undefined ? {} : { rendering }),

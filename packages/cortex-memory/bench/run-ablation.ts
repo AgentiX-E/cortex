@@ -71,6 +71,7 @@ import {
   confidenceFromLength,
   type EvidenceAsk,
   type PromptContract,
+  type TurnCapRoute,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -402,6 +403,14 @@ async function main(): Promise<void> {
     // artifact's config: a spread deleted here would leave the run's own log and its own
     // config claiming a treatment the prompt never received.
     ...(armOptions.maxTurnChars === undefined ? {} : { maxTurnChars: armOptions.maxTurnChars }),
+    // §13.73's reach, passed beside the width and for the same reason. `undefined` on the arm's
+    // side means every route, which is what §13.68 shipped; an explicit six-route list is the same
+    // state reached by a different path, and the product treats both as "reaches everything". The
+    // cast is at this boundary because `cortex-eval` carries the names as `string` -- it cannot
+    // import this package's union -- and validates them against its own copy at parse time.
+    ...(armOptions.maxTurnCharsRoutes === undefined
+      ? {}
+      : { maxTurnCharsRoutes: armOptions.maxTurnCharsRoutes as readonly TurnCapRoute[] }),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this

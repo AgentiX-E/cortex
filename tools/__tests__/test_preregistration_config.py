@@ -71,6 +71,8 @@ CONCEPT_TO_INPUT = {
     # configuration is "no cap", and spelling that as a number would need a sentinel no
     # reader could tell from a real cap.
     "maxTurnChars": "cortex_memory_max_turn_chars",
+    # §13.73's reach: a route list rather than a number, and `all` is the registered state.
+    "maxTurnCharsRoutes": "cortex_memory_max_turn_chars_routes",
     "budgetMinutes": "cortex_memory_budget_minutes",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
