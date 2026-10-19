@@ -956,17 +956,58 @@ def turns_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(rosters)
 
 
-# The prompt budget the arm assembles under, in UTF-16 code units.
+# The prompt budget the arm assembles under when a run names none, in UTF-16 code units.
 #
 # `DEFAULT_MAX_PROMPT_CHARS` in `packages/cortex-memory/src/prompt.ts`, restated here because
 # this tool reads a JSON artifact and cannot import TypeScript. It is asserted in that
-# package's tests, so the copy cannot drift silently: a change there fails a test there, and
-# this constant would then disagree with the artifacts it is used to describe -- which is the
-# state the fill share exists to make visible, not to hide.
-PROMPT_BUDGET_CHARS = 24_000
+# package's tests, so the copy cannot drift silently.
+#
+# It is a **default**, not the budget: since §13.81 the arm has an input (`maxPromptChars`) and
+# an artifact reports the value it ran under. This constant is what an artifact produced before
+# that input existed was assembled at, and dividing every artifact by it was a reader defect
+# waiting for the first run that spent more than it -- see `prompt_budget`.
+DEFAULT_PROMPT_BUDGET_CHARS = 24_000
 
 
-def window_section(questions: list[dict]) -> tuple[str, int]:
+def prompt_budget(report: dict) -> tuple[int, str]:
+    """The character budget this artifact was produced under, and where the reader got it.
+
+    ## Why the divisor cannot be a constant
+
+    Every reading in `window_section` is a ratio against the budget: turns carried, characters
+    spent, and the share of the room they filled. §13.81 made the budget a dispatched input, so
+    an artifact from that run carries `memoryArmConfig.maxPromptChars: 48000` while the constant
+    is 24,000 -- and the first table built on it would have reported **200% of budget** on a
+    prompt that fitted perfectly. That is not a cosmetic error: §13.81's prediction 1 is
+    "the room grows", this table is its mechanism check, and a doubled fill would have been read
+    as the allocator overflowing when it was the reader that failed to read the run.
+
+    ## Absent means the default, which is a value and not a gap
+
+    The arm omits the field exactly when the input was not set, and an unset input means the
+    product's default: 24,000. So absence is decided, not unknown, and the table names which
+    divisor it used so a historical artifact is still readable and a current one is checkable.
+
+    ## Zero and negatives are refused rather than clamped
+
+    The arm rejects a non-positive budget at startup (`readMaxPromptChars`), so a zero here is a
+    corrupt artifact -- and dividing by it would print an infinite fill, describing evidence
+    carried in a zero-character room. `True` is rejected beside them because Python's `bool` is
+    an `int` and a producer that serialised a flag into this field must not read as a budget of 1.
+    """
+    config = report.get('memoryArmConfig')
+    named = config.get('maxPromptChars') if isinstance(config, dict) else None
+    if named is None:
+        return DEFAULT_PROMPT_BUDGET_CHARS, 'default'
+    if isinstance(named, bool) or not isinstance(named, int) or named <= 0:
+        raise ValueError(
+            f'memoryArmConfig.maxPromptChars is {named!r}: a budget must be a positive integer, '
+            'and the arm rejects anything else at startup, so this artifact is corrupt'
+        )
+    return named, 'configured'
+
+
+def window_section(questions: list[dict], budget: int, source: str) -> tuple[str, int]:
     """How many turns the prompt held, and how much of the budget they spent.
 
     ## The two readings a coverage number cannot separate
@@ -1032,7 +1073,7 @@ def window_section(questions: list[dict]) -> tuple[str, int]:
         rows = by_capability[capability]
         turns = median([row[0] for row in rows])
         chars = median([row[1] for row in rows])
-        fill = chars / PROMPT_BUDGET_CHARS
+        fill = chars / budget
         lines.append(
             f'  {capability:<10}{len(rows):>5}{turns:>8.1f}{chars:>9.0f}'
             f'{per_turn(rows):>12.0f}{fill:>8.1%}'
@@ -1040,15 +1081,35 @@ def window_section(questions: list[dict]) -> tuple[str, int]:
     every = [row for rows in by_capability.values() for row in rows]
     turns = median([row[0] for row in every])
     chars = median([row[1] for row in every])
-    fill = chars / PROMPT_BUDGET_CHARS
+    fill = chars / budget
     lines.append(
         f'  {"TOTAL":<10}{len(every):>5}{turns:>8.1f}{chars:>9.0f}'
         f'{per_turn(every):>12.0f}{fill:>8.1%}'
     )
+    # Which divisor, said on the line that uses it. `default` is a fact about the artifact -- the
+    # arm omits the field when the input was unset -- and `configured` means the run named its own
+    # budget, which is the only case where this table and the run disagree unless it is read.
+    divisor = (
+        "this run's own `maxPromptChars`"
+        if source == 'configured'
+        else 'the default, since the artifact names no `maxPromptChars`'
+    )
     lines.append(
-        f'  medians, and "budget" is the share of {PROMPT_BUDGET_CHARS} characters used: a '
+        f'  medians, and "budget" is the share of {budget:,} characters used ({divisor}): a '
         'prompt near 100% is at the cut, which is the state a per-turn cap changes.'
     )
+    # The impossible state, counted rather than clamped. `promptChars` is the evidence the prompt
+    # carried AFTER the budget cut, so it cannot exceed the budget the run assembled under: a
+    # fill above 100% is either a divisor that is not the run's or a producer reporting the offer
+    # instead of the delivery, and both are defects that would otherwise read as a measurement.
+    over = sum(1 for _, chars in every if chars > budget)
+    if over:
+        lines.append(
+            f'  {over} record(s) over budget: the prompt reports carrying more evidence than '
+            f'{budget:,} characters allow. Either this divisor is not the budget the run '
+            'assembled under, or the producer reported the offer (evidenceChars) instead of the '
+            'delivery (promptChars). A fill above 100% is not a measurement.'
+        )
     if without:
         lines.append(
             f'  {without} record(s) without promptChars: the artifact predates the field, or '
@@ -1435,7 +1496,12 @@ def main(argv: list[str]) -> int:
         return 0
 
     if args.window:
-        section, measured = window_section(questions)
+        try:
+            budget, source = prompt_budget(report)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        section, measured = window_section(questions, budget, source)
         if measured == 0:
             print(
                 f'{args.report}: no record carries both turns and promptChars.',

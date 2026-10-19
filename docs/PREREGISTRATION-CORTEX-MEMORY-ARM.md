@@ -9821,3 +9821,76 @@ The cost of that omission is now measurable: **twelve sections** of experiments 
 inside 24,000 characters, and the one lever that does not destroy text was unreachable. The input added here is
 the same shape as every other one — read, reject a value that cannot work, project it into the config, print it
 on the line — and it is registered at 24,000 so that a run which does not name it is still on the record.
+
+### 13.81.5 The instrument that reads this run was dividing by the old budget
+
+`tools/readout-arm-run.py --window` is §13.68's mechanism check: it reports turns carried, characters spent, and
+the share of the budget they filled, and §13.81's prediction 1 is decided partly by it. Its divisor was
+`PROMPT_BUDGET_CHARS = 24_000`, a constant restated from `DEFAULT_MAX_PROMPT_CHARS` with a comment claiming it
+"cannot drift silently" because that constant is asserted in the product's own tests.
+
+The claim was true about the **default** and false about the **budget**. The input added in §13.81 is what makes
+the two different values, and the tool had no way to read it. On this run's artifact the table would have printed
+a median of ~47,000 characters against 24,000 — **a fill of about 200%** — and the note beneath it would have said
+that a prompt near 100% is at the cut. §13.81.3 lists exactly that reading as the failure branch: *"the room does
+not grow as the character arithmetic says, which would point at the allocator rather than at the data."* The
+allocator would have been fine and the reader would have been wrong, with the artifact's own config line
+(`maxPromptChars=48000`) stating the correction on the same page.
+
+**The fix, before the artifact landed rather than after.** `prompt_budget(report)` reads
+`memoryArmConfig.maxPromptChars`; absent means 24,000 and the note says so, because the arm omits the field
+exactly when the input was unset and every pre-§13.81 run is therefore readable. A non-positive or non-integer
+value is **refused** rather than clamped — the arm rejects those at startup (`readMaxPromptChars`), so one in an
+artifact is corrupt, and dividing by it would print an infinite fill.
+
+**And the check that would have caught it, stated as a measurement.** `promptChars` is the evidence the prompt
+carried *after* the budget cut, so it cannot exceed the run's budget. The table now counts records over budget and
+names the two causes — a divisor that is not the run's budget, or a producer reporting the offer (`evidenceChars`)
+instead of the delivery (`promptChars`) — with the sentence *"a fill above 100% is not a measurement."* Four tests
+pin the configured, default, over-budget and refused states (`test_readout_arm_run.py`, class
+`TestHowMuchTheWindowActuallyHeld`), and the
+two archived artifacts still read as before: 24,000 with no over-budget record, MR at 92.4% (k=256) and 92.7%
+(cap 200), which is what §13.80 reported.
+
+The defect class is the campaign's most repeated one: **a guard asserted in prose beside the value it guards.** The
+constant's comment named a test in another package, and that test does not — cannot — know what a given run was
+dispatched with. The repair is the same every time: read the value from the artifact being described.
+
+### 13.81.6 What this run cannot separate, written before its artifact lands
+
+`maxTurnChars` has a reach input (`maxTurnCharsRoutes`, §13.73) precisely so that a variable can be single-route.
+`maxPromptChars` has none: it is a `CortexMemoryOptions` field and the arm forwards it to every route. So this run
+is **one variable with six subjects** — MR and TR are the ones the predictions are about, and IE, KU, ABS and the
+abstention route also receive the doubled room without being asked.
+
+That matters for attribution and not for the predictions:
+
+- if MR and TR rise while IE/KU/ABS hold or rise, the budget is a room lever and the next question is the ceiling;
+- if MR and TR rise while IE or KU **fall**, the run cannot say whether the fall is the extra room (more noise
+  around a gold turn that was already carried) or a route-specific effect, because both sides moved at once. The
+  honest response in that case is not a revert but a **reach input for the budget** — the same shape as
+  `maxTurnCharsRoutes`, and the workflow has room for it (22 of `workflow_dispatch`'s 25 inputs are taken).
+
+The estimator this section uses was calibrated on the previous artifact rather than asserted. Two readings:
+
+| capability | measured delivered | predicted at its own window width | difference |
+| --- | --- | --- | --- |
+| MR (68 turns, capped) | 72.89% | **73.08%** at 68 | +0.19pp |
+| IE (29.5 turns, uncapped) | 69.22% | **74.25%** at 29 | +5.03pp |
+| KU (27.0 turns, uncapped) | 59.60% | **61.48%** at 27 | +1.88pp |
+| ABS (33.5 turns, uncapped) | 44.35% | **48.86%** at 33 | +4.51pp |
+
+So the estimator is near-exact for the route whose turns are all the same size and **over-predicts the uncapped
+routes by 2–5 points**, for a reason the same arithmetic explains: with 400-character turns the window ends at
+almost exactly rank *W* on every question, while with variable turns the cut is ragged and lands earlier per
+question, so a single *W* is an upper bound on what those routes delivered. The number to compare against this
+run's MR prediction is therefore the capped-route calibration, and the uncapped rows are the reason the same table
+cannot be reused there without a per-question width.
+
+At 146 turns the same estimator puts MR's delivered share at **87.11%** and TR's at **83.27%**. §13.81.2 was
+registered at "≈ 83–84% calibrated" because the two runs before it had over-predicted by 2–3 points; the exact
+count above says the over-prediction was in the arithmetic, not in the rank table, since at the width MR actually
+had the difference is 0.19pp. The registered threshold stays at **≥ 83%** — a prediction is not revised after it
+is filed — and the reading it implies is sharper than it was: a result between 83% and 85% would mean the window
+did not reach 146 turns or the selection cut earlier than rank 146, and `--window` answers which before any other
+number is read.

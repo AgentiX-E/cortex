@@ -942,6 +942,71 @@ class TestHowMuchTheWindowActuallyHeld:
         assert r.returncode == 2
         assert 'promptChars' in r.stderr
 
+    def test_the_budget_is_read_from_the_artifact_not_from_a_constant(
+        self, tmp_path: Path
+    ) -> None:
+        """§13.81 raised the budget to 48,000 and this table kept dividing by 24,000.
+
+        The fill share is the mechanism reading of the whole experiment -- `--coverage` says
+        whether more gold arrived, this says whether the room grew -- and a hardcoded divisor
+        would have printed **200% of budget** on the first run that spent it, which reads as an
+        allocator overflowing rather than as a reader that did not read the configuration. The
+        table must take the divisor from the run it is describing.
+        """
+        report = self._report([('MR', 120, 48_000)])
+        report['memoryArmConfig']['maxPromptChars'] = 48_000
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '100.0%' in r.stdout
+        assert '200.0%' not in r.stdout
+        assert '48,000' in r.stdout
+
+    def test_an_artifact_that_never_named_the_budget_reads_the_default(
+        self, tmp_path: Path
+    ) -> None:
+        """Absent means 24,000, which is what every archived artifact was produced under.
+
+        Absent is not "unknown": `DEFAULT_MAX_PROMPT_CHARS` is a value, the arm omits the field
+        only when it was not set, and every pre-§13.81 run therefore assembled at 24,000. The
+        table says which divisor it used so a historical artifact stays readable.
+        """
+        report = self._report([('MR', 30, 24_000)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '100.0%' in r.stdout
+        assert '24,000' in r.stdout
+        assert 'default' in r.stdout
+
+    def test_a_prompt_that_spent_more_than_the_budget_names_the_disagreement(
+        self, tmp_path: Path
+    ) -> None:
+        """The detector for this tool's own defect class, stated as a measurement.
+
+        `promptChars` is the evidence the prompt **carried**, after the budget cut, so it
+        cannot exceed the budget the run assembled under. A fill above 100% therefore means the
+        divisor is not the run's budget -- the reader's assumption disagreed with the artifact
+        -- or the producer reported the offer instead of the delivery. Both are defects, and
+        the second is the §13.11 collapse; the table names the state rather than printing a
+        percentage over 100 as if it were a measurement.
+        """
+        report = self._report([('MR', 30, 36_000)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '150.0%' in r.stdout
+        assert 'over budget' in r.stdout.lower()
+
+    def test_a_zero_budget_is_refused_rather_than_dividing_by_zero(
+        self, tmp_path: Path
+    ) -> None:
+        """The arm rejects 0 at dispatch (§13.80 lost a run to a stale value), so a 0 here is a
+        corrupt artifact. Reporting an infinite fill would describe a prompt that carried
+        evidence in a zero-character room, which is not a state any run can reach."""
+        report = self._report([('MR', 30, 24_000)])
+        report['memoryArmConfig']['maxPromptChars'] = 0
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'maxPromptChars' in r.stderr
+
 
 class TestWhenTheRoomIsWiderThanThePool:
     """The regime §13.68 created and §13.72's run was the first to enter.
