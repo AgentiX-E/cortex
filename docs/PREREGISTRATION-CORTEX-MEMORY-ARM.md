@@ -9894,3 +9894,16 @@ had the difference is 0.19pp. The registered threshold stays at **≥ 83%** — 
 is filed — and the reading it implies is sharper than it was: a result between 83% and 85% would mean the window
 did not reach 146 turns or the selection cut earlier than rank 146, and `--window` answers which before any other
 number is read.
+
+Prediction 3 is also not independent of 2 and 4, and saying so now makes it more useful than it reads:
+
+| if | MR | TR | roster | prediction 3 |
+| --- | --- | --- | --- | --- |
+| 2 and 4 hold exactly at their thresholds | 86 | 94 | 394 + 8 + 5 = **407** | holds with 5 to spare |
+| 2 holds, 4 misses by one | 86 | 93 | 406 | still holds |
+| **3 fails while 2 and 4 hold** | 86 | 94 | ≤ 394 | the other three lost ≥ 13 together |
+
+So a 3-failure beside 2- and 4-successes is not noise: it would mean IE, KU and ABS together gave back more
+than the two repaired routes gained, on a change that only ever *added* evidence to them. That is the reading
+that would make §13.81.6's attribution limit load-bearing rather than a caveat, and it is why prediction 3 is
+left as registered instead of being restated as "MR + TR net".
