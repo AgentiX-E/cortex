@@ -394,6 +394,14 @@ async function main(): Promise<void> {
     // throws on anything unrecognised -- so by the time execution reaches here the value
     // IS one of the union's members.
     ...(armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' as const } : {}),
+    // §13.67's single variable, spread conditionally for the reason the three above are:
+    // no cap IS the shipped behaviour and is expressed by NOT passing the key, so a run that
+    // names no cap reproduces the previous prompt byte for byte. This is the one line in the
+    // chain that no test reaches -- `bench/**` is excluded from coverage as an entry point --
+    // which is why the same value is echoed in the log line below and projected into the
+    // artifact's config: a spread deleted here would leave the run's own log and its own
+    // config claiming a treatment the prompt never received.
+    ...(armOptions.maxTurnChars === undefined ? {} : { maxTurnChars: armOptions.maxTurnChars }),
   });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this
@@ -441,7 +449,11 @@ async function main(): Promise<void> {
       // budget was spent by, and with no signal there is no ranking for it to describe.
       (armOptions.relevanceSignal === 'none'
         ? ''
-        : `, relevanceUnits=${armOptions.relevanceUnits}`),
+        : `, relevanceUnits=${armOptions.relevanceUnits}`) +
+      // Printed on every run, unlike the width and the unit: this one is a property of the
+      // evidence section rather than of a ranking, so `none` is a fact about the prompt. It
+      // is also the log's only record of the one spread in this file that no test covers.
+      `, maxTurnChars=${armOptions.maxTurnChars ?? 'none'}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline, feature, {

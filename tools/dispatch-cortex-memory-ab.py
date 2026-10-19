@@ -286,6 +286,13 @@ INPUTS = {
     # §13.34 holds the selection unit at the shipped default: the variable is the ask, so
     # §13.26 is the comparison and the room, the signal and the unit all stay as they were.
     "cortex_memory_relevance_units": "turn",
+    # §13.67/§13.68's variable. `none` is the registered value and is sent explicitly rather
+    # than left blank: it is the state every archived prompt was produced under, and the
+    # dispatch table's own rule is that a value a run depends on should not arrive through
+    # the `''`-to-default path. An experiment overrides it -- `--set
+    # cortex_memory_max_turn_chars=400` -- and adoption moves this line and §10.3 together,
+    # which is what `test_preregistration_config.py` enforces.
+    "cortex_memory_max_turn_chars": "none",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
     # pass any completed run has produced on this arm (a full run is about 3h32m for eight
     # passes), so it is a hang detector rather than a slow-run detector.

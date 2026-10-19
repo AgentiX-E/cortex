@@ -66,6 +66,11 @@ CONCEPT_TO_INPUT = {
     "relevanceSignal": "cortex_memory_relevance",
     "relevanceTopK": "cortex_memory_relevance_top_k",
     "relevanceUnits": "cortex_memory_relevance_units",
+    # §13.67's variable. Its registered value is the literal `none` rather than a number,
+    # which is why `registered()` compares strings instead of parsing ints: the adopted
+    # configuration is "no cap", and spelling that as a number would need a sentinel no
+    # reader could tell from a real cap.
+    "maxTurnChars": "cortex_memory_max_turn_chars",
     "budgetMinutes": "cortex_memory_budget_minutes",
     "limit": "limit",
     "ablation_runs": "ablation_runs",

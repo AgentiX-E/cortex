@@ -863,6 +863,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...(this.#options.maxPromptChars === undefined
         ? {}
         : { maxChars: this.#options.maxPromptChars }),
+      // §13.68's single variable, forwarded from the same place and for the same reason:
+      // three routes build prompts and one of them (`buildSessionPrompt`) is where MR's
+      // loss lives, so a cap applied at one call site would leave the measurement route
+      // untouched while the other two reported a change. Spread conditionally because
+      // `prompt.ts` tests `=== undefined` to mean "no cap", and an always-present key
+      // holding `undefined` is the state `types.ts` records as indistinguishable from
+      // absent under `exactOptionalPropertyTypes`.
+      ...(this.#options.maxTurnChars === undefined
+        ? {}
+        : { maxTurnChars: this.#options.maxTurnChars }),
       ...(rendering === undefined ? {} : { rendering }),
       ...(ask === undefined ? {} : { ask }),
       // Forwarded here rather than at each `#prompt*` call site, so the three routes

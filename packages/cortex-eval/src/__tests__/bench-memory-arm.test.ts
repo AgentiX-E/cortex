@@ -2815,3 +2815,92 @@ describe('the arm records how much of the gold the ranking offered', () => {
     expect(Object.keys(overlap!).sort()).toEqual(['carried', 'total']);
   });
 });
+
+/**
+ * The per-turn cap, as the arm reads it and as the artifact records it.
+ *
+ * §13.67 registered the cap from a measurement (`--turns`: a median turn of 272 characters
+ * in a 24,000-character room) and §13.68 implements it. The reader and the config field are
+ * where a variable becomes inert without anything failing: a cap the arm reads but does not
+ * project leaves an artifact unable to say whether the run carried one, and a cap the arm
+ * projects but does not read leaves a run that describes a prompt nobody sent — the §7.4
+ * side-channel defect in both directions.
+ */
+describe('the per-turn cap', () => {
+  it('is absent by default, because every archived prompt was produced without one', () => {
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).maxTurnChars).toBeUndefined();
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS: '' })
+        .maxTurnChars,
+    ).toBeUndefined();
+    // `none` is the third spelling and the one §10.3 registers, so the dispatch can send the
+    // value the registration names rather than relying on a blank resolving to the same
+    // state through a different path.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS: 'none' })
+        .maxTurnChars,
+    ).toBeUndefined();
+  });
+
+  it('accepts a cap and reports the one it will use', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS: '400' })
+        .maxTurnChars,
+    ).toBe(400);
+  });
+
+  it('rejects a cap that cannot describe a turn', () => {
+    // Each of these completes a full run whose artifact names a cap the run did not
+    // administer. `0` is the dangerous one: it emits every turn's number with no text after
+    // it, which reads in a prompt as "the evidence is empty" while `carried` reports 26
+    // turns -- a state no artifact would record and no reader would expect.
+    for (const bad of ['0', '-1', 'abc', '1.5']) {
+      expect(() =>
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS: bad }),
+      ).toThrow(/CORTEX_MEMORY_MAX_TURN_CHARS/);
+    }
+  });
+
+  it('projects the cap into the config only when one was configured', () => {
+    // Absent, never zero, for the reason `goldOverlap.pool` is: a `0` would read as "the run
+    // capped every turn at no characters" where the truth is that the run carried no cap.
+    const capped = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS: '400' }),
+    );
+    expect(capped.maxTurnChars).toBe(400);
+
+    const uncapped = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
+    expect(Object.keys(uncapped)).not.toContain('maxTurnChars');
+  });
+
+  it('renders the cap on the config line', () => {
+    // The line is what a reader of the Markdown has. This variable changes what the model
+    // reads on every route, so its absence from the line would leave two artifacts
+    // distinguished only by a JSON key most readers never open.
+    const line = (maxTurnChars: number | undefined): string =>
+      formatAblationReport({
+        dataset: 'fixture',
+        questionCount: 0,
+        baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+        feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+        ablation: emptyAblation('cortex-memory'),
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          ...GATE,
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+          relevanceSignal: 'retrieval',
+          relevanceTopK: 64,
+          relevanceUnits: 'turn',
+          ...(maxTurnChars === undefined ? {} : { maxTurnChars }),
+        },
+      });
+
+    expect(line(400)).toContain('maxTurnChars=400');
+    // Printed as `none` rather than omitted, because unlike the width and the unit this is
+    // not a property of the ranking: it applies to every run, so "no cap" is a fact the
+    // artifact should state rather than one a reader has to infer from a missing field.
+    expect(line(undefined)).toContain('maxTurnChars=none');
+  });
+});

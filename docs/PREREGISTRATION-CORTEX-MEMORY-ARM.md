@@ -679,6 +679,15 @@ forwarded into a step's `env`. Three injections were run against it:
   mechanism predictions were falsified** — the pool's reach did not improve — and §13.64.4
   records that the coverage instrument measures quantity while the effect moved *which*
   turn decides. A run with `relevanceSignal=retrieval` is the pre-§13.64 configuration.
+* `maxTurnChars: none` — **the adopted configuration carries no per-turn cap**, and it is
+  written down rather than omitted because §13.67 registered the cap as a variable and
+  §13.68 implemented it. `none` means each turn contributes its whole text, which is what
+  every archived run did; `400` is the registered treatment under measurement. Absent,
+  blank and `none` are one state in the reader, so the dispatch can name it in the same
+  spelling (`CORTEX_MEMORY_MAX_TURN_CHARS=none`) as this line instead of depending on a
+  default. §13.67.1 is why the variable exists at all: the evidence room is spent on a
+  **tail** of long turns (median 272 characters, p90 2,305) rather than on turns, so the cut
+  that decides coverage falls at rank 26 of a 64-wide pool.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -8576,5 +8585,131 @@ more than an unregistered change that has**, which is the order this campaign ha
 | **P0** | **Implement the 400-character per-turn cap** and dispatch it under §13.67.5's four predictions | no, to build; yes, to measure |
 | **P0 (done)** | The room's arithmetic is measured: median turn 272 against a 24,000-character room, and the cap table | no |
 | **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
+| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
+| P3 | `PATH` ordering | no |
+
+## 13.68 The per-turn cap is implemented, four layers deep, and one line of it no test reaches
+
+### 13.68.1 What §13.67 registered and this section builds
+
+§13.67 delivered the measurement and refused to implement it in the last minutes of an iteration, on the
+ground that the change touches the render path where §13.15's byte-compatibility guarantees live. That
+refusal is discharged here, with the four predictions from §13.67.5 unchanged — they were never read, and a
+prediction is not amended by the section that implements it.
+
+The variable is a per-turn character cap of **400**, and it is one option threaded through four layers:
+
+| layer | file | what would break without it |
+| --- | --- | --- |
+| renderer | `prompt.ts` `contentFor` + `formatEvidence` | nothing caps, and the option is a comment |
+| forwarding | `memory.ts` `#promptOptions` | the system accepts the number and the prompt ignores it |
+| reader | `bench-memory-arm.ts` `readMaxTurnChars` | the arm runs no cap while the artifact config claims one |
+| projection | `report.ts` config line | two artifacts differ only in a JSON key most readers never open |
+
+### 13.68.2 The cap is on the content, not on the rendered block
+
+The obvious implementation — truncate the string `formatEvidence` returns — is wrong in three ways, and each
+is a test:
+
+- It would eat the **index** (`1. `) and, under the `sourced` rendering, the **memory id**. A truncated id is a
+  false provenance claim, where a missing one is merely absent.
+- It would be a **per-prompt** cap rather than a per-turn one: the first turn would consume the whole allowance
+  and the rest would be empty.
+- It would have to be applied **after** the session grouping, so `renderSessionBlocks` — which filters
+  `session.turns` by **identity** against the selection — would no longer find its members.
+
+So the cap lives in `contentFor(turn, maxTurnChars)`, one predicate with two readers (the baseline renderer and
+the sourced one), and `carried` still holds the turns exactly as they arrived. That last part is not
+politeness: `goldOverlap` matches a record's turns against the dataset's gold turns **by text**, so a capped
+roster would fail to match gold it actually delivered and coverage would collapse for a reason no artifact
+could show. The size of what was actually rendered is reported separately, as it always was, by
+`evidenceChars`.
+
+### 13.68.3 Three spellings of "no cap", and two values refused
+
+Absent, blank, and the literal `none` all mean no cap. The third is not decoration: §10.3 registers the adopted
+configuration as `maxTurnChars: none`, and the dispatch must send the value the registration names —
+`test_preregistration_config.py` exists to catch a registration and a payload that disagree, and it caught
+exactly this in the first draft, where the dispatch sent `''` against a registration that said `none`.
+
+Refused rather than clamped:
+
+- **`0`** — it emits every turn's number with no text after it while `carried` still reports 26 turns and every
+  coverage count is computed from the turns as they arrived. The artifact would show a run that delivered 54%
+  of its gold into an empty evidence section, and no reader could tell that from a retrieval failure.
+- **a fraction** — `1.5` characters is not a cap anyone chose, and it completes a run whose cap is not the
+  number it names. Same rule as the index width's fraction.
+
+### 13.68.4 One branch was written, uncovered, and removed rather than tested
+
+The first implementation pre-tested `none` and then delegated the rest to `readNumeric`, which returns
+`number | undefined`. That forced a `value === undefined` early return, which v8 counted and **no input could
+reach** — the blank had already been collapsed by the guard above it. Coverage reported
+`bench-memory-arm.ts` at 99.37% branch, one line, and the honest reading of an uncovered branch is nearly
+always "there is no way to arrive here" rather than "a test is missing".
+
+So the function narrows `raw` to `string` in the guard and calls `Number` directly, and the branch is gone
+rather than papered over with a test that would have had to construct a state the reader cannot produce. This
+is the fourth time in this campaign that an uncovered branch was a fact about the code rather than about the
+tests.
+
+### 13.68.5 The one line no test reaches, and what makes it visible instead
+
+`bench/run-ablation.ts` is an entry point and `bench/**` is excluded from coverage, so the spread that carries
+`armOptions.maxTurnChars` into `new CortexMemory({...})` is the single line in this chain that no test covers.
+Deleting it would leave every unit test green and every run capped at nothing.
+
+Two things make that visible rather than silent, and neither is a test: the value is **echoed in the run's own
+log line** (`maxTurnChars=400`) beside the gate configuration, and it is **projected into the artifact's
+config**, so a run whose spread was missing would print and record a cap its prompt never applied. That is the
+same defence §7.4's other fields use — the artifact naming its own configuration — and it is weaker than a test
+by exactly one run. Stated here rather than left for a reader to discover.
+
+### 13.68.6 Predictions, unchanged from §13.67.5
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | **Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its total | ≤ 54.2% |
+| **2** | **MR's correct count rises from 62 to ≥ 66** | ≤ 62 |
+| **3** | **The roster rises from 371 to ≥ 379** | ≤ 371 |
+| **4** | **The long-text capabilities hold**: IE and KU stay within their own measured rates (IE 5, KU 7 questions) | outside either |
+
+Prediction 3 is safe against cross-run noise on this arm because §13.66 measured **retrieval to be
+deterministic**: run `39116387165`'s pool and delivered counts are identical to `39106951421`'s to the turn, so
+the only noise this variable meets is model sampling (±4 on the roster).
+
+### 13.68.7 What each outcome would mean, written before the run
+
+- **1 and 2 hold**: the room was the cut, the tail was the constraint, and the next variable is the arithmetic
+  (MR's 31 `numeric_mismatch`, of which 11 count their own short list).
+- **1 holds and 2 does not**: more gold arrives and the model still miscounts it — which would move the ordering
+  of the remaining work rather than its content.
+- **1 fails**: the turns the cap buys back are not the turns that decide, i.e. the cut band from rank 26 to 64
+  is *below* the gold that matters and §13.66's rule was reading the median rather than the mass.
+- **4 fails while 1–3 hold**: a capability trade. Adoption would then need its own argument, and this section
+  does not pre-authorise one.
+
+### 13.68.8 Verification
+
+- **Red first**: three renderer tests failed before the implementation (`renders each turn at the cap`, `fits
+  more turns in the same room`, `applies on the session route`), and four eval tests failed before the reader
+  existed. The six inert renderer tests passed from the start, which is the correct reading of "an
+  unimplemented option is inert".
+- **End to end**: `prompt-turn-cap.test.ts` drives a real `CortexMemory` with a recording `LLM` and asserts on
+  the prompt the model actually received, because `#promptOptions` is where a field becomes inert without
+  anything failing.
+- `cortex-memory` **363 tests** (+11), `cortex-eval` **1915** (+5), `tools` **445 passed + 42 subtests**,
+  `pnpm check` **exit 0**, four coverage dimensions **100%** (`cortex-node` branch 98.64%, §13.47's known gap).
+- Byte-identity: `maxTurnChars: undefined` and an absent field produce the **same prompt string**, asserted
+  rather than assumed, so every archived run stays reproducible from the code.
+
+### 13.68.9 Status
+
+| Priority | Item | Needs provider |
+| --- | --- | --- |
+| **P0** | Read the 400-character cap's run against §13.68.6's four predictions | yes, dispatched |
+| **P0 (done)** | The cap is implemented through the renderer, the forwarding, the reader and the config line | no |
+| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
+| P1 | The order function §13.66 left as the lever, now measurable per selection via `goldRanks` | yes |
 | P2 | The §13.55 sentence, now redundant, as its own variable | yes |
 | P3 | `PATH` ordering | no |

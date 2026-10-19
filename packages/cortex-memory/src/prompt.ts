@@ -221,6 +221,49 @@ export type PromptOptions = {
   questionDate?: string;
   /** Upper bound on prompt length in UTF-16 code units. */
   maxChars?: number;
+  /**
+   * Upper bound on the characters **one turn** may contribute to the rendering.
+   *
+   * ## The measurement, and the assumption it overturns
+   *
+   * §13.34.3 concluded the evidence room is not the constraint, and it argued from counts:
+   * the window holds a median of 26 turns against a median gold set of 24, so a perfect
+   * selector would reach 0.917 coverage. `--turns` on the adopted run's artifact measures
+   * the other half of the same room: the delivered turns have a **median of 272
+   * characters**, a p90 of 2,305 and a max of 15,369. Twenty-six turns of median size are
+   * 7,072 characters in a **24,000**-character room.
+   *
+   * So the room is not spent on turns. It is spent on a tail, and that is why the cut that
+   * decides coverage falls at rank 26 while the pool holds 64 (§13.66: the pool carries
+   * 73.2% of the gold, the delivery 54.2%). Capping what a turn may contribute moves the
+   * cut, which is the one thing the rank curve said would help.
+   *
+   * ## Presentation, not admission and not the record
+   *
+   * A cap on admission would move the gate, which is a different experiment. A cap on the
+   * record would be worse than an overstatement: `goldOverlap` matches the turns a record
+   * carries against the dataset's gold turns **by text**, so a capped record would fail to
+   * match gold it actually delivered and coverage would collapse for a reason the artifact
+   * could not show. The character budget is spent here, so the cap is here, `carried` keeps
+   * reporting the turns exactly as they arrived, and the size of what was actually rendered
+   * is reported separately as `evidenceChars`.
+   *
+   * ## Absent means no cap
+   *
+   * Every archived run was produced without one, and a default other than "no cap" would
+   * make those prompts unreproducible from the code. The cost of a cap, stated where it is
+   * chosen rather than discovered later: a turn whose decisive fact sits deep in a long
+   * narrative loses it.
+   *
+   * ## `| undefined`, unlike `maxChars`
+   *
+   * Because "explicitly no cap" is a value a caller legitimately has -- a run that reads its
+   * cap from an environment variable gets `undefined` when the variable is unset, and passing
+   * that through must not be a type error that pushes it into a default at the boundary. The
+   * property that matters is that it behaves **exactly** as an absent field, and
+   * `prompt-turn-cap.test.ts` pins that rather than leaving it to the type.
+   */
+  maxTurnChars?: number | undefined;
   /** How to present the admitted turns. Defaults to the baseline rendering. */
   rendering?: EvidenceRendering;
   /** Which instruction block to use. Defaults to the route's own. */
@@ -643,6 +686,39 @@ function instructionsFor(
 }
 
 /**
+ * What one turn contributes to the rendering, under an optional per-turn cap.
+ *
+ * A single predicate with two readers -- the baseline renderer and the sourced one -- so a
+ * cap cannot be honoured on one rendering and forgotten on the other. That is the same
+ * argument `buildPrompt` makes for computing the instruction block once instead of per
+ * branch, and it is here for the same class of defect: two paths that must agree, agreeing
+ * by construction rather than by a test noticing they do not.
+ *
+ * `truncateCodePointSafe` rather than `slice`, because the cut can land inside a surrogate
+ * pair and a lone surrogate corrupts the request body on serialisation -- the failure
+ * `sliceCodePointSafe` was written for in the reference pipeline. Using the budget's own
+ * function also means the cap and the final clip cut the same way, so a capped turn and a
+ * clipped prompt cannot disagree about what a character is.
+ */
+function contentFor(turn: AdmittedTurn, maxTurnChars: number | undefined): string {
+  if (maxTurnChars === undefined) return turn.content;
+  return truncateCodePointSafe(turn.content, maxTurnChars);
+}
+
+/**
+ * The cap as a render option, or an empty object to mean "no cap".
+ *
+ * Spread rather than assigned, because this workspace's `exactOptionalPropertyTypes` treats
+ * an always-present key holding `undefined` as different from an absent one -- and here the
+ * difference is real: `contentFor` tests `=== undefined` and would behave identically, but
+ * `formatEvidence`'s option record is also what a reader inspects to see whether a cap was
+ * configured at all.
+ */
+function capOption(maxTurnChars: number | undefined): { maxTurnChars?: number } {
+  return maxTurnChars === undefined ? {} : { maxTurnChars };
+}
+
+/**
  * Render admitted turns as numbered evidence.
  *
  * Numbered so the model can refer to a turn, and blank-line separated so it
@@ -662,10 +738,19 @@ function instructionsFor(
  * own line so the existing baseline output is byte-identical when `rendering` is
  * absent -- every prior artifact was produced with this function and its
  * numbering is part of those numbers' meaning.
+ *
+ * `maxTurnChars` caps what each turn's **content** contributes, and nothing else: the index
+ * and the source id are outside it, because they are the turn's address rather than its
+ * text, and a truncated id would be a false provenance claim where a missing one is merely
+ * absent.
  */
 export function formatEvidence(
   turns: readonly AdmittedTurn[],
-  options: { sessionIndex?: number; rendering?: EvidenceRendering } = {},
+  options: {
+    sessionIndex?: number;
+    rendering?: EvidenceRendering;
+    maxTurnChars?: number;
+  } = {},
 ): string {
   if (turns.length === 0) return '';
 
@@ -673,8 +758,8 @@ export function formatEvidence(
 
   const body =
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(turns)
-      : turns.map((turn, i) => `${i + 1}. ${turn.content}`).join('\n\n');
+      ? formatEvidenceWithSources(turns, options.maxTurnChars)
+      : turns.map((turn, i) => `${i + 1}. ${contentFor(turn, options.maxTurnChars)}`).join('\n\n');
 
   return `${header}${body}`;
 }
@@ -717,8 +802,10 @@ export function formatEvidence(
  * yields `''` -- `[].join('\n\n')` is the empty string. The behaviour is identical and
  * the unreachable path is gone rather than papered over.
  */
-function formatEvidenceWithSources(turns: readonly AdmittedTurn[]): string {
-  return turns.map((turn, i) => `${i + 1}. [${turn.id}] ${turn.content}`).join('\n\n');
+function formatEvidenceWithSources(turns: readonly AdmittedTurn[], maxTurnChars?: number): string {
+  return turns
+    .map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, maxTurnChars)}`)
+    .join('\n\n');
 }
 
 /**
@@ -798,7 +885,9 @@ export function buildPrompt(
   // rendering unreachable on every route whose ask is something else -- including
   // both of the routes that carried the measured loss.
   const render = (picked: readonly AdmittedTurn[]): string =>
-    options.rendering === 'sourced' ? formatEvidenceWithSources(picked) : formatEvidence(picked);
+    options.rendering === 'sourced'
+      ? formatEvidenceWithSources(picked, options.maxTurnChars)
+      : formatEvidence(picked, capOption(options.maxTurnChars));
 
   const evidence = render(turns);
   const evidenceBlock =
@@ -1383,7 +1472,9 @@ export function buildSessionPrompt(
   // A closure over these sessions rather than a pre-rendered string, so the
   // selection cannot end up sizing one list while the text holds another.
   const render = (picked: readonly AdmittedTurn[]): string =>
-    sessions.length === 0 ? NO_EVIDENCE : renderSessionBlocks(sessions, picked, options.rendering);
+    sessions.length === 0
+      ? NO_EVIDENCE
+      : renderSessionBlocks(sessions, picked, options.rendering, options.maxTurnChars);
 
   const body = render(flat);
 
@@ -1469,6 +1560,7 @@ function renderSessionBlocks(
   sessions: readonly AdmittedSession[],
   picked: readonly AdmittedTurn[],
   rendering: EvidenceRendering | undefined,
+  maxTurnChars: number | undefined,
 ): string {
   const kept = new Set(picked);
   return sessions
@@ -1481,6 +1573,10 @@ function renderSessionBlocks(
       formatEvidence(session.turns, {
         sessionIndex: session.index,
         ...(rendering === undefined ? {} : { rendering }),
+        // The cap reaches the blocks through the same renderer the flat route uses, which is
+        // why it is threaded here rather than applied to the joined string: a per-turn cap
+        // applied to the joined text would be a per-prompt cap.
+        ...capOption(maxTurnChars),
       }),
     )
     .join('\n\n');

@@ -126,6 +126,31 @@ export type CortexMemoryOptions = {
   /** Upper bound on prompt length in UTF-16 code units. */
   maxPromptChars?: number;
   /**
+   * Upper bound on the characters one turn may contribute to the prompt. Absent means none.
+   *
+   * ## The measurement it answers
+   *
+   * §13.34.3 argued the evidence room is not the constraint from **counts** -- a median of
+   * 26 turns in the window against a median gold set of 24 -- and `--turns` on the adopted
+   * run's artifact shows the other half of that room's arithmetic: the delivered turns have
+   * a **median of 272 characters** with a p90 of 2,305, so 26 of them are 7,072 characters
+   * in a 24,000-character room. The room is spent on a tail rather than on turns, which is
+   * why the cut that decides coverage falls at rank 26 while the pool holds 64 (§13.66: the
+   * pool carries 73.2% of the gold, the delivery 54.2%).
+   *
+   * ## Why it sits beside `maxPromptChars` and not on the gate
+   *
+   * It is a **prompt assembly** input: it decides how much of a turn is *shown*, among turns
+   * the gate has already kept. A cap on admission would move the gate, which is a different
+   * experiment, and a cap on `lastRetrievedContext` would make the artifact describe a
+   * prompt the model never read. Forwarded through `#promptOptions` to every route, because
+   * the renderer the cap lives in is the renderer every route uses.
+   *
+   * The cost, stated at the point where the trade is made rather than discovered: a turn
+   * whose decisive fact sits deep inside a long narrative loses it.
+   */
+  maxTurnChars?: number | undefined;
+  /**
    * Which turns the prompt budget is spent on, as a score over the question and
    * the turn. Absent leaves the budget character-clipped exactly as before.
    *

@@ -266,6 +266,19 @@ export type MemoryArmConfig = {
    */
   readonly retrievalThreshold: number;
   /**
+   * The per-turn character cap the prompt was assembled under, or absent for none.
+   *
+   * §13.67's variable: how much of a turn the evidence section may show. Recorded for the
+   * reason every other member of this type is -- two artifacts that differ only here read as
+   * the same run, and this one changes what the model sees on **every** route, so the
+   * difference would be invisible in the numbers and unattributable in the prose.
+   *
+   * Absent rather than `Infinity` or `0`, because every archived run carried no cap: a
+   * sentinel would make an artifact claim a treatment on a run that administered none, which
+   * is the §7.4 defect this type exists to prevent.
+   */
+  readonly maxTurnChars?: number | undefined;
+  /**
    * Source trust stamped on every memory admission constructs. In `[0, 1]`.
    *
    * The ceiling of the value function is
@@ -659,6 +672,12 @@ export function formatAblationReport(report: AblationReport): string {
         (memoryArm.relevanceSignal === 'none'
           ? ''
           : `, \`relevanceTopK=${memoryArm.relevanceTopK}\``) +
+        // The cap, and unlike the width and the unit it is rendered on EVERY run, including
+        // the ones with no ranking: it is a property of the evidence section rather than of
+        // an ordering, so `none` is a fact about the prompt rather than the absence of one.
+        // Omitted entirely by an artifact that predates the field, which is why the value is
+        // spelled "none" here and the field is absent there.
+        `, \`maxTurnChars=${memoryArm.maxTurnChars ?? 'none'}\`` +
         // The unit, under the same rule as the width and for the same reason: it has no
         // meaning without a ranking to act on, because with `relevanceSignal=none` the
         // budget buys the arrival-order prefix and there is no ordering for a unit to

@@ -250,6 +250,26 @@ export type CortexMemoryArmOptions = {
    * every archived run stays reproducible from the code.
    */
   relevanceUnits: string;
+  /**
+   * Upper bound on the characters one turn may contribute to the prompt, or absent for none.
+   *
+   * ## Why this is a `number | undefined` rather than a number with a sentinel
+   *
+   * `Infinity` would be the natural "no cap" and it is wrong here for the reason
+   * `sessionBudget` gives: it would make the field always present, and §13.67's whole claim
+   * is that archived runs carried **no cap at all**. An absent field says that; an infinite
+   * one says "capped at infinity", which is a configuration nobody chose and which would
+   * make the artifact's config line claim a treatment on every prior run.
+   *
+   * ## Where it reaches
+   *
+   * `CortexMemoryOptions.maxTurnChars` and from there the renderer, so it applies on every
+   * route including the multi-session one. It is presentation only: `lastRetrievedContext`,
+   * the roster and every coverage count describe the turns as they arrived, because a
+   * record that described the capped text would report a prompt the model never read with a
+   * number that looks like a coverage measurement.
+   */
+  maxTurnChars?: number | undefined;
 };
 
 /** The signal names `CORTEX_MEMORY_CONFIDENCE` accepts, and what each supplies. */
@@ -391,6 +411,22 @@ const RELEVANCE_UNITS_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_UNITS';
 const RELEVANCE_TOP_K_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_TOP_K';
 
 /**
+ * The per-turn character cap: how much of one turn the prompt may show.
+ *
+ * §13.67 registered it from a measurement rather than from a hypothesis. §13.34.3 argued the
+ * evidence room is not the constraint, on **counts** -- a median of 26 turns in the window
+ * against a median gold set of 24 -- and `--turns` on the adopted run's artifact showed the
+ * other half: the delivered turns have a **median of 272 characters** with a p90 of 2,305,
+ * so 26 of them are 7,072 characters in a 24,000-character room. The room is spent on a
+ * tail, which is why the cut that decides coverage falls at rank 26 while the pool holds 64.
+ *
+ * Separate from every other variable on this arm because it is the only one that changes
+ * **how much of a turn** fits rather than **which turns** are chosen: the ranking, the unit,
+ * the pool width and the gate all stay where §13.27-§13.66 put them.
+ */
+const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
+
+/**
  * The contract a run gets when it does not name one.
  *
  * A local literal, and this file's own boundary rule requires it: `cortex-eval` depends
@@ -466,6 +502,9 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       relevanceSignal: DEFAULT_RELEVANCE_SIGNAL,
       relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
       relevanceUnits: DEFAULT_RELEVANCE_UNITS,
+      // Absent, not zero and not `Infinity`: no cap is the state every archived run was
+      // produced under, and a present key would let an artifact claim a treatment on a run
+      // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
     };
   }
   return {
@@ -484,6 +523,12 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
     relevanceUnits: readRelevanceUnits(env[RELEVANCE_UNITS_VARIABLE]),
+    // Spread rather than assigned, because "no cap" is an absent field on this type rather
+    // than an infinite one -- see `CortexMemoryArmOptions.maxTurnChars`.
+    ...(() => {
+      const cap = readMaxTurnChars(env[MAX_TURN_CHARS_VARIABLE]);
+      return cap === undefined ? {} : { maxTurnChars: cap };
+    })(),
   };
 }
 
@@ -860,6 +905,51 @@ function readRelevanceTopK(raw: string | undefined): number {
 }
 
 /**
+ * Read the per-turn character cap, defaulting to none.
+ *
+ * ## Why zero is refused rather than treated as "no cap"
+ *
+ * A cap of `0` is not an empty configuration, it is a prompt whose evidence section reads
+ * `1. `, `2. `, `3. ` with nothing after the numbers -- while `carried` still reports 26
+ * turns and every coverage count is computed from the turns as they arrived. The artifact
+ * would then show a run that delivered 54% of its gold with an empty evidence section, and
+ * no reader could tell that from a retrieval failure. The guard refuses the state rather
+ * than discovering it in a reading.
+ *
+ * A fraction is refused for the reason the width's fraction is: the unit is characters of
+ * text, and `1.5` completes a run whose cap is not the number it names.
+ */
+function readMaxTurnChars(raw: string | undefined): number | undefined {
+  // Three spellings of "no cap": absent, blank (what an unfilled `workflow_dispatch` input
+  // actually is), and the literal `none`. The third exists because §10.3 registers the
+  // adopted configuration as `maxTurnChars: none` and the dispatch must send the value the
+  // registration names -- the alternative is a registration that says one thing and a
+  // payload that says another, which is the defect `test_preregistration_config.py` exists
+  // to catch. It is the same sentinel `confidenceSignal` and `relevanceSignal` use, so the
+  // three read alike on a config line.
+  //
+  // The blank rule is restated here rather than delegated to `readNumeric`, and that is a
+  // consequence of the third spelling: `readNumeric` collapses only the blank, so a caller
+  // would have to pre-test `none` and then call it -- and the resulting `value === undefined`
+  // branch is one v8 counts and no input can reach. It was written that way first and the
+  // branch showed up uncovered, which is the census's usual reading: there is no way to
+  // arrive there. `trimmed` is a `string` after the guard, so `Number` needs no second one.
+  const trimmed = raw?.trim() ?? '';
+  if (trimmed === '' || trimmed.toLowerCase() === 'none') return undefined;
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${MAX_TURN_CHARS_VARIABLE} must be a positive integer or unset, got ` +
+        `${JSON.stringify(raw)}. The unit is characters per turn, and a cap of 0 emits every ` +
+        'turn number with no text after it while every coverage count still reports the ' +
+        'turns as they arrived -- a prompt that reads as empty evidence and an artifact ' +
+        'that reads as a delivery.',
+    );
+  }
+  return value;
+}
+
+/**
  * Read how many turns a session budget admits, defaulting to unbounded.
  *
  * The blank rule is `readNumeric`'s; `Infinity` is the honest default because
@@ -976,6 +1066,11 @@ export function toMemoryArmConfig(
     // would have to know this module's constants to do it. §13.27's artifact is read by
     // comparing this field against §13.26's, so it has to be on the record.
     relevanceUnits: options.relevanceUnits,
+    // §13.68. Spread conditionally for the reason the optional fields above are: an absent
+    // cap is a run that carried none, and a present-but-undefined key would read as
+    // configured to every `!== undefined` check downstream and as pre-dating-the-field to a
+    // reader of the JSON.
+    ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
     // Spread conditionally rather than assigned, for the reason the two options above
     // are spread conditionally in the constructor: an always-present key holding
     // `undefined` is indistinguishable from a missing one under this workspace's
