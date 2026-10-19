@@ -8555,7 +8555,7 @@ counts should rise, and any capability whose answers live in long text should lo
 
 | # | prediction | falsified if |
 | --- | --- | --- |
-| **1** | **Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its total | ≤ 54.2% |
+| **1** | **Coverage rises**: MR's delivered gold share rises from **42.5%** to **≥ 50.2%** of its total — **corrected by §13.71**, which found the original `54.2%` was a median over the answered subset of a *different* configuration rather than an aggregate share. The original target (`≥ 62%` against `54.2%`) is kept as a secondary check in §13.71.2 | ≤ 42.5% |
 | **2** | **MR's correct count rises from 62 to ≥ 66** | ≤ 62 |
 | **3** | **The roster rises from 371 to ≥ 379** | ≤ 371 |
 | **4** | **The long-text capabilities hold**: IE and KU stay within their own measured rates (IE 5, KU 7 questions) | outside either |
@@ -8915,3 +8915,92 @@ Two consequences, both stated before the numbers:
 
 This is written down now because it is the explanation that would otherwise be available after the fact, and an
 explanation available only after the fact is not a measurement.
+
+## 13.71 Prediction 1 was registered against the wrong statistic, and the error is corrected before the result exists
+
+### 13.71.1 What §13.67.5 said, and what the number actually was
+
+Prediction 1 reads: *"**Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its
+total."*
+
+`54.2%` is **not** a delivered gold share. On the control artifact the three candidate numbers are:
+
+| statistic | value |
+| --- | --- |
+| MR **aggregate** delivered share (`Σcarried / Σtotal`) | **42.5%** |
+| MR median per-question coverage, all 121 questions | 44.4% |
+| MR median per-question coverage **among correct answers** (n = 62) | 53.1% |
+
+The 54.2% is the third statistic, read from run `39083274990` — a **different configuration** (`relevanceSignal:
+retrieval`, pre-§13.64) — and it appears in §13.51.2's table as *"MR: correct 54.2% (n= 62)"*. So the
+registration
+took a **median over the answered subset of one run** and used it as the **aggregate baseline of another**. Three
+errors in one number, and every one of them is the class this campaign keeps finding: the instrument read a field
+that was not the field the sentence named.
+
+### 13.71.2 Why this has to be fixed now rather than explained later
+
+The run is in flight (`39180819474`, dispatched before this section was written). If it lands at **56%**, the
+original prediction is *falsified* (56 < 62) while the honest reading is **+13.5 points** — a large success
+reported as a failure. If it lands at **61%**, the original is falsified by one point while being a near-doubling
+of the effect the registration intended. Either way, evaluating the original number would produce a conclusion
+about the arithmetic of a wrong baseline rather than about the cap.
+
+Correcting it **before** the artifact exists is the only version of this that is still pre-registration. The
+correction is stated with the error, the corrected baseline is measured rather than assumed, and the original
+target is retained as a secondary check so that neither form can be quietly forgotten:
+
+| | baseline | target | meaning |
+| --- | --- | --- | --- |
+| original (wrong statistic) | 54.2% | ≥ 62% | a median-among-correct from another run |
+| **corrected** | **42.5%** | **≥ 50.2%** | the same **+7.7 points** the original implied |
+
+Both are reported. A run reading between 50.2% and 62% satisfies the corrected prediction and fails the
+original; §13.71.4 says how that is to be read — as the corrected form holding, with the original recorded as
+mis-specified rather than as a near miss.
+
+### 13.71.3 The geometry `goldRanks` now permits, computed on the control before the result
+
+`goldRanks` records each gold turn's position in the ranked pool, so the delivered share at any window width is
+computable **without a model**. On the control artifact, MR's in-pool gold captured by the top *k* of the pool:
+
+| k | 23 | 26 | 40 | 53 | 64 |
+| --- | --- | --- | --- | --- | --- |
+| MR in-pool gold captured | 44.9% | 48.3% | 60.9% | **67.8%** | 71.9% |
+
+The control's measured aggregate is **42.5%** against **44.9%** at k = 23 — a **−2.4 point** offset between
+geometry and measurement, which is what a room of *characters* rather than *turns* does: the median MR prompt
+holds 23 turns (§13.70.1), the pool's tail is longer than the median, so the room lands near rank 21 or 22 rather
+than 23.
+
+At a 400-character cap MR's 21,657 characters hold **≈ 53** turns, so the same offset applied to the k = 53
+figure gives an expectation of **≈ 65%**. That is a **diagnostic band, not a prediction** (§13.70.3's rule): it
+does not participate in accepting the variable, and its purpose is to make a mismatch legible — a reading near
+**50%** would say the room did not grow as the character arithmetic says it should, and the window table is where
+that would be visible.
+
+### 13.71.4 How the result will be read, decided now
+
+1. **Prediction 1** is evaluated against the **corrected** form (≥ 50.2%) and reported against both.
+2. **Prediction 2** (MR correct 62 → ≥ 66) is unchanged; it was registered on a count, and counts are the one
+   thing this campaign has never mis-read.
+3. **Prediction 3** (roster 371 → ≥ 379) is unchanged.
+4. **Prediction 4** (IE and KU inside their own rates) is unchanged, and it is the price.
+5. If the window table shows MR's median turns **did not rise**, the cap did not bind and every coverage reading
+   is about something else — that check comes **before** any of the four, because it is a precondition and not a
+   result.
+
+### 13.71.5 What this section is not
+
+It is not a redraw. Nothing about the outcome is known: the run has asked some of its questions and none of its
+artifact exists. What is being corrected is a **baseline derived from a different statistic on a different
+configuration**, discovered by computing the correct statistic on the control while the treatment ran. §4's
+no-redraw rule forbids changing a target to fit a result; it cannot require keeping a target computed from the
+wrong number, because that would make the registration a record of arithmetic rather than of intent.
+
+The cost is recorded: **five sections** (§13.63, §13.64, §13.66, §13.67, and the docs sections that quote them)
+carry the sentence *"the pool holds 73.2% of the gold and the delivery 54.2%"*, and every one of them pairs an
+**all-capabilities** pool figure with a **median-among-correct** MR figure. The correct pairing, on the hybrid
+control, is **pool 73.2% all-capabilities against delivered 49.8% all-capabilities**, and **MR pool 71.9%
+against MR delivered 42.5%**. Both are stated here so the earlier sentences have a correction in the record
+rather than a silent successor.
