@@ -1108,6 +1108,57 @@ class TestTheRoleComposition:
         assert 'turns' in r.stderr
 
 
+class TestThePoolTableUnderARoleFilter:
+    """`--pool` is exhaustive only when every turn could reach the prompt.
+
+    §13.82's run is the first with a role filter, and its pool table read as a budget disaster:
+    MR's "cut by the budget" rose from 301 to 1,710 gold turns while the budget spent the same
+    48,000 characters. None of that increase was the budget -- it was gold in the excluded role,
+    which `pool - carried` cannot tell apart from gold the room refused.
+    """
+
+    @staticmethod
+    def _report(roles: list[str] | None) -> dict:
+        question = {
+            'questionId': 'q1',
+            'capability': 'MR',
+            'groundTruth': 'x',
+            'answer': None,
+            'rawOutput': None,
+            'correct': False,
+            'goldOverlap': {'carried': 3, 'total': 10, 'pool': 8, 'goldRanks': [0, 1, 2, -1, -1]},
+        }
+        return {
+            'memoryArmConfig': {'ask': 'enumerated', **({} if roles is None else {'evidenceRoles': roles})},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': [question],
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--pool', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_says_the_column_mixes_policy_with_budget(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report(['user']))
+        assert r.returncode == 0, r.stderr
+        assert 'NOTE' in r.stdout
+        assert 'user' in r.stdout
+        assert 'NOT a budget reading' in r.stdout
+
+    def test_an_unfiltered_run_says_nothing_about_policy(self, tmp_path: Path) -> None:
+        # The note must be a fact about the artifact, not boilerplate: a run that admitted every
+        # turn has an exhaustive partition and the reader should be able to trust the column.
+        r = self._run(tmp_path, self._report(None))
+        assert r.returncode == 0, r.stderr
+        assert 'NOTE' not in r.stdout
+
+
 class TestWhenTheRoomIsWiderThanThePool:
     """The regime §13.68 created and §13.72's run was the first to enter.
 

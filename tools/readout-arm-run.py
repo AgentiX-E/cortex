@@ -694,7 +694,23 @@ def paired_section(
     return '\n'.join(lines), changed_totals
 
 
-def pool_section(questions: list[dict]) -> tuple[str, int]:
+def evidence_roles(report: dict) -> list[str] | None:
+    """The roles the run admitted, or `None` when it admitted every turn.
+
+    Read rather than assumed, for §13.81.5's reason applied to a third quantity: this run's
+    `--pool` table is only exhaustive when every turn could reach the prompt, and a reader that
+    did not know the filter was on would attribute a policy to the budget.
+    """
+    config = report.get('memoryArmConfig')
+    if not isinstance(config, dict):
+        return None
+    roles = config.get('evidenceRoles')
+    if not isinstance(roles, list) or not roles:
+        return None
+    return [str(role) for role in roles]
+
+
+def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple[str, int]:
     """Where the gold went: never surfaced, cut by the budget, or delivered.
 
     ## The question this answers, and why it needed a new field
@@ -797,6 +813,18 @@ def pool_section(questions: list[dict]) -> tuple[str, int]:
     if without_pool:
         lines.append(f'  {without_pool} record(s) without a pool: no ranking was consulted, '
                      'or the artifact predates the field')
+    if roles is not None:
+        # The partition stops being exhaustive under a role filter, and saying so is the whole
+        # point: `pool - carried` is computed from the turns the prompt could carry, so a gold
+        # turn in an excluded role lands in "cut by the budget" whether the budget touched it or
+        # not. §13.86's run is the first where this mattered -- MR's "cut by the budget" rose from
+        # 301 to 1,710 gold turns on a filter that spends the same 48,000 characters.
+        lines.append(
+            f'  NOTE: this run admitted only {", ".join(roles)}. "cut by the budget" is '
+            '`pool - carried`, so gold in an excluded role is counted there whether or not the '
+            'budget reached it -- the column mixes policy with room and is NOT a budget '
+            'reading on this artifact.'
+        )
     if beyond_total:
         lines.append(
             f'  {beyond_total} gold turn(s) arrived from outside the pool: the window holds '
@@ -1679,7 +1707,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     if args.pool:
-        section, measured = pool_section(questions)
+        section, measured = pool_section(questions, evidence_roles(report))
         if measured == 0:
             print(
                 f'{args.report}: no record carries a goldOverlap.pool. A run that consulted '

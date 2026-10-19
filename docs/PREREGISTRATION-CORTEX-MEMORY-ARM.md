@@ -708,14 +708,16 @@ forwarded into a step's `env`. Three injections were run against it:
   another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
   delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
   §13.82.3 states what its two failed predictions do to the step hypothesis.
-* `evidenceRoles: all` — **registered by §13.83 at the identity**: every role reaches the prompt, which
-  is the state every run before that section was in. The filter exists because §13.82 measured the
-  composition rather than the size of the 48,000-character room — 51.9% of multi-session's rendered
-  characters are assistant turns — and `all` is what the line must say on a run that filtered nothing,
-  for the same reason `maxTurnChars` is spelled `none` rather than omitted.
-* `evidenceRolesRoutes: all` — the filter's reach, registered at every route beside the identity above.
-  §13.83's experiment narrows it to `multi-session,temporal` so the other three capabilities reproduce
-  their control windows to the turn; until that run reads, the registered reach is every route.
+* `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84.** The filter
+  exists because §13.82 measured the composition rather than the size of the 48,000-character room: 51.9% of
+  multi-session's rendered characters were assistant turns. Run `39298662801` read the treatment at MR 100.0%
+  user characters (from 48.1%), MR 83 → **90**, TR 93 → **98**, roster 403 → **419**, union 444 → **452**, with
+  no capability regressed. The `all` spelling remains the identity for any run that names no filter, which is
+  every artifact before §13.84.
+* `evidenceRolesRoutes: multi-session,temporal` — **adopted by §13.84 beside the roles above.** The two routes
+  whose questions assemble evidence across turns; the three untouched capabilities reproduce their control's
+  window **to the character** (61.0 / 62.0 / 72.0 turns) and that is the check §13.83 registered before the run
+  existed. `all` reaches every route and is the identity a run with no filter is in.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -10140,3 +10142,102 @@ construction refusals. `cortex-eval`'s arm tests cover the readers (identity, de
 classifier's prefix rule. `tools/__tests__/test_readout_arm_run.py` covers the composition table: the split, the
 cap applied, the cap not applied because its reach does not cover the route, the unreadable column, and the
 refusal on a roster without turns.
+
+## 13.84 The role filter pays: roster 419, union 452, and a metric that stops meaning what it meant
+
+### 13.84.1 The readings (`39298662801`, 1h44m27s, drift 500/500)
+
+| # | prediction (§13.83.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR's user share 48.1% → **≥ 95%**, window 144 → **≥ 170** turns | **100.0%**, **174** | **holds** |
+| **2** | MR's delivered share 86.92% → **≥ 92%** | **48.35%** | **falsified** — see §13.84.3, and not by the filter |
+| **3** | MR's correct count 83 → **≥ 90** | **90** | **holds**, at the line |
+| **4** | TR 93 → **≥ 96** | **98** | **holds** |
+| **5** | IE/KU/ABS reproduce 135/63/29 and their windows | 135/**67**/29; windows **identical to the character** | **falsified on one count**, mechanism holds |
+| **6** | roster 403 → **≥ 410** | **419** | **holds** |
+
+Registered statistic **+36.80pp** (was +35.10pp), McNemar p = **4.92e-37**. Union **452/500 = 90.40%**, the
+campaign's best by eight questions. Per capability: ABS 29, IE 135, KU 67, MR **90**, TR **98**.
+
+### 13.84.2 The mechanism is exact on every route, including the three it did not touch
+
+`--roles`: MR and TR read **100.0% user / 0.0% assistant / 0.0% unreadable**, against 48.1/51.9 and 49.9/50.1 on
+the previous run. `--window`: MR's window grew **144 → 174 turns** while spending **46,186** characters — 20 more
+turns in the same room, because a user turn is 265 characters where the mix averaged 319.
+
+The three untouched capabilities reproduce their control **exactly**, which is the internal control §13.75
+established and §13.83 predicted: ABS 72.0 turns / 46,694 characters, IE 61.0 / 46,864, KU 62.0 / 46,827 — the
+same numbers to the character as `39260774611`. Their `total` counts moved (135/67/29 against 135/63/29) and that
+is the repetition's own resolution, not the filter: §109.4 measured it at 6.1%, which is ±4 on KU's 72.
+
+The churn is large and that is the evidence the treatment did something: **MR 17 questions turned correct and 10
+turned wrong** (27 of 121 changed), TR 13 and 8. A noise-level effect does not move a quarter of the roster in
+both directions.
+
+### 13.84.3 Prediction 2 failed because the metric stopped meaning what it meant
+
+MR's delivered share reads **48.35%**, and nothing about the room explains it: the window is 20 turns *wider* and
+the ranking is untouched. The reason is in the denominator. `goldOverlap` compares the turns the record carries
+against the dataset's gold turns **by text**, and the record now carries only the turns the policy admits — so a
+gold turn in an excluded role can never be counted, whatever the prompt did.
+
+Two independent readings of the same artifact say so:
+
+| reading | previous run | this run |
+| --- | --- | --- |
+| MR delivered gold | 3,180 of 3,663 = **86.92%** | 1,771 of 3,663 = **48.35%** |
+| MR "cut by the budget" (`--pool`) | 301 | **1,710** |
+| MR questions above 75% coverage | 86 | **0** |
+
+The budget did not change — 46,165 characters then, 46,186 now — and the second row's increase is entirely gold
+in the excluded role, which `pool - carried` cannot tell apart from gold the room refused. `--pool` now prints a
+`NOTE` on any artifact whose configuration filters roles, saying exactly that; before this section it would have
+read as a four-fold collapse in the budget's reach.
+
+**So prediction 2 was filed against a metric, and the treatment changed the metric.** That is a defect in how the
+prediction was written and a defect in the instrument, and the second is what §13.85 fixes.
+
+### 13.84.4 Adoption
+
+Adopted: `evidenceRoles: user` reaching `multi-session,temporal`. No capability regressed — ABS 29 and IE 135 are
+unchanged from the previous run, KU rose 4, MR rose 7, TR rose 5 — the roster is up 16, the union is up 8, and the
+registered statistic is up 1.7pp with p at 4.92e-37.
+
+What the adoption does not claim: that the 19 remaining `numeric_mismatch` questions and the 9 abstentions would be
+better under the full mix. Ten MR questions turned **wrong** under this filter, and the plausible reading — that
+some numbers are stated by the assistant rather than the user — is exactly what §13.86's next experiment would
+test. It is not registered here because its mechanism is a coverage claim, and coverage is the thing §13.85 repairs.
+
+## 13.85 The coverage denominator has to follow the policy
+
+### 13.85.1 The defect
+
+`goldOverlap.total` is the dataset's gold turn count and `carried` is the subset the record delivered. Under a role
+filter those two count different populations: `carried` can only ever contain admitted turns, `total` contains
+every gold turn. The ratio is then bounded by the policy, not by the room, and every section that reads it —
+`--coverage`'s bands, `--pool`'s partition, the per-capability medians — inherits the bound.
+
+§13.84.2's run is the first where this mattered and the first where it produced a reading that looks like a
+retrieval collapse rather than a policy.
+
+### 13.85.2 The repair
+
+`goldOverlapOf` gains the gold turns the **policy** admits, and `total` becomes that number. Two properties are
+required and each has a failure it prevents:
+
+- **an unfiltered run is byte-identical.** Every archived artifact stays comparable, which is §13.15's rule
+  applied to a denominator: absent filter, absent change.
+- **a filtered run's `total` is stated beside the filter, so a reader cannot compare it against an unfiltered
+  run without seeing why.** The roster gains `goldOverlap.totalAll` — the dataset's count — so the difference is
+  a number in the artifact rather than a footnote in a document.
+
+Acceptance: the archived artifacts of `39260774611` and `39298662801` re-derive to their published numbers for the
+unfiltered one and to a policy-conditional denominator for the filtered one; `--pool` loses its `NOTE` because the
+partition is exhaustive again, and keeps the column named "cut by the budget" honestly.
+
+### 13.85.3 Why this precedes the next experiment
+
+The next hypothesis is that **some assistant turns carry numbers the user turns do not** — ten MR questions turned
+wrong under a filter that removed them all. Testing it means a middle policy (assistant turns that share a session
+with a retrieved user turn), and the mechanism prediction for that policy is a coverage claim. A coverage claim
+measured on a denominator that mixes populations is not a measurement, so the instrument comes first.
