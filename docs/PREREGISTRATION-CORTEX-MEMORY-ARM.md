@@ -10249,3 +10249,42 @@ The next hypothesis is that **some assistant turns carry numbers the user turns 
 wrong under a filter that removed them all. Testing it means a middle policy (assistant turns that share a session
 with a retrieved user turn), and the mechanism prediction for that policy is a coverage claim. A coverage claim
 measured on a denominator that mixes populations is not a measurement, so the instrument comes first.
+
+## 13.86 A replication that measures the premise for the next experiment
+
+### 13.86.1 Why a run with no variable is the right next one
+
+§13.84 adopted an effective configuration and left one question open: **ten MR questions turned wrong** when
+assistant turns left the room, and the plausible explanation is that some numbers are stated by the assistant. That
+explanation has never been measured, and the artifact that would measure it did not exist until §13.85 — the record
+now says, per question, how many gold turns the policy admits (`total`) beside how many the dataset names
+(`totalAll`). The difference **is** the count of gold turns in an excluded role.
+
+So the next run changes nothing about the system. It exists to be read three ways: the instrument's first output,
+the second sample of an adopted configuration, and the premise for §13.87's companion policy.
+
+### 13.86.2 The registration
+
+Configuration: §10.3 exactly — `evidenceRoles: user` reaching `multi-session,temporal`, 48,000 characters,
+cap 400 on the same two routes, `retrieval-hybrid` at k=256. Dispatched from the corrected code.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | `totalAll` appears on **MR and TR** records whose gold the policy narrowed, and on **no** IE/KU/ABS record | any record outside those two capabilities carries it, or MR/TR carry none |
+| **2** | the roster reproduces **419 ± 4**, and no capability moves by more than 4 | any capability moves further |
+| **3** | among the ten MR questions that turned wrong in `39298662801`, **at least five** carry assistant-role gold (`totalAll > total`) | fewer than five |
+
+Prediction 1 is the instrument's own acceptance, run on real data rather than a fixture. Prediction 2 is the noise
+floor applied to a run that changed nothing — if the roster does not reproduce, the ±4 the campaign has been using
+is wrong and every earlier per-capability claim needs restating. Prediction 3 is the one that decides whether a
+companion policy is worth building at all.
+
+### 13.86.3 What each outcome would mean
+
+- **3 holds**: assistant turns carry gold on most of the questions the filter damaged, so a middle policy — keep an
+  assistant turn when its session also contributes a kept user turn — has something to recover, and §13.87
+  registers it against that set of questions.
+- **3 fails**: the ten flips were the reader reacting to a different evidence *order*, not to missing texts. The
+  next lever is then the window's ordering rather than its composition, and the companion policy is not built.
+- **2 fails**: the campaign's per-capability resolution is not 6.1% and the last three sections' count readings have
+  to be restated with the measured one.
