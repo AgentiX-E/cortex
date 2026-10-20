@@ -10760,3 +10760,79 @@ are already in the window for 24 of the 31 wrong numeric answers. A retrieval ch
 twenty-four; a membership review can address all of them.
 
 The order is therefore: fix what the reader does with what it has, then widen what it has.
+
+## 13.96 The second look lengthens the list and lowers the accuracy
+
+### 13.96.1 The readings (`39416366870`, 2h12m50s, drift 500/500)
+
+| # | prediction (§13.94.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | IE, KU, ABS and TR reproduce `promptChars` to the character and their window turns | **all four identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds** |
+| **2** | ≥ 20 MR answers change, and the flips are net positive | **73 changed**, 7 repaired, **21 damaged** | changed holds, **net −14** → **falsified** |
+| **3** | MR mean 84.25 → ≥ 88 | **70.00** (69–72) | **falsified** |
+| **4** | ≥ 3 of the six under-listing questions correct | **1** | **falsified** |
+| **5** | MR's `promptChars` in 40,000 – 44,500 | **46,417** | **falsified** (the audit re-selects to nearly the same room) |
+| **6** | MR abstentions ≤ 12 and every window unchanged | 10 abstentions; four controls unchanged, **MR 174 → 175 turns** | abstentions hold, MR's own window moved by one |
+
+Registered statistic **+34.20pp** (was +36.55); roster mean **394.0** (was 405.0). Per capability: ABS 29.50,
+IE **136.25**, KU 63.25, MR **70.00**, TR **95.00**.
+
+### 13.96.2 The control held, for the first time in this campaign
+
+The four untouched capabilities reproduce their `promptChars` **to the character** and their window
+counts exactly. That is what §13.92 could not do — its ask reached three routes and the run could not
+separate the treatment from the cost — and it is the reason the reach was made structural this time.
+The method fix worked even though the treatment did not.
+
+One caveat that has to be stated rather than buried: IE reads **136.25** against 134.25 in
+`39367801501` on **identical prompts** (median 61 turns, 46,864 characters, both runs). Two questions
+from identical input is §109.4's resolution showing up in a place where nothing was supposed to move,
+and it is the cleanest demonstration the campaign has that a two-question difference is not a finding.
+
+### 13.96.3 The mechanism worked and it made things worse
+
+The pass is not inert: **73 of 121** MR answers differ from `39367801501`, and the lists got longer —
+the median item-bearing count on the counting questions is **6.0** for the wrong answers, against
+**2.5** in the run that had no second look.
+
+So the thing §13.92 could not buy — a longer list — this pass bought. And the accuracy fell anyway:
+
+| | `39367801501` (one pass) | `39416366870` (audit) |
+| --- | --- | --- |
+| MR median items, wrong counting answers | 2.5 | **6.0** |
+| MR correct | 84 of 121 | **70** |
+| repaired / damaged | — | **7 / 21** |
+
+**The revision is right 7 times in 73 (9.6%)** on the questions it touches, while the first pass was
+already right on 84 of 121. A second look whose precision is one in ten, applied to sixty percent of
+the answers, is a net loss by arithmetic — and that is what the mean shows.
+
+The mechanism behind it is visible in one record. `gpt4_194be4b3` asks how many musical instruments
+the user owns; the gold is 4; the first pass answered 4. The audit's own review line reads *"the only
+'new' item (ukulele) is aspirational, not owned, so it should not be added. The first pass's five are
+all supported. No missing owned instruments."* — and then it answers **5**. The review and the number
+disagree inside one response, which is the failure this pass was built to prevent, now happening in
+the pass itself.
+
+### 13.96.4 What this retires
+
+**The membership review is retired as an instruction.** The measurement says the reader's second
+judgement is worse than its first on this workload, and no rewording of the three checks can change
+that: the pass already *wrote* the correct review and answered against it.
+
+What survives is the diagnosis, and it sharpens: the deficit is not list length (`enumerated` gets 2
+items, `sweep` gets 44 lines and 2 items, `audit` gets 6 items and fewer correct answers), and it is
+not the reader's willingness to look. It is **which mentions the reader treats as instances** — a
+matching decision made before any list exists, and therefore a retrieval-side decision rather than a
+prompt-side one.
+
+That is exactly where §13.94.4 put query expansion: the gold turn and the question use different
+words. The difference now is that this is no longer a hypothesis about where to look next; it is the
+only candidate left standing after three prompt-side attempts (structure, membership, and the first
+pass's own ledger) have each been measured and each failed.
+
+### 13.96.5 Adoption
+
+None. `reviewPass` stays `none` in §10.3 and in the dispatch table; the value `audit` remains
+dispatchable so a future run can reproduce this refutation, which is the same reason §13.27 kept the
+frozen `session` unit.
