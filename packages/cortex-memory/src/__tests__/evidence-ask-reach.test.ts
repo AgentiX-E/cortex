@@ -523,3 +523,110 @@ describe('the enumerated ask adds a two-step contract on the multi-session route
     expect(ASK_ROUTES.computed).toEqual(['multi-session', 'flat', 'temporal']);
   });
 });
+
+/**
+ * §13.92: the sweep, which is what the lists say the failure is.
+ *
+ * ## The measurement this file was extended for
+ *
+ * `--lists` on run `39367801501` reads a median Step 1 list of **2.0 items** across all 121 MR
+ * records, against a window carrying 174 turns over roughly thirty sessions. On the thirty
+ * questions whose gold is a small count — an integer from 2 to 10, the only ones where a list's
+ * length can be compared with the gold *number* at all — **six of the ten wrong ones listed fewer
+ * items than the gold count and not one listed exactly that many**. The evidence is carried: those
+ * questions sit at 100% of their user gold. The model does not walk it.
+ *
+ * One record states the failure in its own words: two mentions of the same boots exchange, then
+ * *"These two turns refer to the same exchange/pickup event, so they count as one item"*, then
+ * `1` against a gold of `3`. The contract's own sentence — *"do not merge two items into one"* —
+ * was read and overruled, because a rule about merging cannot supply an item that was never
+ * listed.
+ *
+ * ## What this ask changes, and the one thing it does not
+ *
+ * The `enumerated` contract asks for *the* list, and a list is what the model writes: the two
+ * items it happened to notice. This asks for a line **per session**, in the printed order, with
+ * `none` as a valid line — so the response has to touch every block the prompt printed. Nothing
+ * about the evidence, the budget or the ranking moves: the reach is the multi-session route
+ * alone, and the test below pins the other five to the shipped block byte for byte.
+ *
+ * That scoping is the experiment's control as well as its safety: the three capabilities that
+ * are not MR must reproduce their windows to the character, which is only checkable if their
+ * prompts are unchanged.
+ */
+describe('the sweep ask walks the sessions instead of filtering them out of view', () => {
+  const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
+  const SWEEP_RULE = 'one line for every session';
+  const SESSION_SHAPE = 'Session';
+
+  it('asks for a line per session and a count of what the lines name', async () => {
+    const seen: string[] = [];
+    await build(seen, 'sweep').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain('Step 1');
+    expect(block).toContain('Step 2');
+    expect(block).toContain(SWEEP_RULE);
+    // The heading the prompt prints is `Session 7` on its own line, so the instruction can
+    // point at it by name rather than describing "blocks".
+    expect(block).toContain(SESSION_SHAPE);
+    // `none` is a legal line, and that is the whole mechanism: a session the model has nothing
+    // to say about is still a session it has to look at.
+    expect(block).toContain('`none`');
+    // It composes with the merging sentence rather than replacing the route's block.
+    expect(block).toContain(MERGING_SENTENCE);
+  });
+
+  it('keeps the decline conditional on the lines, and the close is where it decides', async () => {
+    const seen: string[] = [];
+    await build(seen, 'sweep').answerSessions('How many kits do I own?', [[TEXT]]);
+    const lines = instructionsOf(seen[0]!).split('\n');
+
+    // §13.56's finding: an exception placed *above* the closing rule loses to it. The sweep's
+    // own rule has to be the closing line, so the token is in the last line and the count rule
+    // is not.
+    expect(lines[lines.length - 1]).toContain('INSUFFICIENT_EVIDENCE');
+    expect(lines.slice(-6, -1).join('\n')).toContain('Step 2');
+    // And the licence to decline is withdrawn by a single named item, not by a complete list.
+    expect(instructionsOf(seen[0]!)).toContain('every Step 1 line says `none`');
+  });
+
+  it('changes the instruction block and nothing above it', async () => {
+    // The evidence section is assembled before the block, and a treatment that moved it would be
+    // two variables: the same run would report an instruction change and a different window.
+    const sweep: string[] = [];
+    const enumerated: string[] = [];
+    await build(sweep, 'sweep').answerSessions('How many kits do I own?', [[TEXT]]);
+    await build(enumerated, 'enumerated').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const evidenceOf = (prompt: string): string =>
+      prompt.slice(0, prompt.indexOf('Answer the question'));
+    expect(evidenceOf(sweep[0]!)).toBe(evidenceOf(enumerated[0]!));
+    // And the two blocks are different text, so an artifact cannot mistake one run for the other
+    // on the strength of the `ask` value alone.
+    expect(instructionsOf(sweep[0]!)).not.toBe(instructionsOf(enumerated[0]!));
+  });
+
+  const SHIPPED: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
+    ['the flat path (IE)', (m) => m.answer('How many kits do I own?', [TEXT])],
+    ['temporal (TR)', (m) => m.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
+    ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+    ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
+    ['abstention', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
+  ];
+
+  for (const [name, drive] of SHIPPED) {
+    it(`leaves ${name} on the shipped block, byte for byte`, async () => {
+      const sweep: string[] = [];
+      const shipped: string[] = [];
+      await drive(build(sweep, 'sweep'));
+      await drive(build(shipped, 'route'));
+
+      expect(instructionsOf(sweep[0]!)).toBe(instructionsOf(shipped[0]!));
+    });
+  }
+
+  it('records one route, which is the route the failure is on', () => {
+    expect(ASK_ROUTES.sweep).toEqual(['multi-session']);
+  });
+});

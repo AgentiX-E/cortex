@@ -38,6 +38,7 @@ Usage:
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
+    python3 tools/readout-arm-run.py --sweep path/to/report.json
     python3 tools/readout-arm-run.py --lists path/to/report.json
     python3 tools/readout-arm-run.py --reach path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
@@ -1371,6 +1372,121 @@ def _step_one_items(raw: str) -> int:
     return 0
 
 
+# One line per session, as §13.92's ask asks the response to write it: `Session 7: <items>` or
+# `Session 7: none`. Bullets and numbering are tolerated because models restyle lists, and the
+# session number is required because that is what makes the line a claim about a block of evidence
+# rather than a remark.
+SWEEP_LINE = re.compile(r'^\s*(?:[-*\u2022]|\d+[.)])?\s*[Ss]ession\s+\d+\s*[:\-\u2014]\s*(.*)$')
+
+# What a session line says when the session holds nothing that matches. The vocabulary is narrow on
+# purpose: "0 items" and "no items" are the same claim, and a line naming an item always starts with
+# something else.
+SWEEP_NOTHING = re.compile(r'^\s*(?:none|no\b|nothing|n/?a|0\b|zero\b)', re.I)
+
+
+def median(values: list[float]) -> float:
+    """The middle of a sorted list, averaging the two middles when the count is even.
+
+    A local definition rather than an import: the tables in this tool have always taken the middle
+    of their own sample, and `statistics.median` would return a float for an int sample and change
+    the formatting of every table that already prints one.
+    """
+    if not values:
+        return 0.0
+    middle = len(values) // 2
+    if len(values) % 2 == 1:
+        return float(values[middle])
+    return (values[middle - 1] + values[middle]) / 2.0
+
+
+def sweep_section(questions: list[dict]) -> tuple[str, int]:
+    """What the responses' session lines hold, and what the stated number was.
+
+    ## The question this answers
+
+    §13.92 replaces "write the list" with "write a line for every session", because the lists of run
+    `39367801501` are **2.0 items** long for right and wrong answers alike while the windows hold
+    ~174 turns in about thirty sessions. This reads the shape that treatment asks for: how many
+    session lines a response wrote, how many of them name an item, and what number it stated.
+
+    ## Why the record's own text, and not the prompt
+
+    The roster carries the carried turns but not the session boundaries the renderer printed, so the
+    number of sessions in a window cannot be recovered from the artifact. What can be read is the
+    response, and that is the mechanism claim in any case: before this ask, a response writes
+    **zero** session lines; the prediction is that after it, the median is well above ten.
+
+    ## Why `--lists` is not reused
+
+    `--lists` counts bullets, and a session line is not a bullet. Reading this artifact with that
+    table would report zero items for every record and look like a collapse.
+    """
+    rows = []
+    for question in questions:
+        if question.get('capability') != 'MR':
+            continue
+        raw = question.get('rawOutput')
+        if not isinstance(raw, str) or raw.strip() == '':
+            continue
+        lines: list[str] = []
+        for line in raw.split('\n'):
+            match = SWEEP_LINE.match(line)
+            if match is not None:
+                lines.append(match.group(1).strip())
+        rows.append(
+            {
+                'id': str(question.get('questionId', '?')),
+                'correct': bool(question.get('correct')),
+                'sessions': len(lines),
+                'items': sum(1 for text in lines if text and not SWEEP_NOTHING.match(text)),
+                'stated': question.get('answer'),
+                'gold': question.get('groundTruth'),
+            }
+        )
+    if not rows:
+        return '', 0
+
+    scanned = sorted(row['sessions'] for row in rows)
+    items = sorted(row['items'] for row in rows)
+    at_ten = sum(1 for row in rows if row['sessions'] >= 10)
+    silent = sum(1 for row in rows if row['sessions'] == 0)
+
+    lines = ['', 'what the session lines held (MR: one line per session, then the count)']
+    lines.append(
+        f'  records {len(rows)}   median session lines {median(scanned):.1f}   '
+        f'median item lines {median(items):.1f}'
+    )
+    lines.append(
+        f'  records with at least 10 session lines: {at_ten} ({at_ten / len(rows):.1%})   '
+        f'records with none: {silent}'
+    )
+    if silent:
+        lines.append(
+            f'  {silent} record(s) wrote no session line at all: the ask reached the prompt and the '
+            'response ignored its shape, so those answers are a control on the wording rather than '
+            'a reading of the mechanism'
+        )
+    lines.append('')
+    lines.append(f'  {"items":>6}{"sess":>6}  {"stated":>18}  {"gold":>18}  flags')
+    for row in rows:
+        if row['correct']:
+            continue
+        flags = []
+        if row['sessions'] == 0:
+            flags.append('no scan')
+        if row['items'] and str(row['stated']).strip() == str(row['items']).strip():
+            flags.append('counts its item lines')
+        lines.append(
+            f'  {row["items"]:>6}{row["sessions"]:>6}  {str(row["stated"])[:18]:>18}  '
+            f'{str(row["gold"])[:18]:>18}  {", ".join(flags)}'
+        )
+    lines.append(
+        '  the table lists the WRONG answers only, because the question is what the treatment '
+        'changed there; the summary above covers all of them.'
+    )
+    return '\n'.join(lines), len(rows)
+
+
 def lists_section(questions: list[dict]) -> tuple[str, int]:
     """What Step 1 held, what the model said, and the gold — for the answers that were wrong.
 
@@ -1619,6 +1735,11 @@ def main(argv: list[str]) -> int:
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
     )
     parser.add_argument(
+        '--sweep',
+        action='store_true',
+        help='print the session lines a sweep-shaped response wrote, MR only',
+    )
+    parser.add_argument(
         '--lists',
         action='store_true',
         help='print what the Step 1 list held beside the stated number and the gold, MR only',
@@ -1724,6 +1845,25 @@ def main(argv: list[str]) -> int:
         section, measured = reach_section(questions)
         if measured == 0:
             print(f'{args.report}: no record carries goldRanks.', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.sweep:
+        config = report.get('memoryArmConfig')
+        ask = config.get('ask') if isinstance(config, dict) else None
+        if ask != 'sweep':
+            print(
+                f'{args.report}: this artifact ran with ask={ask!r}, so its responses have no '
+                'session lines to read. `--lists` is the table for an `enumerated` run; this one '
+                'reads the shape `sweep` asks for, and reading it on any other run would report '
+                'zero as a measurement.',
+                file=sys.stderr,
+            )
+            return 2
+        section, measured = sweep_section(questions)
+        if measured == 0:
+            print(f'{args.report}: no MR record carries raw output.', file=sys.stderr)
             return 2
         print(section)
         return 0

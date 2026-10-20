@@ -10415,3 +10415,150 @@ Configuration: §10.3 exactly. No variable.
 Prediction 2's upper bound is the highest mean measured so far and its lower bound the control's; a run outside
 that band would say the configuration's own spread is wider than three samples suggest, which would make every
 threshold in §13.89 need restating before that experiment is registered.
+
+## 13.91 The third sample: the instrument works, and every capability now has a mean
+
+### 13.91.1 The readings (`39367801501`, 1h56m35s, drift 500/500, §10.3 unchanged)
+
+| # | prediction (§13.90.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | the three fields are present and `--caps` renders them | all three present; the table renders | **holds** |
+| **2** | roster mean **398 – 406**, no capability mean more than 7 from its two earlier single readings | **405.0**; largest departure **5.75** (MR) | **holds** |
+| **3** | MR mean **83 – 90** | **84.25** | **holds** |
+
+`--caps` on a real artifact, for the first time:
+
+| capability | total | min | **mean** | max |
+| --- | --- | --- | --- | --- |
+| ABS | 30 | 29 | **29.25** | 30 |
+| IE | 150 | 133 | **134.25** | 135 |
+| KU | 72 | 60 | **62.5** | 64 |
+| **MR** | 121 | 81 | **84.25** | 88 |
+| **TR** | 127 | 94 | **94.75** | 95 |
+| **roster** | 500 | 397 | **405.0** | 412 |
+
+Registered statistic +36.55pp (p = 2.86e-32); the first-repetition roster is 407 and the union is 446.
+
+### 13.91.2 What the means do to the last four sections' claims
+
+Three samples of one configuration now agree within their own spreads — 406, 402, 405 — and the control's single
+sample was 398. **The filter's effect on the roster is +7 in the mean**, and that is the number the campaign can
+defend.
+
+Two headlines have to be restated and both move in the same direction, down:
+
+| claim | as published | with the mean |
+| --- | --- | --- |
+| MR | 90 (§13.84) / 83 (§13.87) | **84.25**, range 81–88 |
+| TR | 98 (§13.84) / 97 (§13.87) | **94.75**, range 94–95 |
+
+**TR is the sharper correction: both single readings sit above the mean.** The treatment's TR is not 97–98; it is
+94.75, and the reference pipeline reads 87–88 in the same three runs. The lead is real and smaller: **+7 to +8**,
+not +10.
+
+MR's mean 84.25 against the reference's 104–105 is a gap of **20 questions**, not the 15 that §134's best single
+reading implied.
+
+### 13.91.3 What this changes about the method, permanently
+
+The campaign now has, for the first time, a per-capability mean and range on every run. The rules that follow are
+not preferences:
+
+- **a per-capability claim is stated as `mean (min–max)`,** because the spread is on the record;
+- **adoption compares means**, and a single run's number is quoted with "single";
+- **a movement smaller than the range is not a finding** — MR's range alone is 7 questions.
+
+§13.89's companion experiment can now be registered against a real threshold instead of a guess: MR's mean is
+84.25 and §13.87.3 established that the assistant half of the gold is a restatement, with ten of ten flipped-wrong
+questions carrying it.
+
+## 13.92 The list is a recollection, not a walk: `ask: sweep` on the multi-session route
+
+### 13.92.1 The premise, and the one §13.86 thought it had measured
+
+Two things have to be said before the registration, and the second is a correction.
+
+**The list is two items long.** `--lists` on `39367801501` reads a median Step 1 list of **2.0 items**
+across all 121 MR records, against a window that carries **174 turns in roughly thirty sessions**. The
+response is not enumerating the document; it is enumerating what it happened to notice.
+
+Restricted to questions where that comparison is meaningful — the **thirty** whose gold is an integer
+from 2 to 10, since a list's length can only be held against the gold *number* when the gold is a count:
+
+| partition | n | list shorter than gold | equal | longer |
+| --- | --- | --- | --- | --- |
+| correct | 20 | 4 | **7** | 9 |
+| **wrong** | **10** | **6** | **0** | 4 |
+
+**Not one wrong counting answer lists the gold number of items.** Six list fewer, and the shape is
+stated by a record in its own words: two mentions of one boots exchange, then *"These two turns refer to
+the same exchange/pickup event, so they count as one item"*, then `1` against a gold of `3`. The
+contract's existing rule — *"do not merge two items into one"* — was read and overruled, which is the
+point: **a rule about merging cannot supply an item that was never listed.**
+
+**And §13.86.2's prediction 3 was vacuous.** It required that at least five of the ten MR questions that
+turned wrong under the role filter carry assistant-role gold, and it observed ten of ten. §13.87.3 then
+measured why: `totalAll / total` is exactly 2.0 on **120 of 121** MR questions, so *essentially every* MR
+question carries assistant-role gold and the prediction could not have failed. The 10/10 was a base rate
+dressed as a finding. Recorded here because it was quoted as the premise for a companion-assistant policy
+that §13.87 then set aside; the premise was measured, and it was a tautology.
+
+### 13.92.2 The registration
+
+**One variable:** `ask: sweep`. Everything else is §10.3's adopted configuration — `evidenceRoles: user`
+reaching `multi-session,temporal`, 48,000 characters, cap 400 on those two routes, `retrieval-hybrid` at
+k=256, four repetitions. The registered `ask` stays `enumerated`; this dispatch overrides it, which is
+what keeps the parity test between §10.3 and the dispatch table passing on a run that is not this
+experiment.
+
+The reach is **the multi-session route alone**, and unlike `enumerated` the other five routes are not
+`computed` — they fall through to their shipped blocks. That makes IE, KU, ABS and TR an internal
+control rather than four more subjects.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | median **session lines** per MR response ≥ **12**, and ≥ 90% of MR records write at least one | median < 8, or < 90% |
+| **2** | on the thirty counting questions, median **item-bearing lines** rises from 3–4 to **≥ 6** | < 5 |
+| **3** | MR's mean rises **84.25 → ≥ 88** | ≤ 86 |
+| **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct | ≤ 1 |
+| **5** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly | any change |
+| **6** | MR's window stays **≥ 168 turns** and MR's first-repetition abstentions stay **≤ 10** | < 165 turns, or ≥ 13 abstentions |
+
+Prediction 3's margin is deliberately smaller than prediction 4's confidence: the block costs **48
+characters** more than `enumerated`'s (measured, 1,463 against 1,415), which is 0.2 of a turn, so the
+room is unchanged and the mean has to move on the mechanism. Prediction 4 is the sharp one because it
+names six questions before the run exists; prediction 3 exists so that a scattered gain across the whole
+capability cannot be claimed from six question ids alone.
+
+### 13.92.3 What each outcome would mean
+
+- **1, 2 and 4 hold, 3 holds**: the reader's failure was work-list coverage, the ask axis still has room,
+  and the next question is whether the sweep should also apply to the temporal route (which counts days
+  and durations rather than items).
+- **1 and 2 hold, 3 and 4 fail**: the responses sweep and still miscount. Then the arithmetic is the
+  reader's, not the prompt's, and the campaign's remaining MR levers are the model and the evidence
+  ordering rather than any wording.
+- **1 fails**: the model ignores the shape it was given — which `--sweep` counts rather than smooths, so
+  the artifact will say how many records wrote no line at all. That is a statement about instruction
+  compliance at 174 turns, and it would close the ask axis for this route.
+- **5 fails**: the reach claim is wrong and the run is not a single variable. §13.73's rule: the three
+  untouched capabilities must reproduce to the character, and a run that moves them is unreadable.
+
+### 13.92.4 What was built, and the instrument the mechanism needs
+
+`EvidenceAsk` gains `sweep`; `ASK_ROUTES.sweep` is `['multi-session']`; the block is `extractive`'s, with
+the merging sentence, the two steps inserted above the closing line, and the closing line **replaced** —
+§13.56's placement finding, that a rule above the close loses to it. Step 1 asks for one line per
+session, `Session <n>: <items, or none>`, and says that a session with no line is a session the reader
+did not look at; Step 2 counts the items those lines name; the close makes the count compulsory once any
+line names anything.
+
+`--sweep` is the reader for that shape, and it **refuses** an artifact whose `ask` is not `sweep`, because
+a table of session lines read from an `enumerated` run would report zero and look like a treatment that
+never reached the prompt. It counts, rather than smooths, the records that wrote no session line, and
+flags a count that matches the number of item-bearing lines.
+
+Tests: `evidence-ask-reach.test.ts` pins the block's content and the five byte-identical routes; the
+count is asserted against `--sweep`'s refusal, its counting, the ignored-shape record and the
+count-matches-lines flag. The arm's table gains the value and `test_ask_table_parity.py` compares the two
+key sets by source, which is the check that caught §13.35's startup rejection.

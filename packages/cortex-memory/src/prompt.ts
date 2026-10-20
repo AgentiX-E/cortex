@@ -110,6 +110,19 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // `buildSessionPrompt` and the flat path **both** build with `extractive`, so no test of
   // the contract can separate them. The builder that knows which route it is passes it.
   enumerated: ['multi-session', 'flat', 'temporal'],
+  // §13.92. The sweep reaches the **multi-session route alone**, and unlike `enumerated` it is
+  // not `computed` on the other five: a run that dispatched it leaves their blocks byte-identical
+  // to the shipped ask, which is what makes the three untouched capabilities an internal control
+  // rather than a second treatment. `evidence-ask-reach.test.ts` pins both halves -- one route in
+  // the table, five routes byte-identical to `route`.
+  //
+  // The reach is narrow for a measured reason. `--lists` on run `39367801501` reads a median Step
+  // 1 list of **2.0 items** across all 121 MR records, against a window of 174 turns in roughly
+  // thirty sessions, and on the thirty counting questions (gold an integer from 2 to 10) **six of
+  // the ten wrong ones list fewer items than the gold count and none lists exactly that many**.
+  // The list is a recollection, not a walk. That is MR's failure and nobody else's: IE and KU
+  // answer from one session each, and a line per session there would be one line.
+  sweep: ['multi-session'],
 };
 
 /**
@@ -176,7 +189,8 @@ type EvidenceRendering = 'numbered' | 'sourced';
  *
  * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
  */
-export type EvidenceAsk = 'route' | 'extractive' | 'aggregate' | 'computed' | 'enumerated';
+export type EvidenceAsk =
+  'route' | 'extractive' | 'aggregate' | 'computed' | 'enumerated' | 'sweep';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -627,6 +641,54 @@ const ENUMERATED_MULTI_SESSION_INSTRUCTION = withReplacedClose(
   ENUMERATED_CLOSE,
 );
 
+/**
+ * The sweep's two steps: a line per session, then a count of what the lines name.
+ *
+ * ## Why a line per session, when `enumerated` already asks for a list
+ *
+ * Because the list `enumerated` gets is short. Run `39367801501`'s median is **2.0 items** across
+ * all 121 MR records, over windows carrying 174 turns in about thirty sessions. Restricted to the
+ * thirty questions whose gold is a small count -- an integer from 2 to 10, the only questions where
+ * comparing a list's length to the gold *means* anything -- **six of the ten wrong ones list fewer
+ * items than the gold count, and not one lists exactly that many**. The evidence is carried: those
+ * questions sit at 100% of the user gold. So the failure is that the model does not walk it.
+ *
+ * One record is explicit about the shape: two mentions of one boots exchange, the sentence
+ * *"These two turns refer to the same exchange/pickup event, so they count as one item"*, and then
+ * `1` against a gold of `3`. The contract's own rule -- *"do not merge two items into one"* -- was
+ * read and overruled, and no rule about merging can supply an item that was never listed.
+ *
+ * So the unit of the answer becomes the unit of the document. Every block the prompt printed gets
+ * a line, `none` is a legal line, and an unmentioned session is a defect the response makes
+ * visible rather than one it hides. The count then has a list of a known length to check itself
+ * against.
+ *
+ * ## Why the steps go in `enumerated`'s position rather than beside it
+ *
+ * §13.56's measurement: a rule placed *above* a block's closing line loses to it, and 12 of 21
+ * surviving declines had read the exception and followed the rule. Composing with
+ * `withReplacedClose` is what makes the count rule the last thing read.
+ */
+const SWEEP_CONTRACT = [
+  'Work in two steps, and write both of them out.',
+  'Step 1 — walk the evidence one session at a time, in the order it is printed. The evidence is grouped into blocks, each beginning with a line like `Session 7`. Write one line for every session: `Session <n>: `, then the item or items that session states which match the question, each with the date it was stated, or `none` if it states none. Do not skip a session, and do not merge two sessions into one line; a session with no line is a session you did not look at.',
+  'Step 2 — count the items the Step 1 lines name. One event described in more than one session is one item; two different events are two items. Reply with the count alone.',
+  `Do not reply ${ABSTAIN_TOKEN} without first writing the Step 1 lines: a bare ${ABSTAIN_TOKEN} with no lines is not a valid response.`,
+  `Reply ${ABSTAIN_TOKEN} only when every Step 1 line says \`none\`. If any line names an item, Step 2 must state the count of the items you listed -- even when you believe the list is incomplete.`,
+].join('\n');
+
+/** The closing line the sweep gives the multi-session block. */
+const SWEEP_CLOSE = `Reply with the Step 2 number alone. If every Step 1 line says \`none\` because the evidence does not contain the answer, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The multi-session block under `sweep`: computed's, plus the two steps and their close. */
+const SWEEP_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    SWEEP_CONTRACT,
+  ),
+  SWEEP_CLOSE,
+);
+
 /** The `aggregate` ask: the extractive block, with the sentence in place of nothing. */
 const AGGREGATE_ASK_INSTRUCTION = withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined));
 
@@ -670,6 +732,16 @@ function instructionsFor(
   }
   if (ask === 'aggregate' && contract === 'extractive') {
     return AGGREGATE_ASK_INSTRUCTION;
+  }
+  // §13.92. Deliberately NOT composed onto `enumerated`: its fallthrough is the shipped block,
+  // so a sweep run's flat, temporal, knowledge-update, assistant and abstention routes read what
+  // they would have read with no ask at all. The table above states the reach; this branch is
+  // where it is applied, and the two are held together by the byte-level tests.
+  if (ask === 'sweep') {
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return SWEEP_MULTI_SESSION_INSTRUCTION;
+    }
+    return own;
   }
   if (ask === 'enumerated') {
     if (scope === 'multi-session' && contract === 'extractive') {

@@ -1224,6 +1224,92 @@ class TestThePerCapabilitySpread:
         assert r.returncode == 2
 
 
+class TestTheSweepCensus:
+    """What a `sweep` response's session lines hold, which is the mechanism §13.92 registers.
+
+    The reading that put this ask on the table: `--lists` on run `39367801501` gives a median Step 1
+    list of **2.0 items** for right and wrong answers alike, over windows carrying ~174 turns in
+    about thirty sessions. A sweep response writes a line per session instead of a list of whatever
+    it noticed, so the mechanism is visible as a count -- and before the treatment that count is
+    zero, which is why this mode refuses to read an artifact that did not run it.
+    """
+
+    @staticmethod
+    def _report(
+        ask: str,
+        responses: list[str],
+        golds: list[str] | None = None,
+        answers: list[str] | None = None,
+    ) -> dict:
+        golds = golds or ['3'] * len(responses)
+        answers = answers or ['3'] * len(responses)
+        questions = [
+            {
+                'questionId': f'q{index}',
+                'capability': 'MR',
+                'groundTruth': gold,
+                'answer': answer,
+                'correct': False,
+                'rawOutput': raw,
+            }
+            for index, (raw, gold, answer) in enumerate(zip(responses, golds, answers))
+        ]
+        return {
+            'memoryArmConfig': {'ask': ask},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--sweep', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_counts_the_session_lines_and_the_items_they_name(self, tmp_path: Path) -> None:
+        raw = (
+            'Step 1 — one line per session.\n'
+            'Session 1: a Spitfire kit, stated 2023/02/15\n'
+            'Session 2: none\n'
+            'Session 3: a Mustang kit, stated 2023/02/16\n'
+            'Step 2 — 2'
+        )
+        r = self._run(tmp_path, self._report('sweep', [raw]))
+        assert r.returncode == 0, r.stderr
+        # Three session lines, two of which name something: the `none` line is a session the reader
+        # looked at, so it counts as a line and not as an item.
+        assert 'median session lines 3.0' in r.stdout
+        assert 'median item lines 2.0' in r.stdout
+        assert 'records with none: 0' in r.stdout
+
+    def test_a_response_that_ignored_the_shape_is_counted_not_smoothed(self, tmp_path: Path) -> None:
+        # The ask can reach the prompt and the response can ignore it. Folding those records into
+        # the median would report a scan that did not happen.
+        report = self._report('sweep', ['Step 1 — I found two kits.\nStep 2 — 2'])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'records with none: 1' in r.stdout
+        assert 'ignored its shape' in r.stdout
+
+    def test_it_flags_a_count_that_matches_its_own_lines(self, tmp_path: Path) -> None:
+        raw = 'Session 1: a kit\nSession 2: another kit\nStep 2 — 2'
+        r = self._run(tmp_path, self._report('sweep', [raw], answers=['2']))
+        assert r.returncode == 0, r.stderr
+        assert 'counts its item lines' in r.stdout
+
+    def test_it_refuses_an_artifact_that_did_not_run_the_ask(self, tmp_path: Path) -> None:
+        # Reading `enumerated` responses with this table would report a median of zero session lines
+        # and look like the treatment failed to reach the prompt, which is a different defect.
+        r = self._run(tmp_path, self._report('enumerated', ['Step 1 — two kits\nStep 2 — 2']))
+        assert r.returncode == 2
+        assert "'enumerated'" in r.stderr
+        assert '--lists' in r.stderr
+
+
 class TestThePoolTableUnderARoleFilter:
     """`--pool` is exhaustive only when every turn could reach the prompt.
 

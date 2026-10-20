@@ -915,6 +915,15 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // unchanged `askRoutes`, and `tools/__tests__/test_ask_table_parity.py` holds this
   // table and the product's own to the same key set.
   enumerated: ['multi-session', 'flat', 'temporal'],
+  // §13.92's ask, and the first entry whose reach is a single route. Unlike `enumerated`, the other
+  // five routes are NOT `computed`: they fall through to the shipped block, so the run's artifact
+  // can be read as one treatment with five controls rather than six subjects.
+  //
+  // The value is what `readAsk` validates a dispatch against, and the reason this table is
+  // restated at all is §13.35 -- a value added to the product's union alone type-checks, is
+  // accepted by every guard, and fails at startup in `readAsk`. `test_ask_table_parity.py` compares
+  // the two key sets by source, and it is the only thing that makes this copy safe.
+  sweep: ['multi-session'],
 };
 
 /**
