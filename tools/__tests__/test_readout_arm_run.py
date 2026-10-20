@@ -1839,3 +1839,88 @@ class TestWhereTheUnreachableGoldSits:
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert 'not measured' in r.stdout or 'unmeasured' in r.stdout
+
+
+class TestTheStabilityFloor:
+    """§13.99: one configuration read twice, and how much of the answer layer moves.
+
+    ## Why this is a subcommand and not an inline script
+
+    §13.98.2's noise floor was measured by a script written for that section and not
+    committed, which is the defect §13.38 forbade three times over: a registered
+    prediction whose input cannot be re-derived by its reader is not a measurement.
+
+    ## The distinction the output has to keep
+
+    A re-worded answer that keeps its score is **stable** for the purpose this number
+    exists -- deciding whether an effect of five questions is detectable -- so text
+    changes and state changes are counted separately and named separately. Collapsing
+    them would make a run that paraphrases look as unstable as one that changes its mind.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, str, bool, object]]) -> dict:
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'questions': [
+                {
+                    'questionId': identifier,
+                    'capability': capability,
+                    'correct': correct,
+                    'answer': answer,
+                    'rawOutput': answer if isinstance(answer, str) else None,
+                    'groundTruth': 'gold',
+                }
+                for identifier, capability, correct, answer in rows
+            ],
+        }
+
+    def _run(self, tmp_path: Path, before: dict, after: dict) -> 'subprocess.CompletedProcess[str]':
+        first = tmp_path / 'before.json'
+        second = tmp_path / 'after.json'
+        first.write_text(json.dumps(before), encoding='utf-8')
+        second.write_text(json.dumps(after), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--stability', str(first), str(second)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_an_identical_pair_reads_as_no_movement(self, tmp_path: Path) -> None:
+        rows = [('m1', 'MR', True, '3'), ('m2', 'MR', False, '4'), ('t1', 'TR', True, 'May')]
+        r = self._run(tmp_path, self._report(rows), self._report(rows))
+        assert r.returncode == 0, r.stderr
+        assert 'answer stability' in r.stdout
+        assert '0.0%' in r.stdout
+        # Nothing changed state, so the transition block has no arrow in it.
+        assert '->' not in r.stdout
+
+    def test_a_rewording_is_a_text_change_and_not_a_state_change(self, tmp_path: Path) -> None:
+        before = self._report([('m1', 'MR', True, '3'), ('m2', 'MR', True, 'five')])
+        after = self._report([('m1', 'MR', True, 'three'), ('m2', 'MR', True, 'five')])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 0, r.stderr
+        # One of two answers re-worded: 50% text, 0% state. The line has to say both.
+        assert '50.0%' in r.stdout
+        assert '->' not in r.stdout
+        assert 're-worded answers' in r.stdout
+
+    def test_a_scored_change_appears_in_the_transition_block(self, tmp_path: Path) -> None:
+        before = self._report([('m1', 'MR', True, '3')])
+        after = self._report([('m1', 'MR', False, '4')])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 0, r.stderr
+        # The state name comes from the shared classifier rather than from this tool, so the
+        # assertion is on the transition existing with count 1, not on which word it chose.
+        assert 'MR: correct -> ' in r.stdout
+        assert re.search(r'MR: correct -> \S+ 1', r.stdout)
+
+    def test_two_rosters_that_name_different_questions_are_refused(self, tmp_path: Path) -> None:
+        # The same rule `--paired` enforces: an id on one side only would be counted as
+        # movement, and a noise floor inflated by a missing record hides real effects.
+        before = self._report([('m1', 'MR', True, '3')])
+        after = self._report([('m1', 'MR', True, '3'), ('m9', 'MR', False, '4')])
+        r = self._run(tmp_path, before, after)
+        assert r.returncode == 2
+        assert 'same questions' in r.stderr

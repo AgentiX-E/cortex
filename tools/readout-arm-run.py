@@ -698,6 +698,106 @@ def paired_section(
     return '\n'.join(lines), changed_totals
 
 
+def stability_section(after: list[dict], before: list[dict]) -> str:
+    """How much of the answer layer moves when nothing about the configuration does.
+
+    ## The question this answers, and why it had to be built
+
+    §13.98.2 read 24 of 127 temporal answers changing between two runs on a route whose
+    prompt was identical to the character, and had to say so with a script written for that
+    section. That is the defect §13.38 recorded three times: a number a later reader cannot
+    re-derive. The number is the **noise floor**, and every future registration has to be
+    stated against it -- so it needs a definition a reader can run.
+
+    ## Two counts, not one
+
+    `text-changed` counts answers whose text differs; `state-changed` counts answers whose
+    scored state differs. A run that re-words `three` into `3` and keeps the point has a
+    text change and no instability, and collapsing the two would make that run look as
+    unsteady as one that changed its mind. The transition block below the table is the
+    state view only, for the same reason `--paired` prints one.
+
+    ## The treated route is called out separately
+
+    The floor is per capability, and the capability a treatment reached is the one whose
+    movement is being claimed. Printing it again as a single line keeps a reader from
+    adding a treated route's movement to an untreated route's and calling the sum noise.
+    """
+    classifier = _load_classifier()
+    before_by_id = {str(question.get('questionId')): question for question in before}
+    after_by_id = {str(question.get('questionId')): question for question in after}
+    if set(before_by_id) != set(after_by_id):
+        missing = sorted(set(before_by_id) ^ set(after_by_id))
+        raise ValueError(
+            f'the two rosters do not name the same questions: {len(missing)} id(s) are missing '
+            f'from one side ({", ".join(missing[:5])}{"..." if len(missing) > 5 else ""}). '
+            'A missing id counted as movement would inflate the noise floor.'
+        )
+
+    def state(question: dict) -> str:
+        return 'correct' if question.get('correct') else classifier.failure_shape(question)
+
+    by_capability: dict[str, dict[str, object]] = {}
+    for identifier, question in after_by_id.items():
+        capability = str(question.get('capability', '?'))
+        row = by_capability.setdefault(
+            capability, {'compared': 0, 'text': 0, 'state': 0, 'transitions': {}}
+        )
+        was_question = before_by_id[identifier]
+        row['compared'] = int(row['compared']) + 1  # type: ignore[arg-type]
+        if was_question.get('answer') != question.get('answer'):
+            row['text'] = int(row['text']) + 1  # type: ignore[arg-type]
+        was, now = state(was_question), state(question)
+        if was != now:
+            row['state'] = int(row['state']) + 1  # type: ignore[arg-type]
+            transitions = row['transitions']
+            assert isinstance(transitions, dict)
+            transitions[(was, now)] = transitions.get((was, now), 0) + 1
+
+    lines = [
+        '',
+        'answer stability, before/after (one configuration read twice: the noise floor)',
+        f'  {"capability":<12}{"compared":>10}{"text-changed":>14}{"share":>8}{"state-changed":>15}',
+    ]
+    totals = {'compared': 0, 'text': 0, 'state': 0}
+    for capability in sorted(by_capability):
+        row = by_capability[capability]
+        compared = int(row['compared'])
+        text = int(row['text'])
+        changed = int(row['state'])
+        totals['compared'] += compared
+        totals['text'] += text
+        totals['state'] += changed
+        lines.append(
+            f'  {capability:<12}{compared:>10}{text:>14}{text / compared:>7.1%}{changed:>15}'
+        )
+    lines.append(
+        f'  {"TOTAL":<12}{totals["compared"]:>10}{totals["text"]:>14}'
+        f'{totals["text"] / totals["compared"]:>7.1%}{totals["state"]:>15}'
+    )
+
+    lines.append('')
+    lines.append('state transitions (before and after, from the shared taxonomy)')
+    for capability in sorted(by_capability):
+        transitions = by_capability[capability]['transitions']
+        assert isinstance(transitions, dict)
+        if not transitions:
+            continue
+        rendered = ', '.join(
+            f'{was} -> {now} {count}'
+            for (was, now), count in sorted(transitions.items(), key=lambda item: -item[1])
+        )
+        lines.append(f'  {capability}: {rendered}')
+
+    lines.append('')
+    lines.append(
+        'text-changed counts a different answer string; state-changed counts a different score. '
+        'Only the second is instability, and re-worded answers that keep their score are counted '
+        'as the first.'
+    )
+    return '\n'.join(lines)
+
+
 def evidence_roles(report: dict) -> list[str] | None:
     """The roles the run admitted, or `None` when it admitted every turn.
 
@@ -2089,6 +2189,12 @@ def main(argv: list[str]) -> int:
         metavar='BEFORE',
         help='print the state transitions from the BEFORE report to this one',
     )
+    parser.add_argument(
+        '--stability',
+        type=Path,
+        metavar='BEFORE',
+        help='print per-capability answer agreement between BEFORE and this report',
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -2135,6 +2241,23 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
         print(section)
+        return 0
+
+    if args.stability:
+        try:
+            previous = json.loads(args.stability.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.stability}: {error}', file=sys.stderr)
+            return 2
+        before_questions = _questions(previous)
+        if before_questions is None:
+            print(f'{args.stability}: no per-question roster in this report', file=sys.stderr)
+            return 2
+        try:
+            print(stability_section(questions, before_questions))
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
         return 0
 
     if args.paired:

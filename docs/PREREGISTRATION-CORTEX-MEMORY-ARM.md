@@ -10962,3 +10962,125 @@ prompt, on *this* workload, at *this* pool width.
   `[entry.question, ...(entry.queries ?? [])]` with `[entry.question]` fails the suite).
 * The parser's prompt and its bound are asserted as literals (`at most 4`), because a test that read
   the constant would pass on any default.
+
+## 13.98 The expansion reached the ranking and moved nothing
+
+### 13.98.1 The readings (`39449569048`, 1h52m)
+
+| # | prediction (§13.97.4) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | `queryExpansion=llm`, `expansion=121q/…p/0r`, ≥ 242 phrases | **`121q/347p/0r`** — 2.87 phrases per question, no refusal | **holds** |
+| **2** | the four untouched capabilities reproduce to the character and to the turn | **all four identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds** |
+| **3** | MR mean ≥ 78 | **84.75** (83–87) | **holds, and it means nothing** — see §13.98.2 |
+| **4** | absent gold digits 12 → ≤ 8 | **6** | **holds on a wrong baseline** — see §13.98.3 |
+| **5** | MR abstentions ≤ 10 | **12** | **falsified** |
+| **6** | MR `promptChars` 46,417 ± 3,000 | **46,204** | **holds** |
+
+Registered statistic **+37.20pp** (was +36.55); roster mean **407.0** (was 405.0). Per capability:
+ABS 29.0 (29–29), IE **136.25** (135–138), KU 62.75 (61–66), MR **84.75** (83–87), TR 94.25 (87–99).
+
+### 13.98.2 Prediction 3 held and the treatment did not work
+
+84.75 against the control's **84.25** is a difference of **half a question**, inside both runs' own
+spreads (81–88 against 83–87). The prediction was written against two numbers — 70.00 from the audit
+run and 84.25 from the adopting configuration — and only the second is a control. Against it, the
+effect is zero.
+
+The per-question transitions say the same thing at the resolution where it hurts:
+
+| route | changed | repaired | damaged | net |
+| --- | --- | --- | --- | --- |
+| **MR** (treated) | 27 of 121 (22.3%) | 12 | 12 | **0** |
+| **TR** (untreated, window identical to the character) | 24 of 127 (18.9%) | 12 | 9 | **+3** |
+
+A route that received **no treatment at all** moved nineteen per cent of its answers. That is the
+noise floor of this instrument, and MR's zero is indistinguishable from it. The audit pass (§13.96)
+looked worse than the control at 7 repaired against 21 damaged; expansion looks level at 12 against
+12. Neither is a measurement of the treatment, because the untreated route moves by the same order.
+
+### 13.98.3 The mechanism ran; the window it changed was not where the loss was
+
+`expansion=121q/347p/0r` is not a configuration that failed to arrive: every multi-session question
+was expanded, four phrases each on average, none refused. The pool did change — 27 answers moved —
+so the mechanism is real.
+
+What it did **not** change is how much of the answer's evidence the reader saw. Across the 27
+transitions, the change in gold turns carried is `0` for 13 of them, `+1` for 7, `−1` for 4, `+2` for
+2 and `−2` for 1. The window's gold content is essentially fixed, which is what a relevance fusion
+over a fixed 256-wide pool does: it re-ranks, and a turn that ranked fifth under the question alone
+but never appeared under a phrase loses its place to a turn that appeared in both lists at rank 100.
+
+That is visible in the direction of the damage: all eight `correct → numeric_mismatch` transitions on
+MR are questions where the gold was carried **before** and still carried after. The reader was not
+starved of evidence; it was given a different window over the same session.
+
+Prediction 4 has to be withdrawn as stated rather than reported as a win. It was registered against
+**12 absent digits**, which is `39416366870`'s number — the audit run. The adopting configuration's
+own number is **7**, and expansion moved it to **6**. The flow underneath is bidirectional: three
+golds left the window (`7024f17c`, `9aaed6a3`, `e6041065`) while two entered (`d851d5ba`,
+`e3038f8c`). A net of one question, on a quantity whose per-run spread this campaign has never
+measured, is not a retrieval improvement. Registering a prediction against the nearest number in the
+document rather than against the control's own is the defect, and it is recorded here so the next
+registration reads its baseline from the run it is actually comparing to.
+
+### 13.98.4 What this retires
+
+**"The residual multi-session loss is a retrieval-side gap" is retired.** It was the last candidate
+standing after three prompt-side attempts, and this section administered the strongest form of it:
+a model-written, route-scoped, four-phrase expansion that reached every question. It changed a fifth
+of the answers and left the score where it was.
+
+What survives is not another hypothesis about the arm. It is a fact about the instrument: **the
+answer layer is unstable at 18–22% per route per re-run**, while the evidence layer is stable to the
+character. Every experiment this campaign could run next is a search for an effect of five questions
+or fewer — and five questions is a quarter of the noise.
+
+### 13.98.5 Adoption
+
+None. `queryExpansion` stays `none` in §10.3 and in the dispatch table; `llm` remains dispatchable so
+a later run can reproduce this refutation, and the implementation stays because the *mechanism* was
+verified even though the *effect* was not.
+
+## 13.99 The next variable is the instrument, not the arm
+
+### 13.99.1 Why the arm cannot be moved next
+
+§13.98.2 measured the noise floor without trying to: TR received no treatment and its window was
+identical to the character, yet 24 of its 127 answers differ from the control's. Until that number is
+measured deliberately — twice on the same configuration, with the per-route agreement counted — no
+future registration can state a threshold that distinguishes an effect from a re-sample.
+
+So the next dispatch is the **control against itself**: §10.3's configuration with
+`queryExpansion=none`, read against `39367801501` with the same paired transition table this section
+used. Its product is a **noise floor per capability**, not an accuracy claim.
+
+### 13.99.2 Predictions
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | MR agreement between two runs of one configuration is **75–85%** (i.e. 18–30 of 121 answers differ) | outside that band |
+| **2** | TR agreement is **75–85%**, the same band, because §13.98.2 measured 19% on a route no treatment touched | outside |
+| **3** | ABS agreement is **≥ 93%**, because its answers are a token or a short phrase and its state is nearly binary | below 93% |
+| **4** | the roster mean of the re-run is within **±6** of 405.0 | outside |
+| **5** | the four window medians reproduce `39367801501` **to the character** | any moves |
+
+If predictions 1 and 2 hold, the campaign's resolution is stated as a number, and every later
+registration must name an effect **larger than twice that band** to be detectable. If they fail —
+agreement above 90% — then §13.98.2's TR movement came from something other than the endpoint, and
+that becomes the defect to find.
+
+### 13.99.3 What is built beside it
+
+`tools/readout-arm-run.py --stability <before.json> <after.json>`, because the transition table this section
+quotes was produced by an inline script and §13.38 forbade exactly that. The subcommand prints, per
+capability: answers compared, changed, changed share, and the transition matrix; plus the same counts
+restricted to the treated route. Its tests pin the two properties the floor depends on — that an
+identical pair reads as 0% changed, and that a state change and a text change are counted separately,
+because a run whose answers are re-worded but scored the same must not look unstable.
+
+Built and green before the re-read: four tests in `test_readout_arm_run.py` (identical pair reads
+0.0%; a re-worded pair reads a text change and no state change; a scored change appears in the
+transition block; two rosters naming different questions are refused), `tools` **513 passed + 1
+skipped + 51 subtests**. Run against `39367801501` and `39449569048` it reads the answer layer's own
+instability: **text** differs on 286 of 500 answers (57.2%), **state** on 65 (13.0%) — and the per
+capability split is the floor §13.99.2 is registered against.
