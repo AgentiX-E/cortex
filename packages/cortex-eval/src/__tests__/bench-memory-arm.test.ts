@@ -185,6 +185,7 @@ async function runCortexMemoryArmReport(config: {
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
+        reviewPass: 'none',
       },
     },
   );
@@ -685,6 +686,7 @@ describe('relevance signal', () => {
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
+        reviewPass: 'none',
         relevanceSignal: 'retrieval',
         relevanceTopK: 64,
         relevanceUnits: 'session',
@@ -702,6 +704,7 @@ describe('relevance signal', () => {
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
+        reviewPass: 'none',
         relevanceSignal: 'none',
         relevanceTopK: 64,
         // Named even though the signal is `none`, so the assertion below can show that the
@@ -749,6 +752,7 @@ describe('source trust reaches the artifact', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      reviewPass: 'none',
     });
   });
 
@@ -915,6 +919,7 @@ describe('runCortexMemoryArm', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
         },
       },
     );
@@ -933,6 +938,7 @@ describe('runCortexMemoryArm', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      reviewPass: 'none',
     });
   });
 
@@ -1028,6 +1034,7 @@ describe('runCortexMemoryArm', () => {
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
+        reviewPass: 'none',
       },
     });
 
@@ -1247,6 +1254,7 @@ describe('runCortexMemoryArm', () => {
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
+        reviewPass: 'none',
       });
     });
   });
@@ -1554,6 +1562,7 @@ describe('the retrieval threshold', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      reviewPass: 'none',
     });
   });
 });
@@ -1682,6 +1691,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      reviewPass: 'none',
     });
   });
 });
@@ -2238,6 +2248,7 @@ describe('the ask reaches the artifacts, in both renderings', () => {
         renderingRoutes: [],
         ask: 'extractive',
         askRoutes: [],
+        reviewPass: 'none',
       },
     });
     expect(markdown).toContain('- Evidence ask reached: `none`');
@@ -2332,6 +2343,7 @@ describe('a bounded run reports what the bound dropped', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
         },
         evidenceBound: { maxTurnsPerRecord: bound },
       },
@@ -2430,6 +2442,7 @@ describe('a bounded run reports what the bound dropped', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
         },
         evidenceBound: { maxTurnsPerRecord: 2 },
       },
@@ -2503,6 +2516,7 @@ describe('the prompt-carried evidence size reaches the record', () => {
     renderingRoutes: [],
     ask: 'route',
     askRoutes: [],
+    reviewPass: 'none',
   } as const;
 
   /** A system that can say what it retrieved and what the prompt carried. */
@@ -2642,6 +2656,7 @@ describe('the arm reports groundedness with the published classifier', () => {
     renderingRoutes: [],
     ask: 'route',
     askRoutes: [],
+    reviewPass: 'none',
   } as const;
 
   function datasetGraded(expected: string): BenchmarkDataset {
@@ -2808,6 +2823,7 @@ describe('the arm records how much of the gold the ranking offered', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
         },
         ...(relevancePoolFor === undefined ? {} : { relevancePoolFor }),
       },
@@ -2917,6 +2933,7 @@ describe('the per-turn cap', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
           relevanceSignal: 'retrieval',
           relevanceTopK: 64,
           relevanceUnits: 'turn',
@@ -3193,6 +3210,7 @@ describe('the route each capability answers on, as the denominator sees it', () 
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
         },
         evidenceRoles: ['user'],
         evidenceRolesRoutes: reach,
@@ -3287,6 +3305,7 @@ describe('the gold denominator follows the role policy', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          reviewPass: 'none',
         },
         ...arm,
       },
@@ -3335,6 +3354,63 @@ describe('the gold denominator follows the role policy', () => {
     const unfiltered = await overlap([USER_GOLD, ASSISTANT_GOLD], 'MR', {});
     expect(unfiltered['total']).toBe(2);
     expect('totalAll' in unfiltered).toBe(false);
+  });
+});
+
+/**
+ * The review pass, which §13.93 measured the need for and §13.94 registers.
+ *
+ * The arm's job is to carry the value and to reject a spelling the product does not implement: a run
+ * dispatched to administer a treatment that silently ran the control publishes an unchanged result,
+ * and that result reads as evidence the treatment does not matter.
+ */
+describe('the review pass', () => {
+  it('is `none` when unset, blank, or named as none', () => {
+    for (const raw of [undefined, '', '   ', 'none', 'NONE']) {
+      const options = cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        ...(raw === undefined ? {} : { CORTEX_MEMORY_REVIEW_PASS: raw }),
+      });
+      expect(options.reviewPass).toBe('none');
+    }
+  });
+
+  it('reads the pass the product implements', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_REVIEW_PASS: ' audit ' })
+        .reviewPass,
+    ).toBe('audit');
+  });
+
+  it('rejects a pass the product does not implement', () => {
+    // A second pass with a different question is a future build; today an unknown name is a typo or
+    // a stale dispatch, and either way it must not run as the control.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_REVIEW_PASS: 'critique' }),
+    ).toThrow(/CORTEX_MEMORY_REVIEW_PASS/);
+  });
+
+  it('projects the value into the config and onto the line, `none` included', () => {
+    // `none` is a fact about the run -- one consultation -- and the artifact states it rather than
+    // leaving "no pass" and "not recorded" as the same shape.
+    const off = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
+    expect(off.reviewPass).toBe('none');
+
+    const on = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_REVIEW_PASS: 'audit' }),
+    );
+    expect(on.reviewPass).toBe('audit');
+
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: on,
+    });
+    expect(line).toContain('reviewPass=audit');
   });
 });
 

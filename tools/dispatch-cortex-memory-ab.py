@@ -254,7 +254,6 @@ INPUTS = {
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
     # §13.34: `computed` plus the two-step enumeration contract on multi-session alone.
     "cortex_memory_ask": "enumerated",
-    "cortex_memory_evidence_turns": "256",
     # §13.64's adopted ranking: dense cosine fused with a rare-keyword channel by reciprocal
     # rank. This line said `retrieval` for six sections after that adoption, because §10.3
     # held BOTH the adoption bullet and §13.17's original one and the registration parser
@@ -317,6 +316,11 @@ INPUTS = {
     # MR from 83 to 90 and TR from 93 to 98 with no capability regressed, so these two lines move
     # with §10.3. The reach stays scoped: the three untouched capabilities reproduce their control
     # window to the character, which is the internal control the registration asked for.
+    # §13.94's second consultation. `none` is the state every archived run is in and is sent
+    # explicitly for the reason every registered value is: the run's pass should not depend on an
+    # absent input meaning "no pass". The experiment overrides it with `--set
+    # cortex_memory_review_pass=audit`.
+    "cortex_memory_review_pass": "none",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest

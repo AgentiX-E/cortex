@@ -162,6 +162,18 @@ export type CortexMemoryArmOptions = {
    */
   ask: string;
   /**
+   * Which second consultation the arm administers on the multi-session route (§13.94).
+   *
+   * `none` is the identity. `audit` doubles the consultations on that route, so it is named rather
+   * than enabled.
+   *
+   * Optional, unlike {@link CortexMemoryArmOptions.ask}, because `none` is both the default and the
+   * state every archive is in: a missing field cannot mean a treatment that was not administered.
+   * `toMemoryArmConfig` normalises it so the artifact always states a value rather than leaving the
+   * difference between "no pass" and "not recorded" to a reader.
+   */
+  reviewPass?: string | undefined;
+  /**
    * How many turns of evidence each roster record carries. `§13.12`'s bound.
    *
    * ## Why this is an option rather than a constant in the entry point
@@ -729,6 +741,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     confidenceSignal: readConfidenceSignal(env[CONFIDENCE_VARIABLE]),
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
+    reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
@@ -997,6 +1010,38 @@ function readAsk(raw: string | undefined): string {
     );
   }
   return value;
+}
+
+/**
+ * The second consultation a run performs on the multi-session route (§13.94).
+ *
+ * `none` is the identity and every archived artifact was produced under it. `audit` re-asks with the
+ * first pass quoted and the review restricted to membership, which is the decision §13.93 measured as
+ * the one the reader gets wrong: a response that walked all forty-four sessions still named two
+ * items, and the record it produced acted on a list that was short.
+ */
+const REVIEW_PASS_VARIABLE = 'CORTEX_MEMORY_REVIEW_PASS';
+
+/** The passes this arm can dispatch, in the order the config line spells them. */
+const REVIEW_PASSES: readonly string[] = ['none', 'audit'];
+
+/**
+ * Read the review pass, rejecting anything the product does not implement.
+ *
+ * Rejected rather than defaulted for the reason `readAsk` rejects: a run dispatched to administer a
+ * treatment that silently ran the control would publish an unchanged result, and that result would
+ * read as evidence the treatment does not matter.
+ */
+function readReviewPass(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (trimmed === '') return 'none';
+  if (!REVIEW_PASSES.includes(trimmed)) {
+    throw new Error(
+      `${REVIEW_PASS_VARIABLE} must be one of ${REVIEW_PASSES.map((name) => JSON.stringify(name)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}.`,
+    );
+  }
+  return trimmed;
 }
 
 /**
@@ -1407,6 +1452,7 @@ export function toMemoryArmConfig(
     // missing list.
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
     ask: options.ask,
+    reviewPass: options.reviewPass ?? 'none',
     askRoutes: ASK_ROUTES[options.ask] ?? [],
     // Projected rather than inferred from the signal name, for the reason the two
     // thresholds are projected verbatim: the width is a separate claim about the same

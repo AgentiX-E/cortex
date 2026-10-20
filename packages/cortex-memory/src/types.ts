@@ -352,4 +352,43 @@ export type CortexMemoryOptions = {
    * construction makes that state unrepresentable rather than invisible.
    */
   roleOf?: (turn: string) => string | undefined;
+  /**
+   * A second consultation that audits the first pass's list, on the multi-session route only.
+   *
+   * ## What it is for, and why membership rather than arithmetic
+   *
+   * §13.93's sweep made the reader walk **all forty-four sessions** of a window -- median 44 session
+   * lines, every record scanning, none skipped -- and the median count of item-bearing lines stayed
+   * at **two**. Record `0a995998` shows the shape: the question asks about items to *pick up or
+   * return from a store*, the window holds a blazer at the dry cleaner and two mentions of boots at
+   * Zara, and the response lists the two boots mentions, merges them into one item and answers `1`.
+   * The evidence was carried and read; what the reader got wrong is **which items enter the list**.
+   *
+   * So this pass is not a re-ask and not a retry of an abstention -- those have their own measured
+   * histories and this option deliberately leaves both alone. It shows the model the same evidence
+   * and its own first response, and asks for three membership decisions: items missing, entries that
+   * merge two events, and entries the evidence does not support.
+   *
+   * ## Why `none` is a value and not only an absent field
+   *
+   * It doubles the consultations on the route it reaches, and every archived artifact was produced
+   * without it. A run that wants to state the absence in its configuration can, which is why the
+   * artifact prints `none` for an absent field rather than omitting the concept.
+   *
+   * ## Why the reach is implicit
+   *
+   * The pass lives in `answerSessions`, so it reaches the multi-session route by construction and no
+   * other route can be configured into it. §13.92's experiment is why this is stated rather than
+   * left to a reach option: that ask's reach moved three routes at once, and the run could not
+   * separate the treatment from the cost.
+   */
+  reviewPass?: ReviewPass;
 };
+
+/**
+ * Which second consultation a run performs, if any.
+ *
+ * `audit` is the only implemented pass, and it is named rather than boolean so a second pass with a
+ * different question can be added without a flag whose meaning depends on the build.
+ */
+export type ReviewPass = 'none' | 'audit';

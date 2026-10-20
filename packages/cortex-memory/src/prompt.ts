@@ -1605,6 +1605,92 @@ export function buildSessionPrompt(
 }
 
 /**
+ * How much of the first pass the audit may quote.
+ *
+ * The first pass is model output and its length is not the product's to assume: §13.93's sweep wrote
+ * a median of 44 session lines, and a ledger that size quoted whole would spend the evidence room the
+ * audit needs to check it against. Truncated rather than dropped, because a review without the thing
+ * it reviews is not a review.
+ */
+const DEFAULT_FIRST_PASS_CHARS = 3_000;
+
+/**
+ * The instruction the audit pass asks with.
+ *
+ * ## Why the three checks are named and nothing else is
+ *
+ * A list can be wrong in three ways -- an item missing, an entry that merges two events, an entry the
+ * evidence does not support -- and §13.93 measured the first as dominant. A general instruction to
+ * "check the list" invites a restatement of the same list; naming the three decisions makes the pass
+ * a different task from the one that produced the error.
+ *
+ * ## Why the count is asked for under a heading
+ *
+ * §13.93.5: the parser slices a response after its **last** `Step <n> —` heading, and a contract
+ * whose second step said only "reply with the count" produced 69 of 121 answers that were the whole
+ * ledger. A second pass has to be parsed more reliably than the first, so the heading is spelled out.
+ */
+function auditInstruction(firstPass: string): string {
+  return [
+    'A first pass answered this question from the evidence above. Its whole response is quoted below.',
+    `FIRST PASS:\n${firstPass}`,
+    'Review that response for MEMBERSHIP only, and write the review before you answer.',
+    'Step 1 — name every item in the evidence that matches the question and is missing from the first pass, with the date and the session it appears in. Split an entry that describes two different events, and merge two entries that describe the same event. Remove an entry the evidence does not support. Do not re-derive an item that is already there, and do not adjust a total for any reason other than the list changing.',
+    'Then write one line, exactly `Step 2 — <the corrected count>`, and nothing after it.',
+  ].join('\n\n');
+}
+
+/**
+ * The second consultation: the same evidence, the first pass quoted, and a membership review.
+ *
+ * Built through `fitToBudget` rather than by appending text to the first prompt, because the evidence
+ * has to be **re-selected** against the room the audit's own instruction leaves. Appending would
+ * produce a prompt over the budget whose clip lands inside the evidence, which is the state
+ * `fitToBudget` exists to make impossible.
+ */
+export function buildAuditPrompt(
+  question: string,
+  sessions: readonly AdmittedSession[],
+  firstPass: string,
+  options: PromptOptions = {},
+  firstPassBudget: number = DEFAULT_FIRST_PASS_CHARS,
+): AssembledPrompt {
+  const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  const flat = sessions.flatMap((session) => session.turns);
+  // No empty-session branch, deliberately: `answerSessions` declines with the `empty` reason before
+  // this builder is reached, so a guard here would be a branch no caller can enter -- and an
+  // unreachable guard reads as safety while measuring nothing (§57.6). The renderer is total over an
+  // empty list anyway; what would be wrong is *claiming* to handle a state the product refuses.
+  const render = (picked: readonly AdmittedTurn[]): string =>
+    renderSessionBlocks(sessions, picked, options.rendering, options.maxTurnChars);
+
+  const instruction = auditInstruction(truncateCodePointSafe(firstPass, firstPassBudget));
+  const body = render(flat);
+  const full = [`EVIDENCE:\n${body}`, SESSION_NOTE, `QUESTION: ${question}`, instruction].join(
+    '\n\n',
+  );
+  if (full.length <= maxChars) {
+    return { prompt: full, evidenceChars: body.length, carried: flat };
+  }
+
+  const fitted = fitToBudget(
+    question,
+    instruction,
+    {
+      turns: flat,
+      render,
+      note: SESSION_NOTE,
+      ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
+      ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
+      sessionOf: sessions.flatMap((session, index) => session.turns.map(() => index)),
+    },
+    maxChars,
+    'EVIDENCE:\n',
+  );
+  return fitted;
+}
+
+/**
  * Render the turns a session prompt carries, grouped by session.
  *
  * ## Why membership is decided by identity and not by `ordinal`

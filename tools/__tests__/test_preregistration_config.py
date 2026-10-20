@@ -62,7 +62,12 @@ CONCEPT_TO_INPUT = {
     "retrievalThreshold": "cortex_memory_retrieval_threshold",
     "promptContract": "cortex_memory_prompt_contract",
     "ask": "cortex_memory_ask",
-    "evidenceTurnsPerRecord": "cortex_memory_evidence_turns",
+    # `evidenceTurnsPerRecord` is deliberately ABSENT as of §13.94. It is registered in §10.3 and
+    # still decides what the artifact carries, but it is no longer a dispatch input: the workflow sets
+    # it as a constant because the dispatch surface sits one below GitHub's 25-input ceiling and this
+    # bound is a writability guard rather than an experiment. The value is unchanged at 256, and the
+    # control that this mapping protects -- a registered value that does not reach the run -- is
+    # replaced here by the workflow's own constant, which is where a reader of the run looks.
     "relevanceSignal": "cortex_memory_relevance",
     "relevanceTopK": "cortex_memory_relevance_top_k",
     "relevanceUnits": "cortex_memory_relevance_units",
@@ -78,6 +83,7 @@ CONCEPT_TO_INPUT = {
     # §13.83's filter and its reach: the two inputs that decide which turns may enter the room at
     # all. Registered at the identity (`all`/`all`), because the experiment that narrows them is
     # the section's own dispatch and the adopted state has to be on the record meanwhile.
+    "reviewPass": "cortex_memory_review_pass",
     "evidenceRoles": "cortex_memory_evidence_roles",
     "evidenceRolesRoutes": "cortex_memory_evidence_roles_routes",
     "budgetMinutes": "cortex_memory_budget_minutes",

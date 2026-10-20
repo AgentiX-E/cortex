@@ -721,6 +721,11 @@ forwarded into a step's `env`. Three injections were run against it:
   whose questions assemble evidence across turns; the three untouched capabilities reproduce their control's
   window **to the character** (61.0 / 62.0 / 72.0 turns) and that is the check §13.83 registered before the run
   existed. `all` reaches every route and is the identity a run with no filter is in.
+* `reviewPass: none` — **registered by §13.94 at the identity**: one consultation per question, which is
+  the state every run before that section was in. The pass exists because §13.93 measured the failure as
+  membership rather than coverage — a reader that walked all forty-four sessions still named two items —
+  and `none` is what the line must say on a run that performed no second look, for the same reason the
+  cap is spelled `none` rather than omitted.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -802,7 +807,10 @@ forwarded into a step's `env`. Three injections were run against it:
   asserted in `evidence-ask-reach.test.ts`, so the single variable between §13.21's run and
   this one is what the temporal route reads. `abstention` is deliberately out of reach:
   its block calls declining "expected and is a valid outcome" and ABS's gold IS abstention.
-* `evidenceTurnsPerRecord: 256` — **added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
+* **The record bound `evidenceTurnsPerRecord` is 256** — *stated in prose rather than as a
+  paired form because, as of §13.94, it is a workflow constant rather than a dispatch
+  input; `test_preregistration_config.py` therefore cannot hold it to a dispatch key, and it holds
+  the workflow's own constant instead.* **Added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
   completed all four runs of all five hundred questions and then died writing the JSON
   with `Invalid string length` (§13.11.10). The evidence is carried
   unbounded — `admission.ts` declines to truncate and the arm admits every session — and
@@ -812,7 +820,11 @@ forwarded into a step's `env`. Three injections were run against it:
   record, so §13.11.3's two predictions survive any bound. It is registered rather than
   discovered, because a bound that decides what the artifact contains is a measurement
   decision, and a measurement decision taken after the fact is what pre-registration
-  exists to prevent.
+  exists to prevent. **As of §13.94 it is a workflow constant rather than a dispatch input**: the
+  dispatch surface sits one below GitHub's 25-input ceiling, and this is the one value no experiment
+  reads — it is a writability guard, not a measurement. The value is unchanged at 256, the artifact
+  still records what it carried, and restoring it as an input is the right move if a run ever needs
+  to move the bound.
 * **The selection signal — added by §13.17, and superseded by §13.64's hybrid.** Its opening
   line used to spell the concept and its value in one backticked pair, and §13.64's
   adoption bullet appears ABOVE this one, so the parser in
@@ -10680,3 +10692,71 @@ What the run bought:
   budget — carries `expansionQueries` in its own trace for exactly this reason, retrieving with phrases the
   question does not contain;
 - a scoring audit that did not exist, and an answer-format rule that the next list-shaped ask must obey.
+
+## 13.94 A second consultation that audits membership, not arithmetic
+
+### 13.94.1 The premise, which §13.93 measured rather than assumed
+
+Three readings, all on `39367801501`'s artifact and the sweep run that followed it:
+
+- **the reader walks and still misses.** `39389557774` wrote a line for every one of ~44 sessions in
+  every MR window, with 0 records skipping, and the median count of item-bearing lines stayed at
+  **2.0** — the same as the contract that does not ask for a walk;
+- **the numbers are in the window.** `--numbers`: of 31 wrong MR answers with a number in the gold,
+  **24** have those digits inside the carried evidence and **7** do not. The seven are retrieval; the
+  twenty-four are the reader's;
+- **the list is short.** `--counting`: on the thirty questions whose gold is a count from 2 to 10,
+  **six of the ten** wrong answers list fewer items than the gold and **none** lists exactly that many.
+
+Record `0a995998` is the whole story in one row: two mentions of one boots exchange listed, merged into
+one item, `1` against a gold of `3`, and a blazer at the dry cleaner sitting in a session the response
+marked `none`.
+
+So the pass this section registers is not a re-ask, not a retry of an abstention, and not more
+evidence. It is a **second look at the list**, asked for the three membership decisions a list can get
+wrong.
+
+### 13.94.2 The registration
+
+**One variable:** `reviewPass: audit`. Everything else is §10.3's adopted configuration, including
+`ask: enumerated`.
+
+The reach is **implicit and therefore structural**: the pass lives in `answerSessions`, so it reaches
+the multi-session route by construction and no other route can be configured into it. That is the
+direct answer to §13.93.4, where the ask's reach moved three routes and the run could not separate the
+treatment from the cost.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly | any change |
+| **2** | the audit changes the answer on **≥ 20** of 121 MR questions relative to `39367801501`, and the flips are net positive | < 12 changed, or net negative |
+| **3** | MR's mean rises **84.25 → ≥ 88** | ≤ 86 |
+| **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct | ≤ 2 |
+| **5** | MR's `promptChars` falls to **40,000 – 44,500** (the audit's instruction quotes the first pass, so it buys less evidence with the same budget) | outside |
+| **6** | MR's first-repetition abstentions stay **≤ 12**, and every capability's window turns are unchanged | ≥ 13 |
+
+Prediction 4 is drawn **contiguously** this time — §13.93.3 recorded the gapped falsifier as a defect
+rather than reinterpreting it — and prediction 2 is the mechanism read on the artifact rather than
+asserted: an audit that never changes an answer has measured nothing, which is the same rule
+`retryArmed`/`retryFired` enforced for the bare-abstention retry.
+
+### 13.94.3 What the run cannot show, registered instead of hidden
+
+`lastReview()` exists in the product and reports the first answer, the final answer and whether they
+differ — per question. It is **not in the artifact**: the roster has no field for it, and adding one
+means threading a per-question value through `runBenchmark` → `scoreEvaluation` → `QuestionRecord`.
+
+So prediction 2 is read from `--paired` (the answer a question *had* in `39367801501` against the
+answer it *has* now), which measures the same thing from outside at the price of comparing two runs
+rather than one. The per-question capture is §13.95, and it comes before any future pass whose
+mechanism is "the second look changed something specific".
+
+### 13.94.4 Why this and not query expansion
+
+§13.93.6 pointed at the mismatch between the question's words and the evidence's, and the reference
+pipeline carries `expansionQueries` for exactly that. It is the next candidate, not this one, for a
+measured reason: expansion changes **what enters the window**, and `--numbers` says the gold's digits
+are already in the window for 24 of the 31 wrong numeric answers. A retrieval change cannot help those
+twenty-four; a membership review can address all of them.
+
+The order is therefore: fix what the reader does with what it has, then widen what it has.

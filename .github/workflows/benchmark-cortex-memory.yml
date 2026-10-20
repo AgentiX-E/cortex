@@ -103,11 +103,6 @@ on:
         required: false
         default: ''
         type: string
-      cortex_memory_evidence_turns:
-        description: 'Turns of evidence each per-question record carries before reduction (section 13.12, re-valued by section 13.15): empty = unbounded, i.e. carry everything, which is the pre-13.12 behaviour; a positive integer = carry at most that many turns per record and mark the reduction. Run 38003036421 completed all four runs of all five hundred questions and then died writing the JSON with RangeError: Invalid string length, because the evidence is carried unbounded and carried twice -- once in ablation.featureRetrievedContexts and once as questions[].turns[].text. The bound reduces what is CARRIED and never what is MEASURED: evidenceTurns and evidenceChars are recorded unreduced on every record, so section 13.11.3 two predictions survive any bound. Off by default so no prior artifact changes meaning, and a value below 1 is REJECTED rather than clamped, because a bound of 0 would carry no evidence while the record still reported evidenceTurns > 0 -- making a reduced record read as one whose reader was shown nothing. Section 13.15 raised the dispatched value from sixteen to two hundred and fifty-six because the roster now holds the CARRIED evidence, which the prompt budget already bounds; sixteen would have cut an already-bounded set and destroyed the identities section 13.11.5 needs, so the bound is now a writability guard rather than a measurement'
-        required: false
-        default: ''
-        type: string
       cortex_memory_relevance:
         description: 'Relevance signal the cortex-memory arm spends its prompt budget with (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.17): empty or none = the budget buys the first turns that arrived, which is the shipped behaviour and what every prior artifact was produced with; retrieval = the budget buys the turns the arm own bi-encoder ranks highest for the question. Section 13.16 is why this is the variable and nothing else is: run 38142407062 measured that the prompt carried 4.69% of a 506338-character mean context and that the gold turn was inside what the model read for 11.6% of questions, against a ceiling of 92.1% -- the share of questions whose answer turn is in the bundle at all (MEASURE-B2-RECALL-CURVE.md). The budget has been shown to be neither too small nor too large; whether it buys the turns that matter has not been measured. The signal is built from the question text and its context ONLY, never from the answer key, and the index type makes that structural rather than promised. An unrecognised value is REJECTED rather than defaulted to none, because a run dispatched to rank its turns that silently ran arrival order would publish a delta reading as evidence that ranking does not help -- the one conclusion this dispatch exists to test'
         required: false
@@ -135,6 +130,11 @@ on:
         type: string
       cortex_memory_max_turn_chars_routes:
         description: 'Which routes the per-turn cap reaches (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.73): empty or all = every route, which is what section 13.68 shipped and what run 39180819474 measured; none = a cap that reaches nothing; a comma-separated list of multi-session, temporal, flat, knowledge-update, abstention, assistant = exactly those. Section 13.72 is why this is a separate variable rather than a different width: one cap over every route produced +13 on MR and -30 on IE in the same run, and the loss is not a matter of degree -- IE thirty lost questions went correct to abstention at a MEDIAN COVERAGE OF 100%, so the model was given complete evidence and withdrew forty-two times instead of fifteen, because the flat route never received the conditional closing line and seventy-three turns of noise give its unconditional decline more chances to be true. No smaller cap turns a complete window into a partial one on a question that needs one turn, so a width sweep would find a compromise between two capabilities rather than a setting that is right for both. The reach is the campaign own pattern for route-varying behaviour (renderingRoutes, askRoutes): an explicit list, recorded in the artifact, with the untouched routes byte-identical to their-control. An unrecognised route name is REJECTED rather than ignored, because a run that applied the cap to five of six routes would report every number consistent with having applied it to six'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_review_pass:
+        description: 'Second consultation on the multi-session route only (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.94): empty or none = one consultation, which is the state every archived run is in; audit = after the first answer, re-ask with the same evidence, the first response quoted verbatim, and the review restricted to MEMBERSHIP -- name items in the evidence that the first pass missed, split an entry that merges two events, merge two entries that describe one event, drop an entry the evidence does not support -- then reply with the corrected count under a Step 2 heading. It is not a re-ask of an abstention and not a retry: a first pass that declined is returned unchanged, because there is no list to audit. The measurement it is written against is sections 13.92 to 13.93: every MR response walked all 44 sessions of its window (median 44 session lines, 121 of 121 scanning, none skipped) and the median count of item-bearing lines stayed at 2.0, while record 0a995998 lists two mentions of one boots exchange, merges them into one item and answers 1 against a gold of 3, with a blazer at the dry cleaner sitting in a session it marked none. The deficit is which items enter the list, not how much of the document the reader looked at. The reach is implicit -- the pass lives in answerSessions -- so the other five routes are byte-identical by construction and cannot be configured into it. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to administer a treatment that silently ran the control would publish an unchanged result reading as evidence the treatment does not matter'
         required: false
         default: ''
         type: string
@@ -357,6 +357,9 @@ jobs:
           # is in; the arm rejects an unknown role and rejects `none`, because an empty role set
           # admits nothing and would be reported as a dataset with no evidence.
           CORTEX_MEMORY_EVIDENCE_ROLES: ${{ github.event.inputs.cortex_memory_evidence_roles }}
+          # Section 13.94's second consultation. Blank means none, which is the state every archived
+          # run is in; the arm rejects anything but none/audit rather than defaulting.
+          CORTEX_MEMORY_REVIEW_PASS: ${{ github.event.inputs.cortex_memory_review_pass }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
@@ -369,7 +372,14 @@ jobs:
           # `RangeError: Invalid string length`. Passed unconditionally because the arm
           # defaults a blank to unbounded, and defaulting here instead would put the
           # same default in two places.
-          CORTEX_MEMORY_EVIDENCE_TURNS: ${{ github.event.inputs.cortex_memory_evidence_turns }}
+          # Section 13.12's record bound, fixed at the value section 13.15 raised it to. It is a
+          # WRITABILITY guard rather than a measurement -- the roster now carries the prompt's own
+          # evidence, which the budget already bounds, so the bound exists to keep the JSON writable --
+          # and it has not been varied since. It is therefore a constant here rather than an input: the
+          # workflow sits one below GitHub's 25-input ceiling, and this is the one knob whose value no
+          # experiment reads. Restoring it as an input is the right move if a run ever needs to move the
+          # bound, and it costs nothing but this comment.
+          CORTEX_MEMORY_EVIDENCE_TURNS: '256'
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
           # read from the same dispatch inputs the job already carries, so a dispatch

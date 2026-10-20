@@ -72,6 +72,7 @@ import {
   confidenceFromLength,
   type EvidenceAsk,
   type PromptContract,
+  type ReviewPass,
   type TurnCapRoute,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -380,6 +381,13 @@ async function main(): Promise<void> {
     // `readAsk` validates it against the product's own list at parse time, throwing on
     // anything unrecognised. So the value IS one of the union's members here.
     ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
+    // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
+    // the key, for the reason every other conditional spread here is: every archived artifact was
+    // produced without a pass, and a present-but-inert key would make the option indistinguishable
+    // from a configured one to a `!== undefined` check.
+    ...(armOptions.reviewPass === 'none' || armOptions.reviewPass === undefined
+      ? {}
+      : { reviewPass: armOptions.reviewPass as ReviewPass }),
     // §13.17's single variable, spread conditionally for the same reason as the two
     // above: `none` IS the shipped behaviour (the budget buys the first turns that
     // arrived) and is expressed by NOT passing the key, so a run that names no signal

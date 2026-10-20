@@ -338,6 +338,14 @@ export type MemoryArmConfig = {
    */
   readonly evidenceRolesRoutes?: readonly string[] | undefined;
   /**
+   * The second consultation the run administered on the multi-session route (§13.94).
+   *
+   * Always present, `none` included, for the reason the cap's reach is: an artifact has to answer
+   * what the run did, and a field that is only present under treatment makes "no pass" and "a pass
+   * that was not recorded" the same row.
+   */
+  readonly reviewPass?: string | undefined;
+  /**
    * Source trust stamped on every memory admission constructs. In `[0, 1]`.
    *
    * The ceiling of the value function is
@@ -747,6 +755,7 @@ export function formatAblationReport(report: AblationReport): string {
         // §13.83, rendered on every run for the reason the cap is: `all` is a fact about the
         // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
         // two artifacts must be able to see which of them filtered.
+        `, \`reviewPass=${memoryArm.reviewPass ?? 'none'}\`` +
         `, \`evidenceRoles=${
           memoryArm.evidenceRoles === undefined
             ? 'all'

@@ -33,6 +33,7 @@ import {
 import {
   RENDERING_BY_CONTRACT,
   buildPrompt,
+  buildAuditPrompt,
   buildSessionPrompt,
   type PromptContract,
   type PromptOptions,
@@ -61,6 +62,9 @@ import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
  * arithmetically rather than by joining, because joining builds the whole string -- up
  * to 506,338 characters on this arm -- to call `.length` on it.
  */
+/** The two answers of one review pass, and whether they differ. */
+type Review = { first: Answer; final: Answer; changed: boolean } | null;
+
 /**
  * The role filter, resolved once at construction.
  *
@@ -224,6 +228,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * stop two different model behaviours from collapsing into one value.
    */
   #lastRawOutput: string | null = null;
+  /**
+   * The two answers of the most recent review pass, or `null` when no pass ran.
+   *
+   * Kept because the mechanism §13.94 registers is "the audit changed the number", and a run that
+   * only published its final answer could not tell a pass that never disagreed from one that never
+   * ran. `lastReview()` reports it; the arm records it, which is what makes the mechanism legible
+   * instead of inferred.
+   */
+  #lastReview: Review = null;
 
   /**
    * The evidence the reader was shown for the most recent call, or `null`.
@@ -427,6 +440,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   lastRawOutput(): string | null {
     return this.#lastRawOutput;
+  }
+
+  /**
+   * The most recent review pass's two answers, or `null` when none ran.
+   *
+   * `first` is what the multi-session route would have returned without §13.94, and `final` is what
+   * it returned. `changed` compares the two answers as `Answer` values, so an audit that restated
+   * the same number in different words reads as unchanged — which is the question the mechanism
+   * asks: did the pass move the answer, not did it move the prose.
+   */
+  lastReview(): Review {
+    return this.#lastReview;
   }
 
   /**
@@ -908,25 +933,52 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
+    const options = this.#promptOptions('multi-session');
     const assembled = buildSessionPrompt(
       question,
       sessions,
       // The multi-session route, named here rather than defaulted: this builder is the one
       // §13.72 measured at +13, so a default would make the measurement's route the one route
       // whose reach is never written down.
-      this.#promptOptions('multi-session'),
+      options,
     );
-    // Flattened for the two measurements the builder cannot report, which are about
-    // the **offer** and not the delivery: the prompt keeps its boundaries, the offer
-    // is one list of admitted turns, and the boundary is presentation. A reader
-    // comparing this against the carried set wants the same turns the session
-    // admission produced, and `lastAdmittedEvidence` counts them in the record's own
-    // unit.
+
+    this.#lastReview = null;
+    const first = await this.#consult(assembled.prompt);
+    // `#consult` assigns the raw text before parsing, so this cannot be null after it returns; the
+    // assertion states a fact about that method rather than a hope about the model. A `=== null`
+    // guard here would be a branch no test can enter, which is the shape §57.6 removed from this
+    // file once already.
+    const firstRaw = this.#lastRawOutput as string;
+
+    // §13.94's second consultation. Two conditions, each a state this pass must not enter: no pass
+    // was configured, or the first pass declined -- an abstention is a decision, and this pass audits
+    // a list that does not exist.
+    if (this.#options.reviewPass !== 'audit' || first === null) {
+      // Flattened for the two measurements the builder cannot report, which are about
+      // the **offer** and not the delivery: the prompt keeps its boundaries, the offer
+      // is one list of admitted turns, and the boundary is presentation. A reader
+      // comparing this against the carried set wants the same turns the session
+      // admission produced, and `lastAdmittedEvidence` counts them in the record's own
+      // unit.
+      this.#recordEvidence(
+        sessions.flatMap((session) => session.turns),
+        assembled,
+      );
+      return first;
+    }
+
+    const audit = buildAuditPrompt(question, sessions, firstRaw, options);
+    const final = await this.#consult(audit.prompt);
+    this.#lastReview = { first, final, changed: first !== final };
+    // The offer is recorded from the prompt the **answer came from**. Recording the first prompt
+    // would describe a consultation whose answer was discarded, and every coverage count in the
+    // artifact would then be about evidence the reader was not answering from.
     this.#recordEvidence(
       sessions.flatMap((session) => session.turns),
-      assembled,
+      audit,
     );
-    return this.#consult(assembled.prompt);
+    return final;
   }
 
   /**
