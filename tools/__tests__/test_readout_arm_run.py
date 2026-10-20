@@ -20,6 +20,7 @@ beside the definition it was computed under, or it is not printed at all.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1222,6 +1223,74 @@ class TestThePerCapabilitySpread:
         # divide by zero. Both are artifacts that cannot answer.
         r = self._run(tmp_path, self._report({'MR': {'min': 1, 'avg': 1, 'max': 1}}, None))
         assert r.returncode == 2
+
+
+class TestWhatTheCorrectAnswersEndWith:
+    """The check that separates a ledger from a transcript, on golds that are numbers.
+
+    §13.92's sweep produced 44-line transcripts as answers and the judge accepted 42 of MR's 60
+    correct ones. Auditing only quantity questions -- where `2` against `3` cannot be a paraphrase --
+    the same run ends **4 of its 22** correct answers on a different number than the gold, against
+    **1 of 31** in the adopted configuration. The check exists because the accuracy column cannot
+    show the difference between an answer and a transcript that contains one.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, str, str, bool, str]]) -> dict:
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': [
+                {
+                    'questionId': qid,
+                    'capability': cap,
+                    'groundTruth': gold,
+                    'answer': 'x',
+                    'correct': correct,
+                    'rawOutput': raw,
+                }
+                for qid, cap, gold, correct, raw in rows
+            ],
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--final', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_counts_and_names_the_disagreements(self, tmp_path: Path) -> None:
+        report = self._report(
+            [
+                ('good', 'MR', '3', True, 'Step 1\n- a\n- b\n- c\nStep 2 — 3'),
+                ('bad', 'MR', '3', True, 'Session 1: none\nSession 2: boots\n\n2'),
+            ]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert re.search(r'MR\s+2\s+1\s+1', r.stdout)
+        assert 'bad' in r.stdout
+
+    def test_a_prose_closing_line_that_states_the_number_agrees(self, tmp_path: Path) -> None:
+        # `The total is 5 days.` states 5. A rule that demanded a *leading* number reported all eight
+        # of TR's answers as disagreements on the first draft of this table.
+        report = self._report([('prose', 'TR', '5', True, 'Step 1\n- a\nThe total is 5 days.')])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert re.search(r'TR\s+1\s+1\s+0', r.stdout)
+
+    def test_a_prose_gold_is_not_audited(self, tmp_path: Path) -> None:
+        # `a yellow dress` against `Yellow dress and a pair of earrings` is a paraphrase, and string
+        # comparison cannot decide it. Including those rows produced 124 "disagreements" on the first
+        # draft, most of them paraphrases and 29 of them abstentions.
+        report = self._report([('prose-gold', 'IE', 'a yellow dress', True, 'Step 1\n- x\nYellow dress')])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'no correct record' in r.stderr
 
 
 class TestWhereTheGoldNumbersAre:

@@ -10585,3 +10585,98 @@ Tests: `evidence-ask-reach.test.ts` pins the block's content and the five byte-i
 count is asserted against `--sweep`'s refusal, its counting, the ignored-shape record and the
 count-matches-lines flag. The arm's table gains the value and `test_ask_table_parity.py` compares the two
 key sets by source, which is the check that caught §13.35's startup rejection.
+
+## 13.93 The sweep walks the whole document and finds the same two items
+
+### 13.93.1 The readings (`39389557774`, 2h03m38s, drift 500/500)
+
+| # | prediction (§13.92.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | median session lines ≥ 12, ≥ 90% of records write one | **44.0**, **121 of 121** | **holds** |
+| **2** | median item-bearing lines 4.0 → **≥ 6** | **2.0** | **falsified** |
+| **3** | MR mean 84.25 → **≥ 88** | **58.25** (54–60) | **falsified** |
+| **4** | ≥ 3 of the six under-listing questions correct | **2** | **neither** — see §13.93.3 |
+| **5** | IE/KU/ABS/TR reproduce `promptChars` to the character | ABS and KU identical; IE and TR moved | **falsified**, and the reason is a defect in the registration |
+| **6** | MR window ≥ 168 turns, abstentions ≤ 10 | 174 turns, **14** abstentions | window holds, abstentions **falsified** |
+
+Registered statistic **+25.35pp** (was +36.55), roster mean **347.8** (was 405.0). Per capability, mean over
+four repetitions: ABS 29.25, IE **126.75**, KU 63.0, MR **58.25**, TR **70.50**.
+
+### 13.93.2 The mechanism landed exactly, and it did nothing
+
+The instruction was followed: **every one of the 121 MR responses wrote a line for every session**, a median of
+**44 lines**, and the `--sweep` census finds **0 records with no scan**. The model walked the entire document.
+
+And the median count of item-bearing lines is **2.0** — the same as `enumerated`'s 2.0. The walk added
+forty-two lines of `none` and found the same two items.
+
+That is the finding, and it is a negative one worth more than the accuracy number: **the reader's enumeration is
+not limited by how much of the document it looks at.** It is limited by what it recognises as an instance of the
+question's action. `0a995998` states it: the question asks about items to *pick up or return from a store*; the
+window contains a blazer at the dry cleaner and two mentions of boots at Zara, and the response lists the two boots
+mentions, merges them, and answers `1`. The blazer is in a session the sweep printed as `none`.
+
+So the ask axis's "make the reader look harder" branch is closed. What remains is the question's wording against
+the evidence's wording, which is a retrieval-matching problem and not an instruction one.
+
+### 13.93.3 Prediction 4 was drawn with a gap, and that is a defect in the prediction
+
+It said "≥ 3 correct", falsified "≤ 1", and observed **2**. A prediction with a hole in the middle cannot be
+decided, and the honest reading is that it was written badly: the threshold should have been contiguous
+(`≥ 3` / `≤ 2`). Recorded rather than reinterpreted, because re-drawing a falsifier after the number exists is the
+one thing a registration cannot survive.
+
+### 13.93.4 Prediction 5 could not have held, and the reason is structural
+
+The registration asked IE, KU, ABS and TR to reproduce their `promptChars` to the character. **ABS and KU did**
+(46,737 and 46,841, byte-identical). IE and TR did not, and the cause is not a leak: the *previous* run's ask was
+`enumerated`, whose reach is `multi-session, flat, temporal` — so the flat and temporal routes were reading
+`computed`'s merged block, and switching to `sweep` removed it from them. Their blocks lost ~1,250 characters and
+their windows grew by 115 and 246 characters.
+
+That is not a surprise in hindsight: it is exactly what §13.20 measured, where replacing the temporal block cost TR
+**27.6 points**. This run's TR fell **24.25** and IE **7.5**, which is that cost, not a sweep effect.
+
+**The defect is in the registration.** A single-route ask can only be tested against a baseline whose other routes
+already read what the new ask leaves them reading — and `enumerated` reached three routes, so no such baseline
+exists in the archive. Either the experiment must accept that the other routes move, or the ask must be dispatched
+over a baseline run that used `route` (the shipped ask) so the only change is on one route. The second is the
+correct design and it is written down here for the next attempt.
+
+### 13.93.5 The format the answer arrived in, and the audit that came out of it
+
+**69 of 121** MR answers are the raw session list rather than a number. The parser slices a response after its
+**last** `Step <n> —` heading, and this contract's Step 2 says "reply with the count alone" — so the model wrote the
+lines under Step 1 and then the number with no heading, and the reader returned the whole list as the answer.
+
+That is a contract defect with a one-line lesson: **an ask that wants a list and then a number has to make the
+second heading compulsory**, because the parser's rule is positional and `enumerated` only survived it because its
+Step 2 was a sentence.
+
+And it exposed something the campaign had never measured: **the last scoring channel accepts a transcript.**
+`--final` audits the correct answers to questions whose gold **is** a number, and asks whether the response's
+closing line states it:
+
+| run | MR correct on numeric golds | closing line states the gold |
+| --- | --- | --- |
+| `39367801501` (adopted, `enumerated`) | 31 | **30** |
+| `39389557774` (`sweep`) | 22 | **18** |
+
+So on this run **4 of 22** correct answers end on a different number than the one they were scored against — the
+transcript contained the gold somewhere — while the adopted configuration has **one** such record in 31. The
+campaign's archive survives the audit; this run does not, and its 58.25 is an upper bound rather than a
+measurement.
+
+### 13.93.6 Verdict, and what it redirects to
+
+**Falsified, and adopted nothing.** §10.3 is unchanged: `ask: enumerated`.
+
+What the run bought:
+
+- the ask axis is closed for *structure*: a reader that walks 44 sessions still names two items, so the deficit is
+  what it counts as an instance, not how much it reads;
+- one hypothesis is now pointed: the gold turn and the question use **different words** (a blazer at the dry
+  cleaner for *pick up or return from a store*), and the reference pipeline — 20 questions ahead on MR at half the
+  budget — carries `expansionQueries` in its own trace for exactly this reason, retrieving with phrases the
+  question does not contain;
+- a scoring audit that did not exist, and an answer-format rule that the next list-shaped ask must obey.

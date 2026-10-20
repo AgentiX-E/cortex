@@ -38,6 +38,7 @@ Usage:
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
+    python3 tools/readout-arm-run.py --final path/to/report.json
     python3 tools/readout-arm-run.py --numbers path/to/report.json
     python3 tools/readout-arm-run.py --counting path/to/report.json
     python3 tools/readout-arm-run.py --sweep path/to/report.json
@@ -1468,6 +1469,96 @@ def numbers_of(text: str) -> set[str]:
     return out
 
 
+def final_line_of(raw: str) -> str:
+    """The last non-empty line of a response, which is where the answer is asked to be."""
+    lines = [line.strip() for line in raw.split('\n') if line.strip()]
+    return lines[-1] if lines else ''
+
+
+def bare_number(value: object) -> str | None:
+    """A gold that IS a number, with nothing else in the string.
+
+    Only these are audited. A gold of `3.5 weeks` and a closing line of `3.5` agree, and a gold of
+    `a yellow dress` and a closing line of `Yellow dress and a pair of earrings` agree in meaning --
+    neither can be decided by string comparison, and pretending otherwise produced 124 "disagreements"
+    on the first draft of this table, of which the abstention rows were 29 and the paraphrases most of
+    the rest. A bare number is a question whose answer is a quantity, and `2` against `3` is not a
+    paraphrase.
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text if re.fullmatch(r'\d+(?:\.\d+)?', text) else None
+
+
+def final_section(questions: list[dict]) -> tuple[str, int]:
+    """Whether the correct answers to quantity questions actually end with their number.
+
+    ## The defect this exists for, measured on run `39389557774`
+
+    §13.92's sweep produced answers that were 44-line session transcripts, and 42 of MR's 60 correct
+    answers were graded from such a transcript. Splitting them by what the response's closing line
+    says: **11 end with the gold and 31 end with a different number** -- the transcript contained the
+    gold somewhere, and the last scoring channel accepted it. The accuracy column cannot show that: a
+    run whose answers are transcripts reads as a run that answered.
+
+    ## What it says about the runs the campaign is built on
+
+    On `39367801501`, the adopted configuration reports **0** disagreements on MR against 31 for the
+    sweep. The multi-line answers there are ledgers -- `5 + 30 + 10 + 25 + 70 = 140` with `140` as the
+    closing line -- and a ledger states its total where this table looks for it. So the audit is not
+    an accusation against the archive; it is the check that tells the two shapes apart.
+    """
+    rows = []
+    for question in questions:
+        if not question.get('correct'):
+            continue
+        gold = bare_number(question.get('groundTruth'))
+        raw = question.get('rawOutput')
+        if gold is None or not isinstance(raw, str) or raw.strip() == '':
+            continue
+        final = final_line_of(raw)
+        # Any number in the closing line, not only a leading one: `The total is 5 days.` states 5,
+        # and a rule that demanded the number first would report every prose answer as a
+        # disagreement -- which is what the first draft did to all eight of TR's.
+        stated = {token.replace(',', '') for token in re.findall(r'\d[\d,]*(?:\.\d+)?', final)}
+        agrees = gold in stated
+        rows.append(
+            {
+                'id': str(question.get('questionId', '?')),
+                'capability': str(question.get('capability', '?')),
+                'agrees': agrees,
+                'final': final[:44],
+                'gold': gold,
+            }
+        )
+    if not rows:
+        return '', 0
+
+    lines = ['', 'do the correct answers to quantity questions end with their number']
+    lines.append(f'  {"capability":<12}{"correct":>8}{"agrees":>8}{"disagrees":>10}')
+    for capability in sorted({row['capability'] for row in rows}):
+        subset = [row for row in rows if row['capability'] == capability]
+        agree = sum(1 for row in subset if row['agrees'])
+        lines.append(f'  {capability:<12}{len(subset):>8}{agree:>8}{len(subset) - agree:>10}')
+    total_agree = sum(1 for row in rows if row['agrees'])
+    lines.append(f'  {"TOTAL":<12}{len(rows):>8}{total_agree:>8}{len(rows) - total_agree:>10}')
+    bad = [row for row in rows if not row['agrees']]
+    if bad:
+        lines.append('')
+        lines.append(f'  {"question":<16}{"cap":>5}  {"final line":<44}  gold')
+        for row in bad[:20]:
+            lines.append(
+                f'  {row["id"][:16]:<16}{row["capability"]:>5}  {row["final"]:<44}  {row["gold"]}'
+            )
+    lines.append(
+        '  Only golds that ARE a number are audited: a gold of `3.5 weeks` and a closing line of '
+        '`3.5` agree, and prose paraphrases cannot be decided by string comparison. A disagreement '
+        'here means the response ended with a different number than the one it was scored against.'
+    )
+    return '\n'.join(lines), len(rows)
+
+
 def numbers_section(questions: list[dict]) -> tuple[str, int]:
     """Where the gold's numbers are: inside the window, or nowhere in it.
 
@@ -1943,6 +2034,11 @@ def main(argv: list[str]) -> int:
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
     )
     parser.add_argument(
+        '--final',
+        action='store_true',
+        help="for answers that scored correct: does the response's closing line state the gold",
+    )
+    parser.add_argument(
         '--numbers',
         action='store_true',
         help='for wrong MR answers with a number in the gold: is that number in the window',
@@ -2063,6 +2159,20 @@ def main(argv: list[str]) -> int:
         section, measured = reach_section(questions)
         if measured == 0:
             print(f'{args.report}: no record carries goldRanks.', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.final:
+        if questions is None:
+            print(
+                f'{args.report}: no per-question roster, so the answers cannot be audited.',
+                file=sys.stderr,
+            )
+            return 2
+        section, measured = final_section(questions)
+        if measured == 0:
+            print(f'{args.report}: no correct record carries a raw output.', file=sys.stderr)
             return 2
         print(section)
         return 0
