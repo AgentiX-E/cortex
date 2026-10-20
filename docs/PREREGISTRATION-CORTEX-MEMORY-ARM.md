@@ -10518,11 +10518,16 @@ control rather than four more subjects.
 | # | prediction | falsified if |
 | --- | --- | --- |
 | **1** | median **session lines** per MR response ≥ **12**, and ≥ 90% of MR records write at least one | median < 8, or < 90% |
-| **2** | on the thirty counting questions, median **item-bearing lines** rises from 3–4 to **≥ 6** | < 5 |
+| **2** | on the thirty counting questions, median **item-bearing lines** rises from **4.0** (correct 4.0, wrong **2.5**) to **≥ 6** | < 5 |
 | **3** | MR's mean rises **84.25 → ≥ 88** | ≤ 86 |
 | **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct | ≤ 1 |
 | **5** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly | any change |
 | **6** | MR's window stays **≥ 168 turns** and MR's first-repetition abstentions stay **≤ 10** | < 165 turns, or ≥ 13 abstentions |
+
+The baseline in prediction 2 is read by `--counting`, which is the table that produced the counts in
+§13.92.1; it reports 4.0 for the correct answers and **2.5** for the wrong ones. Saying "3–4" here
+before that table existed would have been an estimation, and the campaign's rule is that a baseline is
+a number the tool prints.
 
 Prediction 3's margin is deliberately smaller than prediction 4's confidence: the block costs **48
 characters** more than `enumerated`'s (measured, 1,463 against 1,415), which is 0.2 of a turn, so the

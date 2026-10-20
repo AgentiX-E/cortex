@@ -1224,6 +1224,94 @@ class TestThePerCapabilitySpread:
         assert r.returncode == 2
 
 
+class TestTheCountingQuestions:
+    """The subset where a list's length can be compared with the gold *number*.
+
+    §13.92's premise had to be corrected once for not making this distinction: of sixteen wrong
+    numeric MR answers twelve had a shorter list, but six of those twelve were questions whose gold is
+    23, 50, 100 or 856 — amounts and durations, where a two-item list is not an under-enumeration.
+    Restricted to counts from 2 to 10 the same artifact gives six of ten. A table that does not
+    restrict itself keeps producing the first number, and the first number is wrong.
+    """
+
+    @staticmethod
+    def _report(ask: str, rows: list[tuple[str, str, str, bool, str]]) -> dict:
+        questions = [
+            {
+                'questionId': qid,
+                'capability': 'MR',
+                'groundTruth': gold,
+                'answer': stated,
+                'correct': correct,
+                'rawOutput': raw,
+            }
+            for qid, gold, stated, correct, raw in rows
+        ]
+        return {
+            'memoryArmConfig': {'ask': ask},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': questions,
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--counting', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_keeps_counts_and_drops_amounts(self, tmp_path: Path) -> None:
+        report = self._report(
+            'enumerated',
+            [
+                ('count-under', '3', '1', False, 'Step 1\n- one item\n- same item again\nStep 2 — 1'),
+                ('count-right', '2', '2', True, 'Step 1\n- a\n- b\nStep 2 — 2'),
+                # A gold of 856 is a balance. Two bullets is not an under-enumeration, and counting
+                # it as one is what made the earlier premise wrong.
+                ('amount', '856', '900', False, 'Step 1\n- a\n- b\nStep 2 — 900'),
+            ],
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'correct     1' in r.stdout
+        assert 'wrong       1' in r.stdout
+        assert 'list shorter   1' in r.stdout
+        assert 'under-lists' in r.stdout
+        # The amount question is dropped rather than counted as an under-enumeration, and the table
+        # names the ids a registration can refer to.
+        assert 'amount' not in r.stdout
+        assert 'count-under' in r.stdout
+
+    def test_it_reads_the_session_shape_of_a_sweep_response(self, tmp_path: Path) -> None:
+        # One reader for both asks, because §13.92's second prediction compares them on this axis.
+        raw = 'Step 1\nSession 1: a kit\nSession 2: none\nSession 3: another kit\nStep 2 — 2'
+        report = self._report('sweep', [('sweep-1', '3', '2', False, raw)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert "shape read: session lines (ask='sweep')" in r.stdout
+        # Two item-bearing lines against a gold of 3 -- under-listed, and the `none` line is not an
+        # item.
+        assert 'list shorter   1' in r.stdout
+
+    def test_it_flags_arithmetic_when_the_list_is_the_right_length(self, tmp_path: Path) -> None:
+        report = self._report(
+            'enumerated',
+            [('arith', '3', '2', False, 'Step 1\n- a\n- b\n- c\nStep 2 — 2')],
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'counts right' in r.stdout
+
+    def test_it_refuses_when_no_question_carries_a_count(self, tmp_path: Path) -> None:
+        report = self._report('enumerated', [('amount', '856', '900', False, '- a\n- b')])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'count' in r.stderr
+
+
 class TestTheSweepCensus:
     """What a `sweep` response's session lines hold, which is the mechanism §13.92 registers.
 

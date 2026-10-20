@@ -38,6 +38,7 @@ Usage:
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
+    python3 tools/readout-arm-run.py --counting path/to/report.json
     python3 tools/readout-arm-run.py --sweep path/to/report.json
     python3 tools/readout-arm-run.py --lists path/to/report.json
     python3 tools/readout-arm-run.py --reach path/to/report.json
@@ -1399,6 +1400,120 @@ def median(values: list[float]) -> float:
     return (values[middle - 1] + values[middle]) / 2.0
 
 
+# A gold that is a small count, and therefore a question where a list's length can be compared with
+# the number the answer should be. Above ten the comparison stops meaning anything -- a gold of 856 is
+# a balance, not a set of items -- and the campaign's §13.92 premise was corrected for exactly that.
+COUNT_LOW = 2
+COUNT_HIGH = 10
+
+# A bullet or numbered item, which is what an `enumerated` response writes.
+LIST_ITEM = re.compile(r'^\s*(?:[-*\u2022]|\d+[.)])\s+\S')
+
+
+def count_of(value: object) -> int | None:
+    """The value as a small count, or `None` when it is not one."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not re.fullmatch(r'\d+', text):
+        return None
+    number = int(text)
+    return number if COUNT_LOW <= number <= COUNT_HIGH else None
+
+
+def item_lines_of(raw: str, ask: str | None) -> list[str]:
+    """The lines of this response that name an item, read in the shape the run's ask produced.
+
+    Two shapes, one reader: an `enumerated` response names items as bullets, and a `sweep` response
+    names them after a `Session <n>:` label. Reading both from one function is what lets two runs of
+    different asks be compared on the same axis, which is the only comparison §13.92's prediction 2
+    makes.
+    """
+    if ask == 'sweep':
+        named: list[str] = []
+        for line in raw.split('\n'):
+            match = SWEEP_LINE.match(line)
+            if match is None:
+                continue
+            text = match.group(1).strip()
+            if text and not SWEEP_NOTHING.match(text):
+                named.append(text)
+        return named
+    return [line.strip() for line in raw.split('\n') if LIST_ITEM.match(line)]
+
+
+def counting_section(questions: list[dict], ask: str | None) -> tuple[str, int]:
+    """The counting questions: what the answer was, and how long the list behind it was.
+
+    ## Why this is a table and not a filter on `--lists`
+
+    §13.92's premise had to be corrected once already. Comparing a list's length with the gold
+    *number* is only meaningful when the gold **is** a count: of the sixteen wrong numeric MR
+    answers, twelve had a shorter list, and six of those twelve were questions whose gold is 23, 50,
+    100, 856 -- amounts and durations, where a two-item list is not an under-enumeration. Restricted
+    to counts from 2 to 10 the same artifact gives **six of ten wrong**, and that is the number the
+    registration uses. A table that does not restrict itself would keep producing the other one.
+    """
+    rows = []
+    for question in questions:
+        if question.get('capability') != 'MR':
+            continue
+        gold = count_of(question.get('groundTruth'))
+        raw = question.get('rawOutput')
+        if gold is None or not isinstance(raw, str) or raw.strip() == '':
+            continue
+        named = item_lines_of(raw, ask)
+        stated = question.get('answer')
+        rows.append(
+            {
+                'id': str(question.get('questionId', '?')),
+                'correct': bool(question.get('correct')),
+                'gold': gold,
+                'items': len(named),
+                'stated': stated,
+            }
+        )
+    if not rows:
+        return '', 0
+
+    def tally(rows: list[dict]) -> tuple[int, int, int]:
+        under = sum(1 for row in rows if row['items'] < row['gold'])
+        equal = sum(1 for row in rows if row['items'] == row['gold'])
+        over = sum(1 for row in rows if row['items'] > row['gold'])
+        return under, equal, over
+
+    right = [row for row in rows if row['correct']]
+    wrong = [row for row in rows if not row['correct']]
+    lines = ['', f'the counting questions (MR, gold an integer from {COUNT_LOW} to {COUNT_HIGH})']
+    lines.append(f'  shape read: {"session lines" if ask == "sweep" else "bullets"} (ask={ask!r})')
+    for label, subset in (('correct', right), ('wrong', wrong)):
+        under, equal, over = tally(subset)
+        median_items = median(sorted(row['items'] for row in subset)) if subset else 0.0
+        lines.append(
+            f'  {label:<9}{len(subset):>4}   list shorter {under:>3}   equal {equal:>3}   '
+            f'longer {over:>3}   median items {median_items:.1f}'
+        )
+    lines.append('')
+    # The id is printed because a registration names questions: §13.92.2's fourth prediction is about
+    # six ids, and a table of lengths that cannot be joined to those ids cannot decide it.
+    lines.append(f'  {"question":<16}{"items":>6}{"gold":>6}  {"stated":>18}  flags')
+    for row in wrong:
+        flags = []
+        if row['items'] < row['gold']:
+            flags.append('under-lists')
+        if row['items'] == row['gold']:
+            flags.append('counts right')
+        lines.append(
+            f'  {row["id"][:16]:<16}{row["items"]:>6}{row["gold"]:>6}  '
+            f'{str(row["stated"])[:18]:>18}  {", ".join(flags)}'
+        )
+    lines.append(
+        '  the table lists the WRONG answers only. "counts right" means the response named the gold '
+        'number of items and stated something else -- arithmetic rather than enumeration.'
+    )
+    return '\n'.join(lines), len(rows)
+
+
 def sweep_section(questions: list[dict]) -> tuple[str, int]:
     """What the responses' session lines hold, and what the stated number was.
 
@@ -1735,6 +1850,11 @@ def main(argv: list[str]) -> int:
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
     )
     parser.add_argument(
+        '--counting',
+        action='store_true',
+        help='print the MR counting questions: the list behind each answer, against the gold count',
+    )
+    parser.add_argument(
         '--sweep',
         action='store_true',
         help='print the session lines a sweep-shaped response wrote, MR only',
@@ -1845,6 +1965,25 @@ def main(argv: list[str]) -> int:
         section, measured = reach_section(questions)
         if measured == 0:
             print(f'{args.report}: no record carries goldRanks.', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.counting:
+        if questions is None:
+            print(
+                f'{args.report}: no per-question roster, so the counting questions cannot be read.',
+                file=sys.stderr,
+            )
+            return 2
+        config = report.get('memoryArmConfig')
+        ask = config.get('ask') if isinstance(config, dict) else None
+        section, measured = counting_section(questions, ask if isinstance(ask, str) else None)
+        if measured == 0:
+            print(
+                f'{args.report}: no MR record carries a count for a gold and a readable list.',
+                file=sys.stderr,
+            )
             return 2
         print(section)
         return 0
