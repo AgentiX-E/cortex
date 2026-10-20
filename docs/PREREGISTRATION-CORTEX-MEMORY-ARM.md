@@ -708,12 +708,15 @@ forwarded into a step's `env`. Three injections were run against it:
   another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
   delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
   §13.82.3 states what its two failed predictions do to the step hypothesis.
-* `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84.** The filter
-  exists because §13.82 measured the composition rather than the size of the 48,000-character room: 51.9% of
-  multi-session's rendered characters were assistant turns. Run `39298662801` read the treatment at MR 100.0%
-  user characters (from 48.1%), MR 83 → **90**, TR 93 → **98**, roster 403 → **419**, union 444 → **452**, with
-  no capability regressed. The `all` spelling remains the identity for any run that names no filter, which is
-  every artifact before §13.84.
+* `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84, on mechanism
+  and mean; §13.87 corrected the magnitude.** The filter exists because §13.82 measured the composition rather
+  than the size of the 48,000-character room: 51.9% of multi-session's rendered characters were assistant turns,
+  and the treatment reads **100.0%** user characters with the window at 174 turns (from 144). The **mean** roster
+  over four repetitions moves 398 → 402–406 across two runs of the treatment, i.e. **+4 to +8**; the "+16" §13.84
+  quoted compared two single repetitions and is withdrawn (§13.87.2). The reason the adoption survives at the
+  smaller number is §13.87.3: the gold set carries every statement twice, so the policy removes **exactly half**
+  of MR's gold — 50.01% — and the reader's accuracy did not fall, which says the removed half is a restatement.
+  The `all` spelling remains the identity for any run that names no filter.
 * `evidenceRolesRoutes: multi-session,temporal` — **adopted by §13.84 beside the roles above.** The two routes
   whose questions assemble evidence across turns; the three untouched capabilities reproduce their control's
   window **to the character** (61.0 / 62.0 / 72.0 turns) and that is the check §13.83 registered before the run
@@ -10288,3 +10291,89 @@ companion policy is worth building at all.
   next lever is then the window's ordering rather than its composition, and the companion policy is not built.
 - **2 fails**: the campaign's per-capability resolution is not 6.1% and the last three sections' count readings have
   to be restated with the measured one.
+
+## 13.87 The replication says the counts do not reproduce, and the gold is exactly half assistant turns
+
+### 13.87.1 The readings (`39347010711`, 1h49m41s, drift 500/500)
+
+| # | prediction (§13.86.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | `totalAll` on MR and TR records only | **121 MR + 127 TR**, zero on IE/KU/ABS | **holds** |
+| **2** | roster **419 ± 4**, no capability moving more than 4 | **407**; MR 90 → **83**, KU 67 → **63**, TR 98 → **97** | **falsified** |
+| **3** | ≥ 5 of the ten flipped-wrong MR questions carry assistant-role gold | **10 of 10** | **holds** |
+
+Registered statistic +35.75pp (was +36.80), McNemar p = 1.98e-33. Per capability: ABS 29, IE 135, KU 63,
+MR 83, TR 97 — roster **407**.
+
+### 13.87.2 Prediction 2 failed, and it is the most important result in this section
+
+Nothing about the system changed between `39298662801` and `39347010711`: same commit's configuration, same code,
+same data. MR moved **90 → 83**. That is the same seven-question distance the campaign read as a finding one
+section earlier.
+
+The artifact already recorded the answer and the campaign was not reading it. `featureAggregate` is the spread over
+the **four repetitions** of one run:
+
+| run | configuration | roster per repetition | mean |
+| --- | --- | --- | --- |
+| `39260774611` | every role | 394 – 403 | **398.0** |
+| `39298662801` | user only | 397 – 419 | **406.0** |
+| `39347010711` | user only | 398 – 407 | **402.0** |
+
+Two runs of one configuration have means four questions apart and ranges nineteen questions wide. The headline
+"+16" in §13.84 compared **two single repetitions** — one run's best against another run's best — while the
+registered statistic beside it was a mean over four. Both numbers were on the same page and they were measuring
+different things.
+
+**Corrected statement of the filter's effect**: the roster's mean moves 398 → 402–406, i.e. **+4 to +8**, not +16,
+and a single run cannot resolve it. MR's 83 / 90 / 83 across three runs of two configurations is not evidence of
+anything about MR.
+
+### 13.87.3 The structural finding, which is independent of any sample
+
+`totalAll / total` is **exactly 2.0 on 120 of 121 MR questions and 125 of 127 TR questions** — the gold set carries
+each statement twice, once as the user's turn and once as the assistant's reply to it. So the policy removes
+**50.01% of MR's gold and 50.03% of TR's** by construction, and the reader's accuracy did not fall.
+
+That is a statement about the dataset that no run-to-run noise can touch, and it explains why the filter works: the
+assistant half is a **restatement** of the user half, so removing it removes duplication rather than information.
+It also sets the ceiling of the companion policy §13.86 was meant to license: the most an assistant turn can add is
+the half of the gold that is a paraphrase, and the ten flipped questions show that half is sometimes decisive.
+
+### 13.87.4 The instrument this section needs, registered
+
+Every per-capability count in every artifact is **one repetition's**. The register's delta is a mean over four.
+Reading a capability's movement from the first and its significance from the second is how a seven-question swing
+became a finding twice.
+
+§13.88 records the repair: per-capability correct counts **per repetition**, aggregated to min / mean / max beside
+the overall aggregate, so a per-capability claim can be stated with its own spread. It needs no new run — the
+ablation already holds each repetition's correctness vector and the dataset holds each question's capability; what
+is missing is the projection into the artifact.
+
+Until it exists, this document's rule is: **a per-capability movement below ten questions is not a finding**, and
+any adoption argued from one is argued from the mean instead.
+
+## 13.88 Per-capability counts across repetitions, so a movement can be stated with its spread
+
+### 13.88.1 The defect §13.87 exposed
+
+`ablation.featureAggregate` is min / avg / max over the four repetitions of one run. Every **per-capability**
+count in the artifact is one repetition's. Two numbers with different units sit on the same page, and §13.84 and
+§13.87 both read a capability's movement from the first while quoting the second's significance.
+
+### 13.88.2 The registration
+
+`AblationResult` gains `featureByCapability` and `baselineByCapability`: for each capability, the correct count per
+repetition aggregated to min / avg / max, computed from the vectors the ablation already holds and the dataset's
+own capability labels. Three properties:
+
+- **absent when there is one repetition.** With `runs: 1` a min and a max are the same number and a "spread" of
+  zero reads as perfect stability. The field is absent, not degenerate.
+- **the mean is the register's unit.** `avg * questions(capability)` is a count a reader can compare against a
+  single-run count only by knowing which one they hold, which is why all three are recorded.
+- **no new run.** This is a projection of data already in memory at the end of an ablation.
+
+Acceptance: on `39347010711`'s artifact the new field reproduces 398 / 402 / 407 for the roster's overall spread
+(summed across capabilities) and shows MR's own min / avg / max across the four repetitions; a single-repetition
+call omits the field; the JSON and the Markdown both render it, so the artifact and its summary cannot disagree.
