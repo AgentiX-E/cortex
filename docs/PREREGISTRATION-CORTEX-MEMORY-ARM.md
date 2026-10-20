@@ -11033,7 +11033,11 @@ of the answers and left the score where it was.
 What survives is not another hypothesis about the arm. It is a fact about the instrument: **the
 answer layer is unstable at 18–22% per route per re-run**, while the evidence layer is stable to the
 character. Every experiment this campaign could run next is a search for an effect of five questions
-or fewer — and five questions is a quarter of the noise.
+or fewer — and five questions is a fifth of MR's gross movement (27 of 121).
+
+Gross is not net, and the distinction is the whole of §13.99: a five-question effect is only
+detectable if the **net** difference between two runs of one configuration is smaller than five, which
+nobody has measured. No threshold is stated in this section for that reason.
 
 ### 13.98.5 Adoption
 
