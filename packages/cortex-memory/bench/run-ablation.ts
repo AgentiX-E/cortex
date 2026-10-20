@@ -519,6 +519,19 @@ async function main(): Promise<void> {
     ...(relevance === null
       ? {}
       : { relevancePoolFor: (question: string) => [...relevance.candidatesFor(question)] }),
+    // §13.85's policy, forwarded to the RECORD as well as to the product. The two are different
+    // objects and this line is the whole difference: without it the prompt filters roles and the
+    // artifact divides by a denominator the run could never fill. `bench/**` is an entry point and
+    // is not covered, which is why the arm's own tests pin the behaviour and this line is stated
+    // where a reader of the run's configuration will look.
+    ...(armOptions.evidenceRoles === undefined
+      ? {}
+      : {
+          evidenceRoles: armOptions.evidenceRoles,
+          ...(armOptions.evidenceRolesRoutes === undefined
+            ? {}
+            : { evidenceRolesRoutes: armOptions.evidenceRolesRoutes }),
+        }),
     onProgress,
     // §13.30, and it is set by the workflow rather than defaulted here: an absent value
     // means no ceiling, which is what every archived run was produced under, so a default

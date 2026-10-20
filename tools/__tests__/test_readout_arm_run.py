@@ -1108,6 +1108,56 @@ class TestTheRoleComposition:
         assert 'turns' in r.stderr
 
 
+class TestTheCoverageTableUnderARoleFilter:
+    """The band table reads `total`, so it inherits whatever denominator the record carries.
+
+    §13.84's run had gold in an excluded role counted in `total`, and its MR bands read 63.9% at
+    0-50% "coverage" while every question sat below 75%. A reader needs to know which denominator
+    the bands were computed against before comparing them to another run's.
+    """
+
+    @staticmethod
+    def _report(total_all: int | None) -> dict:
+        overlap = {'carried': 1, 'total': 2}
+        if total_all is not None:
+            overlap['totalAll'] = total_all
+        return {
+            'memoryArmConfig': {'ask': 'enumerated', 'evidenceRoles': ['user']},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': [
+                {
+                    'questionId': 'q1',
+                    'capability': 'MR',
+                    'groundTruth': 'x',
+                    'answer': 'x',
+                    'correct': True,
+                    'goldOverlap': overlap,
+                }
+            ],
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--coverage', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_names_a_policy_denominator(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report(4))
+        assert r.returncode == 0, r.stderr
+        assert 'denominator' in r.stdout
+        assert 'totalAll' in r.stdout
+
+    def test_it_says_nothing_when_the_denominator_is_the_dataset(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report(None))
+        assert r.returncode == 0, r.stderr
+        assert 'denominator' not in r.stdout
+
+
 class TestThePoolTableUnderARoleFilter:
     """`--pool` is exhaustive only when every turn could reach the prompt.
 
@@ -1150,6 +1200,18 @@ class TestThePoolTableUnderARoleFilter:
         assert 'NOTE' in r.stdout
         assert 'user' in r.stdout
         assert 'NOT a budget reading' in r.stdout
+
+    def test_a_policy_denominator_replaces_the_mixing_warning(self, tmp_path: Path) -> None:
+        # §13.85 made the denominator follow the policy, so on an artifact made after it the
+        # partition IS exhaustive over the gold the policy admits and the old warning would be a
+        # false alarm. The two states are distinguished by `totalAll`, which only exists when the
+        # policy actually narrowed a question's gold.
+        report = self._report(['user'])
+        report['questions'][0]['goldOverlap']['totalAll'] = 10
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'totalAll' in r.stdout
+        assert 'NOT a budget reading' not in r.stdout
 
     def test_an_unfiltered_run_says_nothing_about_policy(self, tmp_path: Path) -> None:
         # The note must be a fact about the artifact, not boilerplate: a run that admitted every

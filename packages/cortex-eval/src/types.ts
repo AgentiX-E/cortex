@@ -386,8 +386,24 @@ export type RetrievedTurns = readonly string[];
 export type GoldOverlap = {
   /** Gold turns the carried context contains. */
   readonly carried: number;
-  /** Gold turns the dataset names for this question. */
+  /**
+   * Gold turns the **policy** admits for this question.
+   *
+   * Equal to the dataset's count unless the run filtered by role, in which case it is the count
+   * of gold turns in an admitted role — because those are the only ones the record could ever
+   * carry. §13.84's run is why: with `evidenceRoles: user`, MR's delivered share read 48.35%
+   * against a dataset total that included gold turns in the excluded role, and the reading
+   * looked like a retrieval collapse rather than a policy.
+   */
   readonly total: number;
+  /**
+   * Gold turns the dataset names, present only when it differs from {@link GoldOverlap.total}.
+   *
+   * Absent rather than equal, so an unfiltered run is byte-identical to every artifact that
+   * predates the field, and so the difference is a number on the record rather than a footnote
+   * in a document that a reader of the artifact cannot see.
+   */
+  readonly totalAll?: number | undefined;
   /**
    * Gold turns the ranking offered, when a ranking was consulted.
    *

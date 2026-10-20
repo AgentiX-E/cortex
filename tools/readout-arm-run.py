@@ -710,6 +710,12 @@ def evidence_roles(report: dict) -> list[str] | None:
     return [str(role) for role in roles]
 
 
+def _has_total_all(question: dict) -> bool:
+    """Whether this record's gold denominator already follows the run's role policy."""
+    overlap = question.get('goldOverlap')
+    return isinstance(overlap, dict) and isinstance(overlap.get('totalAll'), int)
+
+
 def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple[str, int]:
     """Where the gold went: never surfaced, cut by the budget, or delivered.
 
@@ -814,17 +820,28 @@ def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple
         lines.append(f'  {without_pool} record(s) without a pool: no ranking was consulted, '
                      'or the artifact predates the field')
     if roles is not None:
-        # The partition stops being exhaustive under a role filter, and saying so is the whole
-        # point: `pool - carried` is computed from the turns the prompt could carry, so a gold
-        # turn in an excluded role lands in "cut by the budget" whether the budget touched it or
-        # not. §13.86's run is the first where this mattered -- MR's "cut by the budget" rose from
-        # 301 to 1,710 gold turns on a filter that spends the same 48,000 characters.
-        lines.append(
-            f'  NOTE: this run admitted only {", ".join(roles)}. "cut by the budget" is '
-            '`pool - carried`, so gold in an excluded role is counted there whether or not the '
-            'budget reached it -- the column mixes policy with room and is NOT a budget '
-            'reading on this artifact.'
-        )
+        # Two states, and they need different words. Since §13.85 the denominator follows the
+        # policy, so a filtered artifact made after it carries `totalAll` on the records whose
+        # gold the policy narrowed and the partition is exhaustive over the gold the policy
+        # admits. An artifact made before it counts every gold turn against a delivery that can
+        # only carry admitted roles -- §13.84's MR read 48.35% that way, and its "cut by the
+        # budget" rose from 301 to 1,710 on a budget that never moved.
+        narrowed = sum(1 for question in questions if _has_total_all(question))
+        if narrowed:
+            lines.append(
+                f'  NOTE: this run admitted only {", ".join(roles)}, and its denominators follow '
+                f'that policy ({narrowed} record(s) carry `totalAll`). The partition is exhaustive '
+                'over the gold the policy admits; gold in an excluded role is not in `total` and '
+                'is therefore in no column here.'
+            )
+        else:
+            lines.append(
+                f'  NOTE: this run admitted only {", ".join(roles)} but its denominators do NOT '
+                'follow that policy, so "cut by the budget" is `pool - carried` against every '
+                'gold turn -- gold in an excluded role is counted there whether or not the budget '
+                'reached it. The column mixes policy with room and is NOT a budget reading on '
+                'this artifact.'
+            )
     if beyond_total:
         lines.append(
             f'  {beyond_total} gold turn(s) arrived from outside the pool: the window holds '
@@ -1603,6 +1620,16 @@ def main(argv: list[str]) -> int:
             )
             return 2
         print(f'records with coverage: {measured} of {len(questions)}')
+        # §13.85: the bands are computed from `total`, so a reader comparing this table against
+        # another run's has to know which denominator it was computed against. `totalAll` is the
+        # artifact's own statement that the policy, not the dataset, set the denominator.
+        narrowed = sum(1 for question in questions if _has_total_all(question))
+        if narrowed:
+            print(
+                f'denominator: the role policy on {narrowed} record(s) -- each carries `totalAll` '
+                'beside its `total`, so these bands are NOT comparable against a run whose '
+                'denominator was the dataset.'
+            )
         print(section)
         return 0
 

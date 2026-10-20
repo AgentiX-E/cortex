@@ -10231,9 +10231,17 @@ required and each has a failure it prevents:
   run without seeing why.** The roster gains `goldOverlap.totalAll` — the dataset's count — so the difference is
   a number in the artifact rather than a footnote in a document.
 
-Acceptance: the archived artifacts of `39260774611` and `39298662801` re-derive to their published numbers for the
-unfiltered one and to a policy-conditional denominator for the filtered one; `--pool` loses its `NOTE` because the
-partition is exhaustive again, and keeps the column named "cut by the budget" honestly.
+Acceptance, and what each clause can actually be checked against:
+
+- **an unfiltered run is unchanged** — testable offline and tested: `unfiltered['totalAll']` is absent and `total`
+  is the dataset's count.
+- **a filtered run on an unreached capability is unchanged** — tested with `IE` and a two-route reach.
+- **a filtered run on a reached capability carries `totalAll` beside `total`** — tested with `MR`.
+- **the archived artifacts cannot be re-derived**, because re-deriving needs the run. `39298662801` keeps its
+  published numbers and keeps the `--pool` warning that they are not a budget reading; the first artifact made
+  after this section is the one whose partition is exhaustive over the policy's gold.
+- **`--pool` and `--coverage` now distinguish the two states** by the presence of `totalAll`: a mixing warning on
+  an old artifact, a denominator statement on a new one, and nothing at all on an unfiltered run.
 
 ### 13.85.3 Why this precedes the next experiment
 

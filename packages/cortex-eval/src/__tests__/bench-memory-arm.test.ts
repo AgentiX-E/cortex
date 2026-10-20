@@ -3141,6 +3141,204 @@ describe('the evidence budget', () => {
 });
 
 /**
+ * The route table the gold denominator reads, pinned through its **effects**.
+ *
+ * `evidenceRouteOf` restates which route a capability answers on, because the denominator has to
+ * know whether the role filter reaches a question. It is not exported and not tested by reading
+ * source: the observable claim is that a reach naming a capability's route narrows that
+ * capability's denominator and a reach that does not name it leaves the denominator alone. A test
+ * that asserted the table's strings would pass while the table and the filter disagreed.
+ */
+describe('the route each capability answers on, as the denominator sees it', () => {
+  const USER_GOLD = '[2023/02/15 (Wed) 03:14] user: I went to Lisbon.';
+  const ASSISTANT_GOLD = '[2023/02/15 (Wed) 03:15] assistant: You went to Lisbon in May.';
+
+  async function overlapFor(
+    capability: string,
+    reach: readonly string[],
+  ): Promise<Record<string, unknown>> {
+    const dataset = {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability,
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: [USER_GOLD, ASSISTANT_GOLD],
+          sessions: [[USER_GOLD, ASSISTANT_GOLD]],
+          goldTurns: [USER_GOLD, ASSISTANT_GOLD],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+    const { report } = await runCortexMemoryArm(
+      dataset,
+      constantSystem('reference-pipeline', 'Lisbon'),
+      constantSystem('cortex-memory', 'Lisbon'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+        },
+        evidenceRoles: ['user'],
+        evidenceRolesRoutes: reach,
+      },
+    );
+    return report.questions![0]!.goldOverlap as unknown as Record<string, unknown>;
+  }
+
+  it('narrows the denominator on every capability whose route the reach names', async () => {
+    const pairs: readonly (readonly [string, string])[] = [
+      ['MR', 'multi-session'],
+      ['TR', 'temporal'],
+      ['ABS', 'abstention'],
+      ['KU', 'knowledge-update'],
+    ];
+    for (const [capability, route] of pairs) {
+      const overlap = await overlapFor(capability, [route]);
+      expect(overlap['total']).toBe(1);
+      expect(overlap['totalAll']).toBe(2);
+    }
+  });
+
+  it('leaves a capability alone when only another route is in the reach', async () => {
+    // IE answers on the flat route; a reach of `multi-session` cannot have filtered it, so a
+    // denominator that shrank here would claim a policy the run never ran on that capability.
+    const overlap = await overlapFor('IE', ['multi-session']);
+    expect(overlap['total']).toBe(2);
+    expect(overlap['totalAll']).toBeUndefined();
+  });
+});
+
+/**
+ * The gold denominator has to follow the policy, not the dataset./**
+ * The gold denominator has to follow the policy, not the dataset.
+ *
+ * §13.84's run is why. With `evidenceRoles: user` reaching two routes, MR's delivered share read
+ * **48.35%** while the window grew and the budget spent the same characters: `goldOverlap`
+ * compared the turns the record carried against **every** gold turn, and a gold turn in an
+ * excluded role can never be carried. The reading looked like a retrieval collapse and was a
+ * denominator.
+ *
+ * The repair keeps two numbers instead of one: `total` is the gold the policy admits and
+ * `totalAll` is the dataset's, present only when the two differ. An unfiltered run is therefore
+ * byte-identical to every archived artifact, which is the property the whole comparison rests on.
+ */
+describe('the gold denominator follows the role policy', () => {
+  const USER_GOLD = '[2023/02/15 (Wed) 03:14] user: I went to Lisbon.';
+  const ASSISTANT_GOLD = '[2023/02/15 (Wed) 03:15] assistant: You went to Lisbon in May.';
+  const PLAIN_GOLD = 'a gold turn whose role cannot be read';
+
+  function dataset(goldTurns: string[], capability = 'MR'): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability,
+          questionType: capability === 'MR' ? 'multi-session' : 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: [USER_GOLD, ASSISTANT_GOLD],
+          sessions: [[USER_GOLD, ASSISTANT_GOLD]],
+          goldTurns,
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+  }
+
+  async function overlap(
+    goldTurns: string[],
+    capability: string,
+    arm: { evidenceRoles?: readonly string[]; evidenceRolesRoutes?: readonly string[] },
+  ): Promise<Record<string, unknown>> {
+    const { report } = await runCortexMemoryArm(
+      dataset(goldTurns, capability),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      constantSystem('cortex-memory', 'Lisbon'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+        },
+        ...arm,
+      },
+    );
+    return report.questions![0]!.goldOverlap as unknown as Record<string, unknown>;
+  }
+
+  it('counts only the gold the policy admits, and keeps the dataset total beside it', async () => {
+    const overlapOfMr = await overlap([USER_GOLD, ASSISTANT_GOLD], 'MR', {
+      evidenceRoles: ['user'],
+      evidenceRolesRoutes: ['multi-session'],
+    });
+
+    // One of the two gold turns is an assistant turn, which this policy cannot carry, so the
+    // ratio is against one rather than two -- and the two is still on the record.
+    expect(overlapOfMr['total']).toBe(1);
+    expect(overlapOfMr['totalAll']).toBe(2);
+  });
+
+  it('keeps a gold turn whose role cannot be read', async () => {
+    // The same rule the filter itself follows: an unreadable role is not an excluded role.
+    const overlapOfMr = await overlap([USER_GOLD, PLAIN_GOLD], 'MR', {
+      evidenceRoles: ['user'],
+      evidenceRolesRoutes: ['multi-session'],
+    });
+
+    expect(overlapOfMr['total']).toBe(2);
+    expect(overlapOfMr['totalAll']).toBeUndefined();
+  });
+
+  it('leaves an unreached capability counting every gold turn', async () => {
+    // IE answers on the flat route; a filter that reaches multi-session and temporal has not
+    // touched it, and a denominator that shrank here would report a policy the run never ran.
+    const overlapOfIe = await overlap([USER_GOLD, ASSISTANT_GOLD], 'IE', {
+      evidenceRoles: ['user'],
+      evidenceRolesRoutes: ['multi-session', 'temporal'],
+    });
+
+    expect(overlapOfIe['total']).toBe(2);
+    expect(overlapOfIe['totalAll']).toBeUndefined();
+  });
+
+  it('records no `totalAll` at all when every gold turn is admissible', async () => {
+    // Absent rather than equal: the field exists to show a *difference*, and a run whose policy
+    // admits everything must be byte-identical to the artifacts that predate the field.
+    const unfiltered = await overlap([USER_GOLD, ASSISTANT_GOLD], 'MR', {});
+    expect(unfiltered['total']).toBe(2);
+    expect('totalAll' in unfiltered).toBe(false);
+  });
+});
+
+/**
  * The evidence roles, which §13.82 measured and §13.83 registered.
  *
  * The reading that put this axis on the table: on the 48,000-character run the multi-session

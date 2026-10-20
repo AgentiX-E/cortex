@@ -69,7 +69,7 @@ import {
 } from './retrieval.js';
 import { DEFAULT_RELEVANCE_TOP_K } from './relevance-index.js';
 import { classifyTrFailure } from './tr-failure-class.js';
-import type { AblationResult, BenchmarkDataset, MemorySystem } from './types.js';
+import type { AblationResult, BenchmarkDataset, GoldOverlap, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
 export type CortexMemoryArmEnv = Readonly<Record<string, string | undefined>>;
@@ -541,6 +541,69 @@ const EVIDENCE_ROLES: Record<string, true> = { user: true, assistant: true };
 export function roleOfTurn(turn: string): string | undefined {
   const match = EVIDENCE_ROLE_PREFIX.exec(turn);
   return match?.[1]?.toLowerCase();
+}
+
+/**
+ * The route whose reach decides whether a question's gold is role-filtered.
+ *
+ * ## Why this table exists, and why it is in this package
+ *
+ * The filter's reach is expressed in routes, so the gold denominator has to know which route a
+ * question answers on. That routing is `benchmark.ts`'s (`MR` to `answerSessions`, `TR` to
+ * `answerTemporal`, `ABS` to `answerAbstention`, `KU` to `answerKnowledgeUpdate`, everything
+ * else to `answer`), and duplicating it anywhere but here would be a second place for it to
+ * drift. It lives in the same package as the dispatch so a test can read both.
+ *
+ * ## The one row that is approximate, stated
+ *
+ * `IE` covers `single-session-user`, `single-session-assistant` and `single-session-preference`,
+ * which dispatch to three different methods. The table answers `flat`, which is exact for the
+ * registered reach (`multi-session,temporal` — none of IE's routes) and would be wrong only for
+ * a reach that named `assistant` or `preference` without naming `flat`. That is written down
+ * rather than guarded because a guard would have to re-derive `questionType` routing here, which
+ * is the duplication this table exists to avoid.
+ */
+function evidenceRouteOf(capability: string): string {
+  switch (capability) {
+    case 'MR':
+      return 'multi-session';
+    case 'TR':
+      return 'temporal';
+    case 'ABS':
+      return 'abstention';
+    case 'KU':
+      return 'knowledge-update';
+    default:
+      return 'flat';
+  }
+}
+
+/**
+ * The gold turns a question's policy admits, or every gold turn when no filter reaches it.
+ *
+ * ## Why the denominator, and not the numerator, is what moves
+ *
+ * `carried` counts delivered turns, and a filtered run can only deliver admitted roles. Comparing
+ * it against a dataset total that includes excluded roles bounds the ratio by the policy rather
+ * than by the room: §13.84 read MR at 48.35% on a window that had just grown by twenty turns.
+ * The gold the policy admits is the largest set the record could ever carry, so it is the honest
+ * denominator; the dataset's own count stays on the record as `totalAll`.
+ *
+ * An unreadable role is **kept**, for the reason the filter itself keeps it: a classifier failure
+ * must not shrink a denominator.
+ */
+function eligibleGoldOf(
+  goldTurns: readonly string[] | undefined,
+  roles: readonly string[] | undefined,
+  reach: readonly string[] | undefined,
+  capability: string,
+): readonly string[] | undefined {
+  if (goldTurns === undefined || roles === undefined) return goldTurns;
+  if (reach !== undefined && !reach.includes(evidenceRouteOf(capability))) return goldTurns;
+  return goldTurns.filter((gold) => {
+    const role = roleOfTurn(gold);
+    return role === undefined || roles.includes(role);
+  });
 }
 
 /** The prefix `roleOfTurn` reads. Exported nowhere: the shape is stated by the function. */
@@ -1548,6 +1611,22 @@ export type CortexMemoryArmRunOptions = {
   /** Fixed timestamp, so a report is reproducible. */
   generatedAt?: string;
   /**
+   * §13.85's policy, so the gold denominator follows the filter the product applied.
+   *
+   * ## Why the run needs it when the product already has it
+   *
+   * Two different objects: the product's options decide what reaches the prompt, these decide what
+   * the **record** compares the delivery against. The record is built after the run from the
+   * capture, in this package, and a measurement that did not know the policy would divide by a
+   * denominator the run could never fill -- §13.84's MR read 48.35% that way on a window that had
+   * just grown by twenty turns.
+   *
+   * Absent means every role, which is the state every artifact before §13.84 was produced in.
+   */
+  evidenceRoles?: readonly string[] | undefined;
+  /** Which routes the filter reached, so the denominator follows the same reach. */
+  evidenceRolesRoutes?: readonly string[] | undefined;
+  /**
    * The switches this run was configured with.
    *
    * Recorded in the report rather than only logged, for §20's reason: two
@@ -1770,6 +1849,13 @@ export async function runCortexMemoryArm(
     report.ablation,
     options.featureConfig,
     options.evidenceBound,
+    // §13.85's policy travels beside the pool, because the denominator and the numerator are two
+    // halves of one measurement and a caller that passed one without the other would publish a
+    // ratio between populations.
+    {
+      ...(options.evidenceRoles === undefined ? {} : { roles: options.evidenceRoles }),
+      ...(options.evidenceRolesRoutes === undefined ? {} : { reach: options.evidenceRolesRoutes }),
+    },
     options.relevancePoolFor,
   );
   // Derived from the records rather than tallied while building them, so the
@@ -1898,11 +1984,53 @@ export async function runCortexMemoryArm(
  * classifier had called ungrounded. "Nobody classified these" and "these were all
  * ungrounded" are different findings, and the artifact was publishing the second.
  */
+/**
+ * One question's gold overlap, with the denominator the run's policy implies.
+ *
+ * `totalAll` is attached only when the eligible set is **smaller** than the dataset's. Length
+ * rather than identity: a filter that reaches a question but excludes nothing returns a new list
+ * of the same size, and a field saying "the dataset named 2 and the policy admitted 2" is noise
+ * standing where a reader looks for a difference.
+ *
+ * `null` passes through: a question with no gold turns has no ratio, and inventing one here would
+ * make "the dataset names no gold" indistinguishable from "none of the gold reached the reader".
+ */
+function overlapOf(
+  question: BenchmarkDataset['questions'][number],
+  retrieved: readonly string[],
+  poolFor: ((question: string) => readonly string[] | undefined) | undefined,
+  rolePolicy: { roles?: readonly string[]; reach?: readonly string[] } | undefined,
+): GoldOverlap | null {
+  const eligible = eligibleGoldOf(
+    question.goldTurns,
+    rolePolicy?.roles,
+    rolePolicy?.reach,
+    question.capability,
+  );
+  // Counted before the null check rather than after it, so both `?? 0` arms are reachable: a
+  // question with no gold turns at all evaluates them, and that is the only state in which the
+  // overlap is null. A `?? 0` inside the returned object would be dead code that reads as a
+  // guard -- the shape §57.6 removed a field over.
+  const eligibleCount = eligible?.length ?? 0;
+  const goldCount = question.goldTurns?.length ?? 0;
+  const overlap = goldOverlapOf(retrieved, eligible, poolFor?.(question.question));
+  if (overlap === null || eligibleCount === goldCount) return overlap;
+  return { ...overlap, totalAll: goldCount };
+}
+
 function buildArmRoster(
   dataset: BenchmarkDataset,
   ablation: AblationResult,
   featureConfig: FeatureConfig | undefined,
   evidenceBound?: EvidenceBoundOptions,
+  /**
+   * §13.85's policy, so the gold denominator can follow it.
+   *
+   * Two arrays rather than the arm's options object, because this function's other parameters are
+   * already the narrowest thing each caller needs and an options bag here would make it depend on
+   * fields it never reads.
+   */
+  rolePolicy?: { roles?: readonly string[]; reach?: readonly string[] },
   /**
    * The candidates the ranking offered under a question, or `undefined` when none was.
    *
@@ -2019,11 +2147,7 @@ function buildArmRoster(
       // The third count, when a ranking was consulted: how much of this question's gold
       // the ranking offered at all. `total - pool` is the ranking's miss, `pool - carried`
       // is the budget's. §13.61.7 is what six runs could not say without it.
-      goldOverlap: goldOverlapOf(
-        retrievedContexts[i] ?? [],
-        question.goldTurns,
-        poolFor?.(question.question),
-      ),
+      goldOverlap: overlapOf(question, retrievedContexts[i] ?? [], poolFor, rolePolicy),
     })),
     featureConfig,
     ablation.featureCorrect,
