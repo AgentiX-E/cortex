@@ -10388,3 +10388,30 @@ Acceptance, and what each clause can be checked against:
   is the first that carries it, and `--caps` refuses on the old ones with a message naming the reason.
 - **`--caps` reads it** — tested for the present case, the absent case, and a half-written field (spreads without
   denominators cannot become a rate).
+
+## 13.90 A third sample of the adopted configuration, whose second purpose is the instrument's real output
+
+### 13.90.1 Why
+
+§13.88's projection is tested against fixtures; the bench path that fills it is an entry point and is not covered.
+The cheapest honest way to know the field reaches a real artifact is a run that changes nothing and reads
+`--caps` on it.
+
+It also gives a **third** sample of one configuration, which is what the corrected reading rule needs: the two
+existing samples put the roster's mean at 406 and 402, and a third narrows the band a per-capability claim would
+have to clear. The same run is the first whose MR mean exists at all — the previous two recorded only one
+repetition per capability.
+
+### 13.90.2 The registration
+
+Configuration: §10.3 exactly. No variable.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | the artifact carries `featureByCapability`, `baselineByCapability` and `questionsByCapability`, and `--caps` renders them | any is absent |
+| **2** | the roster's mean lands in **398 – 406** and no capability's mean departs its two earlier single readings by more than 7 | outside either bound |
+| **3** | MR's mean sits between its two single readings, **83 ≤ mean ≤ 90** | outside |
+
+Prediction 2's upper bound is the highest mean measured so far and its lower bound the control's; a run outside
+that band would say the configuration's own spread is wider than three samples suggest, which would make every
+threshold in §13.89 need restating before that experiment is registered.
