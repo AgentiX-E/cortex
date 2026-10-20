@@ -1224,6 +1224,75 @@ class TestThePerCapabilitySpread:
         assert r.returncode == 2
 
 
+class TestWhereTheGoldNumbersAre:
+    """Retrieval or reader: the one split that decides which axis can fix a wrong answer.
+
+    For each wrong MR answer whose gold states a number, the table asks whether those digits appear
+    anywhere in the turns the prompt carried. Absent is exact -- a digit string that appears nowhere
+    was not read -- and present is an upper bound, because a substring test cannot tell a payment from
+    a date. The first reading of run `39367801501` put 24 of 31 present and 7 absent.
+    """
+
+    @staticmethod
+    def _report(turns: str, gold: str, stated: str, correct: bool = False) -> dict:
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2},
+            'questions': [
+                {
+                    'questionId': 'q1',
+                    'capability': 'MR',
+                    'groundTruth': gold,
+                    'answer': stated,
+                    'correct': correct,
+                    'rawOutput': 'Step 1\n- x\nStep 2 — 1',
+                    'turns': [{'index': 0, 'text': turns}],
+                }
+            ],
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--numbers', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_finds_a_number_that_reached_the_window(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report('I paid $720 for the course.', '$720', '700'))
+        assert r.returncode == 0, r.stderr
+        assert 'in the window 1   absent 0' in r.stdout
+
+    def test_it_reports_a_number_that_did_not(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report('I paid $720 for the course.', '$495', '375'))
+        assert r.returncode == 0, r.stderr
+        assert 'in the window 0   absent 1' in r.stdout
+        assert '495' in r.stdout
+
+    def test_a_decimal_keeps_its_leading_zero(self, tmp_path: Path) -> None:
+        # Normalising the whole string with `lstrip('0')` turns `0.5` into `.5`, which then fails to
+        # match the `0.5` the evidence states and reports a delivered number as absent. That is the
+        # defect the first reading of run 39367801501 hit on two records.
+        r = self._run(tmp_path, self._report('I jogged 0.5 hours.', '0.5 hours', '30 minutes'))
+        assert r.returncode == 0, r.stderr
+        assert 'in the window 1   absent 0' in r.stdout
+
+    def test_a_thousands_separator_is_not_a_different_number(self, tmp_path: Path) -> None:
+        # The dataset writes `1,998` in the gold and `1998` in the turn, or the reverse. Treating the
+        # comma as part of the number would report a delivery that happened as a retrieval failure.
+        r = self._run(tmp_path, self._report('The bill was 1998 dollars.', '1,998', '2000'))
+        assert r.returncode == 0, r.stderr
+        assert 'in the window 1   absent 0' in r.stdout
+
+    def test_a_correct_answer_is_not_in_the_table(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report('I paid $720.', '$720', '$720', correct=True))
+        assert r.returncode == 2
+        assert 'no wrong MR record' in r.stderr
+
+
 class TestTheCountingQuestions:
     """The subset where a list's length can be compared with the gold *number*.
 

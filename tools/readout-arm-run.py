@@ -38,6 +38,7 @@ Usage:
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
+    python3 tools/readout-arm-run.py --numbers path/to/report.json
     python3 tools/readout-arm-run.py --counting path/to/report.json
     python3 tools/readout-arm-run.py --sweep path/to/report.json
     python3 tools/readout-arm-run.py --lists path/to/report.json
@@ -1442,6 +1443,98 @@ def item_lines_of(raw: str, ask: str | None) -> list[str]:
     return [line.strip() for line in raw.split('\n') if LIST_ITEM.match(line)]
 
 
+# A number as a gold states it: digits, thousands separators, an optional decimal part. Currency,
+# units and words are dropped because the question is whether the digits reached the prompt, not
+# whether the sentence around them did.
+GOLD_NUMBER = re.compile(r'\d[\d,]*(?:\.\d+)?')
+
+
+def numbers_of(text: str) -> set[str]:
+    """The distinct numbers in a string, commas removed and leading zeros trimmed.
+
+    `1,998` and `1998` are one number; the dataset writes both. Trailing `.0` is kept as written,
+    because `2` and `2.0` are different strings in the evidence and collapsing them would report a
+    delivery that did not happen.
+    """
+    out = set()
+    for raw in GOLD_NUMBER.findall(text):
+        whole, _, fraction = raw.replace(',', '').partition('.')
+        # Leading zeros belong to the integer part and to nothing else: `lstrip('0')` on the whole
+        # string turns `0.5` into `.5`, which then fails to match the `0.5` the evidence states and
+        # reports a delivered number as absent. The first reading of run `39367801501` did exactly
+        # that to `7024f17c` and `9aaed6a3`.
+        whole = whole.lstrip('0') or '0'
+        out.add(f'{whole}.{fraction}' if fraction else whole)
+    return out
+
+
+def numbers_section(questions: list[dict]) -> tuple[str, int]:
+    """Where the gold's numbers are: inside the window, or nowhere in it.
+
+    ## The two failures this separates, and why the separation is worth a table
+
+    §13.92's premise is about the reader's work list, but a wording can only matter if the number is
+    there to be found. For each wrong MR answer whose gold states a number, this asks one question:
+    do the gold's digits appear anywhere in the turns the prompt carried?
+
+    - **absent** — the number is not in the window at all. That is retrieval, and no instruction
+      reaches it.
+    - **present** — the digits are in the window and the answer is something else. That is the
+      reader's, and it is the only kind of MR error the ask axis can address.
+
+    ## Why "present" is an upper bound on "stated"
+
+    A substring test cannot tell "she paid $720" from "720 days ago", so a present number is not
+    proof that the answer was stated. The number of *absent* golds is exact -- a digit string that
+    appears nowhere was certainly not read -- and the present count is an upper bound on what a
+    wording could fix. Both are stated that way in the output rather than sold as one measurement.
+    """
+    rows = []
+    for question in questions:
+        if question.get('capability') != 'MR' or question.get('correct'):
+            continue
+        gold = numbers_of(str(question.get('groundTruth')))
+        if not gold:
+            continue
+        text = ' '.join(
+            turn.get('text', '') if isinstance(turn, dict) else '' for turn in (question.get('turns') or [])
+        )
+        flat = text.replace(',', '')
+        missing = sorted(number for number in gold if number not in flat)
+        rows.append(
+            {
+                'id': str(question.get('questionId', '?')),
+                'gold': str(question.get('groundTruth'))[:20],
+                'stated': str(question.get('answer'))[:16],
+                'missing': missing,
+            }
+        )
+    if not rows:
+        return '', 0
+
+    absent = [row for row in rows if row['missing']]
+    present = [row for row in rows if not row['missing']]
+    lines = ['', 'where the gold numbers are, for the wrong MR answers that state one']
+    lines.append(
+        f'  wrong with a number in the gold {len(rows)}   '
+        f'in the window {len(present)}   absent {len(absent)}'
+    )
+    lines.append(
+        '  "absent" is exact: a digit string that appears nowhere was not read, so that error is '
+        'retrieval and no wording reaches it. "in the window" is an upper bound -- a substring test '
+        'cannot tell a payment from a date -- so it bounds what the reader could have used.'
+    )
+    if absent:
+        lines.append('')
+        lines.append(f'  {"question":<16}{"gold":>20}  {"stated":>16}  missing')
+        for row in absent:
+            lines.append(
+                f'  {row["id"][:16]:<16}{row["gold"]:>20}  {row["stated"]:>16}  '
+                f'{", ".join(row["missing"])}'
+            )
+    return '\n'.join(lines), len(rows)
+
+
 def counting_section(questions: list[dict], ask: str | None) -> tuple[str, int]:
     """The counting questions: what the answer was, and how long the list behind it was.
 
@@ -1850,6 +1943,11 @@ def main(argv: list[str]) -> int:
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
     )
     parser.add_argument(
+        '--numbers',
+        action='store_true',
+        help='for wrong MR answers with a number in the gold: is that number in the window',
+    )
+    parser.add_argument(
         '--counting',
         action='store_true',
         help='print the MR counting questions: the list behind each answer, against the gold count',
@@ -1965,6 +2063,24 @@ def main(argv: list[str]) -> int:
         section, measured = reach_section(questions)
         if measured == 0:
             print(f'{args.report}: no record carries goldRanks.', file=sys.stderr)
+            return 2
+        print(section)
+        return 0
+
+    if args.numbers:
+        if questions is None:
+            print(
+                f'{args.report}: no per-question roster, so the window cannot be searched for the '
+                'gold numbers.',
+                file=sys.stderr,
+            )
+            return 2
+        section, measured = numbers_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no wrong MR record carries a number in its gold.',
+                file=sys.stderr,
+            )
             return 2
         print(section)
         return 0
