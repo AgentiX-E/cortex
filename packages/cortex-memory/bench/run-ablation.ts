@@ -54,6 +54,7 @@ import {
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
   describeEmbeddingCachePersist,
+  expandMultiSessionQueries,
   persistEmbeddingCache,
   restoreArmEmbeddingCache,
   roleOfTurn,
@@ -63,9 +64,11 @@ import {
   toMemoryArmConfig,
   type BenchmarkProgress,
   type EmbeddingPreflight,
+  type ExpansionTarget,
   type RelevanceCase,
   type RelevanceIndex,
   type RelevanceIndexOptions,
+  type QuestionExpansion,
 } from '@agentix-e/cortex-eval';
 import {
   CortexMemory,
@@ -303,14 +306,48 @@ async function main(): Promise<void> {
   // decision written in this file is a decision no test can reach, and a value that
   // never reaches the environment is a value the pre-registration guard cannot compare
   // against `§10.3`.
+  // §13.97's single variable, produced before the index it feeds.
+  //
+  // The phrases cannot be written while answering: `CortexMemory`'s `relevanceFor` is a
+  // synchronous table lookup filled by the index below, so a phrase produced at answer time
+  // would score every turn at the index's floor and the treatment would be unmeasurable.
+  // That is why the call sits here rather than in the product, and why the index takes the
+  // phrases as data (`RelevanceCase.queries`).
+  //
+  // Only the multi-session questions are expanded. The other four capabilities keep the
+  // exact queries, ranking and window they had in the prior run, which is this dispatch's
+  // internal control -- `expandMultiSessionQueries` owns the routing rule so a caller cannot
+  // widen it by passing a different dataset.
+  // The targets are named with their type rather than inlined, because the routing rule that
+  // confines expansion to one capability lives behind `ExpansionTarget.capability` and a
+  // caller that let the shape be inferred could pass a field the callee never reads.
+  const expansionTargets: readonly ExpansionTarget[] = dataset.questions.map((question) => ({
+    question: question.question,
+    capability: question.capability,
+  }));
+  const expansion: QuestionExpansion | null =
+    armOptions.queryExpansion === 'llm'
+      ? await expandMultiSessionQueries(llm, expansionTargets)
+      : null;
+  if (expansion !== null) {
+    console.log(
+      `Query expansion: ${expansion.questions} multi-session questions, ` +
+        `${expansion.phrases} phrases, ${expansion.empty} refused`,
+    );
+  }
+
   // The cases the index is built over: each question with its own context, and nothing
   // else. The type carries no ground-truth field, which is what makes the signal
   // non-oracle structurally rather than by convention -- the answer key is not a value
   // this call could reach even if a later edit wanted it to.
-  const relevanceCases: readonly RelevanceCase[] = dataset.questions.map((question) => ({
-    question: question.question,
-    context: question.context,
-  }));
+  const relevanceCases: readonly RelevanceCase[] = dataset.questions.map((question) => {
+    const phrases = expansion?.byQuestion.get(question.question);
+    return {
+      question: question.question,
+      context: question.context,
+      ...(phrases === undefined ? {} : { queries: phrases }),
+    };
+  });
   const relevanceOptions: RelevanceIndexOptions = { topK: armOptions.relevanceTopK };
   // §13.63. Two mechanisms behind one name-typed switch, so the artifact's
   // `relevanceSignal` says which one ranked the turns and the two arms are comparable
@@ -497,12 +534,27 @@ async function main(): Promise<void> {
   const result = await runCortexMemoryArm(dataset, baseline, feature, {
     runs,
     scorer: judgeScorer(createLlmJudge(llm)),
-    memoryArmConfig: toMemoryArmConfig(armOptions, {
-      provider: provenance.provider,
-      model: provenance.model,
-      dimensions: provenance.dimensions,
-      preflight: 'ok',
-    }),
+    memoryArmConfig: toMemoryArmConfig(
+      armOptions,
+      {
+        provider: provenance.provider,
+        model: provenance.model,
+        dimensions: provenance.dimensions,
+        preflight: 'ok',
+      },
+      // §13.97's reach, as measured rather than as configured. The counts are what makes the
+      // run falsifiable from its own artifact: `questions=121` says the treatment reached the
+      // route, `phrases` says the model produced usable phrases, and `refused` separates a
+      // model problem from a wiring problem. Absent when the arm ran the control, because a
+      // zeroed object would read as "expanded nothing" rather than "did not expand".
+      expansion === null
+        ? undefined
+        : {
+            questions: expansion.questions,
+            phrases: expansion.phrases,
+            refused: expansion.empty,
+          },
+    ),
     featureConfig: { cortexMemory: true },
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the

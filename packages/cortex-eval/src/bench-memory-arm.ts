@@ -174,6 +174,28 @@ export type CortexMemoryArmOptions = {
    */
   reviewPass?: string | undefined;
   /**
+   * Whether the multi-session route's relevance index is built from the question alone or
+   * from the question plus model-written activity phrases (§13.97).
+   *
+   * ## What the variable changes, and what it cannot
+   *
+   * `llm` adds one model call per multi-session question **before** the relevance index is
+   * built, and retrieves that question against `[question, ...phrases]`. Nothing else moves:
+   * the phrases reach `RelevanceCase.queries` for MR questions only, so the four untouched
+   * capabilities keep the exact queries, the exact ranking and therefore the exact window
+   * they had in the prior run -- which is this dispatch's internal control.
+   *
+   * The phrases cannot be produced during answering. `CortexMemory`'s `relevanceFor` is a
+   * synchronous table lookup built before the ablation, so a phrase written at answer time
+   * would read the index's floor score and the treatment would be unmeasurable. That is why
+   * the call sits here, beside the index construction, rather than in the product.
+   *
+   * Optional, and `none` is the identity: every archived artifact was produced without it, so
+   * a missing field cannot mean a treatment that was not administered. `toMemoryArmConfig`
+   * normalises it so the artifact always states a value.
+   */
+  queryExpansion?: string | undefined;
+  /**
    * How many turns of evidence each roster record carries. `§13.12`'s bound.
    *
    * ## Why this is an option rather than a constant in the entry point
@@ -742,6 +764,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
     reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
+    queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
@@ -1038,6 +1061,33 @@ function readReviewPass(raw: string | undefined): string {
   if (!REVIEW_PASSES.includes(trimmed)) {
     throw new Error(
       `${REVIEW_PASS_VARIABLE} must be one of ${REVIEW_PASSES.map((name) => JSON.stringify(name)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}.`,
+    );
+  }
+  return trimmed;
+}
+
+/** The variable this arm reads for §13.97's query expansion. */
+const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
+
+/** The expansions this arm can dispatch, in the order the config line spells them. */
+const QUERY_EXPANSIONS: readonly string[] = ['none', 'llm'];
+
+/**
+ * Read the query expansion, rejecting anything this arm does not implement.
+ *
+ * Rejected rather than defaulted for the reason `readReviewPass` rejects: a run dispatched to widen
+ * retrieval that silently ran the bare question would publish the control's reading under the
+ * treatment's name. The two values are named rather than boolean because `none` has to be
+ * *sayable* -- an absent field and a run that chose the control are different facts, and an
+ * artifact that spells `none` is the one a reader can compare against `llm`.
+ */
+function readQueryExpansion(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (trimmed === '') return 'none';
+  if (!QUERY_EXPANSIONS.includes(trimmed)) {
+    throw new Error(
+      `${QUERY_EXPANSION_VARIABLE} must be one of ${QUERY_EXPANSIONS.map((name) => JSON.stringify(name)).join(', ')} ` +
         `or unset, got ${JSON.stringify(raw)}.`,
     );
   }
@@ -1435,6 +1485,15 @@ export function toMemoryArmConfig(
    * artifact keeps reading as "predates the field".
    */
   embedding?: MemoryArmConfig['embedding'],
+  /**
+   * How far §13.97's expansion reached, when the run administered it.
+   *
+   * Measured by the caller rather than derived from the option, for the reason `embedding`
+   * is: the counts exist only in the process that made the model calls, and an option
+   * projection cannot invent them. Absent means the control ran, which is a different fact
+   * from a treatment that reached zero questions.
+   */
+  expansion?: MemoryArmConfig['queryExpansionCounts'],
 ): MemoryArmConfig {
   return {
     threshold: options.threshold,
@@ -1453,6 +1512,13 @@ export function toMemoryArmConfig(
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
     ask: options.ask,
     reviewPass: options.reviewPass ?? 'none',
+    // §13.97. Always present for the reason `reviewPass` is: `none` is a state a run can be
+    // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
+    // "predates the field" as the same bytes.
+    queryExpansion: options.queryExpansion ?? 'none',
+    // §13.97's reach. Spread conditionally because the absent state is "the control ran", and
+    // a zeroed object would answer a question the run never asked.
+    ...(expansion === undefined ? {} : { queryExpansionCounts: expansion }),
     askRoutes: ASK_ROUTES[options.ask] ?? [],
     // Projected rather than inferred from the signal name, for the reason the two
     // thresholds are projected verbatim: the width is a separate claim about the same

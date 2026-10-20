@@ -328,6 +328,12 @@ export {
   type Retrieval,
 } from './relevance-index.js';
 
+export {
+  expandMultiSessionQueries,
+  type ExpansionTarget,
+  type QuestionExpansion,
+} from './query-expansion.js';
+
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
 export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-options.js';

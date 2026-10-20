@@ -292,3 +292,86 @@ describe('buildRetrievalRelevanceIndex', () => {
     expect(index.relevanceFor('how many bikes do I own', 'a near turn')).toBe(first);
   });
 });
+
+describe('buildRetrievalRelevanceIndex with query expansion', () => {
+  /**
+   * A geometry where the activity turn is orthogonal to the question and identical to
+   * the phrase: this is the §13.96 shape in miniature -- the evidence is carried, but the
+   * question's own words point nowhere near it.
+   */
+  const EXPANDED = {
+    'how many projects did I lead': [1, 0],
+    'activity turn': [0, 1],
+    'led a consumer-research project': [0, 1],
+  } as const;
+
+  it('lets a phrase surface a turn the question alone scores at zero', async () => {
+    const bare = await buildRetrievalRelevanceIndex(tableEmbedding(EXPANDED, DIM), [
+      { question: 'how many projects did I lead', context: ['activity turn'] },
+    ]);
+    const expanded = await buildRetrievalRelevanceIndex(tableEmbedding(EXPANDED, DIM), [
+      {
+        question: 'how many projects did I lead',
+        queries: ['led a consumer-research project'],
+        context: ['activity turn'],
+      },
+    ]);
+
+    expect(bare.relevanceFor('how many projects did I lead', 'activity turn')).toBeCloseTo(0, 10);
+    expect(expanded.relevanceFor('how many projects did I lead', 'activity turn')).toBeCloseTo(
+      1,
+      10,
+    );
+    // The key stays the question: a phrase changes the ranking, never the namespace.
+    expect(expanded.relevanceFor('led a consumer-research project', 'activity turn')).toBe(
+      floorOf(expanded),
+    );
+  });
+
+  it('retrieves the question first and the phrases after it', async () => {
+    // Order is the contract the fusion relies on: `retrieveTopKByQueries` weights every
+    // ranking equally, and the question is the ranking a run must never lose. The
+    // assertion is on the call, because the score alone cannot show which query produced it.
+    const seen: (readonly string[])[] = [];
+    await buildRetrievalRelevanceIndex(
+      tableEmbedding(EXPANDED, DIM),
+      [
+        {
+          question: 'how many projects did I lead',
+          queries: ['led a consumer-research project', 'ran a review'],
+          context: ['activity turn'],
+        },
+      ],
+      {
+        retrieve: (queries) => {
+          seen.push([...queries]);
+          return Promise.resolve([{ id: 't', text: 'activity turn', score: 0.5, index: 0 }]);
+        },
+      },
+    );
+
+    expect(seen).toEqual([
+      ['how many projects did I lead', 'led a consumer-research project', 'ran a review'],
+    ]);
+  });
+
+  it('treats an empty phrase list as the bare question', async () => {
+    // Absent and empty are the same state by contract, so a caller that passes the
+    // expansion's map through unconditionally cannot accidentally change a control run.
+    const absent = await buildRetrievalRelevanceIndex(tableEmbedding(EXPANDED, DIM), [
+      { question: 'how many projects did I lead', context: ['activity turn'] },
+    ]);
+    const empty = await buildRetrievalRelevanceIndex(tableEmbedding(EXPANDED, DIM), [
+      {
+        question: 'how many projects did I lead',
+        queries: [],
+        context: ['activity turn'],
+      },
+    ]);
+
+    expect(empty.relevanceFor('how many projects did I lead', 'activity turn')).toBe(
+      absent.relevanceFor('how many projects did I lead', 'activity turn'),
+    );
+    expect(empty.scoredPairs).toBe(absent.scoredPairs);
+  });
+});

@@ -84,6 +84,10 @@ CONCEPT_TO_INPUT = {
     # all. Registered at the identity (`all`/`all`), because the experiment that narrows them is
     # the section's own dispatch and the adopted state has to be on the record meanwhile.
     "reviewPass": "cortex_memory_review_pass",
+    # §13.97's ranking-queries variable. Registered at `none`; the expansion run departs from the
+    # table with `--set`, which this guard deliberately does not read -- its subject is the
+    # registered configuration, not every dispatch.
+    "queryExpansion": "cortex_memory_query_expansion",
     "evidenceRoles": "cortex_memory_evidence_roles",
     "evidenceRolesRoutes": "cortex_memory_evidence_roles_routes",
     "budgetMinutes": "cortex_memory_budget_minutes",

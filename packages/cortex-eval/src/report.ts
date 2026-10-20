@@ -269,6 +269,26 @@ function renderReach(reach: readonly string[] | undefined): string {
 
 const TURN_CAP_ROUTE_COUNT = 6;
 
+/**
+ * The §13.97 reach as one configuration field.
+ *
+ * One field rather than three, because the configuration line is a sentence about the run
+ * and not a table: `expansion=121q/417p/0r` reads as "one hundred and twenty-one questions
+ * were asked, four hundred and seventeen phrases reached the index, none were refused", and
+ * the fact a reader needs first -- that the treatment reached the route at all -- is the
+ * first number. The letters are the unit, so no legend is needed beside it.
+ *
+ * Rendered only when counts exist: a control run has no reach to report, and `0q/0p/0r`
+ * would claim an expansion that reached nothing rather than one that did not run.
+ */
+function renderExpansionCounts(counts: {
+  readonly questions: number;
+  readonly phrases: number;
+  readonly refused: number;
+}): string {
+  return `, \`expansion=${String(counts.questions)}q/${String(counts.phrases)}p/${String(counts.refused)}r\``;
+}
+
 export type MemoryArmConfig = {
   /** Admission threshold handed to `decideWrite`. In `[0, 1]`. */
   readonly threshold: number;
@@ -345,6 +365,34 @@ export type MemoryArmConfig = {
    * that was not recorded" the same row.
    */
   readonly reviewPass?: string | undefined;
+  /**
+   * Whether the multi-session route's ranking was built from the question alone or from the
+   * question plus model-written activity phrases (§13.97).
+   *
+   * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an
+   * artifact has to answer what the run did, and a field that is only present under treatment
+   * makes "no expansion" and "an expansion that was not recorded" the same row.
+   */
+  readonly queryExpansion?: string | undefined;
+  /**
+   * How far the expansion reached, when one ran (§13.97).
+   *
+   * `questions` is the number of distinct multi-session questions the arm asked the model
+   * about, `phrases` the number of distinct phrases the index was actually built with, and
+   * `refused` the questions whose response the parser discarded entirely. Recorded rather
+   * than inferred, because the three separate the two failures this treatment can have: a
+   * model that refuses (phrases low, refused high) and a wiring that never reached the route
+   * (questions zero). Absent when the run administered the control, for the same reason the
+   * optional fields above are: a zeroed object would read as "expanded nothing" while a
+   * missing one reads as "did not expand".
+   */
+  readonly queryExpansionCounts?:
+    | {
+        readonly questions: number;
+        readonly phrases: number;
+        readonly refused: number;
+      }
+    | undefined;
   /**
    * Source trust stamped on every memory admission constructs. In `[0, 1]`.
    *
@@ -756,6 +804,18 @@ export function formatAblationReport(report: AblationReport): string {
         // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
         // two artifacts must be able to see which of them filtered.
         `, \`reviewPass=${memoryArm.reviewPass ?? 'none'}\`` +
+        // §13.97, rendered on every run for the reason the pass is: `none` is a fact about the
+        // run's retrieval (it used the bare question) rather than a missing field, and the two
+        // artifacts this experiment compares differ only in this value.
+        `, \`queryExpansion=${memoryArm.queryExpansion ?? 'none'}\`` +
+        // The reach, in the run's own units: how many multi-session questions were asked,
+        // how many distinct phrases the index received, and how many responses the parser
+        // refused whole. One field rather than three so the line stays a configuration
+        // rather than a table, and the letters are the unit -- `q` questions, `p` phrases,
+        // `r` refusals.
+        (memoryArm.queryExpansionCounts === undefined
+          ? ''
+          : renderExpansionCounts(memoryArm.queryExpansionCounts)) +
         `, \`evidenceRoles=${
           memoryArm.evidenceRoles === undefined
             ? 'all'

@@ -753,6 +753,7 @@ describe('source trust reaches the artifact', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      queryExpansion: 'none',
     });
   });
 
@@ -1255,6 +1256,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        queryExpansion: 'none',
       });
     });
   });
@@ -1692,6 +1694,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      queryExpansion: 'none',
     });
   });
 });
@@ -3561,5 +3564,88 @@ describe("reading a turn's role", () => {
     expect(roleOfTurn('[2023/02/15] tool: a function returned 3')).toBeUndefined();
     // An empty prefix is not a role either.
     expect(roleOfTurn('[] user: hello')).toBeUndefined();
+  });
+});
+
+/**
+ * §13.97's dispatch surface.
+ *
+ * The treatment is one model call per multi-session question, made before the relevance
+ * index is built. What these assertions hold is the part that has no model in it: the
+ * variable's vocabulary, the arm's refusal of a value it does not implement, and the two
+ * places the value must appear in the artifact -- the configuration line and the reach
+ * counts. A run whose dispatch said `llm` and whose artifact said `none` would be
+ * indistinguishable from a control, which is the defect this suite exists to make
+ * impossible.
+ */
+describe('query expansion options (§13.97)', () => {
+  it('defaults to the bare question', () => {
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.queryExpansion).toBe('none');
+    expect(toMemoryArmConfig(options).queryExpansion).toBe('none');
+  });
+
+  it('accepts the treatment, tolerating case and surrounding space', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_QUERY_EXPANSION: '  LLM ',
+    });
+    expect(options.queryExpansion).toBe('llm');
+    expect(toMemoryArmConfig(options).queryExpansion).toBe('llm');
+  });
+
+  it('rejects a value it does not implement, naming the variable', () => {
+    // A silently-defaulted value would publish the control's reading under the
+    // treatment's name, which is the one outcome a dispatch must not survive.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_QUERY_EXPANSION: 'embeddings' }),
+    ).toThrow(/CORTEX_MEMORY_QUERY_EXPANSION/);
+  });
+
+  it('projects the measured reach beside the mode, and omits it for the control', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_QUERY_EXPANSION: 'llm',
+    });
+    const measured = toMemoryArmConfig(options, undefined, {
+      questions: 121,
+      phrases: 417,
+      refused: 0,
+    });
+    expect(measured.queryExpansionCounts).toEqual({ questions: 121, phrases: 417, refused: 0 });
+    // Absent, not zeroed: "did not expand" and "expanded nothing" are different facts.
+    expect(toMemoryArmConfig(options).queryExpansionCounts).toBeUndefined();
+  });
+
+  it('renders the mode on every run and the reach only when one was measured', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_QUERY_EXPANSION: 'llm',
+    });
+    const base = {
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+    };
+    const control = formatAblationReport({
+      ...base,
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+    const treated = formatAblationReport({
+      ...base,
+      memoryArmConfig: toMemoryArmConfig(options, undefined, {
+        questions: 121,
+        phrases: 417,
+        refused: 0,
+      }),
+    });
+
+    expect(control).toContain('queryExpansion=none');
+    expect(control).not.toContain('expansion=');
+    expect(treated).toContain('queryExpansion=llm');
+    expect(treated).toContain('expansion=121q/417p/0r');
   });
 });

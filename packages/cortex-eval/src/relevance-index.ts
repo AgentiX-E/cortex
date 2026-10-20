@@ -36,11 +36,13 @@
  * `relevance-index.test.ts` measures that property: two cases differing only in an
  * unread field produce one index.
  *
- * The queries are the question alone. The reference pipeline also queries with
- * LLM-written expansion phrases, and this deliberately does not: an expansion pass
- * would put a model call inside the construction of the signal, so a run whose
- * signal moved could no longer say whether the ranking or the model changed. One
- * query per question is the cheap, deterministic instrument.
+ * The queries are the question alone by default. The reference pipeline also queries
+ * with LLM-written expansion phrases, and this index takes them through
+ * {@link RelevanceCase.queries} rather than writing them itself: an expansion pass
+ * inside the construction of the signal would put a model call where a measurement is
+ * supposed to be, so a run whose signal moved could no longer say whether the ranking
+ * or the model changed. The phrases arrive as data, produced by `query-expansion.ts`
+ * before the index is built, and a case that names none is retrieved exactly as before.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import { retrieveTopKByQueries, type RetrievalHit } from './retrieval.js';
@@ -95,6 +97,22 @@ export const DEFAULT_RELEVANCE_TOP_K = 64;
 /** One question, and the context it is asked against. Nothing else is read. */
 export type RelevanceCase = {
   readonly question: string;
+  /**
+   * Extra queries this question is retrieved with, in addition to its own text.
+   *
+   * ## Why the phrases are a field rather than something this module writes
+   *
+   * The phrases come from a model call, and a model call belongs outside the
+   * instrument: `query-expansion.ts` produces them once, before the index is built,
+   * and this type carries them as data. That keeps the non-oracle property below
+   * intact -- the phrases are derived from the question's **text**, never from the
+   * answer -- and it keeps the index a function of what it was handed, so two runs
+   * holding the same cases score identically.
+   *
+   * Absent and empty are the same state: the case is retrieved with its question
+   * alone, which is what every archived artifact was produced with.
+   */
+  readonly queries?: readonly string[];
   readonly context: readonly string[];
 };
 
@@ -248,7 +266,12 @@ export async function buildRetrievalRelevanceIndex(
   let scoredPairs = 0;
 
   for (const entry of cases) {
-    const hits = await retrieve([entry.question], entry.context, topK);
+    // The question first, then the case's own phrases. Order matters to the fusion --
+    // `retrieveTopKByQueries` gives every ranking the same weight, and the question is
+    // the ranking a run must never lose -- but not to the score, which is the turn's
+    // maximum cosine across the queries that surfaced it.
+    const queries = [entry.question, ...(entry.queries ?? [])];
+    const hits = await retrieve(queries, entry.context, topK);
     const byTurn = new Map<string, number>();
     const order: string[] = [];
     for (const hit of hits) {

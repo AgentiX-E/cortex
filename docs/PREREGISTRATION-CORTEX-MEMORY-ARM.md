@@ -726,6 +726,14 @@ forwarded into a step's `env`. Three injections were run against it:
   membership rather than coverage — a reader that walked all forty-four sessions still named two items —
   and `none` is what the line must say on a run that performed no second look, for the same reason the
   cap is spelled `none` rather than omitted.
+* `queryExpansion: none` — **registered by §13.97 at the identity**: the relevance index is built
+  from the question alone, which is the state every archived run was in. The variable exists because
+  §13.96 localised the residual multi-session loss to the matching decision rather than to list
+  length, and because `--numbers` shows the gold's digits absent from the window for 12 of 44 wrong
+  numeric answers — a set no wording reaches. `llm` is the treatment under measurement: one model
+  call per multi-session question, before the index is built, carried into
+  `RelevanceCase.queries`. §13.97.4 registers what a run of it must show, and the adoption decision
+  is taken after that run rather than by this line.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -10836,3 +10844,121 @@ pass's own ledger) have each been measured and each failed.
 None. `reviewPass` stays `none` in §10.3 and in the dispatch table; the value `audit` remains
 dispatchable so a future run can reproduce this refutation, which is the same reason §13.27 kept the
 frozen `session` unit.
+
+## 13.97 The question's words are not the evidence's words
+
+### 13.97.1 What the three failed attempts localised
+
+Three prompt-side attempts have now been measured on the multi-session route, and each one moved the
+thing it was designed to move while accuracy fell or failed to rise:
+
+| attempt | mechanism it bought | reading |
+| --- | --- | --- |
+| `enumerated` (§13.34) | a two-step contract, list then compute | adopted, MR 70 at its best |
+| `sweep` (§13.93) | a walk over all 44 sessions, 44 ledger lines | median items 2.0, unchanged |
+| `audit` (§13.94) | a membership review of the first pass | median items 6.0, **MR 84 → 70** |
+
+The third one is the decisive one because the mechanism was *visible in the response and did not
+control the answer*: `gpt4_194be4b3` wrote "the only 'new' item (ukulele) is aspirational, not
+owned, so it should not be added" and then answered 5 against a gold of 4. A reader whose own
+review says the item is not there, and whose count includes it, is not failing to look and is not
+failing to write a list. It is deciding **which mentions count as instances** — and that decision is
+made before any list exists.
+
+`--numbers` localises where such a decision can fail. On `39416366870`, of the 44 wrong MR answers
+that state a number, the gold's digit string **appears nowhere in the window for 12**. A digit that
+appears nowhere was never read; no wording reaches it. The other 32 are in the window and are a
+reader problem that three attempts have failed to fix.
+
+So this section moves the one stage the campaign has not touched since §13.64: **what the ranking
+was asked**.
+
+### 13.97.2 The treatment
+
+`CORTEX_MEMORY_QUERY_EXPANSION`, `none` or `llm`.
+
+`llm` adds one model call per **multi-session** question, made **before the relevance index is
+built**. The response is parsed into at most four activity phrases, and `RelevanceCase.queries`
+carries them into `buildRetrievalRelevanceIndex`, which retrieves that question against
+`[question, ...phrases]`. The score a turn receives is unchanged in meaning: the maximum cosine
+across the queries that surfaced it, which is what `retrieveTopKByQueries` already computes when it
+fuses several rankings.
+
+Five design decisions, each with the alternative it rules out:
+
+* **Activity phrases, not synonyms.** The failing questions count past activities; the evidence is
+  written as the activity ("led a consumer-research project") while the question names the category
+  ("how many projects"). A synonym of the category retrieves every session that mentions the
+  category, which is what the bare question already did.
+* **Four phrases, folded and bounded.** The queries are fused by reciprocal rank, so two copies of
+  one phrase are a weight rather than a phrase; duplicates are folded before the bound is applied,
+  and a bound of zero returns nothing rather than one phrase.
+* **A refusal is dropped whole.** The reference pipeline's own trace records an expansion call that
+  answered `"I don't have access to your past conversations or evidence sessions"`, whose three
+  sentences were then carried into retrieval as phrases. Here the head is tested for refusal
+  markers, the whole response is discarded when it declines, and the artifact counts the questions
+  that happened to.
+* **The phrases are produced before the index, not during the answer.** `CortexMemory`'s
+  `relevanceFor` is a synchronous table lookup; a phrase written at answer time would read the
+  index's floor score (-2, below every cosine) and the treatment would be reported while measuring
+  nothing. This is why the call sits in the arm beside the index construction rather than in the
+  product.
+* **Throwing, not degrading.** A transport failure propagates and the run fails. A run dispatched
+  with `llm` that silently answered from the bare question would publish the control's reading under
+  the treatment's name — the §10.10 shape.
+
+The four untouched capabilities keep `queries: []`, which is byte-identical to the field's absence,
+so their queries, ranking, window and `promptChars` are structurally unchanged. That is this
+dispatch's internal control, and it is the check §13.96.2 established the method for.
+
+### 13.97.3 The input ceiling, and which knob paid for it
+
+The workflow held 24 of GitHub's 25 `workflow_dispatch` inputs, and the guard in
+`test_dispatch_inputs.py` refuses 25 — a workflow at the ceiling is one registration away from a
+`422` at dispatch time. This section needed the last slot, so one knob became a constant:
+`cortex_memory_confidence` is now fixed at `none` in the workflow's environment.
+
+That is not a convenience, and the difference matters because §13.17.2 rejected exactly this move
+once. What it rejected was deleting a **registered** knob whose configuration a later run might
+want. What this deletes is an **unreachable** one: the registered configuration sets **both gates to
+0**, the value function is bounded below by 0, so `value >= 0` holds for every turn and the
+confidence signal cannot change a single admission decision under any dispatch this arm runs. Its
+reach is zero, and §49 had already measured that it does not carry the arm on its own. Restoring it
+as an input costs a registration, which the ceiling guard will demand be traded rather than added.
+
+### 13.97.4 Predictions, registered before the dispatch
+
+The dispatch is `--set cortex_memory_query_expansion=llm` on §10.3's configuration, which is
+`39367801501`'s configuration with `reviewPass` back at `none`, N = 500, four repetitions.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | the mechanism runs: config line reads `queryExpansion=llm` and `expansion=121q/…p/0r`, with at least **242** phrases (two per question) | `questions` is 0 (wiring), or `refused` exceeds 12 (a model that will not expand) |
+| **2** | the four untouched capabilities reproduce `39367801501`'s `promptChars` **to the character** and their window turns **to the turn** | any of the four moves |
+| **3** | MR mean **≥ 78** (against 70.00 in `39416366870` and 84.25 in `39367801501`) | MR ≤ 74 |
+| **4** | the wrong answers whose gold digit is absent fall from **12 to ≤ 8** | 9 or more remain absent |
+| **5** | MR abstentions stay **≤ 10**, and `soft_refusal` / `plan_output` do not rise above 0 | either counts positive |
+| **6** | MR's `promptChars` stays within **46,417 ± 3,000** (expansion moves the order, not the room) | outside that band |
+
+Prediction 3 is stated against **both** prior runs on purpose: 84.25 is what this configuration
+scored before the audit pass doubled its consultations, so "expansion recovers what the audit lost"
+and "expansion beats the one-pass control" are different claims and only the second is interesting.
+
+### 13.97.5 The ceiling this experiment cannot pass
+
+Even if every absent-digit question is repaired, MR moves 70 → 82 at most, and the reference
+pipeline's MR is 103 of 121 (85.1%). The remaining 32 wrong answers already had the digits in the
+window. So the honest reading of a positive result is "retrieval is worth N questions", not "the
+route is closed", and a null result does not retire expansion in general — it retires *this*
+prompt, on *this* workload, at *this* pool width.
+
+### 13.97.6 Verification before dispatch
+
+* `pnpm check` **exit 0**; `cortex-eval` **1985 tests**, `cortex-memory` **402**, `tools` **509
+  passed + 1 skipped + 50 subtests**; four coverage dimensions **100%**.
+* New guards: `query-expansion.test.ts` (22 tests, every parser refusal asserted by the input that
+  triggers it), three index tests for `queries`, five arm tests for the option and both artifact
+  renderings, and `test_query_expansion_wiring.py` (7 source-level links, mutation-checked: replacing
+  `[entry.question, ...(entry.queries ?? [])]` with `[entry.question]` fails the suite).
+* The parser's prompt and its bound are asserted as literals (`at most 4`), because a test that read
+  the constant would pass on any default.

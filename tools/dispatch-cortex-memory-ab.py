@@ -321,6 +321,10 @@ INPUTS = {
     # absent input meaning "no pass". The experiment overrides it with `--set
     # cortex_memory_review_pass=audit`.
     "cortex_memory_review_pass": "none",
+    # §13.97's variable, held at the identity in the registered configuration. An experiment
+    # overrides it with `--set cortex_memory_query_expansion=llm`; the marker in the log says
+    # which dispatches departed from this table.
+    "cortex_memory_query_expansion": "none",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest

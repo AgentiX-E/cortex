@@ -93,11 +93,6 @@ on:
         required: false
         default: ''
         type: string
-      cortex_memory_confidence:
-        description: 'Per-turn confidence signal the cortex-memory arm admits with: empty or none = no callback, so every admitted turn carries confidence 1 and the value function is constant for a fixed source trust; length = min(1, turn.length / 2000). This is the input that makes the retrieval interval populated rather than degenerate: without it, source trust alone fixes every admitted turn to one value, so cortex_memory_retrieval_threshold can only ever be always-open or always-closed (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 11). An unrecognised value is REJECTED rather than defaulted to none, because a run dispatched to introduce per-turn variation that silently ran the constant behaviour would publish an artifact reading as evidence that variation does not help'
-        required: false
-        default: ''
-        type: string
       cortex_memory_ask:
         description: 'Instruction block the cortex-memory arm asks every route with: empty or route = each route own block (shipped behaviour); extractive = the reference pipeline two-line block applied everywhere, which still names the abstention token but never calls declining "expected and valid"; aggregate = that block plus one sentence saying the answer may require combining evidence from more than one turn or session, reaching ONLY the multi-session and flat routes so the four routes that keep their own block stay byte-identical; computed = each reached route own block WITH that sentence inserted immediately above its closing line, reaching multi-session, flat and temporal; enumerated = section 13.34, computed PLUS a two-step contract on the multi-session route ALONE -- enumerate every matching item with its date, then compute per the kind of question asked, and make the abstain token conditional on the list existing. Run 38828538851 is why: the MR failures are 41 numeric mismatches of 47 wrong answers and 22 abstentions taken with 14-20 gold turns already in the window, so the reader has the evidence and either miscounts it or declines with it in hand, while the reference pipeline scores 86.78% on MR over a smaller window with a two-step contract of its own. On flat and temporal this ask is byte-identical to computed (asserted in evidence-ask-reach.test.ts), so the TR gain from the temporal route and the 88.67% that IE holds on the flat path are held and the only route whose reading moves is multi-session -- it composes rather than substitutes, which is the whole of section 13.20 finding, and on the two routes whose own block already IS the extractive one it is byte-identical to aggregate, asserted in evidence-ask-reach.test.ts, so the only route whose reading differs from the aggregate run is temporal (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13, 13.20, 13.21, 13.22). This is section 13 single variable and a SEPARATE axis from cortex_memory_prompt_contract: a contract selects a rendering, an ask selects an instruction block, and the experiment requires them to move independently. Two routes are deliberately unaffected and the artifact says so: multi-session and the flat path already ask with the extractive block, so this option is a byte-identical no-op on them -- which matters because section 13 headline prediction is about multi-session. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to widen the ask that silently ran the shipped one would publish an unchanged result reading as evidence the ask does not matter; sweep = section 13.92, a two-step contract on the multi-session route ALONE that makes the list a walk instead of a recollection -- Step 1 writes one line for EVERY session the prompt printed, `Session <n>: <items, or none>`, and Step 2 counts the items those lines name. The measurement it is written against is the list census of run 39367801501: median Step 1 list 2.0 items across all 121 MR records over a window of 174 turns in about thirty sessions, and on the thirty questions whose gold is a small count (an integer from 2 to 10) six of the ten wrong ones list fewer items than the gold count and none lists exactly that many. The evidence is carried -- those questions sit at 100 percent of their user gold -- so the failure is that the reader does not walk it, and one record says so in its own words before merging two mentions into one item and answering 1 against a gold of 3. Unlike enumerated this ask is NOT computed on the other five routes: they keep the shipped block byte for byte, which makes IE, KU, ABS and TR an internal control -- their windows and promptChars must reproduce to the character'
         required: false
@@ -135,6 +130,11 @@ on:
         type: string
       cortex_memory_review_pass:
         description: 'Second consultation on the multi-session route only (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.94): empty or none = one consultation, which is the state every archived run is in; audit = after the first answer, re-ask with the same evidence, the first response quoted verbatim, and the review restricted to MEMBERSHIP -- name items in the evidence that the first pass missed, split an entry that merges two events, merge two entries that describe one event, drop an entry the evidence does not support -- then reply with the corrected count under a Step 2 heading. It is not a re-ask of an abstention and not a retry: a first pass that declined is returned unchanged, because there is no list to audit. The measurement it is written against is sections 13.92 to 13.93: every MR response walked all 44 sessions of its window (median 44 session lines, 121 of 121 scanning, none skipped) and the median count of item-bearing lines stayed at 2.0, while record 0a995998 lists two mentions of one boots exchange, merges them into one item and answers 1 against a gold of 3, with a blazer at the dry cleaner sitting in a session it marked none. The deficit is which items enter the list, not how much of the document the reader looked at. The reach is implicit -- the pass lives in answerSessions -- so the other five routes are byte-identical by construction and cannot be configured into it. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to administer a treatment that silently ran the control would publish an unchanged result reading as evidence the treatment does not matter'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_query_expansion:
+        description: 'Whether the multi-session ranking is built from the question alone or from the question plus model-written activity phrases (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.97): empty or none = the bare question, which is the state every archived run is in; llm = one model call per multi-session question BEFORE the relevance index is built, and that question is retrieved against [question, ...phrases]. The phrases cannot be written during answering: the relevance callback is a synchronous table lookup, so a phrase produced at answer time would read the index floor score and the treatment would be unmeasurable. Only MR questions are expanded -- the other four capabilities keep their exact queries, ranking and window, which is this dispatch internal control. The measurement it is written against is section 13.96: three prompt-side attempts (structure, membership review, first-pass ledger) each lengthened the list and failed to raise accuracy, which moved the diagnosis from the reader to WHICH MENTIONS COUNT as instances -- a matching decision made before any list exists. --numbers localises it: on run 39416366870 the gold digit string appears nowhere in the window for 12 of the 44 wrong MR answers that state a number, and a digit that appears nowhere was never read, so no wording reaches it. A refusal is recognised rather than truncated: the reference pipeline once carried the three sentences of a model refusal into retrieval as phrases, so this parser drops refusal text and the artifact records how many questions were refused whole. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to widen retrieval that silently ran the bare question would publish the control reading under the treatment name'
         required: false
         default: ''
         type: string
@@ -298,7 +298,15 @@ jobs:
           # inside it is the same experiment. This variable is what supplies the
           # variation, and PREREGISTRATION-CORTEX-MEMORY-ARM.md 11 records that the
           # pair together is what makes a cut mean anything.
-          CORTEX_MEMORY_CONFIDENCE: ${{ github.event.inputs.cortex_memory_confidence }}
+          # Fixed at `none` rather than dispatched, and this is a reach claim rather than a
+          # convenience: the registered configuration sets BOTH gates to 0, the value function is
+          # bounded below by 0, so `value >= 0` holds for every turn and the confidence signal
+          # cannot change a single admission decision. It is an unreachable variable under the
+          # configuration any dispatch of this arm runs. §13.97 needed the last input slot for a
+          # variable that IS reachable, so the unreachable one became a constant; restoring it as
+          # an input costs a registration, which the ceiling guard in test_dispatch_inputs.py will
+          # demand be traded rather than added.
+          CORTEX_MEMORY_CONFIDENCE: 'none'
           # §12.5's single variable, forwarded for the same reason as every variable
           # above: `readPromptContract` rejects an unrecognised value, so a dispatch
           # that named a rendering while this line was absent would run the baseline,
@@ -360,6 +368,10 @@ jobs:
           # Section 13.94's second consultation. Blank means none, which is the state every archived
           # run is in; the arm rejects anything but none/audit rather than defaulting.
           CORTEX_MEMORY_REVIEW_PASS: ${{ github.event.inputs.cortex_memory_review_pass }}
+          # Section 13.97's expansion. Blank means the bare question; the arm rejects anything but
+          # none/llm rather than defaulting, because a run that silently ran the control would
+          # publish an unchanged result reading as evidence that expansion does not help.
+          CORTEX_MEMORY_QUERY_EXPANSION: ${{ github.event.inputs.cortex_memory_query_expansion }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
@@ -376,9 +388,10 @@ jobs:
           # WRITABILITY guard rather than a measurement -- the roster now carries the prompt's own
           # evidence, which the budget already bounds, so the bound exists to keep the JSON writable --
           # and it has not been varied since. It is therefore a constant here rather than an input: the
-          # workflow sits one below GitHub's 25-input ceiling, and this is the one knob whose value no
-          # experiment reads. Restoring it as an input is the right move if a run ever needs to move the
-          # bound, and it costs nothing but this comment.
+          # workflow now sits AT GitHub's 25-input ceiling (§13.97 consumed the last position), and this
+          # is the one knob whose value no experiment reads. Restoring it as an input is the right move
+          # if a run ever needs to move the bound, and it costs nothing but this comment -- but it now
+          # costs a dispatchable variable, so the two have to be traded rather than added.
           CORTEX_MEMORY_EVIDENCE_TURNS: '256'
           # The pre-registered scale. `limit: 0` is the full 500 questions and
           # `ablation_runs: 4` is the run count the pre-registration fixes; both are
