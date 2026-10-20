@@ -16,7 +16,6 @@ export {
   normalizeAnswer,
   exactMatch,
   computeMetrics,
-  computeMetricsAsync,
   scoreEvaluation,
   mcnemarPValue,
   exactMatchScorer,
@@ -34,7 +33,6 @@ export {
 } from './metrics.js';
 export {
   runBenchmark,
-  evaluateWithScorer,
   evaluateWithScorerDetailed,
   type BenchmarkProgress,
   type BenchmarkProgressCallback,

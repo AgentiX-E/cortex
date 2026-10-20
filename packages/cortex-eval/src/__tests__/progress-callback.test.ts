@@ -18,7 +18,7 @@
  * makes, which is the property under test.
  */
 import { describe, it, expect } from 'vitest';
-import { runBenchmark, evaluateWithScorer, evaluateWithScorerDetailed } from '../benchmark.js';
+import { runBenchmark, evaluateWithScorerDetailed } from '../benchmark.js';
 import { exactMatchScorer } from '../metrics.js';
 import type { BenchmarkDataset, MemorySystem } from '../types.js';
 import type { BenchmarkProgress } from '../benchmark.js';
@@ -208,15 +208,6 @@ describe('runBenchmark progress reporting', () => {
 });
 
 describe('the progress callback survives the evaluation wrappers', () => {
-  it('reaches the caller through evaluateWithScorer', async () => {
-    const events: BenchmarkProgress[] = [];
-    await evaluateWithScorer(dataset, recordingSystem('s', []), exactMatchScorer, (p) =>
-      events.push(p),
-    );
-    expect(events.map((e) => e.index)).toEqual([0, 1, 2, 3]);
-    expect(events.every((e) => e.run === 0)).toBe(true);
-  });
-
   it('reaches the caller through evaluateWithScorerDetailed, carrying the run ordinal', async () => {
     const events: BenchmarkProgress[] = [];
     await evaluateWithScorerDetailed(

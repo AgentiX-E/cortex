@@ -1184,6 +1184,61 @@ CAPABILITY_ROUTE = {
 ROLE_PREFIX = re.compile(r'^\[[^\]]+\]\s*(user|assistant)\s*:', re.I)
 
 
+def capability_spreads(report: dict) -> tuple[dict, dict] | None:
+    """The per-capability correct counts across repetitions, and their denominators.
+
+    ## Why the artifact needs its own reader
+
+    Every per-capability count elsewhere in this tool is **one repetition's** -- the roster is the
+    first pass. `featureAggregate` beside it is a mean over all of them. §13.87's replication is
+    what that cost: the same configuration, code and data moved MR from 90 to 83 between two runs,
+    and no section could say whether the movement was the treatment or the pass.
+
+    `None` means the artifact cannot answer: it predates §13.88, or the run had one repetition and
+    the field is absent by design.
+    """
+    ablation = report.get('ablation')
+    if not isinstance(ablation, dict):
+        return None
+    spreads = ablation.get('featureByCapability')
+    totals = ablation.get('questionsByCapability')
+    if not isinstance(spreads, dict) or not isinstance(totals, dict) or not spreads:
+        return None
+    return spreads, totals
+
+
+def caps_section(spreads: dict, totals: dict) -> str:
+    """The per-capability spread as a table, in the counts the roster uses."""
+    lines = ['', 'per capability across repetitions (correct counts, min / mean / max)']
+    lines.append(f'  {"capability":<12}{"total":>7}{"min":>7}{"mean":>8}{"max":>7}{"accuracy":>11}')
+    grand = [0.0, 0.0, 0.0, 0]
+    for capability in sorted(spreads):
+        spread = spreads[capability]
+        total = totals.get(capability)
+        if not isinstance(spread, dict) or not isinstance(total, int) or total <= 0:
+            continue
+        low = spread['min']
+        mean = spread['avg']
+        high = spread['max']
+        grand[0] += low
+        grand[1] += mean
+        grand[2] += high
+        grand[3] += total
+        lines.append(
+            f'  {capability:<12}{total:>7}{low:>7}{mean:>8.1f}{high:>7}{mean / total:>10.1%}'
+        )
+    lines.append(
+        f'  {"TOTAL":<12}{grand[3]:>7}{grand[0]:>7.0f}{grand[1]:>8.1f}{grand[2]:>7.0f}'
+        f'{grand[1] / grand[3]:>10.1%}'
+    )
+    lines.append(
+        '  "accuracy" is the MEAN correct over the repetitions divided by the capability\'s question'
+        ' count -- the unit the register uses. The roster elsewhere in this tool is the FIRST'
+        ' repetition, and the two differ by the spread shown here.'
+    )
+    return '\n'.join(lines)
+
+
 def turn_cap(report: dict) -> tuple[int | None, list[str] | None]:
     """The per-turn cap this run applied, and the routes it reached, both read from the artifact.
 
@@ -1579,6 +1634,11 @@ def main(argv: list[str]) -> int:
         help='print the delivered turn lengths and what a per-turn cap would buy',
     )
     parser.add_argument(
+        '--caps',
+        action='store_true',
+        help='print per-capability correct counts across repetitions (min / mean / max)',
+    )
+    parser.add_argument(
         '--roles',
         action='store_true',
         help='print how much of the rendered evidence room came from each role',
@@ -1674,6 +1734,19 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: no MR record carries a Step 1 list.', file=sys.stderr)
             return 2
         print(section)
+        return 0
+
+    if args.caps:
+        spreads = capability_spreads(report)
+        if spreads is None:
+            print(
+                f'{args.report}: no per-capability spread. Either the run had one repetition -- the '
+                'field is absent by design, because a spread of zero reads as perfect stability -- '
+                'or the artifact predates it. Re-run with more repetitions to read this.',
+                file=sys.stderr,
+            )
+            return 2
+        print(caps_section(*spreads))
         return 0
 
     if args.roles:

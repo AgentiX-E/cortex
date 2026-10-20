@@ -6,16 +6,10 @@ import type {
   Answer,
   BenchmarkDataset,
   MemorySystem,
-  Metrics,
   RetrievedTurns,
   SessionAwareMemorySystem,
 } from './types.js';
-import {
-  computeMetricsAsync,
-  scoreEvaluation,
-  type AnswerScorer,
-  type ScoredEvaluation,
-} from './metrics.js';
+import { scoreEvaluation, type AnswerScorer, type ScoredEvaluation } from './metrics.js';
 
 /** True when the system opts into session-boundary-aware answering. */
 function isSessionAware(system: MemorySystem): system is SessionAwareMemorySystem {
@@ -461,30 +455,6 @@ export async function runBenchmark(
     }
   }
   return answers;
-}
-
-/** Run a system and evaluate with an arbitrary (possibly async) scorer. */
-export async function evaluateWithScorer(
-  dataset: BenchmarkDataset,
-  system: MemorySystem,
-  scorer: AnswerScorer,
-  progress?: BenchmarkProgressCallback,
-  run = 0,
-  onAnswer?: BenchmarkAnswerCallback,
-  /** Wall-clock ceiling for this pass. See {@link runBenchmark}'s last parameter. */
-  budgetMs?: number,
-): Promise<Metrics> {
-  const answers = await runBenchmark(
-    dataset,
-    system,
-    progress,
-    run,
-    undefined,
-    undefined,
-    onAnswer,
-    budgetMs,
-  );
-  return computeMetricsAsync(dataset, answers, scorer);
 }
 
 /**

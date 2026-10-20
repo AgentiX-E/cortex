@@ -880,11 +880,25 @@ export function formatAblationReport(report: AblationReport): string {
     '',
     '## Per-capability breakdown (feature system)',
     '',
-    '| Capability | Accuracy | Total |',
-    '|---|---|---|',
+    // §13.88: the accuracy below is the FIRST repetition's, and it used to be the only number on
+    // the page while the section above quoted a mean over four. The spread columns are added when
+    // the artifact holds them, so a capability's movement can be read in the unit it was measured
+    // in -- which is what §13.87's replication showed was missing.
+    ...(ab.featureByCapability === undefined
+      ? ['| Capability | Accuracy (first repetition) | Total |', '|---|---|---|']
+      : [
+          '| Capability | Accuracy (first repetition) | Total | min | mean | max |',
+          '|---|---|---|---|---|---|',
+        ]),
   );
   for (const [capability, result] of Object.entries(report.feature.metrics.perCapability)) {
-    lines.push(`| ${capability} | ${pct(result.accuracy)} | ${result.total} |`);
+    const spread = ab.featureByCapability?.[capability];
+    lines.push(
+      spread === undefined
+        ? `| ${capability} | ${pct(result.accuracy)} | ${result.total} |`
+        : `| ${capability} | ${pct(result.accuracy)} | ${result.total} | ${spread.min} | ` +
+            `${spread.avg.toFixed(1)} | ${spread.max} |`,
+    );
   }
   lines.push('', `- Overall accuracy: ${pct(report.feature.metrics.accuracy)}`);
   lines.push(`- Abstention rate: ${pct(report.feature.metrics.abstentionRate)}`);

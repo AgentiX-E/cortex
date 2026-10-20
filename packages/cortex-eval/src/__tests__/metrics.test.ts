@@ -3,7 +3,6 @@ import {
   normalizeAnswer,
   exactMatch,
   computeMetrics,
-  computeMetricsAsync,
   scoreEvaluation,
   mcnemarPValue,
   exactMatchScorer,
@@ -426,10 +425,10 @@ describe('numeric answer helpers', () => {
   });
 });
 
-describe('computeMetricsAsync', () => {
+describe('scoreEvaluation through the metrics accessors', () => {
   it('throws on answer count mismatch', async () => {
     const ds: BenchmarkDataset = { name: 'd', questions: [q('IE', 'x')] };
-    await expect(computeMetricsAsync(ds, [], exactMatchScorer)).rejects.toThrow();
+    await expect(scoreEvaluation(ds, [], exactMatchScorer)).rejects.toThrow();
   });
 
   it('computes accuracy with an async scorer', async () => {
@@ -437,7 +436,7 @@ describe('computeMetricsAsync', () => {
       name: 'd',
       questions: [q('IE', 'a'), q('ABS', null)],
     };
-    const m = await computeMetricsAsync(ds, ['a', null], exactMatchScorer);
+    const m = (await scoreEvaluation(ds, ['a', null], exactMatchScorer)).metrics;
     expect(m.accuracy).toBe(1);
     expect(m.abstentionCorrectRate).toBeCloseTo(1, 12);
   });

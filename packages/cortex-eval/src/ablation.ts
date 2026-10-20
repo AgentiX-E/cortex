@@ -16,12 +16,12 @@ import type {
   CompletedPass,
   BenchmarkDataset,
   Capability,
+  CountSpread,
   MemorySystem,
-  Metrics,
   PartialAblation,
   PerCapabilityPairedStats,
 } from './types.js';
-import { evaluateWithScorer, evaluateWithScorerDetailed } from './benchmark.js';
+import { evaluateWithScorerDetailed } from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import {
   aggregate,
@@ -153,6 +153,63 @@ export type AblationOptions = {
 };
 
 /** Run a baseline vs feature ablation and report statistical significance. */
+/**
+ * Correct counts per capability, aggregated across repetitions.
+ *
+ * ## Why the unit is a count and not a rate
+ *
+ * A capability's questions are fixed, so a rate hides the denominator a reader needs to compare two
+ * runs of different sample sizes; the count is what the roster shows and what a reader has been
+ * comparing. `questionsByCapability` carries the denominator beside it.
+ *
+ * ## Why min / mean / max rather than a standard deviation
+ *
+ * Four repetitions do not support a variance estimate worth quoting, and the campaign's decisions
+ * have always been made against a range. Recording the three numbers states the range without
+ * implying a distribution nobody measured.
+ *
+ * A capability absent from every repetition's dataset cannot arise -- the vectors are aligned with
+ * the dataset by construction -- so there is no empty-object branch here.
+ */
+function spreadByCapability(
+  dataset: BenchmarkDataset,
+  correctPerRun: readonly (readonly boolean[])[],
+): Record<string, CountSpread> {
+  const capabilities = questionsByCapability(dataset);
+  const totals: Record<string, number[]> = {};
+  for (const capability of Object.keys(capabilities)) totals[capability] = [];
+  for (const correct of correctPerRun) {
+    const counts: Record<string, number> = {};
+    for (const capability of Object.keys(capabilities)) counts[capability] = 0;
+    dataset.questions.forEach((question, index) => {
+      // `!` because `counts` was seeded with every capability above: the fallback a `?? 0` would
+      // provide is unreachable, and an unreachable branch in a counter is exactly the shape that
+      // hides a real one (`§57.6`).
+      if (correct[index] === true) counts[question.capability]! += 1;
+    });
+    for (const [capability, count] of Object.entries(counts)) totals[capability]!.push(count);
+  }
+  return Object.fromEntries(
+    Object.entries(totals).map(([capability, counts]) => [
+      capability,
+      {
+        min: Math.min(...counts),
+        avg: counts.reduce((sum, count) => sum + count, 0) / counts.length,
+        max: Math.max(...counts),
+      },
+    ]),
+  );
+}
+
+/** How many questions each capability carries, so a count can be read as a rate. */
+function questionsByCapability(dataset: BenchmarkDataset): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const question of dataset.questions) {
+    counts[question.capability] = (counts[question.capability] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export async function runAblation(
   dataset: BenchmarkDataset,
   baseline: MemorySystem,
@@ -310,6 +367,9 @@ export async function runAblation(
 
   const baselineScores = [toScore(baseFirst.metrics)];
   const featureScores = [toScore(featFirst.metrics)];
+  // Seeded with the first repetition, which is the one the roster records.
+  const baselineCorrect: boolean[][] = [baseFirst.correct];
+  const featureCorrectPerRun: boolean[][] = [featFirst.correct];
   for (let i = 1; i < runs; i++) {
     // `run: i` rather than the default, so a repeated pass is distinguishable in
     // the progress stream from the first one. Both sides take the same ordinal:
@@ -332,14 +392,19 @@ export async function runAblation(
     // `PartialAblation.run` records how many repetitions completed before it.
     const baselineThisRun: Answer[] = [];
     const featureThisRun: Answer[] = [];
-    let b: Metrics;
+    let b: ScoredEvaluation;
     try {
-      b = await evaluateWithScorer(
+      b = await evaluateWithScorerDetailed(
         dataset,
         baseline,
         scorer,
         options.onProgress,
         i,
+        // No capture on a repeat: the artifact records the first repetition's raw output and
+        // evidence, and capturing every repetition would multiply the artifact by `runs` for
+        // vectors no reader pairs with a record.
+        false,
+        false,
         (answer) => baselineThisRun.push(answer),
         options.budgetMs,
       );
@@ -354,14 +419,16 @@ export async function runAblation(
         completed,
       });
     }
-    let f: Metrics;
+    let f: ScoredEvaluation;
     try {
-      f = await evaluateWithScorer(
+      f = await evaluateWithScorerDetailed(
         dataset,
         feature,
         scorer,
         options.onProgress,
         i,
+        false,
+        false,
         (answer) => featureThisRun.push(answer),
         options.budgetMs,
       );
@@ -376,8 +443,13 @@ export async function runAblation(
         completed,
       });
     }
-    baselineScores.push(toScore(b));
-    featureScores.push(toScore(f));
+    baselineScores.push(toScore(b.metrics));
+    featureScores.push(toScore(f.metrics));
+    // §13.88. The correctness vectors are held per repetition, because a per-capability count that
+    // only ever existed for one pass is the unit defect §13.87 measured: the same configuration
+    // moved MR by seven questions between two runs and the artifact could not say so.
+    baselineCorrect.push(b.correct);
+    featureCorrectPerRun.push(f.correct);
     completed.push({
       run: i,
       baselineAnswers: baselineThisRun,
@@ -403,7 +475,19 @@ export async function runAblation(
         ? Infinity
         : -Infinity;
 
+  // §13.88's projection. Absent for one repetition, because a spread of zero would read as
+  // perfect stability rather than as no measurement.
+  const capabilitySpreads =
+    runs > 1
+      ? {
+          featureByCapability: spreadByCapability(dataset, featureCorrectPerRun),
+          baselineByCapability: spreadByCapability(dataset, baselineCorrect),
+          questionsByCapability: questionsByCapability(dataset),
+        }
+      : {};
+
   return {
+    ...capabilitySpreads,
     feature: feature.name,
     baselineAggregate,
     featureAggregate,

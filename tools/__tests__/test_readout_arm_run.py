@@ -1158,6 +1158,72 @@ class TestTheCoverageTableUnderARoleFilter:
         assert 'denominator' not in r.stdout
 
 
+class TestThePerCapabilitySpread:
+    """The one table that can say whether a capability moved, and by how much of its own noise.
+
+    §13.87's replication changed nothing and moved MR from 90 to 83. The artifact had the spread all
+    along -- `featureAggregate` over four repetitions -- but every per-capability count was one
+    pass's. `--caps` reads the field §13.88 added, and refuses on an artifact that cannot answer
+    rather than printing a single pass and calling it a capability's number.
+    """
+
+    @staticmethod
+    def _report(spreads: dict | None, totals: dict | None) -> dict:
+        ablation = {'delta': 0.2, 'mcnemarPValue': 1e-9}
+        if spreads is not None:
+            ablation['featureByCapability'] = spreads
+        if totals is not None:
+            ablation['questionsByCapability'] = totals
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': ablation,
+            'questions': [
+                {
+                    'questionId': 'q1',
+                    'capability': 'MR',
+                    'groundTruth': 'x',
+                    'answer': 'x',
+                    'correct': True,
+                }
+            ],
+        }
+
+    def _run(self, tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--caps', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_it_prints_min_mechanics_mean_and_max_beside_the_denominator(self, tmp_path: Path) -> None:
+        report = self._report(
+            {'MR': {'min': 83, 'avg': 90.5, 'max': 95}, 'TR': {'min': 95, 'avg': 97, 'max': 98}},
+            {'MR': 121, 'TR': 127},
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '90.5' in r.stdout
+        assert '74.8%' in r.stdout  # 90.5 / 121
+        assert 'TOTAL' in r.stdout
+        assert 'MEAN' in r.stdout
+
+    def test_it_refuses_when_the_artifact_cannot_answer(self, tmp_path: Path) -> None:
+        # A single-repetition run omits the field by design; printing the roster's count as if it
+        # were the capability's number is the defect that produced two false findings.
+        r = self._run(tmp_path, self._report(None, None))
+        assert r.returncode == 2
+        assert 'one repetition' in r.stderr
+
+    def test_a_half_written_field_refuses_rather_than_guessing(self, tmp_path: Path) -> None:
+        # Spreads without denominators cannot be turned into a rate, and a zero denominator would
+        # divide by zero. Both are artifacts that cannot answer.
+        r = self._run(tmp_path, self._report({'MR': {'min': 1, 'avg': 1, 'max': 1}}, None))
+        assert r.returncode == 2
+
+
 class TestThePoolTableUnderARoleFilter:
     """`--pool` is exhaustive only when every turn could reach the prompt.
 

@@ -10374,6 +10374,17 @@ own capability labels. Three properties:
   single-run count only by knowing which one they hold, which is why all three are recorded.
 - **no new run.** This is a projection of data already in memory at the end of an ablation.
 
-Acceptance: on `39347010711`'s artifact the new field reproduces 398 / 402 / 407 for the roster's overall spread
-(summed across capabilities) and shows MR's own min / avg / max across the four repetitions; a single-repetition
-call omits the field; the JSON and the Markdown both render it, so the artifact and its summary cannot disagree.
+Acceptance, and what each clause can be checked against:
+
+- **the projection is correct** — tested with a scripted system that is right on even passes and wrong on odd ones,
+  so min, mean and max are three different numbers. A deterministic fixture would make them equal and hide any
+  aggregation bug.
+- **a single repetition omits the field** — tested, because a spread of zero reads as perfect stability.
+- **the aggregate agrees with the roster on the first repetition** — tested, because those two numbers are the pair
+  §13.87 read in different units.
+- **the Markdown states the unit** — tested: the header says "first repetition" and the spread columns appear only
+  when the artifact holds them.
+- **the archived artifacts cannot be re-derived** — the field did not exist when they were produced. The next run
+  is the first that carries it, and `--caps` refuses on the old ones with a message naming the reason.
+- **`--caps` reads it** — tested for the present case, the absent case, and a half-written field (spreads without
+  denominators cannot become a rate).

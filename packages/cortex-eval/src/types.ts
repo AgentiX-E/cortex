@@ -452,6 +452,16 @@ export type GoldOverlap = {
   readonly goldRanks?: readonly number[] | undefined;
 };
 
+/** A count's spread across repetitions: the smallest, the mean and the largest. */
+export type CountSpread = {
+  /** Fewest correct in any repetition. */
+  readonly min: number;
+  /** Mean correct over the repetitions. */
+  readonly avg: number;
+  /** Most correct in any repetition. */
+  readonly max: number;
+};
+
 export type AblationResult = {
   feature: string;
   baselineAggregate: AggregateStats;
@@ -502,6 +512,30 @@ export type AblationResult = {
     /** Ids of questions the baseline got wrong and the feature got right. */
     readonly baselineIncorrectFeatureCorrect: readonly string[];
   };
+  /**
+   * Per-capability correct counts across the repetitions: min, mean and max.
+   *
+   * ## Why this exists beside `featureAggregate`
+   *
+   * `featureAggregate` is a spread over the runs; every per-capability count in the roster is **one
+   * run's**. §13.87's replication is what that cost: the same configuration, code and data moved MR
+   * from 90 to 83 between two runs, and the artifact held no per-capability spread to say so.
+   *
+   * ## Absent, not degenerate
+   *
+   * With one repetition min, mean and max are the same number, and a spread of zero would read as
+   * perfect stability — the strongest possible claim from no evidence. So the field is omitted
+   * unless there were at least two repetitions.
+   */
+  featureByCapability?: Record<string, CountSpread> | undefined;
+  /** The baseline side of {@link AblationResult.featureByCapability}. */
+  baselineByCapability?: Record<string, CountSpread> | undefined;
+  /**
+   * Questions per capability, so a count can be turned into a rate without re-reading the dataset.
+   *
+   * Present on the same condition as the spreads: without them there is nothing to divide.
+   */
+  questionsByCapability?: Record<string, number> | undefined;
   /** Metrics from the first evaluation of the baseline system. */
   baselineMetrics: Metrics;
   /** Metrics from the first evaluation of the feature system. */

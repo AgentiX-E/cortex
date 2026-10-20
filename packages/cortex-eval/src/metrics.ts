@@ -485,14 +485,6 @@ export function judgeScorer(judge: AnswerJudge): AnswerScorer {
 }
 
 /** Compute metrics using an arbitrary (possibly async) answer scorer. */
-export async function computeMetricsAsync(
-  dataset: BenchmarkDataset,
-  answers: Answer[],
-  scorer: AnswerScorer,
-): Promise<Metrics> {
-  return (await scoreEvaluation(dataset, answers, scorer)).metrics;
-}
-
 /** Compute metrics plus per-question correctness using an arbitrary scorer. */
 export async function scoreEvaluation(
   dataset: BenchmarkDataset,
