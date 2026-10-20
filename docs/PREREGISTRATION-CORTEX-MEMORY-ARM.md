@@ -10535,6 +10535,24 @@ room is unchanged and the mean has to move on the mechanism. Prediction 4 is the
 names six questions before the run exists; prediction 3 exists so that a scattered gain across the whole
 capability cannot be claimed from six question ids alone.
 
+**The ceiling, computed before the run.** A sweep cannot fix more than the questions that are counts.
+Classifying MR's 37 wrong answers in `39367801501` by the shape of the gold:
+
+| gold | wrong | correct |
+| --- | --- | --- |
+| count, 2 – 10 | **10** | 20 |
+| count, above 10 | 6 | 9 |
+| prose | 9 | 14 |
+| duration | 6 | 14 |
+| money | 4 | 23 |
+| percent / decimal | 2 | 4 |
+
+So the ask axis's ceiling on MR is **84.25 + 16 = 100.25** — every counting question repaired and
+nothing else moved — and the registered threshold of 88 asks for a quarter of that. The other 21 wrong
+answers are amounts, durations, percentages and prose, where a line per session has **nothing to
+count**, and no wording of this contract reaches them. Writing that down before the numbers exists is
+what keeps a later success from being read as the ask axis being unbounded.
+
 ### 13.92.3 What each outcome would mean
 
 - **1, 2 and 4 hold, 3 holds**: the reader's failure was work-list coverage, the ask axis still has room,
