@@ -1924,3 +1924,110 @@ class TestTheStabilityFloor:
         r = self._run(tmp_path, before, after)
         assert r.returncode == 2
         assert 'same questions' in r.stderr
+
+
+class TestTheArithmeticDirection:
+    """§13.102.3: where a wrong MR answer is wrong, not merely that it is.
+
+    ## Why a subcommand and not a paragraph of arithmetic
+
+    The direction split (fifteen under-counts, twelve of them off by exactly one) was computed by
+    an inline script during §13.102, which is the defect §13.38 recorded three times. It is also the
+    quantity §13.103's fourth prediction is stated against, so it has to be re-derivable.
+
+    ## Why the buckets are five and not two
+
+    `under` and `over` are the mechanism; `abstention`, `non-numeric gold` and `no number stated` are
+    states in which direction is not defined, and folding them into one of the two would make a run
+    that declined more look like a run that counted less.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, str, object, object]]) -> dict:
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'questions': [
+                {
+                    'questionId': identifier,
+                    'capability': 'MR',
+                    'question': 'How many things?',
+                    'groundTruth': gold,
+                    'answer': answer,
+                    'correct': correct == 'right',
+                    'rawOutput': answer if isinstance(answer, str) else None,
+                }
+                for identifier, correct, gold, answer in rows
+            ],
+        }
+
+    def _run(self, tmp_path: Path, rows: list[tuple[str, str, object, object]]) -> str:
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(self._report(rows)), encoding='utf-8')
+        r = subprocess.run(
+            [sys.executable, str(TOOL), '--arithmetic', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert r.returncode == 0, r.stderr
+        return r.stdout
+
+    def test_it_separates_the_directions_and_counts_the_off_by_one(self, tmp_path: Path) -> None:
+        out = self._run(
+            tmp_path,
+            [
+                ('u1', 'right', '3', '3'),
+                ('u2', 'wrong', '3', '2'),  # under by one
+                ('u3', 'wrong', '5', '4'),  # under by one
+                ('u4', 'wrong', '4', '2'),  # under by two
+                ('o1', 'wrong', '2', '3'),  # over by one
+                ('a1', 'wrong', '7', None),  # abstention
+                ('n1', 'wrong', 'February 1st', 'March'),  # non-numeric gold
+                ('n2', 'wrong', '$720', 'I could not tell'),  # no number stated
+            ],
+        )
+        assert 'under' in out
+        # Three under-counts, two of them off by exactly one.
+        assert 'off by one' in out
+        assert '2' in out
+        assert 'abstention' in out
+        assert 'non-numeric gold' in out
+        assert 'no number' in out
+
+    def test_it_ignores_correct_answers_and_other_capabilities(self, tmp_path: Path) -> None:
+        report = self._report([('m1', 'right', '3', '3'), ('m2', 'wrong', '3', '2')])
+        report['questions'].append(
+            {
+                'questionId': 'ie1',
+                'capability': 'IE',
+                'question': 'Where?',
+                'groundTruth': 'Lisbon',
+                'answer': 'Porto',
+                'correct': False,
+                'rawOutput': 'Porto',
+            }
+        )
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        r = subprocess.run(
+            [sys.executable, str(TOOL), '--arithmetic', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert r.returncode == 0, r.stderr
+        # One wrong MR question: under. The correct one and the IE one are not in the table.
+        assert 'total' in r.stdout
+        assert '1' in r.stdout
+
+    def test_a_time_gold_is_not_read_as_a_number(self, tmp_path: Path) -> None:
+        # `9:00 AM` contains digits; stripping the colon would compare 9 against 9 and call a wrong
+        # answer equal. A clock time is a value whose arithmetic is not the subtraction of its parts.
+        out = self._run(tmp_path, [('c1', 'wrong', '9:00 AM', '10:00 AM')])
+        assert 'clock' in out
+
+    def test_a_stated_number_equal_to_the_gold_is_its_own_bucket(self, tmp_path: Path) -> None:
+        # The answer was scored wrong with the gold's number in it: that is a grading or formatting
+        # question, not a counting one, and calling it under or over would hide it.
+        out = self._run(tmp_path, [('e1', 'wrong', '3', '3 items')])
+        assert 'equal' in out

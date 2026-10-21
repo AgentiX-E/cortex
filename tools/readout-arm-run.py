@@ -698,6 +698,115 @@ def paired_section(
     return '\n'.join(lines), changed_totals
 
 
+CLOCK_PATTERN = re.compile(r'\d{1,2}:\d{2}|\b(?:am|pm)\b', re.I)
+NUMBER_PATTERN = re.compile(r'-?\d[\d,]*(?:\.\d+)?')
+
+
+def _stated_number(text: object) -> float | None:
+    """The first number in a string, or `None`.
+
+    A clock time is deliberately not a number: `9:00 AM` contains digits, and subtracting them
+    would compare 9 against 9 for two different times and call a wrong answer equal. A time is a
+    value whose arithmetic is not the subtraction of its parts.
+    """
+    if not isinstance(text, str):
+        return None
+    if CLOCK_PATTERN.search(text):
+        return None
+    match = NUMBER_PATTERN.search(text.replace('$', '').replace('%', ''))
+    if match is None:
+        return None
+    try:
+        return float(match.group(0).replace(',', ''))
+    except ValueError:  # a token like `1,` that survived the pattern
+        return None
+
+
+def arithmetic_section(questions: list[dict]) -> str:
+    """Where a wrong MR answer is wrong, not merely that it is.
+
+    ## The question this answers
+
+    A per-capability count says MR is 86 of 121. It cannot say whether the 35 misses are
+    under-counts, over-counts, declines or grading artefacts -- and §13.102.3 needed exactly that
+    split to tell a membership failure (twelve under-counts off by exactly one) from a sampling one.
+    That split was computed by an inline script, which is the defect §13.38 recorded three times.
+
+    ## Why the buckets are the ones they are
+
+    `under` and `over` are directional and are the mechanism. `abstention`, `non-numeric gold`,
+    `no number stated`, `clock gold` and `equal` are states in which direction is undefined; folding
+    any of them into `under` would make a run that declined more look like a run that counted less.
+    `equal` is its own bucket because an answer that states the gold's number and is still wrong is a
+    grading or formatting question, and hiding it inside a direction would misattribute it.
+
+    ## Why `off by one` is printed beside the direction
+
+    A constant offset of one is the signature of a membership decision -- one item systematically
+    excluded -- rather than of arithmetic. §13.103's fourth prediction is stated against it, so the
+    count has to be re-derivable by a reader.
+    """
+    counts = {
+        'under': 0,
+        'over': 0,
+        'equal': 0,
+        'abstention': 0,
+        'no number stated': 0,
+        'non-numeric gold': 0,
+        'clock gold': 0,
+    }
+    off_by_one = {'under': 0, 'over': 0}
+    for question in questions:
+        if question.get('capability') != 'MR' or question.get('correct'):
+            continue
+        answer = question.get('answer')
+        gold_text = question.get('groundTruth')
+        if answer is None:
+            counts['abstention'] += 1
+            continue
+        if isinstance(gold_text, str) and CLOCK_PATTERN.search(gold_text):
+            counts['clock gold'] += 1
+            continue
+        gold = _stated_number(gold_text)
+        if gold is None:
+            counts['non-numeric gold'] += 1
+            continue
+        stated = _stated_number(answer)
+        if stated is None:
+            counts['no number stated'] += 1
+            continue
+        if stated < gold:
+            counts['under'] += 1
+            if abs(gold - stated) == 1:
+                off_by_one['under'] += 1
+        elif stated > gold:
+            counts['over'] += 1
+            if abs(stated - gold) == 1:
+                off_by_one['over'] += 1
+        else:
+            counts['equal'] += 1
+
+    total = sum(counts.values())
+    lines = ['', 'MR wrong answers by arithmetic direction (stated vs gold)']
+    lines.append(f'  {"direction":<20}{"count":>7}{"share":>9}')
+    for direction, count in sorted(counts.items(), key=lambda item: -item[1]):
+        if count == 0 and direction in ('clock gold', 'equal'):
+            continue
+        share = f'{count / total:>8.1%}' if total else f'{"n/a":>8}'
+        suffix = ''
+        if direction in off_by_one:
+            suffix = f'   off by one: {off_by_one[direction]}'
+        lines.append(f'  {direction:<20}{count:>7}{share}{suffix}')
+    lines.append(f'  {"total":<20}{total:>7}')
+    lines.append('')
+    lines.append(
+        'under/over are directional and are the mechanism; every other bucket is a state in which '
+        'direction is undefined. A constant offset of one is the signature of a membership decision '
+        'rather than of arithmetic.'
+    )
+    return '\n'.join(lines)
+
+
 def stability_section(after: list[dict], before: list[dict]) -> str:
     """How much of the answer layer moves when nothing about the configuration does.
 
@@ -2190,6 +2299,11 @@ def main(argv: list[str]) -> int:
         help='print the state transitions from the BEFORE report to this one',
     )
     parser.add_argument(
+        '--arithmetic',
+        action='store_true',
+        help='print where each wrong MR answer is wrong: under, over, equal or undefined direction',
+    )
+    parser.add_argument(
         '--stability',
         type=Path,
         metavar='BEFORE',
@@ -2241,6 +2355,10 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
         print(section)
+        return 0
+
+    if args.arithmetic:
+        print(arithmetic_section(questions))
         return 0
 
     if args.stability:
