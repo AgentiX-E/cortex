@@ -11275,7 +11275,9 @@ they do — the vote faithfully returns it. Voting is a variance reducer, and th
 
 ### 13.102.3 Where the 37 wrong answers actually are
 
-Classified by arithmetic direction against the gold (`39529234665`, first repetition):
+Classified by arithmetic direction against the gold (`39529234665`, first repetition). The split is
+`tools/readout-arm-run.py --arithmetic`, not an inline script — §13.38's rule, and the reason
+§13.103's fourth prediction can be re-derived by a reader:
 
 | direction | count | share |
 | --- | --- | --- |
