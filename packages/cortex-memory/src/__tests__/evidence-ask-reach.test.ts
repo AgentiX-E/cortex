@@ -630,3 +630,115 @@ describe('the sweep ask walks the sessions instead of filtering them out of view
     expect(ASK_ROUTES.sweep).toEqual(['multi-session']);
   });
 });
+
+/**
+ * §13.103: the aggregation contract, and the three rules this arm's contract leaves implicit.
+ *
+ * ## The measurement this block is written against
+ *
+ * The reference pipeline answers **102 of 121** multi-session questions with the same model, the
+ * same dataset and a smaller window. Its aggregation prompt differs from `enumerated` in three
+ * concrete decisions rather than in tone, and each has a record behind it in this arm's own
+ * artifacts:
+ *
+ *   - `0a995998` merges one drop-off and one collection into "the same exchange/pickup event" and
+ *     answers `1` against a gold of 3, and `bf659f65` does the same with albums bought and
+ *     downloaded. The contract has to say an exchange is two items.
+ *   - `a4996e51` is asked for hours in total and declines; `73d42213` is asked for a time and
+ *     declines. "Compute exactly as the question asks" does not tell the reader that a duration
+ *     question is a sum or that a time question is neither a sum nor a count.
+ *   - 7 of the 10 MR declines are questions whose evidence states the operands (`a1cc6108` has
+ *     Alex's age and asks for the user's age at his birth). Declining has to be narrowed to
+ *     "the evidence says nothing", not "the answer is not written down".
+ *
+ * ## What this file pins about the reach
+ *
+ * All five other routes keep the shipped block byte for byte. That is five controls rather than
+ * three, and it is what makes a movement on MR attributable.
+ */
+describe('the aggregation ask states the three rules the enumerated contract leaves implicit', () => {
+  const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
+
+  it("asks for an item, the question's action and a date, on one line each", async () => {
+    const seen: string[] = [];
+    await build(seen, 'aggregation').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain('Step 1');
+    expect(block).toContain(
+      '`<item> | <the action the question names> | <the date it was stated>`',
+    );
+    // The action constraint is the rule that decides membership, and it names the substitutions
+    // the reader actually made in the records: attending for leading, planning for finishing.
+    expect(block).toContain('attending is not leading');
+    // An exchange is two items -- the rule `0a995998` overruled without one.
+    expect(block).toContain('An exchange is TWO items');
+    // It composes with the merging sentence rather than replacing the route's block.
+    expect(block).toContain(MERGING_SENTENCE);
+  });
+
+  it('maps the four question forms to four operations', async () => {
+    const seen: string[] = [];
+    await build(seen, 'aggregation').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const block = instructionsOf(seen[0]!);
+    // Each line is a form this dataset's gold actually takes. A missing one is a decision the
+    // reader has to make alone, which is the state every previous attempt left it in.
+    expect(block).toContain('the number of items you listed');
+    expect(block).toContain('the SUM of those durations');
+    expect(block).toContain('the SUM of the amounts');
+    expect(block).toContain('that value or event, not a count of anything');
+  });
+
+  it('narrows declining to "the evidence says nothing"', async () => {
+    const seen: string[] = [];
+    await build(seen, 'aggregation').answerSessions('How many kits do I own?', [[TEXT]]);
+    const block = instructionsOf(seen[0]!);
+    const lines = block.split('\n');
+
+    expect(block).toContain('only when the evidence says nothing about the question');
+    // Deriving is not a reason to decline -- the sentence 7 of 10 declines needed.
+    expect(block).toContain('is NOT a reason to decline');
+    // §13.56: the rule has to be the closing line, because an exception above it loses to it.
+    expect(lines[lines.length - 1]).toContain('INSUFFICIENT_EVIDENCE');
+    // The close drops "number": a time or an event is a legitimate Step 2 answer, and a close
+    // that asked for a number would push those questions into a count or a decline.
+    expect(lines[lines.length - 1]).toContain('Step 2 answer');
+    expect(lines[lines.length - 1]).not.toContain('Step 2 number');
+  });
+
+  it('changes the instruction block and nothing above it', async () => {
+    const aggregation: string[] = [];
+    const enumerated: string[] = [];
+    await build(aggregation, 'aggregation').answerSessions('How many kits do I own?', [[TEXT]]);
+    await build(enumerated, 'enumerated').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const evidenceOf = (prompt: string): string =>
+      prompt.slice(0, prompt.indexOf('Answer the question'));
+    expect(evidenceOf(aggregation[0]!)).toBe(evidenceOf(enumerated[0]!));
+    expect(instructionsOf(aggregation[0]!)).not.toBe(instructionsOf(enumerated[0]!));
+  });
+
+  const SHIPPED: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
+    ['the flat path (IE)', (m) => m.answer('How many kits do I own?', [TEXT])],
+    ['temporal (TR)', (m) => m.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
+    ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+    ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
+    ['abstention', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
+  ];
+
+  for (const [name, drive] of SHIPPED) {
+    it(`leaves ${name} on the shipped block, byte for byte`, async () => {
+      const aggregation: string[] = [];
+      const shipped: string[] = [];
+      await drive(build(aggregation, 'aggregation'));
+      await drive(build(shipped, 'route'));
+
+      expect(instructionsOf(aggregation[0]!)).toBe(instructionsOf(shipped[0]!));
+    });
+  }
+
+  it('records one route, which is the route the loss is on', () => {
+    expect(ASK_ROUTES.aggregation).toEqual(['multi-session']);
+  });
+});

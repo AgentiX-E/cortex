@@ -974,6 +974,10 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // accepted by every guard, and fails at startup in `readAsk`. `test_ask_table_parity.py` compares
   // the two key sets by source, and it is the only thing that makes this copy safe.
   sweep: ['multi-session'],
+  // §13.103's ask. A single route, like `sweep`, and for the same reason: the contract it installs
+  // is the reference pipeline's aggregation shape, and the other five routes keep the shipped block
+  // byte for byte -- five controls rather than three.
+  aggregation: ['multi-session'],
 };
 
 /**

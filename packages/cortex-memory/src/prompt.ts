@@ -123,6 +123,12 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // The list is a recollection, not a walk. That is MR's failure and nobody else's: IE and KU
   // answer from one session each, and a line per session there would be one line.
   sweep: ['multi-session'],
+  // §13.103. Like `sweep` and unlike `enumerated`, this reaches the **multi-session route alone**:
+  // a run that dispatches it leaves the other five routes byte-identical to the shipped ask, which
+  // makes all five an internal control. The reach is narrow because the contract it installs is
+  // the reference pipeline's aggregation shape, and installing that shape on the flat or temporal
+  // route would move capabilities whose own blocks already work.
+  aggregation: ['multi-session'],
 };
 
 /**
@@ -190,7 +196,7 @@ type EvidenceRendering = 'numbered' | 'sourced';
  * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
  */
 export type EvidenceAsk =
-  'route' | 'extractive' | 'aggregate' | 'computed' | 'enumerated' | 'sweep';
+  'route' | 'extractive' | 'aggregate' | 'computed' | 'enumerated' | 'sweep' | 'aggregation';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -677,6 +683,62 @@ const SWEEP_CONTRACT = [
   `Reply ${ABSTAIN_TOKEN} only when every Step 1 line says \`none\`. If any line names an item, Step 2 must state the count of the items you listed -- even when you believe the list is incomplete.`,
 ].join('\n');
 
+/**
+ * §13.103's contract: the aggregation shape, with the three rules this arm's contract lacks.
+ *
+ * ## Where it comes from, and why borrowing a shape is not the same as porting a pipeline
+ *
+ * The reference pipeline reaches **102 of 121** on this capability with the same model, the same
+ * dataset and a *smaller* window. Its multi-session prompt is a two-step aggregation whose Step 1
+ * asks for `<item> | <the question's action> | <date>` and whose Step 2 maps question forms to
+ * operations. This arm's `enumerated` contract is also two-step, but it states the rules at a
+ * level of abstraction that leaves three decisions to the reader, and each of those decisions has
+ * a measured failure behind it:
+ *
+ * 1. **An exchange is two items.** `0a995998` asks about clothing to *pick up or return*; the
+ *    window holds one drop-off and one collection, and the response merges them into "the same
+ *    exchange/pickup event" and answers `1`. `bf659f65` does the same with albums bought and
+ *    downloaded. `enumerated` says "do not merge two items into one"; it does not say that an
+ *    exchange is two.
+ * 2. **Step 2 is a mapping, not an instruction to compute.** "Compute exactly as the question
+ *    asks" leaves `how many hours in total` open to being read as a count of sessions, and
+ *    `what time did I reach the clinic` open to being read as a count of anything. Four forms
+ *    cover every MR gold in this dataset, and naming them costs one line each.
+ * 3. **Declining is narrow.** `enumerated` forbids a bare decline but still lets a non-empty list
+ *    end in one. The reference pipeline's rule is that needing to *derive* the answer is not a
+ *    reason to abstain, and 7 of this arm's 10 MR declines are questions whose evidence states
+ *    the operands (`a1cc6108` has Alex's age and asks for the user's age at his birth).
+ *
+ * ## What it deliberately does not copy
+ *
+ * The `Answer:` output contract. This arm's parser reads the last line and its numeric gate reads
+ * the last number; changing the output shape would move the parser and the prompt in one run, and
+ * the four prompt-side attempts already measured are only comparable because the shape held.
+ */
+const AGGREGATION_CONTRACT = [
+  'Work in two steps, and write both of them out.',
+  "Step 1 — list every item in the evidence that matches the question, one per line, in this form: `<item> | <the action the question names> | <the date it was stated>`. Use the question's own action word and do not substitute a similar one: attending is not leading, planning is not finishing, and working on is not completing. An exchange is TWO items — returning the old one and taking the replacement are counted separately. One event mentioned in several turns is one item.",
+  'Step 2 — compute the answer from that list, and do not re-filter the list at this step:',
+  '  - "how many distinct X" → the number of items you listed.',
+  '  - "how many hours/days/weeks/months/years in total" → the SUM of those durations, not the number of items.',
+  '  - "how much money in total" → the SUM of the amounts you listed.',
+  '  - "what time / which event / when" → that value or event, not a count of anything.',
+  `Do not reply ${ABSTAIN_TOKEN} without first writing the Step 1 list: a bare ${ABSTAIN_TOKEN} with no list is not a valid response.`,
+  `Reply ${ABSTAIN_TOKEN} only when the evidence says nothing about the question at all. Needing to add, subtract, convert or compare what it does state is NOT a reason to decline.`,
+].join('\n');
+
+/** The closing line `aggregation` gives the multi-session block. */
+const AGGREGATION_CLOSE = `Reply with the Step 2 answer alone. If the evidence says nothing about the question, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The multi-session block under `aggregation`: computed's, plus the contract and its close. */
+const AGGREGATION_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    AGGREGATION_CONTRACT,
+  ),
+  AGGREGATION_CLOSE,
+);
+
 /** The closing line the sweep gives the multi-session block. */
 const SWEEP_CLOSE = `Reply with the Step 2 number alone. If every Step 1 line says \`none\` because the evidence does not contain the answer, reply exactly ${ABSTAIN_TOKEN}.`;
 
@@ -740,6 +802,14 @@ function instructionsFor(
   if (ask === 'sweep') {
     if (scope === 'multi-session' && contract === 'extractive') {
       return SWEEP_MULTI_SESSION_INSTRUCTION;
+    }
+    return own;
+  }
+  if (ask === 'aggregation') {
+    // §13.103. Like `sweep`, the fallthrough is the shipped block, so a run that dispatches this
+    // leaves the other five routes byte-identical to no ask at all -- five controls, not three.
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return AGGREGATION_MULTI_SESSION_INSTRUCTION;
     }
     return own;
   }

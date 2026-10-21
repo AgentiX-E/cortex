@@ -760,7 +760,11 @@ forwarded into a step's `env`. Three injections were run against it:
   reach set is unchanged from `computed` — the artifact separates the two asks by this value
   beside an unchanged `askRoutes` — and the multi-session route needs its own scope argument
   because `buildSessionPrompt` and the flat path both build with the `extractive` contract.  Sent explicitly rather than left blank for the reason `sourceTrust` is. §13.3 records the
-  four values this entry replaced, in order, and why each was retired.
+  four values this entry replaced, in order, and why each was retired. **A sixth value is registered by
+  §13.103**: `aggregation`, the reference pipeline's aggregation shape on the multi-session route
+  alone, whose Step 1 says an exchange is two items and whose Step 2 maps four question forms to four
+  operations. The registered value of this concept stays `enumerated` until a run beats the floor of
+  §13.100.2 with it.
   §13.8 falsified the ask
   hypothesis at the time -- with
   the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
@@ -11237,3 +11241,131 @@ retrieval change has produced. It would **not** mean the arm is SOTA: MR at 89 i
 reference pipeline's 102, and the reference pipeline gets its 102 from a single sample of the same
 model. What changes is that the mechanism is now measurable at the resolution the instrument actually
 has.
+
+## 13.102 Voting sampled the noise and could not spend it
+
+### 13.102.1 The readings (`39529234665`, 2h17m)
+
+| # | prediction (§13.101.4) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | config reads `selfConsistency=3`, `vote` sums to 121 | **`vote=120/192/172`** — sums to **484**, four repetitions of 121 | **falsified as written** — the registration forgot the repetitions |
+| **2** | `split > 0` and unanimous ≤ 75% | unanimous **24.8%**, majority 39.7%, split **35.5%** | **holds**, far past the expectation |
+| **3** | MR mean ≥ 89 | **86.2** (82–91) | **falsified** |
+| **4** | four untouched capabilities reproduce to the character | identical (46,694 / 46,864 / 46,827 / 47,137) | **holds** |
+| **5** | MR abstentions ≤ 10 and `promptChars` unchanged | **10**; 46,186 | **holds** |
+| **6** | wall clock ≤ 3h | **2h17m** | **holds** |
+
+Registered statistic **+37.70pp** (was +36.55); roster **408.8** (399–421). Per capability: ABS 29.2
+(29–30), IE 136.2 (136–137), KU 62.8 (59–67), **MR 86.2** (82–91), TR 94.2 (93–96).
+
+### 13.102.2 The mechanism fired and the answer did not move
+
+Three consultations of a byte-identical prompt disagreed on **75%** of questions: 172 of 484 votes
+were three-way splits and only 120 were unanimous. So the treatment was administered, in the
+strongest possible form — a reader that cannot reproduce itself three times in four.
+
+MR moved 85.2 → **86.2**, one question, inside the ±2–4 floor §13.100.2 published. KU moved 60.5 →
+62.8 and TR 97.0 → 94.2 with **no treatment at all**, which is the same floor seen from the other
+side.
+
+The reason is visible in what a vote can and cannot fix. A majority selects one of three readings;
+it does not create a fourth. If all three readings share the same misreading — and §13.102.3 shows
+they do — the vote faithfully returns it. Voting is a variance reducer, and this arm's error is
+**bias**, not variance: the same 15 questions are under-counted by one in every sample.
+
+### 13.102.3 Where the 37 wrong answers actually are
+
+Classified by arithmetic direction against the gold (`39529234665`, first repetition):
+
+| direction | count | share |
+| --- | --- | --- |
+| **under** (stated less than gold) | **15** | 41% |
+| abstention | 10 | 27% |
+| over | 6 | 16% |
+| non-numeric gold | 5 | 14% |
+| no number stated | 1 | 3% |
+
+Twelve of the fifteen under-counts are **off by exactly one** (`3→2` six times, `2→1` three times,
+`5→4`, `4→3`, `23→22`). A constant offset is a membership decision, not a sampling one: one item is
+systematically excluded.
+
+Two candidate explanations were tested against the questions and **both are weak**:
+
+* **Conjoined operands** ("led *or* am currently leading", "pick up *or* return") — 5 of the 15
+  under-counts, and 3 of the 6 overs. Not the driver.
+* **Time-window qualifiers** ("in the last month", "in April", "since I started") — common in the
+  under-counts but present in the correctly answered ones too; the campaign has no measurement that
+  separates them.
+
+What the record does show, in the responses themselves, is the two failures the reference pipeline's
+aggregation prompt names explicitly: an exchange counted once instead of twice (`0a995998` says *"the
+same exchange/pickup event"* and answers 1 against 3), and a decline taken on a question whose
+operands are present (`a1cc6108` has Alex's age and declines the user's age at his birth).
+
+### 13.102.4 What this retires
+
+**Self-consistency is retired at three samples.** It is a variance reducer and the error is bias;
+the census (75% disagreement, +1 question) is the measurement that says so, and it is the cleanest
+negative result in the campaign because the mechanism provably ran.
+
+It also retires the framing that produced it. For four rounds the assumption was that the reader's
+mistakes were unstable and therefore averageable. They are stable and therefore not.
+
+### 13.102.5 Adoption
+
+None. `selfConsistency` stays `none`; `3` remains dispatchable so the refutation can be reproduced,
+and the vote census stays in the artifact because it is what makes the refutation legible.
+
+## 13.103 The aggregation shape, and the three rules this arm never stated
+
+### 13.103.1 Why this is not a fifth prompt attempt
+
+Four attempts have been measured — structure, membership, retrieval, voting — and all four added
+instructions to a contract whose *shape* this arm invented. The reference pipeline answers **102 of
+121** on the same capability, with the same model, the same dataset and a **smaller** window, and its
+multi-session prompt differs from this arm's in three decisions that are not wording:
+
+| decision | this arm's `enumerated` | the reference pipeline | the record it explains |
+| --- | --- | --- | --- |
+| What an exchange is | "do not merge two items into one" | **an exchange is two items** | `0a995998` merges a drop-off and a collection and answers 1 against 3; `bf659f65` does the same with purchase and download |
+| How Step 2 decides | "compute exactly as the question asks" | **four form→operation lines** (distinct → count; hours/days in total → sum durations; how much money → sum amounts; what time/which → that value, not a count) | `a4996e51` asked for hours in total declines; `73d42213` asked for a time declines |
+| When declining is allowed | a bare decline is forbidden, a non-empty list may still end in one | **only when the evidence says nothing**; deriving is not a reason | 7 of the 10 MR declines are questions whose operands the evidence states |
+
+That is the whole change: the shape, not the tone. It is also the first candidate in this campaign
+derived from a system that **demonstrably solves the capability**, rather than from a hypothesis about
+why this one fails.
+
+### 13.103.2 What it does not copy
+
+The reference pipeline's `Answer:` output contract. This arm's parser reads the last line and its
+numeric gate reads the last number; changing the output shape in the same run would move the parser
+and the prompt together, and every prior measurement is comparable only because the shape held.
+
+The reach is the multi-session route alone. All five other routes keep the shipped block **byte for
+byte**, so this run has five controls rather than three.
+
+### 13.103.3 Predictions, registered before the dispatch
+
+Dispatch: `--set cortex_memory_ask=aggregation` on §10.3's configuration (so `selfConsistency` and
+`queryExpansion` are both `none`), N = 500, four repetitions. The control is **`39509698041`** — the
+same configuration without the ask — not the voting run.
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | mechanism: config reads `ask=aggregation`, `askRoutes=multi-session` | either differs |
+| **2** | five controls reproduce `39509698041` to the character and to the turn | any moves |
+| **3** | MR mean **≥ 91** (86.2 + 5, i.e. past the floor, measured against 85.2) | MR ≤ 87 |
+| **4** | the under-counts fall from **15 to ≤ 10** | 11 or more remain |
+| **5** | MR abstentions fall from 10 to **≤ 7** | 8 or more |
+| **6** | MR `promptChars` unchanged at **46,186 ± 500** | outside |
+
+Prediction 3 is set at five questions because that is the floor §13.100.2 published; prediction 4 is
+the mechanism check, because the contract's first and third rules are both about a missing item.
+
+### 13.103.4 What a positive result would mean, and what it would not
+
+It would mean the gap to the reference pipeline is a **shape** difference rather than a capability
+difference — that the same model, on the same evidence, can be brought from 86 to the low 90s by
+telling it what an exchange is and what each question form asks for. It would not mean parity: the
+reference pipeline's 102 comes from its own retrieval, its own session truncation and its own critique
+pass, none of which this run changes.
