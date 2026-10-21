@@ -425,6 +425,15 @@ async function main(): Promise<void> {
     ...(armOptions.reviewPass === 'none' || armOptions.reviewPass === undefined
       ? {}
       : { reviewPass: armOptions.reviewPass as ReviewPass }),
+    // §13.101's sample count. `none` IS one consultation and is expressed by NOT passing the key, for
+    // the reason every conditional spread here is: every archived artifact was produced with one
+    // consultation, and a present-but-inert key would make the option indistinguishable from a
+    // configured one to a `!== undefined` check. The cast is at this boundary because the arm carries
+    // the count as a string so the artifact can spell `none`, and `readSelfConsistency` has already
+    // rejected anything that is not one of the two names.
+    ...(armOptions.selfConsistency === 'none' || armOptions.selfConsistency === undefined
+      ? {}
+      : { selfConsistency: Number(armOptions.selfConsistency) }),
     // §13.17's single variable, spread conditionally for the same reason as the two
     // above: `none` IS the shipped behaviour (the budget buys the first turns that
     // arrived) and is expressed by NOT passing the key, so a run that names no signal

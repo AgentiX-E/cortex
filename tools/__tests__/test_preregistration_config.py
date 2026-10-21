@@ -58,7 +58,10 @@ DISPATCH = ROOT / "tools" / "dispatch-cortex-memory-ab.py"
 # exactly where a defect of form 4 would hide.
 CONCEPT_TO_INPUT = {
     "sourceTrust": "cortex_memory_source_trust",
-    "threshold": "cortex_memory_threshold",
+    # `threshold` is deliberately ABSENT as of §13.101.3, for the reason `evidenceTurnsPerRecord` is:
+    # it is fixed at 0 by the workflow because admission-wide-open is the premise of every experiment
+    # on this arm, not a variable within it. The value is unchanged and the control this mapping
+    # protects is replaced by the workflow's own constant, which is where a reader of a run looks.
     "retrievalThreshold": "cortex_memory_retrieval_threshold",
     "promptContract": "cortex_memory_prompt_contract",
     "ask": "cortex_memory_ask",
@@ -88,6 +91,9 @@ CONCEPT_TO_INPUT = {
     # table with `--set`, which this guard deliberately does not read -- its subject is the
     # registered configuration, not every dispatch.
     "queryExpansion": "cortex_memory_query_expansion",
+    # §13.101's sample count. Registered at `none`; the voting run departs from the table with
+    # `--set`, which this guard deliberately does not read.
+    "selfConsistency": "cortex_memory_self_consistency",
     "evidenceRoles": "cortex_memory_evidence_roles",
     "evidenceRolesRoutes": "cortex_memory_evidence_roles_routes",
     "budgetMinutes": "cortex_memory_budget_minutes",

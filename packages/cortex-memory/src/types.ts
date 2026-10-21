@@ -383,6 +383,39 @@ export type CortexMemoryOptions = {
    * separate the treatment from the cost.
    */
   reviewPass?: ReviewPass;
+  /**
+   * How many times the multi-session route consults the model on one prompt, and whether the
+   * answers are reduced by majority. `1` (the default) is the shipped behaviour.
+   *
+   * ## Why this exists
+   *
+   * §13.100.2 measured two runs of one configuration against each other: **24 of 121**
+   * multi-session answers differ, 59 of 500 states differ dataset-wide, and the evidence layer
+   * reproduces to the character. The reader's judgement is what moves. Three consultations and
+   * a strict majority spend that movement instead of trying to suppress it, which is the one
+   * mechanism in this campaign whose target is a measured property of the instrument rather
+   * than a hypothesis about the arm.
+   *
+   * ## Why it is here and not in the prompt
+   *
+   * The prompt is byte-identical across the samples -- that is the whole design. A prompt
+   * change would be the fourth attempt of a kind that has failed three times (§13.93, §13.94,
+   * §13.96), and it would confound the sample count with the wording.
+   *
+   * ## Why `1` rather than an absent field means "off"
+   *
+   * `1` is a count, and the product already reads the option as a count. An absent field also
+   * means one, so every archived run keeps its meaning. The arm refuses any other value at its
+   * own boundary, which is where a dispatch value is validated.
+   *
+   * ## The refusal of two multi-pass mechanisms at once
+   *
+   * Combining this with `reviewPass: 'audit'` would consult the model six times per question,
+   * and nothing has measured what the two passes do to each other. The constructor refuses the
+   * combination rather than letting a dispatch produce a configuration whose reading nobody can
+   * attribute -- the same rule `evidenceRoles` follows when it is named without a classifier.
+   */
+  selfConsistency?: number;
 };
 
 /**

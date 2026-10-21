@@ -196,6 +196,19 @@ export type CortexMemoryArmOptions = {
    */
   queryExpansion?: string | undefined;
   /**
+   * How many times the multi-session route consults the model on one prompt (§13.101).
+   *
+   * `none` is one consultation, which is the shipped behaviour and the state every archived run is
+   * in. `3` samples the judgement §13.100.2 measured moving on 24 of 121 answers and returns a strict
+   * majority.
+   *
+   * A string rather than a number at this layer because the artifact's configuration line is a
+   * string table and the two values are named: `none` has to be sayable, or "ran the control" and
+   * "predates the field" become the same bytes. The product takes a number (`selfConsistency`), and
+   * `run-ablation.ts` converts at the boundary.
+   */
+  selfConsistency?: string | undefined;
+  /**
    * How many turns of evidence each roster record carries. `§13.12`'s bound.
    *
    * ## Why this is an option rather than a constant in the entry point
@@ -765,6 +778,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     ask: readAsk(env[ASK_VARIABLE]),
     reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
+    selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
     relevanceTopK: readRelevanceTopK(env[RELEVANCE_TOP_K_VARIABLE]),
@@ -1062,6 +1076,34 @@ function readReviewPass(raw: string | undefined): string {
     throw new Error(
       `${REVIEW_PASS_VARIABLE} must be one of ${REVIEW_PASSES.map((name) => JSON.stringify(name)).join(', ')} ` +
         `or unset, got ${JSON.stringify(raw)}.`,
+    );
+  }
+  return trimmed;
+}
+
+/** The variable this arm reads for §13.101's sample count. */
+const SELF_CONSISTENCY_VARIABLE = 'CORTEX_MEMORY_SELF_CONSISTENCY';
+
+/** The counts this arm can dispatch, in the order the config line spells them. */
+const SELF_CONSISTENCY_COUNTS: readonly string[] = ['none', '3'];
+
+/**
+ * Read the sample count, rejecting anything this arm does not implement.
+ *
+ * Rejected rather than clamped, for the reason `readQueryExpansion` rejects: a run dispatched at a
+ * count the product would clamp would publish a configuration it never administered, and a run that
+ * silently ran one consultation under a treatment's name would read as evidence that voting does not
+ * help. Only `3` is offered because a vote needs an odd count above one, and nothing has measured
+ * five.
+ */
+function readSelfConsistency(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (trimmed === '') return 'none';
+  if (!SELF_CONSISTENCY_COUNTS.includes(trimmed)) {
+    throw new Error(
+      `${SELF_CONSISTENCY_VARIABLE} must be one of ` +
+        `${SELF_CONSISTENCY_COUNTS.map((name) => JSON.stringify(name)).join(', ')} or unset, ` +
+        `got ${JSON.stringify(raw)}.`,
     );
   }
   return trimmed;
@@ -1516,6 +1558,10 @@ export function toMemoryArmConfig(
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
     queryExpansion: options.queryExpansion ?? 'none',
+    // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
+    // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
+    // "predates the field" as the same bytes.
+    selfConsistency: options.selfConsistency ?? 'none',
     // §13.97's reach. Spread conditionally because the absent state is "the control ran", and
     // a zeroed object would answer a question the run never asked.
     ...(expansion === undefined ? {} : { queryExpansionCounts: expansion }),
@@ -1985,6 +2031,10 @@ export async function runCortexMemoryArm(
   // was applied and dropped nothing" -- `§13.12.5` predicts the reducible set is
   // non-empty, and this field is what makes that prediction falsifiable.
   const evidenceReduction = evidenceReductionOf(questions);
+  // §13.101's census, read after the ablation for the reason `abstentionReasonsOf` is: it counts what
+  // happened rather than what was configured. Merged into the arm's config rather than carried at the
+  // top level because the configuration line renders it beside the count that produced it.
+  const vote = voteCountsOf(feature);
   const reported: AblationReport = {
     ...report,
     // The evidence is carried twice, and the registered bound has to reach both
@@ -2009,6 +2059,12 @@ export async function runCortexMemoryArm(
     ...(census.abstentionReasons === undefined
       ? {}
       : { abstentionReasons: census.abstentionReasons }),
+    // Spread conditionally on both sides: a run that did not vote has no census, and a report built
+    // without an arm config has nowhere to put one. Either absence means "not measured", which the
+    // field's optionality already says.
+    ...(vote.voteCounts === undefined || report.memoryArmConfig === undefined
+      ? {}
+      : { memoryArmConfig: { ...report.memoryArmConfig, voteCounts: vote.voteCounts } }),
     questions,
     ...(evidenceReduction === null ? {} : { evidenceReduction }),
   };
@@ -2311,6 +2367,52 @@ function buildArmRoster(
  * because it is indistinguishable from a real reading -- so anything that is not
  * four finite non-negative integers is treated as absent rather than reported.
  */
+/**
+ * The vote counts a feature system reports, or nothing when it does not vote.
+ *
+ * ## Why this is an optional capability rather than a `MemorySystem` member
+ *
+ * The same reason `abstentionReasonsOf` gives: the contract is wider than any single system, and
+ * adding a vote census to it would make every test double and the reference pipeline responsible for
+ * a field only a voting system can fill. The reference pipeline never votes, and a shared type that
+ * said it did would be a lie the conformance suite could not see.
+ *
+ * ## Why a malformed value is discarded rather than reported
+ *
+ * A field that is present but wrong is worse than an absent one: the artifact would show a vote
+ * census that no mechanism produced, and a reader could not tell it from a real reading. Anything
+ * that is not three finite non-negative integers is treated as absent.
+ */
+function voteCountsOf(system: MemorySystem): {
+  voteCounts?: { unanimous: number; majority: number; split: number };
+} {
+  const candidate = (system as { voteCounts?: unknown }).voteCounts;
+  if (typeof candidate !== 'function') return {};
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    // A throwing accessor is a broken optional capability, not a failed run.
+    return {};
+  }
+
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  const keys = ['unanimous', 'majority', 'split'] as const;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  return {
+    voteCounts: {
+      unanimous: record.unanimous as number,
+      majority: record.majority as number,
+      split: record.split as number,
+    },
+  };
+}
+
 function abstentionReasonsOf(system: MemorySystem): { abstentionReasons?: AbstentionReasons } {
   const candidate = (system as { abstentionReasons?: unknown }).abstentionReasons;
   if (typeof candidate !== 'function') return {};

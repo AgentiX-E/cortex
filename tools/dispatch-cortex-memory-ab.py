@@ -248,7 +248,9 @@ WORKFLOW = "benchmark-cortex-memory.yml"
 # sd wide and could not have held.
 INPUTS = {
     "cortex_memory": "1",
-    "cortex_memory_threshold": "0",
+    # §13.101. `cortex_memory_threshold` is gone: the workflow fixes it at 0, because admission-wide-open
+    # is the premise of every experiment on this arm rather than a variable within it (§13.101.3).
+    # `retrievalThreshold` stays, because that one gates whether admitted evidence may be answered from.
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
@@ -325,6 +327,9 @@ INPUTS = {
     # overrides it with `--set cortex_memory_query_expansion=llm`; the marker in the log says
     # which dispatches departed from this table.
     "cortex_memory_query_expansion": "none",
+    # §13.101's sample count, held at the identity in the registered configuration. The experiment
+    # overrides it with `--set cortex_memory_self_consistency=3`.
+    "cortex_memory_self_consistency": "none",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
     # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest

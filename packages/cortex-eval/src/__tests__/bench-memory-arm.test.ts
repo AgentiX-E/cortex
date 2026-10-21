@@ -754,6 +754,7 @@ describe('source trust reaches the artifact', () => {
       askRoutes: [],
       reviewPass: 'none',
       queryExpansion: 'none',
+      selfConsistency: 'none',
     });
   });
 
@@ -1257,6 +1258,7 @@ describe('runCortexMemoryArm', () => {
         askRoutes: [],
         reviewPass: 'none',
         queryExpansion: 'none',
+        selfConsistency: 'none',
       });
     });
   });
@@ -1695,6 +1697,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       askRoutes: [],
       reviewPass: 'none',
       queryExpansion: 'none',
+      selfConsistency: 'none',
     });
   });
 });
@@ -3647,5 +3650,105 @@ describe('query expansion options (§13.97)', () => {
     expect(control).not.toContain('expansion=');
     expect(treated).toContain('queryExpansion=llm');
     expect(treated).toContain('expansion=121q/417p/0r');
+  });
+});
+
+/**
+ * §13.101's dispatch surface and census.
+ *
+ * The treatment is three consultations of one prompt on the multi-session route, and the census is
+ * what makes it falsifiable from the artifact: a run whose votes never disagreed and a run that never
+ * voted are different facts, and only the census can tell them apart.
+ */
+describe('self-consistency options (§13.101)', () => {
+  it('defaults to one consultation', () => {
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.selfConsistency).toBe('none');
+    expect(toMemoryArmConfig(options).selfConsistency).toBe('none');
+  });
+
+  it('accepts the treatment, tolerating case and surrounding space', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_SELF_CONSISTENCY: ' 3 ',
+    });
+    expect(options.selfConsistency).toBe('3');
+    expect(toMemoryArmConfig(options).selfConsistency).toBe('3');
+  });
+
+  it('rejects a count it does not implement rather than clamping it', () => {
+    // A clamped run would consult once and report a treatment, which reads as evidence that voting
+    // does not help.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SELF_CONSISTENCY: '2' }),
+    ).toThrow(/CORTEX_MEMORY_SELF_CONSISTENCY/);
+  });
+
+  it('reads a vote census from the feature system into the artifact', async () => {
+    const voting: MemorySystem & {
+      voteCounts: () => { unanimous: number; majority: number; split: number };
+    } = {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      voteCounts: () => ({ unanimous: 1, majority: 2, split: 3 }),
+    };
+    const { report } = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      voting,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(
+          cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SELF_CONSISTENCY: '3' }),
+        ),
+      },
+    );
+
+    expect(report.memoryArmConfig?.voteCounts).toEqual({ unanimous: 1, majority: 2, split: 3 });
+    expect(report.memoryArmConfig?.selfConsistency).toBe('3');
+    // The configuration line renders both, beside each other, because the count has no meaning
+    // without the mode that produced it.
+    expect(formatAblationReport(report)).toContain('selfConsistency=3');
+    expect(formatAblationReport(report)).toContain('vote=1/2/3');
+  });
+
+  it('discards a malformed census rather than publishing it', async () => {
+    // A field that is present but wrong is indistinguishable from a real reading, so anything that
+    // is not three non-negative integers is treated as absent.
+    const broken: MemorySystem & { voteCounts: () => unknown } = {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      voteCounts: () => ({ unanimous: 1, majority: -2, split: 3 }),
+    };
+    const { report } = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      broken,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+      },
+    );
+
+    expect(report.memoryArmConfig?.voteCounts).toBeUndefined();
+    expect(formatAblationReport(report)).not.toContain('vote=');
+  });
+
+  it('renders no census on a run that did not vote', () => {
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+    expect(line).toContain('selfConsistency=none');
+    expect(line).not.toContain('vote=');
   });
 });

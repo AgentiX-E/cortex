@@ -272,3 +272,73 @@ function stripWrappingQuotes(text: string): string {
   }
   return text;
 }
+
+/**
+ * One question's repeated consultations, reduced to the answer a majority holds.
+ *
+ * ## What this is for, and the measurement that made it worth building
+ *
+ * §13.100.2 measured the answer layer across two runs of one configuration: 24 of 121
+ * multi-session answers change with no treatment at all, and 59 of 500 states move
+ * dataset-wide. §13.101's registered experiment spends that movement instead of fighting
+ * it -- three consultations of the same prompt, majority answer.
+ *
+ * ## Why `null` counts as a candidate
+ *
+ * An abstention is a decision, and a majority of decisions is a decision. Excluding it
+ * would let two wrong answers outvote one decline on a question the evidence cannot
+ * answer, which is exactly the failure §13.34's conditional closing line was written to
+ * prevent: a reader holding evidence that does not contain the answer should still be
+ * able to say so.
+ *
+ * ## Why three distinct answers fall back to the first
+ *
+ * There is no majority to take, and every tie-break available (longest, most numeric,
+ * most confident-looking) is a heuristic nothing measured. Returning the first pass keeps
+ * the mechanism's behaviour equal to the shipped one on exactly the questions where it
+ * failed to reach agreement.
+ *
+ * ## The precondition
+ *
+ * `answers` is non-empty. The caller owns the sample count and passes what it collected;
+ * a guard here would be an arm no test could enter, which is the dead-branch shape this
+ * package removes rather than documents.
+ */
+export type Vote = {
+  /** The answer a strict majority holds, or the first pass when there is none. */
+  readonly chosen: Answer;
+  /** The largest share of the samples that agreed, in `(0, 1]`. */
+  readonly agreement: number;
+  /** True when every sample agreed. */
+  readonly unanimous: boolean;
+  /** True when no answer held a strict majority. */
+  readonly split: boolean;
+};
+
+export function voteAnswers(answers: readonly Answer[]): Vote {
+  const counts = new Map<Answer, number>();
+  for (const answer of answers) {
+    counts.set(answer, (counts.get(answer) ?? 0) + 1);
+  }
+  let winner: Answer = answers[0] as Answer;
+  let best = 0;
+  for (const [answer, count] of counts) {
+    // Strict majority rather than a plurality: with three samples the two are the same
+    // thing, and with any larger odd count the difference is whether a 2-of-5 answer wins.
+    // A mechanism whose rule changes shape with the sample count is one whose readings
+    // cannot be compared across sample counts, so the rule is fixed here.
+    if (count > best && count * 2 > answers.length) {
+      winner = answer;
+      best = count;
+    }
+  }
+  const split = best === 0;
+  const chosen = split ? (answers[0] as Answer) : winner;
+  const agreed = split ? 1 : best;
+  return {
+    chosen,
+    agreement: agreed / answers.length,
+    unanimous: !split && agreed === answers.length,
+    split,
+  };
+}

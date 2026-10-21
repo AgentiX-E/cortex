@@ -657,8 +657,10 @@ forwarded into a step's `env`. Three injections were run against it:
 ### 10.3 The configuration this registration names
 
 * `sourceTrust: 0.5` — **the default, sent explicitly rather than omitted.**
-* `threshold: 0` — unchanged from §7.5; every turn is admitted, so the only gate under
-  test is the retrieval one.
+* The **admission threshold** is fixed at `0` by the workflow, unchanged from §7.5 and no longer a
+  dispatch input as of §13.101.3: every turn is admitted, so the only gate under test is the retrieval
+  one. The reach argument — and the two measurements that closed the non-zero values — are in that
+  section.
 * `retrievalThreshold: 0` — **amended from `0.25` by §10.9.** At `0.25` the gate abstained
   on 479/500, lost 186 questions the baseline got right, and won none (McNemar
   p = 2.039e-56). The pre-committed recovery for that outcome is the revert to `0`, so
@@ -734,6 +736,12 @@ forwarded into a step's `env`. Three injections were run against it:
   call per multi-session question, before the index is built, carried into
   `RelevanceCase.queries`. §13.97.4 registers what a run of it must show, and the adoption decision
   is taken after that run rather than by this line.
+* `selfConsistency: none` — **registered by §13.101 at the identity**: one consultation per question,
+  which is the state every archived run is in. `3` is the treatment: three consultations of a
+  byte-identical prompt on the multi-session route, and the answer a strict majority holds. The
+  variable exists because §13.100.2 measured the reader's judgement moving on 24 of 121 answers with
+  no treatment at all, so sampling it and voting is the one mechanism whose target is the instrument's
+  own measured defect. §13.101.4 registers what a run of it must show.
 * `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
 * `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
@@ -11088,3 +11096,144 @@ transition block; two rosters naming different questions are refused), `tools` *
 skipped + 51 subtests**. Run against `39367801501` and `39449569048` it reads the answer layer's own
 instability: **text** differs on 286 of 500 answers (57.2%), **state** on 65 (13.0%) — and the per
 capability split is the floor §13.99.2 is registered against.
+
+## 13.100 The noise floor, measured on purpose
+
+### 13.100.1 The readings (`39509698041`, 1h45m, the adopting configuration twice)
+
+| capability | `39367801501` | `39509698041` | net |
+| --- | --- | --- | --- |
+| ABS | 29.25 (29–30) | 29.5 (29–30) | +0.25 |
+| IE | 134.25 (133–135) | 134.5 (134–136) | +0.25 |
+| KU | 62.5 (60–64) | 60.5 (59–63) | −2.0 |
+| **MR** | 84.25 (81–88) | **85.2** (83–87) | **+0.95** |
+| **TR** | 94.75 (94–95) | **97.0** (95–99) | **+2.25** |
+| **roster** | 405.0 (397–412) | **406.8** (400–415) | **+1.8** |
+
+Registered statistic **+36.15pp** against +36.55. Five predictions, all of them held:
+
+| # | prediction (§13.99.2) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | MR agreement 75–85% | **80.2%** (24 of 121 changed) | **holds** |
+| **2** | TR agreement 75–85% | **81.1%** (24 of 127) | **holds** |
+| **3** | ABS agreement ≥ 93% | **100%** (0 of 30) | **holds** |
+| **4** | roster within 405.0 ± 6 | **406.8** | **holds** |
+| **5** | four windows reproduce to the character | identical (46,694 / 46,864 / 46,827 / 47,137) | **holds** |
+
+### 13.100.2 The number every later registration has to clear
+
+The net difference between two runs of one configuration, by capability:
+
+| capability | repaired | damaged | **net** |
+| --- | --- | --- | --- |
+| ABS | 0 | 0 | 0 |
+| IE | 3 | 3 | 0 |
+| KU | 2 | 3 | −1 |
+| MR | 11 | 13 | **−2** |
+| TR | 8 | 12 | **−4** |
+
+**A four-question net movement happens with no treatment at all.** So a single run cannot support a
+claim smaller than five questions on any route, and the two runs' means differ by 1.8 questions on the
+roster. This is an observation, not a confidence interval — two runs give one difference, and the
+interval needs repetitions this campaign has not spent. It is stated as a **lower bound on the
+threshold**: whatever the true spread is, it is at least four questions on TR and two on MR.
+
+That is the resolution figure §13.96 and §13.98 were missing. Every measurement in this document
+that claimed a movement of one to three questions — the audit pass's −14 on MR is the exception —
+was inside it.
+
+### 13.100.3 What the two runs agree on, and why it matters more than the disagreement
+
+The text layer moved on 281 of 500 answers (56.2%) while the state layer moved on 59 (11.8%). A model
+that rephrases six answers in ten and re-scores one in ten is a model whose **answers are noisy but
+whose judgements are mostly stable** — and it means any future mechanism must be judged on states,
+never on strings. The `--stability` subcommand exists to make that distinction runnable rather than
+remembered.
+
+ABS moved zero answers in both directions, twice. It is now the campaign's **fixed control**: thirty
+questions whose answer is a token, whose window is identical to the character, and which have not
+moved a single state across any pair of runs measured. A treatment that moves ABS has broken
+something.
+
+### 13.100.4 Adoption
+
+The configuration is unchanged; the *reading* is what changed. §10.3 keeps `queryExpansion: none`, and
+the roster's registered point estimate stays with `39367801501` until a run beats **406.8 ± 4** by more
+than the noise.
+
+## 13.101 Self-consistency: spend the noise instead of fighting it
+
+### 13.101.1 Why this and not a fourth prompt
+
+Three prompt-side attempts and one retrieval-side attempt have been measured. The reading that
+survived all four is §13.100.2: the reader's **judgement** flips on 11.8% of questions between two
+identical runs, and 24 of 121 MR answers change with no treatment at all.
+
+A mechanism that samples that flip and takes a majority is the only candidate in the campaign whose
+target is the measured defect itself rather than a hypothesis about it. It is not a prompt change —
+the prompt is byte-identical — and it is not a retrieval change: the window is unchanged. It is three
+consultations of the same question over the same evidence, and a strict majority.
+
+The alternative — a stronger reader model — was considered and deferred, not rejected: a reasoning
+model's latency would multiply every pass by an unknown factor against a 90-minute per-pass ceiling,
+and the first thing to measure is whether voting helps at all, on the model every archived artifact
+was produced with.
+
+### 13.101.2 The treatment
+
+`CORTEX_MEMORY_SELF_CONSISTENCY`, `none` or `3`.
+
+`3` consults the model three times with the **same prompt** on the multi-session route, parses each
+response, and returns the answer held by a strict majority (more than half of the three, `null`
+included). With no strict majority — three different answers — the first pass is returned and the
+question is recorded as a split. The four other routes are untouched by construction: the sampling
+lives in `#promptSessionAware`, which only `answerSessions` reaches.
+
+Three decisions worth stating:
+
+* **`null` is a candidate.** A majority of declines is a decline. Excluding it would let two wrong
+  answers outvote one abstention on a question the evidence cannot answer, which is the failure mode
+  §13.34's closing line was written to prevent.
+* **The first pass is the fallback, not the longest or the most confident.** With three distinct
+  answers there is no majority to take, and inventing a tie-break would make the mechanism's behaviour
+  depend on a string heuristic nothing measured.
+* **The artifact records the agreement.** `vote=<unanimous>/<majority>/<split>` per run, so a null
+  result can be read as "voting never disagreed" (the mechanism did not fire) rather than as "voting
+  did not help".
+
+### 13.101.3 The input ceiling, again
+
+The workflow is at 25 inputs and `test_dispatch_inputs.py` refuses 25. `cortex_memory_threshold`
+becomes the constant `0`.
+
+The argument is the same one §13.97.3 used for `cortex_memory_confidence`, and it is a reach claim
+rather than a preference: **the admission gate has been at 0 in every run this arm has ever
+dispatched**, its one non-zero excursion (§10.9's `retrievalThreshold: 0.25`) abstained on 479 of 500
+and lost 186 questions, and §12.3 measured the hit and miss score distributions to overlap almost
+completely, so no cut in the reachable range can carry the arm. Admission-wide-open is the premise of
+every experiment here, not a variable within it. `retrievalThreshold` — which decides whether admitted
+evidence may be answered from — stays dispatchable, because that one gates a decision the runs
+actually exercise.
+
+### 13.101.4 Predictions, registered before the dispatch
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | the mechanism runs: config reads `selfConsistency=3`, and `vote` is not `0/0/121` | `unanimous + majority + split` is not 121 |
+| **2** | votes disagree often enough to matter: **split > 0** and unanimous ≤ **75%** | unanimous = 100% (the endpoint is deterministic after all, and §13.100.2's movement has another cause) |
+| **3** | MR mean **≥ 89** (85.2 + 4, i.e. above the measured floor) | MR ≤ 87 |
+| **4** | the four untouched capabilities reproduce `39509698041` to the character and to the turn | any moves |
+| **5** | MR abstentions ≤ 10 and MR `promptChars` unchanged | either moves |
+| **6** | wall clock ≤ 3h | longer |
+
+Prediction 3 is the one that decides adoption, and it is set at the floor rather than at a hoped-for
+effect: four questions is the largest net movement two identical runs have produced, so a result at or
+below it would not be evidence.
+
+### 13.101.5 What a positive result would and would not mean
+
+It would mean the arm can convert sampling noise into accuracy, which is a mechanism no prompt or
+retrieval change has produced. It would **not** mean the arm is SOTA: MR at 89 is still below the
+reference pipeline's 102, and the reference pipeline gets its 102 from a single sample of the same
+model. What changes is that the mechanism is now measurable at the resolution the instrument actually
+has.

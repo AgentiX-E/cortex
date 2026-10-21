@@ -73,11 +73,6 @@ on:
         required: false
         default: '1'
         type: string
-      cortex_memory_threshold:
-        description: 'Admission threshold for the cortex-memory arm, in [0, 1] (empty = 0, gates open). Above 1 admits nothing, below 0 admits everything, so the range is enforced rather than trusted'
-        required: false
-        default: ''
-        type: string
       cortex_memory_retrieval_threshold:
         description: 'Retrieval threshold for the cortex-memory arm, in [0, 1] (empty = 0, answer whenever anything was admitted). Separate from cortex_memory_threshold because it gates a different decision: whether the admitted evidence is strong enough to ANSWER with, not whether a turn was worth keeping. Run 37094200823 published threshold=0 with an ungated abstention path and scored 6.40%, so the two are now recorded and set independently'
         required: false
@@ -135,6 +130,11 @@ on:
         type: string
       cortex_memory_query_expansion:
         description: 'Whether the multi-session ranking is built from the question alone or from the question plus model-written activity phrases (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.97): empty or none = the bare question, which is the state every archived run is in; llm = one model call per multi-session question BEFORE the relevance index is built, and that question is retrieved against [question, ...phrases]. The phrases cannot be written during answering: the relevance callback is a synchronous table lookup, so a phrase produced at answer time would read the index floor score and the treatment would be unmeasurable. Only MR questions are expanded -- the other four capabilities keep their exact queries, ranking and window, which is this dispatch internal control. The measurement it is written against is section 13.96: three prompt-side attempts (structure, membership review, first-pass ledger) each lengthened the list and failed to raise accuracy, which moved the diagnosis from the reader to WHICH MENTIONS COUNT as instances -- a matching decision made before any list exists. --numbers localises it: on run 39416366870 the gold digit string appears nowhere in the window for 12 of the 44 wrong MR answers that state a number, and a digit that appears nowhere was never read, so no wording reaches it. A refusal is recognised rather than truncated: the reference pipeline once carried the three sentences of a model refusal into retrieval as phrases, so this parser drops refusal text and the artifact records how many questions were refused whole. An unrecognised value is REJECTED rather than defaulted, because a run dispatched to widen retrieval that silently ran the bare question would publish the control reading under the treatment name'
+        required: false
+        default: ''
+        type: string
+      cortex_memory_self_consistency:
+        description: 'How many times the multi-session route consults the model on one prompt, and whether the answers are reduced by strict majority (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.101): empty or none = one consultation, which is the state every archived run is in; 3 = three consultations of a BYTE-IDENTICAL prompt, and the answer a strict majority holds wins. Null is a candidate, so a majority of declines is a decline; with three different answers the first pass is returned and the question counts as a split. The mechanism is written against section 13.100.2, which ran one configuration twice: 24 of 121 multi-session answers changed, 59 of 500 states changed dataset-wide, and every prompt window reproduced to the character. The reader judgement is the unstable part, so this samples it instead of trying to talk it out of being unstable -- which three prompt-side attempts already failed to do. It touches the multi-session route alone by construction, so the four other capabilities keep their windows to the character and answer nothing differently. An unrecognised value is REJECTED rather than clamped, because a run dispatched at a count the product would clamp would publish a configuration it never administered'
         required: false
         default: ''
         type: string
@@ -278,7 +278,16 @@ jobs:
           # the §13 failure where two arms came out byte-identical and the verdict was
           # about the dispatch rather than the feature.
           CORTEX_MEMORY: ${{ github.event.inputs.cortex_memory }}
-          CORTEX_MEMORY_THRESHOLD: ${{ github.event.inputs.cortex_memory_threshold }}
+          # Fixed at `0` rather than dispatched, and this is a reach claim rather than a convenience:
+          # the admission gate has been 0 in every run this arm has ever dispatched, its one non-zero
+          # excursion (section 10.9's 0.25) abstained on 479 of 500 and lost 186 questions, and
+          # section 12.3 measured the hit and miss score distributions to overlap almost completely --
+          # so no cut in the reachable range can carry the arm. Admission-wide-open is the premise of
+          # every experiment here, not a variable within it. Section 13.101 needed the last input slot
+          # for a variable that IS reachable; restoring this one costs a registration, which the
+          # ceiling guard in test_dispatch_inputs.py will demand be traded rather than added.
+          # `retrievalThreshold` stays dispatchable: that one gates a decision runs exercise.
+          CORTEX_MEMORY_THRESHOLD: '0'
           CORTEX_MEMORY_RETRIEVAL_THRESHOLD: ${{ github.event.inputs.cortex_memory_retrieval_threshold }}
           CORTEX_MEMORY_SESSION_BUDGET: ${{ github.event.inputs.cortex_memory_session_budget }}
           # The ceiling, forwarded for the same reason as the two thresholds. Note that
@@ -368,6 +377,10 @@ jobs:
           # Section 13.94's second consultation. Blank means none, which is the state every archived
           # run is in; the arm rejects anything but none/audit rather than defaulting.
           CORTEX_MEMORY_REVIEW_PASS: ${{ github.event.inputs.cortex_memory_review_pass }}
+          # Section 13.101's sample count. Blank means one consultation; the arm rejects anything but
+          # none/3 rather than clamping, because a silently-clamped run would publish the control's
+          # reading under the treatment's name.
+          CORTEX_MEMORY_SELF_CONSISTENCY: ${{ github.event.inputs.cortex_memory_self_consistency }}
           # Section 13.97's expansion. Blank means the bare question; the arm rejects anything but
           # none/llm rather than defaulting, because a run that silently ran the control would
           # publish an unchanged result reading as evidence that expansion does not help.

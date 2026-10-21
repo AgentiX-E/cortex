@@ -39,7 +39,7 @@ import {
   type PromptOptions,
   type AssembledPrompt,
 } from './prompt.js';
-import { parseAnswer } from './parse.js';
+import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
 /**
@@ -237,6 +237,28 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * instead of inferred.
    */
   #lastReview: Review = null;
+  /**
+   * How the most recent vote resolved, or `null` when the route did not vote.
+   *
+   * Kept beside `#lastReview` and for the same reason: §13.101's mechanism is "a majority of
+   * three consultations", and a run that published only the answer could not tell a vote that
+   * never disagreed from one that never ran. `lastVote()` reports it; `voteCounts()` aggregates
+   * it for the artifact, which is what makes prediction 1 of §13.101.4 checkable at all.
+   */
+  #lastVote: Vote | null = null;
+  /**
+   * How every vote this instance resolved, counted by outcome.
+   *
+   * Three outcomes rather than two, because "unanimous" and "majority" are different facts about
+   * the endpoint: a run whose votes are 121 unanimous did not vote at all in any useful sense,
+   * and a run whose votes are mostly split is measuring a reader that disagrees with itself more
+   * often than §13.100.2's two-run comparison suggested.
+   */
+  #votes: { unanimous: number; majority: number; split: number } = {
+    unanimous: 0,
+    majority: 0,
+    split: 0,
+  };
 
   /**
    * The evidence the reader was shown for the most recent call, or `null`.
@@ -369,6 +391,24 @@ export class CortexMemory implements SessionAwareMemorySystem {
           : { routes: options.evidenceRolesRoutes }),
       };
     }
+    // §13.101's sample count. Refused rather than clamped for the reason every option here is:
+    // a run dispatched at 2 would silently consult twice and report a configuration it did not
+    // administer, and a count of 0 would return no answer at all.
+    if (options.selfConsistency !== undefined) {
+      if (!Number.isInteger(options.selfConsistency) || options.selfConsistency < 1) {
+        throw new Error(
+          'selfConsistency must be a positive integer: it is the number of consultations per ' +
+            'question, and a count below 1 leaves the route with no answer to return.',
+        );
+      }
+      if (options.selfConsistency > 1 && options.reviewPass === 'audit') {
+        throw new Error(
+          'selfConsistency and reviewPass: audit cannot both be on: the route would consult the ' +
+            'model six times per question, and nothing has measured what the two passes do to ' +
+            'each other. Choose one, or register the combination with its own prediction.',
+        );
+      }
+    }
     this.name = options.name ?? 'cortex-memory';
     this.#llm = options.llm;
     this.#now = options.now;
@@ -452,6 +492,26 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   lastReview(): Review {
     return this.#lastReview;
+  }
+
+  /**
+   * How the most recent multi-session vote resolved, or `null` when the route consulted once.
+   *
+   * `chosen` is the answer the route returned (unless the review pass replaced it, which cannot
+   * happen while both are on because the constructor refuses the combination). `agreement` is the
+   * largest share of samples that agreed, and `split` marks the questions where no answer held a
+   * majority and the first pass was returned.
+   */
+  lastVote(): Vote | null {
+    return this.#lastVote;
+  }
+
+  /**
+   * Every vote this instance resolved, counted by outcome. A copy, for the reason the abstention
+   * census is returned by value: the arm serialises this straight into its artifact.
+   */
+  voteCounts(): { unanimous: number; majority: number; split: number } {
+    return { ...this.#votes };
   }
 
   /**
@@ -944,7 +1004,28 @@ export class CortexMemory implements SessionAwareMemorySystem {
     );
 
     this.#lastReview = null;
-    const first = await this.#consult(assembled.prompt);
+    this.#lastVote = null;
+    // §13.101's sample count. One consultation is the shipped behaviour, and the loop reduces to
+    // exactly the previous single call when the count is 1: same prompt, same one parse, same raw.
+    const samples = this.#options.selfConsistency ?? 1;
+    const answers: Answer[] = [];
+    const raws: string[] = [];
+    for (let index = 0; index < samples; index++) {
+      answers.push(await this.#consult(assembled.prompt));
+      raws.push(this.#lastRawOutput as string);
+    }
+    const vote = samples === 1 ? null : voteAnswers(answers);
+    if (vote !== null) {
+      this.#lastVote = vote;
+      if (vote.split) this.#votes.split += 1;
+      else if (vote.unanimous) this.#votes.unanimous += 1;
+      else this.#votes.majority += 1;
+      // The retained text is the sample the answer came from rather than the last sample: a reader
+      // comparing `answer` against `rawOutput` in the roster has to be reading one response, and
+      // `indexOf` always finds it because `chosen` is one of `answers` by construction.
+      this.#lastRawOutput = raws[answers.indexOf(vote.chosen)] as string;
+    }
+    const first = vote === null ? (answers[0] as Answer) : vote.chosen;
     // `#consult` assigns the raw text before parsing, so this cannot be null after it returns; the
     // assertion states a fact about that method rather than a hope about the model. A `=== null`
     // guard here would be a branch no test can enter, which is the shape §57.6 removed from this

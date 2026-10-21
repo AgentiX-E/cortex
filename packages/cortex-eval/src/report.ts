@@ -281,6 +281,22 @@ const TURN_CAP_ROUTE_COUNT = 6;
  * Rendered only when counts exist: a control run has no reach to report, and `0q/0p/0r`
  * would claim an expansion that reached nothing rather than one that did not run.
  */
+/**
+ * The §13.101 vote census as one configuration field.
+ *
+ * `vote=60/52/9` reads as "sixty questions were answered unanimously, fifty-two by a majority that
+ * was not unanimous, nine split three ways". The three are separated because a run of nothing but
+ * unanimous votes means the treatment never fired, and one line that printed only the total would
+ * make that indistinguishable from a run where every vote decided the answer.
+ */
+function renderVoteCounts(counts: {
+  readonly unanimous: number;
+  readonly majority: number;
+  readonly split: number;
+}): string {
+  return `, \`vote=${String(counts.unanimous)}/${String(counts.majority)}/${String(counts.split)}\``;
+}
+
 function renderExpansionCounts(counts: {
   readonly questions: number;
   readonly phrases: number;
@@ -375,6 +391,14 @@ export type MemoryArmConfig = {
    */
   readonly queryExpansion?: string | undefined;
   /**
+   * The multi-session consultation count the run used (§13.101).
+   *
+   * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an artifact
+   * has to answer what the run did, and a field that is only present under treatment makes "one
+   * consultation" and "a count that was not recorded" the same row.
+   */
+  readonly selfConsistency?: string | undefined;
+  /**
    * How far the expansion reached, when one ran (§13.97).
    *
    * `questions` is the number of distinct multi-session questions the arm asked the model
@@ -386,6 +410,21 @@ export type MemoryArmConfig = {
    * optional fields above are: a zeroed object would read as "expanded nothing" while a
    * missing one reads as "did not expand".
    */
+  /**
+   * How every multi-session vote resolved in a run that voted (§13.101).
+   *
+   * Read from the feature system after the ablation, like `abstentionReasons`, because it is a
+   * count of what happened rather than a configuration. Present only when the run consulted more
+   * than once: an absent field is a run that did not vote, which is a different fact from a vote
+   * count of zero.
+   */
+  readonly voteCounts?:
+    | {
+        readonly unanimous: number;
+        readonly majority: number;
+        readonly split: number;
+      }
+    | undefined;
   readonly queryExpansionCounts?:
     | {
         readonly questions: number;
@@ -807,6 +846,9 @@ export function formatAblationReport(report: AblationReport): string {
         // §13.97, rendered on every run for the reason the pass is: `none` is a fact about the
         // run's retrieval (it used the bare question) rather than a missing field, and the two
         // artifacts this experiment compares differ only in this value.
+        // §13.101, rendered on every run for the reason the pass is: `none` is a fact about the
+        // run's consultations (one per question) rather than a missing field.
+        `, \`selfConsistency=${memoryArm.selfConsistency ?? 'none'}\`` +
         `, \`queryExpansion=${memoryArm.queryExpansion ?? 'none'}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
@@ -816,6 +858,10 @@ export function formatAblationReport(report: AblationReport): string {
         (memoryArm.queryExpansionCounts === undefined
           ? ''
           : renderExpansionCounts(memoryArm.queryExpansionCounts)) +
+        // §13.101's census, rendered only on a run that voted: a control run has no votes to count,
+        // and `0/0/0` would claim a mechanism that ran and agreed nothing rather than one that did
+        // not run.
+        (memoryArm.voteCounts === undefined ? '' : renderVoteCounts(memoryArm.voteCounts)) +
         `, \`evidenceRoles=${
           memoryArm.evidenceRoles === undefined
             ? 'all'
