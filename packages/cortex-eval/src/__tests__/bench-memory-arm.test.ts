@@ -3738,6 +3738,54 @@ describe('self-consistency options (§13.101)', () => {
     expect(formatAblationReport(report)).not.toContain('vote=');
   });
 
+  it('discards a census accessor that throws', async () => {
+    // A throwing accessor is a broken optional capability, not a failed run: the endpoint has already
+    // been measured by this point, so the census is dropped rather than the arm.
+    const throwing: MemorySystem & { voteCounts: () => unknown } = {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      voteCounts: () => {
+        throw new Error('census unavailable');
+      },
+    };
+    const { report } = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      throwing,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+      },
+    );
+
+    expect(report.memoryArmConfig?.voteCounts).toBeUndefined();
+  });
+
+  it('discards a census that is not an object', async () => {
+    // The accessor exists but returns nothing usable. Absent is the honest reading: a reader cannot
+    // tell a null census from a run that never voted, so neither is published.
+    const empty: MemorySystem & { voteCounts: () => unknown } = {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      voteCounts: () => null,
+    };
+    const { report } = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      empty,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+      },
+    );
+
+    expect(report.memoryArmConfig?.voteCounts).toBeUndefined();
+  });
+
   it('renders no census on a run that did not vote', () => {
     const line = formatAblationReport({
       dataset: 'fixture',
