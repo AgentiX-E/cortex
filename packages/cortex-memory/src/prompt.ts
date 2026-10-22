@@ -123,12 +123,15 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // The list is a recollection, not a walk. That is MR's failure and nobody else's: IE and KU
   // answer from one session each, and a line per session there would be one line.
   sweep: ['multi-session'],
-  // §13.103. Like `sweep` and unlike `enumerated`, this reaches the **multi-session route alone**:
-  // a run that dispatches it leaves the other five routes byte-identical to the shipped ask, which
-  // makes all five an internal control. The reach is narrow because the contract it installs is
-  // the reference pipeline's aggregation shape, and installing that shape on the flat or temporal
-  // route would move capabilities whose own blocks already work.
-  aggregation: ['multi-session'],
+  // §13.103, corrected by §13.104. This reaches the **same three routes as `enumerated`** and differs
+  // from it on one: the flat path and the temporal route read `computed`'s block in both asks, so the
+  // single variable against an `enumerated` control is what the multi-session route reads.
+  //
+  // The first dispatch of this ask declared one route and fell through to the *control's* block
+  // everywhere else, which silently removed the merging sentence from flat and temporal -- TR fell
+  // 21 questions and IE 9 in a run registered as a single-variable test. The reach table and the
+  // fallthrough are two statements of one fact, and they disagreed.
+  aggregation: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -806,12 +809,21 @@ function instructionsFor(
     return own;
   }
   if (ask === 'aggregation') {
-    // §13.103. Like `sweep`, the fallthrough is the shipped block, so a run that dispatches this
-    // leaves the other five routes byte-identical to no ask at all -- five controls, not three.
+    // §13.103, and §13.104 is why the fallthrough is `enumerated`'s rather than the shipped block.
+    //
+    // Run `39641088296` dispatched this ask with a fallthrough of `own`, which is the *control's*
+    // block, and two capabilities moved that the registration said would not: TR 94.2 -> 72.8 and
+    // IE 136.2 -> 127.5. The cause is one sentence — `enumerated` composes `withMergingSentence` onto
+    // the flat and temporal blocks and `own` does not — so the run administered a treatment to MR and
+    // a **removal** to two routes nobody was measuring. The control it was registered against was an
+    // `enumerated` run, so the comparison was unreadable rather than merely noisy.
+    //
+    // Matching `enumerated`'s fallthrough makes the two asks differ on the multi-session route and
+    // nowhere else, which is what the registration always claimed.
     if (scope === 'multi-session' && contract === 'extractive') {
       return AGGREGATION_MULTI_SESSION_INSTRUCTION;
     }
-    return own;
+    return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
   if (ask === 'enumerated') {
     if (scope === 'multi-session' && contract === 'extractive') {

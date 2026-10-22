@@ -974,10 +974,11 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // accepted by every guard, and fails at startup in `readAsk`. `test_ask_table_parity.py` compares
   // the two key sets by source, and it is the only thing that makes this copy safe.
   sweep: ['multi-session'],
-  // §13.103's ask. A single route, like `sweep`, and for the same reason: the contract it installs
-  // is the reference pipeline's aggregation shape, and the other five routes keep the shipped block
-  // byte for byte -- five controls rather than three.
-  aggregation: ['multi-session'],
+  // §13.103's ask, corrected by §13.104: the same three routes as `enumerated`, because the flat path
+  // and the temporal route read `computed`'s block in both. The first dispatch declared one route and
+  // fell through to the control's block elsewhere, which removed the merging sentence from flat and
+  // temporal -- TR fell 21 questions in a run registered as a single-variable test.
+  aggregation: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -2408,13 +2409,18 @@ function voteCountsOf(system: MemorySystem): {
     const value = record[key];
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
   }
-  return {
-    voteCounts: {
-      unanimous: record.unanimous as number,
-      majority: record.majority as number,
-      split: record.split as number,
-    },
+  const counts = {
+    unanimous: record.unanimous as number,
+    majority: record.majority as number,
+    split: record.split as number,
   };
+  // A census of three zeros is a run that did not vote, not a run whose votes all failed to
+  // resolve: every vote lands in exactly one of the three buckets, so their sum is the number of
+  // votes taken. Publishing `vote=0/0/0` on a control run -- which run `39641088296` did -- makes
+  // an artifact claim a mechanism that never ran, which is the reading §13.101.2 says the census
+  // exists to prevent.
+  if (counts.unanimous + counts.majority + counts.split === 0) return {};
+  return { voteCounts: counts };
 }
 
 function abstentionReasonsOf(system: MemorySystem): { abstentionReasons?: AbstentionReasons } {

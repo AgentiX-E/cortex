@@ -3786,6 +3786,31 @@ describe('self-consistency options (§13.101)', () => {
     expect(report.memoryArmConfig?.voteCounts).toBeUndefined();
   });
 
+  it('treats a census of three zeros as a run that did not vote', async () => {
+    // Every vote lands in one of the three buckets, so the sum is the number of votes taken. A
+    // zeroed census on a control run would claim a mechanism that never ran -- which is what the
+    // first dispatch of this feature actually published (`vote=0/0/0` in `39641088296`).
+    const idle: MemorySystem & { voteCounts: () => unknown } = {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      voteCounts: () => ({ unanimous: 0, majority: 0, split: 0 }),
+    };
+    const { report } = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      idle,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+      },
+    );
+
+    expect(report.memoryArmConfig?.voteCounts).toBeUndefined();
+    expect(formatAblationReport(report)).not.toContain('vote=');
+  });
+
   it('renders no census on a run that did not vote', () => {
     const line = formatAblationReport({
       dataset: 'fixture',

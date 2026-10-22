@@ -719,9 +719,33 @@ describe('the aggregation ask states the three rules the enumerated contract lea
     expect(instructionsOf(aggregation[0]!)).not.toBe(instructionsOf(enumerated[0]!));
   });
 
-  const SHIPPED: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
+  /**
+   * §13.104. The flat path and the temporal route read what `enumerated` gives them, not what the
+   * control gives them.
+   *
+   * The first dispatch of this ask fell through to the shipped block, which silently removed
+   * `withMergingSentence` from two routes: TR fell 21 questions and IE 9 in a run registered as a
+   * single-variable test against an `enumerated` control. The two asks must differ on one route.
+   */
+  const ENUMERATED_EQUIVALENT: ReadonlyArray<
+    readonly [string, (m: CortexMemory) => Promise<unknown>]
+  > = [
     ['the flat path (IE)', (m) => m.answer('How many kits do I own?', [TEXT])],
     ['temporal (TR)', (m) => m.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
+  ];
+
+  for (const [name, drive] of ENUMERATED_EQUIVALENT) {
+    it(`gives ${name} exactly what enumerated gives it`, async () => {
+      const aggregation: string[] = [];
+      const enumerated: string[] = [];
+      await drive(build(aggregation, 'aggregation'));
+      await drive(build(enumerated, 'enumerated'));
+
+      expect(instructionsOf(aggregation[0]!)).toBe(instructionsOf(enumerated[0]!));
+    });
+  }
+
+  const SHIPPED: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
     ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
     ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
     ['abstention', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
@@ -738,7 +762,8 @@ describe('the aggregation ask states the three rules the enumerated contract lea
     });
   }
 
-  it('records one route, which is the route the loss is on', () => {
-    expect(ASK_ROUTES.aggregation).toEqual(['multi-session']);
+  it('records the three routes enumerated reaches, and differs from it on one', () => {
+    expect(ASK_ROUTES.aggregation).toEqual(['multi-session', 'flat', 'temporal']);
+    expect(ASK_ROUTES.aggregation).toEqual(ASK_ROUTES.enumerated);
   });
 });

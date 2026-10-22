@@ -11371,3 +11371,125 @@ difference — that the same model, on the same evidence, can be brought from 86
 telling it what an exchange is and what each question form asks for. It would not mean parity: the
 reference pipeline's 102 comes from its own retrieval, its own session truncation and its own critique
 pass, none of which this run changes.
+
+## 13.104 The aggregation run is void, and what it found anyway
+
+### 13.104.1 The readings (`39641088296`, 1h45m)
+
+| # | prediction (§13.103.3) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | `ask=aggregation`, `askRoutes=multi-session` | both as registered | **holds** — and the registration was wrong |
+| **2** | five controls reproduce `39509698041` to the character | **IE 46,864 → 46,980; TR 47,137 → 47,383** | **falsified** |
+| **3** | MR mean ≥ 91 | **87.5** (82–91); first repetition **82** | **falsified** |
+| **4** | under-counts 15 → ≤ 10 | **14** | **falsified** |
+| **5** | MR abstentions 10 → ≤ 7 | **16** | **falsified** |
+| **6** | MR `promptChars` 46,186 ± 500 | **45,964** | holds |
+
+Roster **380.5** (367–391) against 406.8; delta +31.30pp against +36.15. The capability table is the
+reason this run cannot be used: **TR 94.2 → 72.8** and **IE 136.2 → 127.5**, on a run registered as a
+single-variable test on multi-session.
+
+### 13.104.2 Why the control broke, and it is one sentence
+
+`aggregation`'s fallthrough returned `own` — the **control's** block — while `enumerated`'s returns
+`withMergingSentence(own)` on the flat path and the temporal route. So the run administered a
+treatment to MR and a **removal** to two routes nobody was measuring, and the control it was
+registered against is an `enumerated` run whose blocks still carried that sentence.
+
+The reach table said one route and the fallthrough said five; they are two statements of one fact and
+they disagreed. §13.103.2 asserted "all five other routes keep the shipped block byte for byte" — a
+sentence about the code that the code did not implement, which is §13.55's defect class arriving in a
+document rather than in a parser.
+
+Fixed in `prompt.ts` and in the arm's table: `aggregation` now reaches exactly the three routes
+`enumerated` reaches and differs from it on one, which is what the registration always claimed. The
+suite pins it — the flat path and temporal route must match `enumerated` **byte for byte**, and
+`evidence-ask-reach.ts` asserts the two reach sets are equal.
+
+### 13.104.3 What the broken control measured, which is worth more than the run
+
+With the merging sentence removed, **TR fell 21.4 questions and IE 8.7**. That is the largest
+single-sentence effect this campaign has measured, and it was found by accident: §13.21 adopted
+`aggregate` on TR 27.27% → 44.63%, and this is the same sentence priced at the current window, pool and
+cap. It also explains why every ask since §13.34 composed onto `computed` rather than replacing it.
+
+Two defects were found by reading the artifact rather than by a test:
+
+* **`vote=0/0/0` on a run that never voted.** The product always exposes `voteCounts()`, so a control
+  run published a census of three zeros — claiming a mechanism that never ran, which is exactly the
+  reading §13.101.2 says the census exists to prevent. `voteCountsOf` now treats a sum of zero as
+  absent, and a test holds it.
+* **A reach table that disagreed with its own fallthrough** (§13.104.2).
+
+### 13.104.4 Verdict on `aggregation`: retired
+
+Prediction 3 missed by 3.5 questions and prediction 5 missed in the wrong direction — abstentions went
+**up** by six, not down by three. The run's control is void, so the honest statement is narrower than a
+paired comparison: **on the questions the contract actually changed, it produced 87.5 and sixteen
+declines**, against 85.2 and ten. Both numbers are worse than the floor can excuse.
+
+The mechanism the contract was built on — an exchange is two items, four form→operation lines, a
+narrower decline — did not survive contact. `ask` stays `enumerated` in §10.3; `aggregation` remains
+dispatchable, and the next run of it must be read against a control whose flat and temporal blocks are
+identical.
+
+### 13.104.5 The instruction grew and the window shrank
+
+MR's `promptChars` fell by 222 characters, because the contract is longer than `enumerated`'s and the
+evidence room is what pays for it. Six additional declines against a window 222 characters smaller is
+consistent, and it is a fact about any future contract: **a longer instruction buys declines**, because
+the budget is charged to the evidence. That is now on the record for the next one.
+
+## 13.105 The unit of retrieval, at the budget this arm actually runs
+
+### 13.105.1 Why re-test a unit that lost
+
+`relevanceUnits: session` and `session-fill` were refused by §13.32–13.34. Every condition that
+produced that verdict has changed:
+
+| | when the unit lost | now |
+| --- | --- | --- |
+| evidence budget | 24,000 characters | **48,000** |
+| pool width | 64 | **256** |
+| role filter | none (52% assistant characters) | **user only** |
+| cap | none | **400 on MR and TR** |
+| MR | 51% | **86–87%** |
+
+A turn unit scatters a session across the window; a session unit completes it. At 24,000 characters
+and a 64-wide pool a completed session displaced too much, and the verdict was correct for that
+configuration. §13.79 raised the pool until the gold's median rank (114) sat inside it, and §13.82
+doubled the room. The question "does completing the session help" was never asked at a budget where a
+session fits.
+
+The reference pipeline retrieves **sessions**, truncates each one, and answers 102 of 121.
+
+### 13.105.2 The treatment, and why it needs no code
+
+`relevanceUnits: session` is implemented and has been measured before; the dispatch is one flag. The
+unit applies to the multi-session route only — `buildPrompt` carries no session boundary, so the flat,
+temporal, knowledge-update, abstention and assistant routes cannot express a session selection and are
+inert by construction.
+
+### 13.105.3 Predictions, registered before the dispatch
+
+Dispatch: `--set cortex_memory_relevance_units=session` on §10.3's configuration. Control:
+**`39509698041`** (`enumerated`, `turn`, 48,000, k=256, user roles, cap 400).
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| **1** | mechanism: config reads `relevanceUnits=session` | it does not |
+| **2** | the four untouched capabilities reproduce `39509698041` to the character | any moves |
+| **3** | MR mean **≥ 91** | MR ≤ 87 |
+| **4** | MR abstentions **≤ 10** | 11 or more |
+| **5** | the under-counts fall from **15 to ≤ 10** (`--arithmetic`) | 11 or more |
+| **6** | MR `promptChars` within **46,186 ± 1,000** | outside |
+
+Prediction 3 is the floor. Prediction 5 is the mechanism: a completed session is what supplies the
+item a turn-scattered window leaves out, and a constant offset of one is what §13.102.3 measured.
+
+### 13.105.4 What a null result would close
+
+If a completed session at 48,000 characters and a 256-wide pool does not move MR, then the unit of
+retrieval is not the lever at any configuration this arm can express, and the remaining difference from
+the reference pipeline is either its per-session truncation (`maxSessionChars`) or the reader itself.
+That would be worth knowing before another prompt is written.
