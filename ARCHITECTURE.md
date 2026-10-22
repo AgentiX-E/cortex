@@ -15,7 +15,9 @@ cortex-core (contracts + pure algorithms, zero I/O, Node + browser)
   ├── value/         value-driven write & abstention decisions
   ├── temporal/      bitemporal fact queries
   ├── contradiction/ Bayesian evidence fusion
-  └── consolidation/ retrieval-as-consolidation orchestration
+  ├── consolidation/ retrieval-as-consolidation orchestration
+  └── federation/    FederatedStorage (routes by table prefix) · ReadSideAssembler (which rows a
+                     task may see; refuses to assemble a shared window holding a private row)
 
 cortex-memory (the composition layer: cortex-core's gates -> one MemorySystem)
   ├── admission      value-gated write admission (first caller of decideWrite)

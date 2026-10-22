@@ -81,6 +81,22 @@ export {
   type AccessRecord,
 } from './consolidation/consolidate.js';
 
+// federation: routing across two stores, and the read-side policy over them
+export {
+  FederatedStorage,
+  FederationError,
+  scopeOf,
+  type MemoryScope,
+  type ScopedRow,
+} from './federation/federated-storage.js';
+export {
+  ReadSideAssembler,
+  ScopeViolation,
+  type AssembleRequest,
+  type ReadSideOptions,
+  type TaskScope,
+} from './federation/read-side.js';
+
 // tooling: the export census that `tools/export-census.mjs` drives through dist
 export {
   isSourceFile,
