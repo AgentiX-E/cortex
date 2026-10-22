@@ -122,6 +122,13 @@ export {
   type CardState,
   type KnowledgeCard,
 } from './triage/card.js';
+export {
+  OutputGuard,
+  type FindingKind,
+  type OutputFinding,
+  type OutputScan,
+  type OutputScanRequest,
+} from './triage/output-guard.js';
 
 // tooling: the export census that `tools/export-census.mjs` drives through dist
 export {
