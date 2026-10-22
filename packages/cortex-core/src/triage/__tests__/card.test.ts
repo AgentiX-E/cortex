@@ -15,6 +15,9 @@
  * test that asserts `decayAt > Date.now()` would pass whatever the code did.
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { MemoryStorage } from '../../__tests__/support/memory-storage.js';
@@ -23,6 +26,7 @@ import { ReadSideAssembler } from '../../federation/read-side.js';
 import { CardQueue } from '../card.js';
 import { TriageError, TriageWriter, type AdmittedFact } from '../writer.js';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const START = 1_700_000_000_000;
 const DECAY = 1_000;
 
@@ -450,6 +454,65 @@ describe('export', () => {
     const second = await w.queue.toMarkdown();
     expect(first).toBe(second);
     expect((await w.queue.toJSON()).map((card) => card.id)).toEqual(['a', 'b', 'c', 'x', 'y']);
+  });
+});
+
+describe('a user who accepts every card', () => {
+  it('reaches seven of the eight shareable facts and publishes none that was private', async () => {
+    // `[POC-5]` priced the ceiling at 8/8 with zero leakage using an **oracle**. This is an ordinary
+    // user who accepts everything, and it gets to 7/8: the eighth ("a 5 km walk with my colleagues")
+    // is held private by `health`, so it never becomes a question and no card can publish it.
+    //
+    // The first run of this test published three gold-private facts, because private recall was
+    // 9/12 and all three misses were exercise or diet phrasing. That is what the widening in
+    // `rules.ts` was for; recall is 12/12 now and nothing private is published. The number this
+    // test can no longer show is the one worth remembering: accept-all used to leak 3 of 12.
+    const w = world();
+    const rows = JSON.parse(readFileSync(join(HERE, 'fixtures', 'triage-labels.json'), 'utf8')) as {
+      rows: { id: string; text: string; gold: 'private' | 'shared' | 'defer' }[];
+    };
+
+    for (const row of rows.rows) {
+      const admission = await w.writer.admit(row.text, { id: row.id });
+      const card = await w.queue.open(admission);
+      if (card !== null) await w.queue.accept(card.id);
+    }
+
+    const window = await w.assembler.assemble({ task: 'shared' });
+    const byId = new Map(rows.rows.map((row) => [row.id, row]));
+    const leaked = window.filter((row) => byId.get(row.key ?? '')?.gold === 'private');
+    const reachable = window.filter((row) => byId.get(row.key ?? '')?.gold === 'shared');
+
+    expect(reachable).toHaveLength(7);
+    expect(leaked).toHaveLength(0);
+    // 45 published: the 4 the shared rule caught, plus all 41 deferrals -- of which 40 are labelled
+    // `defer`, meaning "no opinion" rather than "private". That the count is 45 and not 7 is the
+    // honest shape of a queue this size: the queue is not a filter, it is the product.
+    expect(window).toHaveLength(45);
+  });
+
+  it('catches every private fact the rules used to miss, and names the rule', async () => {
+    // A regression test for the widening. These three were gold-private with no rule matching, so
+    // accepting every card published them. A count without the rows would not have told anyone
+    // which rule to widen.
+    const w = world();
+    const rows = JSON.parse(readFileSync(join(HERE, 'fixtures', 'triage-labels.json'), 'utf8')) as {
+      rows: { id: string; text: string; gold: 'private' | 'shared' | 'defer' }[];
+    };
+
+    const caught: [string, string][] = [];
+    for (const row of rows.rows) {
+      if (row.gold !== 'private') continue;
+      const admission = await w.writer.admit(row.text, { id: row.id });
+      caught.push([row.id, admission.triage.rule ?? 'defer']);
+    }
+
+    expect(caught.filter(([, rule]) => rule === 'defer')).toEqual([]);
+    expect(caught.filter(([id]) => ['g16', 'g49', 'g59'].includes(id))).toEqual([
+      ['g16', 'health'],
+      ['g49', 'health'],
+      ['g59', 'health'],
+    ]);
   });
 });
 

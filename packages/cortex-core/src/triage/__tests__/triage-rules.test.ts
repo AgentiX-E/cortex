@@ -221,10 +221,14 @@ describe('the sixty labelled utterances', () => {
     }
   });
 
-  it('decides 16 of 60, which is 26.7% -- the rule layer is a minority path', () => {
+  it('decides 19 of 60, which is 31.7% -- the rule layer is a minority path', () => {
+    // Was 16 (26.7%) until the card queue's first measurement found three ordinary exercise and
+    // diet sentences that no rule caught. The widening is `walk|sugar|calorie|intake` in `health`,
+    // justified by the policy and measured on three corpora before it shipped -- see the comment in
+    // `rules.ts` and docs/04 section 9.9.
     const decided = classified.filter(({ decision }) => decision.scope !== 'defer');
-    expect(decided).toHaveLength(16);
-    expect(((decided.length / rows.length) * 100).toFixed(1)).toBe('26.7');
+    expect(decided).toHaveLength(19);
+    expect(((decided.length / rows.length) * 100).toFixed(1)).toBe('31.7');
   });
 
   it('shares nothing that was labelled private, and says what that is worth', () => {
@@ -259,20 +263,20 @@ describe('the rules that this corpus never exercises', () => {
     const fired = new Set(
       LABELS.rows.map((row) => classify(row.text).rule).filter((id): id is string => id !== null),
     );
-    expect([...fired].sort()).toEqual([
-      'family',
-      'health',
-      'money',
-      'org-knowledge',
-      'third-party',
-    ]);
+    expect([...fired].sort()).toEqual(['family', 'health', 'money', 'org-knowledge']);
     expect(
       RULE_TABLE.map((rule) => rule.id)
         .filter((id) => !fired.has(id))
         .sort(),
-    ).toEqual(['career-status', 'credential', 'strong-pii']);
-    // Those three are covered by `describe('each rule can fire')` and by the CI corpus in
-    // `docs/04` (3,000 identifier-bearing rows, one publication after two rule rounds), not here.
+    ).toEqual(['career-status', 'credential', 'strong-pii', 'third-party']);
+    // Those four are covered by `describe('each rule can fire')` and by the CI corpus in `docs/04`
+    // (3,000 identifier-bearing rows, one publication after two rule rounds), not here.
+    //
+    // `third-party` joined this list by accident rather than by design: the one row it used to fire
+    // here is "a 5 km walk with my colleagues", which also matches `health`, and `health` precedes
+    // it. The scope is private either way, so no reading moved -- but the audit trail now says
+    // `health` about a sentence whose point is a friend. That is the kind of attribution drift a
+    // rule table accumulates while every metric stays still.
   });
 });
 

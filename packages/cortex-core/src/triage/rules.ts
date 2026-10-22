@@ -109,8 +109,16 @@ export const RULE_TABLE: readonly TriageRule[] = [
     // test showed ALT 28", "I average 7.5 hours of sleep". Those are health facts by any reading,
     // and being silent about them costs the user a card rather than safety -- which is why the gap
     // survived a false-share audit and had to be found by a coverage measurement instead.
+    //
+    // `walk`/`sugar`/`calorie`/`intake` came from the card queue's first measurement (step 6): of
+    // the 12 gold-private utterances, 3 were never caught by any rule, and all 3 were ordinary
+    // exercise and diet phrasing -- "more walking into my daily routine", "reducing my intake of
+    // added sugars", "longer walks in the morning". A user who accepted every card then published
+    // them. Measured before shipping, on three corpora at once: private recall 9/12 -> 12/12,
+    // coverage 26.7% -> 31.7% on the 60 labelled rows, 0 changed rows in the 13 frozen leak
+    // regressions, and 28.6% -> 29.2% on the 1,467 persona facts. Nothing else moved.
     pattern:
-      /\b(diagnos\w*|doctor|dentist|therapy|therapist|medication|prescription|symptom|allerg\w*|surgery|clinic|mental health|anxiety|depress\w*)\b|\b(vegan|vegetarian|lacto|gluten[- ]free|diet)\b|\b(jog|workout|exercise|strength training|wake up at|weight)\b|\b(blood pressure|heart rate|cholesterol|liver function|kidney function|alt|ast|bmi|mmhg|blood sugar|blood test|hours of sleep|sober|sobriety)\b/i,
+      /\b(diagnos\w*|doctor|dentist|therapy|therapist|medication|prescription|symptom|allerg\w*|surgery|clinic|mental health|anxiety|depress\w*)\b|\b(vegan|vegetarian|lacto|gluten[- ]free|diet)\b|\b(jog|walk(ing|s)?|workout|exercise|strength training|wake up at|weight|sugar|calorie|intake)\b|\b(blood pressure|heart rate|cholesterol|liver function|kidney function|alt|ast|bmi|mmhg|blood sugar|blood test|hours of sleep|sober|sobriety)\b/i,
   },
   {
     id: 'family',
