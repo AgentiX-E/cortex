@@ -234,3 +234,79 @@ describe('the option is refused rather than clamped', () => {
     );
   });
 });
+
+/**
+ * §13.107: the census's unit is the question, not the model call.
+ *
+ * ## The defect this file was extended to hold
+ *
+ * `abstentionReasons` tallied inside `#consult`, which is the per-**call** method. With voting
+ * on, one multi-session question makes three calls, so a run of 500 questions × 4 repetitions
+ * published a census summing to **2,968** instead of **2,000** — the extra 968 are the two
+ * surplus samples of each of the 484 multi-session question-answers. The audit pass did the same
+ * thing with one surplus call.
+ *
+ * Nothing in the artifact said so. `39641088296`'s own numbers read as `2,000` because that run
+ * consulted once per question; the voting run's `2,968` was only visible against it. That is the
+ * §148.4 lesson repeating — the census is a published quantity, and a treatment that silently
+ * changes its denominator makes two runs' abstention rates incomparable.
+ *
+ * The invariant is simple enough to state in one line: **every question answered contributes
+ * exactly one census outcome**, whatever the number of consultations it took.
+ */
+describe('the census counts questions, not consultations', () => {
+  it('counts one outcome for a voted question', async () => {
+    const seen: string[] = [];
+    const memory = system({ selfConsistency: 3 }, queueLlm(seen, 'Step 2 — 2'));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    expect(seen).toHaveLength(3);
+    const census = memory.abstentionReasons();
+    // One question, three consultations, one outcome.
+    expect(census.answered + census.llm).toBe(1);
+    expect(census.answered).toBe(1);
+  });
+
+  it('counts one outcome for an audited question', async () => {
+    // The audit pass is the same defect with one surplus call rather than two, and §13.96's run
+    // published it: a two-pass run's census counted both passes as separate answers.
+    const seen: string[] = [];
+    const memory = system({ reviewPass: 'audit' }, queueLlm(seen, 'Step 2 — 2', 'Step 2 — 2'));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    expect(seen).toHaveLength(2);
+    const census = memory.abstentionReasons();
+    expect(census.answered + census.llm).toBe(1);
+  });
+
+  it('counts the outcome the caller received, not the first pass it discarded', async () => {
+    // First pass answers, the audit declines. The question's outcome is the decline, so
+    // `answered` must stay at zero: a census that counted the discarded pass would report a
+    // question as answered whose answer no reader ever saw.
+    const seen: string[] = [];
+    const memory = system(
+      { reviewPass: 'audit' },
+      queueLlm(seen, 'Step 2 — 2', 'INSUFFICIENT_EVIDENCE'),
+    );
+
+    const answer = await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    expect(answer).toBeNull();
+    const census = memory.abstentionReasons();
+    expect(census.llm).toBe(1);
+    expect(census.answered).toBe(0);
+  });
+
+  it('counts one outcome per question across several questions', async () => {
+    const seen: string[] = [];
+    const memory = system({ selfConsistency: 3 }, queueLlm(seen, 'Step 2 — 2'));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+    await memory.answerSessions('How many bags are there?', SESSIONS);
+
+    const census = memory.abstentionReasons();
+    expect(census.answered + census.llm).toBe(2);
+  });
+});

@@ -968,7 +968,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     if (kept.length === 0) return this.#declinedEmpty();
     const assembled = buildPrompt(question, kept, contract, this.#promptOptions(route));
     this.#recordEvidence(kept, assembled);
-    return this.#consult(assembled.prompt);
+    // §13.107: the outcome is recorded here, once per question, rather than inside `#consult`.
+    // A route that consults once is unaffected; a route that consults several times per question
+    // is the reason the tally moved out.
+    return this.#recordOutcome(await this.#consult(assembled.prompt));
   }
 
   async #promptWithDate(
@@ -985,7 +988,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...(questionDate === undefined ? {} : { questionDate }),
     });
     this.#recordEvidence(kept, assembled);
-    return this.#consult(assembled.prompt);
+    // §13.107: the outcome is recorded here, once per question, rather than inside `#consult`.
+    // A route that consults once is unaffected; a route that consults several times per question
+    // is the reason the tally moved out.
+    return this.#recordOutcome(await this.#consult(assembled.prompt));
   }
 
   /** Render selected sessions with their boundaries intact. */
@@ -1046,7 +1052,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
         sessions.flatMap((session) => session.turns),
         assembled,
       );
-      return first;
+      // The answer the caller receives, recorded once. With a vote this is the majority's answer;
+      // with one consultation it is that consultation's. Either way the question contributes one
+      // census outcome (§13.107).
+      return this.#recordOutcome(first);
     }
 
     const audit = buildAuditPrompt(question, sessions, firstRaw, options);
@@ -1059,7 +1068,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
       sessions.flatMap((session) => session.turns),
       audit,
     );
-    return final;
+    // The **final** answer, not the first pass: the first pass was discarded, and a census that
+    // counted it would report a question as answered whose answer no reader saw. This is also why
+    // the audit run's census used to double — two calls, two outcomes, one question.
+    return this.#recordOutcome(final);
   }
 
   /**
@@ -1092,7 +1104,34 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // Retained before the parse, not after: `parseAnswer` returns the summary
     // and the text it summarised is gone by then. See `#lastRawOutput`.
     this.#lastRawOutput = raw;
-    const answer = parseAnswer(raw);
+    return parseAnswer(raw);
+  }
+
+  /**
+   * Count one question's outcome, and return it unchanged so call sites can `return` through here.
+   *
+   * ## Why this is separate from `#consult`
+   *
+   * It was inside `#consult` — the per-**call** method — and that made the census's unit depend on
+   * how many times a question happened to be consulted. `selfConsistency: 3` turned one question
+   * into three outcomes and the voting run's artifact published a census summing to **2,968**
+   * against the 2,000 its roster implies; `reviewPass: 'audit'` did the same with one surplus call.
+   * Nothing in that artifact said the denominator had changed, which is what made it a measurement
+   * defect rather than a cosmetic one: an abstention rate computed from it is not comparable with
+   * any control run's.
+   *
+   * The unit is the **question answered**, because that is the unit every count in the artifact is
+   * about — `questionCount x runs` declares how many answers a run produces, and this census has to
+   * agree with it.
+   *
+   * ## Why the tally returns its argument
+   *
+   * So a call site reads `return this.#recordOutcome(await ...)` and cannot record one answer while
+   * returning another. Every route now records exactly the value it hands the caller, which is the
+   * property the audit pass needed: it discards the first pass, so the first pass must not be
+   * counted.
+   */
+  #recordOutcome(answer: Answer): Answer {
     this.#reasons[answer === null ? 'llm' : 'answered'] += 1;
     return answer;
   }

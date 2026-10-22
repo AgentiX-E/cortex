@@ -11493,3 +11493,118 @@ If a completed session at 48,000 characters and a 256-wide pool does not move MR
 retrieval is not the lever at any configuration this arm can express, and the remaining difference from
 the reference pipeline is either its per-session truncation (`maxSessionChars`) or the reader itself.
 That would be worth knowing before another prompt is written.
+
+## 13.106 The reach table is now a test rather than a claim
+
+### 13.106.1 What §13.104 left behind
+
+§13.104.2 found that `aggregation`'s reach table said one route while its fallthrough installed the
+**control's** block on the other five. Both statements described the same fact and they disagreed, and
+nothing in the suite compared them: every reach test in `evidence-ask-reach.test.ts` had been written
+by hand for the ask its section introduced, so the file asserted eight asks and verified none of them
+against the table that publishes their reach.
+
+The cost was a void run — TR 94.2 → 72.8, IE 136.2 → 127.5 with no treatment — and, on the way, the
+campaign's largest single-sentence measurement. That is a good accident, not a method.
+
+### 13.106.2 The invariant, stated once
+
+For **every** ask in `ASK_ROUTES` and **every** route this product can build a prompt for, the
+instruction block the route receives must differ from the shipped block on exactly the routes the table
+names. Eight asks × six routes, one assertion, no per-ask prose.
+
+Three properties make it a real check rather than a restatement:
+
+* **It drives the routes.** The block is read out of the prompt the model would receive, not out of
+  the source. A table and a fallthrough can agree in text and disagree in code — that is precisely
+  what §13.104 was.
+* **It compares against the shipped ask.** `askRoutes` in an artifact means "routes this dispatch
+  changes, relative to no ask". Any comparison between two asks answers a different question and would
+  have passed on the run that broke.
+* **It checks the names.** A route name in the table that no scope produces is invisible otherwise:
+  the artifact would publish a reach for a route nothing can move, and the claim would be untestable
+  rather than wrong.
+
+**Mutation check.** Reverting `aggregation`'s fallthrough to `own` — the exact line that produced the
+void run — turns three tests red: the two per-route byte-identity tests §13.104 added, and the new
+generic one. Restoring it returns all 64 to green.
+
+## 13.107 The census counted consultations, and every count in the artifact is about questions
+
+### 13.107.1 The defect, found while auditing an artifact rather than a run
+
+`--audit` (§13.107.4) was written to check an artifact's fields against each other, and the first field
+it disagreed with was the census. On `39529234665` — the voting run — `abstentionReasons` sums to
+**2,968** against the **2,000** its roster implies (`500 questions × 4 repetitions`).
+
+The surplus is exactly accounted for: **968 = 484 × 2**, the two additional samples of each of the 484
+multi-session question-answers. The census was tallied inside `#consult`, the per-**call** method, so
+`selfConsistency: 3` turned one question into three outcomes. `reviewPass: 'audit'` did the same thing
+with one surplus call, so `39416366870`'s census was inflated by 484 as well.
+
+### 13.107.2 Why this is a measurement defect and not a cosmetic one
+
+Every count in this artifact is about **questions**: `questionCount x runs` declares how many answers a
+run produces, the per-capability tables divide by it, and `abstentionRate` is read against it. A field
+whose denominator silently changes with the treatment makes an abstention rate incomparable with any
+control run's — and nothing in the artifact said the denominator had moved.
+
+The scoping matters: **no published claim in this document used the inflated figure.** Abstentions were
+always read from the roster (`answer === null`), which is per question by construction, and §13.102.1's
+"10 abstentions" and §13.104.1's "16" are roster counts. What was wrong is the field, and a field is
+what a later reader consults.
+
+### 13.107.3 The fix, and why the tally moved to the route
+
+`#consult` now only asks and parses. `#recordOutcome(answer)` counts one question's outcome and
+**returns its argument**, so every call site reads `return this.#recordOutcome(await ...)` and cannot
+record one answer while returning another. Four call sites: the two single-consultation routes, the
+vote's majority, and the audit pass's final answer.
+
+That last one is the property the audit pass needed and did not have: it discards the first pass, so
+the first pass must not be counted. Four tests hold it, and three of them failed before the fix
+(`expected 3 to be 1`, `expected 2 to be 1`, `expected 1 to be +0`, `expected 6 to be 2`).
+
+### 13.107.4 `--audit`: seven checks, and the two that were refused
+
+`tools/readout-arm-run.py --audit <report.json>` prints PASS/FAIL per check and exits 1 on any failure:
+
+| check | invariant |
+| --- | --- |
+| `roster` | the roster is as long as `questionCount` says |
+| `census-unit` | `abstentionReasons` sums to `questionCount × runs` |
+| `budget` | no prompt exceeds the `maxPromptChars` it declares |
+| `reach` | `askRoutes ⊆ renderingRoutes`, and empty exactly when `ask` is the shipped ask |
+| `vote` | the census exists exactly when the run voted, and sums to `MR × runs` |
+| `expansion` | the counts exist exactly when the run expanded, and name every distinct MR question |
+| `roles` | a route in `evidenceRolesRoutes` carries no assistant turn when the roles are `user` |
+
+Two candidate checks were **refused**, and the refusals are the design:
+
+* **`evidenceTurns` above `relevanceTopK`.** Thousands of windows "violate" it, and none is broken: the
+  pool is counted in records and a record expands to its turns.
+* **Turns longer than `maxTurnChars`.** 1,912 MR windows carry a turn longer than 400 characters, and
+  none is broken: the cap is applied when the prompt is rendered (`contentFor`), while the roster keeps
+  what was selected.
+
+A check that fires on a legitimate run is worse than no check, because it teaches a reader to skip the
+output. Both are named in the tool's docstring so the next person does not add them back.
+
+**Read against the five archived runs, it reproduces both defects that were found by hand** —
+`39529234665` fails `census-unit` (2,968 vs 2,000) and `39641088296` fails `vote` (`vote=0/0/0` on a
+run that never voted) — and passes the three clean ones. The two failures are the tool working on
+artifacts produced before the fixes.
+
+### 13.107.5 The gate
+
+The workflow runs the audit **after** the upload and with `if: always()`, so a red job never costs the
+artifact: the artifact is published, the job's colour says its own fields contradict each other, and
+the reading step has both. Four source-level assertions hold the wiring (`test_artifact_audit_gate.py`),
+including that the audited path is one the upload glob can match — an audit of a file nobody downloads
+is the §13.55 shape. Deleting the step turns three of them red.
+
+### 13.107.6 What this changes about the campaign's method
+
+The last three defects were each a disagreement **between two fields of one run**. None needed a
+control, a provider, or a repetition: they needed someone to divide 2,968 by 484. From this round on
+that division is a step in the pipeline, and a run that contradicts itself is red before anyone reads it.

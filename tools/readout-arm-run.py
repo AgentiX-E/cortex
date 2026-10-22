@@ -807,6 +807,186 @@ def arithmetic_section(questions: list[dict]) -> str:
     return '\n'.join(lines)
 
 
+#: Which route each capability is answered on. Used by `--audit` to decide where a role
+#: filter or a reach claim is supposed to apply.
+CAPABILITY_ROUTES = {
+    'MR': 'multi-session',
+    'TR': 'temporal',
+    'IE': 'flat',
+    'KU': 'knowledge-update',
+    'ABS': 'abstention',
+}
+
+#: The turn text's own role marker, as the dataset writes it: `[2023/02/15 (Wed) 03:14] user: ...`.
+ASSISTANT_TURN = re.compile(r'\]\s*assistant:', re.I)
+
+
+def audit_section(report: dict, questions: list[dict]) -> tuple[str, int]:
+    """Check one artifact's fields against each other, and report the failures.
+
+    ## Why the configuration line has to be auditable
+
+    Three defects in three rounds were found by a person reading an artifact, and none of them
+    by a test: `vote=0/0/0` on a run that never voted (§13.104), a reach table that disagreed
+    with the fallthrough implementing it (§13.104), and a census that counted consultations
+    instead of questions once voting was on (§13.107). Every one is a disagreement **between
+    fields of a single run** -- which means every one is decidable without a control, and none
+    of them needed the reader who found it.
+
+    ## What a check here is allowed to be
+
+    Only an invariant that holds for every legitimate run. Two shapes that look wrong and are
+    not, and are therefore absent:
+
+      * `evidenceTurns` above `relevanceTopK` -- the pool is counted in records and a record
+        expands to its turns;
+      * turns longer than `maxTurnChars` -- the cap is applied when the prompt is rendered,
+        while the roster keeps what was selected.
+
+    A check that fires on a good run is worse than no check: it teaches a reader to skip the
+    output, which is how a real failure gets through.
+
+    ## The return value
+
+    The rendered block and the number of failures, so the caller can exit non-zero. A tool that
+    printed a failure and exited 0 could not gate a dispatch.
+    """
+    config = report.get('memoryArmConfig') or {}
+    question_count = report.get('questionCount')
+    runs = report.get('runs') or 1
+    failures: list[str] = []
+    lines: list[str] = []
+
+    def check(name: str, ok: bool, detail: str) -> None:
+        if not ok:
+            failures.append(name)
+        lines.append(f'  {"PASS" if ok else "FAIL"}  {name:<14}{detail}')
+
+    total_answers = (question_count * runs) if isinstance(question_count, int) else None
+    mr = [question for question in questions if question.get('capability') == 'MR']
+    mr_texts = {str(question.get('question')) for question in mr}
+
+    # 1. The roster is the roster the artifact declares.
+    check(
+        'roster',
+        question_count == len(questions),
+        f'{len(questions)} records, questionCount says {question_count}',
+    )
+
+    # 2. The census counts questions, not model calls (§13.107).
+    census = report.get('abstentionReasons') or {}
+    census_total = sum(value for value in census.values() if isinstance(value, int))
+    check(
+        'census-unit',
+        total_answers is not None and census_total == total_answers,
+        f'{census_total} outcomes, {total_answers} question-answers '
+        f'({question_count} x {runs}); a treatment that consults more than once per '
+        'question must not inflate this',
+    )
+
+    # 3. No prompt exceeded the budget it declares.
+    over_budget = [
+        question.get('promptChars', 0)
+        for question in questions
+        if isinstance(question.get('promptChars'), int)
+        and question['promptChars'] > (config.get('maxPromptChars') or 10**9)
+    ]
+    check(
+        'budget',
+        not over_budget,
+        f'largest prompt {max((q.get("promptChars", 0) for q in questions), default=0)} '
+        f'against maxPromptChars {config.get("maxPromptChars")}',
+    )
+
+    # 4. The reach names only routes the run rendered, and names none when no ask was dispatched.
+    reach = list(config.get('askRoutes') or [])
+    rendered = set(config.get('renderingRoutes') or [])
+    unreached = sorted(set(reach) - rendered)
+    empty_matches = (len(reach) == 0) == (config.get('ask') == 'route')
+    check(
+        'reach',
+        not unreached and empty_matches,
+        f'ask={config.get("ask")} touches {reach}'
+        + (f', of which {unreached} never rendered' if unreached else '')
+        + ('' if empty_matches else '; an empty reach must mean the shipped ask and only that'),
+    )
+
+    # 5. The vote census exists exactly when the run voted, and sums to the votes taken.
+    vote = config.get('voteCounts')
+    voting = (config.get('selfConsistency') or 'none') != 'none'
+    vote_total = sum(vote.values()) if isinstance(vote, dict) else 0
+    expected_votes = len(mr) * runs
+    if voting:
+        check(
+            'vote',
+            isinstance(vote, dict) and vote_total == expected_votes,
+            f'selfConsistency={config.get("selfConsistency")} with census '
+            f'{vote if isinstance(vote, dict) else "absent"}; {expected_votes} votes expected',
+        )
+    else:
+        check(
+            'vote',
+            not isinstance(vote, dict) or vote_total > 0,
+            'one consultation per question, so no census may be published'
+            + (' -- a zeroed census claims a mechanism that never ran' if vote_total == 0 and isinstance(vote, dict) else ''),
+        )
+
+    # 6. The expansion counts exist exactly when the run expanded, and name every MR question.
+    expansion = config.get('queryExpansionCounts')
+    expanding = (config.get('queryExpansion') or 'none') != 'none'
+    if expanding:
+        named = expansion.get('questions') if isinstance(expansion, dict) else None
+        check(
+            'expansion',
+            named == len(mr_texts),
+            f'queryExpansion={config.get("queryExpansion")} reporting '
+            f'{named} question(s) expanded; the roster has {len(mr_texts)} distinct MR texts',
+        )
+    else:
+        check(
+            'expansion',
+            expansion is None,
+            'no expansion dispatched, so no counts may be published',
+        )
+
+    # 7. A user-only route carries no assistant turn.
+    roles = list(config.get('evidenceRoles') or [])
+    role_routes = set(config.get('evidenceRolesRoutes') or [])
+    offending: list[str] = []
+    if roles == ['user']:
+        for question in questions:
+            route = CAPABILITY_ROUTES.get(str(question.get('capability')))
+            if route not in role_routes:
+                continue
+            turns = question.get('turns') or []
+            if any(ASSISTANT_TURN.search(str(turn.get('text', ''))) for turn in turns):
+                offending.append(str(question.get('questionId')))
+    check(
+        'roles',
+        not offending,
+        f'evidenceRoles={roles} on {sorted(role_routes)}'
+        + (
+            f'; {len(offending)} window(s) carry an assistant turn, first {offending[0]}'
+            if offending
+            else '; no window on those routes carries one'
+        ),
+    )
+
+    header = [
+        '',
+        'artifact audit (each field checked against another field of the same run)',
+    ]
+    footer = [
+        '',
+        (
+            'every check is an invariant of a legitimate run; two shapes that look wrong and are '
+            'not are deliberately absent (evidenceTurns above the pool width, and turns longer than '
+            'maxTurnChars -- the pool is counted in records and the cap is applied at render time)'
+        ),
+    ]
+    return '\n'.join(header + lines + footer), len(failures)
+
+
 def stability_section(after: list[dict], before: list[dict]) -> str:
     """How much of the answer layer moves when nothing about the configuration does.
 
@@ -2299,6 +2479,11 @@ def main(argv: list[str]) -> int:
         help='print the state transitions from the BEFORE report to this one',
     )
     parser.add_argument(
+        '--audit',
+        action='store_true',
+        help='check the artifact against itself, and exit 1 if any field contradicts another',
+    )
+    parser.add_argument(
         '--arithmetic',
         action='store_true',
         help='print where each wrong MR answer is wrong: under, over, equal or undefined direction',
@@ -2356,6 +2541,11 @@ def main(argv: list[str]) -> int:
             return 2
         print(section)
         return 0
+
+    if args.audit:
+        block, failed = audit_section(report, questions)
+        print(block)
+        return 1 if failed else 0
 
     if args.arithmetic:
         print(arithmetic_section(questions))

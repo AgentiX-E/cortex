@@ -118,8 +118,10 @@ class TestTheSampleCountReachesTheVote(unittest.TestCase):
         body = memory[start:end]
         self.assertIn("voteAnswers(answers)", body)
         # The constructor reads the option and refuses a bad count; what must NOT read it is
-        # `#consult`, which every route reaches. The vote belongs to the one method below it.
-        self.assertNotIn("selfConsistency", memory[end:])
+        # anything below the sampling method, because `#consult` and the single-call routes are
+        # reached by every route. The assertion is on the **read** (`this.#options.`) rather than
+        # on the word, so a doc comment above `#recordOutcome` cannot fail a guard about reach.
+        self.assertNotIn("this.#options.selfConsistency", memory[end:])
 
 
 if __name__ == "__main__":

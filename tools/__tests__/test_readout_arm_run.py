@@ -2031,3 +2031,190 @@ class TestTheArithmeticDirection:
         # question, not a counting one, and calling it under or over would hide it.
         out = self._run(tmp_path, [('e1', 'wrong', '3', '3 items')])
         assert 'equal' in out
+
+
+class TestTheArtefactAudit:
+    """§13.106/§13.107: the configuration line is a claim, and a claim can be checked.
+
+    ## Why this exists
+
+    Two defects in two rounds were found by reading an artifact rather than by a test: a
+    `vote=0/0/0` census on a run that never voted, and a reach table that disagreed with the
+    fallthrough that implemented it. A third was found this round by comparing one artifact's
+    census against the 2,000 its roster implies. None of the three was visible to any suite,
+    because every one of them is a disagreement **between fields of one artifact**.
+
+    ## What is deliberately not checked
+
+    Anything that is true of a legitimate run as well as of a broken one. `evidenceTurns`
+    exceeding `relevanceTopK` looks wrong and is not: the pool is counted in records and a
+    record expands to its turns. Turns longer than `maxTurnChars` look wrong and are not: the
+    cap is applied when the prompt is rendered, while the roster keeps what was selected. A
+    check that fires on a good run is worse than no check, because it teaches a reader to
+    ignore the output.
+    """
+
+    @staticmethod
+    def _artifact(**overrides: object) -> dict:
+        questions = [
+            {
+                'questionId': f'm{index}',
+                'capability': 'MR',
+                'question': f'How many things {index}?',
+                'groundTruth': '3',
+                'answer': '3',
+                'correct': True,
+                'promptChars': 40_000,
+                'evidenceTurns': 300,
+                'turns': [{'index': 0, 'text': '[2023/02/15 (Wed) 03:14] user: hello'}],
+            }
+            for index in range(4)
+        ]
+        questions.append(
+            {
+                'questionId': 't1',
+                'capability': 'TR',
+                'question': 'When did I move?',
+                'groundTruth': 'May',
+                'answer': 'May',
+                'correct': True,
+                'promptChars': 30_000,
+                'evidenceTurns': 10,
+                # A user turn, because `temporal` is in `evidenceRolesRoutes` here: real artifacts
+                # carry zero assistant turns on the multi-session and temporal routes, and a
+                # fixture that carried one would make the consistent-artifact test fail for a reason
+                # that has nothing to do with the code under test.
+                'turns': [{'index': 0, 'text': '[2023/02/15 (Wed) 03:15] user: I moved in May'}],
+            }
+        )
+        artifact = {
+            'questionCount': 5,
+            'runs': 1,
+            'abstentionReasons': {'empty': 0, 'threshold': 0, 'llm': 0, 'answered': 5},
+            'memoryArmConfig': {
+                'ask': 'enumerated',
+                'askRoutes': ['multi-session', 'flat', 'temporal'],
+                'renderingRoutes': ['multi-session', 'flat', 'temporal', 'abstention'],
+                'selfConsistency': 'none',
+                'queryExpansion': 'none',
+                'maxPromptChars': 48_000,
+                'maxTurnChars': 400,
+                'evidenceRoles': ['user'],
+                'evidenceRolesRoutes': ['multi-session', 'temporal'],
+            },
+            'questions': questions,
+        }
+        artifact.update(overrides)
+        return artifact
+
+    def _audit(self, tmp_path: Path, artifact: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(artifact), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--audit', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_a_consistent_artifact_passes_with_exit_zero(self, tmp_path: Path) -> None:
+        r = self._audit(tmp_path, self._artifact())
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'PASS' in r.stdout
+        assert 'FAIL' not in r.stdout
+
+    def test_a_census_that_counts_consultations_fails(self, tmp_path: Path) -> None:
+        # §13.107's defect, in the shape it appeared: five questions, a census summing to more.
+        artifact = self._artifact(
+            abstentionReasons={'empty': 0, 'threshold': 0, 'llm': 6, 'answered': 9}
+        )
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'census-unit' in r.stdout
+
+    def test_a_vote_census_on_a_run_that_did_not_vote_fails(self, tmp_path: Path) -> None:
+        # §13.104's `vote=0/0/0`: a mechanism claimed by a field nobody's mechanism produced.
+        artifact = self._artifact()
+        artifact['memoryArmConfig']['voteCounts'] = {'unanimous': 0, 'majority': 0, 'split': 0}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'vote' in r.stdout
+
+    def test_a_voting_run_without_a_census_fails(self, tmp_path: Path) -> None:
+        # The other direction: the treatment was dispatched and the artifact cannot say how the
+        # votes resolved, so a null result could not be read as a mechanism failure.
+        artifact = self._artifact()
+        artifact['memoryArmConfig']['selfConsistency'] = '3'
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'vote' in r.stdout
+
+    def test_a_vote_census_whose_sum_is_not_the_multi_session_count_fails(
+        self, tmp_path: Path
+    ) -> None:
+        artifact = self._artifact()
+        artifact['memoryArmConfig']['selfConsistency'] = '3'
+        # Four MR questions, one repetition: a sum of five is one too many.
+        artifact['memoryArmConfig']['voteCounts'] = {'unanimous': 2, 'majority': 2, 'split': 1}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'vote' in r.stdout
+
+    def test_a_prompt_over_the_declared_budget_fails(self, tmp_path: Path) -> None:
+        artifact = self._artifact()
+        artifact['questions'][0]['promptChars'] = 48_500
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'budget' in r.stdout
+
+    def test_a_reach_that_names_a_route_the_run_did_not_render_fails(self, tmp_path: Path) -> None:
+        artifact = self._artifact()
+        artifact['memoryArmConfig']['askRoutes'] = ['multi-session', 'flat']
+        artifact['memoryArmConfig']['renderingRoutes'] = ['multi-session']
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'reach' in r.stdout
+
+    def test_an_assistant_turn_in_a_user_only_route_fails(self, tmp_path: Path) -> None:
+        # §13.83's role filter, checked where it claims to apply: the multi-session route must not
+        # carry an assistant turn, while the temporal route is not in the roles list here and its
+        # assistant turn is legitimate.
+        artifact = self._artifact()
+        artifact['questions'][0]['turns'] = [
+            {'index': 0, 'text': '[2023/02/15 (Wed) 03:15] assistant: noted'}
+        ]
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'roles' in r.stdout
+
+    def test_an_assistant_turn_on_a_route_outside_the_filter_is_legal(self, tmp_path: Path) -> None:
+        # §13.83's filter names its routes. Three capabilities keep the assistant's turns on
+        # purpose -- ABS's gold is the assistant's own disclosure -- so a check that fired on them
+        # would flag every run ever dispatched.
+        artifact = self._artifact()
+        artifact['questions'].append(
+            {
+                'questionId': 'ie1',
+                'capability': 'IE',
+                'question': 'What did you buy?',
+                'groundTruth': 'a kit',
+                'answer': 'a kit',
+                'correct': True,
+                'promptChars': 30_000,
+                'evidenceTurns': 8,
+                'turns': [{'index': 0, 'text': '[2023/02/15 (Wed) 03:16] assistant: a kit'}],
+            }
+        )
+        artifact['questionCount'] = 6
+        artifact['abstentionReasons'] = {'empty': 0, 'threshold': 0, 'llm': 0, 'answered': 6}
+
+        r = self._audit(tmp_path, artifact)
+
+        assert r.returncode == 0, r.stdout
+
+    def test_a_roster_that_does_not_match_the_declared_count_fails(self, tmp_path: Path) -> None:
+        artifact = self._artifact()
+        artifact['questionCount'] = 6
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'roster' in r.stdout

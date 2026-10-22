@@ -767,3 +767,86 @@ describe('the aggregation ask states the three rules the enumerated contract lea
     expect(ASK_ROUTES.aggregation).toEqual(ASK_ROUTES.enumerated);
   });
 });
+
+/**
+ * §13.106: the reach table and the fallthrough are two statements of one fact.
+ *
+ * ## The defect this generalises
+ *
+ * `39641088296` dispatched `ask: 'aggregation'`, whose table said one route, while its
+ * fallthrough returned the **control's** block on the other five. Two consequences in one
+ * run: TR fell 94.2 → 72.8 and IE 136.2 → 127.5 with no treatment, and the control the run
+ * was registered against could no longer be compared. The table and the code disagreed and
+ * nothing in the suite compared them, because every earlier reach test was written by hand
+ * for one ask and asserted the asks it knew about.
+ *
+ * ## What is asserted here instead
+ *
+ * For **every** ask in the table, and **every** route this product can build a prompt for,
+ * the block the route receives must differ from the shipped block on exactly the routes the
+ * table names. That is the whole invariant, and it is stated once rather than once per ask,
+ * so a future ask cannot be added to the table without a fallthrough that agrees with it.
+ *
+ * ## Why the comparison is against the shipped ask and not against each other
+ *
+ * `askRoutes` in the artifact means "routes this dispatch changes, relative to no ask". Any
+ * comparison between two asks answers a different question and would have passed on the run
+ * that broke.
+ */
+describe('every ask reaches exactly the routes its table names', () => {
+  /**
+   * The six routes, driven to the point where a prompt is issued.
+   *
+   * The multi-session route is included even though `buildSessionPrompt` hardcodes
+   * `extractive`: that hardcoding is exactly why `extractive`'s own reach omits it, so a
+   * table that named it would be claiming a change the route does not receive.
+   */
+  const ROUTES: ReadonlyArray<readonly [string, (memory: CortexMemory) => Promise<unknown>]> = [
+    ['multi-session', (memory) => memory.answerSessions('How many kits do I own?', [[TEXT]])],
+    ['flat', (memory) => memory.answer('How many kits do I own?', [TEXT])],
+    ['temporal', (memory) => memory.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
+    ['knowledge-update', (memory) => memory.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+    ['assistant', (memory) => memory.answerAssistant('What did you say about the kit?', [TEXT])],
+    ['abstention', (memory) => memory.answerAbstention('What is my passport number?', [TEXT])],
+  ];
+
+  const ROUTE_NAMES = ROUTES.map(([name]) => name);
+
+  /** The instruction block one route receives under one ask. */
+  async function blockOf(ask: EvidenceAsk, drive: (m: CortexMemory) => Promise<unknown>) {
+    const seen: string[] = [];
+    await drive(build(seen, ask));
+    expect(seen).toHaveLength(1);
+    return instructionsOf(seen[0]!);
+  }
+
+  const ASKS = Object.keys(ASK_ROUTES) as EvidenceAsk[];
+
+  it('names only routes that exist', () => {
+    // A typo in the table is invisible otherwise: the artifact would publish a route name no
+    // run can move, and the reach claim would be untestable rather than wrong.
+    for (const ask of ASKS) {
+      for (const route of ASK_ROUTES[ask] ?? []) {
+        expect(ROUTE_NAMES, `${ask} names ${route}`).toContain(route);
+      }
+    }
+  });
+
+  for (const ask of ASKS) {
+    it(`${ask}: declared reach equals measured reach`, async () => {
+      const shipped = new Map<string, string>();
+      for (const [name, drive] of ROUTES) {
+        shipped.set(name, await blockOf('route', drive));
+      }
+
+      const moved: string[] = [];
+      for (const [name, drive] of ROUTES) {
+        if ((await blockOf(ask, drive)) !== shipped.get(name)) moved.push(name);
+      }
+
+      // Sorted on both sides: the table's order is documentation, the measured order is the
+      // order this loop happens to drive, and neither is a fact about the reach.
+      expect([...moved].sort()).toEqual([...(ASK_ROUTES[ask] ?? [])].sort());
+    });
+  }
+});

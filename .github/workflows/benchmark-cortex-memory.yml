@@ -485,3 +485,21 @@ jobs:
             packages/cortex-memory/benchmark-*.json
             packages/cortex-memory/benchmark-error.log
           retention-days: 30
+
+      # §13.107. Three defects in three rounds were found by a person reading an artifact and
+      # none of them by a test: a `vote=0/0/0` census on a run that never voted, a reach table
+      # that disagreed with the fallthrough implementing it, and a census that counted
+      # consultations instead of questions once voting was on. Each is a disagreement between
+      # two fields of **one** run, so each is decidable without a control -- which is exactly
+      # why this belongs here rather than in the reading step, where it was three times too late.
+      #
+      # It runs after the upload and with `if: always()`, so the artifact is published either
+      # way: the job's colour is the signal that this run's own fields contradict each other,
+      # and the artifact is still there to be read. A red job with a recoverable report is the
+      # right pair; a green job with a self-contradicting report is how the last three defects
+      # reached a document.
+      - name: Audit the artifact against itself
+        if: always()
+        run: |
+          python3 tools/readout-arm-run.py --audit \
+            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
