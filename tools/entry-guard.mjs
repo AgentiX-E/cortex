@@ -45,6 +45,13 @@ const BUDGET = 300 * 1024;
 const PLAN = {
   'packages/cortex-storage': [
     { entry: 'src/index.ts', portable: true },
+    // The browser entries are guarded as well, and more strictly than by name: they must not reach
+    // a `node:` builtin, which is the mistake that turns a browser subpath into a build error in
+    // somebody else's bundler. `Worker`, `indexedDB` and OPFS are globals, so nothing needs to be
+    // imported to get them -- which is exactly why an accidental `node:fs` would be easy to add.
+    { entry: 'src/browser/opfs.ts', portable: true },
+    { entry: 'src/browser/idb.ts', portable: true },
+    { entry: 'src/browser/opfs-worker.ts', portable: true },
     // The control: this entry is *expected* to reach better-sqlite3. If the guard ever reports it
     // clean, the walk is broken and the portable result above means nothing.
     { entry: 'src/storage/sqlite.ts', portable: false, expect: 'better-sqlite3' },

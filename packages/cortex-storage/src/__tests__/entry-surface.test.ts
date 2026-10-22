@@ -71,9 +71,10 @@ describe('manifest', () => {
 
   it('declares one subpath per backend, each with types and an import target', () => {
     const subpaths = Object.keys(manifest.exports).filter((key) => key !== '.');
-    // Derived from the filesystem, not from a list in this test: a backend that exists in `src/`
-    // and is missing from `exports` resolves in the repository and 404s for a consumer.
-    expect(subpaths.sort()).toEqual(['./pg', './sqlite']);
+    // This list is the published contract, so it is written out rather than derived: adding a
+    // backend is supposed to be a deliberate edit here and in `exports`, in that order. The test
+    // below catches the other direction -- a subpath that names a file which does not exist.
+    expect(subpaths.sort()).toEqual(['./idb', './opfs', './pg', './sqlite']);
     for (const [key, target] of Object.entries(manifest.exports)) {
       expect(target.types, key).toMatch(/\.d\.ts$/);
       expect(target.import, key).toMatch(/\.js$/);

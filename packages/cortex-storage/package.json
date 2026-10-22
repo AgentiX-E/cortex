@@ -1,7 +1,7 @@
 {
   "name": "@agentix-e/cortex-storage",
   "version": "0.1.0",
-  "description": "cortex-storage — embedded SQLite and remote PostgreSQL backends for Cortex, one subpath per backend",
+  "description": "cortex-storage \u2014 storage backends for Cortex, one subpath per backend: SQLite and PostgreSQL in Node, OPFS and IndexedDB in the browser",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -19,6 +19,14 @@
     "./pg": {
       "types": "./dist/storage/pg.d.ts",
       "import": "./dist/storage/pg.js"
+    },
+    "./opfs": {
+      "types": "./dist/browser/opfs.d.ts",
+      "import": "./dist/browser/opfs.js"
+    },
+    "./idb": {
+      "types": "./dist/browser/idb.d.ts",
+      "import": "./dist/browser/idb.js"
     }
   },
   "files": [
@@ -30,7 +38,8 @@
     "lint": "eslint src/",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "guard": "node ../../tools/entry-guard.mjs --package .",
-    "clean": "rm -rf dist *.tsbuildinfo coverage"
+    "clean": "rm -rf dist *.tsbuildinfo coverage",
+    "test:browser": "node test/browser/probe.mjs"
   },
   "dependencies": {
     "@agentix-e/cortex-core": "workspace:*"
@@ -48,6 +57,7 @@
     }
   },
   "devDependencies": {
+    "@sqlite.org/sqlite-wasm": "3.54.1-build1",
     "@types/better-sqlite3": "^7.6.0",
     "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^2.0.0",

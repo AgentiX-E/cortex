@@ -1,115 +1,55 @@
 /**
- * SQLite storage backend backed by better-sqlite3. Implements the Cortex Storage
- * contract with a simple schema: `kv(table, key, value, tags, expires_at)`.
+ * SQLite storage backend for Node, backed by `better-sqlite3`.
+ *
+ * The class is deliberately thin: it owns the file handle and the pragmas, and delegates every
+ * `Storage` method to {@link SqlStorage}, which is engine-agnostic. The browser backend runs the
+ * same statements through a worker; keeping the SQL in one place is what makes that a port rather
+ * than a reimplementation.
+ *
+ * ## Why the session is a separate object
+ *
+ * `better-sqlite3` is synchronous, and `SqlStorage` awaits everything so that it can also drive an
+ * engine that lives in another thread. If the sync/async difference leaked into `SqlStorage`, the
+ * browser path would need its own copy of the storage logic, and the two copies would drift in the
+ * ways that are hardest to notice -- error timing, and whether a failed statement aborts a
+ * transaction.
  */
 import Database from 'better-sqlite3';
-import type {
-  PutOptions,
-  QueryPredicate,
-  Storage,
-  StorageTransaction,
-} from '@agentix-e/cortex-core';
+import type { SqlRow, SqlSession, SqlValue } from './sql.js';
+import { SqlStorage } from './sql-storage.js';
 
 export type SqliteStorageOptions = {
   /** Path to the SQLite file, or ':memory:' for an ephemeral in-memory store. */
   filename?: string;
 };
 
-export class SqliteStorage implements Storage {
-  private readonly db: Database.Database;
-
-  constructor(options: SqliteStorageOptions = {}) {
-    this.db = new Database(options.filename ?? ':memory:');
+/** The `SqlSession` that runs statements on a `better-sqlite3` handle in this process. */
+class BetterSqliteSession implements SqlSession {
+  constructor(private readonly db: Database.Database) {
+    // WAL is set before the schema because it is a property of the file, and setting it later
+    // rewrites the journal mode of a database that already holds rows.
     this.db.pragma('journal_mode = WAL');
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS kv (
-        table_name TEXT NOT NULL,
-        key TEXT NOT NULL,
-        value TEXT NOT NULL,
-        tags TEXT NOT NULL DEFAULT '[]',
-        expires_at INTEGER,
-        PRIMARY KEY (table_name, key)
-      );
-      CREATE INDEX IF NOT EXISTS kv_tags ON kv(table_name, tags);
-    `);
   }
 
-  async put(table: string, key: string, value: unknown, opts?: PutOptions): Promise<void> {
-    const tags = JSON.stringify(opts?.tags ?? []);
-    const expiresAt = opts?.ttlMs != null ? Date.now() + opts.ttlMs : null;
-    this.db
-      .prepare(
-        `INSERT INTO kv (table_name, key, value, tags, expires_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(table_name, key)
-         DO UPDATE SET value = excluded.value, tags = excluded.tags, expires_at = excluded.expires_at`,
-      )
-      .run(table, key, JSON.stringify(value), tags, expiresAt);
-    this.purgeExpired(table);
+  async exec(sql: string): Promise<void> {
+    this.db.exec(sql);
   }
 
-  async get<T>(table: string, key: string): Promise<T | undefined> {
-    this.purgeExpired(table);
-    const row = this.db
-      .prepare(`SELECT value FROM kv WHERE table_name = ? AND key = ?`)
-      .get(table, key) as { value: string } | undefined;
-    return row ? (JSON.parse(row.value) as T) : undefined;
+  async run(sql: string, params: readonly SqlValue[]): Promise<void> {
+    this.db.prepare(sql).run(...params);
   }
 
-  async del(table: string, key: string): Promise<void> {
-    this.db.prepare(`DELETE FROM kv WHERE table_name = ? AND key = ?`).run(table, key);
-  }
-
-  async query<T>(table: string, predicate: QueryPredicate = {}): Promise<T[]> {
-    this.purgeExpired(table);
-    const conditions: string[] = ['table_name = ?'];
-    const params: unknown[] = [table];
-    if (predicate.keyPrefix) {
-      conditions.push('key LIKE ?');
-      params.push(`${predicate.keyPrefix}%`);
-    }
-    // Fetch all matching rows, then apply tag filtering and pagination in JS so
-    // that limit/offset semantics remain correct when combined with tags.
-    const sql = `SELECT value, tags FROM kv WHERE ${conditions.join(' AND ')}`;
-    const rows = this.db.prepare(sql).all(...params) as { value: string; tags: string }[];
-    const filtered = rows
-      .filter((r) => matchesAllTags(JSON.parse(r.tags) as string[], predicate.tags))
-      .map((r) => JSON.parse(r.value) as T);
-    const offset = predicate.offset ?? 0;
-    const limit = predicate.limit ?? filtered.length;
-    return filtered.slice(offset, offset + limit);
-  }
-
-  async transaction<T>(fn: (tx: StorageTransaction) => Promise<T>): Promise<T> {
-    // The arrow parameters are annotated explicitly rather than left to be
-    // inferred from `StorageTransaction`. Contextual typing does not reach them
-    // here because the properties are assigned through an object literal whose
-    // own type is only checked afterwards, so every parameter would be an
-    // implicit `any` -- which this project's `noImplicitAny` rejects.
-    const tx: StorageTransaction = {
-      put: (t: string, k: string, v: unknown, o?: PutOptions) => this.put(t, k, v, o),
-      get: <U>(t: string, k: string) => this.get<U>(t, k),
-      del: (t: string, k: string) => this.del(t, k),
-    };
-    // better-sqlite3 is synchronous; provide a thin async wrapper.
-    return fn(tx);
+  async all(sql: string, params: readonly SqlValue[]): Promise<SqlRow[]> {
+    return this.db.prepare(sql).all(...params) as SqlRow[];
   }
 
   async close(): Promise<void> {
-    this.db.close();
-  }
-
-  private purgeExpired(table: string): void {
-    this.db
-      .prepare(`DELETE FROM kv WHERE table_name = ? AND expires_at IS NOT NULL AND expires_at <= ?`)
-      .run(table, Date.now());
+    if (this.db.open) this.db.close();
   }
 }
 
-/** True when `tags` contains every requested tag (AND semantics). */
-function matchesAllTags(tags: string[], requested?: string[]): boolean {
-  if (!requested || requested.length === 0) {
-    return true;
+export class SqliteStorage extends SqlStorage {
+  constructor(options: SqliteStorageOptions = {}) {
+    super(new BetterSqliteSession(new Database(options.filename ?? ':memory:')));
   }
-  return requested.every((t) => tags.includes(t));
 }

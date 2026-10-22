@@ -7,9 +7,10 @@ import { defineConfig } from 'vitest/config';
  *
  * ## The residual branch gap is a provider artefact, and that is measured
  *
- * Measured now: 100 stmts / 98.61 branch / 100 funcs / 100 lines. Every point of
- * the remaining 1.39 branch points is a single counter at `pg.ts:82:4`, which is
- * the `} finally {` line of `PgStorage.transaction`. It reads `[0]` on every run.
+ * Measured now: 100 stmts / 98.9 branch / 100 funcs / 100 lines. The remaining branch
+ * points are two counters, one at `pg.ts:82:4` and one at `sql-storage.ts:170:4` -- both of them
+ * the `} finally {` line of a transaction method, both reading `[0]` on every run. The second
+ * arrived with the shared `SqlStorage`; it is the same artefact, not a second defect.
  *
  * The path it appears to describe is executed. The test `commits a transaction
  * that does not throw` writes inside a transaction and reads the row back through
@@ -45,11 +46,33 @@ import { defineConfig } from 'vitest/config';
  * which is the wrong trade — the same judgement as not widening the gate to
  * absorb noise.
  */
+/**
+ * ## Three files are excluded from the Node coverage number, and they are not uncovered
+ *
+ * `src/browser/opfs.ts`, `src/browser/opfs-worker.ts` and `src/browser/idb.ts` need `Worker`, `OPFS`
+ * and `IndexedDB`. None of the three exists in Node, and a jsdom-style shim would assert the shim:
+ * the interesting failures in this layer are exactly the platform behaviours a shim does not have --
+ * access handles released asynchronously, a pool that cannot be installed twice, a transaction that
+ * auto-commits across an `await`.
+ *
+ * They are covered instead by `test/browser/probe.mjs`, which runs the **built** package in a real
+ * Chromium, twice, across a browser restart, and asserts 24 named checks. That run is what a green
+ * coverage number for these files would have been standing in for.
+ *
+ * Everything else in `src/browser` -- the protocol, the session, the request validation -- is here,
+ * exercised over a real `MessageChannel` against a real engine, and held to the same threshold.
+ */
 export default defineConfig({
   test: {
     coverage: {
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.d.ts', 'src/**/__tests__/**'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/**/__tests__/**',
+        'src/browser/opfs.ts',
+        'src/browser/opfs-worker.ts',
+        'src/browser/idb.ts',
+      ],
       thresholds: {
         statements: 95,
         branches: 95,

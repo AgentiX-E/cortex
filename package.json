@@ -30,7 +30,8 @@
     "exec:python": "python3 tools/exec-python.py",
     "probe:stdin": "python3 tools/probe.py",
     "probe": "python3 tools/run-program.py --lang mjs --keep probe/latest.mjs -",
-    "guard:entry": "node tools/entry-guard.mjs --self-test"
+    "guard:entry": "node tools/entry-guard.mjs --self-test",
+    "test:browser": "pnpm --filter @agentix-e/cortex-storage test:browser"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

@@ -20,6 +20,19 @@ RATIONALE = {
         "orphan is a deliberate design choice rather than debt, and it is recorded as debt anyway "
         "so the number stays honest."
     ),
+    "browser-storage-surface": (
+        "The browser storage surface added in implementation step 3: `openBrowserStorage`, "
+        "`openOpfsStorage`, `IdbStorage`, the tier and refusal types, and the error classes that "
+        "tell a caller which tier it got and why. Every one of these is called -- by the browser, "
+        "from an application, not from TypeScript in this repository: the only exerciser here is "
+        "`test/browser/probe.mjs`, which drives the **built** package in a real Chromium, and the "
+        "census counts non-test callers by design. So the orphan count for this group measures the "
+        "absence of a shipped application, not the absence of a caller, and the evidence for "
+        "`openOpfsStorage` in particular is 24 named assertions plus a digest that survives a "
+        "browser restart. Two of these ARE reachable from `src/index.ts`'s subpaths and are how a "
+        "consumer's bundler finds them; if this package ever ships an application of its own, this "
+        "group should shrink to nothing and that shrinkage is the signal to look for."
+    ),
     "ablation-and-diagnostic-surface": (
         "The ablation and diagnostic instrumentation. Roadmap-adjacent: the audit of "
         "AUDIT-B7-ANNOTATION-PRODUCER.md found that several of these features were built, tested "
@@ -67,6 +80,7 @@ RATIONALE = {
 GROUP_ORDER = [
     "census-tool-public-api",
     "core-llm-node-surface",
+    "browser-storage-surface",
     "ablation-and-diagnostic-surface",
     "eval-harness-surface",
 ]
@@ -91,6 +105,8 @@ def category(orphan: str) -> str:
     path = rest.split("(")[1].split(":")[0]
     if "export-census.ts" in path:
         return "census-tool-public-api"
+    if "cortex-storage/src/browser/" in path:
+        return "browser-storage-surface"
     if "cortex-eval" in path:
         if any(key in path for key in ABLATION_KEYS):
             return "ablation-and-diagnostic-surface"

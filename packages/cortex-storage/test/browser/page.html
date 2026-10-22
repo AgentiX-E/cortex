@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>cortex-storage browser suite</title>
+  </head>
+  <body>
+    <pre id="log"></pre>
+    <script type="module">
+      /**
+       * The browser suite: the shipped modules, in a real browser, on real OPFS and real IndexedDB.
+       *
+       * Nothing here is a stub. The page imports the built `dist/`, opens the same worker a product
+       * would open, and asserts the behaviours the Node suites assert -- because the Node suites
+       * cannot reach this code at all: OPFS, IndexedDB and `Worker` do not exist there.
+       *
+       * The page reports facts; it does not decide whether they are good. Every assertion is a named
+       * check with a boolean, so the runner can print which one failed rather than "the run was red".
+       */
+      import { openBrowserStorage } from '/dist/browser/opfs.js';
+      import { openIdbStorage } from '/dist/browser/idb.js';
+
+      const SQLITE = '/vendor/index.mjs';
+      const log = (line) => {
+        document.getElementById('log').textContent += `${line}\n`;
+      };
+
+      /** FNV-1a over the payloads, in key order, so a reload can prove the bytes are the same ones. */
+      function digestOf(values) {
+        let hash = 0x811c9dc5;
+        for (const value of values) {
+          const text = JSON.stringify(value);
+          for (let index = 0; index < text.length; index += 1) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+          }
+        }
+        return { hash: hash >>> 0, count: values.length };
+      }
+
+      function payloadFor(index) {
+        const stem = `row-${String(index).padStart(6, '0')}`;
+        return { index, stem, body: 'x'.repeat(200 - stem.length) };
+      }
+
+      const checks = [];
+      async function check(name, fn) {
+        try {
+          const detail = await fn();
+          checks.push({ name, ok: true, detail: detail === undefined ? '' : String(detail) });
+        } catch (error) {
+          checks.push({ name, ok: false, detail: String((error && error.message) || error) });
+        }
+      }
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      /** The behaviours, asserted against whatever tier the storage turned out to be. */
+      async function apiMatrix(label, storage, { transactions }) {
+        const table = `t_${label}`;
+
+        await check(`${label}: put then get`, async () => {
+          await storage.put(table, 'k1', { content: 'hello' });
+          const read = await storage.get(table, 'k1');
+          assert(read && read.content === 'hello', `got ${JSON.stringify(read)}`);
+        });
+
+        await check(`${label}: rewrite the same key`, async () => {
+          await storage.put(table, 'k2', { v: 1 });
+          await storage.put(table, 'k2', { v: 2 });
+          const read = await storage.get(table, 'k2');
+          assert(read && read.v === 2, `got ${JSON.stringify(read)}`);
+        });
+
+        await check(`${label}: delete`, async () => {
+          await storage.put(table, 'k3', { v: 1 });
+          await storage.del(table, 'k3');
+          assert((await storage.get(table, 'k3')) === undefined, 'row survived delete');
+        });
+
+        await check(`${label}: tags are ANDed`, async () => {
+          await storage.put(table, 'tag1', { v: 'a' }, { tags: ['x'] });
+          await storage.put(table, 'tag2', { v: 'b' }, { tags: ['x', 'y'] });
+          const both = await storage.query(table, { tags: ['x', 'y'] });
+          assert(both.length === 1 && both[0].v === 'b', `got ${JSON.stringify(both)}`);
+        });
+
+        await check(`${label}: a prefix is literal, not a pattern`, async () => {
+          await storage.put(table, 'a_b', { v: 'literal' });
+          await storage.put(table, 'axb', { v: 'wildcard' });
+          const rows = await storage.query(table, { keyPrefix: 'a_b' });
+          assert(rows.length === 1 && rows[0].v === 'literal', `got ${JSON.stringify(rows)}`);
+        });
+
+        await check(`${label}: an expired row is invisible`, async () => {
+          await storage.put(table, 'gone', { v: 1 }, { ttlMs: -1 });
+          assert((await storage.get(table, 'gone')) === undefined, 'expired row was readable');
+        });
+
+        if (transactions) {
+          await check(`${label}: a transaction commits`, async () => {
+            await storage.transaction(async (tx) => {
+              await tx.put(table, 'tx1', { v: 1 });
+              await tx.put(table, 'tx2', { v: 2 });
+            });
+            const read = await storage.get(table, 'tx2');
+            assert(read && read.v === 2, `got ${JSON.stringify(read)}`);
+          });
+
+          await check(`${label}: a throwing body rolls back`, async () => {
+            let threw = false;
+            try {
+              await storage.transaction(async (tx) => {
+                await tx.put(table, 'tx3', { v: 3 });
+                throw new Error('scripted');
+              });
+            } catch {
+              threw = true;
+            }
+            assert(threw, 'the failure did not propagate');
+            assert(
+              (await storage.get(table, 'tx3')) === undefined,
+              'the write survived the rollback',
+            );
+          });
+
+          await check(`${label}: a nested transaction is refused`, async () => {
+            let name = '';
+            try {
+              await storage.transaction(async () => {
+                await storage.transaction(async () => undefined);
+              });
+            } catch (error) {
+              name = error.name;
+            }
+            assert(name === 'TransactionOpenError', `got ${name}`);
+          });
+
+          await check(`${label}: an outside write during a transaction is refused`, async () => {
+            let name = '';
+            await storage.transaction(async () => {
+              try {
+                await storage.put(table, 'stray', { v: 1 });
+              } catch (error) {
+                name = error.name;
+              }
+            });
+            assert(name === 'TransactionOpenError', `got ${name}`);
+            assert((await storage.get(table, 'stray')) === undefined, 'the stray write landed');
+          });
+        } else {
+          await check(`${label}: a transaction is refused rather than faked`, async () => {
+            let name = '';
+            try {
+              await storage.transaction(async () => undefined);
+            } catch (error) {
+              name = error.name;
+            }
+            assert(name === 'TransactionUnsupportedError', `got ${name}`);
+          });
+        }
+      }
+
+      async function runMatrix() {
+        const result = { mode: 'matrix', checks, tiers: {} };
+
+        const opfs = await openBrowserStorage({
+          sqliteModuleUrl: SQLITE,
+          databasePath: '/matrix.sqlite3',
+        });
+        result.tiers.opfs = { tier: opfs.tier, engine: opfs.engine, refused: opfs.refused };
+        await check('opfs tier was obtained', async () => {
+          assert(opfs.tier === 'opfs', `got ${opfs.tier}: ${JSON.stringify(opfs.refused)}`);
+        });
+        // The matrix runs only on the tier it names. Running it against whatever storage came back
+        // would relabel an IndexedDB result as an OPFS one -- which is what happened on the first
+        // iteration of this suite, and the reason the label is now a precondition.
+        if (opfs.tier === 'opfs') {
+          await apiMatrix('opfs', opfs.storage, { transactions: true });
+        } else {
+          checks.push({
+            name: 'opfs: the API matrix was not run, because the opfs tier was not obtained',
+            ok: false,
+            detail: JSON.stringify(opfs.refused),
+          });
+        }
+        await opfs.storage.close();
+
+        const idb = await openBrowserStorage({ tiers: ['idb'], idbDatabaseName: 'cortex-matrix' });
+        result.tiers.idb = { tier: idb.tier, engine: idb.engine };
+        await check('idb tier was obtained', async () => {
+          assert(idb.tier === 'idb', `got ${idb.tier}`);
+        });
+        await apiMatrix('idb', idb.storage, { transactions: false });
+        await idb.storage.close();
+
+        // The fallback path, driven by a real failure: the worker cannot load a module that does not
+        // exist, so OPFS refuses and the next tier is used. This is also the test that the worker's
+        // startup failure surfaces as a rejection instead of a promise that never settles.
+        await check('a broken sqlite module falls back to idb, and says why', async () => {
+          const opened = await openBrowserStorage({
+            sqliteModuleUrl: '/vendor/does-not-exist.mjs',
+            idbDatabaseName: 'cortex-fallback',
+            startupTimeoutMs: 5000,
+          });
+          try {
+            assert(opened.tier === 'idb', `got ${opened.tier}`);
+            assert(
+              opened.refused.length === 1 && opened.refused[0].tier === 'opfs',
+              JSON.stringify(opened.refused),
+            );
+          } finally {
+            await opened.storage.close();
+          }
+          return opened.refused[0].reason.slice(0, 120);
+        });
+
+        // Misconfiguration is not unavailability: it must not fall through to the fallback tier.
+        await check('a missing sqliteModuleUrl throws instead of downgrading', async () => {
+          let name = '';
+          try {
+            await openBrowserStorage({ tiers: ['opfs'] });
+          } catch (error) {
+            name = error.name;
+          }
+          assert(name === 'TypeError', `got ${name}`);
+        });
+
+        await check('no requested tiers is an error, not an empty storage', async () => {
+          let name = '';
+          try {
+            await openBrowserStorage({ tiers: [] });
+          } catch (error) {
+            name = error.name;
+          }
+          assert(name === 'BrowserStorageUnavailable', `got ${name}`);
+        });
+
+        await check('a closed storage refuses further use', async () => {
+          const storage = await openIdbStorage({ databaseName: 'cortex-closed' });
+          await storage.close();
+          let name = '';
+          try {
+            await storage.get('t', 'k');
+          } catch (error) {
+            name = error.name;
+          }
+          assert(name === 'Error', `got ${name}`);
+        });
+
+        return result;
+      }
+
+      async function runWrite(rows) {
+        const opened = await openBrowserStorage({
+          sqliteModuleUrl: SQLITE,
+          databasePath: '/bulk.sqlite3',
+        });
+        const started = performance.now();
+        for (let index = 0; index < rows; index += 1) {
+          await opened.storage.put('bulk', `k${index}`, payloadFor(index), {
+            tags: [`t${index % 50}`],
+          });
+        }
+        const writeMs = performance.now() - started;
+
+        // The same rows again, inside one transaction. The two numbers are the reason the API has a
+        // transaction at all: without one, every put is its own commit and therefore its own flush.
+        const txStarted = performance.now();
+        await opened.storage.transaction(async (tx) => {
+          for (let index = 0; index < rows; index += 1) {
+            await tx.put('bulk_tx', `k${index}`, payloadFor(index));
+          }
+        });
+        const txMs = performance.now() - txStarted;
+
+        const readBack = await opened.storage.query('bulk');
+        const digest = digestOf(readBack);
+        await opened.storage.close();
+        return {
+          mode: 'write',
+          tier: opened.tier,
+          engine: opened.engine,
+          refused: opened.refused,
+          rows,
+          writeMs,
+          rowsPerSecond: rows / (writeMs / 1000),
+          transactionWriteMs: txMs,
+          transactionRowsPerSecond: rows / (txMs / 1000),
+          digest,
+          userAgent: navigator.userAgent,
+        };
+      }
+
+      async function runRead(rows, expected) {
+        const opened = await openBrowserStorage({
+          sqliteModuleUrl: SQLITE,
+          databasePath: '/bulk.sqlite3',
+        });
+        const started = performance.now();
+        const values = await opened.storage.query('bulk');
+        const readMs = performance.now() - started;
+        const digest = digestOf(values);
+        await opened.storage.close();
+        return {
+          mode: 'read',
+          tier: opened.tier,
+          engine: opened.engine,
+          refused: opened.refused,
+          rows,
+          readMs,
+          digest,
+          matches: digest.hash === expected && digest.count === rows,
+          userAgent: navigator.userAgent,
+        };
+      }
+
+      window.__run = async (request) => {
+        if (request.mode === 'matrix') return runMatrix();
+        if (request.mode === 'write') return runWrite(request.rows);
+        return runRead(request.rows, request.expected);
+      };
+
+      window.__ready = true;
+      log('ready');
+    </script>
+  </body>
+</html>
