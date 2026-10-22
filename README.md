@@ -8,8 +8,13 @@ resolve contradictions** — while ordinary storage-and-retrieval concerns are d
 to pluggable backends.
 
 ```
-npm install @agentix-e/cortex-core @agentix-e/cortex-node
+npm install @agentix-e/cortex-core @agentix-e/cortex-storage
 ```
+
+`cortex-storage` ships one subpath per backend, so a build only links what it uses:
+`@agentix-e/cortex-storage/sqlite` or `@agentix-e/cortex-storage/pg`. Both backends are
+**optional peers** — install the one you import. The package root exports nothing on purpose;
+`tools/entry-guard.mjs` fails the build if a native module ever becomes reachable from it.
 
 ## Why Cortex
 
@@ -56,7 +61,7 @@ by similarity). Cortex solves the "mind" problem:
 | Package | Role |
 |---|---|
 | `@agentix-e/cortex-core` | Contracts + pure algorithms, zero I/O, Node + browser |
-| `@agentix-e/cortex-node` | Embedded SQLite (`better-sqlite3`) and remote PostgreSQL backends |
+| `@agentix-e/cortex-storage` | Storage backends, one subpath each: `./sqlite` (`better-sqlite3`), `./pg` (PostgreSQL). Peers are optional; the root is empty by design |
 | `@agentix-e/cortex-llm` | Pluggable LLM and embedding adapters (OpenAI-compatible + local transformers.js) |
 | `@agentix-e/cortex-memory` | Composition layer: wires `cortex-core`'s value gates into one conformance-passing `MemorySystem` |
 | `@agentix-e/cortex-eval` | Scientific evaluation harness (metrics, t-test, ablation) + LongMemEval-style mini benchmark |
@@ -71,7 +76,7 @@ import {
   decideRetrieval,
   defaultValueFunction,
 } from '@agentix-e/cortex-core';
-import { SqliteStorage } from '@agentix-e/cortex-node';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 
 // 1. Pluggable storage (embedded SQLite).
 const storage = new SqliteStorage({ filename: ':memory:' });

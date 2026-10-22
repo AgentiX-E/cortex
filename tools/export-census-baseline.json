@@ -98,11 +98,11 @@
         "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:211)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:374)",
         "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:957)",
-        "cortex-node: PgStorage (packages/cortex-node/src/storage/pg.ts:18)",
-        "cortex-node: PgStorageOptions (packages/cortex-node/src/storage/pg.ts:14)",
-        "cortex-node: SqliteStorage (packages/cortex-node/src/storage/sqlite.ts:18)",
-        "cortex-node: SqliteStorageOptions (packages/cortex-node/src/storage/sqlite.ts:13)",
-        "cortex-node: ensurePgSchema (packages/cortex-node/src/storage/pg.ts:136)"
+        "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:18)",
+        "cortex-storage: PgStorageOptions (packages/cortex-storage/src/storage/pg.ts:14)",
+        "cortex-storage: SqliteStorage (packages/cortex-storage/src/storage/sqlite.ts:18)",
+        "cortex-storage: SqliteStorageOptions (packages/cortex-storage/src/storage/sqlite.ts:13)",
+        "cortex-storage: ensurePgSchema (packages/cortex-storage/src/storage/pg.ts:136)"
       ]
     },
     {
@@ -497,11 +497,11 @@
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
     "cortex-memory: formatEvidence",
     "cortex-memory: truncateCodePointSafe",
-    "cortex-node: PgStorage",
-    "cortex-node: PgStorageOptions",
-    "cortex-node: SqliteStorage",
-    "cortex-node: SqliteStorageOptions",
-    "cortex-node: ensurePgSchema"
+    "cortex-storage: PgStorage",
+    "cortex-storage: PgStorageOptions",
+    "cortex-storage: SqliteStorage",
+    "cortex-storage: SqliteStorageOptions",
+    "cortex-storage: ensurePgSchema"
   ],
   "orphanClass": {
     "cortex-core: AccessRecord": "referenced-locally",
@@ -731,11 +731,11 @@
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
     "cortex-memory: formatEvidence": "referenced-locally",
     "cortex-memory: truncateCodePointSafe": "unreferenced",
-    "cortex-node: PgStorage": "referenced-locally",
-    "cortex-node: PgStorageOptions": "referenced-locally",
-    "cortex-node: SqliteStorage": "referenced-locally",
-    "cortex-node: SqliteStorageOptions": "referenced-locally",
-    "cortex-node: ensurePgSchema": "referenced-locally"
+    "cortex-storage: PgStorage": "referenced-locally",
+    "cortex-storage: PgStorageOptions": "referenced-locally",
+    "cortex-storage: SqliteStorage": "referenced-locally",
+    "cortex-storage: SqliteStorageOptions": "referenced-locally",
+    "cortex-storage: ensurePgSchema": "referenced-locally"
   },
   "locations": {
     "cortex-core: AccessRecord": [
@@ -1419,20 +1419,20 @@
     "cortex-memory: truncateCodePointSafe": [
       "packages/cortex-memory/src/prompt.ts:957"
     ],
-    "cortex-node: PgStorage": [
-      "packages/cortex-node/src/storage/pg.ts:18"
+    "cortex-storage: PgStorage": [
+      "packages/cortex-storage/src/storage/pg.ts:18"
     ],
-    "cortex-node: PgStorageOptions": [
-      "packages/cortex-node/src/storage/pg.ts:14"
+    "cortex-storage: PgStorageOptions": [
+      "packages/cortex-storage/src/storage/pg.ts:14"
     ],
-    "cortex-node: SqliteStorage": [
-      "packages/cortex-node/src/storage/sqlite.ts:18"
+    "cortex-storage: SqliteStorage": [
+      "packages/cortex-storage/src/storage/sqlite.ts:18"
     ],
-    "cortex-node: SqliteStorageOptions": [
-      "packages/cortex-node/src/storage/sqlite.ts:13"
+    "cortex-storage: SqliteStorageOptions": [
+      "packages/cortex-storage/src/storage/sqlite.ts:13"
     ],
-    "cortex-node: ensurePgSchema": [
-      "packages/cortex-node/src/storage/pg.ts:136"
+    "cortex-storage: ensurePgSchema": [
+      "packages/cortex-storage/src/storage/pg.ts:136"
     ]
   }
 }

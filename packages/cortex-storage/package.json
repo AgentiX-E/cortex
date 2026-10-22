@@ -1,7 +1,7 @@
 {
-  "name": "@agentix-e/cortex-node",
+  "name": "@agentix-e/cortex-storage",
   "version": "0.1.0",
-  "description": "cortex-node — embedded SQLite and remote PostgreSQL storage backends for Cortex (Node.js)",
+  "description": "cortex-storage — embedded SQLite and remote PostgreSQL backends for Cortex, one subpath per backend",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -11,6 +11,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/storage/sqlite.d.ts",
+      "import": "./dist/storage/sqlite.js"
+    },
+    "./pg": {
+      "types": "./dist/storage/pg.d.ts",
+      "import": "./dist/storage/pg.js"
     }
   },
   "files": [
@@ -21,18 +29,31 @@
     "test": "vitest run --coverage",
     "lint": "eslint src/",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "guard": "node ../../tools/entry-guard.mjs --package .",
     "clean": "rm -rf dist *.tsbuildinfo coverage"
   },
   "dependencies": {
-    "@agentix-e/cortex-core": "workspace:*",
+    "@agentix-e/cortex-core": "workspace:*"
+  },
+  "peerDependencies": {
     "better-sqlite3": "^11.0.0",
     "pg": "^8.22.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^2.0.0",
+    "better-sqlite3": "^11.0.0",
     "eslint": "^9.0.0",
+    "pg": "^8.22.0",
     "pg-mem": "^3.0.14",
     "typescript": "^5.7.0",
     "vitest": "^2.0.0"

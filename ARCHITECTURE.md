@@ -24,8 +24,9 @@ cortex-memory (the composition layer: cortex-core's gates -> one MemorySystem)
   ├── parse          raw model output -> Answer (null is an abstention)
   └── memory         CortexMemory: the only async module
 
-cortex-node (Node.js backends)
-  └── storage/       SqliteStorage (better-sqlite3) · PgStorage (PostgreSQL)
+cortex-storage (one subpath per backend)
+  ├── ./sqlite       SqliteStorage (better-sqlite3, optional peer)
+  └── ./pg           PgStorage + ensurePgSchema (pg, optional peer)
 
 cortex-llm (pluggable adapters)
   ├── llm/           OpenAICompatibleLLM
@@ -35,7 +36,7 @@ cortex-llm (pluggable adapters)
 ## Design Principles
 
 1. **Contracts only in core.** Every backend (storage, vector, LLM, embedding) is an
-   interface consumed by `cortex-core`; concrete engines live in `cortex-node` /
+   interface consumed by `cortex-core`; concrete engines live in `cortex-storage` /
    `cortex-llm`. This keeps core browser-safe and environment-agnostic. The
    *composition* of those contracts into a runnable system lives in `cortex-memory`,
    which depends on none of the concrete engines.

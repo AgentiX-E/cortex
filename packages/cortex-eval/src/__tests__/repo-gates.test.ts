@@ -7,7 +7,7 @@
  * found by running the gate on a clean checkout rather than by reading it:
  *
  *   $ git worktree add /tmp/clean HEAD && cd /tmp/clean && pnpm install && pnpm check
- *   packages/cortex-node typecheck: src/storage/pg.ts(12,8): error TS2307:
+ *   packages/cortex-storage typecheck: src/storage/pg.ts(12,8): error TS2307:
  *     Cannot find module '@agentix-e/cortex-core' or its corresponding type
  *     declarations.
  *   => exit 2
@@ -134,7 +134,7 @@ describe('every package clean removes the incremental build cache', () => {
    *
    *   $ rm -rf packages/<pkg>/dist      # delete only the output, keep the cache
    *   $ pnpm build
-   *   packages/cortex-node build: error TS2307: Cannot find module
+   *   packages/cortex-storage build: error TS2307: Cannot find module
    *     '@agentix-e/cortex-core' ...   => exit 2
    *   $ ls packages/cortex-core/dist
    *   (still missing)
@@ -150,7 +150,7 @@ describe('every package clean removes the incremental build cache', () => {
    * `clean` is the command that exists to make this recoverable, so if `clean`
    * does not remove the tsbuildinfo it does not do its job.
    */
-  const PACKAGES = ['cortex-core', 'cortex-node', 'cortex-llm', 'cortex-eval'] as const;
+  const PACKAGES = ['cortex-core', 'cortex-storage', 'cortex-llm', 'cortex-eval'] as const;
 
   function packageJson(name: string): PackageJson {
     return JSON.parse(

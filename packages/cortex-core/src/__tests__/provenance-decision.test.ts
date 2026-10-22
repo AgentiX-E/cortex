@@ -41,7 +41,7 @@ import { join } from 'node:path';
 // failed assertions at once when it read as `packages/packages/...`.
 const ROOT = join(__dirname, '..', '..', '..', '..');
 
-const ALL_PACKAGES = ['cortex-core', 'cortex-eval', 'cortex-llm', 'cortex-node'] as const;
+const ALL_PACKAGES = ['cortex-core', 'cortex-eval', 'cortex-llm', 'cortex-storage'] as const;
 
 /** The identifier, as a whole word, so `EmbeddingWithProvenance` never matches. */
 const SYMBOL = /(?<![A-Za-z0-9_$])ProvenanceNode(?![A-Za-z0-9_$])/;

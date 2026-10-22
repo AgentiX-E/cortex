@@ -395,7 +395,7 @@ describe('the coverage-ignore annotation set is pinned', () => {
       'cortex-eval',
       'cortex-llm',
       'cortex-memory',
-      'cortex-node',
+      'cortex-storage',
     ]);
   });
 

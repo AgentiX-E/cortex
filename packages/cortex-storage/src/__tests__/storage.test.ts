@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { SqliteStorage } from '../storage/sqlite.js';
 import { PgStorage, ensurePgSchema } from '../storage/pg.js';
-import * as cortexNode from '../index.js';
 import { newDb } from 'pg-mem';
 
 describe('SqliteStorage', () => {
@@ -273,10 +272,23 @@ describe('PgStorage (pg-mem)', () => {
   });
 });
 
-describe('package exports', () => {
-  it('exports storage backends', () => {
-    expect(typeof cortexNode.SqliteStorage).toBe('function');
-    expect(typeof cortexNode.PgStorage).toBe('function');
-    expect(typeof cortexNode.ensurePgSchema).toBe('function');
+describe('entry points', () => {
+  // The root used to re-export both backends. It must not: that is what put a native addon in
+  // every consumer's bundle. The assertion is written against the module, not against a comment,
+  // so restoring the old export fails here rather than in someone else's bundler.
+  it('keeps backends out of the root entry', async () => {
+    const root: Record<string, unknown> = await import('../index.js');
+    expect(root.SqliteStorage).toBeUndefined();
+    expect(root.PgStorage).toBeUndefined();
+    expect(root.ensurePgSchema).toBeUndefined();
+  });
+
+  it('exposes each backend from its own subpath', async () => {
+    const sqlite: Record<string, unknown> = await import('../storage/sqlite.js');
+    expect(typeof sqlite.SqliteStorage).toBe('function');
+
+    const pg: Record<string, unknown> = await import('../storage/pg.js');
+    expect(typeof pg.PgStorage).toBe('function');
+    expect(typeof pg.ensurePgSchema).toBe('function');
   });
 });
