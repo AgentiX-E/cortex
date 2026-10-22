@@ -43,7 +43,8 @@ import type { TaskScope } from '../federation/read-side.js';
 import { RULE_TABLE, type TriageRule } from './rules.js';
 
 /** What a check objected to. Each kind is a different instruction to the reader. */
-export type FindingKind = 'private-scope' | 'never-retained' | 'unknown-citation' | 'unattributed';
+export type FindingKind =
+  'private-scope' | 'never-retained' | 'echo' | 'unknown-citation' | 'unattributed';
 
 export type OutputFinding = {
   kind: FindingKind;
@@ -85,6 +86,16 @@ export type OutputScanRequest = {
    * about what a team knows, with no source, is unfalsifiable by the person reading it.
    */
   requireCitation?: boolean;
+  /**
+   * Every private row, for the echo check.
+   *
+   * Separate from `window` because the comparison is the other way round: `window` is what the
+   * draft is *allowed* to say, this is what it must not say. A caller that omits it gets no echo
+   * check -- and an echo check is the only thing here that catches a sentence no rule recognises.
+   */
+  privateValues?: readonly unknown[];
+  /** Shortest verbatim overlap that counts as an echo. See `DEFAULT_ECHO_CHARS`. */
+  minEchoChars?: number;
 };
 
 /** How a citation is written. Deliberately unlikely to occur in prose. */
@@ -133,6 +144,7 @@ export class OutputGuard {
       findings.push(finding);
     }
 
+    findings.push(...this.echoes(draft, request));
     findings.push(...this.attribution(draft, request));
 
     return {
@@ -168,6 +180,68 @@ export class OutputGuard {
       if (text !== undefined && text.includes(said)) return { excusedBy: row.key ?? '<no id>' };
     }
     return {};
+  }
+
+  /**
+   * O3: a verbatim span of a private row, in a draft that may not say it.
+   *
+   * ## What this catches that O1 cannot
+   *
+   * O1 runs the rule table, so it sees only the sentences a rule recognises -- twelve of the sixty
+   * in the measured corpus. The other forty-four are *deferred*: no rule has an opinion, they are
+   * stored privately by default, and a draft that repeats one of them is a leak that O1 reports as
+   * clean. This check does not need an opinion; it needs the row.
+   *
+   * ## The measure is overlap, not similarity
+   *
+   * Two texts are compared by shared character n-grams, which is deliberately dumb: it finds the
+   * sentence that was copied and nothing else. Embedding similarity would fire on "my card was
+   * declined" because it is near "my card was refused", and a guard that fires on near misses gets
+   * switched off. The price is stated where it is paid: a paraphrase is not caught, and the test
+   * suite asserts that miss rather than leaving it to be discovered.
+   *
+   * ## Why the allowed window is subtracted first
+   *
+   * A shared fact may be quoted. So any n-gram that also appears in an allowed shared row is
+   * dropped from the private corpus before comparison -- the same "ask the write side" rule as O1's
+   * excuse, applied at the resolution the check actually works at.
+   */
+  private echoes(draft: string, request: OutputScanRequest): OutputFinding[] {
+    const privateValues = request.privateValues;
+    if (privateValues === undefined || privateValues.length === 0) return [];
+
+    const width = request.minEchoChars ?? DEFAULT_ECHO_CHARS;
+    const allowed = allowedGrams(request.window, width);
+    const corpus = privateGrams(privateValues, width, allowed);
+    if (corpus.size === 0) return [];
+
+    const normal = normalise(draft);
+    const findings: OutputFinding[] = [];
+    let index = 0;
+    while (index + width <= normal.text.length) {
+      const gram = normal.text.slice(index, index + width).toLowerCase();
+      if (!corpus.has(gram)) {
+        index += 1;
+        continue;
+      }
+
+      const [start, end] = sentenceAround(draft, [
+        normal.map[index] as number,
+        (normal.map[index + width - 1] as number) + 1,
+      ]);
+      findings.push({
+        kind: 'echo',
+        rule: null,
+        policy: null,
+        excerpt: excerptOf(draft, [start, end]),
+        span: [start, end],
+      });
+      // Skip past the match: one finding per copied sentence, not one per overlapping window.
+      index += width;
+      while (index < normal.text.length && normal.text.charAt(index) !== ' ') index += 1;
+    }
+
+    return findings;
   }
 
   /** O2: citations must resolve, and a shared answer must have at least one. */
@@ -213,6 +287,84 @@ export class OutputGuard {
   }
 }
 
+/**
+ * How much verbatim overlap counts as a copy.
+ *
+ * Thirty-two characters is about five words. Shorter and ordinary phrasing starts matching -- "I
+ * have been trying to" is twenty-one characters and appears in unrelated sentences; longer and a
+ * model that trims one clause escapes. The number is a judgement, not a measurement, and it is a
+ * parameter so that a corpus can argue with it.
+ */
+const DEFAULT_ECHO_CHARS = 32;
+
+/**
+ * A draft and the position in it that each normalised character came from.
+ *
+ * Whitespace is collapsed to one space because drafts wrap: a copied sentence that happens to break
+ * across a line must still match. The map is what lets a finding point at the original text rather
+ * than at a normalised string the caller never saw.
+ */
+function normalise(text: string): { text: string; map: number[] } {
+  let out = '';
+  const map: number[] = [];
+  let spaceAt = -1;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text.charAt(index);
+    if (/\s/.test(character)) {
+      if (out.length > 0 && spaceAt < 0) spaceAt = index;
+      continue;
+    }
+    if (spaceAt >= 0) {
+      out += ' ';
+      map.push(spaceAt);
+      spaceAt = -1;
+    }
+    out += character;
+    map.push(index);
+  }
+  return { text: out, map };
+}
+
+/** Every n-gram of a text, lower-cased. Positions are not kept: only "is this a copy" matters. */
+function gramsOf(text: string, width: number): Set<string> {
+  const { text: normal } = normalise(text);
+  const grams = new Set<string>();
+  for (let index = 0; index + width <= normal.length; index += 1) {
+    grams.add(normal.slice(index, index + width).toLowerCase());
+  }
+  return grams;
+}
+
+/** The n-grams the draft is allowed to contain, taken from the shared rows in the window. */
+function allowedGrams(window: readonly ScopedRow[] | undefined, width: number): Set<string> {
+  const allowed = new Set<string>();
+  for (const row of window ?? []) {
+    if (row.origin !== 'shared') continue;
+    const text = textOf(row.value);
+    if (text === undefined) continue;
+    for (const gram of gramsOf(text, width)) allowed.add(gram);
+  }
+  return allowed;
+}
+
+/** The private corpus, less anything an allowed row already says. */
+function privateGrams(
+  values: readonly unknown[],
+  width: number,
+  allowed: Set<string>,
+): Set<string> {
+  const corpus = new Set<string>();
+  for (const value of values) {
+    const text = textOf(value);
+    if (text === undefined) continue;
+    for (const gram of gramsOf(text, width)) {
+      if (!allowed.has(gram)) corpus.add(gram);
+    }
+  }
+  return corpus;
+}
+
 /** The text a row carries, when it carries one. */
 function textOf(value: unknown): string | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
@@ -233,7 +385,11 @@ function textOf(value: unknown): string | undefined {
  */
 function sentenceAround(draft: string, [start, end]: readonly [number, number]): [number, number] {
   const isBoundary = (character: string | undefined): boolean =>
-    character === undefined || character === '.' || character === '!' || character === '?';
+    character === undefined ||
+    character === '.' ||
+    character === '!' ||
+    character === '?' ||
+    character === ':';
   let left = start;
   while (left > 0 && !isBoundary(draft[left - 1])) left -= 1;
   let right = end;

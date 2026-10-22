@@ -327,6 +327,157 @@ describe('the guard is a function of its input', () => {
   });
 });
 
+describe('O3: a sentence the rules never saw, copied verbatim', () => {
+  // No trailing full stop: the span a finding reports is the sentence *without* its terminator,
+  // because the terminator belongs to the punctuation rather than to the claim. Writing the fixture
+  // without one keeps the assertion about the sentence rather than about that convention.
+  const privateText = 'I keep a list of books I want to read on the train';
+
+  it('catches a copy of a deferral, which O1 reports as clean', () => {
+    // The whole point of O3. This sentence matches no rule -- it is stored privately by default --
+    // so the rule scan has nothing to say about it, and a draft that repeats it is a leak with no
+    // finding attached. O1 alone is silently clean here.
+    const draft = `By the way: ${privateText}`;
+    const rulesOnly = guard.scan(draft, { task: 'shared', requireCitation: false });
+    expect(rulesOnly.verdict).toBe('clear');
+
+    const withEcho = guard.scan(draft, {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [{ id: 'p1', text: privateText }],
+    });
+    expect(withEcho.verdict).toBe('blocked');
+    expect(kinds(withEcho)).toEqual(['echo']);
+    expect(withEcho.findings[0]?.excerpt).toBe(privateText);
+  });
+
+  it('catches a copy that was re-wrapped, because drafts wrap', () => {
+    const draft = 'As you asked: I keep a list of books I want to\nread on the train.';
+    const scan = guard.scan(draft, {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [{ id: 'p1', text: privateText }],
+    });
+    expect(kinds(scan)).toEqual(['echo']);
+    // The span points at the draft the caller has, not at a normalised string it never saw.
+    const [start, end] = scan.findings[0]?.span ?? [0, 0];
+    expect(draft.slice(start, end)).toContain('read on the train');
+  });
+
+  it('ignores case, because a model does not preserve it', () => {
+    const scan = guard.scan('As you asked: i KEEP a list of BOOKS i want to read on the train.', {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [{ id: 'p1', text: privateText }],
+    });
+    expect(kinds(scan)).toEqual(['echo']);
+  });
+
+  it('does not fire on an overlap shorter than the threshold', () => {
+    // `on the train` is twelve characters. A guard that fired on that would fire on ordinary prose.
+    const draft = 'We talked about the books I read on the train.';
+    const scan = guard.scan(draft, {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [{ id: 'p1', text: privateText }],
+    });
+    expect(kinds(scan)).toEqual([]);
+
+    // And the threshold is a parameter, so a caller with a stricter appetite can lower it.
+    const strict = guard.scan(draft, {
+      task: 'shared',
+      requireCitation: false,
+      minEchoChars: 12,
+      privateValues: [{ id: 'p1', text: privateText }],
+    });
+    expect(kinds(strict)).toEqual(['echo']);
+  });
+
+  it('does not fire on text an allowed row already says', () => {
+    // A shared fact may be quoted. The subtraction happens per n-gram, so this works even when the
+    // same words also sit inside a private row.
+    const sharedText = 'We decided the roadmap moves to Q3.';
+    const scan = guard.scan(sharedText, {
+      task: 'shared',
+      requireCitation: false,
+      window: [{ origin: 'shared', key: 's1', value: { id: 's1', text: sharedText } }],
+      privateValues: [{ id: 'p9', text: sharedText }],
+    });
+    expect(kinds(scan)).toEqual([]);
+  });
+
+  it('does not catch a paraphrase, and that miss is asserted rather than assumed', () => {
+    // The documented boundary of this layer. Pinning it means a later change that starts catching
+    // paraphrases shows up as a deliberate edit here, not as a surprise.
+    const scan = guard.scan('Your card ends in 4444.', {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [{ id: 'p2', text: 'My card number is 4111 2222 3333 4444.' }],
+    });
+    expect(kinds(scan)).toEqual([]);
+  });
+
+  it('reports one finding per copied sentence, not one per overlapping window', () => {
+    const other = 'The bookshop on the corner reopens next month';
+    const scan = guard.scan(`First: ${privateText}. Second: ${other}.`, {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [
+        { id: 'p1', text: privateText },
+        { id: 'p2', text: other },
+      ],
+    });
+    expect(kinds(scan)).toEqual(['echo', 'echo']);
+    expect(scan.findings.map((finding) => finding.excerpt)).toEqual([privateText, other]);
+  });
+
+  it('takes nothing from a private row or a textless one, even if it is in the window', () => {
+    // Only a shared row can license text. A private-origin row that somehow reaches the window must
+    // not become a whitelist, and a shared row with no text has nothing to add.
+    const secret = 'I keep a list of books I want to read on the train';
+    const scan = guard.scan(`${secret}.`, {
+      task: 'shared',
+      requireCitation: false,
+      window: [
+        { origin: 'shared', key: 'opaque', value: { embedding: [0.4] } },
+        { origin: 'private', key: 'p1', value: { id: 'p1', text: secret } },
+      ],
+      privateValues: [{ id: 'p1', text: secret }],
+    });
+    expect(kinds(scan)).toEqual(['echo']);
+  });
+
+  it('does nothing when the caller supplies no private rows', () => {
+    const scan = guard.scan(`By the way: ${privateText}`, {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [],
+    });
+    expect(kinds(scan)).toEqual([]);
+  });
+
+  it('skips private values that carry no text', () => {
+    const scan = guard.scan(`By the way: ${privateText}`, {
+      task: 'shared',
+      requireCitation: false,
+      privateValues: [null, 'a bare string', { embedding: [0.2, 0.3] }],
+    });
+    expect(kinds(scan)).toEqual([]);
+  });
+
+  it('stays quiet when every private n-gram is also allowed, so the corpus is empty', () => {
+    // Covering the empty-corpus return: one private row whose text is entirely inside a shared row.
+    const sharedText = 'We decided the roadmap moves to Q3 next week after the review.';
+    const scan = guard.scan(sharedText, {
+      task: 'shared',
+      requireCitation: false,
+      window: [{ origin: 'shared', key: 's1', value: { id: 's1', text: sharedText } }],
+      privateValues: [{ id: 'p9', text: sharedText }],
+    });
+    expect(scan.verdict).toBe('clear');
+  });
+});
+
 describe('measured on the sixty labelled utterances', () => {
   async function publishedWindow(): Promise<{ key: string; value: { text: string } }[]> {
     const local = new MemoryStorage();
@@ -357,11 +508,48 @@ describe('measured on the sixty labelled utterances', () => {
     expect(blocked).toHaveLength(12);
   });
 
+  it('catches a verbatim copy of every private row, including the ones no rule covers', async () => {
+    // O1 sees twelve of these. O3 sees all fifty-six, because it does not need an opinion about the
+    // sentence -- only the row.
+    const local = new MemoryStorage();
+    const shared = new MemoryStorage();
+    const federation = new FederatedStorage({ private: local, shared });
+    const writer = new TriageWriter(federation);
+    for (const row of labels()) await writer.admit(row.text, { id: row.id });
+
+    const privateRows = await local.query<{ id: string; text: string }>('facts');
+    const window = await new ReadSideAssembler(federation).assemble({ task: 'shared' });
+
+    const missed = privateRows.filter((row) =>
+      guard
+        .scan(`Here is what I remember: ${row.text}`, {
+          task: 'shared',
+          requireCitation: false,
+          window,
+          privateValues: privateRows,
+        })
+        .findings.every((finding) => finding.kind !== 'echo'),
+    );
+
+    expect(privateRows).toHaveLength(56);
+    expect(missed.map((row) => row.id)).toEqual([]);
+  });
+
   it('blocks none of the facts that were actually published', async () => {
     // The false-block number, measured against the window rather than against the labels: a draft
     // quoting something the writer put in the shared store must never be refused.
     const window = await publishedWindow();
     expect(window.length).toBeGreaterThan(0);
+
+    // All three checks run here, not just the rule scan: the echo corpus is the full private set,
+    // so a false positive from O3 would show up in this number as well.
+    const local = await (async () => {
+      const store = new MemoryStorage();
+      const federation = new FederatedStorage({ private: store, shared: new MemoryStorage() });
+      const writer = new TriageWriter(federation);
+      for (const row of labels()) await writer.admit(row.text, { id: row.id });
+      return store.query<{ text: string }>('facts');
+    })();
 
     const refused = window.filter(
       (row) =>
@@ -373,6 +561,7 @@ describe('measured on the sixty labelled utterances', () => {
             key: entry.key,
             value: entry.value,
           })),
+          privateValues: local,
         }).verdict === 'blocked',
     );
 
