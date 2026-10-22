@@ -11608,3 +11608,87 @@ is the §13.55 shape. Deleting the step turns three of them red.
 The last three defects were each a disagreement **between two fields of one run**. None needed a
 control, a provider, or a repetition: they needed someone to divide 2,968 by 484. From this round on
 that division is a step in the pipeline, and a run that contradicts itself is red before anyone reads it.
+
+## 13.108 The session unit was nearly inert, and that is the finding
+
+### 13.108.1 The readings (`39699987781`, 1h55m)
+
+| # | prediction (§13.105.3) | observed | verdict |
+| --- | --- | --- | --- |
+| **1** | config reads `relevanceUnits=session` | it does | **holds** |
+| **2** | four untouched capabilities reproduce `39509698041` to the character | **identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds** |
+| **3** | MR mean **≥ 91** | **82.5** (76–87), first repetition **76** | **falsified** |
+| **4** | MR abstentions **≤ 10** | **9** | holds |
+| **5** | under-counts fall from **15 to ≤ 10** | **19** | **falsified**, and in the wrong direction |
+| **6** | MR `promptChars` 46,186 ± 1,000 | **45,546** | holds |
+
+Per capability: ABS 29.5 (29–30), IE 134.8 (134–136), KU 63.0 (61–64), **MR 82.5 (76–87)**, TR **92.0**
+(91–93). Roster **401.8** (391–410) against 406.8; delta +36.10pp against +36.15.
+
+The `--audit` added in §13.107 passes **7 of 7** on this artifact — the first run it has ever seen, and the
+first confirmation that the census fix holds at 500 × 4.
+
+### 13.108.2 The unit barely moved the window, so it could not move the score
+
+| | turns | chars | chars/turn |
+| --- | --- | --- | --- |
+| MR, `turn` units (control) | **174** | 46,186 | 265 |
+| MR, `session` units | **168** | 45,546 | 271 |
+
+A completed session at 48,000 characters, a 256-wide pool and a user-only role filter changes the
+multi-session window by **six turns and 640 characters** — 3.4% and 1.4%. §13.32–13.34 retired the session
+unit at 24,000 characters and a 64-wide pool, where completing a session displaced too much; this run shows
+what the budget increase actually bought: not a unit that now helps, but a unit that no longer has room to
+do anything. The lever is inert at this configuration, which is a different fact from "the lever is wrong".
+
+The movement it did produce is the §13.98 shape again: 29 of 121 MR states changed, **7 repaired and 18
+damaged**, and MR's gold turns carried moved by 0 for most transitions.
+
+### 13.108.3 The untreated route moved more than the treated one
+
+TR changed **27 of 127** states (21.3%) — `correct → abstention` 6, `abstention → correct` 4,
+`correct → long_prose` 4 — with a window **identical to the character**. That is −5.0 questions on a route
+no treatment reached, against −2.7 on the route the treatment reached. §13.100.2 measured TR's same-config
+net at −4; this is one question past it, and it is the third independent confirmation that the answer
+layer moves by more than any effect this arm can produce.
+
+### 13.108.4 What this closes
+
+§13.105.4 pre-committed to the reading: *"if a completed session at 48,000 characters and a 256-wide pool
+does not move MR, then the unit of retrieval is not the lever at any configuration this arm can express."*
+It did not move MR; it moved it the wrong way by less than the untreated route moved. **The unit hypothesis
+closes**, and with it every remaining "how the evidence is packed" candidate:
+
+| layer | status |
+| --- | --- |
+| pool width, room, roles | adopted, and they carried the arm |
+| unit (turn / session) | **closed here** |
+| prompt shape (structure, membership, retrieval queries, aggregation) | closed, four attempts |
+| sampling (self-consistency) | closed, error is bias not variance |
+| **what remains** | per-session truncation (`maxSessionChars`) and **the reader itself** |
+
+### 13.108.5 Adoption
+
+None. `relevanceUnits` stays `turn` in §10.3. `session` remains dispatchable so this refutation can be
+reproduced.
+
+## 13.109 The next lever is the reader, and it needs a different instrument
+
+Every layer this arm controls has now been measured and closed. The remaining 36 MR questions are not
+addressed by anything the arm can dial, and §13.108.3 puts the instrument's own movement at 5–6 questions
+per route — larger than any single knob's remaining headroom.
+
+So the next experiment is not another flag. It is the **reader**: the same window, the same prompt, a
+stronger model. The campaign has deliberately held the model fixed so that every reading since §13.31 is
+comparable, and that decision has now bought everything it can. Changing it needs:
+
+1. a **pinned model identity in the artifact** (`llm=deepseek/deepseek-v4-pro`, date, temperature), so a
+   reading can never be attributed to the wrong reader;
+2. a **per-route re-baseline**: the four capabilities that reproduce to the character under a fixed model
+   will not do so across models, so the comparison becomes "same questions, new reader, new control";
+3. the **same floor discipline**: §13.100.2's net movement was measured on one model, and a new model's
+   floor is unknown until it is measured — the first run of a new reader must therefore be a
+   **control-against-itself**, not a treatment.
+
+That third point is the one that is easy to skip and expensive to skip: without it, a new reader's first
+treatment run is unreadable, and the campaign would spend a run to learn nothing.
