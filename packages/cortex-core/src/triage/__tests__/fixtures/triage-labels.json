@@ -1,0 +1,493 @@
+{
+  "what": "Hand-labelled gold set for the disclosure policy: 60 real user utterances from LongMemEval-S.",
+  "policy": {
+    "private": "About the body or health (diagnoses, medication, diet, exercise, appointments), money (amounts, salary, budget, purchases), family or relationships, career status, third-party people, or credentials. Must not enter a shared store.",
+    "shared": "Organisational knowledge a colleague could legitimately act on: project scope, plans, meeting agendas, team events, work products.",
+    "defer": "Neither clearly: a preference, opinion, intent, or trivia. The product treats defer as private at write time, so defer defers the decision to the user rather than naming a third destination."
+  },
+  "labelling": "One author (Lambertyan), one pass, before any rule existed. Labels were assigned from the sentence alone, so the measurement below is not circular with the rule set.",
+  "limits": "n=60, single annotator, no inter-annotator agreement. The Wilson bound quoted in docs/04 is about sampling error only; annotator error is real and unquantified here.",
+  "rows": [
+    {
+      "id": "g00",
+      "text": "By the way, I just finished an online course on data analysis using Python, so I'm interested in applying my new skills to improve my SEO strategies.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "personal learning, no organisational knowledge",
+      "stratum": "random"
+    },
+    {
+      "id": "g01",
+      "text": "I've recently been diagnosed with it by an ENT specialist, but I haven't really had a chance to research it yet.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "diagnosis by a specialist",
+      "stratum": "random"
+    },
+    {
+      "id": "g02",
+      "text": "I have a few meetings scheduled at work, and I need to finish a report that's due by the end of the week.",
+      "gold": "defer",
+      "category": "schedule",
+      "rationale": "own to-do, no sensitive content",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g03",
+      "text": "I'm creating an HR hub site for the company I work in (a bank).",
+      "gold": "shared",
+      "category": "org-project",
+      "rationale": "builds an internal site for the employer",
+      "stratum": "random"
+    },
+    {
+      "id": "g04",
+      "text": "By the way, I've been really enjoying editing my photos in Lightroom - the online communities I've joined have been super helpful in learning new techniques and getting feedback on my work.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "hobby and community",
+      "stratum": "random"
+    },
+    {
+      "id": "g05",
+      "text": "Each had its own unique charm, but I think my favorite was the Fairmont Orchid.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "travel preference",
+      "stratum": "random"
+    },
+    {
+      "id": "g06",
+      "text": "I think I'll check out Joe's Tackle Shop's website before heading over to see what kind of fishing nets they have in stock.",
+      "gold": "defer",
+      "category": "intent",
+      "rationale": "shopping intent",
+      "stratum": "random"
+    },
+    {
+      "id": "g07",
+      "text": "I'm looking for some new vegan recipes to try out.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "looking for recipes, not a stated restriction",
+      "stratum": "random"
+    },
+    {
+      "id": "g08",
+      "text": "I have a production facility on Poland that can produce high end climbing walls, climbing wooden volumes and all special interior a climbing or bouldering gym needs.",
+      "gold": "shared",
+      "category": "org-project",
+      "rationale": "a business capability a colleague could use",
+      "stratum": "random"
+    },
+    {
+      "id": "g09",
+      "text": "Yeah, I must have gotten the festival name mixed up.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "small correction",
+      "stratum": "random"
+    },
+    {
+      "id": "g10",
+      "text": "I've been tracking my social media analytics for a while now, and I've noticed that my Instagram account has been performing really well, with an average engagement rate of 5%.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "self-tracking, personal brand",
+      "stratum": "random"
+    },
+    {
+      "id": "g11",
+      "text": "I spent around $350 on the ASOS purchase, so the three dresses and boots must have cost that much in total.",
+      "gold": "private",
+      "category": "finance",
+      "rationale": "amount spent on a purchase",
+      "stratum": "random"
+    },
+    {
+      "id": "g12",
+      "text": "I'll definitely keep an eye on the weather if I plan a trip during hurricane season.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "weather remark",
+      "stratum": "random"
+    },
+    {
+      "id": "g13",
+      "text": "I am planning a project in Nigeria that connects 100 rural villages to running water.",
+      "gold": "shared",
+      "category": "org-project",
+      "rationale": "a named initiative with partners and scope",
+      "stratum": "random"
+    },
+    {
+      "id": "g14",
+      "text": "I think I'll cover the project's goals and objectives at the beginning of the meeting, and then move on to discussing the project plan and task assignments.",
+      "gold": "shared",
+      "category": "work-plan",
+      "rationale": "meeting agenda and task assignment",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g15",
+      "text": "It seems like I got a bit carried away with the strength training plan!",
+      "gold": "private",
+      "category": "health",
+      "rationale": "fitness and body",
+      "stratum": "random"
+    },
+    {
+      "id": "g16",
+      "text": "I've been trying to incorporate more walking into my daily routine, and I've started taking the stairs instead of the elevator at work.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "exercise routine",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g17",
+      "text": "I did notice that my internet speed has been really good lately, especially when I'm streaming movies on Netflix.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "small talk",
+      "stratum": "random"
+    },
+    {
+      "id": "g18",
+      "text": "By the way, speaking of TV shows, I also watch Brooklyn Nine-Nine during my lunch break at work.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "what they watch",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g19",
+      "text": "I think I'd feel more confident hearing personal experiences from someone who has actually been to these restaurants.",
+      "gold": "defer",
+      "category": "opinion",
+      "rationale": "what would make them comfortable",
+      "stratum": "random"
+    },
+    {
+      "id": "g20",
+      "text": "I'm thinking of organizing a meeting with my team to discuss the project plan and assign tasks.",
+      "gold": "shared",
+      "category": "work-plan",
+      "rationale": "schedules a team meeting on the project",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g21",
+      "text": "I've enjoyed seeing the different interpretations of the character and the ways in which the films have addressed changing times and attitudes.",
+      "gold": "defer",
+      "category": "opinion",
+      "rationale": "taste in a show",
+      "stratum": "random"
+    },
+    {
+      "id": "g22",
+      "text": "I'm thinking of setting up a dance club at work and I was wondering if you could help me come up with some ideas for a playlist to get us started.",
+      "gold": "shared",
+      "category": "org-event",
+      "rationale": "workplace club they are setting up",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g23",
+      "text": "I've been trying to get into a consistent morning routine, but it's tough when I have a lot on my plate at work.",
+      "gold": "defer",
+      "category": "state",
+      "rationale": "mentions workload, no detail",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g24",
+      "text": "I've been doing some research and found that there are some affordable alternatives to high-end brands that offer similar quality at a lower price point.",
+      "gold": "defer",
+      "category": "intent",
+      "rationale": "shopping research",
+      "stratum": "random"
+    },
+    {
+      "id": "g25",
+      "text": "I think personal interests and work-life balance are the most important factors for me.",
+      "gold": "defer",
+      "category": "opinion",
+      "rationale": "what matters to them",
+      "stratum": "random"
+    },
+    {
+      "id": "g26",
+      "text": "Since I worked from home on Tuesday morning to make up for the lost time due to my dentist appointment, I want to make sure I have some buffer time in the morning in case I need to make up for lost time again in the future.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "dental appointment, absence from work",
+      "stratum": "random"
+    },
+    {
+      "id": "g27",
+      "text": "I don't have a specific budget in mind, but I was thinking something around $50 would be nice.",
+      "gold": "private",
+      "category": "finance",
+      "rationale": "budget figure",
+      "stratum": "random"
+    },
+    {
+      "id": "g28",
+      "text": "I just got a promotion at work and treated myself to a luxury spree, but then ended up buying budget-friendly alternatives a week later.",
+      "gold": "private",
+      "category": "career",
+      "rationale": "promotion and personal spending",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g29",
+      "text": "I'm definitely going to have to visit all those spots.",
+      "gold": "defer",
+      "category": "intent",
+      "rationale": "travel intent",
+      "stratum": "random"
+    },
+    {
+      "id": "g30",
+      "text": "I'm actually planning to make a classic California roll with crab and avocado, and then try out a new recipe with grilled eel and cucumber.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "cooking plan",
+      "stratum": "random"
+    },
+    {
+      "id": "g31",
+      "text": "I'm planning a beach day with my family and I need some recommendations for sunscreen.",
+      "gold": "private",
+      "category": "family",
+      "rationale": "family outing",
+      "stratum": "random"
+    },
+    {
+      "id": "g32",
+      "text": "Since I've been listening to a lot of Billie Eilish lately, I was wondering if you could recommend some other artists or bands that have a similar sound or style.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "music taste",
+      "stratum": "random"
+    },
+    {
+      "id": "g33",
+      "text": "I'm planning to start at the Steep Ravine Trailhead and take the Dipsea Trail to the summit of Mount Tamalpais.",
+      "gold": "defer",
+      "category": "intent",
+      "rationale": "hiking plan",
+      "stratum": "random"
+    },
+    {
+      "id": "g34",
+      "text": "I think I'll try to doodle during my breaks at work.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "how they take breaks",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g35",
+      "text": "i just found a skeleton with a bag on him in the underground jungle.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "game remark",
+      "stratum": "random"
+    },
+    {
+      "id": "g36",
+      "text": "I'm thinking of setting up a small herb station where guests can make their own herb-infused drinks.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "hosting idea",
+      "stratum": "random"
+    },
+    {
+      "id": "g37",
+      "text": "I have a lot of playlists for different moods or activities, like \"Morning Boost\" for upbeat tracks and \"Focus Flow\" for instrumental music to help me concentrate.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "playlists",
+      "stratum": "random"
+    },
+    {
+      "id": "g38",
+      "text": "I've been trying to fit in a 30-minute jog on Tuesdays and Thursdays before work, so I wake up at 6:30 am on those days.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "exercise schedule and wake time",
+      "stratum": "random"
+    },
+    {
+      "id": "g39",
+      "text": "Yeah, Betts has really impressed me this season.",
+      "gold": "defer",
+      "category": "opinion",
+      "rationale": "sports opinion",
+      "stratum": "random"
+    },
+    {
+      "id": "g40",
+      "text": "I've found that I often mindlessly scroll through Instagram during my breaks at work, and I'd like to reduce that.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "social media habit",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g41",
+      "text": "By the way, I've been a lacto-ovo vegetarian for about 6 months now, and I've been dabbling in vegan cooking for the past 3 months.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "dietary restriction, stated",
+      "stratum": "random"
+    },
+    {
+      "id": "g42",
+      "text": "By the way, I just got back from a 5 kilometer walk with my colleagues from work, we did it to raise funds for a local food bank, and it was a great team-building experience!",
+      "gold": "shared",
+      "category": "org-event",
+      "rationale": "team charity walk",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g43",
+      "text": "I found a festival celebrating an ancient ritual that I've never heard of before!",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "a festival they heard of",
+      "stratum": "random"
+    },
+    {
+      "id": "g44",
+      "text": "And, I'll make sure to have some prizes or treats for the winners of the games, just to add an extra layer of excitement.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "party planning detail",
+      "stratum": "random"
+    },
+    {
+      "id": "g45",
+      "text": "I didn't have a specific brand in mind, but I knew I wanted a backpack with multiple compartments.",
+      "gold": "defer",
+      "category": "intent",
+      "rationale": "product criteria",
+      "stratum": "random"
+    },
+    {
+      "id": "g46",
+      "text": "The frame is simple and the colors are pretty muted, so I think it could work.",
+      "gold": "defer",
+      "category": "opinion",
+      "rationale": "design opinion",
+      "stratum": "random"
+    },
+    {
+      "id": "g47",
+      "text": "I think I have all the ingredients at home already.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "ingredients at home",
+      "stratum": "random"
+    },
+    {
+      "id": "g48",
+      "text": "“All your help, your passion and your sacrifice has helped me get to this point.",
+      "gold": "defer",
+      "category": "quote",
+      "rationale": "thanks, no fact",
+      "stratum": "random"
+    },
+    {
+      "id": "g49",
+      "text": "I am glad to have learned so much about reducing my intake of added sugars.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "dietary change they made",
+      "stratum": "random"
+    },
+    {
+      "id": "g50",
+      "text": "I've been taking a comedy writing workshop on Sundays, which has been really helpful in improving my joke structure and delivery.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "a class they take",
+      "stratum": "random"
+    },
+    {
+      "id": "g51",
+      "text": "I guess I'll have to learn how to be more flexible and adjust my schedule as needed.",
+      "gold": "defer",
+      "category": "state",
+      "rationale": "flexibility",
+      "stratum": "random"
+    },
+    {
+      "id": "g52",
+      "text": "I have all the ingredients already, so I'll get started on that right away.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "ingredients at home",
+      "stratum": "random"
+    },
+    {
+      "id": "g53",
+      "text": "I've been really into mythology-inspired books lately, and I just finished \"The Song of Achilles\".",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "reading taste",
+      "stratum": "random"
+    },
+    {
+      "id": "g54",
+      "text": "I think breaking up my practice sessions into shorter ones throughout the day will work better for me.",
+      "gold": "defer",
+      "category": "preference",
+      "rationale": "practice plan",
+      "stratum": "random"
+    },
+    {
+      "id": "g55",
+      "text": "And yeah, I have a backyard flock, just a small one.",
+      "gold": "defer",
+      "category": "state",
+      "rationale": "keeps a small flock",
+      "stratum": "random"
+    },
+    {
+      "id": "g56",
+      "text": "I think it's really important to make AI more transparent and accountable, especially as it becomes more pervasive in our lives.",
+      "gold": "defer",
+      "category": "opinion",
+      "rationale": "AI governance opinion",
+      "stratum": "random"
+    },
+    {
+      "id": "g57",
+      "text": "I'm thinking of making the lasagna, but I don't have a lot of time to prepare.",
+      "gold": "defer",
+      "category": "trivia",
+      "rationale": "cooking plan",
+      "stratum": "random"
+    },
+    {
+      "id": "g58",
+      "text": "I think I have a good idea of the types of charts and visualizations I can use to showcase our team's analysis and recommendations.",
+      "gold": "shared",
+      "category": "work-plan",
+      "rationale": "analyses for the team",
+      "stratum": "work-cue"
+    },
+    {
+      "id": "g59",
+      "text": "I'll give you another hint: I started taking longer walks in the morning on March 1st, enjoying the sunny days and watching the snow melting away.",
+      "gold": "private",
+      "category": "health",
+      "rationale": "walking routine and date",
+      "stratum": "random"
+    }
+  ],
+  "provenance": "Copied verbatim from cortex-docs/poc/p04-triage-rules/labels.json. Sixty real utterances from LongMemEval-S, each hand-labelled with the scope a careful reader would give it, before any rule was written. The gold column is the opinion of one labeller; the limits section of the original file says so, and this fixture keeps it rather than trimming it away, because a fixture that reads like ground truth is how a rule table gets tuned into a tautology."
+}

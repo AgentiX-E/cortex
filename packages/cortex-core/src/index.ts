@@ -97,6 +97,25 @@ export {
   type TaskScope,
 } from './federation/read-side.js';
 
+// triage: the deterministic disclosure layer and the write side of the boundary
+export {
+  RULE_TABLE,
+  RuleTableError,
+  assertRuleTable,
+  classify,
+  destinationOf,
+  type TriageDecision,
+  type TriageRule,
+  type TriageScope,
+} from './triage/rules.js';
+export {
+  TriageError,
+  TriageWriter,
+  type AdmittedFact,
+  type TriageRecord,
+  type TriageWriterOptions,
+} from './triage/writer.js';
+
 // tooling: the export census that `tools/export-census.mjs` drives through dist
 export {
   isSourceFile,

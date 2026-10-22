@@ -1,0 +1,73 @@
+{
+  "what": "Rows published to the shared store by CI runs of POC-6 over 3,000 identifier-bearing rows (ai4privacy/pii-masking-200k). The first run published 16; after the credential patch the second published 4, all of them bank-account numbers. Text is as quoted in those reports, truncated there, so a row whose identifier fell past the cut cannot be judged here.",
+  "source": "ci-results branch, poc/results/ci/p06-pii-recall.md, run 39762477932",
+  "rows": [
+    {
+      "rule": "org-knowledge",
+      "id": "pii00030",
+      "text": "\"Our team requires access to your cryptocurrency wallets for further investigation. Could you provide your Bitcoin address 3D1mKZsKocBH2VwN8i6K2zsZMn4"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii00094",
+      "text": "We need legal consultation on the regulations surrounding our company's digital assets specifically focusing on 32GZQmdZ3WHy2heDUpmcxiS7RYbkYXbFE, 39P"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii00691",
+      "text": "For any online purchases related to your role at our company, please use the Bitcoin address 1yfR9qZEokupQL934rTT8JuuBGv or Litecoin address LCkbZHjQ7"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii00702",
+      "text": "Our company has been making payments to a LiteCoin address. The Employment Law requires all payments to be transparent. Does the address LgJNMad5XCykW"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii00728",
+      "text": "Next week, we have an important meeting with the board. Book a suite for two days. The corporate card issuer is diners_club and the CVV is 412"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii00787",
+      "text": "For smooth onboarding to the training platform, please update your 16KYVKzJnzwVzBTFRJhqv1LBkhWF and Ma8srUf88baZKPrJJJ7jF6U33mNiyc on the portal."
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii00974",
+      "text": "Our company uses blockchain technology to keep patient data secure. Please send any donations to our 38YomUuBBEVHY5vU7hEJpVC9sW7eNcMrW or 0xfaaffde29b"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii01155",
+      "text": "For our upcoming charity event, were thinking of accepting donations in various forms, including cryptocurrency. Can you set up secure wallets for our"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii01205",
+      "text": "Our company analysis tool uses blockchain for data security and privacy. You may need the 0x63f85e2b38a6c1bf35a6eadcc21db27afe585e8e and 3E7EkkyCqEbJ6"
+    },
+    {
+      "rule": "org-knowledge",
+      "id": "pii01216",
+      "text": "In our latest Quality Assurance meeting, we decided to conduct an audit of all our transactions, paying special attention to those from Home Loan Account with I",
+      "truncated": true,
+      "reason": "The quoted text stops at \"Home Loan Account with I\", so the account number that made this row policy-forced is not in the string. The CI re-run, which has the full row, is what decides it."
+    },
+    {
+      "id": "pii01967",
+      "text": "The Auto Loan Account segment performs well in our business model canvas. Discuss this with our team in Apt. 447.",
+      "rule": "org-knowledge"
+    },
+    {
+      "id": "pii02177",
+      "text": "Regarding our company's investments in green tech, details about the account Credit Card Account with account number 89543511 are needed.",
+      "rule": "org-knowledge"
+    },
+    {
+      "id": "pii02216",
+      "text": "For those who will be traveling for the upcoming project meeting, your travel expenses should be charged to our company account. Please use account number 40387",
+      "rule": "org-knowledge"
+    }
+  ]
+}
