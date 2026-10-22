@@ -272,6 +272,10 @@ async function main() {
   });
 
   const failures = checks.filter((check) => !check.ok);
+  report.note =
+    'One run. The throughput numbers move by ~15% between runs on the same host, so the documents ' +
+    "cite a range across runs rather than this file's single sample; the digest and the check " +
+    'count are stable.';
   report.summary = {
     checks: checks.length,
     passed: checks.length - failures.length,

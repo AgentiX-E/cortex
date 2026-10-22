@@ -1,6 +1,6 @@
 {
   "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-  "origin": "http://127.0.0.1:33211",
+  "origin": "http://127.0.0.1:32979",
   "rows": 2000,
   "phases": {
     "matrix": {
@@ -104,7 +104,7 @@
         {
           "name": "a broken sqlite module falls back to idb, and says why",
           "ok": true,
-          "detail": "OPFS storage is unavailable: Failed to fetch dynamically imported module: http://127.0.0.1:33211/vendor/does-not-exist.m"
+          "detail": "OPFS storage is unavailable: Failed to fetch dynamically imported module: http://127.0.0.1:32979/vendor/does-not-exist.m"
         },
         {
           "name": "a missing sqliteModuleUrl throws instead of downgrading",
@@ -140,10 +140,10 @@
       "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
       "refused": [],
       "rows": 2000,
-      "writeMs": 11210.699999809265,
-      "rowsPerSecond": 178.40099191255027,
-      "transactionWriteMs": 156.69999980926514,
-      "transactionRowsPerSecond": 12763.2418789687,
+      "writeMs": 10965.10000038147,
+      "rowsPerSecond": 182.396877359114,
+      "transactionWriteMs": 174.80000019073486,
+      "transactionRowsPerSecond": 11441.647584769331,
       "digest": {
         "hash": 4000247205,
         "count": 2000
@@ -156,7 +156,7 @@
       "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
       "refused": [],
       "rows": 2000,
-      "readMs": 15.699999809265137,
+      "readMs": 22.799999237060547,
       "digest": {
         "hash": 4000247205,
         "count": 2000
@@ -165,6 +165,7 @@
       "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.0.0 Safari/537.36"
     }
   },
+  "note": "One run. The throughput numbers move by ~15% between runs on the same host, so the documents cite a range across runs rather than this file's single sample; the digest and the check count are stable.",
   "summary": {
     "checks": 24,
     "passed": 24,
