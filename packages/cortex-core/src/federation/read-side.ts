@@ -65,6 +65,15 @@ export type ReadSideOptions = {
    * rather than making this class know about it.
    */
   visibilityOf?: (value: unknown) => string | undefined;
+  /**
+   * Whether a row has been withdrawn from retrieval, pending review.
+   *
+   * A stale row is still allowed to exist and still declares its scope; it is simply not evidence
+   * any more. The filter lives here rather than in the card queue because "which rows may appear in
+   * an answer" is this class's one question, and because a card that is not enforced at read time
+   * is a checkbox rather than a control.
+   */
+  isStale?: (value: unknown) => boolean;
 };
 
 /**
@@ -74,6 +83,16 @@ export type ReadSideOptions = {
  * is shareable, so the guard rejects it. Silently treating "unknown" as "shared" would invert the
  * entire boundary on a schema change.
  */
+/**
+ * The default staleness reader.
+ *
+ * Only an explicit `stale: true` withholds a row. Absent means live: rows written before the field
+ * existed must keep answering, and a reader that treated "unknown" as stale would silently empty
+ * the memory of every existing user on upgrade.
+ */
+const defaultStale = (value: unknown): boolean =>
+  typeof value === 'object' && value !== null && (value as { stale?: unknown }).stale === true;
+
 const defaultVisibility = (value: unknown): string | undefined => {
   if (typeof value === 'object' && value !== null && 'visibility' in value) {
     const visibility = (value as { visibility?: unknown }).visibility;
@@ -86,11 +105,13 @@ export class ReadSideAssembler {
   private readonly federation: FederatedStorage;
   private readonly guard: boolean;
   private readonly visibilityOf: (value: unknown) => string | undefined;
+  private readonly isStale: (value: unknown) => boolean;
 
   constructor(federation: FederatedStorage, options: ReadSideOptions = {}) {
     this.federation = federation;
     this.guard = options.guard ?? true;
     this.visibilityOf = options.visibilityOf ?? defaultVisibility;
+    this.isStale = options.isStale ?? defaultStale;
   }
 
   /**
@@ -122,7 +143,10 @@ export class ReadSideAssembler {
       }
     }
 
-    return rows;
+    // Staleness is applied after the guard, not before: the guard is about whether the *writer* was
+    // correct, and a stale row that also mis-declared its scope must still fail loudly rather than
+    // be filtered into silence.
+    return rows.filter((row) => !this.isStale(row.value));
   }
 
   /** Shared tasks read one store. Nothing else is queried, so nothing else can leak. */

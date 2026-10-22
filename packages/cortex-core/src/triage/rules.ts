@@ -41,6 +41,16 @@ export type TriageRule = {
   /** One sentence a reviewer can hold against a disputed decision. */
   readonly policy: string;
   readonly pattern: RegExp;
+  /**
+   * What may be done with a match.
+   *
+   * `'never'` means the sentence is not stored anywhere, not even privately. Only `credential`
+   * declares it, and it does so because the policy sentence above says exactly that: a password
+   * kept "so the assistant can help" is a password store nobody asked for, and it is the first
+   * thing an export would take with it. Absent means the ordinary path: store privately, offer a
+   * card.
+   */
+  readonly retention?: 'never';
 };
 
 /** Raised when the table itself is unusable. A programming error, not a data condition. */
@@ -63,6 +73,7 @@ export const RULE_TABLE: readonly TriageRule[] = [
     id: 'credential',
     scope: 'private',
     policy: 'credentials are never stored, not even as a card',
+    retention: 'never',
     // CVV and wallet addresses were added after a CI run of POC-6 over 3,000 identifier-bearing
     // rows published 16 of them, and every one was a payment secret no rule claimed: "the CVV is
     // 412", "provide your Bitcoin address 3D1mKZ…". An unrecognised credential is not a card the
@@ -149,6 +160,12 @@ export type TriageDecision = {
   readonly scope: TriageScope;
   readonly rule: string | null;
   readonly policy: string | null;
+  /**
+   * Forwarded from the rule, so the write path does not have to look the id up again and cannot
+   * disagree with the table. Absent on a deferral, which is also what an injected classifier
+   * produces -- an unknown verdict is a failure and lands private, never `'never'`.
+   */
+  readonly retention?: 'never';
 };
 
 /**
@@ -214,7 +231,12 @@ export function assertRuleTable(table: readonly TriageRule[]): void {
 export function classify(text: string, table: readonly TriageRule[] = RULE_TABLE): TriageDecision {
   for (const rule of table) {
     if (rule.pattern.test(text)) {
-      return { scope: rule.scope, rule: rule.id, policy: rule.policy };
+      return {
+        scope: rule.scope,
+        rule: rule.id,
+        policy: rule.policy,
+        ...(rule.retention === undefined ? {} : { retention: rule.retention }),
+      };
     }
   }
   return { scope: 'defer', rule: null, policy: null };

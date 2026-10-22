@@ -111,10 +111,17 @@ export {
 export {
   TriageError,
   TriageWriter,
+  type Admission,
   type AdmittedFact,
   type TriageRecord,
   type TriageWriterOptions,
 } from './triage/writer.js';
+export {
+  CardQueue,
+  type CardQueueOptions,
+  type CardState,
+  type KnowledgeCard,
+} from './triage/card.js';
 
 // tooling: the export census that `tools/export-census.mjs` drives through dist
 export {

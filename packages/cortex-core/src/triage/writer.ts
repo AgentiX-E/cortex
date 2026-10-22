@@ -68,7 +68,32 @@ export type AdmittedFact = {
   readonly admittedAt: number;
   /** Set when a user promoted this row across the boundary, by confirming a card. */
   readonly confirmedAt?: number;
+  /**
+   * Withdrawn from retrieval, pending review.
+   *
+   * Written by `CardQueue.expire` when a confirmed fact outlives its `decayAt`, and cleared by
+   * `refresh`. Absent means live: a row from before this field existed is not stale.
+   */
+  readonly stale?: boolean;
+  /** When the row was marked stale. Kept next to the flag so the two cannot disagree. */
+  readonly staleAt?: number;
 };
+
+/**
+ * What `admit` did, as distinct from what it concluded.
+ *
+ * A fact is the rule layer's verdict; an admission says whether anything was kept. They come apart
+ * in exactly one case, and it is the one that matters: a sentence the policy forbids retaining is
+ * classified, reported, and **not written**. Returning only the fact would have made "we dropped
+ * your password" indistinguishable from "we stored it".
+ */
+export type Admission =
+  | (AdmittedFact & { readonly stored: true })
+  | (AdmittedFact & {
+      readonly stored: false;
+      /** Present exactly when nothing was written, naming the rule that refused. */
+      readonly withheld: { readonly rule: string; readonly policy: string };
+    });
 
 export type TriageWriterOptions = {
   /**
@@ -100,14 +125,14 @@ export class TriageWriter {
   async admit(
     text: string,
     options: { id?: string; table?: string; now?: number } = {},
-  ): Promise<AdmittedFact> {
+  ): Promise<Admission> {
     if (typeof text !== 'string' || text.trim() === '') {
       throw new TypeError(
         `admit() needs a non-blank sentence, got ${typeof text === 'string' ? JSON.stringify(text) : typeof text}`,
       );
     }
 
-    const triage = this.decide(text);
+    const { record: triage, retention } = this.decide(text);
     // `decide()` guarantees the scope is one of the three, and `destinationOf` sends `defer` home
     // privately -- so this single expression covers the failure path too. It was a ternary on
     // `triage.failure` first, which was dead: a failure is recorded *as* a deferral.
@@ -120,8 +145,89 @@ export class TriageWriter {
       admittedAt: options.now ?? Date.now(),
     };
 
+    // The policy sentence on `credential` reads "never stored, not even as a card", and until this
+    // branch existed the code stored it privately -- a password kept "so the assistant can help",
+    // in a file the export would take with it. The table said one thing and the write path did the
+    // other; the write path was the weaker of the two and the one being enforced.
+    if (retention === 'never') {
+      return { ...fact, stored: false, withheld: withheldFor(triage) };
+    }
+
     await this.federation.put(`${visibility}/${options.table ?? 'facts'}`, fact.id, fact);
-    return fact;
+    return { ...fact, stored: true };
+  }
+
+  /**
+   * Reclassify a fact's text, storing it **only if it may be published**.
+   *
+   * This exists for the card queue's edit path, and its asymmetry with `admit` is deliberate. An
+   * edit arrives from someone who has already said "I want this shared", so a verdict of `private`
+   * is not a fact to keep -- it is a refusal to publish, and the refusal has to leave no trace of
+   * the new text. Writing it first and deciding afterwards would put a pasted account number in the
+   * private store, where the export goes.
+   *
+   * The caller therefore reads `stored === false` and shows the rule that refused. Nothing else
+   * happens: the existing row keeps its old text.
+   */
+  async revise(
+    id: string,
+    text: string,
+    options: { table?: string; now?: number } = {},
+  ): Promise<Admission> {
+    if (typeof text !== 'string' || text.trim() === '') {
+      throw new TypeError('revise() needs a non-blank sentence');
+    }
+    const table = options.table ?? 'facts';
+    const existing = await this.federation.get<AdmittedFact>(`private/${table}`, id);
+    if (existing === undefined) {
+      throw new TriageError(
+        `no private fact with id ${JSON.stringify(id)}: revise() only edits a row that has not ` +
+          `been published yet, because rewriting a shared fact is a different operation with its ` +
+          `own audit trail`,
+      );
+    }
+
+    const { record, retention } = this.decide(text);
+    if (retention === 'never' || record.scope === 'private') {
+      return { ...existing, text, triage: record, stored: false, withheld: withheldFor(record) };
+    }
+
+    const revised: AdmittedFact = { ...existing, text, triage: record, visibility: 'private' };
+    await this.federation.put(`private/${table}`, id, revised);
+    return { ...revised, stored: true };
+  }
+
+  /**
+   * Mark a stored fact as withdrawn from retrieval, or bring it back.
+   *
+   * Used by the card queue: a confirmed fact that outlives `decayAt` becomes a question again
+   * rather than quietly staying in answers forever. The row is looked for in the shared store
+   * first, because a card can only exist for a fact that was published.
+   */
+  async setStale(
+    id: string,
+    stale: boolean,
+    options: { table?: string; now?: number } = {},
+  ): Promise<AdmittedFact> {
+    const table = options.table ?? 'facts';
+    const found =
+      (await this.federation.get<AdmittedFact>(`shared/${table}`, id)) ??
+      (await this.federation.get<AdmittedFact>(`private/${table}`, id));
+
+    if (found === undefined) {
+      throw new TriageError(
+        `no fact with id ${JSON.stringify(id)} in either store: only a stored fact can be ` +
+          `withdrawn from retrieval`,
+      );
+    }
+
+    const updated: AdmittedFact = {
+      ...found,
+      stale,
+      staleAt: options.now ?? Date.now(),
+    };
+    await this.federation.put(`${found.visibility}/${table}`, id, updated);
+    return updated;
   }
 
   /**
@@ -177,24 +283,42 @@ export class TriageWriter {
    * alternative -- letting either escape -- would leave the caller to decide what to do with a
    * fact it cannot classify, and the safe answer would have to be written at every call site.
    */
-  private decide(text: string): TriageRecord {
+  private decide(text: string): { record: TriageRecord; retention: 'never' | undefined } {
     let decision: TriageDecision;
     try {
       decision = this.classifier(text);
     } catch (error) {
-      return { scope: 'defer', rule: null, policy: null, failure: describe(error) };
+      return {
+        record: { scope: 'defer', rule: null, policy: null, failure: describe(error) },
+        retention: undefined,
+      };
     }
 
     if (!KNOWN_SCOPES.includes(decision.scope)) {
       return {
-        scope: 'defer',
-        rule: null,
-        policy: null,
-        failure: `classifier returned unknown scope ${JSON.stringify(decision.scope)}`,
+        record: {
+          scope: 'defer',
+          rule: null,
+          policy: null,
+          failure: `classifier returned unknown scope ${JSON.stringify(decision.scope)}`,
+        },
+        retention: undefined,
       };
     }
-    return decision;
+    const { scope, rule, policy, retention } = decision;
+    return { record: { scope, rule, policy }, retention };
   }
+}
+
+/**
+ * The refusal a withheld fact reports.
+ *
+ * `'unknown'` is not a placeholder for a case that cannot happen: a classifier is injectable, and
+ * one that returns `retention: 'never'` with no rule id would otherwise produce a refusal with no
+ * name attached -- a message that says "we did not keep this" and cannot say why.
+ */
+function withheldFor(record: TriageRecord): { rule: string; policy: string } {
+  return { rule: record.rule ?? 'unknown', policy: record.policy ?? '' };
 }
 
 /** One sentence, because an `Error` does not survive serialisation and a stack does not fit. */

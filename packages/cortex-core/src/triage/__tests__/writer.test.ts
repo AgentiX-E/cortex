@@ -129,7 +129,29 @@ describe('admit', () => {
     });
     expect(fact.id).toBe('fact-1');
     expect(fact.admittedAt).toBe(1_700_000_000_000);
-    expect(await local.get('facts', 'fact-1')).toEqual(fact);
+
+    const stored = await local.get<Record<string, unknown>>('facts', 'fact-1');
+    expect(stored).toMatchObject({ id: 'fact-1', text: fact.text, visibility: 'private' });
+    // `stored` describes what the writer did, not what the fact is. Persisting it would put a
+    // field in the row that every reader then has to ignore.
+    expect(stored).not.toHaveProperty('stored');
+  });
+
+  it('keeps a credential out of the stores entirely', async () => {
+    // The policy sentence says "never stored, not even as a card", and until this test existed the
+    // code stored it privately: a password kept so the assistant could help, in the table the
+    // export reads. The report is what tells a caller the fact was seen and dropped.
+    const { writer, local, shared } = world();
+    const admission = await writer.admit('My password is correct-horse-battery-staple.');
+
+    expect(admission.stored).toBe(false);
+    if (admission.stored) throw new Error('a credential must not be stored');
+    expect(admission.withheld).toEqual({
+      rule: 'credential',
+      policy: 'credentials are never stored, not even as a card',
+    });
+    expect(await local.query('facts')).toEqual([]);
+    expect(await shared.query('facts')).toEqual([]);
   });
 });
 
@@ -229,6 +251,58 @@ describe('the sixty labelled utterances, through the pair', () => {
     const texts = new Set(window.map((row) => (row.value as AdmittedFact).text));
     expect(texts.size).toBe(60);
     expect(texts.has('')).toBe(false);
+  });
+});
+
+describe('a classifier that contradicts itself still fails closed', () => {
+  it('withholds a fact whose refusal has no rule to name', async () => {
+    // An injected classifier can return `retention: 'never'` without a rule. The fact must still be
+    // withheld -- and the refusal has to carry a name, even if that name is "unknown", or the
+    // message says "we did not keep this" and cannot say why.
+    const { federation, local } = world();
+    const writer = new TriageWriter(federation, {
+      classify: () => ({ scope: 'defer', rule: null, policy: null, retention: 'never' }),
+    });
+
+    const admission = await writer.admit('anything at all');
+    expect(admission.stored).toBe(false);
+    if (admission.stored) throw new Error('unreachable');
+    expect(admission.withheld).toEqual({ rule: 'unknown', policy: '' });
+    expect(await local.query('facts')).toEqual([]);
+  });
+
+  it('stamps the moment when the caller does not supply one', async () => {
+    const { writer, local } = world();
+    await writer.admit('The bookshop on the corner reopens next month.', { id: 'stamp' });
+    const before = Date.now();
+    const marked = await writer.setStale('stamp', true);
+    expect(marked.stale).toBe(true);
+    expect(marked.staleAt).toBeGreaterThanOrEqual(before);
+    expect((await local.get<AdmittedFact>('facts', 'stamp'))?.stale).toBe(true);
+  });
+});
+
+describe('revise and setStale refuse what they cannot do', () => {
+  it('will not revise a fact to a blank sentence', async () => {
+    const { writer } = world();
+    await writer.admit('The bookshop on the corner reopens next month.', { id: 'blank' });
+    await expect(writer.revise('blank', '   ')).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it('will not revise a fact it cannot find', async () => {
+    const { writer } = world();
+    await expect(writer.revise('ghost', 'anything at all')).rejects.toThrow(/no private fact/);
+  });
+
+  it('will not revise a fact that is already published', async () => {
+    const { writer } = world();
+    await writer.admit('We decided the roadmap moves to Q3.', { id: 'out' });
+    await expect(writer.revise('out', 'something else')).rejects.toThrow(/no private fact/);
+  });
+
+  it('will not mark a fact stale when there is no such fact', async () => {
+    const { writer } = world();
+    await expect(writer.setStale('ghost', true)).rejects.toThrow(/only a stored fact/);
   });
 });
 
