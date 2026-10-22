@@ -399,7 +399,7 @@ type ScorerChannel = 'structural' | 'exact' | 'numeric' | 'judge';
  * A counter here is the smallest thing that makes the next run say it, and it is
  * observation only: no verdict changes and no artifact field is added.
  *
- * Mirrors `retryStats()` in `cortex-llm` down to the reset, and for the same reason:
+ * Mirrors `retryStats()` in `cortex-ai` down to the reset, and for the same reason:
  * a process-wide aggregate is what the layers above can read without being threaded
  * a parameter they do not otherwise want.
  */

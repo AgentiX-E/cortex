@@ -22,7 +22,7 @@ import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
 import type { DecisionTrace } from '../natural-language-memory.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
 import { createLlmFromEnv, resolveTimeoutMs } from '../llm-factory.js';
-import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
+import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
 import { HashEmbedding } from '../embedding.js';
 import { FactMemorySystem } from '../fact-memory.js';
 import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';

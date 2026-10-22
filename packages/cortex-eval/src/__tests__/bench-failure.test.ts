@@ -78,7 +78,7 @@ describe('describeFailure', () => {
   });
 
   it('summarises an exhausted retry when the error carries one', () => {
-    // The second missing fact. The shape is `RetryExhaustion` from `cortex-llm`, attached
+    // The second missing fact. The shape is `RetryExhaustion` from `cortex-ai`, attached
     // under `retryExhausted`; this module reads it structurally because `cortex-eval` sits
     // below that package in the dependency order and must not import it.
     const error = new Error('fetch failed') as Error & { retryExhausted?: unknown };

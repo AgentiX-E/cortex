@@ -81,10 +81,12 @@
  * `c8` and `v8` prefixes but not `istanbul`. Two consequences, both measured
  * rather than argued, and both now closed:
  *
- * 1. **Scope.** The two `c8 ignore start` shims in `cortex-llm` (the optional
- *    `@xenova/transformers` peer loaders) were outside the scanned directory, so
- *    the file's central claim -- "the set is enumerated" -- was true of one
- *    package and false of the repository.
+ * 1. **Scope.** The two `c8 ignore start` shims that used to live in `cortex-ai`
+ *    (the optional peer loaders) were outside the scanned directory, so the
+ *    file's central claim -- "the set is enumerated" -- was true of one package
+ *    and false of the repository. Both shims have since been removed outright:
+ *    the loaders take the module as a parameter now, so there is nothing to
+ *    exclude and this test's scope covers a package with no annotations at all.
  * 2. **Prefix.** Six files carried `/* istanbul ignore file ... *\/` and the
  *    pattern could not see any of them. Worse, `istanbul ignore file` is **not a
  *    suppression that vitest's v8 provider honours**: deleting all five in
@@ -249,21 +251,13 @@ const EXPECTED: Record<string, { count: number; reason: string }> = {
  * tested *in this environment* rather than merely being inconvenient.
  */
 const EXPECTED_BLOCK: Record<string, { count: number; reason: string }> = {
-  'cortex-llm: embedding/transformers-pipeline.ts': {
-    count: 1,
-    reason:
-      'Optional-peer loading shim: the module dynamically imports ' +
-      '@xenova/transformers, which is an optionalDependency and absent in CI. ' +
-      'The tested path is the injectable pipelineFactory on ' +
-      'TransformersEmbedding; this file only supplies the default binding.',
-  },
-  'cortex-llm: rerank/transformers-rerank-pipeline.ts': {
-    count: 1,
-    reason:
-      'Optional-peer loading shim for the offline cross-encoder, same peer and ' +
-      'same reason as the embedding loader. The injectable pipeline on ' +
-      'CrossEncoderReranker is the tested path.',
-  },
+  // `cortex-ai` had two entries here until implementation step 4, both for the
+  // peer-loading shims of the local model path. They are gone because the shims
+  // are: `local/pipelines.ts` takes the module loader as a parameter, so the
+  // option wiring (`dtype`, `pooling`, `topk`, `env`) is asserted directly, and
+  // `resolveTransformersModule()` is called for real against the installed peer.
+  // The package now reports 100/100/100/100 with no suppression of any kind --
+  // which is the point of removing an annotation rather than rewriting its reason.
 };
 
 function tsFiles(dir: string, into: string[]): string[] {
@@ -382,8 +376,8 @@ describe('the coverage-ignore annotation set is pinned', () => {
 
   it('scans every workspace package, not only the one this file lives in', () => {
     // Guards the scope fix directly: if `sourceFiles` ever regresses to a single
-    // package, the two `cortex-llm` block annotations vanish from the scan and
-    // the assertion above would still pass against a smaller EXPECTED_BLOCK.
+    // package, an annotation added elsewhere would vanish from the scan and the
+    // assertion above would still pass against a smaller set.
     // The list is pinned rather than derived, and that is the point: adding a
     // package must be a deliberate edit here. `cortex-memory` was added when it
     // landed, and this test failed until it was — which is the guard working,
@@ -391,9 +385,9 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // unscanned while every assertion above still passed.
     const packages = new Set(sourceFiles().map(packageOf));
     expect([...packages].sort()).toEqual([
+      'cortex-ai',
       'cortex-core',
       'cortex-eval',
-      'cortex-llm',
       'cortex-memory',
       'cortex-storage',
     ]);

@@ -150,7 +150,7 @@ describe('every package clean removes the incremental build cache', () => {
    * `clean` is the command that exists to make this recoverable, so if `clean`
    * does not remove the tsbuildinfo it does not do its job.
    */
-  const PACKAGES = ['cortex-core', 'cortex-storage', 'cortex-llm', 'cortex-eval'] as const;
+  const PACKAGES = ['cortex-core', 'cortex-storage', 'cortex-ai', 'cortex-eval'] as const;
 
   function packageJson(name: string): PackageJson {
     return JSON.parse(

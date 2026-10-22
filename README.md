@@ -62,7 +62,7 @@ by similarity). Cortex solves the "mind" problem:
 |---|---|
 | `@agentix-e/cortex-core` | Contracts + pure algorithms, zero I/O, Node + browser |
 | `@agentix-e/cortex-storage` | Storage backends, one subpath each: `./sqlite` (`better-sqlite3`), `./pg` (PostgreSQL). Peers are optional; the root is empty by design |
-| `@agentix-e/cortex-llm` | Pluggable LLM and embedding adapters (OpenAI-compatible + local transformers.js) |
+| `@agentix-e/cortex-ai` | Model adapters, one subpath per dependency profile: `.` remote OpenAI-compatible (needs only `fetch`), `./local` transformers.js (optional peer), `./web` the browser's built-in model (no dependency at all) |
 | `@agentix-e/cortex-memory` | Composition layer: wires `cortex-core`'s value gates into one conformance-passing `MemorySystem` |
 | `@agentix-e/cortex-eval` | Scientific evaluation harness (metrics, t-test, ablation) + LongMemEval-style mini benchmark |
 

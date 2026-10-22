@@ -4,10 +4,17 @@
  *
  * ## The property, stated as a check
  *
- * `cortex-storage` exports a browser-safe root plus two Node-only backend subpaths. The root must
- * never reach `better-sqlite3`, `pg`, or a `node:` builtin -- if it does, every consumer that
- * imports the root drags a native module into a bundle that was supposed to be portable, and the
- * failure shows up at *their* build time, as a cryptic "cannot resolve" rather than as a bug here.
+ * Two packages are guarded, for the same reason in two directions:
+ *
+ *  * `cortex-storage` exports a browser-safe root plus Node-only backend subpaths. The root must
+ *    never reach `better-sqlite3`, `pg`, or a `node:` builtin -- if it does, every consumer that
+ *    imports the root drags a native module into a bundle that was supposed to be portable, and the
+ *    failure shows up at *their* build time, as a cryptic "cannot resolve" rather than as a bug
+ *    here.
+ *  * `cortex-ai` exports the remote adapters at the root and the local model runtime at `./local`.
+ *    The root must not reach `@huggingface/transformers`, or every service that talks to an HTTP
+ *    provider inherits an ONNX runtime and 90 MB of weights. `./local` is the control: it *is*
+ *    expected to reach the peer, so a clean report there means the walk is broken.
  *
  * A size budget alone would not catch that: the root is a few hundred bytes and would pass any
  * threshold while quietly importing a database. So the check is a **closure walk** of the source
@@ -31,18 +38,45 @@
 import { readFileSync, existsSync, statSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Specifiers a portable entry must never reach. Matched against the bare name. */
-const FORBIDDEN = [/^better-sqlite3$/, /^pg$/, /^pg-/ , /^node:/, /^fs$/, /^path$/, /^os$/, /^crypto$/];
+const FORBIDDEN = [
+  /^better-sqlite3$/,
+  /^pg$/,
+  /^pg-/,
+  /^node:/,
+  /^fs$/,
+  /^path$/,
+  /^os$/,
+  /^crypto$/,
+];
 
 /** Byte budget for the whole closure of a guarded entry. */
 const BUDGET = 300 * 1024;
 
 /** Entries to guard, per package. Anything not listed is unguarded on purpose. */
 const PLAN = {
+  'packages/cortex-ai': [
+    // The root is the remote-provider entry: a service that talks HTTP must not inherit an ONNX
+    // runtime and 90 MB of weights.
+    {
+      entry: 'src/index.ts',
+      portable: true,
+      forbid: ['@huggingface/transformers'],
+    },
+    // The control for THIS package: `./local` is supposed to reach the peer. A clean report here
+    // means the walk stopped following dynamic imports and the root's result is therefore empty.
+    { entry: 'src/local/index.ts', portable: false, expect: '@huggingface/transformers' },
+    // The web entry reaches a platform global and nothing else.
+    {
+      entry: 'src/web/index.ts',
+      portable: true,
+      forbid: ['@huggingface/transformers'],
+    },
+  ],
   'packages/cortex-storage': [
     { entry: 'src/index.ts', portable: true },
     // The browser entries are guarded as well, and more strictly than by name: they must not reach
@@ -83,11 +117,7 @@ function blankComments(text) {
 /** Resolve a relative specifier to a file on disk, trying the TypeScript source first. */
 function resolveRelative(from, specifier) {
   const base = resolve(dirname(from), specifier);
-  const candidates = [
-    base.replace(/\.js$/, '.ts'),
-    `${base}.ts`,
-    join(base, 'index.ts'),
-  ];
+  const candidates = [base.replace(/\.js$/, '.ts'), `${base}.ts`, join(base, 'index.ts')];
   return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
 }
 
@@ -123,7 +153,7 @@ export function closure(entryFile) {
   return { files, bare: [...bare.keys()], bytes };
 }
 
-function forbiddenIn(bare) {
+export function forbiddenIn(bare) {
   return bare.filter((specifier) => FORBIDDEN.some((pattern) => pattern.test(specifier)));
 }
 
@@ -156,6 +186,16 @@ function check(pkgDir, entries) {
         reached: result.bare,
       });
       continue;
+    }
+
+    // Entry-specific bans, on top of the package-wide list. `cortex-ai` needs one: the root must
+    // not reach the transformers peer, while `./local` must. Expressing that as a global FORBIDDEN
+    // pattern would make the positive control impossible to write.
+    const extra = (item.forbid ?? []).filter((specifier) => result.bare.includes(specifier));
+    if (extra.length > 0) {
+      failures.push(
+        `${pkgDir}/${item.entry}: reaches ${extra.join(', ')}, which this entry must not`,
+      );
     }
 
     if (bad.length > 0) {
@@ -216,7 +256,9 @@ function main(argv) {
     writeFileSync(join(dir, 'index.ts'), "import Database from 'better-sqlite3';\n");
     const probe = closure(join(dir, 'index.ts'));
     const caught = forbiddenIn(probe.bare).length > 0;
-    console.log(`${caught ? 'ok  ' : 'FAIL'} self-test: a portable entry importing better-sqlite3 is rejected`);
+    console.log(
+      `${caught ? 'ok  ' : 'FAIL'} self-test: a portable entry importing better-sqlite3 is rejected`,
+    );
     if (!caught) failures.push('self-test: the guard did not reject a native import');
   }
 
@@ -228,4 +270,9 @@ function main(argv) {
   }
 }
 
-main(process.argv.slice(2));
+// Run only when executed, not when imported. The package tests import `closure`/`forbiddenIn` so
+// that the *same* walk decides both the build-time gate and the per-package assertion -- two
+// implementations of "what does this entry reach" would disagree exactly when it matters.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) main(process.argv.slice(2));

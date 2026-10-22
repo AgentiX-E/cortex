@@ -18,7 +18,7 @@
  * ## Why the injection boundary is load-bearing rather than stylistic
  *
  * `cortex-eval` is the measurement instrument. Its `package.json` depends on
- * `cortex-core` and `cortex-llm` and on nothing in the product layer, and
+ * `cortex-core` and `cortex-ai` and on nothing in the product layer, and
  * `AUDIT-EVAL-CONTRACTS.md` §2 relies on that when it records the edge to
  * `cortex-memory` as "type-only ... and acyclic". Importing `CortexMemory` here to
  * build it inline would reverse that: the harness would depend on the thing it
@@ -679,7 +679,7 @@ const ALL_TURN_CAP_ROUTES: readonly string[] = Object.keys(TURN_CAP_ROUTES);
  * The contract a run gets when it does not name one.
  *
  * A local literal, and this file's own boundary rule requires it: `cortex-eval` depends
- * only on `cortex-core` and `cortex-llm`, while `cortex-memory` is the layer that depends
+ * only on `cortex-core` and `cortex-ai`, while `cortex-memory` is the layer that depends
  * on `cortex-core` and is measured *by* this package. Importing `PROMPT_CONTRACTS` from
  * the product would reverse that direction and create a cycle.
  *

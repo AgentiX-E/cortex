@@ -14,7 +14,7 @@
  * absence of an error means the intended backend was reached.
  */
 import { describe, expect, it } from 'vitest';
-import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
+import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
 import { HashEmbedding } from '../embedding.js';
 import {
   createEmbeddingFromEnv,

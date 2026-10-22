@@ -43,7 +43,7 @@ describe('createRerankerFromEnv counters go live under a real call', () => {
     })) as typeof fetch;
 
   it('counts attempted and failed buckets when every reply fails to parse', async () => {
-    const { LLMReranker, OpenAICompatibleLLM } = await import('@agentix-e/cortex-llm');
+    const { LLMReranker, OpenAICompatibleLLM } = await import('@agentix-e/cortex-ai');
     const llm = new OpenAICompatibleLLM({
       baseUrl: 'https://rerank-probe.invalid/v1',
       apiKey: 'test-key',
@@ -290,7 +290,7 @@ describe('createRerankerFromEnv provider selection', () => {
  * one this whole change began with — `CrossEncoderReranker` existed, was exported,
  * had tests, and was constructed by no one.
  *
- * `@xenova/transformers` is absent here, so the observable contract in this
+ * `@huggingface/transformers` is absent here, so the observable contract in this
  * environment is that the failure surfaces as a rejected promise naming the missing
  * module when scoring is attempted. Asserting that is stronger than asserting the
  * closure exists: it proves the score call actually reaches the loader, and it pins
@@ -309,42 +309,48 @@ describe('createRerankerFromEnv local provider', () => {
     expect(typeof reranker).toBe('function');
   });
 
-  it('surfaces the missing optional peer when scoring is actually attempted', async () => {
-    const reranker = createRerankerFromEnv({
-      CORTEX_RERANK: 'on',
-      CORTEX_RERANK_PROVIDER: 'local',
-    });
+  /**
+   * The two tests below used to run the *real* loader and assert that it failed, on the premise
+   * that the optional peer is absent. That premise is now false -- `@huggingface/transformers` is a
+   * devDependency of `cortex-ai`, because the package's own tests need it to assert the pinned
+   * options -- and a test whose outcome depends on which packages a machine happens to have is the
+   * shape this repository keeps removing.
+   *
+   * So the failure is constructed through the documented seam (`pipelineFactory`) instead. What is
+   * asserted is the wrapping: the message names the peer the operator has to install and the switch
+   * that avoids needing it, and the underlying cause is preserved.
+   */
+  it('surfaces the loader failure when scoring is actually attempted', async () => {
+    const reranker = createRerankerFromEnv(
+      { CORTEX_RERANK: 'on', CORTEX_RERANK_PROVIDER: 'local' },
+      {
+        pipelineFactory: () => async () => {
+          throw new Error('Cannot find module @huggingface/transformers');
+        },
+      },
+    );
 
     await expect(reranker!([{ question: 'q', candidateId: 'a', text: 'text' }])).rejects.toThrow(
-      /xenova|transformers|Cannot find/i,
+      /@huggingface\/transformers/,
     );
   });
 
-  /**
-   * The assertion above is weaker than it reads, and an experiment proved it.
-   *
-   * Its alternatives are a disjunction, and the one that actually fires in this
-   * environment is `Cannot find` — which comes from a *transitive* dependency of
-   * `@xenova/transformers`, not from `@xenova/transformers` itself. Measured: on a
-   * machine where that package is absent, `\`@xenova/transformers\`` does not appear
-   * in the message at all (`/xenova/i` → false), while the message is in fact a
-   * 706-character `sharp` installation manual:
-   *
-   *     Something went wrong installing the "sharp" module
-   *     Cannot find module '../build/Release/sharp-linux-x64.node'
-   *
-   * So an unrelated `sharp` breakage satisfies a test whose stated purpose is "names
-   * the missing module". The message names a module the operator never asked for.
-   *
-   * These assertions pin the message to the module the operator *did* ask for, and
-   * to the remedy. That is what makes the failure actionable: the CI-side symptom is
-   * a skipped ablation arm, and the skip reason has to say which peer to install.
-   */
   it('names the peer the operator must install, not a transitive dependency', async () => {
-    const reranker = createRerankerFromEnv({
-      CORTEX_RERANK: 'on',
-      CORTEX_RERANK_PROVIDER: 'local',
-    });
+    // The original observation, preserved as a fixture: on a machine without the peer, the failure
+    // was a 706-character `sharp` installation manual, and the string the operator needed did not
+    // appear in it at all. The wrapper must still name the peer, and must still keep the underlying
+    // message visible at the end.
+    const sharpManual =
+      'Something went wrong installing the "sharp" module\n' +
+      "Cannot find module '../build/Release/sharp-linux-x64.node'";
+    const reranker = createRerankerFromEnv(
+      { CORTEX_RERANK: 'on', CORTEX_RERANK_PROVIDER: 'local' },
+      {
+        pipelineFactory: () => async () => {
+          throw new Error(sharpManual);
+        },
+      },
+    );
 
     let message = '';
     try {
@@ -354,9 +360,28 @@ describe('createRerankerFromEnv local provider', () => {
     }
 
     // The package the operator has to install, by the name they would type.
-    expect(message).toContain('@xenova/transformers');
+    expect(message).toContain('@huggingface/transformers');
     // The switch that reaches a provider which needs no peer at all.
     expect(message).toContain('CORTEX_RERANK_PROVIDER');
+    // And the real cause is still readable, so a genuinely different breakage is diagnosable.
+    expect(message).toContain('sharp-linux-x64.node');
+  });
+
+  it('reports a loader that throws a primitive, without turning it into "undefined"', async () => {
+    // The non-`Error` arm. A module that throws a string while being evaluated propagates that
+    // string through `await`, and reading `.message` off it would report `undefined`.
+    const reranker = createRerankerFromEnv(
+      { CORTEX_RERANK: 'on', CORTEX_RERANK_PROVIDER: 'local' },
+      {
+        pipelineFactory: () => async () => {
+          throw 'module evaluation blew up';
+        },
+      },
+    );
+
+    await expect(reranker!([{ question: 'q', candidateId: 'a', text: 'text' }])).rejects.toThrow(
+      /module evaluation blew up/,
+    );
   });
 });
 

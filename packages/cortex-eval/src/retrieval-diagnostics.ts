@@ -519,7 +519,7 @@ type TransportRetrySnapshot = {
    * makes the rest readable: without it, a call that issued one request and was cut off
    * is counted as CLEAN, so a run whose traffic was failing outright reports a higher
    * share of untroubled calls than a healthy one. `cleanCalls + retriedCalls +
-   * exhaustedCalls === calls` is the identity, and it is asserted in `cortex-llm`.
+   * exhaustedCalls === calls` is the identity, and it is asserted in `cortex-ai`.
    */
   exhaustedCalls: number;
   /** `retriedCalls / calls` -- per call, never per retry. */
@@ -530,7 +530,7 @@ type TransportRetrySnapshot = {
  * Format a transport-retry snapshot for inclusion in a report.
  *
  * Takes a **snapshot**, not the aggregate. The process-level aggregate is
- * reachable only through `retryStats()` in `cortex-llm`, and this function pairs
+ * reachable only through `retryStats()` in `cortex-ai`, and this function pairs
  * with it: passing the snapshot keeps the counter's write path (`record()`) out
  * of every caller that only needs to read, so a reporter cannot accidentally
  * contribute to the numbers it is describing.

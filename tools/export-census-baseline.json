@@ -1,10 +1,10 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 561,
-    "withCaller": 307,
-    "orphaned": 254,
-    "referencedLocally": 203,
+    "exports": 580,
+    "withCaller": 317,
+    "orphaned": 263,
+    "referencedLocally": 212,
     "unreferenced": 51
   },
   "groups": [
@@ -33,9 +33,48 @@
     },
     {
       "category": "core-llm-node-surface",
-      "count": 75,
-      "rationale": "Library surface of cortex-core, cortex-llm and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-llm/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly.",
+      "count": 84,
+      "rationale": "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-ai/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. THE THREE ENTRIES OF cortex-ai ARE ONE LIBRARY WITH THREE DEPENDENCY PROFILES: `.` (remote providers, needs only fetch), `./local` (transformers.js, an optional peer) and `./web` (the browser's built-in model). Almost every export in this group is part of that surface and is called by a consumer, not by this repository -- the repository ships no application. Two of them are worth naming because they look like internal helpers and are not: `createFeatureExtractor` and `createRerankClassifier` are the loading layer that pins `dtype` and reads raw logits, and `test/parity/run.mjs` drives both against real weights. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly.",
       "declarationSites": [
+        "cortex-ai: AvailabilityReport (packages/cortex-ai/src/web/platform-language-model.ts:56)",
+        "cortex-ai: CrossEncoderRerankerOptions (packages/cortex-ai/src/rerank/rerank.ts:186)",
+        "cortex-ai: DEFAULT_DTYPE (packages/cortex-ai/src/local/pipelines.ts:42)",
+        "cortex-ai: DEFAULT_MAX_RETRIES (packages/cortex-ai/src/retry.ts:38)",
+        "cortex-ai: DEFAULT_RETRY_BASE_DELAY_MS (packages/cortex-ai/src/retry.ts:40)",
+        "cortex-ai: DEFAULT_RETRY_BUDGET_MS (packages/cortex-ai/src/retry.ts:48)",
+        "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS (packages/cortex-ai/src/retry.ts:58)",
+        "cortex-ai: EMBEDDING_CALL_OPTIONS (packages/cortex-ai/src/local/pipelines.ts:112)",
+        "cortex-ai: LLMRerankerOptions (packages/cortex-ai/src/rerank/llm-reranker.ts:37)",
+        "cortex-ai: OpenAICompatibleLLMOptions (packages/cortex-ai/src/llm/openai-compatible.ts:11)",
+        "cortex-ai: OpenAICompatibleRerankerOptions (packages/cortex-ai/src/rerank/rerank.ts:26)",
+        "cortex-ai: OpenAIEmbeddingOptions (packages/cortex-ai/src/embedding/openai.ts:8)",
+        "cortex-ai: PlatformLanguageModel (packages/cortex-ai/src/web/platform-language-model.ts:51)",
+        "cortex-ai: PlatformLanguageModelAdapter (packages/cortex-ai/src/web/platform-language-model.ts:138)",
+        "cortex-ai: PlatformLanguageModelOptions (packages/cortex-ai/src/web/platform-language-model.ts:63)",
+        "cortex-ai: PlatformSession (packages/cortex-ai/src/web/platform-language-model.ts:45)",
+        "cortex-ai: PlatformStatus (packages/cortex-ai/src/web/platform-language-model.ts:42)",
+        "cortex-ai: RetryOptions (packages/cortex-ai/src/retry.ts:143)",
+        "cortex-ai: RetryOutcome (packages/cortex-ai/src/retry.ts:213)",
+        "cortex-ai: RetryStats (packages/cortex-ai/src/retry.ts:187)",
+        "cortex-ai: RetryStatsAggregate (packages/cortex-ai/src/retry.ts:313)",
+        "cortex-ai: RetryStatsSnapshot (packages/cortex-ai/src/retry.ts:257)",
+        "cortex-ai: TransformersEmbeddingOptions (packages/cortex-ai/src/local/embedding.ts:27)",
+        "cortex-ai: applyLocalEnv (packages/cortex-ai/src/local/pipelines.ts:127)",
+        "cortex-ai: buildChatBody (packages/cortex-ai/src/llm/openai-compatible.ts:84)",
+        "cortex-ai: buildListwiseRerankPrompt (packages/cortex-ai/src/rerank/llm-reranker.ts:55)",
+        "cortex-ai: buildRerankBody (packages/cortex-ai/src/rerank/rerank.ts:50)",
+        "cortex-ai: checkAvailability (packages/cortex-ai/src/web/platform-language-model.ts:93)",
+        "cortex-ai: createFeatureExtractor (packages/cortex-ai/src/local/pipelines.ts:148)",
+        "cortex-ai: createRerankClassifier (packages/cortex-ai/src/local/pipelines.ts:182)",
+        "cortex-ai: createRetryStatsAggregate (packages/cortex-ai/src/retry.ts:387)",
+        "cortex-ai: isRetryableStatus (packages/cortex-ai/src/retry.ts:28)",
+        "cortex-ai: parseListwiseScores (packages/cortex-ai/src/rerank/llm-reranker.ts:90)",
+        "cortex-ai: parseRerankResponse (packages/cortex-ai/src/rerank/rerank.ts:73)",
+        "cortex-ai: parseRetryAfterMs (packages/cortex-ai/src/retry.ts:78)",
+        "cortex-ai: readPlatform (packages/cortex-ai/src/web/platform-language-model.ts:79)",
+        "cortex-ai: resolveTransformersModule (packages/cortex-ai/src/local/pipelines.ts:115)",
+        "cortex-ai: retryableFetchWithStats (packages/cortex-ai/src/retry.ts:474)",
+        "cortex-ai: sanitizePrompt (packages/cortex-ai/src/llm/openai-compatible.ts:121)",
         "cortex-core: AccessRecord (packages/cortex-core/src/consolidation/consolidate.ts:21)",
         "cortex-core: AssembleRequest (packages/cortex-core/src/federation/read-side.ts:50)",
         "cortex-core: ConsolidationStats (packages/cortex-core/src/consolidation/consolidate.ts:15)",
@@ -60,7 +99,6 @@
         "cortex-core: currentValue (packages/cortex-core/src/temporal/bitemporal.ts:18)",
         "cortex-core: defaultValueFunction (packages/cortex-core/src/value/value.ts:14)",
         "cortex-core: degenerateDfPValue (packages/cortex-core/src/math/stats.ts:74)",
-        "cortex-core: dot (packages/cortex-core/src/math/vector.ts:7)",
         "cortex-core: findContradictions (packages/cortex-core/src/temporal/bitemporal.ts:40)",
         "cortex-core: l2Distance (packages/cortex-core/src/math/vector.ts:43)",
         "cortex-core: logGamma (packages/cortex-core/src/math/stats.ts:306)",
@@ -71,35 +109,6 @@
         "cortex-core: sinkhorn (packages/cortex-core/src/math/ot.ts:25)",
         "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
         "cortex-core: studentTCdf (packages/cortex-core/src/math/stats.ts:119)",
-        "cortex-llm: CrossEncoderRerankerOptions (packages/cortex-llm/src/rerank/rerank.ts:186)",
-        "cortex-llm: DEFAULT_MAX_RETRIES (packages/cortex-llm/src/retry.ts:38)",
-        "cortex-llm: DEFAULT_RETRY_BASE_DELAY_MS (packages/cortex-llm/src/retry.ts:40)",
-        "cortex-llm: DEFAULT_RETRY_BUDGET_MS (packages/cortex-llm/src/retry.ts:48)",
-        "cortex-llm: DEFAULT_RETRY_TIMEOUT_MS (packages/cortex-llm/src/retry.ts:58)",
-        "cortex-llm: LLMRerankerOptions (packages/cortex-llm/src/rerank/llm-reranker.ts:37)",
-        "cortex-llm: OpenAICompatibleLLMOptions (packages/cortex-llm/src/llm/openai-compatible.ts:11)",
-        "cortex-llm: OpenAICompatibleRerankerOptions (packages/cortex-llm/src/rerank/rerank.ts:26)",
-        "cortex-llm: OpenAIEmbeddingOptions (packages/cortex-llm/src/embedding/openai.ts:8)",
-        "cortex-llm: RetryOptions (packages/cortex-llm/src/retry.ts:143)",
-        "cortex-llm: RetryOutcome (packages/cortex-llm/src/retry.ts:213)",
-        "cortex-llm: RetryStats (packages/cortex-llm/src/retry.ts:187)",
-        "cortex-llm: RetryStatsAggregate (packages/cortex-llm/src/retry.ts:313)",
-        "cortex-llm: RetryStatsSnapshot (packages/cortex-llm/src/retry.ts:257)",
-        "cortex-llm: TransformersEmbedding (packages/cortex-llm/src/embedding/transformers.ts:21)",
-        "cortex-llm: TransformersEmbeddingOptions (packages/cortex-llm/src/embedding/transformers.ts:14)",
-        "cortex-llm: buildChatBody (packages/cortex-llm/src/llm/openai-compatible.ts:84)",
-        "cortex-llm: buildListwiseRerankPrompt (packages/cortex-llm/src/rerank/llm-reranker.ts:55)",
-        "cortex-llm: buildRerankBody (packages/cortex-llm/src/rerank/rerank.ts:50)",
-        "cortex-llm: createRetryStatsAggregate (packages/cortex-llm/src/retry.ts:387)",
-        "cortex-llm: createTransformersPipeline (packages/cortex-llm/src/embedding/transformers-pipeline.ts:13)",
-        "cortex-llm: createTransformersRerankPipeline (packages/cortex-llm/src/rerank/transformers-rerank-pipeline.ts:21)",
-        "cortex-llm: isRetryableStatus (packages/cortex-llm/src/retry.ts:28)",
-        "cortex-llm: parseJson (packages/cortex-llm/src/llm/openai-compatible.ts:130)",
-        "cortex-llm: parseListwiseScores (packages/cortex-llm/src/rerank/llm-reranker.ts:90)",
-        "cortex-llm: parseRerankResponse (packages/cortex-llm/src/rerank/rerank.ts:73)",
-        "cortex-llm: parseRetryAfterMs (packages/cortex-llm/src/retry.ts:78)",
-        "cortex-llm: retryableFetchWithStats (packages/cortex-llm/src/retry.ts:474)",
-        "cortex-llm: sanitizePrompt (packages/cortex-llm/src/llm/openai-compatible.ts:121)",
         "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:353)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:901)",
         "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:1837)",
@@ -107,10 +116,10 @@
         "cortex-storage: PgStorageOptions (packages/cortex-storage/src/storage/pg.ts:14)",
         "cortex-storage: SqliteStorage (packages/cortex-storage/src/storage/sqlite.ts:51)",
         "cortex-storage: SqliteStorageOptions (packages/cortex-storage/src/storage/sqlite.ts:21)",
-        "cortex-storage: StorageClosedError (packages/cortex-storage/src/storage/sql-storage.ts:49)",
-        "cortex-storage: TransactionOpenError (packages/cortex-storage/src/storage/sql-storage.ts:57)",
+        "cortex-storage: StorageClosedError (packages/cortex-storage/src/storage/sql-storage.ts:54)",
+        "cortex-storage: TransactionOpenError (packages/cortex-storage/src/storage/sql-storage.ts:62)",
         "cortex-storage: ensurePgSchema (packages/cortex-storage/src/storage/pg.ts:136)",
-        "cortex-storage: parseTags (packages/cortex-storage/src/storage/sql.ts:195)"
+        "cortex-storage: parseTags (packages/cortex-storage/src/storage/sql.ts:198)"
       ]
     },
     {
@@ -121,15 +130,15 @@
         "cortex-storage: BrowserStorage (packages/cortex-storage/src/browser/opfs.ts:35)",
         "cortex-storage: BrowserStorageUnavailable (packages/cortex-storage/src/browser/opfs.ts:46)",
         "cortex-storage: BrowserTier (packages/cortex-storage/src/browser/opfs.ts:31)",
-        "cortex-storage: IdbStorage (packages/cortex-storage/src/browser/idb.ts:55)",
-        "cortex-storage: IdbStorageOptions (packages/cortex-storage/src/browser/idb.ts:155)",
+        "cortex-storage: IdbStorage (packages/cortex-storage/src/browser/idb.ts:60)",
+        "cortex-storage: IdbStorageOptions (packages/cortex-storage/src/browser/idb.ts:161)",
         "cortex-storage: OpenBrowserOptions (packages/cortex-storage/src/browser/opfs.ts:147)",
         "cortex-storage: OpfsOptions (packages/cortex-storage/src/browser/opfs.ts:57)",
         "cortex-storage: Refusal (packages/cortex-storage/src/browser/opfs.ts:33)",
         "cortex-storage: RpcErrorCode (packages/cortex-storage/src/browser/rpc.ts:75)",
         "cortex-storage: RpcMethod (packages/cortex-storage/src/browser/rpc.ts:66)",
         "cortex-storage: RpcRequest (packages/cortex-storage/src/browser/rpc.ts:68)",
-        "cortex-storage: TransactionUnsupportedError (packages/cortex-storage/src/browser/idb.ts:44)",
+        "cortex-storage: TransactionUnsupportedError (packages/cortex-storage/src/browser/idb.ts:49)",
         "cortex-storage: openBrowserStorage (packages/cortex-storage/src/browser/opfs.ts:157)",
         "cortex-storage: openOpfsStorage (packages/cortex-storage/src/browser/opfs.ts:83)"
       ]
@@ -220,8 +229,8 @@
         "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/llm-factory.ts:22)",
         "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/llm-factory.ts:23)",
         "cortex-eval: DEFAULT_HASH_DIMENSION (packages/cortex-eval/src/embedding-factory.ts:22)",
-        "cortex-eval: DEFAULT_RERANK_BASE_URL (packages/cortex-eval/src/rerank-factory.ts:46)",
-        "cortex-eval: DEFAULT_RERANK_MODEL (packages/cortex-eval/src/rerank-factory.ts:47)",
+        "cortex-eval: DEFAULT_RERANK_BASE_URL (packages/cortex-eval/src/rerank-factory.ts:50)",
+        "cortex-eval: DEFAULT_RERANK_MODEL (packages/cortex-eval/src/rerank-factory.ts:51)",
         "cortex-eval: DEFAULT_ZHIPU_BASE_URL (packages/cortex-eval/src/embedding-factory.ts:23)",
         "cortex-eval: DEFAULT_ZHIPU_EMBEDDING_DIMENSIONS (packages/cortex-eval/src/embedding-factory.ts:25)",
         "cortex-eval: DEFAULT_ZHIPU_EMBEDDING_MODEL (packages/cortex-eval/src/embedding-factory.ts:24)",
@@ -238,7 +247,7 @@
         "cortex-eval: QuestionRecordInput (packages/cortex-eval/src/question-record.ts:249)",
         "cortex-eval: ReadToggleOptions (packages/cortex-eval/src/env-toggle.ts:27)",
         "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
-        "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:43)",
+        "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:47)",
         "cortex-eval: RerankFallbackReport (packages/cortex-eval/src/runner.ts:51)",
         "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:781)",
         "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:647)",
@@ -299,6 +308,45 @@
     }
   ],
   "knownOrphans": [
+    "cortex-ai: AvailabilityReport",
+    "cortex-ai: CrossEncoderRerankerOptions",
+    "cortex-ai: DEFAULT_DTYPE",
+    "cortex-ai: DEFAULT_MAX_RETRIES",
+    "cortex-ai: DEFAULT_RETRY_BASE_DELAY_MS",
+    "cortex-ai: DEFAULT_RETRY_BUDGET_MS",
+    "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS",
+    "cortex-ai: EMBEDDING_CALL_OPTIONS",
+    "cortex-ai: LLMRerankerOptions",
+    "cortex-ai: OpenAICompatibleLLMOptions",
+    "cortex-ai: OpenAICompatibleRerankerOptions",
+    "cortex-ai: OpenAIEmbeddingOptions",
+    "cortex-ai: PlatformLanguageModel",
+    "cortex-ai: PlatformLanguageModelAdapter",
+    "cortex-ai: PlatformLanguageModelOptions",
+    "cortex-ai: PlatformSession",
+    "cortex-ai: PlatformStatus",
+    "cortex-ai: RetryOptions",
+    "cortex-ai: RetryOutcome",
+    "cortex-ai: RetryStats",
+    "cortex-ai: RetryStatsAggregate",
+    "cortex-ai: RetryStatsSnapshot",
+    "cortex-ai: TransformersEmbeddingOptions",
+    "cortex-ai: applyLocalEnv",
+    "cortex-ai: buildChatBody",
+    "cortex-ai: buildListwiseRerankPrompt",
+    "cortex-ai: buildRerankBody",
+    "cortex-ai: checkAvailability",
+    "cortex-ai: createFeatureExtractor",
+    "cortex-ai: createRerankClassifier",
+    "cortex-ai: createRetryStatsAggregate",
+    "cortex-ai: isRetryableStatus",
+    "cortex-ai: parseListwiseScores",
+    "cortex-ai: parseRerankResponse",
+    "cortex-ai: parseRetryAfterMs",
+    "cortex-ai: readPlatform",
+    "cortex-ai: resolveTransformersModule",
+    "cortex-ai: retryableFetchWithStats",
+    "cortex-ai: sanitizePrompt",
     "cortex-core: AccessRecord",
     "cortex-core: AssembleRequest",
     "cortex-core: CensusReport",
@@ -330,7 +378,6 @@
     "cortex-core: currentValue",
     "cortex-core: defaultValueFunction",
     "cortex-core: degenerateDfPValue",
-    "cortex-core: dot",
     "cortex-core: extractExportedSymbols",
     "cortex-core: findContradictions",
     "cortex-core: identifierPattern",
@@ -499,35 +546,6 @@
     "cortex-eval: timelineFor",
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
-    "cortex-llm: CrossEncoderRerankerOptions",
-    "cortex-llm: DEFAULT_MAX_RETRIES",
-    "cortex-llm: DEFAULT_RETRY_BASE_DELAY_MS",
-    "cortex-llm: DEFAULT_RETRY_BUDGET_MS",
-    "cortex-llm: DEFAULT_RETRY_TIMEOUT_MS",
-    "cortex-llm: LLMRerankerOptions",
-    "cortex-llm: OpenAICompatibleLLMOptions",
-    "cortex-llm: OpenAICompatibleRerankerOptions",
-    "cortex-llm: OpenAIEmbeddingOptions",
-    "cortex-llm: RetryOptions",
-    "cortex-llm: RetryOutcome",
-    "cortex-llm: RetryStats",
-    "cortex-llm: RetryStatsAggregate",
-    "cortex-llm: RetryStatsSnapshot",
-    "cortex-llm: TransformersEmbedding",
-    "cortex-llm: TransformersEmbeddingOptions",
-    "cortex-llm: buildChatBody",
-    "cortex-llm: buildListwiseRerankPrompt",
-    "cortex-llm: buildRerankBody",
-    "cortex-llm: createRetryStatsAggregate",
-    "cortex-llm: createTransformersPipeline",
-    "cortex-llm: createTransformersRerankPipeline",
-    "cortex-llm: isRetryableStatus",
-    "cortex-llm: parseJson",
-    "cortex-llm: parseListwiseScores",
-    "cortex-llm: parseRerankResponse",
-    "cortex-llm: parseRetryAfterMs",
-    "cortex-llm: retryableFetchWithStats",
-    "cortex-llm: sanitizePrompt",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
     "cortex-memory: formatEvidence",
     "cortex-memory: truncateCodePointSafe",
@@ -555,6 +573,45 @@
     "cortex-storage: parseTags"
   ],
   "orphanClass": {
+    "cortex-ai: AvailabilityReport": "referenced-locally",
+    "cortex-ai: CrossEncoderRerankerOptions": "referenced-locally",
+    "cortex-ai: DEFAULT_DTYPE": "referenced-locally",
+    "cortex-ai: DEFAULT_MAX_RETRIES": "referenced-locally",
+    "cortex-ai: DEFAULT_RETRY_BASE_DELAY_MS": "referenced-locally",
+    "cortex-ai: DEFAULT_RETRY_BUDGET_MS": "referenced-locally",
+    "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS": "referenced-locally",
+    "cortex-ai: EMBEDDING_CALL_OPTIONS": "referenced-locally",
+    "cortex-ai: LLMRerankerOptions": "referenced-locally",
+    "cortex-ai: OpenAICompatibleLLMOptions": "referenced-locally",
+    "cortex-ai: OpenAICompatibleRerankerOptions": "referenced-locally",
+    "cortex-ai: OpenAIEmbeddingOptions": "referenced-locally",
+    "cortex-ai: PlatformLanguageModel": "referenced-locally",
+    "cortex-ai: PlatformLanguageModelAdapter": "referenced-locally",
+    "cortex-ai: PlatformLanguageModelOptions": "referenced-locally",
+    "cortex-ai: PlatformSession": "referenced-locally",
+    "cortex-ai: PlatformStatus": "referenced-locally",
+    "cortex-ai: RetryOptions": "referenced-locally",
+    "cortex-ai: RetryOutcome": "referenced-locally",
+    "cortex-ai: RetryStats": "referenced-locally",
+    "cortex-ai: RetryStatsAggregate": "referenced-locally",
+    "cortex-ai: RetryStatsSnapshot": "referenced-locally",
+    "cortex-ai: TransformersEmbeddingOptions": "referenced-locally",
+    "cortex-ai: applyLocalEnv": "referenced-locally",
+    "cortex-ai: buildChatBody": "referenced-locally",
+    "cortex-ai: buildListwiseRerankPrompt": "referenced-locally",
+    "cortex-ai: buildRerankBody": "referenced-locally",
+    "cortex-ai: checkAvailability": "referenced-locally",
+    "cortex-ai: createFeatureExtractor": "referenced-locally",
+    "cortex-ai: createRerankClassifier": "unreferenced",
+    "cortex-ai: createRetryStatsAggregate": "unreferenced",
+    "cortex-ai: isRetryableStatus": "referenced-locally",
+    "cortex-ai: parseListwiseScores": "referenced-locally",
+    "cortex-ai: parseRerankResponse": "referenced-locally",
+    "cortex-ai: parseRetryAfterMs": "referenced-locally",
+    "cortex-ai: readPlatform": "referenced-locally",
+    "cortex-ai: resolveTransformersModule": "referenced-locally",
+    "cortex-ai: retryableFetchWithStats": "unreferenced",
+    "cortex-ai: sanitizePrompt": "referenced-locally",
     "cortex-core: AccessRecord": "referenced-locally",
     "cortex-core: AssembleRequest": "referenced-locally",
     "cortex-core: CensusReport": "referenced-locally",
@@ -586,7 +643,6 @@
     "cortex-core: currentValue": "referenced-locally",
     "cortex-core: defaultValueFunction": "referenced-locally",
     "cortex-core: degenerateDfPValue": "referenced-locally",
-    "cortex-core: dot": "referenced-locally",
     "cortex-core: extractExportedSymbols": "referenced-locally",
     "cortex-core: findContradictions": "referenced-locally",
     "cortex-core: identifierPattern": "unreferenced",
@@ -755,35 +811,6 @@
     "cortex-eval: timelineFor": "referenced-locally",
     "cortex-eval: truncateSession": "unreferenced",
     "cortex-eval: truncateText": "unreferenced",
-    "cortex-llm: CrossEncoderRerankerOptions": "referenced-locally",
-    "cortex-llm: DEFAULT_MAX_RETRIES": "referenced-locally",
-    "cortex-llm: DEFAULT_RETRY_BASE_DELAY_MS": "referenced-locally",
-    "cortex-llm: DEFAULT_RETRY_BUDGET_MS": "referenced-locally",
-    "cortex-llm: DEFAULT_RETRY_TIMEOUT_MS": "referenced-locally",
-    "cortex-llm: LLMRerankerOptions": "referenced-locally",
-    "cortex-llm: OpenAICompatibleLLMOptions": "referenced-locally",
-    "cortex-llm: OpenAICompatibleRerankerOptions": "referenced-locally",
-    "cortex-llm: OpenAIEmbeddingOptions": "referenced-locally",
-    "cortex-llm: RetryOptions": "referenced-locally",
-    "cortex-llm: RetryOutcome": "referenced-locally",
-    "cortex-llm: RetryStats": "referenced-locally",
-    "cortex-llm: RetryStatsAggregate": "referenced-locally",
-    "cortex-llm: RetryStatsSnapshot": "referenced-locally",
-    "cortex-llm: TransformersEmbedding": "referenced-locally",
-    "cortex-llm: TransformersEmbeddingOptions": "referenced-locally",
-    "cortex-llm: buildChatBody": "referenced-locally",
-    "cortex-llm: buildListwiseRerankPrompt": "referenced-locally",
-    "cortex-llm: buildRerankBody": "referenced-locally",
-    "cortex-llm: createRetryStatsAggregate": "unreferenced",
-    "cortex-llm: createTransformersPipeline": "referenced-locally",
-    "cortex-llm: createTransformersRerankPipeline": "referenced-locally",
-    "cortex-llm: isRetryableStatus": "referenced-locally",
-    "cortex-llm: parseJson": "unreferenced",
-    "cortex-llm: parseListwiseScores": "referenced-locally",
-    "cortex-llm: parseRerankResponse": "referenced-locally",
-    "cortex-llm: parseRetryAfterMs": "referenced-locally",
-    "cortex-llm: retryableFetchWithStats": "unreferenced",
-    "cortex-llm: sanitizePrompt": "referenced-locally",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
     "cortex-memory: formatEvidence": "unreferenced",
     "cortex-memory: truncateCodePointSafe": "unreferenced",
@@ -811,6 +838,123 @@
     "cortex-storage: parseTags": "unreferenced"
   },
   "locations": {
+    "cortex-ai: AvailabilityReport": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:56"
+    ],
+    "cortex-ai: CrossEncoderRerankerOptions": [
+      "packages/cortex-ai/src/rerank/rerank.ts:186"
+    ],
+    "cortex-ai: DEFAULT_DTYPE": [
+      "packages/cortex-ai/src/local/pipelines.ts:42"
+    ],
+    "cortex-ai: DEFAULT_MAX_RETRIES": [
+      "packages/cortex-ai/src/retry.ts:38"
+    ],
+    "cortex-ai: DEFAULT_RETRY_BASE_DELAY_MS": [
+      "packages/cortex-ai/src/retry.ts:40"
+    ],
+    "cortex-ai: DEFAULT_RETRY_BUDGET_MS": [
+      "packages/cortex-ai/src/retry.ts:48"
+    ],
+    "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS": [
+      "packages/cortex-ai/src/retry.ts:58"
+    ],
+    "cortex-ai: EMBEDDING_CALL_OPTIONS": [
+      "packages/cortex-ai/src/local/pipelines.ts:112"
+    ],
+    "cortex-ai: LLMRerankerOptions": [
+      "packages/cortex-ai/src/rerank/llm-reranker.ts:37"
+    ],
+    "cortex-ai: OpenAICompatibleLLMOptions": [
+      "packages/cortex-ai/src/llm/openai-compatible.ts:11"
+    ],
+    "cortex-ai: OpenAICompatibleRerankerOptions": [
+      "packages/cortex-ai/src/rerank/rerank.ts:26"
+    ],
+    "cortex-ai: OpenAIEmbeddingOptions": [
+      "packages/cortex-ai/src/embedding/openai.ts:8"
+    ],
+    "cortex-ai: PlatformLanguageModel": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:51"
+    ],
+    "cortex-ai: PlatformLanguageModelAdapter": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:138"
+    ],
+    "cortex-ai: PlatformLanguageModelOptions": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:63"
+    ],
+    "cortex-ai: PlatformSession": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:45"
+    ],
+    "cortex-ai: PlatformStatus": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:42"
+    ],
+    "cortex-ai: RetryOptions": [
+      "packages/cortex-ai/src/retry.ts:143"
+    ],
+    "cortex-ai: RetryOutcome": [
+      "packages/cortex-ai/src/retry.ts:213"
+    ],
+    "cortex-ai: RetryStats": [
+      "packages/cortex-ai/src/retry.ts:187"
+    ],
+    "cortex-ai: RetryStatsAggregate": [
+      "packages/cortex-ai/src/retry.ts:313"
+    ],
+    "cortex-ai: RetryStatsSnapshot": [
+      "packages/cortex-ai/src/retry.ts:257"
+    ],
+    "cortex-ai: TransformersEmbeddingOptions": [
+      "packages/cortex-ai/src/local/embedding.ts:27"
+    ],
+    "cortex-ai: applyLocalEnv": [
+      "packages/cortex-ai/src/local/pipelines.ts:127"
+    ],
+    "cortex-ai: buildChatBody": [
+      "packages/cortex-ai/src/llm/openai-compatible.ts:84"
+    ],
+    "cortex-ai: buildListwiseRerankPrompt": [
+      "packages/cortex-ai/src/rerank/llm-reranker.ts:55"
+    ],
+    "cortex-ai: buildRerankBody": [
+      "packages/cortex-ai/src/rerank/rerank.ts:50"
+    ],
+    "cortex-ai: checkAvailability": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:93"
+    ],
+    "cortex-ai: createFeatureExtractor": [
+      "packages/cortex-ai/src/local/pipelines.ts:148"
+    ],
+    "cortex-ai: createRerankClassifier": [
+      "packages/cortex-ai/src/local/pipelines.ts:182"
+    ],
+    "cortex-ai: createRetryStatsAggregate": [
+      "packages/cortex-ai/src/retry.ts:387"
+    ],
+    "cortex-ai: isRetryableStatus": [
+      "packages/cortex-ai/src/retry.ts:28"
+    ],
+    "cortex-ai: parseListwiseScores": [
+      "packages/cortex-ai/src/rerank/llm-reranker.ts:90"
+    ],
+    "cortex-ai: parseRerankResponse": [
+      "packages/cortex-ai/src/rerank/rerank.ts:73"
+    ],
+    "cortex-ai: parseRetryAfterMs": [
+      "packages/cortex-ai/src/retry.ts:78"
+    ],
+    "cortex-ai: readPlatform": [
+      "packages/cortex-ai/src/web/platform-language-model.ts:79"
+    ],
+    "cortex-ai: resolveTransformersModule": [
+      "packages/cortex-ai/src/local/pipelines.ts:115"
+    ],
+    "cortex-ai: retryableFetchWithStats": [
+      "packages/cortex-ai/src/retry.ts:474"
+    ],
+    "cortex-ai: sanitizePrompt": [
+      "packages/cortex-ai/src/llm/openai-compatible.ts:121"
+    ],
     "cortex-core: AccessRecord": [
       "packages/cortex-core/src/consolidation/consolidate.ts:21"
     ],
@@ -903,9 +1047,6 @@
     ],
     "cortex-core: degenerateDfPValue": [
       "packages/cortex-core/src/math/stats.ts:74"
-    ],
-    "cortex-core: dot": [
-      "packages/cortex-core/src/math/vector.ts:7"
     ],
     "cortex-core: extractExportedSymbols": [
       "packages/cortex-core/src/export-census.ts:223"
@@ -1046,10 +1187,10 @@
       "packages/cortex-eval/src/embedding-factory.ts:22"
     ],
     "cortex-eval: DEFAULT_RERANK_BASE_URL": [
-      "packages/cortex-eval/src/rerank-factory.ts:46"
+      "packages/cortex-eval/src/rerank-factory.ts:50"
     ],
     "cortex-eval: DEFAULT_RERANK_MODEL": [
-      "packages/cortex-eval/src/rerank-factory.ts:47"
+      "packages/cortex-eval/src/rerank-factory.ts:51"
     ],
     "cortex-eval: DEFAULT_ZHIPU_BASE_URL": [
       "packages/cortex-eval/src/embedding-factory.ts:23"
@@ -1142,7 +1283,7 @@
       "packages/cortex-eval/src/bench-arm-options.ts:17"
     ],
     "cortex-eval: RerankEnv": [
-      "packages/cortex-eval/src/rerank-factory.ts:43"
+      "packages/cortex-eval/src/rerank-factory.ts:47"
     ],
     "cortex-eval: RerankFallbackReport": [
       "packages/cortex-eval/src/runner.ts:51"
@@ -1411,93 +1552,6 @@
     "cortex-eval: truncateText": [
       "packages/cortex-eval/src/natural-language-memory.ts:2567"
     ],
-    "cortex-llm: CrossEncoderRerankerOptions": [
-      "packages/cortex-llm/src/rerank/rerank.ts:186"
-    ],
-    "cortex-llm: DEFAULT_MAX_RETRIES": [
-      "packages/cortex-llm/src/retry.ts:38"
-    ],
-    "cortex-llm: DEFAULT_RETRY_BASE_DELAY_MS": [
-      "packages/cortex-llm/src/retry.ts:40"
-    ],
-    "cortex-llm: DEFAULT_RETRY_BUDGET_MS": [
-      "packages/cortex-llm/src/retry.ts:48"
-    ],
-    "cortex-llm: DEFAULT_RETRY_TIMEOUT_MS": [
-      "packages/cortex-llm/src/retry.ts:58"
-    ],
-    "cortex-llm: LLMRerankerOptions": [
-      "packages/cortex-llm/src/rerank/llm-reranker.ts:37"
-    ],
-    "cortex-llm: OpenAICompatibleLLMOptions": [
-      "packages/cortex-llm/src/llm/openai-compatible.ts:11"
-    ],
-    "cortex-llm: OpenAICompatibleRerankerOptions": [
-      "packages/cortex-llm/src/rerank/rerank.ts:26"
-    ],
-    "cortex-llm: OpenAIEmbeddingOptions": [
-      "packages/cortex-llm/src/embedding/openai.ts:8"
-    ],
-    "cortex-llm: RetryOptions": [
-      "packages/cortex-llm/src/retry.ts:143"
-    ],
-    "cortex-llm: RetryOutcome": [
-      "packages/cortex-llm/src/retry.ts:213"
-    ],
-    "cortex-llm: RetryStats": [
-      "packages/cortex-llm/src/retry.ts:187"
-    ],
-    "cortex-llm: RetryStatsAggregate": [
-      "packages/cortex-llm/src/retry.ts:313"
-    ],
-    "cortex-llm: RetryStatsSnapshot": [
-      "packages/cortex-llm/src/retry.ts:257"
-    ],
-    "cortex-llm: TransformersEmbedding": [
-      "packages/cortex-llm/src/embedding/transformers.ts:21"
-    ],
-    "cortex-llm: TransformersEmbeddingOptions": [
-      "packages/cortex-llm/src/embedding/transformers.ts:14"
-    ],
-    "cortex-llm: buildChatBody": [
-      "packages/cortex-llm/src/llm/openai-compatible.ts:84"
-    ],
-    "cortex-llm: buildListwiseRerankPrompt": [
-      "packages/cortex-llm/src/rerank/llm-reranker.ts:55"
-    ],
-    "cortex-llm: buildRerankBody": [
-      "packages/cortex-llm/src/rerank/rerank.ts:50"
-    ],
-    "cortex-llm: createRetryStatsAggregate": [
-      "packages/cortex-llm/src/retry.ts:387"
-    ],
-    "cortex-llm: createTransformersPipeline": [
-      "packages/cortex-llm/src/embedding/transformers-pipeline.ts:13"
-    ],
-    "cortex-llm: createTransformersRerankPipeline": [
-      "packages/cortex-llm/src/rerank/transformers-rerank-pipeline.ts:21"
-    ],
-    "cortex-llm: isRetryableStatus": [
-      "packages/cortex-llm/src/retry.ts:28"
-    ],
-    "cortex-llm: parseJson": [
-      "packages/cortex-llm/src/llm/openai-compatible.ts:130"
-    ],
-    "cortex-llm: parseListwiseScores": [
-      "packages/cortex-llm/src/rerank/llm-reranker.ts:90"
-    ],
-    "cortex-llm: parseRerankResponse": [
-      "packages/cortex-llm/src/rerank/rerank.ts:73"
-    ],
-    "cortex-llm: parseRetryAfterMs": [
-      "packages/cortex-llm/src/retry.ts:78"
-    ],
-    "cortex-llm: retryableFetchWithStats": [
-      "packages/cortex-llm/src/retry.ts:474"
-    ],
-    "cortex-llm: sanitizePrompt": [
-      "packages/cortex-llm/src/llm/openai-compatible.ts:121"
-    ],
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
       "packages/cortex-memory/src/prompt.ts:353"
     ],
@@ -1517,10 +1571,10 @@
       "packages/cortex-storage/src/browser/opfs.ts:31"
     ],
     "cortex-storage: IdbStorage": [
-      "packages/cortex-storage/src/browser/idb.ts:55"
+      "packages/cortex-storage/src/browser/idb.ts:60"
     ],
     "cortex-storage: IdbStorageOptions": [
-      "packages/cortex-storage/src/browser/idb.ts:155"
+      "packages/cortex-storage/src/browser/idb.ts:161"
     ],
     "cortex-storage: OpenBrowserOptions": [
       "packages/cortex-storage/src/browser/opfs.ts:147"
@@ -1553,13 +1607,13 @@
       "packages/cortex-storage/src/storage/sqlite.ts:21"
     ],
     "cortex-storage: StorageClosedError": [
-      "packages/cortex-storage/src/storage/sql-storage.ts:49"
+      "packages/cortex-storage/src/storage/sql-storage.ts:54"
     ],
     "cortex-storage: TransactionOpenError": [
-      "packages/cortex-storage/src/storage/sql-storage.ts:57"
+      "packages/cortex-storage/src/storage/sql-storage.ts:62"
     ],
     "cortex-storage: TransactionUnsupportedError": [
-      "packages/cortex-storage/src/browser/idb.ts:44"
+      "packages/cortex-storage/src/browser/idb.ts:49"
     ],
     "cortex-storage: ensurePgSchema": [
       "packages/cortex-storage/src/storage/pg.ts:136"
@@ -1571,7 +1625,7 @@
       "packages/cortex-storage/src/browser/opfs.ts:83"
     ],
     "cortex-storage: parseTags": [
-      "packages/cortex-storage/src/storage/sql.ts:195"
+      "packages/cortex-storage/src/storage/sql.ts:198"
     ]
   }
 }

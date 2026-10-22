@@ -61,7 +61,7 @@ import {
 // that produces them. Importing them from `cortex-eval` would re-export state the
 // eval package does not own, and the process aggregate is specifically the LLM
 // layer's to report.
-import { resetRetryStats, retryStats } from '@agentix-e/cortex-llm';
+import { resetRetryStats, retryStats } from '@agentix-e/cortex-ai';
 
 /**
  * A diagnostic record plus the fields the TR classifier reads.

@@ -7,7 +7,7 @@
  * comparison, and that is a fact about the dependency graph rather than a choice:
  *
  *   cortex-core                     <- cortex-memory
- *   cortex-core, cortex-llm         <- cortex-eval
+ *   cortex-core, cortex-ai         <- cortex-eval
  *   cortex-memory --(devDep)--> cortex-eval
  *
  * `cortex-eval` cannot see `CortexMemory`, so it cannot build the feature side.
@@ -44,7 +44,7 @@ import {
   retrieveTopKByQueriesHybrid,
   type Retrieval,
 } from '@agentix-e/cortex-eval';
-import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-llm';
+import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-ai';
 import {
   NaturalLanguageMemorySystem,
   buildRetrievalRelevanceIndex,

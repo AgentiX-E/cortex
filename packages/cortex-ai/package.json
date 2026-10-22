@@ -1,0 +1,54 @@
+{
+  "name": "@agentix-e/cortex-ai",
+  "version": "0.1.0",
+  "description": "cortex-ai \u2014 provider-agnostic model adapters: remote OpenAI-compatible LLM and embedding, local transformers.js, and the browser built-in language model",
+  "license": "MIT",
+  "author": "Lambertyan",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./local": {
+      "types": "./dist/local/index.d.ts",
+      "import": "./dist/local/index.js"
+    },
+    "./web": {
+      "types": "./dist/web/index.d.ts",
+      "import": "./dist/web/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo coverage",
+    "test:parity": "node test/parity/run.mjs"
+  },
+  "dependencies": {
+    "@agentix-e/cortex-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  },
+  "peerDependencies": {
+    "@huggingface/transformers": "^4.3.1"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/transformers": {
+      "optional": true
+    }
+  }
+}

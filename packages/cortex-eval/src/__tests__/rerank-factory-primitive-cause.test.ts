@@ -22,7 +22,7 @@
  * boundary, and it **passed locally while failing in CI**. That difference is the
  * useful part of the record:
  *
- *   1. `@xenova/transformers` is an *optional* dependency of `cortex-llm`. A clean
+ *   1. `@huggingface/transformers` is an *optional* dependency of `cortex-ai`. A clean
  *      `pnpm install --frozen-lockfile` does not install it; a developer's
  *      `node_modules` often has it.
  *   2. `vi.mock` only intercepts a specifier that **resolves**. With the peer
@@ -92,7 +92,7 @@ describe('the local provider reports a non-Error rejection verbatim', () => {
     // The primitive's own text, not `[object Object]` and not `undefined`.
     expect(message).toContain('peer threw a primitive, not an Error');
     // And the actionable parts of the message are unaffected by which arm ran.
-    expect(message).toContain('@xenova/transformers');
+    expect(message).toContain('@huggingface/transformers');
     expect(message).toContain('CORTEX_RERANK_PROVIDER=llm');
   });
 

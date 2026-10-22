@@ -1,6 +1,6 @@
 /**
  * LLM factory: resolves a DeepSeek LLM from environment variables. DeepSeek is
- * OpenAI-compatible, so the cortex-llm adapter is reused directly.
+ * OpenAI-compatible, so the cortex-ai adapter is reused directly.
  
 
  *
@@ -15,7 +15,7 @@
  * appears, not in advance of one.
 */
 import type { LLM } from '@agentix-e/cortex-core';
-import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-llm';
+import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-ai';
 
 export type LlmEnv = Record<string, string | undefined>;
 

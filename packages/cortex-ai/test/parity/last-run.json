@@ -1,0 +1,39 @@
+{
+  "model": "Xenova/all-MiniLM-L6-v2",
+  "host": "https://hf-mirror.com",
+  "threshold": 0.999,
+  "samples": 15,
+  "dimensions": 384,
+  "arms": [
+    {
+      "label": "product(fp32) vs v2 fp32",
+      "min": 1,
+      "median": 1,
+      "max": 1,
+      "belowThreshold": 0,
+      "samples": 15
+    },
+    {
+      "label": "product(fp32) vs v2 default (quantized)",
+      "min": 0.98824165,
+      "median": 0.99005497,
+      "max": 0.99435298,
+      "belowThreshold": 15,
+      "samples": 15
+    }
+  ],
+  "accepted": true,
+  "rerank": {
+    "model": "Xenova/ms-marco-MiniLM-L-6-v2",
+    "scores": [
+      1.9540815353393555,
+      -5.624960422515869,
+      -4.027606964111328
+    ],
+    "distinct": 3,
+    "ordered": true,
+    "allFinite": true,
+    "accepted": true
+  },
+  "note": "Both arms compare the shipped adapter against @xenova/transformers 2.17.2 on the same weights and the same 15 texts. The second arm exists because v2 defaulted to quantized weights and v4 defaults to fp32: it is the difference a caller who upgrades without pinning dtype would see. The rerank block is a different claim: distinct, correctly ordered scores from the local cross-encoder, which the text-classification pipeline cannot produce because it softmaxes over a single label."
+}

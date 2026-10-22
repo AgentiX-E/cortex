@@ -14,7 +14,7 @@
  * 1024. The provenance is what makes two runs comparable without assuming.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
-import { OpenAIEmbedding } from '@agentix-e/cortex-llm';
+import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
 import { HashEmbedding } from './embedding.js';
 
 export type EmbeddingEnv = Record<string, string | undefined>;

@@ -7,14 +7,20 @@ import {
   OpenAICompatibleLLM,
 } from '../llm/openai-compatible.js';
 import { OpenAIEmbedding } from '../embedding/openai.js';
-import { TransformersEmbedding } from '../embedding/transformers.js';
-import * as cortexLlm from '../index.js';
+import { TransformersEmbedding } from '../local/embedding.js';
+import type { TransformersModule } from '../local/pipelines.js';
+import * as cortexAi from '../index.js';
 
 describe('package exports', () => {
-  it('exports LLM and embedding adapters', () => {
-    expect(typeof cortexLlm.OpenAICompatibleLLM).toBe('function');
-    expect(typeof cortexLlm.OpenAIEmbedding).toBe('function');
-    expect(typeof cortexLlm.TransformersEmbedding).toBe('function');
+  it('exports the remote adapters, and not the local ones', () => {
+    // The root is the remote entry. `TransformersEmbedding` is deliberately absent from it: the
+    // whole point of the split is that importing the provider adapters does not drag an ONNX
+    // runtime in, and a re-export here would undo that without changing a single test elsewhere.
+    expect(typeof cortexAi.OpenAICompatibleLLM).toBe('function');
+    expect(typeof cortexAi.OpenAIEmbedding).toBe('function');
+    expect(typeof cortexAi.OpenAICompatibleReranker).toBe('function');
+    expect((cortexAi as Record<string, unknown>).TransformersEmbedding).toBeUndefined();
+    expect((cortexAi as Record<string, unknown>).createFeatureExtractor).toBeUndefined();
   });
 });
 
@@ -314,30 +320,29 @@ describe('TransformersEmbedding', () => {
     expect(factoryCalls).toBe(1);
   });
 
-  it('falls back to the default pipeline factory when none is injected', async () => {
-    // Covers the `?? makeDefaultPipelineFactory(...)` arm in `getExtractor`, which
-    // every other test misses because every other test injects a factory.
-    //
-    // The assertion is a REJECTION, and the reason is worth stating precisely
-    // because the first version of this test got it wrong. It asserted a message
-    // matching /xenova|transformers/, on the assumption that the peer is absent so
-    // the dynamic import would fail with a module-resolution error. That is true in
-    // CI and false here: `@xenova/transformers` is installed in this environment,
-    // so the import succeeds and the failure comes from further in — `sharp`, its
-    // transitive native dependency, whose prebuilt binary does not load. The
-    // regex therefore passed locally for a reason unrelated to what it claimed and
-    // would have been pinned to one machine's node_modules layout.
-    //
-    // What is stable across both environments is that taking the fallback arm
-    // cannot SUCCEED, because the optional peer path is not guaranteed to be
-    // usable, and that the failure is an Error rather than a TypeError. A TypeError
-    // would mean the injection point was mis-wired and `embed` called something
-    // that is not a function; an Error from the loader means the branch ran and the
-    // loader reported its own problem. Distinguishing those two is the assertion's
-    // whole job, so it does not reach for a message it cannot own.
-    const emb = new TransformersEmbedding({ model: 'm', dimensions: 1 });
-    await expect(emb.embed(['hello'])).rejects.toBeInstanceOf(Error);
-    await expect(emb.embed(['hello'])).rejects.not.toBeInstanceOf(TypeError);
+  it('takes the default loader, and pins dtype to fp32', async () => {
+    // The arm every other test misses, because every other test injects a factory. It is asserted
+    // through `loadModule` rather than by letting the real loader run: the real one would download
+    // 90 MB of weights, and the claim here is about the arguments this package sends -- which is
+    // exactly the claim whose absence let v2's quantized default go unnoticed.
+    const calls: { task: string; model: string; options?: Record<string, unknown> }[] = [];
+    const module: TransformersModule = {
+      env: {},
+      pipeline: async (task, model, options) => {
+        calls.push({ task, model, ...(options === undefined ? {} : { options }) });
+        return async () => ({ tolist: () => [[0.5, 0.5]] });
+      },
+    };
+    const emb = new TransformersEmbedding({
+      model: 'Xenova/all-MiniLM-L6-v2',
+      dimensions: 2,
+      loadModule: async () => module,
+    });
+
+    expect(await emb.embed(['hello'])).toEqual([new Float64Array([0.5, 0.5])]);
+    expect(calls).toEqual([
+      { task: 'feature-extraction', model: 'Xenova/all-MiniLM-L6-v2', options: { dtype: 'fp32' } },
+    ]);
   });
 
   it('does not cache a failed extractor load', async () => {

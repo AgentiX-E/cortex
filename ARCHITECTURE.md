@@ -30,16 +30,17 @@ cortex-storage (one subpath per backend)
   ├── ./sqlite       SqliteStorage (better-sqlite3, optional peer)
   └── ./pg           PgStorage + ensurePgSchema (pg, optional peer)
 
-cortex-llm (pluggable adapters)
-  ├── llm/           OpenAICompatibleLLM
-  └── embedding/     OpenAIEmbedding · TransformersEmbedding (optional)
+cortex-ai (one subpath per dependency profile)
+  ├── "."            OpenAICompatibleLLM · OpenAIEmbedding · rerankers · retry   (fetch only)
+  ├── "./local"      TransformersEmbedding · cross-encoder loader               (transformers.js, optional peer)
+  └── "./web"        PlatformLanguageModelAdapter                               (globalThis.LanguageModel)
 ```
 
 ## Design Principles
 
 1. **Contracts only in core.** Every backend (storage, vector, LLM, embedding) is an
    interface consumed by `cortex-core`; concrete engines live in `cortex-storage` /
-   `cortex-llm`. This keeps core browser-safe and environment-agnostic. The
+   `cortex-ai`. This keeps core browser-safe and environment-agnostic. The
    *composition* of those contracts into a runnable system lives in `cortex-memory`,
    which depends on none of the concrete engines.
 

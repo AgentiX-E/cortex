@@ -31,7 +31,7 @@
  * reject with anything, and a summary that narrowed the type would either throw while
  * describing the failure or acquire a cast that hides the same assumption.
  *
- * `RetryExhaustion` is `cortex-llm`'s type and `cortex-eval` sits **below** that package,
+ * `RetryExhaustion` is `cortex-ai`'s type and `cortex-eval` sits **below** that package,
  * so this module reads the four fields it prints by name rather than importing the shape.
  * The dependency order is not a preference here: importing it would make the harness depend
  * on one adapter, which is the arrangement every provider-agnostic layer in this repository

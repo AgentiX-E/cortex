@@ -14,7 +14,7 @@
  * module existed, which is what makes the ablation arms comparable.
  *
  * Provider-agnostic by construction: the adapter is the OpenAI-compatible
- * `/rerank` client from cortex-llm, whose base URL and model are both
+ * `/rerank` client from cortex-ai, whose base URL and model are both
  * configurable, so the same switch serves Cohere, Jina, Voyage, or a
  * self-hosted bge-reranker behind a proxy. No provider is baked in.
  
@@ -35,9 +35,13 @@ import {
   LLMReranker,
   OpenAICompatibleLLM,
   OpenAICompatibleReranker,
-  makeDefaultRerankPipelineFactory,
   type CrossEncoderPipeline,
-} from '@agentix-e/cortex-llm';
+} from '@agentix-e/cortex-ai';
+// The loader comes from the `./local` entry, which is the only one that reaches transformers.js.
+// Keeping it out of the root import is what lets a deployment that never reranks locally drop the
+// dependency entirely -- and `tools/entry-guard.mjs` fails the build if the root ever pulls it back
+// in through a transitive import.
+import { makeRerankPipelineFactory as makeDefaultRerankPipelineFactory } from '@agentix-e/cortex-ai/local';
 import type { RerankScoreFn } from '@agentix-e/cortex-core';
 
 export type RerankEnv = Record<string, string | undefined>;
@@ -116,10 +120,10 @@ export { makeDefaultRerankPipelineFactory };
  * `err instanceof Error ? err.message : String(err)` — has no deterministic trigger
  * when the optional peer is absent, which is the state a clean install is in:
  *
- *   - `@xenova/transformers` is an *optional* dependency of `cortex-llm`. A clean
+ *   - `@huggingface/transformers` is an *optional* dependency of `cortex-ai`. A clean
  *     `pnpm install --frozen-lockfile` does not install it; a developer's
  *     `node_modules` often has it.
- *   - Reaching the arm with `vi.mock('@xenova/transformers', ...)` therefore makes
+ *   - Reaching the arm with `vi.mock('@huggingface/transformers', ...)` therefore makes
  *     the test's outcome depend on which packages the machine happens to have: the
  *     mock only intercepts a specifier that **resolves**, so with the peer absent it
  *     silently does not apply, the real `import` runs, `sharp` fails, and that
@@ -256,8 +260,8 @@ function buildReranker(
         // Name the peer and the alternative. The underlying failure is a bad error
         // for this purpose: measured on a machine without the package, the message
         // is a `sharp` installation manual, because `sharp` is a transitive
-        // dependency of `@xenova/transformers` and its own install is what broke.
-        // The string `@xenova/transformers` does not appear in it at all. An
+        // dependency of the peer and its own install is what broke. The string the
+        // operator needs does not appear in it at all. An
         // operator reading that message would install the wrong thing, and the CI
         // symptom is only a skipped ablation arm whose skip reason they are trying
         // to interpret.
@@ -267,8 +271,8 @@ function buildReranker(
         // ordering as the feature's.
         //
         // Both arms of the `instanceof` below are live, and the second one is not a
-        // formality. `loadPipeline()` is `createTransformersRerankPipeline`, which
-        // awaits `import('@xenova/transformers')`, and a module that throws a
+        // formality. `loadPipeline()` is `createRerankClassifier`, which
+        // awaits `import('@huggingface/transformers')`, and a module that throws a
         // primitive while being evaluated propagates that primitive through `await`
         // -- measured, not assumed: mocking the peer to `throw` a string reaches
         // this line with `err` a string, and the message below then ends in
@@ -284,7 +288,7 @@ function buildReranker(
         // is exactly what the test below this comment now pins.
         const detail = err instanceof Error ? err.message : String(err);
         throw new Error(
-          `CORTEX_RERANK_PROVIDER=local requires the optional peer @xenova/transformers, ` +
+          `CORTEX_RERANK_PROVIDER=local requires the optional peer @huggingface/transformers, ` +
             `which could not be loaded (model "${model}"). Install it, or set ` +
             `CORTEX_RERANK_PROVIDER=llm to reuse the chat credential. Underlying error: ${detail}`,
           { cause: err },

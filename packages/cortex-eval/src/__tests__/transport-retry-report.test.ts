@@ -32,7 +32,7 @@
  * does not have.
  */
 import { describe, it, expect } from 'vitest';
-import { createRetryStatsAggregate, retryStats, resetRetryStats } from '@agentix-e/cortex-llm';
+import { createRetryStatsAggregate, retryStats, resetRetryStats } from '@agentix-e/cortex-ai';
 import {
   formatIdPreview,
   transportRetryReport,

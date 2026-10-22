@@ -11,7 +11,7 @@
  *     progress: no question was started before the failure
  *     Error: Embedding request failed: 429 Too Many Requests —
  *       {"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}
- *         at OpenAIEmbedding.embed (packages/cortex-llm/src/embedding/openai.ts:61:13)
+ *         at OpenAIEmbedding.embed (packages/cortex-ai/src/embedding/openai.ts:61:13)
  *         at async embedManyCached (retrieval.ts:256)
  *         at async buildTurnIndex (retrieval.ts:397)
  *         at async retrieveTopKByQueries (retrieval.ts:981)

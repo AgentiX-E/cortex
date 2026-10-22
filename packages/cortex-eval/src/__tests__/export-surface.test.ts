@@ -149,7 +149,7 @@ describe('the export surface declares only what a consumer can use', () => {
     // The 182 barrel entries are public API. They are not converged here, and this
     // assertion records that as a decision: `index.ts` in each package still
     // re-exports what it did, so the published surface is unchanged by this change.
-    for (const pkg of ['cortex-core', 'cortex-eval', 'cortex-llm', 'cortex-storage']) {
+    for (const pkg of ['cortex-core', 'cortex-eval', 'cortex-ai', 'cortex-storage']) {
       const barrel = join(ROOT, 'packages', pkg, 'src', 'index.ts');
       expect(statSync(barrel).size, `${pkg} barrel is unexpectedly empty`).toBeGreaterThan(0);
       const text = readFileSync(barrel, 'utf8');
@@ -160,7 +160,7 @@ describe('the export surface declares only what a consumer can use', () => {
   it('leaves no *new* barrel entry naming a de-exported symbol', () => {
     // The two assertions above could both pass while a de-exported name was added
     // to a barrel by hand. This closes that: no barrel may mention any of the 19.
-    for (const pkg of ['cortex-core', 'cortex-eval', 'cortex-llm', 'cortex-storage']) {
+    for (const pkg of ['cortex-core', 'cortex-eval', 'cortex-ai', 'cortex-storage']) {
       const text = sourceOf(pkg, 'index.ts');
       for (const [owner, , name] of DE_EXPORTED) {
         if (owner !== pkg) {

@@ -281,7 +281,7 @@ export async function runBenchmark(
    * at all; a ceiling enforced here throws `BenchmarkBudgetExceeded` from inside the loop,
    * which the entry point's existing `catch` turns into the same `benchmark-error.log` a
    * thrown failure produces. Enforced between questions: it cannot interrupt a call in
-   * flight, and the per-attempt timeout in `cortex-llm` is what bounds that one.
+   * flight, and the per-attempt timeout in `cortex-ai` is what bounds that one.
    */
   budgetMs?: number,
 ): Promise<Answer[]> {

@@ -1,7 +1,7 @@
 {
   "name": "@agentix-e/cortex-eval",
   "version": "0.1.0",
-  "description": "cortex-eval — scientific evaluation harness for agent memory systems (metrics, significance testing, ablation)",
+  "description": "cortex-eval \u2014 scientific evaluation harness for agent memory systems (metrics, significance testing, ablation)",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -25,8 +25,8 @@
     "clean": "rm -rf dist *.tsbuildinfo coverage"
   },
   "dependencies": {
-    "@agentix-e/cortex-core": "workspace:*",
-    "@agentix-e/cortex-llm": "workspace:*"
+    "@agentix-e/cortex-ai": "workspace:*",
+    "@agentix-e/cortex-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
