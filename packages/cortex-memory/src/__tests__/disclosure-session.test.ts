@@ -310,6 +310,88 @@ describe('a confirmation that outlives its interval', () => {
   });
 });
 
+describe('checking a draft before anyone reads it', () => {
+  it('blocks a shared draft that copies a private row no rule recognises', async () => {
+    const { disclosure } = session();
+    await disclosure.say(DEFERRED, { id: 'f1' });
+
+    const scan = await disclosure.check(`Here is what I remember: ${DEFERRED}`, { task: 'shared' });
+    expect(scan.verdict).toBe('blocked');
+    // O1 has no opinion about this sentence -- that is why O3 exists -- so the finding is an echo.
+    expect(scan.findings.map((finding) => finding.kind)).toContain('echo');
+  });
+
+  it('lets a private task repeat the owner\u2019s own sentence, because that is the product working', async () => {
+    // The guard's own comment says a private answer repeating the user's facts is not a violation,
+    // and O1 implements it. O3 did not, so wiring the two together blocked every private answer
+    // that quoted the user's memory -- the whole private path, unusable, with a passing test suite.
+    const { disclosure } = session();
+    await disclosure.say(DEFERRED, { id: 'f1' });
+
+    const scan = await disclosure.check(`You told me: ${DEFERRED}`, { task: 'private' });
+    expect(scan.verdict).toBe('clear');
+    expect(scan.findings).toHaveLength(0);
+  });
+
+  it('clears a shared draft that cites a published fact and quotes it', async () => {
+    const { disclosure } = session();
+    await disclosure.say('The project plan moves to Thursday.', { id: 'p1' });
+    const scan = await disclosure.check('The project plan moves to Thursday [[p1]].', {
+      task: 'shared',
+    });
+    expect(scan.verdict).toBe('clear');
+  });
+
+  it('blocks a shared draft with no citation at all', async () => {
+    const { disclosure } = session();
+    await disclosure.say('The project plan moves to Thursday.', { id: 'p1' });
+    const scan = await disclosure.check('The project plan moves to Thursday.', { task: 'shared' });
+    expect(scan.verdict).toBe('blocked');
+    expect(scan.findings.map((finding) => finding.kind)).toContain('unattributed');
+  });
+
+  it('blocks a citation that resolves to nothing in the window', async () => {
+    const { disclosure } = session();
+    const scan = await disclosure.check('The plan moved [[ghost]].', { task: 'shared' });
+    expect(scan.findings.map((finding) => finding.kind)).toContain('unknown-citation');
+  });
+
+  it('stops blocking a private row once it has been published', async () => {
+    const { disclosure } = session();
+    await disclosure.say(DEFERRED, { id: 'f1' });
+    expect((await disclosure.check(DEFERRED, { task: 'shared' })).verdict).toBe('blocked');
+
+    await disclosure.accept('f1');
+    const scan = await disclosure.check(`${DEFERRED} [[f1]]`, { task: 'shared' });
+    expect(scan.verdict).toBe('clear');
+  });
+
+  it('forwards the two knobs a caller may set: citations and echo width', async () => {
+    const { disclosure } = session();
+    await disclosure.say(DEFERRED, { id: 'f1' });
+
+    // No citation required: the same draft that is blocked by default is clear when the caller says
+    // this task does not need one -- except for the echo, which is a leak either way.
+    const noCitation = await disclosure.check(DEFERRED, { task: 'shared', requireCitation: false });
+    expect(noCitation.findings.map((finding) => finding.kind)).toEqual(['echo']);
+
+    // A shorter window: sixteen characters is inside a sentence the default thirty-two would miss.
+    const wide = await disclosure.check('I moved to Berlin', { task: 'shared', minEchoChars: 16 });
+    expect(wide.findings.map((finding) => finding.kind)).toContain('echo');
+    const narrow = await disclosure.check('I moved to Berlin', { task: 'shared' });
+    expect(narrow.findings.map((finding) => finding.kind)).not.toContain('echo');
+  });
+
+  it('keeps a credential finding even for the owner, because the draft is stored and pasted', async () => {
+    const { disclosure } = session();
+    const scan = await disclosure.check('Your password is hunter2, as you told me.', {
+      task: 'private',
+    });
+    expect(scan.verdict).toBe('blocked');
+    expect(scan.findings.map((finding) => finding.kind)).toContain('never-retained');
+  });
+});
+
 describe('the boundary, as a task sees it', () => {
   it('never shows a private row to a shared task, and shows both to a private one', async () => {
     const { disclosure } = session();

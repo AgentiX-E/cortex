@@ -1,8 +1,8 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 631,
-    "withCaller": 343,
+    "exports": 632,
+    "withCaller": 344,
     "orphaned": 288,
     "referencedLocally": 236,
     "unreferenced": 52
@@ -96,7 +96,6 @@
         "cortex-core: MemoryGraphOptions (packages/cortex-core/src/graph/memory-graph.ts:33)",
         "cortex-core: MemoryType (packages/cortex-core/src/domain/memory.ts:4)",
         "cortex-core: OutputFinding (packages/cortex-core/src/triage/output-guard.ts:50)",
-        "cortex-core: OutputScan (packages/cortex-core/src/triage/output-guard.ts:69)",
         "cortex-core: OutputScanRequest (packages/cortex-core/src/triage/output-guard.ts:75)",
         "cortex-core: ProposalFailure (packages/cortex-core/src/triage/proposer.ts:135)",
         "cortex-core: ProposedFact (packages/cortex-core/src/triage/proposer.ts:95)",
@@ -133,9 +132,10 @@
         "cortex-core: sinkhorn (packages/cortex-core/src/math/ot.ts:25)",
         "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
         "cortex-core: studentTCdf (packages/cortex-core/src/math/stats.ts:119)",
+        "cortex-memory: CheckOptions (packages/cortex-memory/src/disclosure/session.ts:86)",
         "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:353)",
-        "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:48)",
-        "cortex-memory: SayResult (packages/cortex-memory/src/disclosure/session.ts:78)",
+        "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:50)",
+        "cortex-memory: SayResult (packages/cortex-memory/src/disclosure/session.ts:80)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:901)",
         "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:1837)",
         "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:18)",
@@ -396,7 +396,6 @@
     "cortex-core: MemoryGraphOptions",
     "cortex-core: MemoryType",
     "cortex-core: OutputFinding",
-    "cortex-core: OutputScan",
     "cortex-core: OutputScanRequest",
     "cortex-core: PackageCensus",
     "cortex-core: ProposalFailure",
@@ -595,6 +594,7 @@
     "cortex-eval: timelineFor",
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
+    "cortex-memory: CheckOptions",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
     "cortex-memory: DisclosureSessionOptions",
     "cortex-memory: SayResult",
@@ -686,7 +686,6 @@
     "cortex-core: MemoryGraphOptions": "referenced-locally",
     "cortex-core: MemoryType": "referenced-locally",
     "cortex-core: OutputFinding": "referenced-locally",
-    "cortex-core: OutputScan": "referenced-locally",
     "cortex-core: OutputScanRequest": "referenced-locally",
     "cortex-core: PackageCensus": "referenced-locally",
     "cortex-core: ProposalFailure": "referenced-locally",
@@ -885,6 +884,7 @@
     "cortex-eval: timelineFor": "referenced-locally",
     "cortex-eval: truncateSession": "unreferenced",
     "cortex-eval: truncateText": "unreferenced",
+    "cortex-memory: CheckOptions": "referenced-locally",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
     "cortex-memory: DisclosureSessionOptions": "referenced-locally",
     "cortex-memory: SayResult": "referenced-locally",
@@ -1101,9 +1101,6 @@
     ],
     "cortex-core: OutputFinding": [
       "packages/cortex-core/src/triage/output-guard.ts:50"
-    ],
-    "cortex-core: OutputScan": [
-      "packages/cortex-core/src/triage/output-guard.ts:69"
     ],
     "cortex-core: OutputScanRequest": [
       "packages/cortex-core/src/triage/output-guard.ts:75"
@@ -1699,14 +1696,17 @@
     "cortex-eval: truncateText": [
       "packages/cortex-eval/src/natural-language-memory.ts:2567"
     ],
+    "cortex-memory: CheckOptions": [
+      "packages/cortex-memory/src/disclosure/session.ts:86"
+    ],
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
       "packages/cortex-memory/src/prompt.ts:353"
     ],
     "cortex-memory: DisclosureSessionOptions": [
-      "packages/cortex-memory/src/disclosure/session.ts:48"
+      "packages/cortex-memory/src/disclosure/session.ts:50"
     ],
     "cortex-memory: SayResult": [
-      "packages/cortex-memory/src/disclosure/session.ts:78"
+      "packages/cortex-memory/src/disclosure/session.ts:80"
     ],
     "cortex-memory: formatEvidence": [
       "packages/cortex-memory/src/prompt.ts:901"

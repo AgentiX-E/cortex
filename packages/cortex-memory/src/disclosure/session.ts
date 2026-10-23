@@ -34,11 +34,13 @@ import type { Storage } from '@agentix-e/cortex-core';
 import {
   CardQueue,
   FederatedStorage,
+  OutputGuard,
   ReadSideAssembler,
   TriageError,
   TriageWriter,
   type Admission,
   type KnowledgeCard,
+  type OutputScan,
   type ProposalResult,
   type ScopedRow,
   type TaskScope,
@@ -81,16 +83,27 @@ export type SayResult = {
   readonly card: KnowledgeCard | null;
 };
 
+export type CheckOptions = {
+  readonly task: TaskScope;
+  /** Whether a shared draft must cite anything. Defaults to the guard's rule: yes for shared. */
+  readonly requireCitation?: boolean;
+  /** Shortest verbatim overlap that counts as an echo. Defaults to the guard's thirty-two. */
+  readonly minEchoChars?: number;
+};
+
 export class DisclosureSession {
+  private readonly federation: FederatedStorage;
   private readonly writer: TriageWriter;
   private readonly queue: CardQueue;
   private readonly assembler: ReadSideAssembler;
+  private readonly guard = new OutputGuard();
   private readonly proposer: TriageProposer | undefined;
   private readonly table: string;
   private readonly now: () => number;
 
   constructor(options: DisclosureSessionOptions) {
     const federation = new FederatedStorage({ private: options.private, shared: options.shared });
+    this.federation = federation;
     this.writer = new TriageWriter(federation);
     this.queue = new CardQueue(federation, this.writer, {
       now: options.now ?? (() => Date.now()),
@@ -189,6 +202,32 @@ export class DisclosureSession {
   /** The queue, oldest first, dismissed included. */
   async cards(): Promise<KnowledgeCard[]> {
     return this.queue.list();
+  }
+
+  /**
+   * Check a draft against the three output layers, with the window it was supposed to be built from.
+   *
+   * This is the method that makes O1/O2/O3 reachable from a product path. Until it existed, the
+   * output side had tests and a benchmark script and no caller -- which the export ledger said out
+   * loud for two steps before anyone acted on it.
+   *
+   * The window comes from the read side, so a finding can be excused by a shared row that says the
+   * same thing; the private corpus comes from the private store, so O3 can catch a sentence no rule
+   * recognises. Both come from the same session that wrote them, which is the point: the check is
+   * never asking a different question from the one the write side answered.
+   */
+  async check(draft: string, options: CheckOptions): Promise<OutputScan> {
+    const window = await this.evidence(options.task);
+    const privateValues = await this.federation.query(`private/${this.table}`, {});
+    return this.guard.scan(draft, {
+      task: options.task,
+      window,
+      privateValues,
+      ...(options.requireCitation === undefined
+        ? {}
+        : { requireCitation: options.requireCitation }),
+      ...(options.minEchoChars === undefined ? {} : { minEchoChars: options.minEchoChars }),
+    });
   }
 
   /** What a task of this scope may read. The assembler enforces the boundary, not this method. */

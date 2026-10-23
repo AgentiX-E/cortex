@@ -208,6 +208,17 @@ export class OutputGuard {
    * excuse, applied at the resolution the check actually works at.
    */
   private echoes(draft: string, request: OutputScanRequest): OutputFinding[] {
+    // A private answer may repeat the owner's own memory; that is what the memory is for. O1 has
+    // always skipped scope findings on a private task for exactly this reason, and O3 did not --
+    // which was invisible until step 12 wired the two into one call, at which point **every private
+    // answer that quoted the user's own sentence was blocked**. The guard was right and the second
+    // check was wrong, and only the composition could show it.
+    //
+    // `never-retained` still applies: a credential is not echoed back even to its owner, because the
+    // draft is stored, logged and pasted, and none of those are the owner. That check lives in O1
+    // and needs no corpus.
+    if (request.task === 'private') return [];
+
     const privateValues = request.privateValues;
     if (privateValues === undefined || privateValues.length === 0) return [];
 
@@ -241,9 +252,12 @@ export class OutputGuard {
         excerpt: excerptOf(draft, [start, end]),
         span: [start, end],
       });
-      // Skip past the match: one finding per copied sentence, not one per overlapping window.
-      index += width;
-      while (index < normal.text.length && normal.text.charAt(index) !== ' ') index += 1;
+      // Skip to the end of the sentence that was just reported: one finding per copied sentence,
+      // not one per overlapping window. The old skip advanced one window and then to the next space,
+      // which for a copied sentence longer than two windows lands *inside the same sentence* and
+      // reports it again -- measured on an eighty-character sentence: two identical findings. The
+      // intent was always one per sentence; the arithmetic was per window.
+      while (index < normal.text.length && (normal.map[index] as number) < end) index += 1;
     }
 
     return findings;

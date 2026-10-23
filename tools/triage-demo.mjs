@@ -19,6 +19,7 @@
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo cards
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo propose <id> --llm local
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo accept <id> --atom 0
+ *     node tools/triage-demo.mjs --home /tmp/cortex-demo check shared "The plan moves to Thursday [[c3]]."
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo export
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo ask shared
  *
@@ -114,7 +115,9 @@ function renderCard(card) {
 
 async function main() {
   const { command, args, home, atom, llm, model, id } = parse(process.argv.slice(2));
-  if (command === undefined) throw new Error('expected a command: say | cards | propose | accept | dismiss | export | ask');
+  if (command === undefined) {
+    throw new Error('expected a command: say | cards | propose | accept | dismiss | ask | check | export');
+  }
 
   mkdirSync(home, { recursive: true });
   const storage = {
@@ -168,6 +171,17 @@ async function main() {
       if (cardId === undefined) throw new Error('dismiss needs a card id');
       const card = await session.dismiss(cardId);
       console.log(`${card.id}  ${card.state}`);
+    } else if (command === 'check') {
+      const task = args[0];
+      const draft = args.slice(1).join(' ');
+      if (task !== 'shared' && task !== 'private') throw new Error('check needs a scope: shared or private');
+      if (draft.trim() === '') throw new Error('check needs a draft');
+      const scan = await session.check(draft, { task });
+      console.log(`${scan.verdict}  (${scan.findings.length} finding(s)) for a ${task} task`);
+      for (const finding of scan.findings) {
+        const why = finding.excusedBy === undefined ? '' : `  excused by ${finding.excusedBy}`;
+        console.log(`  ${finding.kind}${finding.rule === null ? '' : ` [${finding.rule}]`}: ${finding.excerpt}${why}`);
+      }
     } else if (command === 'export') {
       console.log(await session.export());
     } else if (command === 'ask') {

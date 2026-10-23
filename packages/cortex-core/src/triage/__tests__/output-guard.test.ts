@@ -245,6 +245,39 @@ describe('O2: attribution', () => {
     expect(scan.verdict).toBe('clear');
   });
 
+  it('reports a copied sentence once, however long it is', () => {
+    // Found by looking at a demo's output rather than at an assertion: the guard's own comment says
+    // "one finding per copied sentence", and an eighty-character sentence produced two identical
+    // findings, because the skip advanced past one window and stopped at the next space -- still
+    // inside the sentence it had just reported.
+    const long =
+      'I moved to Berlin in March and now I work at Acme on the payments team every day.';
+    const scan = guard.scan(`You told me: ${long}`, {
+      task: 'shared',
+      privateValues: [{ text: long }],
+      requireCitation: false,
+    });
+    expect(kinds(scan)).toEqual(['echo']);
+  });
+
+  it('does not run the echo check for a private task, and does for a shared one', () => {
+    // Measured, not assumed: before step 12 the two checks disagreed about what a private task may
+    // say. O1 skipped scope findings for the owner; O3 did not, so wiring them together blocked
+    // every private answer that quoted the user's own memory. The rule belongs to the task, not to
+    // the check that happens to enforce it.
+    const privateRows = [
+      { text: 'I moved to Berlin in March and now I work at Acme on payments.' },
+    ];
+    const draft = 'You said: I moved to Berlin in March and now I work at Acme on payments.';
+
+    expect(kinds(guard.scan(draft, { task: 'private', privateValues: privateRows }))).toEqual([]);
+    expect(
+      kinds(
+        guard.scan(draft, { task: 'shared', privateValues: privateRows, requireCitation: false }),
+      ),
+    ).toEqual(['echo']);
+  });
+
   it('does not require citations of a private answer by default', () => {
     const scan = guard.scan('You moved the roadmap to Q3.', { task: 'private' });
     expect(scan.verdict).toBe('clear');
