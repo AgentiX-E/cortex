@@ -1,0 +1,227 @@
+name: Measure configurations
+
+# Two backends, one instrument, and the only host that can reach the second one.
+#
+# The library gate cannot run this: it needs a provider credential, and this repository stores none.
+# The runner can -- the org-level `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY` are available here and
+# nowhere else -- so the comparison that step 14 could only describe is executed here instead:
+#
+#   * the A3 dosage on a real API model, which is the one number that decides whether the review
+#     experiment has a treatment to measure;
+#   * the sixty-sentence gate reading on the same model, which asks whether the four gates behave the
+#     same way when the model is not a 0.5B checkpoint;
+#   * the embedding path, which is the one place a silent substitution between a real vendor and a
+#     hash fallback would be invisible in every downstream number.
+#
+# Dispatch only, never on push. It spends credits, it depends on a third party's availability, and a
+# reading nobody asked for is a reading nobody reads.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'DeepSeek model id for the remote backend'
+        required: false
+        default: 'deepseek-chat'
+        type: string
+      cards:
+        description: 'Cards to prepare for the A3 dosage reading'
+        required: false
+        default: '20'
+        type: string
+      sentences:
+        description: 'Fixture sentences for the gate reading (60 = the whole hand-labelled set)'
+        required: false
+        default: '60'
+        type: string
+      embedding_dimensions:
+        description: 'Vector length for the embedding smoke (Zhipu embedding-3 accepts 1024/512/...)'
+        required: false
+        default: '1024'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: measure-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generation:
+    name: Remote generation (dosage + gates)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The three names `resolveLlmProfile` reads, filled from the org secret. Nothing else in this
+      # workflow sees the value: no `echo`, no `run:` that prints the environment, and the profile
+      # that gets printed is a type that has no field for it.
+      CORTEX_LLM_BACKEND: remote
+      CORTEX_LLM_BASE_URL: https://api.deepseek.com/v1
+      CORTEX_LLM_MODEL: ${{ inputs.model }}
+      CORTEX_LLM_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      # A missing secret would otherwise surface as a 401 from a provider, which reads like the
+      # provider's fault. Fail here, with the variable's name and nothing else.
+      - name: Refuse to start without a credential
+        run: |
+          set -euo pipefail
+          if [ -z "${CORTEX_LLM_API_KEY}" ]; then
+            echo "CORTEX_LLM_API_KEY is empty: the org secret DEEPSEEK_API_KEY is not visible to this job" >&2
+            exit 1
+          fi
+          echo "credential present (length ${#CORTEX_LLM_API_KEY}); value never printed"
+
+      - name: A3 dosage on the remote backend
+        run: |
+          set -o pipefail
+          mkdir -p readings
+          node tools/a3-review.mjs prepare \
+            --out readings/cards-remote.json \
+            --limit "${{ inputs.cards }}" \
+            --llm remote 2>&1 | tee readings/prepare-remote.log
+          node tools/a3-review.mjs dosage --cards readings/cards-remote.json \
+            2>&1 | tee readings/dosage-remote.txt
+
+      - name: Gate reading over the labelled sentences
+        run: |
+          set -o pipefail
+          node packages/cortex-ai/test/proposer/run.mjs \
+            --llm remote \
+            --limit "${{ inputs.sentences }}" \
+            --out "${GITHUB_WORKSPACE}/readings/live-result-remote.json" \
+            2>&1 | tee readings/gates-remote.log
+
+      - name: Upload readings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readings-remote
+          path: readings/
+          if-no-files-found: warn
+
+  embedding:
+    name: Embedding path (provider or fallback)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+      EMBEDDING_DIMENSIONS: ${{ inputs.embedding_dimensions }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Embedding smoke, with provenance
+        run: |
+          set -o pipefail
+          mkdir -p readings
+          node packages/cortex-eval/test/embedding-smoke.mjs \
+            --out "${GITHUB_WORKSPACE}/readings/embedding-smoke.json" 2>&1 | tee readings/embedding.log
+
+      # The provenance is the point of the run, so it is asserted rather than printed and hoped for.
+      # `provider: 'hash'` here means the benchmark's numbers would be hash vectors while the log said
+      # "embedding" -- the substitution the provenance field exists to expose.
+      - name: Assert the run reached the vendor
+        run: |
+          set -euo pipefail
+          provider=$(node -e "process.stdout.write(require('./readings/embedding-smoke.json').provenance.provider)")
+          if [ "$provider" != "openai-compatible" ]; then
+            echo "embedding provenance is '$provider', not 'openai-compatible': the key is missing or ignored" >&2
+            exit 1
+          fi
+          echo "embedding provider: $provider"
+
+      - name: Upload embedding reading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readings-embedding
+          path: readings/
+          if-no-files-found: warn
+
+  hygiene:
+    name: No credential in any artifact
+    needs: [generation, embedding]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+    steps:
+      - name: Download every reading
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # A check, not a policy: an artifact is a file that outlives the run and is readable by anyone
+      # with the repository, and the one failure this whole design is built to prevent is a credential
+      # in a stored record. `grep -q` so the value cannot end up in the log through a match line.
+      - name: Fail if a secret appears in an artifact
+        run: |
+          set -euo pipefail
+          status=0
+          for name in DEEPSEEK_API_KEY ZHIPU_API_KEY; do
+            value="${!name}"
+            if [ -z "$value" ]; then
+              echo "$name is not visible to this job; skipping its scan" >&2
+              continue
+            fi
+            if grep -rqF -- "$value" artifacts; then
+              echo "$name was found in an artifact under artifacts/ -- refusing to keep it" >&2
+              grep -rlF -- "$value" artifacts >&2
+              status=1
+            else
+              echo "$name: absent from every artifact"
+            fi
+          done
+          exit $status
+
+      - name: State what the readings are
+        run: |
+          set -euo pipefail
+          ls -la artifacts
+          for file in artifacts/dosage-remote.txt artifacts/embedding-smoke.json artifacts/live-result-remote.json; do
+            if [ -f "$file" ]; then
+              echo "--- $file"
+              head -c 800 "$file"
+              echo
+            fi
+          done

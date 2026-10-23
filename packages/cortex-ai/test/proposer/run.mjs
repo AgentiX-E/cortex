@@ -1,5 +1,5 @@
 /**
- * The proposer driven by a real, on-device model. Not part of `pnpm test`.
+ * The proposer driven by a real model -- on this device, or over an API. Not part of `pnpm test`.
  *
  * ## Why this script exists
  *
@@ -9,17 +9,25 @@
  * over the same sixty hand-labelled sentences the rule layer is measured on, and it stores the
  * answer so a later run can be compared rather than argued with.
  *
- * ## What it needs
+ * ## Two backends, one script, one report
  *
- *   - network access to a weights host. `huggingface.co` is unreachable from some build hosts;
- *     `CORTEX_HF_ENDPOINT` exists so a mirror can be used, and the endpoint is printed with the
- *     result so a reading is never detached from where its weights came from.
- *   - about 400 MB of weights for the default checkpoint, and a few minutes of CPU.
+ * `--llm local` (the default) runs an on-device checkpoint: network access to a weights host, about
+ * 400 MB, a few minutes of CPU. `--llm remote` runs an OpenAI-compatible provider, which is the only
+ * way to ask whether the four gates behave the same way on a model that is not 0.5B. The backend is
+ * resolved by `resolveLlmProfile` -- the same function the product uses -- so `--llm remote` without
+ * a key is an error here too, and the report carries the profile line rather than a model name that
+ * implies a backend.
+ *
+ * The point of running this on both is not "which model is better". It is that the step-9 reading
+ * (44 of 60 replies copied the prompt's example, every one dropped as ungrounded) is a statement
+ * about **a small model and a gate**, and a large model cannot reproduce the failure it measured.
+ * Running both is how that distinction stops being an assumption.
  *
  * Usage:
  *
  *     node test/proposer/run.mjs                       # default checkpoint, all 60 sentences
  *     node test/proposer/run.mjs --limit 10 --dry     # smoke: load the model, one batch
+ *     node test/proposer/run.mjs --llm remote --model deepseek-chat
  *
  * ## What it is not
  *
@@ -38,13 +46,21 @@ import {
   TriageProposer,
   buildProposerPrompt,
 } from '@agentix-e/cortex-core';
-import { env, pipeline } from '@huggingface/transformers';
+import {
+  ProfileError,
+  OpenAICompatibleLLM,
+  describeProfile,
+  readApiKey,
+  resolveLlmProfile,
+} from '@agentix-e/cortex-ai';
+import { createLocalLLM } from '@agentix-e/cortex-ai/local';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = resolve(HERE, '../../../cortex-core/src/triage/__tests__/fixtures/triage-labels.json');
-const MODEL = process.env.CORTEX_PROPOSER_MODEL ?? 'onnx-community/Qwen2.5-0.5B-Instruct';
-const ENDPOINT = process.env.CORTEX_HF_ENDPOINT ?? 'https://hf-mirror.com';
-const DTYPE = process.env.CORTEX_PROPOSER_DTYPE ?? 'q4';
+// The switches belong to `resolveLlmProfile`: `CORTEX_LLM_BACKEND`, `CORTEX_LOCAL_MODEL`,
+// `CORTEX_LOCAL_DTYPE`, `CORTEX_HF_ENDPOINT`, and the three `CORTEX_LLM_*` for the remote backend.
+// This script used to define its own two (`CORTEX_PROPOSER_MODEL`, `CORTEX_PROPOSER_DTYPE`), and a
+// second naming scheme for the same decision is how a run ends up on a checkpoint nobody recorded.
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -60,38 +76,34 @@ const value = (name, fallback) => {
  * the embedding upgrade learned this the expensive way: two runs compared "the same model" that
  * were not the same artefact.
  */
-env.remoteHost = ENDPOINT;
-env.allowLocalModels = true;
-env.allowRemoteModels = true;
+/**
+ * What `--llm` and `--model` mean, read once.
+ *
+ * Declared from the argument *or* the environment, and here rather than at module scope because the
+ * first version of this change resolved the backend before `argv` was parsed: `--llm remote` was
+ * accepted, ignored, and the run quietly loaded the checkpoint -- a flag that does nothing is worse
+ * than a flag that does not exist, because the transcript then says "remote".
+ */
+/**
+ * The mirror is this host's default, and the profile is where it is recorded.
+ *
+ * `DEFAULT_WEIGHT_HOST` in `cortex-ai` is the official Hub, which is the right default for a library:
+ * naming a third-party mirror in shipped code would be a decision taken on the user's behalf. On a
+ * build host that cannot reach the Hub, the default belongs here, in the script, where it is visible
+ * and printed -- and it is set through the same environment variable the profile reads, rather than
+ * through a second parameter that could disagree with it.
+ */
+process.env['CORTEX_HF_ENDPOINT'] ??= 'https://hf-mirror.com';
 
-/** One generation, no sampling, so a re-run of this script reproduces the reply for a given model. */
-class LocalModel {
-  constructor(generator) {
-    this.generator = generator;
-    this.calls = 0;
-    this.seconds = 0;
-  }
-
-  async complete(prompt) {
-    this.calls += 1;
-    const started = Date.now();
-    const out = await this.generator([{ role: 'user', content: prompt }], {
-      max_new_tokens: 192,
-      do_sample: false,
-      return_full_text: false,
-    });
-    this.seconds += (Date.now() - started) / 1000;
-    const first = out?.[0];
-    const generated = first?.generated_text;
-    if (typeof generated === 'string') return generated;
-    const last = Array.isArray(generated) ? generated[generated.length - 1] : undefined;
-    return typeof last?.content === 'string' ? last.content : '';
-  }
-
-  async completeStructured(prompt) {
-    return this.complete(prompt);
-  }
+function resolveBackend() {
+  return value('llm', process.env.CORTEX_LLM_BACKEND ?? 'local');
 }
+
+function resolveModel() {
+  return value('model', undefined);
+}
+
+
 
 /**
  * Parse the fenced-or-not JSON a model actually emits.
@@ -157,8 +169,10 @@ function summarise(perRow, meta) {
 
   return {
     model: meta.model,
-    endpoint: meta.endpoint,
-    dtype: meta.dtype,
+    // One field instead of `endpoint` + `dtype`: those three could disagree with each other, and a
+    // reading whose provenance is three strings that might not match is worse than one string that
+    // cannot be assembled by hand.
+    profile: meta.profile ?? '(unrecorded)',
     promptVersion: meta.promptVersion,
     sentences: perRow.length,
     proposed: proposed.length,
@@ -191,17 +205,63 @@ async function main() {
   const limit = Number(value('limit', String(rows.length)));
   const sample = rows.slice(0, limit);
 
-  console.log(`loading ${MODEL} (dtype ${DTYPE}) from ${ENDPOINT}`);
-  const generator = await pipeline('text-generation', MODEL, { dtype: DTYPE });
+  const backend = resolveBackend();
+  const chosen = resolveModel();
+  let profile;
+  try {
+    profile = resolveLlmProfile(
+      {
+        backend,
+        ...(chosen === undefined ? {} : { model: chosen }),
+        // The recorded readings were taken at q4 (about 400 MB on disk). The profile's own default is
+        // fp32 -- the unquantised weights, which is the safe thing for a library to assume -- so a
+        // script that wants the same checkpoint the numbers came from has to say so. Thirty seconds
+        // of a connect timeout is what forgetting it costs, because fp32 is a different file.
+        dtype: value('dtype', 'q4'),
+      },
+      process.env,
+    );
+  } catch (error) {
+    if (error instanceof ProfileError) {
+      console.error(`configuration: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
+  }
 
-  /**
-   * The proposer is constructed with a raw-completion model, so `completeStructured` returns text.
-   * That is the honest configuration: an on-device model has no JSON mode, and the gates must cope
-   * with text -- exactly what `PlatformLanguageModel` does in the browser.
-   */
-  const model = new LocalModel(generator);
-  const proposer = new TriageProposer({ llm: model, model: MODEL });
+  let model;
+  if (profile.backend === 'local') {
+    console.log(`loading ${profile.model} (dtype ${profile.dtype}) from ${profile.weightHost}`);
+    /**
+     * The shipped adapter, not a second one.
+     *
+     * This script used to hand-roll a `pipeline` call and a tiny `LocalModel` around it, and the
+     * hand-rolled version read `env.remoteHost` from the wrong place: after a refactor it silently
+     * talked to `huggingface.co` instead of the configured mirror and died on a connect timeout,
+     * while `createLocalLLM` in the same repository was talking to the mirror correctly. Two
+     * implementations of "load a checkpoint" is one too many, and this is the one that was wrong.
+     */
+    model = await createLocalLLM({
+      model: profile.model,
+      dtype: profile.dtype,
+      maxNewTokens: 192,
+      env: { remoteHost: profile.weightHost },
+    });
+  } else {
+    console.log(`calling ${profile.model} at ${profile.baseUrl}`);
+    model = new OpenAICompatibleLLM({
+      baseUrl: profile.baseUrl,
+      apiKey: readApiKey(process.env),
+      model: profile.model,
+    });
+  }
+  const identity = { model: profile.model, provider: profile.backend };
+  // Constructed so the same options the product uses are exercised by the type system; the loop
+  // below feeds parsed replies through a second proposer rather than paying for one call per gate.
+  const proposer = new TriageProposer({ llm: model, ...identity });
+  void proposer;
 
+  const startedAt = Date.now();
   const perRow = [];
   for (const row of sample) {
     const started = Date.now();
@@ -222,7 +282,7 @@ async function main() {
     // straight to a proposer whose model returns it. Cheaper and it keeps the gates identical.
     const valueProposer = new TriageProposer({
       llm: { complete: async () => '', completeStructured: async () => parsed },
-      model: MODEL,
+      ...identity,
     });
     const result = await valueProposer.propose(row.text);
     perRow.push({
@@ -244,14 +304,19 @@ async function main() {
   }
 
   const summary = summarise(perRow, {
-    model: MODEL,
-    endpoint: ENDPOINT,
-    dtype: DTYPE,
+    model: profile.model,
+    profile: describeProfile(profile),
     promptVersion: PROPOSER_PROMPT_VERSION,
-    seconds: model.seconds,
+    // Wall clock over the generation loop, so a local checkpoint and a provider are measured the same
+    // way: seconds of generation per sentence, not seconds of the run (which would include the load).
+    seconds: (Date.now() - startedAt) / 1000,
   });
 
-  writeFileSync(join(HERE, 'live-result.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  // `--out` exists so a second configuration does not overwrite the first reading: two backends, two
+  // files, and the comparison is a diff instead of a memory.
+  const out = join(HERE, value('out', 'live-result.json'));
+  writeFileSync(out, `${JSON.stringify(summary, null, 2)}\n`);
+  console.error(`wrote ${out}`);
   console.log(JSON.stringify({ ...summary, perRow: undefined }, null, 2));
   if (flag('dry')) console.log('dry run: nothing is claimed about quality from this output');
 }

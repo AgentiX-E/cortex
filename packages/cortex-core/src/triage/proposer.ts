@@ -55,7 +55,7 @@ import { classify as classifyWith, type TriageDecision, type TriageScope } from 
  * incomparable. Stored on every proposal, so a card exported last month can be read against the
  * rules that produced it.
  */
-export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v3';
+export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v2';
 
 /**
  * How many atoms a card may offer.
@@ -253,13 +253,20 @@ export function buildProposerPrompt(text: string): string {
     `1. Every statement must be a verbatim, contiguous run of the sentence: copy the words. Do not`,
     `   paraphrase, reorder, abbreviate, expand, or add anything -- not even a name, a date, or a`,
     `   pronoun that was not there.`,
-    // v3 changed exactly this rule and nothing else. v2 said "a sentence joined by and is usually
-    // more than one", which a 0.5B model read as permission to stop at one: on the twenty-card
-    // sample it returned a single atom equal to the whole sentence for fourteen of them, and split
-    // one. v3 states the test -- a second clause with its own subject or verb -- and asks for the
-    // clause count first, so the instruction is a procedure rather than an adjective.
-    '2. Split a sentence that joins two clauses with "and", "but" or "so" when the second clause has',
-    '   its own subject or its own verb. Join nothing that shares the same predicate. A sentence',
+    // ## v3 was tried here, measured twice, and reverted
+    //
+    // v3 replaced the sentence below with a test -- "split when the second clause has its own subject
+    // or its own verb" -- plus an instruction to count the clauses first. It was a reasonable guess:
+    // v2's "usually more than one" reads as permission to stop at one, and on the twenty-card sample
+    // fourteen cards came back with a single atom equal to the whole sentence.
+    //
+    // Two readings said no. On the cards, dosage was identical (1/20, 5.0%) and three cards moved in
+    // three directions -- one gained a split, one lost two atoms it used to have, one kept a leading
+    // clause it used to trim. On the sixty labelled sentences, usable proposals went from 45 to 41
+    // (paired: 5 only under v2, 1 only under v3, exact McNemar p = 0.22 -- not significant, and not
+    // in v3's favour). A change with no gain, a longer rule and a lower aggregate is not kept, even
+    // when the reasoning behind it was sound. Numbers in docs/04 section 9.17.
+    '2. One statement per fact: a sentence joined by "and" is usually more than one. A sentence',
     '   that cannot be split is one fact.',
     `3. At most ${MAX_FACTS} statements. If the sentence states nothing a colleague could act on,`,
     '   return an empty list.',
