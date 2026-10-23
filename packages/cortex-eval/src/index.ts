@@ -46,6 +46,21 @@ export {
   type AnswerJudge,
 } from './judge.js';
 export { runAblation, type AblationOptions } from './ablation.js';
+
+// A3: the arithmetic behind the card-acceptance criterion, so the criterion is computable before
+// there is data to compute it from.
+export {
+  exactMcNemar,
+  scoreA3,
+  type A3Arm,
+  type A3ArmSummary,
+  type A3Decision,
+  type A3Options,
+  type A3Pairs,
+  type A3Result,
+  type A3Trial,
+  type A3Verdict,
+} from './a3.js';
 export {
   runAblationReport,
   formatAblationReport,
