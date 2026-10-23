@@ -17,6 +17,7 @@ matters, so content is what is compared.
 
 Usage: python3 tools/push-via-api.py
 """
+import base64
 import json
 import subprocess
 import sys
@@ -130,6 +131,26 @@ def req(method: str, path: str, payload=None):
             sys.exit(f"{method} {path} -> {error}")
 
 
+def blob_payload(path: str) -> dict:
+    """The JSON body for `POST /git/blobs`, for a file of any kind.
+
+    ## Why base64 and not `encoding: "utf-8"`
+
+    This function read every blob as UTF-8 with `surrogateescape` and sent it as
+    `encoding: "utf-8"`. That is lossless for text and **corrupting for anything else**: a PNG has
+    bytes that are not valid UTF-8, the surrogate escape produces strings the JSON encoder rewrites,
+    and the blob that lands on the remote is not the file. The first push that carried a binary --
+    two screenshots, step 16 -- produced blobs of 118 KB from files of 64 KB, and the verification
+    step caught it *after* the branch had already been moved.
+
+    base64 is the encoding the API is designed for and it is exact for both kinds of file, so there
+    is no branch here to get wrong.
+    """
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    return {"content": base64.b64encode(raw).decode("ascii"), "encoding": "base64"}
+
+
 def git(*args: str) -> str:
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout.strip()
 
@@ -208,13 +229,7 @@ def main() -> int:
             entries.append({"path": path, "mode": "100644", "type": "blob", "sha": None})
             print(f"  {path} -> deleted")
             continue
-        with open(path, "rb") as handle:
-            content = handle.read()
-        result = req(
-            "POST",
-            f"/repos/{repo()}/git/blobs",
-            {"content": content.decode("utf-8", errors="surrogateescape"), "encoding": "utf-8"},
-        )
+        result = req("POST", f"/repos/{repo()}/git/blobs", blob_payload(path))
         entries.append({"path": path, "mode": "100644", "type": "blob", "sha": result["sha"]})
         print(f"  {path} -> {result['sha'][:8]}")
 
@@ -239,12 +254,19 @@ def main() -> int:
             },
         },
     )
-    req("PATCH", f"/repos/{repo()}/git/refs/heads/{branch()}", {"sha": commit["sha"], "force": False})
-    print(f"pushed {commit['sha']}")
-
+    # Verified **before** the branch moves. The previous order created the commit, moved the ref, and
+    # only then compared -- so a mismatch left a corrupted commit on the branch and reported it
+    # afterwards. A check that runs after the damage is a post-mortem, not a gate.
     pushed = remote_blobs(commit["tree"]["sha"])
     if pushed != local_map:
         report_mismatch(pushed, local_map)
+
+    req("PATCH", f"/repos/{repo()}/git/refs/heads/{branch()}", {"sha": commit["sha"], "force": False})
+    print(f"pushed {commit['sha']}")
+
+    after = remote_blobs(commit["tree"]["sha"])
+    if after != local_map:
+        report_mismatch(after, local_map)
     print(
         f"verified: {len(local_map)} blobs byte-identical local vs remote "
         f"(tree SHAs differ only because the API rebuilds the tree object)"
