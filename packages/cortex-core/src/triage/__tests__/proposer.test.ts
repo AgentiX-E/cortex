@@ -183,6 +183,21 @@ describe('the proposer, on a model that behaves', () => {
     expect(result.proposal.candidates).toBe(1);
   });
 
+  it('records which backend answered, beside the model that answered', async () => {
+    // Two configurations are compared from step 14 on, and the card is where their output meets.
+    // A model id does not imply a backend: a proxy, a self-hosted endpoint or a mirror all break
+    // the convention that `qwen-…` means local and `deepseek-…` means remote.
+    const instance = new TriageProposer({
+      llm: new ScriptedLLM({ facts: [{ text: 'I moved to Berlin in March' }] }),
+      model: 'some-model',
+      provider: 'local',
+    });
+    const result = await instance.propose(TWO_ATOMS);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.proposal).toMatchObject({ model: 'some-model', provider: 'local' });
+  });
+
   it('records the absence of a model name as null, not as a guess', async () => {
     const instance = new TriageProposer({
       llm: new ScriptedLLM({ facts: [{ text: 'I moved to Berlin in March' }] }),
@@ -191,6 +206,7 @@ describe('the proposer, on a model that behaves', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.proposal.model).toBeNull();
+    expect(result.proposal.provider).toBeNull();
   });
 
   it('asks for temperature 0, because a card that changes between two clicks is not auditable', async () => {
@@ -575,6 +591,7 @@ describe('the card, with a proposal attached', () => {
       withheld: [],
       promptVersion: PROPOSER_PROMPT_VERSION,
       model: null,
+      provider: null,
       candidates: 1,
     };
     await expect(w.queue.attach(card.id, forged)).rejects.toThrow(/did not say|grounded/);
@@ -588,6 +605,7 @@ describe('the card, with a proposal attached', () => {
       withheld: [],
       promptVersion: PROPOSER_PROMPT_VERSION,
       model: null,
+      provider: null,
       candidates: 0,
     };
     await expect(w.queue.attach(card.id, empty)).rejects.toThrow(/empty/);

@@ -177,52 +177,12 @@ export class OpenAICompatibleReranker {
   };
 }
 
-/** The shape of a transformers.js text-classification call, narrowed to what we use. */
-export type CrossEncoderPipeline = (
-  texts: string[],
-  options?: { topk?: number | null },
-) => Promise<readonly ({ score: number } | number)[]>;
-
-export type CrossEncoderRerankerOptions = {
-  /** A text-classification pipeline, e.g. from `@xenova/transformers`. */
-  pipeline: CrossEncoderPipeline;
-  /**
-   * Separator between question and passage. The default matches the token most
-   * bge/ms-marco cross-encoders were trained with.
-   */
-  separator?: string;
-  /**
-   * Apply a logistic squash to the raw output. Appropriate when the model emits
-   * logits (bge-reranker does); leave off for models that already return a
-   * calibrated probability.
-   */
-  applySigmoid?: boolean;
-};
-
-export class CrossEncoderReranker {
-  private readonly options: CrossEncoderRerankerOptions;
-
-  constructor(options: CrossEncoderRerankerOptions) {
-    this.options = options;
-  }
-
-  /** `RerankScoreFn` backed by a local model, with no network access. */
-  readonly score: RerankScoreFn = async (pairs) => {
-    if (pairs.length === 0) {
-      return [];
-    }
-    const separator = this.options.separator ?? '</s></s>';
-    const inputs = pairs.map((pair) => `${pair.question}${separator}${pair.text}`);
-    const raw = await this.options.pipeline(inputs, { topk: null });
-    if (!Array.isArray(raw) || raw.length !== inputs.length) {
-      throw new Error('Cross-encoder response incomplete; refusing to rank on partial scores');
-    }
-    return raw.map((entry) => {
-      const value = typeof entry === 'number' ? entry : entry?.score;
-      if (typeof value !== 'number' || !Number.isFinite(value)) {
-        throw new Error('Cross-encoder produced a non-finite score');
-      }
-      return this.options.applySigmoid === true ? 1 / (1 + Math.exp(-value)) : value;
-    });
-  };
-}
+/**
+ * Re-exported so the move is invisible to callers and to the package's `exports` surface. `./local`
+ * imports the class from `cross-encoder.js` directly, which is the point of the split.
+ */
+export {
+  CrossEncoderReranker,
+  type CrossEncoderPipeline,
+  type CrossEncoderRerankerOptions,
+} from './cross-encoder.js';

@@ -33,5 +33,5 @@ export {
 
 // Re-exported so that a local-only build needs one import: the class takes its pipeline by
 // injection, so it lives in the root, but nothing about it depends on a provider or a network.
-export { CrossEncoderReranker, type CrossEncoderRerankerOptions } from '../rerank/rerank.js';
-export type { CrossEncoderPipeline } from '../rerank/rerank.js';
+export { CrossEncoderReranker, type CrossEncoderRerankerOptions } from '../rerank/cross-encoder.js';
+export type { CrossEncoderPipeline } from '../rerank/cross-encoder.js';

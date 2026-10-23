@@ -69,12 +69,25 @@ const PLAN = {
     },
     // The control for THIS package: `./local` is supposed to reach the peer. A clean report here
     // means the walk stopped following dynamic imports and the root's result is therefore empty.
-    { entry: 'src/local/index.ts', portable: false, expect: '@huggingface/transformers' },
-    // The web entry reaches a platform global and nothing else.
+    //
+    // It is also the entry whose product promise is that inference makes no network request, so it
+    // must not reach the HTTP client either -- and until step 14 it did, through `parseJson`, which
+    // lived in `llm/openai-compatible.ts` next to `retryableFetch`. A pure helper in a heavy file
+    // makes every importer heavy, and nothing fails: the request count was zero either way. The
+    // dependency is the thing a bundle is, so the dependency is what gets guarded.
+    {
+      entry: 'src/local/index.ts',
+      portable: false,
+      expect: '@huggingface/transformers',
+      forbidFiles: ['src/retry.ts', 'src/llm/openai-compatible.ts'],
+    },
+    // The web entry reaches a platform global and nothing else -- the same rule, for the same reason
+    // and with the same history: it imported `parseJson` from the HTTP adapter too.
     {
       entry: 'src/web/index.ts',
       portable: true,
       forbid: ['@huggingface/transformers'],
+      forbidFiles: ['src/retry.ts', 'src/llm/openai-compatible.ts'],
     },
   ],
   'packages/cortex-storage': [
@@ -157,6 +170,21 @@ export function forbiddenIn(bare) {
   return bare.filter((specifier) => FORBIDDEN.some((pattern) => pattern.test(specifier)));
 }
 
+/**
+ * File-level bans: paths a given entry must not reach through *its own* files.
+ *
+ * Separate from `FORBIDDEN`, which matches bare specifiers. "This entry must not contain the HTTP
+ * client" cannot be written as a specifier rule -- both entries legitimately import nothing from the
+ * network, and the client arrives through a relative import of a shared helper. Two mechanisms, two
+ * questions: which third-party modules, and which of our own files.
+ *
+ * Pure and exported so the self-test can drive it without a package on disk.
+ */
+export function forbiddenFilesIn(reachedFiles, pkgDir, forbids) {
+  const reached = new Set(reachedFiles.map((file) => relative(REPO, file)));
+  return forbids.filter((file) => reached.has(join(pkgDir, file)));
+}
+
 function check(pkgDir, entries) {
   const failures = [];
   const report = [];
@@ -169,6 +197,15 @@ function check(pkgDir, entries) {
     }
     const result = closure(entryFile);
     const bad = forbiddenIn(result.bare);
+
+    // File-level bans apply to controls too: `./local` is a control for the peer and a subject for
+    // the network client, and a plan that could only express one of those would have to drop one.
+    const forbiddenFiles = forbiddenFilesIn(result.files, pkgDir, item.forbidFiles ?? []);
+    if (forbiddenFiles.length > 0) {
+      failures.push(
+        `${pkgDir}/${item.entry}: reaches ${forbiddenFiles.join(', ')}, which this entry must not`,
+      );
+    }
 
     if (item.expect !== undefined) {
       // Positive control: the walk must *see* the forbidden module here, or it is not walking.
@@ -260,6 +297,18 @@ function main(argv) {
       `${caught ? 'ok  ' : 'FAIL'} self-test: a portable entry importing better-sqlite3 is rejected`,
     );
     if (!caught) failures.push('self-test: the guard did not reject a native import');
+
+    // The second rule, which is the one step 14 added and the one the real tree was violating.
+    const reached = [
+      join(REPO, 'packages/cortex-ai/src/local/index.ts'),
+      join(REPO, 'packages/cortex-ai/src/retry.ts'),
+    ];
+    const caughtFile =
+      forbiddenFilesIn(reached, 'packages/cortex-ai', ['src/retry.ts']).length === 1;
+    console.log(
+      `${caughtFile ? 'ok  ' : 'FAIL'} self-test: an entry reaching a banned file is rejected`,
+    );
+    if (!caughtFile) failures.push('self-test: the guard did not reject a banned file');
   }
 
   if (failures.length > 0) {

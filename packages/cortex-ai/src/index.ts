@@ -18,6 +18,20 @@
  * | `./web` | `globalThis.LanguageModel` | browser with a built-in model |
  */
 export {
+  DEFAULT_LOCAL_MODEL,
+  DEFAULT_WEIGHT_HOST,
+  PROFILE_ENV,
+  ProfileError,
+  describeProfile,
+  readApiKey,
+  resolveLlmProfile,
+  type LlmProfile,
+  type LocalProfile,
+  type ProfileEnv,
+  type ProfileRequest,
+  type RemoteProfile,
+} from './profile.js';
+export {
   OpenAICompatibleLLM,
   buildChatBody,
   parseJson,

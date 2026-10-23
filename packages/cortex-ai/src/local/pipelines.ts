@@ -28,7 +28,7 @@
  * than an assumption -- and neither of those is the same claim as "a real model produces the same
  * numbers", which only the parity harness can make.
  */
-import type { CrossEncoderPipeline } from '../rerank/rerank.js';
+import type { CrossEncoderPipeline } from '../rerank/cross-encoder.js';
 
 /**
  * Weight precision.

@@ -21,7 +21,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error -- a plain .mjs tool with no declarations; the shapes are asserted below.
-import { closure, forbiddenIn } from '../../../../tools/entry-guard.mjs';
+import { closure, forbiddenFilesIn, forbiddenIn } from '../../../../tools/entry-guard.mjs';
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')) as {
@@ -104,6 +104,34 @@ describe('import closures', () => {
     const result = walk('src/web/index.ts');
     expect(result.bare).not.toContain('@huggingface/transformers');
     expect(forbiddenIn(result.bare)).toEqual([]);
+  });
+
+  it('neither offline entry carries the HTTP client, not even for a pure helper', () => {
+    // Found by the guard's new file-level rule, in two passes. `parseJson` lived in
+    // `llm/openai-compatible.ts` next to `retryableFetch`, and both offline entries imported it from
+    // there; `CrossEncoderReranker` lived in `rerank/rerank.ts`, which does the same. Moving the
+    // first made the guard name `retry.ts` again, which is how the second was found.
+    //
+    // The runtime count was zero in both cases (test/profile/network.mjs), and that is exactly why
+    // this assertion exists: a dependency nobody calls is still a dependency, and a bundle is made
+    // of dependencies. `./local`'s whole promise is that the sentence cannot leave the machine.
+    for (const entry of ['src/local/index.ts', 'src/web/index.ts']) {
+      const files = walk(entry).files.map((file) => file.slice(PACKAGE_ROOT.length + 1));
+      const banned = forbiddenFilesIn(walk(entry).files, `packages/cortex-ai`, [
+        'src/retry.ts',
+        'src/llm/openai-compatible.ts',
+      ]) as string[];
+      expect(banned, `${entry}: ${files.join(', ')}`).toEqual([]);
+    }
+  });
+
+  it('the file rule is not vacuous: it does see a file that is in the closure', () => {
+    // A rule that matched nothing would pass every assertion above for the wrong reason -- the same
+    // trap as a positive control that is never reached.
+    const seen = forbiddenFilesIn(walk('src/local/index.ts').files, 'packages/cortex-ai', [
+      'src/local/llm.ts',
+    ]) as string[];
+    expect(seen).toEqual(['src/local/llm.ts']);
   });
 
   it('the local entry is still browser-safe apart from the peer', () => {

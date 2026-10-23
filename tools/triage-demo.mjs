@@ -23,10 +23,15 @@
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo export
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo ask shared
  *
- * `--llm local` loads a small on-device model through `@agentix-e/cortex-ai/local` and needs weights
- * (the default checkpoint is 0.5B, about 400 MB quantised). `--llm openai` reads
- * `CORTEX_LLM_BASE_URL`, `CORTEX_LLM_API_KEY` and `CORTEX_LLM_MODEL` from the environment and never
- * from a file in this repository.
+ * `--llm local` loads an on-device model through `@agentix-e/cortex-ai/local` and needs weights (the
+ * default checkpoint is 0.5B, about 400 MB quantised). `--llm remote` reads `CORTEX_LLM_BASE_URL`,
+ * `CORTEX_LLM_API_KEY` and `CORTEX_LLM_MODEL` from the environment and never from a file here.
+ * `--llm` defaults to `CORTEX_LLM_BACKEND`, and to `none`: the chain admits, asks and publishes
+ * without a model, and a demo that quietly loaded one would hide that.
+ *
+ * The two backends are resolved by `resolveLlmProfile`, which prints a one-line record before doing
+ * anything. That line is what makes a transcript attributable: a reading produced by a 0.5B
+ * checkpoint and one produced by an API model are otherwise two paragraphs that look alike.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -37,9 +42,25 @@ import { join } from 'node:path';
 import { SqliteStorage } from '../packages/cortex-storage/dist/storage/sqlite.js';
 import { DisclosureSession } from '../packages/cortex-memory/dist/index.js';
 import { TriageProposer } from '../packages/cortex-core/dist/index.js';
+import {
+  ProfileError,
+  describeProfile,
+  readApiKey,
+  resolveLlmProfile,
+} from '../packages/cortex-ai/dist/index.js';
 
 function parse(argv) {
-  const options = { home: '.cortex-demo', atom: undefined, llm: 'none', model: undefined, id: undefined };
+  const options = {
+    home: '.cortex-demo',
+    atom: undefined,
+    llm: process.env['CORTEX_LLM_BACKEND'] ?? 'none',
+    model: undefined,
+    // The recorded readings used q4 (about 400 MB for the 0.5B checkpoint). The profile's own
+    // default is fp32 -- unquantised, and the safe thing to be silent about -- so this tool names
+    // the quantisation it uses and prints it, rather than inheriting a library default.
+    dtype: process.env['CORTEX_LOCAL_DTYPE'] ?? 'q4',
+    id: undefined,
+  };
   const rest = [];
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -50,6 +71,7 @@ function parse(argv) {
       else if (name === 'home') options.home = value;
       else if (name === 'llm') options.llm = value;
       else if (name === 'model') options.model = value;
+      else if (name === 'dtype') options.dtype = value;
       else if (name === 'id') options.id = value;
       else throw new Error(`unknown option --${name}`);
       index += 1;
@@ -61,38 +83,43 @@ function parse(argv) {
 }
 
 /**
- * The proposer, built only when a model was asked for.
+ * The proposer, built from a resolved profile.
  *
  * `none` is a first-class value, not a fallback: the chain admits, asks and publishes without a
- * model, and a demo that quietly loaded one would hide that.
+ * model. `remote` without a key is an **error**, never a downgrade to `local` -- a silent downgrade
+ * would let a transcript claim an API model while a 0.5B checkpoint produced every atom, and nothing
+ * in the output would show it.
  */
-async function buildProposer(llm, model) {
-  if (llm === 'none') return undefined;
-  if (llm === 'local') {
+async function buildProposer(backend, model, dtype) {
+  if (backend === 'none') return { proposer: undefined, profile: undefined };
+  const profile = resolveLlmProfile(
+    { backend, ...(model === undefined ? {} : { model }), ...(dtype === undefined ? {} : { dtype }) },
+    process.env,
+  );
+
+  if (profile.backend === 'local') {
     const { createLocalLLM } = await import('../packages/cortex-ai/dist/local/index.js');
-    const id = model ?? process.env['CORTEX_LOCAL_MODEL'] ?? 'onnx-community/Qwen2.5-0.5B-Instruct';
     const client = await createLocalLLM({
-      model: id,
-      dtype: 'q4',
-      env: { remoteHost: process.env['CORTEX_HF_ENDPOINT'] ?? 'https://hf-mirror.com' },
+      model: profile.model,
+      dtype: profile.dtype,
+      env: { remoteHost: profile.weightHost },
     });
-    return new TriageProposer({ llm: client, model: id });
+    return {
+      proposer: new TriageProposer({ llm: client, model: profile.model, provider: 'local' }),
+      profile,
+    };
   }
-  if (llm === 'openai') {
-    const { OpenAICompatibleLLM } = await import('../packages/cortex-ai/dist/index.js');
-    const baseUrl = process.env['CORTEX_LLM_BASE_URL'];
-    const apiKey = process.env['CORTEX_LLM_API_KEY'];
-    const id = process.env['CORTEX_LLM_MODEL'] ?? model;
-    if (baseUrl === undefined || apiKey === undefined || id === undefined) {
-      throw new Error(
-        '--llm openai needs CORTEX_LLM_BASE_URL, CORTEX_LLM_API_KEY and CORTEX_LLM_MODEL in the ' +
-          'environment: this repository never stores a key',
-      );
-    }
-    const client = new OpenAICompatibleLLM({ baseUrl, apiKey, model: id });
-    return new TriageProposer({ llm: client, model: id });
-  }
-  throw new Error(`unknown --llm ${JSON.stringify(llm)}: expected none, local or openai`);
+
+  const { OpenAICompatibleLLM } = await import('../packages/cortex-ai/dist/index.js');
+  const client = new OpenAICompatibleLLM({
+    baseUrl: profile.baseUrl,
+    apiKey: readApiKey(process.env),
+    model: profile.model,
+  });
+  return {
+    proposer: new TriageProposer({ llm: client, model: profile.model, provider: 'remote' }),
+    profile,
+  };
 }
 
 function renderCard(card) {
@@ -114,7 +141,7 @@ function renderCard(card) {
 }
 
 async function main() {
-  const { command, args, home, atom, llm, model, id } = parse(process.argv.slice(2));
+  const { command, args, home, atom, llm, model, dtype, id } = parse(process.argv.slice(2));
   if (command === undefined) {
     throw new Error('expected a command: say | cards | propose | accept | dismiss | ask | check | export');
   }
@@ -124,7 +151,17 @@ async function main() {
     private: new SqliteStorage({ filename: join(home, 'private.db') }),
     shared: new SqliteStorage({ filename: join(home, 'shared.db') }),
   };
-  const proposer = await buildProposer(llm, model);
+  let built;
+  try {
+    built = await buildProposer(llm, model, dtype);
+  } catch (error) {
+    if (error instanceof ProfileError) {
+      console.error(`configuration: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
+  }
+  const { proposer, profile } = built;
   const session = new DisclosureSession({
     private: storage.private,
     shared: storage.shared,
@@ -149,6 +186,7 @@ async function main() {
     } else if (command === 'propose') {
       const cardId = args[0];
       if (cardId === undefined) throw new Error('propose needs a card id');
+      if (profile !== undefined) console.log(`profile: ${describeProfile(profile)}`);
       const result = await session.propose(cardId);
       if (!result.ok) {
         console.log(`no proposal (${result.failure.reason}): ${result.failure.detail}`);

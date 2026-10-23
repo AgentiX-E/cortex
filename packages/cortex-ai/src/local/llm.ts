@@ -29,7 +29,7 @@
  * card.
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
-import { parseJson } from '../llm/openai-compatible.js';
+import { parseJson } from '../json.js';
 import { preparePipeline, type LocalPipelineOptions } from './pipelines.js';
 
 /** One turn of a chat, as transformers.js accepts it. */

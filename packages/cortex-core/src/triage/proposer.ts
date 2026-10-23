@@ -55,7 +55,7 @@ import { classify as classifyWith, type TriageDecision, type TriageScope } from 
  * incomparable. Stored on every proposal, so a card exported last month can be read against the
  * rules that produced it.
  */
-export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v2';
+export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v3';
 
 /**
  * How many atoms a card may offer.
@@ -128,6 +128,18 @@ export type TriageProposal = {
   readonly promptVersion: string;
   /** Which model produced it, when the caller knows. `null` is recorded rather than defaulted. */
   readonly model: string | null;
+  /**
+   * Which *backend* answered: `local` on-device, `remote` over HTTP, or `null` when the caller did
+   * not say.
+   *
+   * A model id does not imply a backend. `Qwen2.5-0.5B-Instruct` reads as local and `deepseek-chat`
+   * reads as remote, but that is a convention between two strings, not a record -- and a proxy, a
+   * self-hosted endpoint or a mirror all break it. Since step 14 there are two configurations whose
+   * readings are compared, and the card is where they meet: without this field, "which configuration
+   * produced this published fact" is unanswerable from the export, which is the only audit surface
+   * the product has.
+   */
+  readonly provider: string | null;
   /** How many entries the model returned, before any gate. The denominator of `withheld`. */
   readonly candidates: number;
 };
@@ -151,6 +163,8 @@ export type TriageProposerOptions = {
   readonly llm: LLM;
   /** Model identity, recorded on the proposal. Omitted means "the caller did not say". */
   readonly model?: string;
+  /** Backend identity (`local` / `remote`), recorded beside the model for the same reason. */
+  readonly provider?: string;
   /** Replaces the shipped table; exists so a test can drive the classifier-failure paths. */
   readonly classify?: (text: string) => TriageDecision;
   readonly maxFacts?: number;
@@ -239,7 +253,13 @@ export function buildProposerPrompt(text: string): string {
     `1. Every statement must be a verbatim, contiguous run of the sentence: copy the words. Do not`,
     `   paraphrase, reorder, abbreviate, expand, or add anything -- not even a name, a date, or a`,
     `   pronoun that was not there.`,
-    '2. One statement per fact: a sentence joined by "and" is usually more than one. A sentence',
+    // v3 changed exactly this rule and nothing else. v2 said "a sentence joined by and is usually
+    // more than one", which a 0.5B model read as permission to stop at one: on the twenty-card
+    // sample it returned a single atom equal to the whole sentence for fourteen of them, and split
+    // one. v3 states the test -- a second clause with its own subject or verb -- and asks for the
+    // clause count first, so the instruction is a procedure rather than an adjective.
+    '2. Split a sentence that joins two clauses with "and", "but" or "so" when the second clause has',
+    '   its own subject or its own verb. Join nothing that shares the same predicate. A sentence',
     '   that cannot be split is one fact.',
     `3. At most ${MAX_FACTS} statements. If the sentence states nothing a colleague could act on,`,
     '   return an empty list.',
@@ -255,6 +275,7 @@ export function buildProposerPrompt(text: string): string {
     FENCE_CLOSE,
     '',
     // Three dots and no wording: v1 put a sentence here and a small model returned it as the fact.
+    'Before writing the JSON, count the clauses. One entry per clause, in the order they appear.',
     'Answer with JSON only, in this shape, with your own text in place of the dots:',
     '{"facts":[{"text":"...","redactions":[{"start":0,"end":0,"kind":"..."}]}]}',
   ].join('\n');
@@ -279,6 +300,7 @@ export function groundedIn(candidate: string, source: string): boolean {
 export class TriageProposer {
   private readonly llm: LLM;
   private readonly model: string | null;
+  private readonly provider: string | null;
   private readonly classifier: (text: string) => TriageDecision;
   private readonly maxFacts: number;
   private readonly maxFactChars: number;
@@ -286,6 +308,7 @@ export class TriageProposer {
   constructor(options: TriageProposerOptions) {
     this.llm = options.llm;
     this.model = options.model ?? null;
+    this.provider = options.provider ?? null;
     this.classifier = options.classify ?? ((text) => classifyWith(text));
     this.maxFacts = options.maxFacts ?? MAX_FACTS;
     this.maxFactChars = options.maxFactChars ?? MAX_FACT_CHARS;
@@ -332,6 +355,7 @@ export class TriageProposer {
         withheld,
         promptVersion: PROPOSER_PROMPT_VERSION,
         model: this.model,
+        provider: this.provider,
         candidates: candidates.entries.length,
       },
     };

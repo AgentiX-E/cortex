@@ -3,6 +3,7 @@
  * endpoint via fetch. Structured output uses JSON mode + schema-guided prompt.
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
+import { parseJson } from '../json.js';
 import { retryableFetch } from '../retry.js';
 
 /** DeepSeek thinking-mode toggle (also honoured by compatible providers). */
@@ -130,15 +131,9 @@ export function sanitizePrompt(prompt: string): string {
     .replace(/\p{Cf}/gu, '');
 }
 
-/** Extract the first JSON object from a possibly-fenced LLM response. */
-export function parseJson<T>(raw: string): T {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = fenced ? fenced[1]! : trimmed;
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(`LLM did not return a JSON object: ${raw.slice(0, 200)}`);
-  }
-  return JSON.parse(candidate.slice(start, end + 1)) as T;
-}
+/**
+ * Re-exported, not defined here: the two offline entries need this function and must not import this
+ * module (see `src/json.ts`). Keeping the name on this entry's surface means the move is invisible to
+ * callers.
+ */
+export { parseJson } from '../json.js';

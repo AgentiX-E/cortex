@@ -36,7 +36,7 @@
  * wrong answer there is worse than a feature that is simply absent.
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
-import { parseJson } from '../llm/openai-compatible.js';
+import { parseJson } from '../json.js';
 
 /** The states Chrome's Prompt API reports. `downloadable` means "not on this device yet". */
 export type PlatformStatus = 'available' | 'downloadable' | 'downloading' | 'unavailable';

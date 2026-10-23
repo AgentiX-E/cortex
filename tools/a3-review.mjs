@@ -13,6 +13,7 @@
  *
  *     node tools/a3-review.mjs prepare --out /tmp/a3/cards.json --limit 20 [--llm local]
  *     node tools/a3-review.mjs review  --cards /tmp/a3/cards.json --decisions /tmp/a3/decisions.jsonl
+ *     node tools/a3-review.mjs dosage  --cards /tmp/a3/cards.json
  *     node tools/a3-review.mjs score   --decisions /tmp/a3/decisions.jsonl
  *
  * `prepare` needs a model: each card is proposed to exactly as the product would, so the atoms are
@@ -38,8 +39,14 @@ import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { scoreA3 } from '../packages/cortex-eval/dist/index.js';
+import {
+  ProfileError,
+  describeProfile,
+  readApiKey,
+  resolveLlmProfile,
+} from '../packages/cortex-ai/dist/index.js';
 import { DisclosureSession } from '../packages/cortex-memory/dist/index.js';
-import { TriageProposer } from '../packages/cortex-core/dist/index.js';
+import { PROPOSER_PROMPT_VERSION, TriageProposer } from '../packages/cortex-core/dist/index.js';
 import { SqliteStorage } from '../packages/cortex-storage/dist/storage/sqlite.js';
 
 const FIXTURE = new URL(
@@ -48,7 +55,11 @@ const FIXTURE = new URL(
 );
 
 function options(argv) {
-  const out = { command: argv[0] };
+  const out = {
+    command: argv[0],
+    llm: process.env['CORTEX_LLM_BACKEND'] ?? 'none',
+    dtype: process.env['CORTEX_LOCAL_DTYPE'] ?? 'q4',
+  };
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index];
     if (!token.startsWith('--')) continue;
@@ -58,15 +69,56 @@ function options(argv) {
   return out;
 }
 
-async function localProposer() {
-  const { createLocalLLM } = await import('../packages/cortex-ai/dist/local/index.js');
-  const model = process.env['CORTEX_LOCAL_MODEL'] ?? 'onnx-community/Qwen2.5-0.5B-Instruct';
-  const client = await createLocalLLM({
-    model,
-    dtype: 'q4',
-    env: { remoteHost: process.env['CORTEX_HF_ENDPOINT'] ?? 'https://hf-mirror.com' },
+/**
+ * The proposer for whatever configuration was asked for, plus the record of what that was.
+ *
+ * The record is the point. Two `cards.json` files built from different checkpoints are otherwise
+ * indistinguishable, and the whole question this step asks -- does a stronger model give the review
+ * anything to measure -- is answered by comparing them.
+ */
+async function buildProposer(backend, model, dtype) {
+  const profile = resolveLlmProfile(
+    { backend, ...(model === undefined ? {} : { model }), ...(dtype === undefined ? {} : { dtype }) },
+    process.env,
+  );
+
+  if (profile.backend === 'local') {
+    const { createLocalLLM } = await import('../packages/cortex-ai/dist/local/index.js');
+    const client = await createLocalLLM({
+      model: profile.model,
+      dtype: profile.dtype,
+      env: { remoteHost: profile.weightHost },
+    });
+    return {
+      proposer: new TriageProposer({ llm: client, model: profile.model, provider: 'local' }),
+      profile,
+    };
+  }
+
+  const { OpenAICompatibleLLM } = await import('../packages/cortex-ai/dist/index.js');
+  const client = new OpenAICompatibleLLM({
+    baseUrl: profile.baseUrl,
+    apiKey: readApiKey(process.env),
+    model: profile.model,
   });
-  return new TriageProposer({ llm: client, model });
+  return {
+    proposer: new TriageProposer({ llm: client, model: profile.model, provider: 'remote' }),
+    profile,
+  };
+}
+
+/**
+ * How different the two arms actually are, per card.
+ *
+ * Normalised the way the grounding gate normalises, so "the model trimmed the leading clause" is not
+ * reported as a rewrite because of a double space.
+ */
+function classifyCard(card) {
+  const norm = (text) => text.replace(/\s+/g, ' ').trim().toLowerCase();
+  const atoms = card.atoms ?? [];
+  if (atoms.length === 0) return 'none';
+  if (atoms.length >= 2) return 'split';
+  return norm(atoms[0]) === norm(card.source) ? 'identical' : 'one-different';
 }
 
 async function prepare(config) {
@@ -85,11 +137,15 @@ async function prepare(config) {
     private: new SqliteStorage({ filename: `${home}/private.db` }),
     shared: new SqliteStorage({ filename: `${home}/shared.db` }),
   };
-  const proposer = config.llm === 'none' ? undefined : await localProposer();
+  const backend = config.llm ?? process.env['CORTEX_LLM_BACKEND'] ?? 'none';
+  const built =
+    backend === 'none'
+      ? { proposer: undefined, profile: undefined }
+      : await buildProposer(backend, config.model, config.dtype);
   const session = new DisclosureSession({
     private: storage.private,
     shared: storage.shared,
-    ...(proposer === undefined ? {} : { proposer }),
+    ...(built.proposer === undefined ? {} : { proposer: built.proposer }),
   });
 
   const cards = [];
@@ -98,16 +154,27 @@ async function prepare(config) {
     const { card } = await session.say(row.text, { id: row.id });
     if (card === null) continue;
     const atoms = [];
-    if (proposer !== undefined) {
+    if (built.proposer !== undefined) {
       const result = await session.propose(card.id);
       if (result.ok) for (const fact of result.proposal.facts) atoms.push(fact.text);
     }
-    cards.push({ cardId: card.id, gold: row.gold, source: card.text, atoms });
+    cards.push({
+      cardId: card.id,
+      gold: row.gold,
+      source: card.text,
+      atoms,
+      ...(built.profile === undefined ? {} : { profile: describeProfile(built.profile) }),
+      // The prompt is a variable of the treatment: v2 and v3 differ only in how they ask for a
+      // split, and a `cards.json` that did not name its prompt would make the two files
+      // indistinguishable -- which is the mistake this file exists to prevent, caught in itself.
+      promptVersion: PROPOSER_PROMPT_VERSION,
+    });
     console.error(`  ${card.id}: ${atoms.length} atom(s)`);
   }
 
   writeFileSync(config.out, `${JSON.stringify({ prepared: new Date().toISOString(), cards }, null, 2)}\n`);
   console.error(`wrote ${cards.length} card(s) to ${config.out}`);
+  if (built.profile !== undefined) console.error(`profile: ${describeProfile(built.profile)}`);
   await storage.private.close();
   await storage.shared.close();
 }
@@ -211,11 +278,52 @@ function score(config) {
   console.log(`\n${result.verdict.toUpperCase()}: ${result.reason}`);
 }
 
+/**
+ * The gate that has to pass before the clicks are worth spending.
+ *
+ * A3 asks whether showing atoms beats showing the sentence. If both arms show the same text, the
+ * answer is "they are identical" for reasons that have nothing to do with presentation -- and the
+ * experiment cannot be told apart from no experiment. Step 13 measured 14 of 20 cards with identical
+ * arms and one split; this command is that arithmetic, made mechanical so a later run cannot be
+ * argued into existence by a paragraph.
+ *
+ * The threshold is pre-registered in docs/03 section 7.1.1: at least half the cards must carry two
+ * or more atoms. It is a gate on **the treatment**, not on the result -- passing it says the
+ * experiment is worth running, not that atoms will win.
+ */
+function dosage(config) {
+  const { cards } = JSON.parse(readFileSync(config.cards, 'utf8'));
+  const kinds = ['split', 'one-different', 'identical', 'none'];
+  const counts = new Map(kinds.map((kind) => [kind, 0]));
+  for (const card of cards) counts.set(classifyCard(card), (counts.get(classifyCard(card)) ?? 0) + 1);
+
+  const usable = cards.length - (counts.get('none') ?? 0);
+  const split = counts.get('split') ?? 0;
+  const share = usable === 0 ? 0 : split / usable;
+  const distinct = (key) => [...new Set(cards.map((card) => card[key] ?? '(unrecorded)'))];
+
+  console.log(`${cards.length} card(s), ${usable} with a proposal`);
+  for (const kind of kinds) {
+    const label = {
+      split: 'two or more atoms (the treatment)',
+      'one-different': 'one atom, reworded or trimmed',
+      identical: 'one atom, the same text as the sentence',
+      none: 'no proposal at all',
+    }[kind];
+    console.log(`  ${String(counts.get(kind) ?? 0).padStart(4)}  ${label}`);
+  }
+  console.log(`  treatment share: ${(share * 100).toFixed(1)}% of ${usable} (gate: 50%)`);
+  for (const profile of distinct('profile')) console.log(`  profile: ${profile}`);
+  for (const prompt of distinct('promptVersion')) console.log(`  prompt: ${prompt}`);
+  console.log(share >= 0.5 ? '\nGATE PASS: the arms differ enough to measure.' : `\nGATE FAIL: ${split}/${usable} cards carry two or more atoms. Collecting clicks now would measure the model, not the presentation.`);
+}
+
 const config = options(process.argv.slice(2));
 if (config.command === 'prepare') await prepare(config);
 else if (config.command === 'review') await review(config);
 else if (config.command === 'score') score(config);
+else if (config.command === 'dosage') dosage(config);
 else {
-  console.error('expected: prepare | review | score');
+  console.error('expected: prepare | review | score | dosage');
   process.exit(1);
 }
