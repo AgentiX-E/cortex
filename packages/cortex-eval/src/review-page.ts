@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 /**
  * A3 as a page a person can actually click through.
  *
@@ -62,6 +64,104 @@ export type ReviewPlan = {
   /** Cards with no atom cannot form a pair: there is no second presentation to show. */
   readonly skipped: readonly ReviewCard[];
 };
+
+/**
+ * The command line, as a function.
+ *
+ * ## Why this is here and not in `tools/a3-review-page.mjs`
+ *
+ * It was in the tool, and the tool's test ran under `pnpm test:tools`, which the check script runs
+ * **before** `pnpm build`. The tool imports `dist`, a fresh checkout has no `dist`, and CI went red on
+ * a suite that passed locally with a stale build lying around. The rule that comes out of it is the
+ * one this repository already follows everywhere else: logic lives in a package and is covered by the
+ * package's tests; the tool is a shim that reads a file, calls one function, and writes a file.
+ *
+ * `resolveOutPath` exists for the specific defect that started this: `path.join(base, '/abs/file')`
+ * returns `base/abs/file`, so an absolute `--out` was written *inside* the package. `path.resolve`
+ * replaces on the first absolute segment, which is what `--out` means.
+ */
+export type ReviewPageArgs = {
+  readonly cardsPath: string;
+  readonly outPath: string;
+  readonly revealGold: boolean;
+};
+
+const USAGE = 'usage: a3-review-page.mjs --cards <cards.json> --out <file.html> [--reveal-gold]';
+
+/** Arguments, or a message that says what was wrong. `--reveal-gold` is the only flag. */
+export function parseReviewPageArgs(argv: readonly string[]): ReviewPageArgs {
+  let cardsPath: string | undefined;
+  let outPath: string | undefined;
+  let revealGold = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string;
+    if (token === '--reveal-gold') {
+      revealGold = true;
+      continue;
+    }
+    if (!token.startsWith('--'))
+      throw new Error(`${USAGE}\nunexpected argument ${JSON.stringify(token)}`);
+    const value = argv[index + 1];
+    if (value === undefined) throw new Error(`${USAGE}\n${token} needs a value`);
+    if (token === '--cards') cardsPath = value;
+    else if (token === '--out') outPath = value;
+    else throw new Error(`${USAGE}\nunknown option ${token}`);
+    index += 1;
+  }
+
+  if (cardsPath === undefined || outPath === undefined) throw new Error(USAGE);
+  return { cardsPath, outPath, revealGold };
+}
+
+/** An absolute `--out` replaces the base; a relative one is joined to it. */
+export function resolveOutPath(outPath: string, base: string): string {
+  return resolve(base, outPath);
+}
+
+export type ReviewCardsFile = {
+  readonly cards: readonly ReviewCard[];
+  readonly promptVersion: string;
+  readonly profile: string;
+};
+
+/**
+ * The cards file, validated to the point where a review can be attributed.
+ *
+ * Every message names the field and the file. A review whose cards do not say which prompt and which
+ * backend produced them cannot be compared with any other review, and the page it renders would look
+ * exactly like one that can.
+ */
+export function readReviewCards(payload: unknown, source: string): ReviewCardsFile {
+  const cards = (payload as { cards?: unknown } | null)?.cards;
+  if (!Array.isArray(cards) || cards.length === 0) {
+    throw new Error(`${source}: no cards`);
+  }
+  const first = cards[0] as Partial<ReviewCard> & { promptVersion?: unknown; profile?: unknown };
+  const absent = [
+    ...(typeof first.promptVersion === 'string' && first.promptVersion !== ''
+      ? []
+      : ['promptVersion']),
+    ...(typeof first.profile === 'string' && first.profile !== '' ? [] : ['profile']),
+  ];
+  if (absent.length > 0) {
+    throw new Error(
+      `${source}: cards carry no ${absent.join(' and no ')} -- rebuild them with a current ` +
+        'a3-review.mjs prepare, because a review that cannot name its configuration is not a reading',
+    );
+  }
+  const mixed = cards.some(
+    (card: { promptVersion?: unknown; profile?: unknown }) =>
+      card.promptVersion !== first.promptVersion || card.profile !== first.profile,
+  );
+  if (mixed) throw new Error(`${source}: the cards come from more than one configuration`);
+
+  return {
+    cards: cards as ReviewCard[],
+    promptVersion: first.promptVersion as string,
+    profile: first.profile as string,
+  };
+}
 
 /**
  * The order, as data.

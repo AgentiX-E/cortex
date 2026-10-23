@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { scoreA3, type A3Trial } from '../a3.js';
-import { planReview, renderA3ReviewPage, resumeKey, type ReviewCard } from '../review-page.js';
+import {
+  parseReviewPageArgs,
+  planReview,
+  readReviewCards,
+  renderA3ReviewPage,
+  resolveOutPath,
+  resumeKey,
+  type ReviewCard,
+} from '../review-page.js';
 
 /**
  * The page is an instrument, so it is tested like one.
@@ -201,5 +209,98 @@ describe('the JSONL the page exports', () => {
     // One pair, one discordant, and one pair is below the pre-registered count of twenty.
     expect(result.verdict).toBe('underpowered');
     expect(result.arms[1].edited).toBe(1);
+  });
+});
+
+describe('the command line', () => {
+  it('reads both paths and the one flag', () => {
+    expect(parseReviewPageArgs(['--cards', 'c.json', '--out', 'r.html'])).toEqual({
+      cardsPath: 'c.json',
+      outPath: 'r.html',
+      revealGold: false,
+    });
+    expect(
+      parseReviewPageArgs(['--cards', 'c.json', '--out', 'r.html', '--reveal-gold']),
+    ).toMatchObject({ revealGold: true });
+  });
+
+  it('says how to call it, rather than naming the argument that is missing', () => {
+    // Three ways to get this wrong (nothing, only --cards, only --out) and one answer: the usage line.
+    for (const argv of [[], ['--cards', 'c.json'], ['--out', 'r.html']]) {
+      expect(() => parseReviewPageArgs(argv)).toThrow(/usage: a3-review-page\.mjs --cards/);
+    }
+  });
+
+  it('refuses an option it does not know instead of ignoring it', () => {
+    // An ignored flag is how a run ends up describing a configuration it did not apply.
+    expect(() =>
+      parseReviewPageArgs(['--cards', 'c.json', '--out', 'r.html', '--dry-run', 'x']),
+    ).toThrow(/unknown option --dry-run/);
+    // A trailing unknown flag is refused by the value check rather than the name check, which is
+    // still a refusal: the first version of this test asserted the name and read the message's first
+    // line, which is the usage block -- the two branches are one line apart and both say no.
+    expect(() =>
+      parseReviewPageArgs(['--cards', 'c.json', '--out', 'r.html', '--dry-run']),
+    ).toThrow(/--dry-run needs a value/);
+    expect(() => parseReviewPageArgs(['--cards', 'c.json', '--out', 'r.html', 'stray'])).toThrow(
+      /unexpected argument "stray"/,
+    );
+  });
+
+  it('refuses a flag whose value is missing', () => {
+    expect(() => parseReviewPageArgs(['--cards'])).toThrow(/--cards needs a value/);
+  });
+});
+
+describe('where --out lands', () => {
+  it('treats an absolute path as absolute', () => {
+    // `join('/a', '/b/c')` is '/a/b/c'; this is the defect that took out two CI measurement steps.
+    expect(resolveOutPath('/tmp/review.html', '/repo/tools')).toBe('/tmp/review.html');
+  });
+
+  it('treats a relative path as relative to the base it was given', () => {
+    expect(resolveOutPath('review.html', '/repo/tools')).toBe('/repo/tools/review.html');
+  });
+});
+
+describe('the cards file', () => {
+  it('carries the provenance up, so the page can print it', () => {
+    const file = readReviewCards(
+      { cards: [{ ...CARDS[0]!, promptVersion: 'p1', profile: 'local x' }] },
+      'cards.json',
+    );
+    expect(file.promptVersion).toBe('p1');
+    expect(file.profile).toBe('local x');
+    expect(file.cards).toHaveLength(1);
+  });
+
+  it('names the missing field and the file', () => {
+    const bare = { cards: [{ ...CARDS[0]! }] };
+    expect(() => readReviewCards(bare, 'cards.json')).toThrow(
+      /cards\.json: cards carry no promptVersion and no profile/,
+    );
+    expect(() =>
+      readReviewCards({ cards: [{ ...CARDS[0]!, promptVersion: 'p1' }] }, 'cards.json'),
+    ).toThrow(/no profile/);
+  });
+
+  it('refuses cards from two configurations in one review', () => {
+    expect(() =>
+      readReviewCards(
+        {
+          cards: [
+            { ...CARDS[0]!, promptVersion: 'p1', profile: 'local x' },
+            { ...CARDS[1]!, promptVersion: 'p1', profile: 'remote y' },
+          ],
+        },
+        'cards.json',
+      ),
+    ).toThrow(/more than one configuration/);
+  });
+
+  it('refuses an empty or shapeless file', () => {
+    for (const payload of [{ cards: [] }, {}, null, { cards: 'nope' }]) {
+      expect(() => readReviewCards(payload, 'cards.json')).toThrow(/cards\.json: no cards/);
+    }
   });
 });

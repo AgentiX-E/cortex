@@ -50,10 +50,15 @@ export { runAblation, type AblationOptions } from './ablation.js';
 // A3: the arithmetic behind the card-acceptance criterion, so the criterion is computable before
 // there is data to compute it from.
 export {
+  parseReviewPageArgs,
   planReview,
+  readReviewCards,
   renderA3ReviewPage,
+  resolveOutPath,
   resumeKey,
   type ReviewCard,
+  type ReviewCardsFile,
+  type ReviewPageArgs,
   type ReviewPageInput,
   type ReviewPair,
   type ReviewPlan,
