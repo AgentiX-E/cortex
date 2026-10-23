@@ -40,6 +40,7 @@
 
 import type { ScopedRow } from '../federation/federated-storage.js';
 import type { TaskScope } from '../federation/read-side.js';
+import { EchoCorpus } from './echo-corpus.js';
 import { RULE_TABLE, type TriageRule } from './rules.js';
 
 /** What a check objected to. Each kind is a different instruction to the reader. */
@@ -212,15 +213,19 @@ export class OutputGuard {
 
     const width = request.minEchoChars ?? DEFAULT_ECHO_CHARS;
     const allowed = allowedGrams(request.window, width);
-    const corpus = privateGrams(privateValues, width, allowed);
-    if (corpus.size === 0) return [];
+    // The corpus is a Bloom filter plus the row texts: 32 bits per window instead of a 32-character
+    // string per window, which is where the 12x in docs/04 comes from. Subtraction of the allowed
+    // window moved from build time to query time, because a filter cannot remove a key -- the
+    // findings are identical, and a test asserts that on all sixty labelled drafts.
+    const corpus = EchoCorpus.from(privateValues, { width });
+    if (corpus.stats.grams === 0) return [];
 
     const normal = normalise(draft);
     const findings: OutputFinding[] = [];
     let index = 0;
     while (index + width <= normal.text.length) {
       const gram = normal.text.slice(index, index + width).toLowerCase();
-      if (!corpus.has(gram)) {
+      if (allowed.has(gram) || !corpus.contains(gram)) {
         index += 1;
         continue;
       }
@@ -346,23 +351,6 @@ function allowedGrams(window: readonly ScopedRow[] | undefined, width: number): 
     for (const gram of gramsOf(text, width)) allowed.add(gram);
   }
   return allowed;
-}
-
-/** The private corpus, less anything an allowed row already says. */
-function privateGrams(
-  values: readonly unknown[],
-  width: number,
-  allowed: Set<string>,
-): Set<string> {
-  const corpus = new Set<string>();
-  for (const value of values) {
-    const text = textOf(value);
-    if (text === undefined) continue;
-    for (const gram of gramsOf(text, width)) {
-      if (!allowed.has(gram)) corpus.add(gram);
-    }
-  }
-  return corpus;
 }
 
 /** The text a row carries, when it carries one. */

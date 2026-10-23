@@ -543,9 +543,14 @@ describe('the wording the person actually used', () => {
     expect((await w.queue.toMarkdown()).split('\n')).toContain('| id | state | reason | text |');
 
     await w.queue.edit('c1', 'I moved to Berlin in March');
+    // A second card nobody edited, so the column exists while one row's source is empty: that is
+    // the shape a reader actually gets, and the empty cell must not repeat the text column.
+    await openDeferral(w, 'c2', 'The bookshop on the corner reopens next month.');
     const edited = await w.queue.toMarkdown();
     expect(edited.split('\n')).toContain('| id | state | reason | text | source |');
     expect(edited).toContain('and I work at Acme');
+    const untouched = edited.split('\n').find((line) => line.startsWith('| `c2`')) ?? '';
+    expect(untouched).toMatch(/\|\s+\|$/);
   });
 
   it('does not invent a source for a card stored before the field existed', async () => {

@@ -1,0 +1,115 @@
+{
+  "width": 32,
+  "runs": 5,
+  "windows": 44,
+  "table": [
+    {
+      "rows": 100,
+      "chars": 18232,
+      "grams": 15132,
+      "legacyBuildMs": {
+        "p50": 2.07,
+        "p95": 3.34
+      },
+      "legacyQueryMs": {
+        "p50": 0.01,
+        "p95": 0.09
+      },
+      "bloomBuildMs": {
+        "p50": 1.64,
+        "p95": 5.9
+      },
+      "bloomQueryMs": {
+        "p50": 0.04,
+        "p95": 0.21
+      },
+      "guardScanMs": {
+        "p50": 1.81,
+        "p95": 5.15
+      },
+      "bloomBytes": 65536,
+      "speedup": 1.3
+    },
+    {
+      "rows": 1000,
+      "chars": 183086,
+      "grams": 152086,
+      "legacyBuildMs": {
+        "p50": 32.28,
+        "p95": 40.09
+      },
+      "legacyQueryMs": {
+        "p50": 0.01,
+        "p95": 0.02
+      },
+      "bloomBuildMs": {
+        "p50": 19.96,
+        "p95": 27.07
+      },
+      "bloomQueryMs": {
+        "p50": 0.31,
+        "p95": 0.53
+      },
+      "guardScanMs": {
+        "p50": 10.8,
+        "p95": 26.29
+      },
+      "bloomBytes": 1048576,
+      "speedup": 1.6
+    },
+    {
+      "rows": 5000,
+      "chars": 921305,
+      "grams": 766305,
+      "legacyBuildMs": {
+        "p50": 332.35,
+        "p95": 349.2
+      },
+      "legacyQueryMs": {
+        "p50": 0.03,
+        "p95": 0.03
+      },
+      "bloomBuildMs": {
+        "p50": 70.85,
+        "p95": 91.24
+      },
+      "bloomQueryMs": {
+        "p50": 0.01,
+        "p95": 0.01
+      },
+      "guardScanMs": {
+        "p50": 58.84,
+        "p95": 64.58
+      },
+      "bloomBytes": 4194304,
+      "speedup": 4.7
+    },
+    {
+      "rows": 10000,
+      "chars": 1843226,
+      "grams": 1533226,
+      "legacyBuildMs": {
+        "p50": 834.31,
+        "p95": 906.46
+      },
+      "legacyQueryMs": {
+        "p50": 0.03,
+        "p95": 0.03
+      },
+      "bloomBuildMs": {
+        "p50": 133.42,
+        "p95": 195.26
+      },
+      "bloomQueryMs": {
+        "p50": 2.32,
+        "p95": 2.39
+      },
+      "guardScanMs": {
+        "p50": 125.13,
+        "p95": 139.06
+      },
+      "bloomBytes": 8388608,
+      "speedup": 6.3
+    }
+  ]
+}

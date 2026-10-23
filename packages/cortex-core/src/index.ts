@@ -139,6 +139,13 @@ export {
   type WithheldFact,
 } from './triage/proposer.js';
 export {
+  DEFAULT_ECHO_WIDTH,
+  EchoCorpus,
+  hashWindow,
+  rollingHashes,
+  type EchoCorpusStats,
+} from './triage/echo-corpus.js';
+export {
   OutputGuard,
   type FindingKind,
   type OutputFinding,
