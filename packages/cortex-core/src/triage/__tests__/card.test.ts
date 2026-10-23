@@ -524,3 +524,39 @@ describe('the queue and the writer agree on what exists', () => {
     await expect(w.queue.get('ghost')).resolves.toBeUndefined();
   });
 });
+
+describe('the wording the person actually used', () => {
+  it('keeps it after an edit, so the export can answer "did they say that?"', async () => {
+    // Found by running the demo, not by reading the code: publishing an atom replaced the card's
+    // text and deleted the private row, so nothing anywhere recorded the paragraph the atom came
+    // from. The two rows below are the difference between an audit surface and a summary.
+    const w = world();
+    await openDeferral(w, 'c1', 'I moved to Berlin in March and I work at Acme.');
+    const edited = await w.queue.edit('c1', 'I moved to Berlin in March');
+    expect(edited.text).toBe('I moved to Berlin in March');
+    expect(edited.sourceText).toBe('I moved to Berlin in March and I work at Acme.');
+  });
+
+  it('prints a source column only when some card\u2019s wording changed', async () => {
+    const w = world();
+    await openDeferral(w, 'c1', 'I moved to Berlin in March and I work at Acme.');
+    expect((await w.queue.toMarkdown()).split('\n')).toContain('| id | state | reason | text |');
+
+    await w.queue.edit('c1', 'I moved to Berlin in March');
+    const edited = await w.queue.toMarkdown();
+    expect(edited.split('\n')).toContain('| id | state | reason | text | source |');
+    expect(edited).toContain('and I work at Acme');
+  });
+
+  it('does not invent a source for a card stored before the field existed', async () => {
+    const w = world();
+    await openDeferral(w, 'c1');
+    const card = await w.queue.get('c1');
+    if (card === undefined) throw new Error('fixture');
+    // Simulate a row written by the previous release, then read it back through the export. The
+    // router strips the prefix, so the row lives in the `cards` table of the private store.
+    await w.local.put('cards', 'c1', { ...card, sourceText: undefined });
+    const markdown = await w.queue.toMarkdown();
+    expect(markdown.split('\n')).toContain('| id | state | reason | text |');
+  });
+});

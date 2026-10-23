@@ -117,6 +117,9 @@ importers:
       '@agentix-e/cortex-eval':
         specifier: workspace:*
         version: link:../cortex-eval
+      '@agentix-e/cortex-storage':
+        specifier: workspace:*
+        version: link:../cortex-storage
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1

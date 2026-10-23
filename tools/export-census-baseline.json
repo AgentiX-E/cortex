@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 617,
-    "withCaller": 332,
-    "orphaned": 285,
-    "referencedLocally": 232,
-    "unreferenced": 53
+    "exports": 626,
+    "withCaller": 340,
+    "orphaned": 286,
+    "referencedLocally": 234,
+    "unreferenced": 52
   },
   "groups": [
     {
@@ -33,10 +33,11 @@
     },
     {
       "category": "core-llm-node-surface",
-      "count": 106,
+      "count": 107,
       "rationale": "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-ai/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. THE THREE ENTRIES OF cortex-ai ARE ONE LIBRARY WITH THREE DEPENDENCY PROFILES: `.` (remote providers, needs only fetch), `./local` (transformers.js, an optional peer) and `./web` (the browser's built-in model). Almost every export in this group is part of that surface and is called by a consumer, not by this repository -- the repository ships no application. Two of them are worth naming because they look like internal helpers and are not: `createFeatureExtractor` and `createRerankClassifier` are the loading layer that pins `dtype` and reads raw logits, and `test/parity/run.mjs` drives both against real weights. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. THE SAME APPLIES TO THE TRIAGE SURFACE from implementation steps 5 and 6 (`TriageWriter`, `CardQueue`, `RULE_TABLE`, `classify`, `destinationOf`, `assertRuleTable`, `TriageError`, `RuleTableError` and their types): it is the write side of the boundary and the queue that fills the shared store, called internally and by the four test files that measure the sixty labelled utterances, the card lifecycle and the output guard. `OutputGuard` (step 7) is the same table read in the other direction -- what may be said rather than what may be stored -- and it is called by a product that does not exist in this repository yet. THE PROPOSAL LAYER (step 9: `TriageProposer`, `groundedIn`, `buildProposerPrompt`, `PROPOSER_PROMPT_VERSION`, `MAX_FACTS`, `MAX_FACT_CHARS` and their types) is the same kind of entry: its only in-repository callers are the proposer\u2019s own gates and the card queue\u2019s `attach`, and the thing that will call it in production is an application that does not exist here. It is exported so the four gates can be driven from a test one at a time and so a caller can build the same prompt it will validate against -- `buildProposerPrompt` is exported for exactly that reason, and a card renderer needs `MAX_FACTS` to say \"3 of 8\" without inventing a second constant. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly.",
       "declarationSites": [
         "cortex-ai: AvailabilityReport (packages/cortex-ai/src/web/platform-language-model.ts:56)",
+        "cortex-ai: ChatMessage (packages/cortex-ai/src/local/llm.ts:36)",
         "cortex-ai: CrossEncoderRerankerOptions (packages/cortex-ai/src/rerank/rerank.ts:186)",
         "cortex-ai: DEFAULT_DTYPE (packages/cortex-ai/src/local/pipelines.ts:42)",
         "cortex-ai: DEFAULT_MAX_RETRIES (packages/cortex-ai/src/retry.ts:38)",
@@ -45,6 +46,7 @@
         "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS (packages/cortex-ai/src/retry.ts:58)",
         "cortex-ai: EMBEDDING_CALL_OPTIONS (packages/cortex-ai/src/local/pipelines.ts:112)",
         "cortex-ai: LLMRerankerOptions (packages/cortex-ai/src/rerank/llm-reranker.ts:37)",
+        "cortex-ai: LocalLLMOptions (packages/cortex-ai/src/local/llm.ts:53)",
         "cortex-ai: OpenAICompatibleLLMOptions (packages/cortex-ai/src/llm/openai-compatible.ts:11)",
         "cortex-ai: OpenAICompatibleRerankerOptions (packages/cortex-ai/src/rerank/rerank.ts:26)",
         "cortex-ai: OpenAIEmbeddingOptions (packages/cortex-ai/src/embedding/openai.ts:8)",
@@ -58,14 +60,16 @@
         "cortex-ai: RetryStats (packages/cortex-ai/src/retry.ts:187)",
         "cortex-ai: RetryStatsAggregate (packages/cortex-ai/src/retry.ts:313)",
         "cortex-ai: RetryStatsSnapshot (packages/cortex-ai/src/retry.ts:257)",
+        "cortex-ai: TextGenerationOutput (packages/cortex-ai/src/local/llm.ts:39)",
+        "cortex-ai: TextGenerationPipeline (packages/cortex-ai/src/local/llm.ts:43)",
         "cortex-ai: TransformersEmbeddingOptions (packages/cortex-ai/src/local/embedding.ts:27)",
         "cortex-ai: applyLocalEnv (packages/cortex-ai/src/local/pipelines.ts:152)",
         "cortex-ai: buildChatBody (packages/cortex-ai/src/llm/openai-compatible.ts:88)",
         "cortex-ai: buildListwiseRerankPrompt (packages/cortex-ai/src/rerank/llm-reranker.ts:55)",
         "cortex-ai: buildRerankBody (packages/cortex-ai/src/rerank/rerank.ts:50)",
         "cortex-ai: checkAvailability (packages/cortex-ai/src/web/platform-language-model.ts:91)",
-        "cortex-ai: createFeatureExtractor (packages/cortex-ai/src/local/pipelines.ts:173)",
-        "cortex-ai: createRerankClassifier (packages/cortex-ai/src/local/pipelines.ts:207)",
+        "cortex-ai: createFeatureExtractor (packages/cortex-ai/src/local/pipelines.ts:179)",
+        "cortex-ai: createRerankClassifier (packages/cortex-ai/src/local/pipelines.ts:213)",
         "cortex-ai: createRetryStatsAggregate (packages/cortex-ai/src/retry.ts:387)",
         "cortex-ai: isRetryableStatus (packages/cortex-ai/src/retry.ts:28)",
         "cortex-ai: parseListwiseScores (packages/cortex-ai/src/rerank/llm-reranker.ts:90)",
@@ -78,13 +82,11 @@
         "cortex-core: AccessRecord (packages/cortex-core/src/consolidation/consolidate.ts:21)",
         "cortex-core: AdmittedFact (packages/cortex-core/src/triage/writer.ts:62)",
         "cortex-core: AssembleRequest (packages/cortex-core/src/federation/read-side.ts:50)",
-        "cortex-core: CardQueue (packages/cortex-core/src/triage/card.ts:106)",
-        "cortex-core: CardQueueOptions (packages/cortex-core/src/triage/card.ts:75)",
+        "cortex-core: CardQueueOptions (packages/cortex-core/src/triage/card.ts:90)",
         "cortex-core: CardState (packages/cortex-core/src/triage/card.ts:33)",
         "cortex-core: ConsolidationStats (packages/cortex-core/src/consolidation/consolidate.ts:15)",
         "cortex-core: FindingKind (packages/cortex-core/src/triage/output-guard.ts:46)",
         "cortex-core: FuseRerankOptions (packages/cortex-core/src/retrieval/rerank.ts:62)",
-        "cortex-core: KnowledgeCard (packages/cortex-core/src/triage/card.ts:36)",
         "cortex-core: MAX_FACTS (packages/cortex-core/src/triage/proposer.ts:67)",
         "cortex-core: MAX_FACT_CHARS (packages/cortex-core/src/triage/proposer.ts:76)",
         "cortex-core: MAX_REVIEW_BOOST (packages/cortex-core/src/math/fsrs.ts:66)",
@@ -96,10 +98,8 @@
         "cortex-core: OutputScan (packages/cortex-core/src/triage/output-guard.ts:68)",
         "cortex-core: OutputScanRequest (packages/cortex-core/src/triage/output-guard.ts:74)",
         "cortex-core: ProposalFailure (packages/cortex-core/src/triage/proposer.ts:135)",
-        "cortex-core: ProposalResult (packages/cortex-core/src/triage/proposer.ts:146)",
         "cortex-core: ProposedFact (packages/cortex-core/src/triage/proposer.ts:95)",
         "cortex-core: ProposedRedaction (packages/cortex-core/src/triage/proposer.ts:88)",
-        "cortex-core: ReadSideAssembler (packages/cortex-core/src/federation/read-side.ts:104)",
         "cortex-core: ReadSideOptions (packages/cortex-core/src/federation/read-side.ts:56)",
         "cortex-core: RedactionKind (packages/cortex-core/src/triage/proposer.ts:85)",
         "cortex-core: RerankCandidate (packages/cortex-core/src/retrieval/rerank.ts:41)",
@@ -132,11 +132,12 @@
         "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
         "cortex-core: studentTCdf (packages/cortex-core/src/math/stats.ts:119)",
         "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:353)",
+        "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:48)",
+        "cortex-memory: SayResult (packages/cortex-memory/src/disclosure/session.ts:78)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:901)",
         "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:1837)",
         "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:18)",
         "cortex-storage: PgStorageOptions (packages/cortex-storage/src/storage/pg.ts:14)",
-        "cortex-storage: SqliteStorage (packages/cortex-storage/src/storage/sqlite.ts:51)",
         "cortex-storage: SqliteStorageOptions (packages/cortex-storage/src/storage/sqlite.ts:21)",
         "cortex-storage: StorageClosedError (packages/cortex-storage/src/storage/sql-storage.ts:54)",
         "cortex-storage: TransactionOpenError (packages/cortex-storage/src/storage/sql-storage.ts:62)",
@@ -331,6 +332,7 @@
   ],
   "knownOrphans": [
     "cortex-ai: AvailabilityReport",
+    "cortex-ai: ChatMessage",
     "cortex-ai: CrossEncoderRerankerOptions",
     "cortex-ai: DEFAULT_DTYPE",
     "cortex-ai: DEFAULT_MAX_RETRIES",
@@ -339,6 +341,7 @@
     "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS",
     "cortex-ai: EMBEDDING_CALL_OPTIONS",
     "cortex-ai: LLMRerankerOptions",
+    "cortex-ai: LocalLLMOptions",
     "cortex-ai: OpenAICompatibleLLMOptions",
     "cortex-ai: OpenAICompatibleRerankerOptions",
     "cortex-ai: OpenAIEmbeddingOptions",
@@ -352,6 +355,8 @@
     "cortex-ai: RetryStats",
     "cortex-ai: RetryStatsAggregate",
     "cortex-ai: RetryStatsSnapshot",
+    "cortex-ai: TextGenerationOutput",
+    "cortex-ai: TextGenerationPipeline",
     "cortex-ai: TransformersEmbeddingOptions",
     "cortex-ai: applyLocalEnv",
     "cortex-ai: buildChatBody",
@@ -372,7 +377,6 @@
     "cortex-core: AccessRecord",
     "cortex-core: AdmittedFact",
     "cortex-core: AssembleRequest",
-    "cortex-core: CardQueue",
     "cortex-core: CardQueueOptions",
     "cortex-core: CardState",
     "cortex-core: CensusReport",
@@ -381,7 +385,6 @@
     "cortex-core: ExportedSymbol",
     "cortex-core: FindingKind",
     "cortex-core: FuseRerankOptions",
-    "cortex-core: KnowledgeCard",
     "cortex-core: MAX_FACTS",
     "cortex-core: MAX_FACT_CHARS",
     "cortex-core: MAX_REVIEW_BOOST",
@@ -394,10 +397,8 @@
     "cortex-core: OutputScanRequest",
     "cortex-core: PackageCensus",
     "cortex-core: ProposalFailure",
-    "cortex-core: ProposalResult",
     "cortex-core: ProposedFact",
     "cortex-core: ProposedRedaction",
-    "cortex-core: ReadSideAssembler",
     "cortex-core: ReadSideOptions",
     "cortex-core: RedactionKind",
     "cortex-core: RerankCandidate",
@@ -591,6 +592,8 @@
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
+    "cortex-memory: DisclosureSessionOptions",
+    "cortex-memory: SayResult",
     "cortex-memory: formatEvidence",
     "cortex-memory: truncateCodePointSafe",
     "cortex-storage: BrowserStorage",
@@ -606,7 +609,6 @@
     "cortex-storage: RpcErrorCode",
     "cortex-storage: RpcMethod",
     "cortex-storage: RpcRequest",
-    "cortex-storage: SqliteStorage",
     "cortex-storage: SqliteStorageOptions",
     "cortex-storage: StorageClosedError",
     "cortex-storage: TransactionOpenError",
@@ -618,6 +620,7 @@
   ],
   "orphanClass": {
     "cortex-ai: AvailabilityReport": "referenced-locally",
+    "cortex-ai: ChatMessage": "referenced-locally",
     "cortex-ai: CrossEncoderRerankerOptions": "referenced-locally",
     "cortex-ai: DEFAULT_DTYPE": "referenced-locally",
     "cortex-ai: DEFAULT_MAX_RETRIES": "referenced-locally",
@@ -626,6 +629,7 @@
     "cortex-ai: DEFAULT_RETRY_TIMEOUT_MS": "referenced-locally",
     "cortex-ai: EMBEDDING_CALL_OPTIONS": "referenced-locally",
     "cortex-ai: LLMRerankerOptions": "referenced-locally",
+    "cortex-ai: LocalLLMOptions": "referenced-locally",
     "cortex-ai: OpenAICompatibleLLMOptions": "referenced-locally",
     "cortex-ai: OpenAICompatibleRerankerOptions": "referenced-locally",
     "cortex-ai: OpenAIEmbeddingOptions": "referenced-locally",
@@ -639,6 +643,8 @@
     "cortex-ai: RetryStats": "referenced-locally",
     "cortex-ai: RetryStatsAggregate": "referenced-locally",
     "cortex-ai: RetryStatsSnapshot": "referenced-locally",
+    "cortex-ai: TextGenerationOutput": "referenced-locally",
+    "cortex-ai: TextGenerationPipeline": "referenced-locally",
     "cortex-ai: TransformersEmbeddingOptions": "referenced-locally",
     "cortex-ai: applyLocalEnv": "referenced-locally",
     "cortex-ai: buildChatBody": "referenced-locally",
@@ -659,7 +665,6 @@
     "cortex-core: AccessRecord": "referenced-locally",
     "cortex-core: AdmittedFact": "referenced-locally",
     "cortex-core: AssembleRequest": "referenced-locally",
-    "cortex-core: CardQueue": "referenced-locally",
     "cortex-core: CardQueueOptions": "referenced-locally",
     "cortex-core: CardState": "referenced-locally",
     "cortex-core: CensusReport": "referenced-locally",
@@ -668,7 +673,6 @@
     "cortex-core: ExportedSymbol": "referenced-locally",
     "cortex-core: FindingKind": "referenced-locally",
     "cortex-core: FuseRerankOptions": "referenced-locally",
-    "cortex-core: KnowledgeCard": "referenced-locally",
     "cortex-core: MAX_FACTS": "referenced-locally",
     "cortex-core: MAX_FACT_CHARS": "referenced-locally",
     "cortex-core: MAX_REVIEW_BOOST": "referenced-locally",
@@ -681,10 +685,8 @@
     "cortex-core: OutputScanRequest": "referenced-locally",
     "cortex-core: PackageCensus": "referenced-locally",
     "cortex-core: ProposalFailure": "referenced-locally",
-    "cortex-core: ProposalResult": "referenced-locally",
     "cortex-core: ProposedFact": "referenced-locally",
     "cortex-core: ProposedRedaction": "referenced-locally",
-    "cortex-core: ReadSideAssembler": "referenced-locally",
     "cortex-core: ReadSideOptions": "referenced-locally",
     "cortex-core: RedactionKind": "referenced-locally",
     "cortex-core: RerankCandidate": "referenced-locally",
@@ -878,6 +880,8 @@
     "cortex-eval: truncateSession": "unreferenced",
     "cortex-eval: truncateText": "unreferenced",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
+    "cortex-memory: DisclosureSessionOptions": "referenced-locally",
+    "cortex-memory: SayResult": "referenced-locally",
     "cortex-memory: formatEvidence": "unreferenced",
     "cortex-memory: truncateCodePointSafe": "unreferenced",
     "cortex-storage: BrowserStorage": "referenced-locally",
@@ -893,7 +897,6 @@
     "cortex-storage: RpcErrorCode": "referenced-locally",
     "cortex-storage: RpcMethod": "referenced-locally",
     "cortex-storage: RpcRequest": "referenced-locally",
-    "cortex-storage: SqliteStorage": "unreferenced",
     "cortex-storage: SqliteStorageOptions": "referenced-locally",
     "cortex-storage: StorageClosedError": "referenced-locally",
     "cortex-storage: TransactionOpenError": "referenced-locally",
@@ -906,6 +909,9 @@
   "locations": {
     "cortex-ai: AvailabilityReport": [
       "packages/cortex-ai/src/web/platform-language-model.ts:56"
+    ],
+    "cortex-ai: ChatMessage": [
+      "packages/cortex-ai/src/local/llm.ts:36"
     ],
     "cortex-ai: CrossEncoderRerankerOptions": [
       "packages/cortex-ai/src/rerank/rerank.ts:186"
@@ -930,6 +936,9 @@
     ],
     "cortex-ai: LLMRerankerOptions": [
       "packages/cortex-ai/src/rerank/llm-reranker.ts:37"
+    ],
+    "cortex-ai: LocalLLMOptions": [
+      "packages/cortex-ai/src/local/llm.ts:53"
     ],
     "cortex-ai: OpenAICompatibleLLMOptions": [
       "packages/cortex-ai/src/llm/openai-compatible.ts:11"
@@ -970,6 +979,12 @@
     "cortex-ai: RetryStatsSnapshot": [
       "packages/cortex-ai/src/retry.ts:257"
     ],
+    "cortex-ai: TextGenerationOutput": [
+      "packages/cortex-ai/src/local/llm.ts:39"
+    ],
+    "cortex-ai: TextGenerationPipeline": [
+      "packages/cortex-ai/src/local/llm.ts:43"
+    ],
     "cortex-ai: TransformersEmbeddingOptions": [
       "packages/cortex-ai/src/local/embedding.ts:27"
     ],
@@ -989,10 +1004,10 @@
       "packages/cortex-ai/src/web/platform-language-model.ts:91"
     ],
     "cortex-ai: createFeatureExtractor": [
-      "packages/cortex-ai/src/local/pipelines.ts:173"
+      "packages/cortex-ai/src/local/pipelines.ts:179"
     ],
     "cortex-ai: createRerankClassifier": [
-      "packages/cortex-ai/src/local/pipelines.ts:207"
+      "packages/cortex-ai/src/local/pipelines.ts:213"
     ],
     "cortex-ai: createRetryStatsAggregate": [
       "packages/cortex-ai/src/retry.ts:387"
@@ -1030,11 +1045,8 @@
     "cortex-core: AssembleRequest": [
       "packages/cortex-core/src/federation/read-side.ts:50"
     ],
-    "cortex-core: CardQueue": [
-      "packages/cortex-core/src/triage/card.ts:106"
-    ],
     "cortex-core: CardQueueOptions": [
-      "packages/cortex-core/src/triage/card.ts:75"
+      "packages/cortex-core/src/triage/card.ts:90"
     ],
     "cortex-core: CardState": [
       "packages/cortex-core/src/triage/card.ts:33"
@@ -1056,9 +1068,6 @@
     ],
     "cortex-core: FuseRerankOptions": [
       "packages/cortex-core/src/retrieval/rerank.ts:62"
-    ],
-    "cortex-core: KnowledgeCard": [
-      "packages/cortex-core/src/triage/card.ts:36"
     ],
     "cortex-core: MAX_FACTS": [
       "packages/cortex-core/src/triage/proposer.ts:67"
@@ -1096,17 +1105,11 @@
     "cortex-core: ProposalFailure": [
       "packages/cortex-core/src/triage/proposer.ts:135"
     ],
-    "cortex-core: ProposalResult": [
-      "packages/cortex-core/src/triage/proposer.ts:146"
-    ],
     "cortex-core: ProposedFact": [
       "packages/cortex-core/src/triage/proposer.ts:95"
     ],
     "cortex-core: ProposedRedaction": [
       "packages/cortex-core/src/triage/proposer.ts:88"
-    ],
-    "cortex-core: ReadSideAssembler": [
-      "packages/cortex-core/src/federation/read-side.ts:104"
     ],
     "cortex-core: ReadSideOptions": [
       "packages/cortex-core/src/federation/read-side.ts:56"
@@ -1687,6 +1690,12 @@
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
       "packages/cortex-memory/src/prompt.ts:353"
     ],
+    "cortex-memory: DisclosureSessionOptions": [
+      "packages/cortex-memory/src/disclosure/session.ts:48"
+    ],
+    "cortex-memory: SayResult": [
+      "packages/cortex-memory/src/disclosure/session.ts:78"
+    ],
     "cortex-memory: formatEvidence": [
       "packages/cortex-memory/src/prompt.ts:901"
     ],
@@ -1731,9 +1740,6 @@
     ],
     "cortex-storage: RpcRequest": [
       "packages/cortex-storage/src/browser/rpc.ts:68"
-    ],
-    "cortex-storage: SqliteStorage": [
-      "packages/cortex-storage/src/storage/sqlite.ts:51"
     ],
     "cortex-storage: SqliteStorageOptions": [
       "packages/cortex-storage/src/storage/sqlite.ts:21"

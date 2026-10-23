@@ -63,6 +63,21 @@ export type KnowledgeCard = {
    */
   readonly refused?: { readonly rule: string; readonly policy: string; readonly at: number };
   /**
+   * The sentence the person said, kept even after `text` becomes something else.
+   *
+   * ## Why this exists, and what found it
+   *
+   * The session demo published an atom and the paragraph it came from disappeared: `edit()` replaces
+   * `text`, `promote()` deletes the private row, and nothing was left that said *what the person
+   * originally said*. The export is the audit surface, and an audit surface that shows only the
+   * agreed wording cannot answer the first question anyone asks about a disclosure -- "did they
+   * really say that?".
+   *
+   * Set when the card is opened and never rewritten. Absent on a card stored before it existed, and
+   * a reader treats absent as "same as `text`".
+   */
+  readonly sourceText?: string;
+  /**
    * What a model offered to split this card into, and what the gates kept.
    *
    * Content, never verdict: attaching one publishes nothing, moves no row and rewrites no scope
@@ -140,6 +155,7 @@ export class CardQueue {
     const card: KnowledgeCard = {
       id: admission.id,
       text: admission.text,
+      sourceText: admission.text,
       state: 'proposed',
       reason:
         admission.triage.failure === undefined
@@ -399,13 +415,25 @@ export class CardQueue {
       (state) => `${counts[state]} ${state}`,
     );
 
-    // The proposed column exists only when a proposal does. A column that is empty for every row
-    // teaches the reader to skip the right-hand side of the table, which is where the audit lives.
+    // Two optional columns, each shown only when it carries something. A column that is empty for
+    // every row teaches the reader to skip the right-hand side of the table, which is where the
+    // audit lives.
     const showProposal = cards.some((card) => card.proposal !== undefined);
-    const header = showProposal
-      ? '| id | state | reason | text | proposed |'
-      : '| id | state | reason | text |';
-    const divider = showProposal ? '|---|---|---|---|---|' : '|---|---|---|---|';
+    // The source column appears only for a card whose wording changed -- an edit, or an accepted
+    // atom. On a card nobody touched it would repeat the `text` column for every row.
+    const showSource = cards.some(
+      (card) => card.sourceText !== undefined && card.sourceText !== card.text,
+    );
+    const columns = [
+      'id',
+      'state',
+      'reason',
+      'text',
+      ...(showSource ? ['source'] : []),
+      ...(showProposal ? ['proposed'] : []),
+    ];
+    const header = `| ${columns.join(' | ')} |`;
+    const divider = `|${columns.map(() => '---').join('|')}|`;
 
     const lines = [
       '# Knowledge cards',
@@ -414,11 +442,17 @@ export class CardQueue {
       '',
       header,
       divider,
-      ...cards.map(
-        (card) =>
-          `| \`${card.id}\` | ${card.state} | ${escapeCell(card.reason)} | ${escapeCell(card.text)} |` +
-          (showProposal ? ` ${escapeCell(proposedCell(card))} |` : ''),
-      ),
+      ...cards.map((card) => {
+        const cells = [
+          `\`${card.id}\``,
+          card.state,
+          escapeCell(card.reason),
+          escapeCell(card.text),
+          ...(showSource ? [escapeCell(sourceCell(card))] : []),
+          ...(showProposal ? [escapeCell(proposedCell(card))] : []),
+        ];
+        return `| ${cells.join(' | ')} |`;
+      }),
     ];
     return `${lines.join('\n')}\n`;
   }
@@ -444,6 +478,12 @@ export class CardQueue {
 /** A table cell cannot carry a pipe or a newline; the text is the user's, so both are possible. */
 function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/** The wording the person used, or nothing when it is what the card already shows. */
+function sourceCell(card: KnowledgeCard): string {
+  if (card.sourceText === undefined || card.sourceText === card.text) return '';
+  return card.sourceText;
 }
 
 /**

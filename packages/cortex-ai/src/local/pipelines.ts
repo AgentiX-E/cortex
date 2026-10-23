@@ -157,8 +157,14 @@ export function applyLocalEnv(module: TransformersModule, env: LocalEnv | undefi
   }
 }
 
-/** Load the module, apply `env`, and return it with the pipeline arguments this package pins. */
-async function prepare(options: LocalPipelineOptions): Promise<{
+/**
+ * Load the module, apply `env`, and return it with the pipeline arguments this package pins.
+ *
+ * Exported because the generation adapter needs exactly this and nothing else, and a second copy of
+ * "load, apply, pin" is a second place for the `dtype` pin to be forgotten -- which is the failure
+ * this file was written to prevent in the first place.
+ */
+export async function preparePipeline(options: LocalPipelineOptions): Promise<{
   module: TransformersModule;
   args: { dtype: string; device?: string };
 }> {
@@ -173,7 +179,7 @@ async function prepare(options: LocalPipelineOptions): Promise<{
 export async function createFeatureExtractor(
   options: LocalPipelineOptions,
 ): Promise<FeatureExtractor> {
-  const { module, args } = await prepare(options);
+  const { module, args } = await preparePipeline(options);
   const extractor = (await module.pipeline('feature-extraction', options.model, args)) as (
     texts: string[],
     opts?: { pooling: string; normalize: boolean },
@@ -207,7 +213,7 @@ export async function createFeatureExtractor(
 export async function createRerankClassifier(
   options: LocalPipelineOptions,
 ): Promise<CrossEncoderPipeline> {
-  const { module, args } = await prepare(options);
+  const { module, args } = await preparePipeline(options);
   const tokenizerClass = module.AutoTokenizer;
   const modelClass = module.AutoModelForSequenceClassification;
   if (tokenizerClass === undefined || modelClass === undefined) {

@@ -23,6 +23,13 @@ export {
   type TransformersModule,
 } from './pipelines.js';
 export { TransformersEmbedding, type TransformersEmbeddingOptions } from './embedding.js';
+export {
+  createLocalLLM,
+  type ChatMessage,
+  type LocalLLMOptions,
+  type TextGenerationOutput,
+  type TextGenerationPipeline,
+} from './llm.js';
 
 // Re-exported so that a local-only build needs one import: the class takes its pipeline by
 // injection, so it lives in the root, but nothing about it depends on a provider or a network.

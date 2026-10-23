@@ -14,6 +14,15 @@ export type { GateOptions, CortexMemoryOptions, ReviewPass, TurnCapRoute } from 
 // and so `test_ask_table_parity.py` has one product-side list to compare against the arm's copy.
 export { TURN_CAP_ROUTES } from './types.js';
 
+// disclosure
+// The composition root of the boundary: write side, card queue, proposal layer and read side, in the
+// one order that makes "they said it" become "a colleague can read it".
+export {
+  DisclosureSession,
+  type DisclosureSessionOptions,
+  type SayResult,
+} from './disclosure/session.js';
+
 // admission
 export {
   admitTurns,
