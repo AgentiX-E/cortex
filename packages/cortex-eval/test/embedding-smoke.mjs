@@ -29,7 +29,7 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createEmbeddingWithProvenanceFromEnv } from '../dist/index.js';
@@ -84,7 +84,9 @@ async function main() {
     cosineUnrelated: Number(cosine(first, third).toFixed(4)),
   };
 
-  const out = join(HERE, value('out', 'embedding-smoke.json'));
+  // `resolve`, not `join`: an absolute path passed by CI would otherwise be appended to this
+  // directory rather than replacing it. See the same note in `cortex-ai/test/proposer/run.mjs`.
+  const out = resolve(HERE, value('out', 'embedding-smoke.json'));
   writeFileSync(out, `${JSON.stringify(summary, null, 2)}\n`);
   console.log(JSON.stringify(summary, null, 2));
   console.error(`wrote ${out}`);

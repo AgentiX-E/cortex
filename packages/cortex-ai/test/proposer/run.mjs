@@ -314,7 +314,12 @@ async function main() {
 
   // `--out` exists so a second configuration does not overwrite the first reading: two backends, two
   // files, and the comparison is a diff instead of a memory.
-  const out = join(HERE, value('out', 'live-result.json'));
+  //
+  // `resolve` and not `join`: `join('/a', '/b/c')` is '/a/b/c', so an absolute path -- which is what a
+  // CI step passes, because the artifact directory is outside the package -- silently landed inside
+  // the package and the write failed with ENOENT. The first dispatch of `measure-models.yml` died
+  // on exactly this, in this line and in `embedding-smoke.mjs`.
+  const out = resolve(HERE, value('out', 'live-result.json'));
   writeFileSync(out, `${JSON.stringify(summary, null, 2)}\n`);
   console.error(`wrote ${out}`);
   console.log(JSON.stringify({ ...summary, perRow: undefined }, null, 2));
