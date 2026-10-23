@@ -49,7 +49,11 @@ export class OpenAICompatibleLLM implements LLM {
     opts: CompleteOptions = {},
   ): Promise<T> {
     const guided = `${prompt}\n\nRespond with JSON matching this schema:\n${JSON.stringify(schema)}`;
-    const raw = await this.complete(guided, opts);
+    // The schema is forwarded, not only pasted into the prompt. Without this the body never carries
+    // `response_format: json_object` -- `buildChatBody` had the branch, and a unit test asserted the
+    // branch, but nothing set `opts.schema` on the way in, so the flag was built, tested and never
+    // sent. A transport test that reads the request body is what found it.
+    const raw = await this.complete(guided, { ...opts, schema });
     return parseJson<T>(raw);
   }
 

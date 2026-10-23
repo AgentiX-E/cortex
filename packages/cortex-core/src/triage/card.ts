@@ -26,6 +26,7 @@
  */
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
+import { groundedIn, type TriageProposal } from './proposer.js';
 import { TriageError, type Admission, type TriageWriter } from './writer.js';
 
 /** Where a card is in its life. `dismissed` and `stale` are the two that need care. */
@@ -61,6 +62,14 @@ export type KnowledgeCard = {
    * password typed into a rejected edit is still a password.
    */
   readonly refused?: { readonly rule: string; readonly policy: string; readonly at: number };
+  /**
+   * What a model offered to split this card into, and what the gates kept.
+   *
+   * Content, never verdict: attaching one publishes nothing, moves no row and rewrites no scope
+   * field. The person's own sentence stays in `text` until they choose otherwise, because the card
+   * is the record of what they said and a proposal is a suggestion about it.
+   */
+  readonly proposal?: TriageProposal;
 };
 
 export type CardQueueOptions = {
@@ -146,6 +155,52 @@ export class CardQueue {
     };
     await this.put(card);
     return card;
+  }
+
+  /**
+   * Record what a model offered for this card. Writes a card, not a fact.
+   *
+   * Three things this refuses, each of which is a way for generated text to get somewhere it should
+   * not be:
+   *
+   * 1. **A decided card.** The content of a published fact is history; replacing it would rewrite
+   *    what the person agreed to after they agreed to it.
+   * 2. **An empty proposal.** A card that offers no statement is a question with no answer to give,
+   *    and it renders as a broken row rather than as "the model had nothing".
+   * 3. **A statement the person did not say.** The proposer already refuses these, so this is the
+   *    second gate of two -- and it is the one that also covers a proposal assembled by hand, which
+   *    is what a future caller will do the first time it wants to skip the model.
+   *
+   * Re-attaching replaces the previous proposal rather than merging it: two models' atoms in one
+   * card is a card nobody reviewed.
+   */
+  async attach(id: string, proposal: TriageProposal): Promise<KnowledgeCard> {
+    const card = await this.require(id);
+    if (card.state !== 'proposed') {
+      throw new TriageError(
+        `card ${JSON.stringify(id)} is ${card.state}: a proposal is content for an open question, ` +
+          `and a decided card's content is history`,
+      );
+    }
+    if (proposal.facts.length === 0) {
+      throw new TriageError(
+        'an empty proposal is not a proposal: it would render as a card offering nothing, which ' +
+          'reads as "the model found nothing to share" rather than as a failure',
+      );
+    }
+    for (const fact of proposal.facts) {
+      if (!groundedIn(fact.text, card.text)) {
+        throw new TriageError(
+          `the proposed fact ${JSON.stringify(fact.text.slice(0, 80))} is not grounded in the ` +
+            `sentence it claims to come from: a card may only offer words the person actually said`,
+        );
+      }
+    }
+
+    const raised = this.now();
+    const attached: KnowledgeCard = { ...card, proposal, updatedAt: raised };
+    await this.put(attached);
+    return attached;
   }
 
   /** Publish a fact and close its card. Idempotent once accepted. */
@@ -344,16 +399,25 @@ export class CardQueue {
       (state) => `${counts[state]} ${state}`,
     );
 
+    // The proposed column exists only when a proposal does. A column that is empty for every row
+    // teaches the reader to skip the right-hand side of the table, which is where the audit lives.
+    const showProposal = cards.some((card) => card.proposal !== undefined);
+    const header = showProposal
+      ? '| id | state | reason | text | proposed |'
+      : '| id | state | reason | text |';
+    const divider = showProposal ? '|---|---|---|---|---|' : '|---|---|---|---|';
+
     const lines = [
       '# Knowledge cards',
       '',
       `${cards.length} card(s): ${summary.join(', ')}.`,
       '',
-      '| id | state | reason | text |',
-      '|---|---|---|---|',
+      header,
+      divider,
       ...cards.map(
         (card) =>
-          `| \`${card.id}\` | ${card.state} | ${escapeCell(card.reason)} | ${escapeCell(card.text)} |`,
+          `| \`${card.id}\` | ${card.state} | ${escapeCell(card.reason)} | ${escapeCell(card.text)} |` +
+          (showProposal ? ` ${escapeCell(proposedCell(card))} |` : ''),
       ),
     ];
     return `${lines.join('\n')}\n`;
@@ -380,4 +444,16 @@ export class CardQueue {
 /** A table cell cannot carry a pipe or a newline; the text is the user's, so both are possible. */
 function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * The atoms a card offers, with the withheld count beside them.
+ *
+ * The count is printed even when it is zero, because "0 withheld" is a reading and an empty cell is
+ * not: a reviewer comparing two exports needs to see that the second one rejected six statements.
+ */
+function proposedCell(card: KnowledgeCard): string {
+  if (card.proposal === undefined) return '';
+  const atoms = card.proposal.facts.map((fact) => fact.text).join('; ');
+  return `${atoms} (${card.proposal.withheld.length} withheld)`;
 }

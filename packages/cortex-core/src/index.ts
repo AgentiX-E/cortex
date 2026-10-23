@@ -123,6 +123,22 @@ export {
   type KnowledgeCard,
 } from './triage/card.js';
 export {
+  MAX_FACTS,
+  MAX_FACT_CHARS,
+  PROPOSER_PROMPT_VERSION,
+  TriageProposer,
+  buildProposerPrompt,
+  groundedIn,
+  type ProposalFailure,
+  type ProposalResult,
+  type ProposedFact,
+  type ProposedRedaction,
+  type RedactionKind,
+  type TriageProposal,
+  type TriageProposerOptions,
+  type WithheldFact,
+} from './triage/proposer.js';
+export {
   OutputGuard,
   type FindingKind,
   type OutputFinding,
