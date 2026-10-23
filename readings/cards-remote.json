@@ -1,0 +1,224 @@
+{
+  "prepared": "2026-10-23T16:22:35.613Z",
+  "cards": [
+    {
+      "cardId": "g00",
+      "gold": "defer",
+      "source": "By the way, I just finished an online course on data analysis using Python, so I'm interested in applying my new skills to improve my SEO strategies.",
+      "atoms": [
+        "By the way, I just finished an online course on data analysis using Python",
+        "so I'm interested in applying my new skills to improve my SEO strategies"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g02",
+      "gold": "defer",
+      "source": "I have a few meetings scheduled at work, and I need to finish a report that's due by the end of the week.",
+      "atoms": [
+        "I have a few meetings scheduled at work",
+        "I need to finish a report that's due by the end of the week"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g04",
+      "gold": "defer",
+      "source": "By the way, I've been really enjoying editing my photos in Lightroom - the online communities I've joined have been super helpful in learning new techniques and getting feedback on my work.",
+      "atoms": [
+        "By the way, I've been really enjoying editing my photos in Lightroom",
+        "the online communities I've joined have been super helpful in learning new techniques",
+        "getting feedback on my work"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g05",
+      "gold": "defer",
+      "source": "Each had its own unique charm, but I think my favorite was the Fairmont Orchid.",
+      "atoms": [
+        "Each had its own unique charm",
+        "but I think my favorite was the Fairmont Orchid"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g06",
+      "gold": "defer",
+      "source": "I think I'll check out Joe's Tackle Shop's website before heading over to see what kind of fishing nets they have in stock.",
+      "atoms": [
+        "I think I'll check out Joe's Tackle Shop's website",
+        "before heading over to see what kind of fishing nets they have in stock"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g08",
+      "gold": "shared",
+      "source": "I have a production facility on Poland that can produce high end climbing walls, climbing wooden volumes and all special interior a climbing or bouldering gym needs.",
+      "atoms": [
+        "I have a production facility on Poland",
+        "that can produce high end climbing walls",
+        "climbing wooden volumes",
+        "and all special interior a climbing or bouldering gym needs"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g09",
+      "gold": "defer",
+      "source": "Yeah, I must have gotten the festival name mixed up.",
+      "atoms": [
+        "Yeah, I must have gotten the festival name mixed up."
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g10",
+      "gold": "defer",
+      "source": "I've been tracking my social media analytics for a while now, and I've noticed that my Instagram account has been performing really well, with an average engagement rate of 5%.",
+      "atoms": [
+        "I've been tracking my social media analytics for a while now",
+        "I've noticed that my Instagram account has been performing really well",
+        "with an average engagement rate of 5%"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g12",
+      "gold": "defer",
+      "source": "I'll definitely keep an eye on the weather if I plan a trip during hurricane season.",
+      "atoms": [
+        "I'll definitely keep an eye on the weather",
+        "if I plan a trip during hurricane season"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g13",
+      "gold": "shared",
+      "source": "I am planning a project in Nigeria that connects 100 rural villages to running water.",
+      "atoms": [
+        "I am planning a project in Nigeria",
+        "that connects 100 rural villages to running water"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g17",
+      "gold": "defer",
+      "source": "I did notice that my internet speed has been really good lately, especially when I'm streaming movies on Netflix.",
+      "atoms": [
+        "I did notice that my internet speed has been really good lately",
+        "especially when I'm streaming movies on Netflix"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g18",
+      "gold": "defer",
+      "source": "By the way, speaking of TV shows, I also watch Brooklyn Nine-Nine during my lunch break at work.",
+      "atoms": [
+        "By the way, speaking of TV shows, I also watch Brooklyn Nine-Nine during my lunch break at work."
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g19",
+      "gold": "defer",
+      "source": "I think I'd feel more confident hearing personal experiences from someone who has actually been to these restaurants.",
+      "atoms": [
+        "I think I'd feel more confident hearing personal experiences from someone who has actually been to these restaurants."
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g21",
+      "gold": "defer",
+      "source": "I've enjoyed seeing the different interpretations of the character and the ways in which the films have addressed changing times and attitudes.",
+      "atoms": [
+        "I've enjoyed seeing the different interpretations of the character",
+        "and the ways in which the films have addressed changing times and attitudes"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g22",
+      "gold": "shared",
+      "source": "I'm thinking of setting up a dance club at work and I was wondering if you could help me come up with some ideas for a playlist to get us started.",
+      "atoms": [
+        "I'm thinking of setting up a dance club at work",
+        "I was wondering if you could help me come up with some ideas for a playlist to get us started"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g23",
+      "gold": "defer",
+      "source": "I've been trying to get into a consistent morning routine, but it's tough when I have a lot on my plate at work.",
+      "atoms": [
+        "I've been trying to get into a consistent morning routine",
+        "but it's tough when I have a lot on my plate at work"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g25",
+      "gold": "defer",
+      "source": "I think personal interests and work-life balance are the most important factors for me.",
+      "atoms": [
+        "I think personal interests and work-life balance are the most important factors for me."
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g29",
+      "gold": "defer",
+      "source": "I'm definitely going to have to visit all those spots.",
+      "atoms": [
+        "I'm definitely going to have to visit all those spots."
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g30",
+      "gold": "defer",
+      "source": "I'm actually planning to make a classic California roll with crab and avocado, and then try out a new recipe with grilled eel and cucumber.",
+      "atoms": [
+        "I'm actually planning to make a classic California roll with crab and avocado",
+        "and then try out a new recipe with grilled eel and cucumber"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    },
+    {
+      "cardId": "g32",
+      "gold": "defer",
+      "source": "Since I've been listening to a lot of Billie Eilish lately, I was wondering if you could recommend some other artists or bands that have a similar sound or style.",
+      "atoms": [
+        "Since I've been listening to a lot of Billie Eilish lately",
+        "I was wondering if you could recommend some other artists or bands that have a similar sound or style"
+      ],
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v2"
+    }
+  ]
+}
