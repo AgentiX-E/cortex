@@ -44,6 +44,18 @@ const INT = /^\s*(-?\d+)(?:\.0+)?\s*$/;
 const COUNT = /\b(?:how many|number of|total number|count of)\b/i;
 
 /**
+ * A question whose answer depends on resolving "last month" against the conversation's own clock.
+ *
+ * The corpus is dated 2023 and the reader is told nothing about when "now" is, so a relative expression
+ * has to be resolved against the evidence rather than against the wall clock. Measured on the adopted
+ * configuration, MR questions carrying one answered **48.5%** against 68.2% for those that do not --
+ * a 19.7pp gap on 33 of 121 questions, which is where the temporal work starts. The split is reported
+ * for every capability because TR is the capability it is *named* for and has never been measured.
+ */
+const RELATIVE_TIME =
+  /\b(?:last|past|this|previous|recent|recently|lately|ago|yesterday|today|tonight|now|currently|current|these days|so far)\b/i;
+
+/**
  * What kind of wrong answer this is.
  *
  * `numeric off by -1` is separated from `numeric far off` because they are different claims: the first
@@ -96,10 +108,22 @@ function census(questions) {
       shapes: tally(failures.map(answerShape)),
       coverage: tally(failures.map(goldCoverage)),
       abstentions: abstentions.length,
-      abstentionsWithList: abstentions.filter((question) => declinedItems(question.rawOutput ?? '').length > 0)
-        .length,
+      abstentionsWithList: abstentions.filter(
+        (question) => declinedItems(question.rawOutput ?? '').length > 0,
+      ).length,
       // The recovery pass's signature, so a run that used it is legible from the artifact alone.
-      recovered: rows.filter((question) => (question.rawOutput ?? '').includes('ITEMS YOU LISTED')).length,
+      recovered: rows.filter((question) => (question.rawOutput ?? '').includes('ITEMS YOU LISTED'))
+        .length,
+      // Accuracy on questions that need a relative time resolved, and on those that do not. Reported
+      // as a pair because either alone invites the wrong reading: a capability can be strong on both
+      // and weak on neither, or look strong overall while failing most of one kind.
+      relativeTime: (() => {
+        const withTime = rows.filter((question) => RELATIVE_TIME.test(question.question ?? ''));
+        const without = rows.filter((question) => !RELATIVE_TIME.test(question.question ?? ''));
+        const rate = (set) =>
+          set.length === 0 ? null : `${set.filter((q) => q.correct).length}/${set.length}`;
+        return { withTime: rate(withTime), without: rate(without) };
+      })(),
     };
   }
   return byCapability;
@@ -107,25 +131,29 @@ function census(questions) {
 
 function main() {
   const at = process.argv.indexOf('--report');
-  if (at < 0) throw new Error('pass --report <path to benchmark-cortex-memory-ablation-report.json>');
+  if (at < 0)
+    throw new Error('pass --report <path to benchmark-cortex-memory-ablation-report.json>');
   const path = process.argv[at + 1];
   const report = JSON.parse(readFileSync(path, 'utf8'));
   const questions = report.questions ?? [];
   const result = {
     what: 'Multi-session failure census: answer shape, gold coverage, and abstentions that contradict their own list.',
     source: basename(path),
-    generatedFrom: { questionCount: report.questionCount, runs: report.runs, config: report.memoryArmConfig },
+    generatedFrom: {
+      questionCount: report.questionCount,
+      runs: report.runs,
+      config: report.memoryArmConfig,
+    },
     byCapability: census(questions),
     // The split that decides the next experiment: a wrong answer with complete coverage is the
     // reader's, one with partial coverage is retrieval's, and they need opposite work.
-    mrVerdict:
-      (() => {
-        const mr = questions.filter((question) => question.capability === 'MR' && !question.correct);
-        if (mr.length === 0) return 'no multi-session failures';
-        const complete = mr.filter((question) => goldCoverage(question) === 'complete').length;
-        const partial = mr.filter((question) => goldCoverage(question) === 'partial').length;
-        return `${complete} reader (complete coverage) / ${partial} retrieval (partial) / ${mr.length - complete - partial} unrecorded`;
-      })(),
+    mrVerdict: (() => {
+      const mr = questions.filter((question) => question.capability === 'MR' && !question.correct);
+      if (mr.length === 0) return 'no multi-session failures';
+      const complete = mr.filter((question) => goldCoverage(question) === 'complete').length;
+      const partial = mr.filter((question) => goldCoverage(question) === 'partial').length;
+      return `${complete} reader (complete coverage) / ${partial} retrieval (partial) / ${mr.length - complete - partial} unrecorded`;
+    })(),
   };
 
   if (process.argv.includes('--json')) {
@@ -137,7 +165,8 @@ function main() {
       `${capability}: ${row.correct}/${row.questions} correct, ${row.failures} failures\n` +
         `  shapes:   ${row.shapes.map(([name, n]) => `${name} ${n}`).join(' · ')}\n` +
         `  coverage: ${row.coverage.map(([name, n]) => `${name} ${n}`).join(' · ')}\n` +
-        `  abstained: ${row.abstentions} (${row.abstentionsWithList} with a non-empty Step 1 list)\n`,
+        `  abstained: ${row.abstentions} (${row.abstentionsWithList} with a non-empty Step 1 list)\n` +
+        `  relative time: ${row.relativeTime.withTime ?? 'none'} with · ${row.relativeTime.without ?? 'none'} without\n`,
     );
   }
   process.stdout.write(`\nMR: ${result.mrVerdict}\n`);
@@ -147,7 +176,10 @@ function main() {
 function writeResult(path) {
   const at = process.argv.indexOf('--report');
   const report = JSON.parse(readFileSync(process.argv[at + 1], 'utf8'));
-  writeFileSync(path, `${JSON.stringify({ ...census(report.questions ?? []), source: basename(process.argv[at + 1]) }, null, 1)}\n`);
+  writeFileSync(
+    path,
+    `${JSON.stringify({ ...census(report.questions ?? []), source: basename(process.argv[at + 1]) }, null, 1)}\n`,
+  );
 }
 
 if (process.argv[1]?.endsWith('run.mjs')) {

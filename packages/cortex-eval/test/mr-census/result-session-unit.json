@@ -99,7 +99,11 @@
       ],
       "abstentions": 9,
       "abstentionsWithList": 8,
-      "recovered": 0
+      "recovered": 0,
+      "relativeTime": {
+        "withTime": "16/33",
+        "without": "60/88"
+      }
     },
     "TR": {
       "questions": 127,
@@ -131,7 +135,11 @@
       ],
       "abstentions": 23,
       "abstentionsWithList": 4,
-      "recovered": 0
+      "recovered": 0,
+      "relativeTime": {
+        "withTime": "31/50",
+        "without": "61/77"
+      }
     },
     "KU": {
       "questions": 72,
@@ -163,7 +171,11 @@
       ],
       "abstentions": 3,
       "abstentionsWithList": 1,
-      "recovered": 0
+      "recovered": 0,
+      "relativeTime": {
+        "withTime": "24/29",
+        "without": "37/43"
+      }
     },
     "IE": {
       "questions": 150,
@@ -191,7 +203,11 @@
       ],
       "abstentions": 13,
       "abstentionsWithList": 0,
-      "recovered": 0
+      "recovered": 0,
+      "relativeTime": {
+        "withTime": "58/69",
+        "without": "76/81"
+      }
     },
     "ABS": {
       "questions": 30,
@@ -211,7 +227,11 @@
       ],
       "abstentions": 0,
       "abstentionsWithList": 0,
-      "recovered": 0
+      "recovered": 0,
+      "relativeTime": {
+        "withTime": "4/4",
+        "without": "25/26"
+      }
     }
   },
   "mrVerdict": "43 reader (complete coverage) / 2 retrieval (partial) / 0 unrecorded"
