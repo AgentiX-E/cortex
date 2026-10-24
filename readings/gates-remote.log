@@ -1,0 +1,59 @@
+calling deepseek-chat at https://api.deepseek.com/v1
+wrote /home/runner/work/cortex/cortex/readings/live-result-remote.json
+{
+  "model": "deepseek-chat",
+  "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+  "promptVersion": "triage-proposer/v4",
+  "sentences": 60,
+  "proposed": 41,
+  "factsKept": 69,
+  "candidates": 79,
+  "withheld": 27,
+  "secondsPerSentence": 0.97,
+  "outcomes": [
+    [
+      "failed:all-withheld",
+      11
+    ],
+    [
+      "failed:empty",
+      8
+    ],
+    [
+      "proposed",
+      41
+    ]
+  ],
+  "withheldReasons": [
+    [
+      "invented:new-word",
+      8
+    ],
+    [
+      "rule:career-status",
+      1
+    ],
+    [
+      "rule:health",
+      13
+    ],
+    [
+      "rule:money",
+      5
+    ]
+  ],
+  "inventedWords": [
+    [
+      "contains",
+      2
+    ],
+    [
+      "want",
+      2
+    ],
+    [
+      "bought",
+      1
+    ]
+  ]
+}

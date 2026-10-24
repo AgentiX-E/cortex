@@ -1,0 +1,13 @@
+{
+  "provenance": {
+    "provider": "openai-compatible",
+    "model": "embedding-3",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "dimensions": 1024
+  },
+  "dimension": 1024,
+  "vectorLength": 1024,
+  "seconds": 1.87,
+  "cosineRelated": 0.9172,
+  "cosineUnrelated": 0.5489
+}
