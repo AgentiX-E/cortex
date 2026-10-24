@@ -1,0 +1,263 @@
+{
+  "prepared": "2026-10-24T07:56:51.247Z",
+  "cards": [
+    {
+      "cardId": "g00",
+      "gold": "defer",
+      "source": "By the way, I just finished an online course on data analysis using Python, so I'm interested in applying my new skills to improve my SEO strategies.",
+      "atoms": [
+        "I just finished an online course on data analysis using Python.",
+        "I am interested in applying my new skills to improve my SEO strategies."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g02",
+      "gold": "defer",
+      "source": "I have a few meetings scheduled at work, and I need to finish a report that's due by the end of the week.",
+      "atoms": [
+        "I have a few meetings scheduled at work.",
+        "I need to finish a report that is due by the end of the week."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g04",
+      "gold": "defer",
+      "source": "By the way, I've been really enjoying editing my photos in Lightroom - the online communities I've joined have been super helpful in learning new techniques and getting feedback on my work.",
+      "atoms": [
+        "I edit my photos in Lightroom.",
+        "The online communities I joined are helpful in learning new techniques.",
+        "The online communities I joined are helpful in getting feedback on my work."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g05",
+      "gold": "defer",
+      "source": "Each had its own unique charm, but I think my favorite was the Fairmont Orchid.",
+      "atoms": [
+        "Each had its own unique charm.",
+        "My favorite was the Fairmont Orchid."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g06",
+      "gold": "defer",
+      "source": "I think I'll check out Joe's Tackle Shop's website before heading over to see what kind of fishing nets they have in stock.",
+      "atoms": [
+        "I will check out Joe's Tackle Shop's website before heading over to see what kind of fishing nets they have in stock."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g08",
+      "gold": "shared",
+      "source": "I have a production facility on Poland that can produce high end climbing walls, climbing wooden volumes and all special interior a climbing or bouldering gym needs.",
+      "atoms": [
+        "I have a production facility in Poland.",
+        "My production facility can produce high end climbing walls.",
+        "My production facility can produce climbing wooden volumes.",
+        "My production facility can produce all special interior a climbing or bouldering gym needs."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g09",
+      "gold": "defer",
+      "source": "Yeah, I must have gotten the festival name mixed up.",
+      "atoms": [
+        "I must have gotten the festival name mixed up."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g10",
+      "gold": "defer",
+      "source": "I've been tracking my social media analytics for a while now, and I've noticed that my Instagram account has been performing really well, with an average engagement rate of 5%.",
+      "atoms": [
+        "I have been tracking my social media analytics for a while now.",
+        "My Instagram account has been performing really well.",
+        "My Instagram account has an average engagement rate of 5%."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g12",
+      "gold": "defer",
+      "source": "I'll definitely keep an eye on the weather if I plan a trip during hurricane season.",
+      "atoms": [
+        "I will keep an eye on the weather if I plan a trip during hurricane season."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g13",
+      "gold": "shared",
+      "source": "I am planning a project in Nigeria that connects 100 rural villages to running water.",
+      "atoms": [
+        "I am planning a project in Nigeria.",
+        "The project connects 100 rural villages to running water."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g17",
+      "gold": "defer",
+      "source": "I did notice that my internet speed has been really good lately, especially when I'm streaming movies on Netflix.",
+      "atoms": [
+        "My internet speed has been really good lately.",
+        "My internet speed is really good when I'm streaming movies on Netflix."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g18",
+      "gold": "defer",
+      "source": "By the way, speaking of TV shows, I also watch Brooklyn Nine-Nine during my lunch break at work.",
+      "atoms": [
+        "I watch Brooklyn Nine-Nine during my lunch break at work."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g19",
+      "gold": "defer",
+      "source": "I think I'd feel more confident hearing personal experiences from someone who has actually been to these restaurants.",
+      "atoms": [
+        "I would feel more confident hearing personal experiences from someone who has actually been to these restaurants."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g21",
+      "gold": "defer",
+      "source": "I've enjoyed seeing the different interpretations of the character and the ways in which the films have addressed changing times and attitudes.",
+      "atoms": [
+        "I have enjoyed seeing the different interpretations of the character.",
+        "The films have addressed changing times and attitudes."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g22",
+      "gold": "shared",
+      "source": "I'm thinking of setting up a dance club at work and I was wondering if you could help me come up with some ideas for a playlist to get us started.",
+      "atoms": [
+        "I am thinking of setting up a dance club at work.",
+        "I was wondering if you could help me come up with some ideas for a playlist to get us started."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g23",
+      "gold": "defer",
+      "source": "I've been trying to get into a consistent morning routine, but it's tough when I have a lot on my plate at work.",
+      "atoms": [
+        "I have been trying to get into a consistent morning routine.",
+        "A consistent morning routine is tough when I have a lot on my plate at work."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g25",
+      "gold": "defer",
+      "source": "I think personal interests and work-life balance are the most important factors for me.",
+      "atoms": [
+        "Personal interests are one of the most important factors for me.",
+        "Work-life balance is one of the most important factors for me."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g29",
+      "gold": "defer",
+      "source": "I'm definitely going to have to visit all those spots.",
+      "atoms": [
+        "I am going to visit all those spots."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g30",
+      "gold": "defer",
+      "source": "I'm actually planning to make a classic California roll with crab and avocado, and then try out a new recipe with grilled eel and cucumber.",
+      "atoms": [
+        "I am planning to make a classic California roll with crab and avocado.",
+        "I am planning to try out a new recipe with grilled eel and cucumber."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    },
+    {
+      "cardId": "g32",
+      "gold": "defer",
+      "source": "Since I've been listening to a lot of Billie Eilish lately, I was wondering if you could recommend some other artists or bands that have a similar sound or style.",
+      "atoms": [
+        "I have been listening to a lot of Billie Eilish lately.",
+        "I was wondering if you could recommend some other artists or bands that have a similar sound or style."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v5"
+    }
+  ]
+}

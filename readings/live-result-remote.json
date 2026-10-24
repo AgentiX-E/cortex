@@ -1,0 +1,694 @@
+{
+  "model": "deepseek-chat",
+  "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+  "promptVersion": "triage-proposer/v5",
+  "sentences": 60,
+  "proposed": 48,
+  "factsKept": 85,
+  "candidates": 92,
+  "withheld": 23,
+  "secondsPerSentence": 1.01,
+  "outcomes": [
+    [
+      "failed:all-withheld",
+      10
+    ],
+    [
+      "failed:empty",
+      2
+    ],
+    [
+      "proposed",
+      48
+    ]
+  ],
+  "withheldReasons": [
+    [
+      "invented:new-word",
+      2
+    ],
+    [
+      "rule:career-status",
+      1
+    ],
+    [
+      "rule:family",
+      1
+    ],
+    [
+      "rule:health",
+      13
+    ],
+    [
+      "rule:money",
+      6
+    ]
+  ],
+  "inventedWords": [
+    [
+      "take",
+      1
+    ]
+  ],
+  "perRow": [
+    {
+      "id": "g00",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1243,
+      "replyHead": "{\"facts\":[{\"text\":\"I finished an online course on data analysis using Python.\",\"redactions\":[]},{\"text\":\"I am interested in applying my new skills to improve my SEO strategies.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g01",
+      "gold": "private",
+      "outcome": "failed:empty",
+      "ms": 729,
+      "replyHead": "{\"facts\":[]}",
+      "detail": "the model returned no statements for a non-empty sentence"
+    },
+    {
+      "id": "g02",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 874,
+      "replyHead": "{\"facts\":[{\"text\":\"I have a few meetings scheduled at work.\",\"redactions\":[]},{\"text\":\"I need to finish a report that's due by the end of the week.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g03",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 927,
+      "replyHead": "{\"facts\":[{\"text\":\"I am creating an HR hub site for the company I work in.\",\"redactions\":[]},{\"text\":\"The company I work in is a bank.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g04",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1142,
+      "replyHead": "{\"facts\":[{\"text\":\"I edit my photos in Lightroom.\",\"redactions\":[]},{\"text\":\"I joined online communities.\",\"redactions\":[]},{\"text\":\"The online communities I joined are helpful in learning new techniq",
+      "facts": 4,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 4
+    },
+    {
+      "id": "g05",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 898,
+      "replyHead": "{\"facts\":[{\"text\":\"My favorite was the Fairmont Orchid.\",\"redactions\":[{\"start\":17,\"end\":32,\"kind\":\"place\"}]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g06",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1293,
+      "replyHead": "{\"facts\":[{\"text\":\"I will check out Joe's Tackle Shop's website before heading over to see what kind of fishing nets they have in stock.\",\"redactions\":[{\"start\":16,\"end\":32,\"kind\":\"name\"}]},{\"text\":\"J",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g07",
+      "gold": "defer",
+      "outcome": "failed:all-withheld",
+      "ms": 861,
+      "replyHead": "{\"facts\":[{\"text\":\"I am looking for new vegan recipes to try out.\",\"redactions\":[]}]}",
+      "detail": "1 candidate(s) withheld (1 rule:health)"
+    },
+    {
+      "id": "g08",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 1420,
+      "replyHead": "{\"facts\":[{\"text\":\"I have a production facility in Poland.\",\"redactions\":[{\"start\":28,\"end\":34,\"kind\":\"place\"}]},{\"text\":\"My production facility can produce high end climbing walls.\",\"redactions\":[]},",
+      "facts": 4,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 4
+    },
+    {
+      "id": "g09",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 848,
+      "replyHead": "{\"facts\":[{\"text\":\"I must have gotten the festival name mixed up.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g10",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1022,
+      "replyHead": "{\"facts\":[{\"text\":\"I track my social media analytics.\",\"redactions\":[]},{\"text\":\"My Instagram account has been performing really well.\",\"redactions\":[]},{\"text\":\"My Instagram account has an average en",
+      "facts": 3,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g11",
+      "gold": "private",
+      "outcome": "failed:all-withheld",
+      "ms": 929,
+      "replyHead": "{\"facts\":[{\"text\":\"I spent around $350 on the ASOS purchase.\",\"redactions\":[{\"start\":16,\"end\":21,\"kind\":\"amount\"}]},{\"text\":\"The three dresses and boots must have cost $350 in total.\",\"redactions\":[{\"",
+      "detail": "2 candidate(s) withheld (2 rule:money)"
+    },
+    {
+      "id": "g12",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 759,
+      "replyHead": "{\"facts\":[{\"text\":\"I will keep an eye on the weather if I plan a trip during hurricane season.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g13",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 1118,
+      "replyHead": "{\"facts\":[{\"text\":\"I am planning a project in Nigeria that connects 100 rural villages to running water.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g14",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 1115,
+      "replyHead": "{\"facts\":[{\"text\":\"I will cover the project's goals and objectives at the beginning of the meeting.\",\"redactions\":[]},{\"text\":\"I will move on to discussing the project plan and task assignments.\",\"red",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g15",
+      "gold": "private",
+      "outcome": "failed:all-withheld",
+      "ms": 992,
+      "replyHead": "{\"facts\":[{\"text\":\"I got carried away with the strength training plan.\",\"redactions\":[]}]}",
+      "detail": "1 candidate(s) withheld (1 rule:health)"
+    },
+    {
+      "id": "g16",
+      "gold": "private",
+      "outcome": "proposed",
+      "ms": 908,
+      "replyHead": "```json {\"facts\":[{\"text\":\"I try to incorporate more walking into my daily routine.\",\"redactions\":[]},{\"text\":\"I started taking the stairs instead of the elevator at work.\",\"redactions\":[]}]} ```",
+      "facts": 1,
+      "withheld": [
+        "rule:health"
+      ],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g17",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1245,
+      "replyHead": "{\"facts\":[{\"text\":\"My internet speed has been really good lately.\",\"redactions\":[]},{\"text\":\"My internet speed is good when I stream movies on Netflix.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g18",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 739,
+      "replyHead": "{\"facts\":[{\"text\":\"I watch Brooklyn Nine-Nine during my lunch break at work.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g19",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 870,
+      "replyHead": "{\"facts\":[{\"text\":\"I would feel more confident hearing personal experiences from someone who has actually been to these restaurants.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g20",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 836,
+      "replyHead": "{\"facts\":[{\"text\":\"I am thinking of organizing a meeting with my team.\",\"redactions\":[]},{\"text\":\"The meeting is to discuss the project plan.\",\"redactions\":[]},{\"text\":\"The meeting is to assign tasks.",
+      "facts": 3,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g21",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 896,
+      "replyHead": "{\"facts\":[{\"text\":\"I enjoyed seeing different interpretations of the character.\",\"redactions\":[]},{\"text\":\"I enjoyed seeing the ways the films have addressed changing times and attitudes.\",\"redactions",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g22",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 1006,
+      "replyHead": "{\"facts\":[{\"text\":\"I am thinking of setting up a dance club at work.\",\"redactions\":[]},{\"text\":\"I was wondering if you could help me come up with some ideas for a playlist to get us started.\",\"redacti",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g23",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1200,
+      "replyHead": "{\"facts\":[{\"text\":\"I have a lot on my plate at work.\",\"redactions\":[]},{\"text\":\"I am trying to get into a consistent morning routine.\",\"redactions\":[]},{\"text\":\"It is tough to get into a consistent mo",
+      "facts": 3,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g24",
+      "gold": "defer",
+      "outcome": "failed:all-withheld",
+      "ms": 995,
+      "replyHead": "{\"facts\":[{\"text\":\"Affordable alternatives to high-end brands offer similar quality at a lower price point.\",\"redactions\":[]}]}",
+      "detail": "1 candidate(s) withheld (1 rule:money)"
+    },
+    {
+      "id": "g25",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1140,
+      "replyHead": "{\"facts\":[{\"text\":\"Personal interests and work-life balance are the most important factors for me.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g26",
+      "gold": "private",
+      "outcome": "proposed",
+      "ms": 858,
+      "replyHead": "{\"facts\":[{\"text\":\"I worked from home on Tuesday morning to make up for the lost time due to my dentist appointment.\",\"redactions\":[]},{\"text\":\"I want buffer time in the morning in case I need to make",
+      "facts": 1,
+      "withheld": [
+        "rule:health"
+      ],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g27",
+      "gold": "private",
+      "outcome": "failed:all-withheld",
+      "ms": 740,
+      "replyHead": "{\"facts\":[{\"text\":\"I was thinking around $50 would be nice.\",\"redactions\":[{\"start\":23,\"end\":26,\"kind\":\"amount\"}]},{\"text\":\"I do not have a specific budget in mind.\",\"redactions\":[]}]}",
+      "detail": "2 candidate(s) withheld (2 rule:money)"
+    },
+    {
+      "id": "g28",
+      "gold": "private",
+      "outcome": "proposed",
+      "ms": 962,
+      "replyHead": "{\"facts\":[{\"text\":\"I just got a promotion at work.\",\"redactions\":[]},{\"text\":\"I treated myself to a luxury spree.\",\"redactions\":[]},{\"text\":\"I ended up buying budget-friendly alternatives a week later",
+      "facts": 1,
+      "withheld": [
+        "rule:career-status",
+        "rule:money"
+      ],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g29",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 935,
+      "replyHead": "{\"facts\":[{\"text\":\"I am going to visit all those spots.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g30",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1221,
+      "replyHead": "{\"facts\":[{\"text\":\"I am planning to make a classic California roll with crab and avocado.\",\"redactions\":[]},{\"text\":\"I am planning to try out a new recipe with grilled eel and cucumber.\",\"redactions\":",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g31",
+      "gold": "private",
+      "outcome": "proposed",
+      "ms": 798,
+      "replyHead": "{\"facts\":[{\"text\":\"I am planning a beach day with my family.\",\"redactions\":[]},{\"text\":\"I need recommendations for sunscreen.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [
+        "rule:family"
+      ],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g32",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1142,
+      "replyHead": "{\"facts\":[{\"text\":\"I have been listening to a lot of Billie Eilish lately.\",\"redactions\":[{\"start\":30,\"end\":43,\"kind\":\"person\"}]},{\"text\":\"I was wondering if you could recommend some other artists or ",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g33",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 808,
+      "replyHead": "{\"facts\":[{\"text\":\"I plan to start at the Steep Ravine Trailhead.\",\"redactions\":[]},{\"text\":\"I plan to take the Dipsea Trail to the summit of Mount Tamalpais.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g34",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 775,
+      "replyHead": "{\"facts\":[{\"text\":\"I will try to doodle during my breaks at work.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g35",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 889,
+      "replyHead": "{\"facts\":[{\"text\":\"I found a skeleton with a bag on him in the underground jungle.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g36",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1016,
+      "replyHead": "{\"facts\":[{\"text\":\"I am thinking of setting up a small herb station where guests can make their own herb-infused drinks.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g37",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1078,
+      "replyHead": "{\"facts\":[{\"text\":\"I have a lot of playlists for different moods or activities.\",\"redactions\":[]},{\"text\":\"\\\"Morning Boost\\\" is a playlist for upbeat tracks.\",\"redactions\":[]},{\"text\":\"\\\"Focus Flow\\\" ",
+      "facts": 3,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g38",
+      "gold": "private",
+      "outcome": "failed:all-withheld",
+      "ms": 1213,
+      "replyHead": "{\"facts\":[{\"text\":\"I try to fit in a 30-minute jog on Tuesdays and Thursdays before work.\",\"redactions\":[]},{\"text\":\"I wake up at 6:30 am on Tuesdays and Thursdays.\",\"redactions\":[]}]}",
+      "detail": "2 candidate(s) withheld (2 rule:health)"
+    },
+    {
+      "id": "g39",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 953,
+      "replyHead": "{\"facts\":[{\"text\":\"Betts has impressed me this season.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g40",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 935,
+      "replyHead": "{\"facts\":[{\"text\":\"I often mindlessly scroll through Instagram during my breaks at work.\",\"redactions\":[]},{\"text\":\"I would like to reduce mindlessly scrolling through Instagram during my breaks at wo",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g41",
+      "gold": "private",
+      "outcome": "failed:all-withheld",
+      "ms": 933,
+      "replyHead": "{\"facts\":[{\"text\":\"I have been a lacto-ovo vegetarian for about 6 months.\",\"redactions\":[]},{\"text\":\"I have been dabbling in vegan cooking for the past 3 months.\",\"redactions\":[]}]}",
+      "detail": "2 candidate(s) withheld (2 rule:health)"
+    },
+    {
+      "id": "g42",
+      "gold": "shared",
+      "outcome": "failed:all-withheld",
+      "ms": 1012,
+      "replyHead": "{\"facts\":[{\"text\":\"I just got back from a 5 kilometer walk with my colleagues from work.\",\"redactions\":[]},{\"text\":\"I did the 5 kilometer walk with my colleagues from work to raise funds for a local f",
+      "detail": "3 candidate(s) withheld (3 rule:health)"
+    },
+    {
+      "id": "g43",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1150,
+      "replyHead": "{\"facts\":[{\"text\":\"I found a festival celebrating an ancient ritual.\",\"redactions\":[]},{\"text\":\"I have never heard of the ancient ritual before.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g44",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1292,
+      "replyHead": "{\"facts\":[{\"text\":\"I will have prizes or treats for the winners of the games.\",\"redactions\":[]},{\"text\":\"Prizes or treats for the winners of the games add an extra layer of excitement.\",\"redactions\":[",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g45",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1165,
+      "replyHead": "{\"facts\":[{\"text\":\"I did not have a specific brand in mind.\",\"redactions\":[]},{\"text\":\"I knew I wanted a backpack with multiple compartments.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g46",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 970,
+      "replyHead": "{\"facts\":[{\"text\":\"The frame is simple.\",\"redactions\":[]},{\"text\":\"The colors are pretty muted.\",\"redactions\":[]},{\"text\":\"I think the frame and colors could work.\",\"redactions\":[]}]}",
+      "facts": 3,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g47",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 756,
+      "replyHead": "{\"facts\":[{\"text\":\"I have all the ingredients at home already.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g48",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1152,
+      "replyHead": "{\"facts\":[{\"text\":\"Your help helped me get to this point.\",\"redactions\":[]},{\"text\":\"Your passion helped me get to this point.\",\"redactions\":[]},{\"text\":\"Your sacrifice helped me get to this point.\",\"",
+      "facts": 3,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 3
+    },
+    {
+      "id": "g49",
+      "gold": "private",
+      "outcome": "failed:all-withheld",
+      "ms": 1624,
+      "replyHead": "{\"facts\":[{\"text\":\"I learned about reducing my intake of added sugars.\",\"redactions\":[]}]}",
+      "detail": "1 candidate(s) withheld (1 rule:health)"
+    },
+    {
+      "id": "g50",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1286,
+      "replyHead": "{\"facts\":[{\"text\":\"I take a comedy writing workshop on Sundays.\",\"redactions\":[]},{\"text\":\"The comedy writing workshop helps me improve my joke structure and delivery.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [
+        "invented:new-word"
+      ],
+      "withheldTokens": [
+        "take"
+      ],
+      "candidates": 2
+    },
+    {
+      "id": "g51",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 893,
+      "replyHead": "{\"facts\":[{\"text\":\"I have to learn how to be more flexible.\",\"redactions\":[]},{\"text\":\"I have to adjust my schedule as needed.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g52",
+      "gold": "defer",
+      "outcome": "failed:empty",
+      "ms": 735,
+      "replyHead": "{\"facts\":[]}",
+      "detail": "the model returned no statements for a non-empty sentence"
+    },
+    {
+      "id": "g53",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1382,
+      "replyHead": "{\"facts\":[{\"text\":\"I just finished \\\"The Song of Achilles\\\".\",\"redactions\":[]},{\"text\":\"I have been into mythology-inspired books lately.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g54",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 835,
+      "replyHead": "{\"facts\":[{\"text\":\"Breaking up my practice sessions into shorter ones throughout the day will work better for me.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g55",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 937,
+      "replyHead": "{\"facts\":[{\"text\":\"I have a backyard flock.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g56",
+      "gold": "defer",
+      "outcome": "failed:all-withheld",
+      "ms": 1022,
+      "replyHead": "{\"facts\":[{\"text\":\"AI becoming more pervasive in our lives makes making AI more transparent and accountable more important.\",\"redactions\":[]}]}",
+      "detail": "1 candidate(s) withheld (1 invented:new-word)"
+    },
+    {
+      "id": "g57",
+      "gold": "defer",
+      "outcome": "proposed",
+      "ms": 1061,
+      "replyHead": "{\"facts\":[{\"text\":\"I am thinking of making the lasagna.\",\"redactions\":[]},{\"text\":\"I don't have a lot of time to prepare.\",\"redactions\":[]}]}",
+      "facts": 2,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 2
+    },
+    {
+      "id": "g58",
+      "gold": "shared",
+      "outcome": "proposed",
+      "ms": 1046,
+      "replyHead": "{\"facts\":[{\"text\":\"I have a good idea of the types of charts and visualizations I can use to showcase the team's analysis and recommendations.\",\"redactions\":[]}]}",
+      "facts": 1,
+      "withheld": [],
+      "withheldTokens": [],
+      "candidates": 1
+    },
+    {
+      "id": "g59",
+      "gold": "private",
+      "outcome": "proposed",
+      "ms": 1109,
+      "replyHead": "{\"facts\":[{\"text\":\"I started taking longer walks in the morning on March 1st.\",\"redactions\":[{\"start\":32,\"end\":41,\"kind\":\"date\"}]},{\"text\":\"I enjoy the sunny days.\",\"redactions\":[]},{\"text\":\"I watch t",
+      "facts": 2,
+      "withheld": [
+        "rule:health"
+      ],
+      "withheldTokens": [],
+      "candidates": 3
+    }
+  ]
+}
