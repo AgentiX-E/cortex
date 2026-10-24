@@ -1,0 +1,85 @@
+{
+  "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
+  "checks": [
+    {
+      "name": "the run starts on card 1",
+      "ok": true,
+      "detail": "card 1 of 3 · shown first"
+    },
+    {
+      "name": "reset and undo are reachable before the first judgement",
+      "ok": true,
+      "detail": "reset 29px, undo 29px"
+    },
+    {
+      "name": "the finish screen is hidden at the start",
+      "ok": true
+    },
+    {
+      "name": "three accepts are counted",
+      "ok": true,
+      "detail": "3 / 6 judgements"
+    },
+    {
+      "name": "undo takes one back",
+      "ok": true,
+      "detail": "2 / 6 judgements"
+    },
+    {
+      "name": "undo shows that card again",
+      "ok": true,
+      "detail": "card 2 of 3 · shown second"
+    },
+    {
+      "name": "undo removes it from the export, not only from the screen",
+      "ok": true
+    },
+    {
+      "name": "a skip advances the count",
+      "ok": true,
+      "detail": "3 / 6 judgements"
+    },
+    {
+      "name": "a skip is not a judgement, so it never reaches the export",
+      "ok": true
+    },
+    {
+      "name": "undo also takes back a skip",
+      "ok": true,
+      "detail": "2 / 6 judgements"
+    },
+    {
+      "name": "start over returns to card 1",
+      "ok": true,
+      "detail": "card 1 of 3 · shown first"
+    },
+    {
+      "name": "start over empties the count",
+      "ok": true,
+      "detail": "0 / 6 judgements"
+    },
+    {
+      "name": "start over empties the export too",
+      "ok": true
+    },
+    {
+      "name": "the finish screen is visible, not merely unhidden",
+      "ok": true,
+      "detail": "263px"
+    },
+    {
+      "name": "the export holds one line per judgement",
+      "ok": true,
+      "detail": "6 lines"
+    },
+    {
+      "name": "every exported line names a card, an arm and a decision",
+      "ok": true
+    },
+    {
+      "name": "the summary shows both presentations",
+      "ok": true
+    }
+  ],
+  "ok": true
+}

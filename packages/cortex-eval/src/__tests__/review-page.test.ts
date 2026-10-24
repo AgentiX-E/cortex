@@ -131,6 +131,52 @@ describe('the rendered page', () => {
     expect(html).not.toContain('<img src=x');
   });
 
+  it('does not hide with CSS a section the script reveals by removing the hidden attribute', () => {
+    // The finish screen was `.done{display:none}` in the stylesheet, and the script revealed it with
+    // `el.done.hidden = false`. Removing an attribute does not beat a class rule, so the section
+    // stayed display:none: after the fortieth click the body was cleared and the page went blank.
+    // The browser test that found this only read the textarea, which is scriptable while hidden --
+    // which is exactly why a real click is the test and a value read is not.
+    const html = page();
+    const style = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+    const hides = style.match(/\.done\s*\{[^}]*display\s*:\s*none/g) ?? [];
+    expect(hides).toEqual([]);
+  });
+
+  it('keeps the reset and undo controls outside the section they act on', () => {
+    // Both were inside `<section id="a3-done">`, which is hidden until the fortieth judgement. So a
+    // person who wanted to start over at card seven had no control at all -- the only way back was
+    // to clear site data by hand. A control that undoes a run must be reachable during the run.
+    const html = page();
+    const bar = html.indexOf('id="a3-progress"');
+    const done = html.indexOf('id="a3-done"');
+    expect(bar).toBeGreaterThan(-1);
+    expect(done).toBeGreaterThan(bar);
+    expect(html.indexOf('id="a3-reset"')).toBeLessThan(done);
+    expect(html.indexOf('id="a3-undo"')).toBeLessThan(done);
+  });
+
+  it('carries the client script as valid JavaScript, so a truncated template cannot ship', () => {
+    // A backtick inside the script template ends it early, and the compiler says so -- but only if
+    // the truncation lands inside a string. This catches the other half: any client script that got
+    // through the compiler still has to parse.
+    const html = page();
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+    expect(scripts.length).toBe(1);
+    expect(() => new Function(scripts[0] as string)).not.toThrow();
+  });
+
+  it('explains each of the four buttons on the page, with an example', () => {
+    // The page is the instrument, so the rubric has to travel with it: a person who opens the file
+    // months later has no README in front of them, and the four buttons are not self-evident.
+    const html = page();
+    const panel = html.slice(html.indexOf('<details class="how">'), html.indexOf('</details>'));
+    for (const label of ['Accept', 'Accept with edits', 'Dismiss', 'Skip']) {
+      expect(panel).toContain(label);
+    }
+    expect(panel).toContain('Skip costs the pair');
+  });
+
   it('loads nothing from the network', () => {
     // A page opened from `file://` that fetches a stylesheet is a page that does not work offline,
     // and a review tool that needs a server is a review that does not happen.

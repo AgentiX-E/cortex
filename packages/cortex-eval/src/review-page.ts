@@ -261,7 +261,16 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#08121c
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input[type=text]{width:100%;font:inherit;color:var(--ink);background:#0d1116;border:1px solid var(--line);border-radius:.5rem;padding:.55rem .7rem;margin-top:.7rem}
 .hint{color:var(--dim);font-size:.8rem;margin-top:.9rem}
-.done{display:none}
+.tools{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin-top:.45rem}
+.tools button{padding:.25rem .6rem;font-size:.78rem;background:transparent;border-color:var(--line);color:var(--dim)}
+.tools button:hover{color:var(--ink)}
+.tools .spacer{flex:1}
+details.how{margin:.4rem 0 1rem;border:1px solid var(--line);border-radius:.6rem;padding:.6rem .8rem;background:var(--panel)}
+details.how summary{cursor:pointer;font-size:.88rem;color:var(--ink)}
+details.how dl{margin:.7rem 0 0;font-size:.86rem}
+details.how dt{font-weight:600;margin-top:.6rem}
+details.how dd{margin:.15rem 0 0;color:var(--dim)}
+details.how .ex{color:var(--ink)}
 table{border-collapse:collapse;width:100%;font-size:.9rem;margin:.8rem 0 1rem}
 td,th{border-bottom:1px solid var(--line);padding:.35rem .4rem;text-align:left}
 code{background:#0d1116;border:1px solid var(--line);border-radius:.35rem;padding:.1rem .35rem;font-size:.82rem;overflow-wrap:anywhere}
@@ -274,19 +283,36 @@ const SCRIPT = String.raw`
   var data = JSON.parse(document.getElementById('a3-data').textContent);
   var storageKey = data.resumeKey;
   var trials = [];
+  var skipped = [];
   var cursor = 0;
   var currentStarted = 0;
   var editing = false;
 
+  // The saved shape used to be a bare array of trials. It is now {trials, skipped}, and both are
+  // read: a person who had twelve judgements recorded before the skip counter existed must not lose
+  // them to a version bump, because those twelve are unrepeatable.
   try {
     var saved = window.localStorage.getItem(storageKey);
-    if (saved) trials = JSON.parse(saved);
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) { trials = parsed; } else {
+        trials = parsed.trials || [];
+        skipped = parsed.skipped || [];
+      }
+    }
   } catch (error) {
     trials = [];
+    skipped = [];
   }
 
   var seen = {};
+  function keyOf(step) { return step.cardId + ':' + step.arm; }
+  function stepIndexOf(key) {
+    for (var i = 0; i < data.steps.length; i += 1) { if (keyOf(data.steps[i]) === key) return i; }
+    return -1;
+  }
   trials.forEach(function (trial) { seen[trial.cardId + ':' + trial.arm] = true; });
+  skipped.forEach(function (key) { seen[key] = true; });
 
   var el = {
     body: document.getElementById('a3-body'),
@@ -308,7 +334,9 @@ const SCRIPT = String.raw`
   }
 
   function save() {
-    try { window.localStorage.setItem(storageKey, JSON.stringify(trials)); } catch (error) { /* private mode */ }
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({ trials: trials, skipped: skipped }));
+    } catch (error) { /* private mode */ }
     // Written after every judgement, not only at the end: the export is the deliverable, and a person
     // who stops at card fourteen has fourteen judgements that are worth exactly as much as they would
     // be inside a finished run. The first version only filled this at the end, so the only copy of a
@@ -337,6 +365,15 @@ const SCRIPT = String.raw`
       '<tr><td>the sentence</td><td>' + byArm.source.accept + '</td><td>' + byArm.source.total + '</td><td>' + rate('source') + '</td></tr>' +
       '<tr><td>the atoms</td><td>' + byArm.atoms.accept + '</td><td>' + byArm.atoms.total + '</td><td>' + rate('atoms') + '</td></tr>';
     el.json.value = trials.map(function (trial) { return JSON.stringify(trial); }).join('\n');
+    // A skip is not a judgement, so it cannot appear in the export -- but it does shrink N, and a
+    // count that shrinks silently is how "twenty pairs" becomes sixteen without anyone noticing.
+    var note = document.getElementById('a3-skip-note');
+    if (note) {
+      note.hidden = skipped.length === 0;
+      note.textContent = skipped.length === 0 ? '' :
+        skipped.length + ' showing(s) were skipped, so ' + skipped.length + ' of the ' + total() +
+        ' judgements are missing and their pairs cannot be scored. Undo last still works.';
+    }
     // Cleared, not just hidden: a hidden card still owns its buttons, and a stray click on one would
     // call record() with steps[cursor] undefined and throw inside the listener -- silently, because
     // nothing in a page reports an exception to the person clicking. Found by driving the page in a
@@ -401,7 +438,18 @@ const SCRIPT = String.raw`
     var step = data.steps[cursor];
     if (!step) return;
     var act = button.dataset.act;
-    if (act === 'skip') { cursor += 1; next(); return; }
+    if (act === 'skip') {
+      // Recorded, because a skip is a decision about the instrument even though it is not a decision
+      // about the card: it is counted in the progress and it survives a reload, so the count of
+      // judgements and the bar cannot disagree. It is deliberately NOT in the JSONL -- the scorer
+      // reads judgements, and a skip is the absence of one -- which is why the export stays trials.
+      if (!seen[keyOf(step)]) skipped.push(keyOf(step));
+      seen[keyOf(step)] = true;
+      save();
+      cursor += 1;
+      next();
+      return;
+    }
     if (act === 'edit') {
       editing = true;
       var card = el.body.querySelector('.card');
@@ -443,10 +491,45 @@ const SCRIPT = String.raw`
     document.execCommand('copy');
     el.live.textContent = 'Decisions copied to the clipboard.';
   });
+  /**
+   * Take back the last thing that was recorded, whether it was a judgement or a skip.
+   *
+   * The cursor only ever moves forward, so the last action is the recorded step with the highest
+   * index -- no history array to keep in sync, and nothing to get wrong after a reload.
+   */
+  function undo() {
+    var lastIndex = -1;
+    Object.keys(seen).forEach(function (key) {
+      var at = stepIndexOf(key);
+      if (at > lastIndex) lastIndex = at;
+    });
+    if (lastIndex < 0) { el.live.textContent = 'Nothing recorded yet.'; return; }
+    var key = keyOf(data.steps[lastIndex]);
+    delete seen[key];
+    trials = trials.filter(function (trial) { return trial.cardId + ':' + trial.arm !== key; });
+    skipped = skipped.filter(function (entry) { return entry !== key; });
+    // trials is reassigned above, so save() reads the filtered array; the textarea follows.
+    save();
+    cursor = lastIndex;
+    el.done.hidden = true;
+    renderStep(data.steps[cursor]);
+  }
+
+  document.getElementById('a3-undo').addEventListener('click', undo);
+
   document.getElementById('a3-reset').addEventListener('click', function () {
-    if (!window.confirm('Discard every recorded judgement?')) return;
-    trials = []; seen = {}; cursor = 0; save(); next();
+    if (!window.confirm('Discard every judgement recorded in this browser?')) return;
+    trials = [];
+    skipped = [];
+    seen = {};
+    cursor = 0;
+    save();
+    el.done.hidden = true;
+    el.live.textContent = 'Cleared. The review starts again at card 1.';
+    renderStep(data.steps[0]);
   });
+
+  document.getElementById('a3-save').addEventListener('click', function () { download(); });
 
   next();
 })();
@@ -510,21 +593,60 @@ export function renderA3ReviewPage(input: ReviewPageInput): string {
       ? ''
       : `<p class="meta">${skipped.length} card(s) had no atoms and are not in this review: there is no second presentation to compare.</p>`
   }
-  <p class="meta">Accept means: a colleague reading this would know what to do. Edits count as an accept, with the wording changed.</p>
+  <details class="how">
+    <summary>How to judge — the four buttons, with one example each</summary>
+    <dl>
+      <dt>Accept <span class="ex">(a)</span></dt>
+      <dd>Anything a colleague could act on, or you could answer a question from, <em>as written</em>. Nothing needs fixing.
+        <span class="ex">Example: &ldquo;I work at Acme on the payments team, and I moved to Berlin in March.&rdquo;</span>
+        It is complete, it has a subject, and the wording is what you would use yourself.</dd>
+      <dt>Accept with edits <span class="ex">(e)</span></dt>
+      <dd>The content is worth keeping but the <em>wording</em> is not shippable: filler at the front, two facts welded
+        together, a pronoun with no referent, a fragment with no verb. You type the version you would keep, and pressing
+        Enter records it as an accept whose text is yours.
+        <span class="ex">Example: &ldquo;By the way, I've been really enjoying editing my photos in Lightroom - the online
+        communities have been super helpful.&rdquo;</span> &rarr; you would type &ldquo;I edit photos in Lightroom and I am
+        active in online photo-editing communities.&rdquo;</dd>
+      <dt>Dismiss <span class="ex">(d)</span></dt>
+      <dd>Nothing worth keeping, or nothing a colleague could use: a reaction, a pleasantry, a request you made of your
+        assistant, a restatement of what the assistant just said, or something so vague that it carries no information.
+        <span class="ex">Example: &ldquo;Thank you, that's really helpful!&rdquo;</span>
+        <span class="ex">Example: &ldquo;Can you write the texts for the presentation ?&rdquo;</span> &mdash; that is a task
+        you gave the assistant, not a fact about you.</dd>
+      <dt>Skip <span class="ex">(s)</span></dt>
+      <dd>You genuinely cannot judge: the fragment has no context, or it is the same statement as an earlier card and you
+        will not count it twice. <strong>Skip costs the pair</strong> &mdash; a pair is only scored when both of its
+        presentations were judged, so skipping removes one from N and the report says so. Prefer a real decision when the
+        hesitation is only &ldquo;is this interesting?&rdquo;.</dd>
+    </dl>
+    <p class="hint">Every card comes back a second time in the other presentation. Judge each showing on its own: do not try
+      to remember what you said about the first one, and do not try to guess which side was written by the model. The page
+      does not say which is which, but you will notice (one is a paragraph, one is a list) &mdash; that is a known limit of
+      this measurement. Use the same standard on both.</p>
+    <p class="hint">Nothing here is published and nothing is scored until you run the command on the last screen. Every
+      judgement is saved to this browser the moment you make it, so closing the tab loses nothing.</p>
+  </details>
 
-  <div class="bar"><div class="track"><div class="fill" id="a3-fill"></div></div><div class="meta" id="a3-progress">0 / ${steps.length} judgements</div></div>
+  <div class="bar"><div class="track"><div class="fill" id="a3-fill"></div></div><div class="meta" id="a3-progress">0 / ${steps.length} judgements</div>
+    <div class="tools">
+      <button id="a3-undo" title="Take back the last judgement and show that card again">Undo last</button>
+      <button id="a3-reset" title="Discard every judgement recorded in this browser">Start over</button>
+      <span class="spacer"></span>
+      <button id="a3-save">Download decisions</button>
+    </div>
+  </div>
 
   <div id="a3-body"></div>
 
   <section class="done" id="a3-done" hidden>
     <h2 style="font-size:1.05rem">Recorded</h2>
     <table id="a3-summary"></table>
+    <p class="meta" id="a3-skip-note" hidden></p>
     <p class="meta">Scoring is not done in this page: <code>scoreA3</code> is one implementation and it lives in the repository. Save the file, then run
       <code>node tools/a3-review.mjs score --decisions a3-decisions.jsonl</code>.</p>
     <div class="keys">
       <button class="primary" id="a3-download">Download decisions (JSONL)</button>
       <button id="a3-copy">Copy to clipboard</button>
-      <button id="a3-reset">Start over</button>
     </div>
     <textarea id="a3-json" class="sr" readonly></textarea>
   </section>
