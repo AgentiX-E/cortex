@@ -753,6 +753,7 @@ describe('source trust reaches the artifact', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      abstentionRecovery: 'off',
       queryExpansion: 'none',
       selfConsistency: 'none',
     });
@@ -1257,6 +1258,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        abstentionRecovery: 'off',
         queryExpansion: 'none',
         selfConsistency: 'none',
       });
@@ -1696,6 +1698,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      abstentionRecovery: 'off',
       queryExpansion: 'none',
       selfConsistency: 'none',
     });

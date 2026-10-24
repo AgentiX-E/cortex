@@ -39,6 +39,7 @@ import {
   type PromptOptions,
   type AssembledPrompt,
 } from './prompt.js';
+import { buildRecoveryPrompt, planAbstentionRecovery } from './abstention-recovery.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
@@ -182,6 +183,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
     llm: 0,
     answered: 0,
   };
+
+  /**
+   * How many corrective consultations were attempted, and how many produced an answer.
+   *
+   * Separate from `#reasons` on purpose. That census counts one question once, and its four routes
+   * are what every archived artifact was read through; folding a retry into it would either
+   * double-count a question (`attempted` then `answered`) or hide the retry. These two numbers are
+   * about the treatment, not about the question, and a run that reports `attempted: 15,
+   * answered: 6` has said something a rate cannot: the pass fired and converted.
+   */
+  readonly #recoveries: { attempted: number; answered: number } = { attempted: 0, answered: 0 };
 
   /**
    * The model's own output for the most recent call, before `parseAnswer`.
@@ -697,6 +709,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return { ...this.#reasons };
   }
 
+  /** What the abstention-recovery pass did, for a run that turned it on. */
+  recoveryCensus(): { attempted: number; answered: number } {
+    return { ...this.#recoveries };
+  }
+
   /**
    * Flat answering. Also the fallback for every shape whose dedicated path is
    * absent, and for `single-session-preference`.
@@ -1037,6 +1054,43 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // guard here would be a branch no test can enter, which is the shape §57.6 removed from this
     // file once already.
     const firstRaw = this.#lastRawOutput as string;
+
+    // The decline that contradicts its own list. `reviewPass` below deliberately skips an
+    // abstention -- "this pass audits a list that does not exist" -- and three archived runs say
+    // that premise is false for MR: 10/10, 9/9 and 9/9 of its declines carry a non-empty Step 1
+    // list. Those questions are pure loss, because an abstention is only correct when the gold
+    // answer is a decline, and MR and TR gold never is.
+    //
+    // The retry quotes the list rather than re-sending the window: the list is the reader's own
+    // extraction, so re-sending would make this a second sample rather than a correction (§13.100.2
+    // measured what a second sample changes -- 24 of 121 answers).
+    //
+    // Only when the first pass declined, so no question that answered can move, and the pass can
+    // only ever consult on questions that are already wrong.
+    const recovery = planAbstentionRecovery(
+      firstRaw,
+      first !== null,
+      this.#options.abstentionRecovery === 'once',
+    );
+    if (recovery.kind === 'retry') {
+      this.#recoveries.attempted += 1;
+      const retried = await this.#consult(buildRecoveryPrompt(question, recovery.items));
+      // A retry that declines again leaves its own text in `#lastRawOutput`, which is the honest
+      // one to keep: the record's `answer` is null either way, and the last thing the reader said
+      // about this question is the more informative of the two declines.
+      if (retried !== null) {
+        this.#recoveries.answered += 1;
+        // Evidence is recorded from the prompt the answer **came from**. The recovery prompt
+        // carries no evidence block, and the list it quotes came from `assembled`, so `assembled`
+        // is what the reader read. Recording nothing here would make the question look like one
+        // answered with no context.
+        this.#recordEvidence(
+          sessions.flatMap((session) => session.turns),
+          assembled,
+        );
+        return this.#recordOutcome(retried);
+      }
+    }
 
     // §13.94's second consultation. Two conditions, each a state this pass must not enter: no pass
     // was configured, or the first pass declined -- an abstention is a decision, and this pass audits

@@ -138,6 +138,11 @@ on:
         required: false
         default: ''
         type: string
+      cortex_memory_abstention_recovery:
+        description: 'One corrective consultation for a decline that contradicts its own Step 1 list (cortex/docs/MEASURE-ABSTENTION-RECOVERY.md): empty or off = no pass, which is the state every archived run is in; once = if the reader replied INSUFFICIENT_EVIDENCE while its Step 1 list was non-empty, ask once more with the list quoted and NO evidence re-sent, then use the answer if one comes back. Measured across three archived runs of the adopted configuration: every MR abstention carries a non-empty list (10/10, 9/9, 9/9), TR carries 4 to 7 of 15 to 23, and ABS carries none of 30 -- ABS is the control, because its gold answer is a decline and it produces no list, so a rule about lists cannot reach it. abstentionReasons reports threshold: 0 on all three runs, so none of these is a retrieval decision; they are the reader declining with the evidence in hand, and on MR and TR an abstention is always wrong. The population is 13 to 17 questions per run that no retrieval change can touch. The retry quotes the list rather than re-sending the window because the list is the reader''s own extraction and re-sending would make this a second sample rather than a correction (13.100.2 measured a second sample moving 24 of 121 MR answers). It may still decline: a non-empty list can answer nothing, and forcing a number there would invent one. An unrecognised value is REJECTED rather than defaulted, for the reason every other arm variable rejects: a run dispatched to administer a treatment that silently ran the control would publish an unchanged result reading as evidence the treatment does not matter. NOTE: this is the 25th input, which is the ceiling for workflow_dispatch -- the next one has to replace an existing input rather than join it.'
+        required: false
+        default: ''
+        type: string
       cortex_memory_evidence_roles:
         description: 'Turn roles the evidence may be built from (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.83): empty or all = every turn, which is the state every run before section 13.83 was in; user or assistant or a comma-separated list of the two = only those roles reach the prompt on the routes named by the next input. Section 13.82 is the measurement: on the 48,000-character run the multi-session route rendered 48.1 percent user characters and 51.9 percent assistant, while the reference pipeline reaches 85.95 percent on that capability at half the budget by restricting retrieval to user turns -- its own source states the reason, that the facts live in the user statements and assistant turns are verbose generated chatter that dilutes the answer signal. The filter is applied after admission and before selection, so the room is spent only on turns that may reach it, and lastRetrievedContext and every coverage count describe the filtered list because that is what the reader could have been shown. none is REJECTED rather than read as an empty set, because an empty role set admits no evidence at all and would spend a decline per question while the artifact recorded a filter'
         required: false
@@ -377,6 +382,11 @@ jobs:
           # Section 13.94's second consultation. Blank means none, which is the state every archived
           # run is in; the arm rejects anything but none/audit rather than defaulting.
           CORTEX_MEMORY_REVIEW_PASS: ${{ github.event.inputs.cortex_memory_review_pass }}
+          # The abstention pass added in step 23. A separate input from the review pass on
+          # purpose: the audit re-asks every answered question (500 calls) and this re-asks only
+          # a decline that carried a list (~15). Behind one flag the run could not separate a
+          # 500-call change from a 15-call one.
+          CORTEX_MEMORY_ABSTENTION_RECOVERY: ${{ github.event.inputs.cortex_memory_abstention_recovery }}
           # Section 13.101's sample count. Blank means one consultation; the arm rejects anything but
           # none/3 rather than clamping, because a silently-clamped run would publish the control's
           # reading under the treatment's name.

@@ -384,6 +384,14 @@ export type CortexMemoryOptions = {
    */
   reviewPass?: ReviewPass;
   /**
+   * One corrective consultation for a decline that contradicts its own Step 1 list. `off` (the
+   * default) is the shipped behaviour every archived run was produced under.
+   *
+   * Reach is `answerSessions`, like `reviewPass`, and for the same reason: a treatment whose reach
+   * is not stated in its configuration cannot be separated from its cost.
+   */
+  abstentionRecovery?: AbstentionRecovery;
+  /**
    * How many times the multi-session route consults the model on one prompt, and whether the
    * answers are reduced by majority. `1` (the default) is the shipped behaviour.
    *
@@ -425,3 +433,19 @@ export type CortexMemoryOptions = {
  * different question can be added without a flag whose meaning depends on the build.
  */
 export type ReviewPass = 'none' | 'audit';
+
+/**
+ * Whether a decline that contradicts its own Step 1 list gets one corrective consultation.
+ *
+ * Named rather than boolean for the reason `ReviewPass` is: the value says *what* is consulted, and
+ * `off` is a state that must be expressible because every archived run was produced under it.
+ *
+ * ## Why this is a separate switch from `reviewPass`
+ *
+ * `reviewPass: 'audit'` re-asks **every** answered question, and it was measured and not adopted.
+ * This asks exactly one question, of the population that is currently always wrong: MR and TR
+ * declines carrying a non-empty list, 13 to 17 questions per run across three archived runs
+ * (`abstention-recovery.ts` has the counts). Bundling the two would put a 500-call change and a
+ * 15-call change behind one flag, and the run could not separate them.
+ */
+export type AbstentionRecovery = 'off' | 'once';

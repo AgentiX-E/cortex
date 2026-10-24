@@ -9,7 +9,13 @@
  */
 
 // types
-export type { GateOptions, CortexMemoryOptions, ReviewPass, TurnCapRoute } from './types.js';
+export type {
+  AbstentionRecovery,
+  GateOptions,
+  CortexMemoryOptions,
+  ReviewPass,
+  TurnCapRoute,
+} from './types.js';
 // The vocabulary as a value, so a caller can name every route without restating the six names --
 // and so `test_ask_table_parity.py` has one product-side list to compare against the arm's copy.
 export { TURN_CAP_ROUTES } from './types.js';
@@ -70,6 +76,14 @@ export {
 
 // parse
 export { parseAnswer, isAbstention, ABSTAIN_TOKEN } from './parse.js';
+export {
+  asksForCount,
+  buildRecoveryPrompt,
+  DECLINE_TOKEN,
+  declinedItems,
+  planAbstentionRecovery,
+  type RecoveryPlan,
+} from './abstention-recovery.js';
 
 // composition
 export { CortexMemory } from './memory.js';

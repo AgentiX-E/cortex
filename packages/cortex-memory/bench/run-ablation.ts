@@ -425,6 +425,13 @@ async function main(): Promise<void> {
     ...(armOptions.reviewPass === 'none' || armOptions.reviewPass === undefined
       ? {}
       : { reviewPass: armOptions.reviewPass as ReviewPass }),
+    // The abstention-recovery pass. `off` IS the shipped behaviour and is expressed by NOT passing
+    // the key, for the reason every conditional spread here is. The cast is at this boundary because
+    // `cortex-eval` carries the value as `string` (the dependency runs the other way) and
+    // `readAbstentionRecovery` has already rejected anything that is not one of the two names.
+    ...(armOptions.abstentionRecovery === 'off' || armOptions.abstentionRecovery === undefined
+      ? {}
+      : { abstentionRecovery: armOptions.abstentionRecovery as 'once' }),
     // §13.101's sample count. `none` IS one consultation and is expressed by NOT passing the key, for
     // the reason every conditional spread here is: every archived artifact was produced with one
     // consultation, and a present-but-inert key would make the option indistinguishable from a
