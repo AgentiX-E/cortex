@@ -1,0 +1,10 @@
+20 card(s), 19 with a proposal
+    12  two or more atoms (the treatment)
+     7  one atom, reworded or trimmed
+     0  one atom, the same text as the sentence
+     1  no proposal at all
+  treatment share: 63.2% of 19 (gate: 50%)
+  profile: remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required
+  prompt: triage-proposer/v4
+
+GATE PASS: the arms differ enough to measure.
