@@ -218,6 +218,44 @@ const FUNCTION_WORDS: ReadonlySet<string> = new Set([
  */
 const NEGATIONS = /\b(?:not|no|never|none|nobody|nothing|nowhere|neither|nor)\b|n't\b/gi;
 
+/**
+ * Endings that inflect a word without changing what it names.
+ *
+ * `ing` before `ed` and `es` before `s`, longest first: "taking" must not lose only the "ing" and keep
+ * a trailing "k" as if it were part of the root.
+ */
+const INFLECTIONS = /(?:ingly|ing|edly|ies|es|ed|ly|s)$/;
+
+/** The root a word shares with its inflections, or the word itself when stripping would gut it. */
+function root(word: string): string {
+  const stripped = word.replace(INFLECTIONS, '');
+  return stripped.length >= 3 ? stripped : word;
+}
+
+/**
+ * Is `word` the same word as one the sentence contains?
+ *
+ * The first version compared four-character prefixes for equality, and the first diagnostic run found
+ * the hole in one line: the model wrote "I take a comedy writing workshop" for a sentence that says
+ * "I've been taking a comedy writing workshop", and `take` / `taki` are not equal. A legitimate
+ * inflection was refused as an invention. **The gate had been raising the cost of the only rewrite
+ * the prompt could not express any other way.**
+ *
+ * So the comparison is now: strip the inflection from both sides, then require the shorter root to be
+ * a prefix of the longer. "tak" is a prefix of "take"; "kid" is not a prefix of "children". The
+ * looseness this buys ("hous" against "household") is the same looseness the four-character rule
+ * already had, and it is pinned by a test.
+ */
+function attestedWord(word: string, sourceWords: readonly string[]): boolean {
+  const own = root(word);
+  return sourceWords.some((candidate) => {
+    const other = root(candidate);
+    const shorter = own.length <= other.length ? own : other;
+    const longer = shorter === own ? other : own;
+    return shorter.length >= 3 && longer.startsWith(shorter);
+  });
+}
+
 /** Digit runs, with thousands separators removed so "1,200" and "1200" compare equal. */
 function numbersIn(text: string): string[] {
   return (text.match(/\d[\d,.]*\d|\d/g) ?? []).map((run) => run.replace(/[,]/g, ''));
@@ -288,11 +326,7 @@ export function contentGrounded(candidate: string, source: string): GroundingRes
     }
 
     if (folded.length < 4 || FUNCTION_WORDS.has(folded)) continue;
-    const stem = folded.slice(0, 4);
-    const attested = sourceLower.some((candidateWord) =>
-      candidateWord.length >= 4 ? candidateWord.slice(0, 4) === stem : candidateWord === folded,
-    );
-    if (!attested) {
+    if (!attestedWord(folded, sourceLower)) {
       return {
         ok: false,
         problem: 'new-word',

@@ -486,6 +486,51 @@ export function identifierPattern(name: string): RegExp {
  * @param text the file's full text.
  * @returns text of the same length with comments blanked out.
  */
+/**
+ * Whether a `/` at `index` opens a regular expression rather than a division.
+ *
+ * The scanner had no regex-literal handling, and that is not a corner case: a regex
+ * containing an apostrophe -- `/^[A-Za-z][A-Za-z'\u2019-]{0,23}$/` is one this repository
+ * now has -- opened a *string* at the quote, and from there the scanner copied the rest of
+ * the file through as literal text. Every comment after that point counted as code, so
+ * `assertRuleTable`, mentioned in one doc comment, silently acquired a caller and left the
+ * orphan ledger. The ledger's denominator shrinking without an edit is the failure this
+ * repository has a standing audit against.
+ *
+ * The rule is the usual one: a slash begins a regex where an *operand* is expected. That is
+ * after an operator, an opening bracket or a comma, or after a keyword such as `return`.
+ * Everywhere else -- after an identifier, a literal, `)` or `]` -- it is division.
+ */
+const REGEX_AFTER_KEYWORD: ReadonlySet<string> = new Set([
+  'return',
+  'typeof',
+  'instanceof',
+  'case',
+  'in',
+  'of',
+  'delete',
+  'void',
+  'new',
+  'do',
+  'else',
+  'yield',
+  'await',
+]);
+
+const REGEX_AFTER_CHAR = '=([:,!&|?{};+-*%^~<>';
+
+function regexCanStart(text: string, index: number): boolean {
+  let back = index - 1;
+  while (back >= 0 && /\s/.test(text[back] as string)) back -= 1;
+  if (back < 0) return true;
+  const ch = text[back] as string;
+  if (REGEX_AFTER_CHAR.includes(ch)) return true;
+  if (!/[A-Za-z]/.test(ch)) return false;
+  let start = back;
+  while (start >= 0 && /[A-Za-z]/.test(text[start] as string)) start -= 1;
+  return REGEX_AFTER_KEYWORD.has(text.slice(start + 1, back + 1));
+}
+
 export function stripComments(text: string): string {
   const out: string[] = [];
   let index = 0;
@@ -511,6 +556,33 @@ export function stripComments(text: string): string {
       // would otherwise start a fresh `//` inside the replacement cannot appear.
       out.push('  ');
       index += 2;
+      continue;
+    }
+    if (ch === '/' && regexCanStart(text, index)) {
+      // Copied verbatim, like a string literal: a regex is not a comment, and its contents are
+      // real. The newline guard matters more than it looks -- a slash this heuristic got wrong
+      // must cost one line, not the rest of the file.
+      out.push(ch);
+      index += 1;
+      let inClass = false;
+      while (index < length) {
+        const inner = text[index] as string;
+        if (inner === '\\') {
+          out.push(inner, text[index + 1] ?? '');
+          index += 2;
+          continue;
+        }
+        if (inner === '\n') break;
+        out.push(inner);
+        index += 1;
+        if (inner === '[') inClass = true;
+        else if (inner === ']') inClass = false;
+        else if (inner === '/' && !inClass) break;
+      }
+      while (index < length && /[a-z]/i.test(text[index] as string)) {
+        out.push(text[index] as string);
+        index += 1;
+      }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === '`') {

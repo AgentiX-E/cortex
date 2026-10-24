@@ -65,7 +65,7 @@ import { classify as classifyWith, type TriageDecision, type TriageScope } from 
  * incomparable. Stored on every proposal, so a card exported last month can be read against the
  * rules that produced it.
  */
-export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v5';
+export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v4';
 
 /**
  * How many atoms a card may offer.
@@ -280,11 +280,24 @@ const FACTS_SCHEMA: JsonSchema = {
  * instead of a card. v4 therefore carries one worked example, because "rewritten, with its time" is
  * not something a rule describes well.
  *
- * v5 adds rule 5, "never swap in a synonym", with its own rejected/accepted pair. The first v4 run
- * left seven sentences without a proposal and all eight refusals were `invented:new-word`: the model
- * distils by paraphrasing, and content grounding refuses vocabulary the sentence does not contain.
- * The rule is the fix; loosening the gate is not, because a gate that accepts synonyms accepts
- * invented ones too.
+ * ## v5 was tried here, measured once, and reverted
+ *
+ * The first v4 run left seven sentences without a proposal and all eight refusals were
+ * `invented:new-word`: the model distils by paraphrasing, and content grounding refuses vocabulary the
+ * sentence does not contain. v5 answered that with rule 5, "never swap in a synonym", spelled out with
+ * a rejected/accepted pair. The reasoning was sound and the result was the defect.
+ *
+ * Pre-registered before the dispatch: proposals >= 50/60, and the verbatim share must not exceed 50%.
+ * Neither held. Proposals went 45 -> 48, and the atoms went 34 -> 38 of which **verbatim 15 -> 20** --
+ * every atom v5 added was a copy, and one distilled atom disappeared. The share moved 44.1% -> 52.6%,
+ * past the line that exists because "the atoms are just cut segments" is the complaint this change
+ * answers. A higher proposal count bought by copying is not a gain.
+ *
+ * So the prompt is back to v4 verbatim, and the arithmetic is in `cortex-docs` 04 section 9.25. What
+ * v5 did leave behind is the diagnostic: `WithheldFact.token` records the substituted word, which is
+ * why the next attempt can be aimed instead of guessed. The lesson is narrow and worth keeping:
+ * **"keep the person's own words" and "distil" are the same instruction pointing in opposite
+ * directions**, and the trade is settled by a reading, not by a better sentence in the prompt.
  */
 export function buildProposerPrompt(text: string): string {
   // The fence is removed from the sentence before it is used as a fence: a delimiter the payload can
@@ -314,17 +327,12 @@ export function buildProposerPrompt(text: string): string {
     '4. Keep numbers and names exactly as written, and add none. You may only use words that appear in',
     '   the sentence, or a plainer form of them ("editing" -> "edit", "photos" -> "photo"). A number,',
     '   a name, a word or a negation that is not in the sentence is a rejection.',
-    '5. Never swap in a synonym. If the sentence says "children", write "children" and not "kids";',
-    '   if it says "facility", write "facility" and not "plant". Keeping the person\u2019s own word',
-    '   is the rule even when a different word would read better, because a substitution counts as',
-    '   an invention and the statement is thrown away. Only the small connecting words (a, the, of,',
-    '   in, on, and, is, was, that, when, with) may be added freely.',
-    '6. One claim per statement. Two claims joined by "and" are two statements.',
-    `7. At most ${MAX_FACTS} statements. If the sentence states nothing that could be acted on or asked`,
+    '5. One claim per statement. Two claims joined by "and" are two statements.',
+    `6. At most ${MAX_FACTS} statements. If the sentence states nothing that could be acted on or asked`,
     '   about later, return an empty list.',
-    '8. Do not decide whether a statement may be shared. That is not your decision and any answer you',
+    '7. Do not decide whether a statement may be shared. That is not your decision and any answer you',
     '   give to it is discarded.',
-    '9. Optionally mark spans inside a statement that a preview should mask (a person\u2019s name, a',
+    '8. Optionally mark spans inside a statement that a preview should mask (a person\u2019s name, a',
     '   contact detail, an amount, a place). Offsets are character offsets into that statement.',
     '   A mask is a preview aid, not a security control.',
     '',
@@ -334,11 +342,6 @@ export function buildProposerPrompt(text: string): string {
     '            communities I have joined have been super helpful, and I moved to Berlin in March."',
     '  statements: ["I moved to Berlin in March.", "I edit photos in Lightroom.",',
     '               "I learn photo editing from online communities."]',
-    '',
-    'And the rule that is easiest to break by accident, because the substitution reads better:',
-    '  sentence: "I have two children and we live near the plant."',
-    '  rejected: ["I have two kids.", "We live near the factory."]  -- two synonyms, two inventions',
-    '  accepted: ["I have two children.", "We live near the plant."]',
     // v1 put a sentence-shaped example here and a 0.5B model returned it verbatim 44 times out of 60;
     // v2 removed every sentence-shaped artefact. A worked example is safe now for a reason that did not
     // exist then: the gate is content grounding, so an example about photography cannot pass grounding

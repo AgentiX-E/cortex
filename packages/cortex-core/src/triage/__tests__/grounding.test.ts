@@ -131,6 +131,37 @@ describe('contentGrounded: the prompt injection property survives, in a weaker f
   });
 });
 
+describe('contentGrounded: an inflection is the same word', () => {
+  // Found by the first diagnostic run, not by reasoning: the model wrote "I take a comedy writing
+  // workshop" for a sentence saying "I've been taking a comedy writing workshop", and the gate
+  // refused it. The four-character test compared "take" with "taki".
+  it('accepts the lemma of an inflected verb', () => {
+    expect(
+      contentGrounded(
+        'I take a comedy writing workshop on Sundays.',
+        "I've been taking a comedy writing workshop on Sundays, which has been helpful.",
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it('accepts a singular for a plural and a plural for a singular', () => {
+    expect(
+      contentGrounded('I joined an online community.', 'I joined online communities.'),
+    ).toEqual({ ok: true });
+    expect(
+      contentGrounded('I joined online communities.', 'I joined an online community.'),
+    ).toEqual({ ok: true });
+  });
+
+  it('still refuses a different word that happens to be related in meaning', () => {
+    // "kids" and "children" name the same people; the gate cannot know that, and must not pretend to.
+    const verdict = contentGrounded('I have two children.', 'I have two kids.');
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('expected a refusal');
+    expect(verdict.problem).toBe('new-word');
+  });
+});
+
 describe('contentGrounded: the documented looseness', () => {
   it('accepts two different words that share a four-character stem, on purpose', () => {
     // Asserted so the bias is visible: a permissive word test produces a generous atom a person can

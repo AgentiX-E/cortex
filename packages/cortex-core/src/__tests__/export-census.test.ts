@@ -421,6 +421,41 @@ describe('stripping comments before matching a name', () => {
     expect(stripped).toContain('kept');
   });
 
+  it('does not let an apostrophe inside a regular expression open a string', () => {
+    // The failure this guards is the one that actually happened. `stripComments` had no
+    // regex-literal case, so the apostrophe in `/^[A-Za-z][A-Za-z'\u2019-]{0,23}$/` opened a string
+    // and every comment after it was copied through as code. `assertRuleTable`, mentioned in one doc
+    // comment, silently acquired a caller and left the orphan ledger -- a denominator shrinking with
+    // no edit behind it.
+    const source = [
+      "const pattern = /^[A-Za-z][A-Za-z'\u2019-]{0,23}$/;",
+      '// target is only mentioned here',
+      'const b = 1;',
+    ].join('\n');
+    const stripped = stripComments(source);
+    expect(stripped).not.toContain('target');
+    expect(stripped).toContain('const pattern');
+  });
+
+  it('treats a slash after an operand as division, so a comment after it still blanks', () => {
+    const stripped = stripComments('const half = total / 2; // target\nconst b = 1;');
+    expect(stripped).not.toContain('target');
+    expect(stripped).toContain('total / 2');
+  });
+
+  it('recognises a regex after a keyword, and does not swallow the line after it', () => {
+    const stripped = stripComments("function f(x) { return /a'b/.test(x); }\n// target\n");
+    expect(stripped).not.toContain('target');
+    expect(stripped).toContain("return /a'b/");
+  });
+
+  it('lets a misdetected regex cost one line rather than the rest of the file', () => {
+    // The newline guard, asserted: whatever the heuristic gets wrong, the damage stops at the line
+    // break. A scanner that ate the file would report every later symbol as unused.
+    const stripped = stripComments('const a = 1 / 2\n// target\nconst b = 3;');
+    expect(stripped).not.toContain('target');
+  });
+
   it('keeps a template literal, which is where dynamic references live', () => {
     const stripped = stripComments('const p = `./target.js`;');
     expect(stripped).toContain('target');
