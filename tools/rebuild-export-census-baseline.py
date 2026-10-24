@@ -47,7 +47,10 @@ RATIONALE = {
         "passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own "
         "declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead "
         "code and its members are unnecessary `export` keywords, not deletions. The gate's value is "
-        "preventing growth, not certifying this snapshot."
+        "preventing growth, not certifying this snapshot. `PositionEffect` (step 20) joins for the "
+        "same reason as the other shapes: `positionEffect` returns it and `tools/a3-review.mjs` "
+        "prints it, but a type named only in a signature has no caller to count. It is recorded "
+        "rather than inlined because the return shape is the thing being asserted in its six tests."
     ),
     "core-llm-node-surface": (
         "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in "

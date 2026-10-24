@@ -38,7 +38,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 
-import { scoreA3 } from '../packages/cortex-eval/dist/index.js';
+import { positionEffect, scoreA3 } from '../packages/cortex-eval/dist/index.js';
 import {
   ProfileError,
   describeProfile,
@@ -275,6 +275,23 @@ function score(config) {
     );
   }
   console.log(`  delta ${result.deltaPp.toFixed(1)}pp, exact McNemar p=${result.mcnemarP.toFixed(4)}`);
+
+  // The arm medians above are per-arm totals, and with an alternating order they mix two positions.
+  // Printing them without this line invites a reading the data cannot support -- the first dataset had
+  // the first showing slower in twenty pairs out of twenty, at nine times the median.
+  const position = positionEffect(trials);
+  if (position.pairs > 0) {
+    console.log(
+      `  position ${position.firstSlower}/${position.pairs} pair(s) took longer on the first showing ` +
+        `(median ${position.firstMedianMs} ms vs ${position.secondMedianMs} ms)`,
+    );
+    if (position.firstSlower / position.pairs >= 0.75) {
+      console.log(
+        '           the arm medians above are confounded by position: reading a card is the cost,',
+      );
+      console.log('           so compare arms within a position, not across them');
+    }
+  }
   console.log(`\n${result.verdict.toUpperCase()}: ${result.reason}`);
 }
 

@@ -1,10 +1,10 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 677,
-    "withCaller": 363,
-    "orphaned": 314,
-    "referencedLocally": 259,
+    "exports": 679,
+    "withCaller": 364,
+    "orphaned": 315,
+    "referencedLocally": 260,
     "unreferenced": 55
   },
   "groups": [
@@ -248,8 +248,8 @@
     },
     {
       "category": "eval-harness-surface",
-      "count": 104,
-      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot.",
+      "count": 105,
+      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot. `PositionEffect` (step 20) joins for the same reason as the other shapes: `positionEffect` returns it and `tools/a3-review.mjs` prints it, but a type named only in a signature has no caller to count. It is recorded rather than inlined because the return shape is the thing being asserted in its six tests.",
       "declarationSites": [
         "cortex-eval: A3Arm (packages/cortex-eval/src/a3.ts:36)",
         "cortex-eval: A3ArmSummary (packages/cortex-eval/src/a3.ts:51)",
@@ -286,6 +286,7 @@
         "cortex-eval: FactMemorySystemOptions (packages/cortex-eval/src/fact-memory.ts:9)",
         "cortex-eval: LlmEnv (packages/cortex-eval/src/llm-factory.ts:20)",
         "cortex-eval: NaturalLanguageMemorySystemOptions (packages/cortex-eval/src/natural-language-memory.ts:109)",
+        "cortex-eval: PositionEffect (packages/cortex-eval/src/a3.ts:238)",
         "cortex-eval: QuestionRecordInput (packages/cortex-eval/src/question-record.ts:249)",
         "cortex-eval: ReadToggleOptions (packages/cortex-eval/src/env-toggle.ts:27)",
         "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
@@ -535,6 +536,7 @@
     "cortex-eval: FailureCensus",
     "cortex-eval: LlmEnv",
     "cortex-eval: NaturalLanguageMemorySystemOptions",
+    "cortex-eval: PositionEffect",
     "cortex-eval: QuestionFlip",
     "cortex-eval: QuestionRank",
     "cortex-eval: QuestionRecordInput",
@@ -851,6 +853,7 @@
     "cortex-eval: FailureCensus": "referenced-locally",
     "cortex-eval: LlmEnv": "referenced-locally",
     "cortex-eval: NaturalLanguageMemorySystemOptions": "referenced-locally",
+    "cortex-eval: PositionEffect": "referenced-locally",
     "cortex-eval: QuestionFlip": "referenced-locally",
     "cortex-eval: QuestionRank": "referenced-locally",
     "cortex-eval: QuestionRecordInput": "referenced-locally",
@@ -1518,6 +1521,9 @@
     ],
     "cortex-eval: NaturalLanguageMemorySystemOptions": [
       "packages/cortex-eval/src/natural-language-memory.ts:109"
+    ],
+    "cortex-eval: PositionEffect": [
+      "packages/cortex-eval/src/a3.ts:238"
     ],
     "cortex-eval: QuestionFlip": [
       "packages/cortex-eval/src/variance.ts:93"

@@ -65,6 +65,7 @@ export {
 } from './review-page.js';
 export {
   exactMcNemar,
+  positionEffect,
   scoreA3,
   type A3Arm,
   type A3ArmSummary,
@@ -74,6 +75,7 @@ export {
   type A3Result,
   type A3Trial,
   type A3Verdict,
+  type PositionEffect,
 } from './a3.js';
 export {
   runAblationReport,

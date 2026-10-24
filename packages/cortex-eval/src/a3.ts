@@ -221,6 +221,63 @@ function armSummaries(
   return [build('source'), build('atoms')];
 }
 
+/**
+ * How much of the elapsed time belongs to the position rather than to the arm.
+ *
+ * The pre-registration alternates which presentation comes first, so that fatigue cannot be read as
+ * a treatment effect on the *verdict*. It does not make the per-arm **median time** comparable, and
+ * the first dataset proved that in the sharpest possible way: over twenty pairs the first showing
+ * took longer in **twenty of twenty**, at a median of 21,978 ms against 2,448 ms. Reading a card for
+ * the first time is the cost; the second showing is a re-read of something already seen.
+ *
+ * That makes `medianMs` per arm (which the score output prints) a number about *which cards happened
+ * to be shown first*, not about atoms. With twenty pairs the two orderings get ten cards each, and
+ * one slow card landing in the atoms-first half is enough to move the arm median by seconds. So the
+ * position split is reported beside it: the arm median is not suppressed, it is labelled.
+ */
+export type PositionEffect = {
+  /** Pairs where both showings carried a time. */
+  readonly pairs: number;
+  readonly firstMedianMs: number | null;
+  readonly secondMedianMs: number | null;
+  /** How many pairs took longer on the first showing. */
+  readonly firstSlower: number;
+};
+
+export function positionEffect(trials: readonly A3Trial[]): PositionEffect {
+  const byCard = new Map<string, A3Trial[]>();
+  for (const trial of trials) {
+    const seen = byCard.get(trial.cardId);
+    if (seen === undefined) byCard.set(trial.cardId, [trial]);
+    else seen.push(trial);
+  }
+
+  const first: number[] = [];
+  const second: number[] = [];
+  let firstSlower = 0;
+  for (const showings of byCard.values()) {
+    const one = showings[0]?.elapsedMs;
+    const two = showings[1]?.elapsedMs;
+    if (typeof one !== 'number' || typeof two !== 'number') continue;
+    first.push(one);
+    second.push(two);
+    if (one > two) firstSlower += 1;
+  }
+
+  const median = (values: number[]): number | null => {
+    if (values.length === 0) return null;
+    const sorted = [...values].sort((left, right) => left - right);
+    return sorted[Math.floor((sorted.length - 1) / 2)] as number;
+  };
+
+  return {
+    pairs: first.length,
+    firstMedianMs: median(first),
+    secondMedianMs: median(second),
+    firstSlower,
+  };
+}
+
 function verdictOf(input: {
   pairs: number;
   mcnemarP: number;

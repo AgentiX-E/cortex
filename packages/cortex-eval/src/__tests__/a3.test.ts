@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { exactMcNemar, scoreA3, type A3Trial } from '../a3.js';
+import { exactMcNemar, positionEffect, scoreA3, type A3Trial } from '../a3.js';
 
 /** A paired trial helper: the same card under both presentations. */
 const pair = (
@@ -190,5 +190,74 @@ describe('scoreA3', () => {
     expect(result.arms[0].trials).toBe(0);
     expect(result.arms[0].interval).toEqual({ lower: 0, upper: 1 });
     expect(result.arms[0].medianMs).toBeNull();
+  });
+});
+
+describe('positionEffect', () => {
+  // The first real dataset: the first showing took longer in twenty pairs out of twenty, at nine
+  // times the median. The alternating order keeps that out of the *verdict*; it does not keep it out
+  // of the per-arm median, which is what the report prints next to the verdict.
+  const trial = (cardId: string, arm: 'source' | 'atoms', ms?: number): A3Trial => ({
+    cardId,
+    arm,
+    decision: 'accept',
+    ...(ms === undefined ? {} : { elapsedMs: ms }),
+  });
+
+  it('finds nothing to say about no trials', () => {
+    expect(positionEffect([])).toEqual({
+      pairs: 0,
+      firstMedianMs: null,
+      secondMedianMs: null,
+      firstSlower: 0,
+    });
+  });
+
+  it('compares the two showings of the same card, in the order they were recorded', () => {
+    const effect = positionEffect([
+      trial('a', 'source', 30_000),
+      trial('a', 'atoms', 2_000),
+      trial('b', 'atoms', 20_000),
+      trial('b', 'source', 3_000),
+    ]);
+    expect(effect).toEqual({
+      pairs: 2,
+      firstMedianMs: 20_000,
+      secondMedianMs: 2_000,
+      firstSlower: 2,
+    });
+  });
+
+  it('counts a pair that went the other way, rather than assuming the direction', () => {
+    const effect = positionEffect([trial('a', 'source', 1_000), trial('a', 'atoms', 9_000)]);
+    expect(effect.firstSlower).toBe(0);
+    expect(effect.firstMedianMs).toBe(1_000);
+  });
+
+  it('skips a card with only one showing, because one showing is not a pair', () => {
+    expect(positionEffect([trial('a', 'source', 5_000)]).pairs).toBe(0);
+  });
+
+  it('skips a pair where either showing has no time', () => {
+    const effect = positionEffect([
+      trial('a', 'source', 5_000),
+      trial('a', 'atoms'),
+      trial('b', 'source', 1_000),
+      trial('b', 'atoms', 4_000),
+    ]);
+    expect(effect.pairs).toBe(1);
+    expect(effect.firstSlower).toBe(0);
+  });
+
+  it('takes the lower median, so a reported number is always one that was observed', () => {
+    const effect = positionEffect([
+      trial('a', 'source', 1_000),
+      trial('a', 'atoms', 1),
+      trial('b', 'source', 9_000),
+      trial('b', 'atoms', 1),
+      trial('c', 'source', 5_000),
+      trial('c', 'atoms', 1),
+    ]);
+    expect(effect.firstMedianMs).toBe(5_000);
   });
 });
