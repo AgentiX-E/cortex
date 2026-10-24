@@ -92,3 +92,46 @@ That is the intended shape for this product — a card that paraphrases freely i
 - Whether the 44.1% is stable. One run, one model, twenty cards, `temperature: 0`.
 - Whether time-qualification generalises. The detector is a word list; "the summer I turned nine" is
   in it by accident ("summer") and "after the move" is not.
+
+---
+
+## Second reading: the drop was the gate, not the prompt (runs 40073815898 / 40076070920 / 40077606061)
+
+The 52 → 45 drop in proposals was attributed, in the section above, to prompt compliance. That
+attribution was wrong, and the way it was falsified is the useful part.
+
+**v5** added rule 5, "never swap in a synonym", with a rejected/accepted pair, and pre-registered two
+criteria: proposals ≥ 50/60 **and** verbatim share ≤ 50%. Neither held — 48 proposals, and the share
+moved **44.1% → 52.6%** because every atom v5 added was a copy while one distilled atom disappeared.
+It was reverted, and the prompt is byte-identical to v4 again.
+
+**The refutation left a diagnostic behind**, and the diagnostic found the real defect in one line.
+`WithheldFact.token` recorded `inventedWords: [["take", 1]]`: the model wrote "I *take* a comedy writing
+workshop" for a sentence saying "I've been *taking* a comedy writing workshop", and the gate compared
+`take` with `taki` and called a correct inflection an invention. The four-character test could not see
+through a vowel-changing inflection, so the gate was taxing the only legitimate rewrite the prompt had.
+
+| Configuration | atoms | verbatim | share | distilled | time kept | proposals /60 |
+| --- | --- | --- | --- | --- | --- | --- |
+| v4, four-character gate | 34 | 15 | 44.1% | 19 | 4/5 | 45 |
+| v5, four-character gate | 38 | 20 | 52.6% | 18 | 5/5 | 48 |
+| **v4, root-and-prefix gate** | 36 | 12 | **33.3%** | **24** | 4/5 | 43 |
+
+Same prompt, better gate: **distilled atoms 19 → 24, copied atoms 15 → 12.** One line of comparison did
+what a prompt rewrite could not, and did it in the direction the reviewer asked for.
+
+### The measurement's own variance is unmeasured, and that bounds every claim here
+
+The identical v4 prompt produced **45** and **43** proposals on two different days (`temperature: 0`,
+same model, same fixture). So 45 → 43 is not a regression from the gate fix; it is inside a variance
+nobody has measured. What the table supports is the *within-batch* comparison — an 11 pp move in the
+verbatim share against a 2-question move in the proposal count. Until a repeat is run, the proposal
+column should not be used to compare configurations, and "two runs agree" moves from optional to
+prerequisite.
+
+### One more arithmetic trap, found while rebuilding the page
+
+`prepare --limit 20` yields twenty *cards*, not twenty *pairs*. One card in this run (a sentence with
+nothing in it) produced no atoms, so the page had **19 pairs** — below the pre-registered N, which would
+have scored as `underpowered`. Requesting 21 cards gives 20 pairs. The page in `evidence/a3-review/` was
+rebuilt from that run.
