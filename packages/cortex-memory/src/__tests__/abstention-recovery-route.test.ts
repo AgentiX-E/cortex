@@ -93,7 +93,7 @@ describe('abstention recovery', () => {
 
   it('re-asks once with the list when the decline contradicts it, and uses the answer', async () => {
     const { llm, seen } = scripted([LISTED_DECLINE, '2']);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     const answer = await memory.answerSessions(QUESTION, sessions());
 
     expect(answer).toBe('2');
@@ -108,7 +108,7 @@ describe('abstention recovery', () => {
 
   it('leaves an honest decline alone, because an empty list is the licensed state', async () => {
     const { llm, seen } = scripted([HONEST_DECLINE, 'Answer: 2']);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     const answer = await memory.answerSessions(QUESTION, sessions());
 
     expect(answer).toBeNull();
@@ -130,7 +130,7 @@ describe('abstention recovery', () => {
       '2',
     ].join('\n');
     const { llm, seen } = scripted([listedAnswer, 'wrong']);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     const answer = await memory.answerSessions(QUESTION, sessions());
 
     expect(answer).toBe('2');
@@ -140,7 +140,7 @@ describe('abstention recovery', () => {
 
   it('never consults a question that answered, so no answer can move', async () => {
     const { llm, seen } = scripted(['3']);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     const answer = await memory.answerSessions(QUESTION, sessions());
 
     expect(answer).toBe('3');
@@ -153,7 +153,7 @@ describe('abstention recovery', () => {
     // must not force a number. It is counted as attempted and not answered, which is the reading
     // that says the pass fired and converted nothing.
     const { llm, seen } = scripted([LISTED_DECLINE, HONEST_DECLINE]);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     const answer = await memory.answerSessions(QUESTION, sessions());
 
     expect(answer).toBeNull();
@@ -163,7 +163,7 @@ describe('abstention recovery', () => {
 
   it('records the evidence the list came from, so the question is not one answered from nothing', async () => {
     const { llm } = scripted([LISTED_DECLINE, '2']);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     await memory.answerSessions(QUESTION, sessions());
 
     // Without this the record would show an answered question carrying no context, which is the
@@ -176,7 +176,7 @@ describe('abstention recovery', () => {
     // disagree with `questionCount x runs` once already). A recovered question answered, so it is
     // one `answered` and no `llm`.
     const { llm } = scripted([LISTED_DECLINE, '2']);
-    const memory = system(llm, { abstentionRecovery: 'once' });
+    const memory = system(llm, { reviewPass: 'recover' });
     await memory.answerSessions(QUESTION, sessions());
 
     expect(memory.abstentionReasons()).toEqual({ empty: 0, threshold: 0, llm: 0, answered: 1 });

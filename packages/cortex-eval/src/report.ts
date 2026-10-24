@@ -382,14 +382,6 @@ export type MemoryArmConfig = {
    */
   readonly reviewPass?: string | undefined;
   /**
-   * Whether a decline that contradicts its own Step 1 list got one corrective consultation.
-   *
-   * Always present, `off` included, for the reason `reviewPass` is: an artifact has to answer what
-   * the run did, and a field present only under treatment makes "no recovery" and "a recovery that
-   * was not recorded" the same row.
-   */
-  readonly abstentionRecovery?: string | undefined;
-  /**
    * Whether the multi-session route's ranking was built from the question alone or from the
    * question plus model-written activity phrases (§13.97).
    *

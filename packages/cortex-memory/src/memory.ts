@@ -1070,7 +1070,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const recovery = planAbstentionRecovery(
       firstRaw,
       first !== null,
-      this.#options.abstentionRecovery === 'once',
+      this.#options.reviewPass === 'recover',
     );
     if (recovery.kind === 'retry') {
       this.#recoveries.attempted += 1;

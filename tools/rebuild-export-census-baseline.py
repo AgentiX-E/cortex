@@ -123,7 +123,7 @@ RATIONALE = {
         "first version of that logic lived in the tool, whose test ran before `pnpm build` "
         "and therefore failed on every clean checkout. A tool that needs `dist` cannot be "
         "tested by the step that runs before `dist` exists. "
-        "THE ABSTENTION GATE (step 23) adds five entries. `planAbstentionRecovery` and "
+        "THE ABSTENTION GATE (step 23) adds four entries. `planAbstentionRecovery` and "
         "`buildRecoveryPrompt` have their caller in `memory.ts`; `asksForCount` is called by "
         "`buildRecoveryPrompt` and by its tests, and `declinedItems` by `planAbstentionRecovery` "
         "and by its tests, so both are test seams in the sense this ledger already uses for "

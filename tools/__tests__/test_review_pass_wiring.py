@@ -81,7 +81,11 @@ class TestTheReviewPassReachesTheProduct(unittest.TestCase):
     def test_the_product_carries_the_field(self) -> None:
         source = TYPES.read_text(encoding="utf-8")
         self.assertRegex(source, r"reviewPass\?:\s*ReviewPass;")
-        self.assertIn("export type ReviewPass = 'none' | 'audit';", source)
+        # The union gained `recover` in step 23. Pinned as the full member list rather than as a
+        # count, because the assertion's subject is "the product carries the values the arm can
+        # dispatch", and a dispatch of a value the product does not implement is rejected at the
+        # arm's boundary -- so the two lists have to agree member by member.
+        self.assertIn("export type ReviewPass = 'none' | 'audit' | 'recover';", source)
 
 
 if __name__ == "__main__":

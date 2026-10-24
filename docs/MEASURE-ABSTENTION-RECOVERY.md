@@ -82,13 +82,20 @@ answer rather than a guess.
 - **It does not rescue a two-hop question whose second hop was never retrieved.** MR failures split
   20 reader / 17 retrieval on full versus partial gold coverage, and this pass only addresses the
   first half.
-- **It is off by default.** `abstentionRecovery: 'off'` is the shipped behaviour and every archived
-  artifact was produced under it, so the treatment needs a run.
+- **It is off by default.** `reviewPass: 'none'` is the shipped behaviour and every archived artifact
+  was produced under it, so the treatment needs a run.
 
 ## Pre-registration
 
-Dispatched as one variable against the adopted configuration, `CORTEX_MEMORY_ABSTENTION_RECOVERY`
-set to `once`.
+Dispatched as one variable against the adopted configuration, `CORTEX_MEMORY_REVIEW_PASS` set to
+`recover`.
+
+It is a **value** of the existing pass field rather than a new field, and the reason is not brevity.
+`ReviewPass` was written as `'none' | 'audit'` with the note that a second pass with a different
+question should be a value rather than a second boolean, and this is that pass. It also keeps the
+workflow at 24 of its 25 dispatch inputs -- the suite forbids a workflow from sitting at the ceiling,
+and a 25th input would have made the next registration impossible. Adding it as its own field was
+tried first and failed that test, which is the test doing its job.
 
 | id | criterion | control |
 | --- | --- | --- |

@@ -384,14 +384,6 @@ export type CortexMemoryOptions = {
    */
   reviewPass?: ReviewPass;
   /**
-   * One corrective consultation for a decline that contradicts its own Step 1 list. `off` (the
-   * default) is the shipped behaviour every archived run was produced under.
-   *
-   * Reach is `answerSessions`, like `reviewPass`, and for the same reason: a treatment whose reach
-   * is not stated in its configuration cannot be separated from its cost.
-   */
-  abstentionRecovery?: AbstentionRecovery;
-  /**
    * How many times the multi-session route consults the model on one prompt, and whether the
    * answers are reduced by majority. `1` (the default) is the shipped behaviour.
    *
@@ -429,23 +421,16 @@ export type CortexMemoryOptions = {
 /**
  * Which second consultation a run performs, if any.
  *
- * `audit` is the only implemented pass, and it is named rather than boolean so a second pass with a
- * different question can be added without a flag whose meaning depends on the build.
+ * Named rather than boolean for the reason it was always named: a second pass with a different
+ * question is a different value, not a different build. `recover` is the second one.
+ *
+ * - `none` — one consultation, which is the state every archived run is in.
+ * - `audit` — after an answer, re-ask over the evidence, restricted to membership.
+ * - `recover` — after a **decline that contradicts its own Step 1 list**, ask once with the list
+ *   quoted and no evidence re-sent (`abstention-recovery.ts`).
+ *
+ * The two passes are mutually exclusive on purpose. `audit` consults every answered question and
+ * `recover` consults only a decline, so a run that could do both would be two treatments behind one
+ * value and could not say which move. Making them values of one field says that in the artifact.
  */
-export type ReviewPass = 'none' | 'audit';
-
-/**
- * Whether a decline that contradicts its own Step 1 list gets one corrective consultation.
- *
- * Named rather than boolean for the reason `ReviewPass` is: the value says *what* is consulted, and
- * `off` is a state that must be expressible because every archived run was produced under it.
- *
- * ## Why this is a separate switch from `reviewPass`
- *
- * `reviewPass: 'audit'` re-asks **every** answered question, and it was measured and not adopted.
- * This asks exactly one question, of the population that is currently always wrong: MR and TR
- * declines carrying a non-empty list, 13 to 17 questions per run across three archived runs
- * (`abstention-recovery.ts` has the counts). Bundling the two would put a 500-call change and a
- * 15-call change behind one flag, and the run could not separate them.
- */
-export type AbstentionRecovery = 'off' | 'once';
+export type ReviewPass = 'none' | 'audit' | 'recover';

@@ -174,14 +174,6 @@ export type CortexMemoryArmOptions = {
    */
   reviewPass?: string | undefined;
   /**
-   * Whether a decline that contradicts its own Step 1 list is re-asked once, without the evidence
-   * (`abstention-recovery.ts` in `cortex-memory` has the measurement and the counts).
-   *
-   * Optional for the same reason `reviewPass` is: `off` is the default and the state every archive
-   * is in, so a missing field cannot mean a treatment that was not administered.
-   */
-  abstentionRecovery?: string | undefined;
-  /**
    * Whether the multi-session route's relevance index is built from the question alone or
    * from the question plus model-written activity phrases (§13.97).
    *
@@ -785,7 +777,6 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
     reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
-    abstentionRecovery: readAbstentionRecovery(env[ABSTENTION_RECOVERY_VARIABLE]),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
@@ -1074,7 +1065,7 @@ function readAsk(raw: string | undefined): string {
 const REVIEW_PASS_VARIABLE = 'CORTEX_MEMORY_REVIEW_PASS';
 
 /** The passes this arm can dispatch, in the order the config line spells them. */
-const REVIEW_PASSES: readonly string[] = ['none', 'audit'];
+const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover'];
 
 /**
  * Read the review pass, rejecting anything the product does not implement.
@@ -1090,30 +1081,6 @@ function readReviewPass(raw: string | undefined): string {
     throw new Error(
       `${REVIEW_PASS_VARIABLE} must be one of ${REVIEW_PASSES.map((name) => JSON.stringify(name)).join(', ')} ` +
         `or unset, got ${JSON.stringify(raw)}.`,
-    );
-  }
-  return trimmed;
-}
-
-/**
- * The variable this arm reads for the abstention-recovery pass.
- *
- * Rejected rather than defaulted for the reason `readReviewPass` rejects: a dispatch that asked for
- * a value this build does not implement must fail loudly, because the alternative is a run whose
- * configuration line says one thing and whose behaviour is another.
- */
-const ABSTENTION_RECOVERY_VARIABLE = 'CORTEX_MEMORY_ABSTENTION_RECOVERY';
-
-const ABSTENTION_RECOVERIES = ['off', 'once'] as const;
-
-function readAbstentionRecovery(raw: string | undefined): string {
-  const trimmed = (raw ?? '').trim().toLowerCase();
-  if (trimmed === '') return 'off';
-  if (!(ABSTENTION_RECOVERIES as readonly string[]).includes(trimmed)) {
-    throw new Error(
-      `${ABSTENTION_RECOVERY_VARIABLE} must be one of ` +
-        `${ABSTENTION_RECOVERIES.map((name) => JSON.stringify(name)).join(', ')} or unset, ` +
-        `got ${JSON.stringify(raw)}.`,
     );
   }
   return trimmed;
@@ -1592,10 +1559,6 @@ export function toMemoryArmConfig(
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
     ask: options.ask,
     reviewPass: options.reviewPass ?? 'none',
-    // The same rule as `reviewPass`: always present, because `off` is a state a run can be
-    // dispatched to and an absent field would make "ran the control" and "predates the field" the
-    // same bytes.
-    abstentionRecovery: options.abstentionRecovery ?? 'off',
     // §13.97. Always present for the reason `reviewPass` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
