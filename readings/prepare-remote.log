@@ -1,0 +1,23 @@
+  g00: 2 atom(s), 1 verbatim
+  g02: 2 atom(s), 1 verbatim
+  g04: 2 atom(s), 0 verbatim
+  g05: 1 atom(s), 1 verbatim
+  g06: 1 atom(s), 0 verbatim
+  g08: 4 atom(s), 0 verbatim
+  g09: 1 atom(s), 1 verbatim
+  g10: 3 atom(s), 1 verbatim
+  g12: 1 atom(s), 0 verbatim
+  g13: 2 atom(s), 1 verbatim
+  g17: 2 atom(s), 1 verbatim
+  g18: 1 atom(s), 0 verbatim
+  g19: 1 atom(s), 0 verbatim
+  g21: 2 atom(s), 0 verbatim
+  g22: 1 atom(s), 0 verbatim
+  g23: 2 atom(s), 0 verbatim
+  g25: 2 atom(s), 0 verbatim
+  g29: 1 atom(s), 0 verbatim
+  g30: 2 atom(s), 0 verbatim
+  g32: 1 atom(s), 0 verbatim
+distillation: 7/34 atoms are verbatim runs (20.6%); time kept in 4/5 cards that named a time
+wrote 20 card(s) to readings/cards-remote.json
+profile: remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required
