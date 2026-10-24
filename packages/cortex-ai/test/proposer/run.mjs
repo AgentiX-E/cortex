@@ -167,6 +167,11 @@ function summarise(perRow, meta) {
     }
   }
 
+  const tokens = new Map();
+  for (const row of perRow) {
+    for (const token of row.withheldTokens ?? []) tokens.set(token, (tokens.get(token) ?? 0) + 1);
+  }
+
   return {
     model: meta.model,
     // One field instead of `endpoint` + `dtype`: those three could disagree with each other, and a
@@ -182,6 +187,9 @@ function summarise(perRow, meta) {
     secondsPerSentence: Number(((meta.seconds ?? 0) / Math.max(perRow.length, 1)).toFixed(2)),
     outcomes: tally('outcome'),
     withheldReasons: [...reasons.entries()].sort(),
+    // Every substituted word, with how often. Empty until step 22; a run that reports
+    // `invented:new-word` without this list cannot be acted on.
+    inventedWords: [...tokens.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)),
     perRow,
   };
 }
@@ -297,6 +305,12 @@ async function main() {
         ? {
             facts: result.proposal.facts.length,
             withheld: result.proposal.withheld.map((entry) => entry.reason),
+            // The substituted words themselves. A count tells you a rule fired; the words tell you
+            // what the prompt has to say differently, which is the only actionable form of this
+            // reading -- and the reason `WithheldFact.token` exists.
+            withheldTokens: result.proposal.withheld.flatMap((entry) =>
+              entry.token === undefined ? [] : [entry.token],
+            ),
             candidates: result.proposal.candidates,
           }
         : { detail: result.failure.detail.slice(0, 160) }),

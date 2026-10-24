@@ -47,7 +47,19 @@ export type GroundingProblem = 'empty' | 'new-number' | 'new-name' | 'new-word' 
 
 export type GroundingResult =
   | { readonly ok: true }
-  | { readonly ok: false; readonly problem: GroundingProblem; readonly detail: string };
+  | {
+      readonly ok: false;
+      readonly problem: GroundingProblem;
+      readonly detail: string;
+      /**
+       * The offending token, for the two problems where a single word is the diagnosis.
+       *
+       * Absent for `new-number` on purpose: a fabricated number is the one case where the invented
+       * value is indistinguishable from a real one on sight, so the *count* is recorded and the
+       * value is not. Absent for `new-negation`, where the whole atom is the evidence.
+       */
+      readonly token?: string;
+    };
 
 /**
  * Function words carry no claim, so their presence cannot be an invention.
@@ -285,6 +297,7 @@ export function contentGrounded(candidate: string, source: string): GroundingRes
         ok: false,
         problem: 'new-word',
         detail: `the atom uses ${JSON.stringify(bare)}, which the sentence does not`,
+        token: bare,
       };
     }
   }

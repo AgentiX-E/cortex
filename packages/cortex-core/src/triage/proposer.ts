@@ -65,7 +65,7 @@ import { classify as classifyWith, type TriageDecision, type TriageScope } from 
  * incomparable. Stored on every proposal, so a card exported last month can be read against the
  * rules that produced it.
  */
-export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v4';
+export const PROPOSER_PROMPT_VERSION = 'triage-proposer/v5';
 
 /**
  * How many atoms a card may offer.
@@ -130,7 +130,30 @@ export type WithheldFact = {
     | 'classifier-error'
     | `rule:${string}`;
   readonly policy?: string;
+  /**
+   * The word the model invented, when that word is the diagnosis.
+   *
+   * The module comment says the withheld text is never kept, and that stays true: this is one token,
+   * and by construction it appears nowhere in the sentence, so it is the model's vocabulary rather
+   * than the person's content. It exists because a gate that reports "8 refusals" and cannot say
+   * which words caused them cannot be debugged -- the first v4 run produced exactly that, and the
+   * fix had to wait for this field.
+   *
+   * Two restrictions. It is recorded for `invented:new-word` only, and only when it is alphabetic
+   * and at most 24 characters. That is narrower than it first looks, and the narrowing came from a
+   * test: an export must not contain an entity the person never mentioned, because a reviewer
+   * reading the card afterwards cannot tell "the model invented Paris" from "the person said
+   * Paris". A substituted *common* word has no such problem -- it is visibly the model's vocabulary
+   * -- and it is the thing the prompt has to be fixed against. Names, numbers and negations are
+   * counted and not named.
+   */
+  readonly token?: string;
 };
+
+/** Whether an invented token is safe to carry onto a card. */
+function diagnosable(token: string): boolean {
+  return /^[A-Za-z][A-Za-z'\u2019-]{0,23}$/.test(token);
+}
 
 export type TriageProposal = {
   readonly facts: readonly ProposedFact[];
@@ -248,6 +271,20 @@ const FACTS_SCHEMA: JsonSchema = {
  * number it produced is in `cortex-docs` 04 §9.12, next to the number it replaced. The gates were
  * what made the v1 failure harmless: every copied sentence failed grounding, so nothing was shown
  * to a person and nothing could be published.
+ *
+ * ## v4 put an example back, and v5 added a rule the example could not carry
+ *
+ * The v2 decision to remove every sentence-shaped string was correct for the gate it had. When that
+ * gate became content grounding (step 21), the reason evaporated: an example about photography cannot
+ * pass grounding against a sentence about a dentist, so copying the example now produces a rejection
+ * instead of a card. v4 therefore carries one worked example, because "rewritten, with its time" is
+ * not something a rule describes well.
+ *
+ * v5 adds rule 5, "never swap in a synonym", with its own rejected/accepted pair. The first v4 run
+ * left seven sentences without a proposal and all eight refusals were `invented:new-word`: the model
+ * distils by paraphrasing, and content grounding refuses vocabulary the sentence does not contain.
+ * The rule is the fix; loosening the gate is not, because a gate that accepts synonyms accepts
+ * invented ones too.
  */
 export function buildProposerPrompt(text: string): string {
   // The fence is removed from the sentence before it is used as a fence: a delimiter the payload can
@@ -277,12 +314,17 @@ export function buildProposerPrompt(text: string): string {
     '4. Keep numbers and names exactly as written, and add none. You may only use words that appear in',
     '   the sentence, or a plainer form of them ("editing" -> "edit", "photos" -> "photo"). A number,',
     '   a name, a word or a negation that is not in the sentence is a rejection.',
-    '5. One claim per statement. Two claims joined by "and" are two statements.',
-    `6. At most ${MAX_FACTS} statements. If the sentence states nothing that could be acted on or asked`,
+    '5. Never swap in a synonym. If the sentence says "children", write "children" and not "kids";',
+    '   if it says "facility", write "facility" and not "plant". Keeping the person\u2019s own word',
+    '   is the rule even when a different word would read better, because a substitution counts as',
+    '   an invention and the statement is thrown away. Only the small connecting words (a, the, of,',
+    '   in, on, and, is, was, that, when, with) may be added freely.',
+    '6. One claim per statement. Two claims joined by "and" are two statements.',
+    `7. At most ${MAX_FACTS} statements. If the sentence states nothing that could be acted on or asked`,
     '   about later, return an empty list.',
-    '7. Do not decide whether a statement may be shared. That is not your decision and any answer you',
+    '8. Do not decide whether a statement may be shared. That is not your decision and any answer you',
     '   give to it is discarded.',
-    '8. Optionally mark spans inside a statement that a preview should mask (a person\u2019s name, a',
+    '9. Optionally mark spans inside a statement that a preview should mask (a person\u2019s name, a',
     '   contact detail, an amount, a place). Offsets are character offsets into that statement.',
     '   A mask is a preview aid, not a security control.',
     '',
@@ -292,6 +334,11 @@ export function buildProposerPrompt(text: string): string {
     '            communities I have joined have been super helpful, and I moved to Berlin in March."',
     '  statements: ["I moved to Berlin in March.", "I edit photos in Lightroom.",',
     '               "I learn photo editing from online communities."]',
+    '',
+    'And the rule that is easiest to break by accident, because the substitution reads better:',
+    '  sentence: "I have two children and we live near the plant."',
+    '  rejected: ["I have two kids.", "We live near the factory."]  -- two synonyms, two inventions',
+    '  accepted: ["I have two children.", "We live near the plant."]',
     // v1 put a sentence-shaped example here and a 0.5B model returned it verbatim 44 times out of 60;
     // v2 removed every sentence-shaped artefact. A worked example is safe now for a reason that did not
     // exist then: the gate is content grounding, so an example about photography cannot pass grounding
@@ -410,6 +457,11 @@ export class TriageProposer {
         // An empty atom is a length defect, not an invention: it is reported as the reason it is.
         withheld.push({
           reason: grounding.problem === 'empty' ? 'too-short' : `invented:${grounding.problem}`,
+          ...(grounding.problem === 'new-word' &&
+          grounding.token !== undefined &&
+          diagnosable(grounding.token)
+            ? { token: grounding.token }
+            : {}),
         });
         continue;
       }

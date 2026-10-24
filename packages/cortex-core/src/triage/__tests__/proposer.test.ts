@@ -140,6 +140,62 @@ describe('the gate is content grounding, not word-copying', () => {
     expect(result.proposal.withheld).toEqual([]);
   });
 
+  it('records the invented word, because a count nobody can act on is not a diagnosis', async () => {
+    // The first v4 run reported `invented:new-word` eight times and could not say which words. That
+    // is the difference between a number and a lead.
+    const { instance } = proposer({
+      facts: [
+        { text: 'I moved to Berlin in March' },
+        { text: 'I moved to Berlin in March and I write software on the weekend.' },
+      ],
+    });
+    const result = await instance.propose(TWO_ATOMS);
+    if (!result.ok)
+      throw new Error(`expected the other atom to survive, got ${result.failure.reason}`);
+    // The first offending word in reading order, which is what a prompt fix needs: the gate stops at
+    // the first one rather than collecting all of them, so the list reads like a proofread.
+    expect(result.proposal.withheld).toEqual([{ reason: 'invented:new-word', token: 'write' }]);
+  });
+
+  it('names the substituted word but not the invented entity', async () => {
+    // An export must not contain an entity the person never mentioned: a reader of the card cannot
+    // tell "the model invented Discord" from "the person said Discord". A substituted common word
+    // has no such problem and is exactly what the prompt is fixed against.
+    const named = proposer({
+      facts: [
+        { text: 'I moved to Berlin in March' },
+        { text: 'I moved to Berlin in March and I use Discord.' },
+      ],
+    });
+    const names = await named.instance.propose(TWO_ATOMS);
+    if (!names.ok) throw new Error('expected a proposal with one withheld atom');
+    expect(names.proposal.withheld).toEqual([{ reason: 'invented:new-name' }]);
+    expect(JSON.stringify(names.proposal)).not.toContain('Discord');
+
+    // A fabricated number is the one invention whose value looks exactly like a real one, so the
+    // count is kept and the value is not. Asserted rather than left to the comment.
+    const numbered = proposer({
+      facts: [{ text: 'I moved to Berlin in March' }, { text: 'I moved to Berlin in March 2024.' }],
+    });
+    const numbers = await numbered.instance.propose(TWO_ATOMS);
+    if (!numbers.ok) throw new Error('expected a proposal with one withheld atom');
+    expect(numbers.proposal.withheld).toEqual([{ reason: 'invented:new-number' }]);
+  });
+
+  it('does not carry a token that is not a plain word, so a fabricated secret cannot travel', async () => {
+    const { instance } = proposer({
+      facts: [
+        { text: 'I moved to Berlin in March' },
+        { text: 'I moved to Berlin in March with XJ9-K2.' },
+      ],
+    });
+    const result = await instance.propose(TWO_ATOMS);
+    if (!result.ok) throw new Error('expected a proposal with one withheld atom');
+    expect(result.proposal.withheld).toHaveLength(1);
+    expect(result.proposal.withheld[0]?.token).toBeUndefined();
+    expect(JSON.stringify(result.proposal)).not.toContain('XJ9-K2');
+  });
+
   it('withholds a statement that invents a date, and says which kind of invention it was', async () => {
     const { instance } = proposer({ facts: [{ text: 'I moved to Berlin in April 2024.' }] });
     const result = await instance.propose(TWO_ATOMS);
@@ -243,7 +299,9 @@ describe('the proposer, on a model that misbehaves', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.proposal.facts).toHaveLength(1);
-    expect(result.proposal.withheld).toEqual([{ reason: 'invented:new-word' }]);
+    // 'live' is the substituted word ('write' has no counterpart in the sentence). 'Paris' is a name
+    // and is deliberately *not* named in the record: see `WithheldFact.token`.
+    expect(result.proposal.withheld).toEqual([{ reason: 'invented:new-word', token: 'live' }]);
     // The dropped sentence is not retained: this object is what a card stores and an export prints.
     expect(JSON.stringify(result.proposal)).not.toContain('Paris');
   });
