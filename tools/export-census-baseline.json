@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 695,
-    "withCaller": 371,
-    "orphaned": 324,
-    "referencedLocally": 264,
-    "unreferenced": 60
+    "exports": 758,
+    "withCaller": 414,
+    "orphaned": 344,
+    "referencedLocally": 281,
+    "unreferenced": 63
   },
   "groups": [
     {
@@ -34,7 +34,7 @@
     {
       "category": "core-llm-node-surface",
       "count": 125,
-      "rationale": "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-ai/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. THE THREE ENTRIES OF cortex-ai ARE ONE LIBRARY WITH THREE DEPENDENCY PROFILES: `.` (remote providers, needs only fetch), `./local` (transformers.js, an optional peer) and `./web` (the browser's built-in model). Almost every export in this group is part of that surface and is called by a consumer, not by this repository -- the repository ships no application. Two of them are worth naming because they look like internal helpers and are not: `createFeatureExtractor` and `createRerankClassifier` are the loading layer that pins `dtype` and reads raw logits, and `test/parity/run.mjs` drives both against real weights. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. THE SAME APPLIES TO THE TRIAGE SURFACE from implementation steps 5 and 6 (`TriageWriter`, `CardQueue`, `RULE_TABLE`, `classify`, `destinationOf`, `assertRuleTable`, `TriageError`, `RuleTableError` and their types): it is the write side of the boundary and the queue that fills the shared store, called internally and by the four test files that measure the sixty labelled utterances, the card lifecycle and the output guard. `OutputGuard` (step 7) is the same table read in the other direction -- what may be said rather than what may be stored -- and it is called by a product that does not exist in this repository yet. THE PROPOSAL LAYER (step 9: `TriageProposer`, `groundedIn`, `buildProposerPrompt`, `PROPOSER_PROMPT_VERSION`, `MAX_FACTS`, `MAX_FACT_CHARS` and their types) is the same kind of entry: its only in-repository callers are the proposer\u2019s own gates and the card queue\u2019s `attach`, and the thing that will call it in production is an application that does not exist here. It is exported so the four gates can be driven from a test one at a time and so a caller can build the same prompt it will validate against -- `buildProposerPrompt` is exported for exactly that reason, and a card renderer needs `MAX_FACTS` to say \"3 of 8\" without inventing a second constant. THE ECHO SURFACE (step 11) is three entries and one removal worth naming: `hashWindow` is called by `EchoCorpus.contains` in its own file and by the corpus tests, so it is a test seam in the same sense as `clampAwayFromZero`; `DEFAULT_ECHO_WIDTH` and `EchoCorpusStats` are a constant and the shape `stats` returns, with no caller yet. And `OutputGuard` LEFT this ledger, which is the honest record of what happened in this step: the guard finally has a caller, and that caller is `packages/cortex-core/test/echo/run.mjs` -- a measurement script, not a product. It is the first time the output side has been driven from outside a test file, and it is still not a shipped path. THE PROFILE SURFACE (step 14) is eight entries with one caller between them: `resolveLlmProfile`, `describeProfile`, `readApiKey` and `PROFILE_ENV` are called by the two tools, and the five types (`LlmProfile`, `LocalProfile`, `RemoteProfile`, `ProfileRequest`, `ProfileEnv`), `DEFAULT_LOCAL_MODEL` and `DEFAULT_WEIGHT_HOST` are named in those tools' signatures and docs but not called. That is the honest shape of a configuration module: the values exist so that a failure message and a document can cite the same string, and nothing in the library decides anything with them. `cortex-ai: CrossEncoderRerankerOptions` LEFT this ledger for a dull reason worth one line: it moved to `rerank/cross-encoder.ts`, and the census resolves a re-exported type to its declaration site, which is now reached from `./local` -- the same file, a different path, so it counts as used. Not a change in behaviour. THE REVIEW PAGE (step 16) adds one entry with a caller -- `renderA3ReviewPage`, called by `tools/a3-review-page.mjs` -- and five that exist for the test suite: `planReview` and `resumeKey` are called inside their own file and by the tests, so they are test seams in the sense this ledger already uses for `hashWindow`; the four types (`ReviewCard`, `ReviewPageInput`, `ReviewPair`, `ReviewPlan`) are the shapes those signatures use. `trialLine` was written, exported, and then removed: its only caller was a test, and a one-line wrapper around JSON.stringify does not earn an export -- the test stringifies the trial itself and asserts the same thing. Three more joined when the command line moved out of the tool and into this package: `parseReviewPageArgs`, `readReviewCards` and `resolveOutPath` are called by `tools/a3-review-page.mjs`, so they have a caller and are not in this ledger at all -- they are named here only because the move is the interesting part. The first version of that logic lived in the tool, whose test ran before `pnpm build` and therefore failed on every clean checkout. A tool that needs `dist` cannot be tested by the step that runs before `dist` exists. THE ABSTENTION GATE (step 23) adds three entries, down from four when step 24 gave `declinedItems` a caller outside the tests: `test/mr-census/run.mjs` imports it so that the census and the gate cannot drift apart, which is why that entry left this ledger rather than being rationalised. `planAbstentionRecovery` and `buildRecoveryPrompt` have their caller in `memory.ts`; `asksForCount` is called by `buildRecoveryPrompt` for that same reason, so it is a test seam in the sense this ledger already uses for `hashWindow`. `DECLINE_TOKEN` is exported because a test couples it to `ABSTAIN_TOKEN` across a layer that cannot share a constant, and `RecoveryPlan` is a shape named only in a signature. None of them is a deletion candidate: the module exists so that the decision \"is this decline honest\" is one function called from one place, rather than a regex written twice. THE GROUNDING CHANGE (step 21) adds four entries and gives the others callers. `contentGrounded` is called by `TriageProposer.filter` and by `CardQueue.attach`, and `distillationOf` by `tools/a3-review.mjs`; `isVerbatimRun` and `looksTemporal` are called inside `grounding.ts` and by its tests, so they are test seams in the sense this ledger already uses for `hashWindow`. The two types are shapes named only in signatures. They are exported rather than inlined because the reading and the gate must call the same functions: a reading that re-implemented \"is this a verbatim run\" would produce a number about a different question than the one the product asks. THE CLAIMS GATE (step 18) adds ONE entry and gives the other two callers: `claimsIn` is called by `CardQueue.open`, which is the path that decides whether a turn becomes a question at all; `splitSentences` is called by `test/card-volume/run.mjs`, the same way `OutputGuard` left this ledger when `test/echo/run.mjs` started driving it; `isClaim` is called only inside `claims.ts` and by `claims.test.ts`, so it lands here as a test seam in the sense this ledger already uses for `hashWindow`. The three exist as a module rather than as private helpers because the reading, the tests and the queue must call the same predicate: a reading that re-implemented the gate would measure a different gate. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly.",
+      "rationale": "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-ai/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. THE THREE ENTRIES OF cortex-ai ARE ONE LIBRARY WITH THREE DEPENDENCY PROFILES: `.` (remote providers, needs only fetch), `./local` (transformers.js, an optional peer) and `./web` (the browser's built-in model). Almost every export in this group is part of that surface and is called by a consumer, not by this repository -- the repository ships no application. Two of them are worth naming because they look like internal helpers and are not: `createFeatureExtractor` and `createRerankClassifier` are the loading layer that pins `dtype` and reads raw logits, and `test/parity/run.mjs` drives both against real weights. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. THE SAME APPLIES TO THE TRIAGE SURFACE from implementation steps 5 and 6 (`TriageWriter`, `CardQueue`, `RULE_TABLE`, `classify`, `destinationOf`, `assertRuleTable`, `TriageError`, `RuleTableError` and their types): it is the write side of the boundary and the queue that fills the shared store, called internally and by the four test files that measure the sixty labelled utterances, the card lifecycle and the output guard. `OutputGuard` (step 7) is the same table read in the other direction -- what may be said rather than what may be stored -- and it is called by a product that does not exist in this repository yet. THE PROPOSAL LAYER (step 9: `TriageProposer`, `groundedIn`, `buildProposerPrompt`, `PROPOSER_PROMPT_VERSION`, `MAX_FACTS`, `MAX_FACT_CHARS` and their types) is the same kind of entry: its only in-repository callers are the proposer’s own gates and the card queue’s `attach`, and the thing that will call it in production is an application that does not exist here. It is exported so the four gates can be driven from a test one at a time and so a caller can build the same prompt it will validate against -- `buildProposerPrompt` is exported for exactly that reason, and a card renderer needs `MAX_FACTS` to say \"3 of 8\" without inventing a second constant. THE ECHO SURFACE (step 11) is three entries and one removal worth naming: `hashWindow` is called by `EchoCorpus.contains` in its own file and by the corpus tests, so it is a test seam in the same sense as `clampAwayFromZero`; `DEFAULT_ECHO_WIDTH` and `EchoCorpusStats` are a constant and the shape `stats` returns, with no caller yet. And `OutputGuard` LEFT this ledger, which is the honest record of what happened in this step: the guard finally has a caller, and that caller is `packages/cortex-core/test/echo/run.mjs` -- a measurement script, not a product. It is the first time the output side has been driven from outside a test file, and it is still not a shipped path. THE PROFILE SURFACE (step 14) is eight entries with one caller between them: `resolveLlmProfile`, `describeProfile`, `readApiKey` and `PROFILE_ENV` are called by the two tools, and the five types (`LlmProfile`, `LocalProfile`, `RemoteProfile`, `ProfileRequest`, `ProfileEnv`), `DEFAULT_LOCAL_MODEL` and `DEFAULT_WEIGHT_HOST` are named in those tools' signatures and docs but not called. That is the honest shape of a configuration module: the values exist so that a failure message and a document can cite the same string, and nothing in the library decides anything with them. `cortex-ai: CrossEncoderRerankerOptions` LEFT this ledger for a dull reason worth one line: it moved to `rerank/cross-encoder.ts`, and the census resolves a re-exported type to its declaration site, which is now reached from `./local` -- the same file, a different path, so it counts as used. Not a change in behaviour. THE REVIEW PAGE (step 16) adds one entry with a caller -- `renderA3ReviewPage`, called by `tools/a3-review-page.mjs` -- and five that exist for the test suite: `planReview` and `resumeKey` are called inside their own file and by the tests, so they are test seams in the sense this ledger already uses for `hashWindow`; the four types (`ReviewCard`, `ReviewPageInput`, `ReviewPair`, `ReviewPlan`) are the shapes those signatures use. `trialLine` was written, exported, and then removed: its only caller was a test, and a one-line wrapper around JSON.stringify does not earn an export -- the test stringifies the trial itself and asserts the same thing. Three more joined when the command line moved out of the tool and into this package: `parseReviewPageArgs`, `readReviewCards` and `resolveOutPath` are called by `tools/a3-review-page.mjs`, so they have a caller and are not in this ledger at all -- they are named here only because the move is the interesting part. The first version of that logic lived in the tool, whose test ran before `pnpm build` and therefore failed on every clean checkout. A tool that needs `dist` cannot be tested by the step that runs before `dist` exists. THE ABSTENTION GATE (step 23) adds three entries, down from four when step 24 gave `declinedItems` a caller outside the tests: `test/mr-census/run.mjs` imports it so that the census and the gate cannot drift apart, which is why that entry left this ledger rather than being rationalised. `planAbstentionRecovery` and `buildRecoveryPrompt` have their caller in `memory.ts`; `asksForCount` is called by `buildRecoveryPrompt` for that same reason, so it is a test seam in the sense this ledger already uses for `hashWindow`. `DECLINE_TOKEN` is exported because a test couples it to `ABSTAIN_TOKEN` across a layer that cannot share a constant, and `RecoveryPlan` is a shape named only in a signature. None of them is a deletion candidate: the module exists so that the decision \"is this decline honest\" is one function called from one place, rather than a regex written twice. THE GROUNDING CHANGE (step 21) adds four entries and gives the others callers. `contentGrounded` is called by `TriageProposer.filter` and by `CardQueue.attach`, and `distillationOf` by `tools/a3-review.mjs`; `isVerbatimRun` and `looksTemporal` are called inside `grounding.ts` and by its tests, so they are test seams in the sense this ledger already uses for `hashWindow`. The two types are shapes named only in signatures. They are exported rather than inlined because the reading and the gate must call the same functions: a reading that re-implemented \"is this a verbatim run\" would produce a number about a different question than the one the product asks. THE CLAIMS GATE (step 18) adds ONE entry and gives the other two callers: `claimsIn` is called by `CardQueue.open`, which is the path that decides whether a turn becomes a question at all; `splitSentences` is called by `test/card-volume/run.mjs`, the same way `OutputGuard` left this ledger when `test/echo/run.mjs` started driving it; `isClaim` is called only inside `claims.ts` and by `claims.test.ts`, so it lands here as a test seam in the sense this ledger already uses for `hashWindow`. The three exist as a module rather than as private helpers because the reading, the tests and the queue must call the same predicate: a reading that re-implemented the gate would measure a different gate. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly.",
       "declarationSites": [
         "cortex-ai: AvailabilityReport (packages/cortex-ai/src/web/platform-language-model.ts:56)",
         "cortex-ai: ChatMessage (packages/cortex-ai/src/local/llm.ts:36)",
@@ -366,6 +366,33 @@
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2671)",
         "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2567)"
       ]
+    },
+    {
+      "category": "knowledge-model-surface",
+      "count": 20,
+      "rationale": "THE KNOWLEDGE MODEL (implementation step 30) contributes twenty entries, and they are two different kinds of thing rather than one undifferentiated block. NINETEEN ARE VOCABULARY: twelve types and seven runtime tables. The types (`KnowledgeFrame`, `KnowledgeFact` and `KnowledgeEdge` are NOT here because `unit.ts`, `edge.ts` and `typed.ts` name them in their signatures, so they already have a caller) are `BlockOptions`, `BudgetFill`, `BuildUnitInput`, `EdgeOrigin`, `ExpansionOptions`, `MarkerPolicy`, `RankedItem`, `Reached`, `UnitCensus`, `UnitProblem`, `UnitResult` and `GroundingInResult`, and every one exists so that a signature can be read: a caller that wants to know what `planAbstentionRecovery` returns has no other place to look. The tables are `FACT_TYPES`, `EDGE_TYPES`, `POLARITIES`, `MODALITIES`, `RELATION_KINDS`, `MARKER_TOKENS` and `NOT_MARKERS`. `FACT_TYPES` and `EDGE_TYPES` are read at runtime by the `is*` guards that `checkFact` and `checkEdge` call, so they are live; they are in this ledger because the guard, not the table, is what the caller names. `MARKER_TOKENS` and `NOT_MARKERS` are here for a different reason worth stating: they are exported so that a test can assert the two properties the licence table depends on -- that no token belongs to two classes, and that every exclusion phrase is at least as long as the token it hides -- because both are cheap to check and expensive to discover. Publishing them also lets a caller explain a missing edge without guessing, which is the same argument `MAX_FACTS` has. THE ONE FUNCTION IS A MEASUREMENT SEAM: `fuseWithScores` is the fusion with its score kept, and `reciprocalRankFusion` is a three-line wrapper around it, so the wrapper is what the code path calls and this is what a report would call once the four recall channels are wired into the memory arm. That wiring is the next step and is recorded in `docs/DESIGN-KNOWLEDGE-MODEL.md` section 7; if it is abandoned, this entry and the function should be deleted together rather than left as a second fusion nobody computes. NOTHING HERE IS A DELETION CANDIDATE, with that one exception: the rest is the shape of a contract that a caller outside this repository would need, and this repository ships no application that would name it.",
+      "declarationSites": [
+        "cortex-core: BlockOptions (packages/cortex-core/src/retrieval/typed.ts:105)",
+        "cortex-core: BudgetFill (packages/cortex-core/src/retrieval/fuse.ts:81)",
+        "cortex-core: BuildUnitInput (packages/cortex-core/src/knowledge/unit.ts:75)",
+        "cortex-core: EDGE_TYPES (packages/cortex-core/src/knowledge/taxonomy.ts:124)",
+        "cortex-core: EdgeOrigin (packages/cortex-core/src/knowledge/edge.ts:48)",
+        "cortex-core: ExpansionOptions (packages/cortex-core/src/retrieval/typed.ts:44)",
+        "cortex-core: FACT_TYPES (packages/cortex-core/src/knowledge/taxonomy.ts:65)",
+        "cortex-core: GroundingInResult (packages/cortex-core/src/triage/grounding.ts:306)",
+        "cortex-core: MARKER_TOKENS (packages/cortex-core/src/knowledge/markers.ts:44)",
+        "cortex-core: MODALITIES (packages/cortex-core/src/knowledge/taxonomy.ts:95)",
+        "cortex-core: MarkerPolicy (packages/cortex-core/src/knowledge/unit.ts:45)",
+        "cortex-core: NOT_MARKERS (packages/cortex-core/src/knowledge/markers.ts:70)",
+        "cortex-core: POLARITIES (packages/cortex-core/src/knowledge/taxonomy.ts:94)",
+        "cortex-core: RELATION_KINDS (packages/cortex-core/src/knowledge/taxonomy.ts:184)",
+        "cortex-core: RankedItem (packages/cortex-core/src/retrieval/fuse.ts:28)",
+        "cortex-core: Reached (packages/cortex-core/src/retrieval/typed.ts:52)",
+        "cortex-core: UnitCensus (packages/cortex-core/src/knowledge/unit.ts:212)",
+        "cortex-core: UnitProblem (packages/cortex-core/src/knowledge/unit.ts:63)",
+        "cortex-core: UnitResult (packages/cortex-core/src/knowledge/unit.ts:71)",
+        "cortex-core: fuseWithScores (packages/cortex-core/src/retrieval/fuse.ts:49)"
+      ]
     }
   ],
   "knownOrphans": [
@@ -421,30 +448,46 @@
     "cortex-ai: sanitizePrompt",
     "cortex-core: AccessRecord",
     "cortex-core: AssembleRequest",
+    "cortex-core: BlockOptions",
+    "cortex-core: BudgetFill",
+    "cortex-core: BuildUnitInput",
     "cortex-core: CardQueueOptions",
     "cortex-core: CardState",
     "cortex-core: CensusReport",
     "cortex-core: ConsolidationStats",
     "cortex-core: DEFAULT_ECHO_WIDTH",
     "cortex-core: DistillationOf",
+    "cortex-core: EDGE_TYPES",
     "cortex-core: EchoCorpusStats",
+    "cortex-core: EdgeOrigin",
+    "cortex-core: ExpansionOptions",
     "cortex-core: ExportKind",
     "cortex-core: ExportedSymbol",
+    "cortex-core: FACT_TYPES",
     "cortex-core: FindingKind",
     "cortex-core: FuseRerankOptions",
+    "cortex-core: GroundingInResult",
     "cortex-core: GroundingResult",
+    "cortex-core: MARKER_TOKENS",
     "cortex-core: MAX_FACTS",
     "cortex-core: MAX_FACT_CHARS",
     "cortex-core: MAX_REVIEW_BOOST",
     "cortex-core: MIN_STABILITY",
+    "cortex-core: MODALITIES",
+    "cortex-core: MarkerPolicy",
     "cortex-core: MemoryGraphOptions",
     "cortex-core: MemoryType",
+    "cortex-core: NOT_MARKERS",
     "cortex-core: OutputFinding",
     "cortex-core: OutputScanRequest",
+    "cortex-core: POLARITIES",
     "cortex-core: PackageCensus",
     "cortex-core: ProposalFailure",
     "cortex-core: ProposedFact",
     "cortex-core: ProposedRedaction",
+    "cortex-core: RELATION_KINDS",
+    "cortex-core: RankedItem",
+    "cortex-core: Reached",
     "cortex-core: ReadSideOptions",
     "cortex-core: RedactionKind",
     "cortex-core: ReleaseAllowed",
@@ -460,6 +503,9 @@
     "cortex-core: TriageProposerOptions",
     "cortex-core: TriageRecord",
     "cortex-core: TriageWriterOptions",
+    "cortex-core: UnitCensus",
+    "cortex-core: UnitProblem",
+    "cortex-core: UnitResult",
     "cortex-core: WithheldFact",
     "cortex-core: WriteDecision",
     "cortex-core: assertRuleTable",
@@ -473,6 +519,7 @@
     "cortex-core: degenerateDfPValue",
     "cortex-core: extractExportedSymbols",
     "cortex-core: findContradictions",
+    "cortex-core: fuseWithScores",
     "cortex-core: hashWindow",
     "cortex-core: identifierPattern",
     "cortex-core: isBarrelFile",
@@ -1018,7 +1065,27 @@
     "cortex-storage: ensurePgSchema": "referenced-locally",
     "cortex-storage: openBrowserStorage": "referenced-locally",
     "cortex-storage: openOpfsStorage": "referenced-locally",
-    "cortex-storage: parseTags": "unreferenced"
+    "cortex-storage: parseTags": "unreferenced",
+    "cortex-core: BlockOptions": "referenced-locally",
+    "cortex-core: BudgetFill": "unreferenced",
+    "cortex-core: BuildUnitInput": "referenced-locally",
+    "cortex-core: EDGE_TYPES": "referenced-locally",
+    "cortex-core: EdgeOrigin": "referenced-locally",
+    "cortex-core: ExpansionOptions": "referenced-locally",
+    "cortex-core: FACT_TYPES": "referenced-locally",
+    "cortex-core: GroundingInResult": "referenced-locally",
+    "cortex-core: MARKER_TOKENS": "referenced-locally",
+    "cortex-core: MODALITIES": "referenced-locally",
+    "cortex-core: MarkerPolicy": "referenced-locally",
+    "cortex-core: NOT_MARKERS": "referenced-locally",
+    "cortex-core: POLARITIES": "referenced-locally",
+    "cortex-core: RELATION_KINDS": "unreferenced",
+    "cortex-core: RankedItem": "referenced-locally",
+    "cortex-core: Reached": "referenced-locally",
+    "cortex-core: UnitCensus": "unreferenced",
+    "cortex-core: UnitProblem": "referenced-locally",
+    "cortex-core: UnitResult": "referenced-locally",
+    "cortex-core: fuseWithScores": "referenced-locally"
   },
   "locations": {
     "cortex-ai: AvailabilityReport": [
@@ -1992,6 +2059,66 @@
     ],
     "cortex-storage: parseTags": [
       "packages/cortex-storage/src/storage/sql.ts:198"
+    ],
+    "cortex-core: BlockOptions": [
+      "packages/cortex-core/src/retrieval/typed.ts:105"
+    ],
+    "cortex-core: BudgetFill": [
+      "packages/cortex-core/src/retrieval/fuse.ts:81"
+    ],
+    "cortex-core: BuildUnitInput": [
+      "packages/cortex-core/src/knowledge/unit.ts:75"
+    ],
+    "cortex-core: EDGE_TYPES": [
+      "packages/cortex-core/src/knowledge/taxonomy.ts:124"
+    ],
+    "cortex-core: EdgeOrigin": [
+      "packages/cortex-core/src/knowledge/edge.ts:48"
+    ],
+    "cortex-core: ExpansionOptions": [
+      "packages/cortex-core/src/retrieval/typed.ts:44"
+    ],
+    "cortex-core: FACT_TYPES": [
+      "packages/cortex-core/src/knowledge/taxonomy.ts:65"
+    ],
+    "cortex-core: GroundingInResult": [
+      "packages/cortex-core/src/triage/grounding.ts:306"
+    ],
+    "cortex-core: MARKER_TOKENS": [
+      "packages/cortex-core/src/knowledge/markers.ts:44"
+    ],
+    "cortex-core: MODALITIES": [
+      "packages/cortex-core/src/knowledge/taxonomy.ts:95"
+    ],
+    "cortex-core: MarkerPolicy": [
+      "packages/cortex-core/src/knowledge/unit.ts:45"
+    ],
+    "cortex-core: NOT_MARKERS": [
+      "packages/cortex-core/src/knowledge/markers.ts:70"
+    ],
+    "cortex-core: POLARITIES": [
+      "packages/cortex-core/src/knowledge/taxonomy.ts:94"
+    ],
+    "cortex-core: RELATION_KINDS": [
+      "packages/cortex-core/src/knowledge/taxonomy.ts:184"
+    ],
+    "cortex-core: RankedItem": [
+      "packages/cortex-core/src/retrieval/fuse.ts:28"
+    ],
+    "cortex-core: Reached": [
+      "packages/cortex-core/src/retrieval/typed.ts:52"
+    ],
+    "cortex-core: UnitCensus": [
+      "packages/cortex-core/src/knowledge/unit.ts:212"
+    ],
+    "cortex-core: UnitProblem": [
+      "packages/cortex-core/src/knowledge/unit.ts:63"
+    ],
+    "cortex-core: UnitResult": [
+      "packages/cortex-core/src/knowledge/unit.ts:71"
+    ],
+    "cortex-core: fuseWithScores": [
+      "packages/cortex-core/src/retrieval/fuse.ts:49"
     ]
   }
 }

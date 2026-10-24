@@ -279,14 +279,80 @@ function lower(value: string): string {
  * attested in the source. Order, sentence shape, length and inflection are free.
  */
 export function contentGrounded(candidate: string, source: string): GroundingResult {
+  const verdict = contentGroundedIn(candidate, [{ text: source, id: 'source' }]);
+  if (!verdict.ok) return verdict;
+  return { ok: true };
+}
+
+/** One document an atom may draw its words from. */
+export type GroundingSource = {
+  /** Stable identity, so a borrowed word can name where it came from. */
+  readonly id: string;
+  readonly text: string;
+};
+
+/**
+ * A word the atom used that the frame did not contain, but a declared context did.
+ *
+ * The audit question a reader asks about a self-contained summary -- "where did *that* come from?" --
+ * is answered by this record, and by nothing else. It is kept per word rather than per source because
+ * a source that was consulted and contributed nothing must not appear to have contributed.
+ */
+export type BorrowedWord = {
+  readonly token: string;
+  readonly sourceId: string;
+};
+
+export type GroundingInResult =
+  | { readonly ok: true; readonly borrowed: readonly BorrowedWord[] }
+  | {
+      readonly ok: false;
+      readonly problem: GroundingProblem;
+      readonly detail: string;
+      readonly token?: string;
+    };
+
+/**
+ * Content grounding against one frame **plus** the context it is allowed to refer to.
+ *
+ * ## Why this exists, and the line it must not cross
+ *
+ * An atom that resolves a pronoun is more useful and more retrievable than one that keeps it -- that
+ * is the whole finding behind proposition-level retrieval, where a self-contained unit beats a
+ * sentence *because* the sentence says "the tower" and the proposition says "the Tower of Pisa". Our
+ * gate reads one sentence, so resolution was impossible by construction: the name is not there.
+ *
+ * The change is a widening with a receipt, not a relaxation. `sources[0]` is the frame. Any source
+ * after it is context the caller **declared**, and every word taken from one is returned in
+ * `borrowed` with the source it came from. Three properties survive, each pinned by a test:
+ *
+ * 1. A word that appears in no source is still refused as `invented:new-word`.
+ * 2. Negations are counted against the frame **only**. Borrowing a negation from another turn would
+ *    invert a claim using someone else's grammar, which is the one substitution this gate exists to
+ *    stop.
+ * 3. Every borrowed word is inspectable, so an export can answer "did they say that, and if not,
+ *    which turn is it from?".
+ */
+export function contentGroundedIn(
+  candidate: string,
+  sources: readonly GroundingSource[],
+): GroundingInResult {
   const atom = candidate.trim();
   if (atom === '') return { ok: false, problem: 'empty', detail: 'the atom is blank' };
 
-  const sourceWords = wordsIn(source);
-  const sourceLower = sourceWords.map(lower);
-  const sourceNumbers = new Set(numbersIn(source));
+  const frame = sources[0];
+  if (frame === undefined) {
+    throw new TypeError(
+      'contentGroundedIn needs at least one source: the frame the atom came from',
+    );
+  }
 
-  const inventedNumber = numbersIn(atom).find((number) => !sourceNumbers.has(number));
+  const frameWords = wordsIn(frame.text);
+  const frameLower = frameWords.map(lower);
+  const allNumbers = new Set(sources.flatMap((source) => numbersIn(source.text)));
+  const borrowed: BorrowedWord[] = [];
+
+  const inventedNumber = numbersIn(atom).find((number) => !allNumbers.has(number));
   if (inventedNumber !== undefined) {
     return {
       ok: false,
@@ -294,8 +360,18 @@ export function contentGrounded(candidate: string, source: string): GroundingRes
       detail: `the atom says ${JSON.stringify(inventedNumber)}, which is not in the sentence`,
     };
   }
+  if (sources.length > 1) {
+    const frameNumbers = new Set(numbersIn(frame.text));
+    for (const number of new Set(numbersIn(atom))) {
+      if (frameNumbers.has(number)) continue;
+      const source = sources.slice(1).find((other) => numbersIn(other.text).includes(number));
+      // Narrowed by the union test above: a number absent from every source has already returned.
+      borrowed.push({ token: number, sourceId: source!.id });
+    }
+  }
 
-  const sourceNegations = (source.match(NEGATIONS) ?? []).length;
+  // Frame-scoped on purpose -- see property 2 in the comment above.
+  const sourceNegations = (frame.text.match(NEGATIONS) ?? []).length;
   const atomNegations = (atom.match(NEGATIONS) ?? []).length;
   if (atomNegations > sourceNegations) {
     return {
@@ -315,18 +391,27 @@ export function contentGrounded(candidate: string, source: string): GroundingRes
     // being a name.
     const isName = index > 0 && /^[A-Z][A-Za-z'’-]+$/.test(bare);
     if (isName) {
-      if (!sourceLower.some((candidateWord) => candidateWord === folded)) {
+      if (frameLower.some((candidateWord) => candidateWord === folded)) continue;
+      const source = sources
+        .slice(1)
+        .find((other) => wordsIn(other.text).map(lower).includes(folded));
+      if (source === undefined) {
         return {
           ok: false,
           problem: 'new-name',
           detail: `the atom names ${JSON.stringify(bare)}, which the sentence does not mention`,
         };
       }
+      borrowed.push({ token: bare, sourceId: source.id });
       continue;
     }
 
     if (folded.length < 4 || FUNCTION_WORDS.has(folded)) continue;
-    if (!attestedWord(folded, sourceLower)) {
+    if (attestedWord(folded, frameLower)) continue;
+    const source = sources
+      .slice(1)
+      .find((other) => attestedWord(folded, wordsIn(other.text).map(lower)));
+    if (source === undefined) {
       return {
         ok: false,
         problem: 'new-word',
@@ -334,9 +419,10 @@ export function contentGrounded(candidate: string, source: string): GroundingRes
         token: bare,
       };
     }
+    borrowed.push({ token: bare, sourceId: source.id });
   }
 
-  return { ok: true };
+  return { ok: true, borrowed };
 }
 
 /**

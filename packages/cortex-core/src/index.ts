@@ -126,12 +126,16 @@ export {
 export { claimsIn, isClaim, splitSentences } from './triage/claims.js';
 export {
   contentGrounded,
+  contentGroundedIn,
   distillationOf,
   isVerbatimRun,
   looksTemporal,
+  type BorrowedWord,
   type DistillationOf,
+  type GroundingInResult,
   type GroundingProblem,
   type GroundingResult,
+  type GroundingSource,
 } from './triage/grounding.js';
 export {
   MAX_FACTS,
@@ -162,6 +166,83 @@ export {
   type OutputScan,
   type OutputScanRequest,
 } from './triage/output-guard.js';
+
+// knowledge: typed facts, licensed edges, and the gates that keep a split faithful
+export {
+  DERIVED_EDGE_TYPES,
+  EDGE_TYPES,
+  EXTRACTED_EDGE_TYPES,
+  FACT_TYPES,
+  MODALITIES,
+  POLARITIES,
+  RELATION_KINDS,
+  isEdgeType,
+  isFactType,
+  isModality,
+  isPolarity,
+  licenceClassOf,
+  licensedEdgeTypes,
+  type EdgeType,
+  type FactType,
+  type Modality,
+  type Polarity,
+  type RelationKind,
+} from './knowledge/taxonomy.js';
+export {
+  MARKER_TOKENS,
+  NOT_MARKERS,
+  isMarkerOf,
+  kindsIn,
+  relationMarkers,
+  type RelationMarker,
+} from './knowledge/markers.js';
+export {
+  checkFact,
+  covers,
+  envelope,
+  locate,
+  type FactProblem,
+  type KnowledgeFact,
+  type KnowledgeFrame,
+  type Span,
+} from './knowledge/frame.js';
+export {
+  checkEdge,
+  deriveSupersedes,
+  edgeId,
+  extractedSpan,
+  type EdgeOrigin,
+  type EdgeProblem,
+  type KnowledgeEdge,
+} from './knowledge/edge.js';
+export {
+  buildKnowledgeUnit,
+  censusOf,
+  type BuildUnitInput,
+  type KnowledgeUnit,
+  type MarkerPolicy,
+  type UnitCensus,
+  type UnitProblem,
+  type UnitResult,
+} from './knowledge/unit.js';
+
+// retrieval: fusion, budget, and the block a reader receives
+export {
+  fillBudget,
+  fuseWithScores,
+  reciprocalRankFusion,
+  type BudgetFill,
+  type RankedItem,
+} from './retrieval/fuse.js';
+export {
+  expandTyped,
+  renderBlock,
+  renderBlocks,
+  tokenEstimate,
+  type BlockOptions,
+  type ExpansionOptions,
+  type Reached,
+} from './retrieval/typed.js';
 
 // tooling: the export census that `tools/export-census.mjs` drives through dist
 export {
