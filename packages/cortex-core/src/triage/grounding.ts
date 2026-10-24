@@ -300,15 +300,49 @@ export function contentGrounded(candidate: string, source: string): GroundingRes
  * `triage-proposer/v2` this rate was effectively 1.0, because the gate made it so.
  */
 export function isVerbatimRun(candidate: string, source: string): boolean {
-  const fold = (value: string): string =>
-    lower(value)
-      .replace(/[‘’']/g, "'")
-      .replace(/[–—−]/g, '-')
-      .replace(/\s+/g, ' ')
-      .replace(/[.!?,;:]+$/, '')
-      .trim();
-  const needle = fold(candidate);
-  return needle !== '' && fold(source).includes(needle);
+  const needle = foldForRun(candidate);
+  return needle !== '' && foldForRun(source).includes(needle);
+}
+
+/**
+ * Contractions, folded to their expansion.
+ *
+ * The first version of this function folded only case, whitespace, dash and quote form and trailing
+ * punctuation, and it reported the v4 run as **20.6%** verbatim. That number was flattering and the
+ * flattery had a name: an atom that changed nothing but `I'll` to `I will` counted as a rewrite. Two
+ * of the twenty cards were exactly that. Writers expand contractions; it is a typographic choice, not
+ * a distillation, and a measurement that credits it is measuring the wrong thing.
+ *
+ * Folding contractions here moves the same run to **44.1%**, which is the number that gets quoted.
+ */
+const CONTRACTIONS: ReadonlyMap<string, string> = new Map([
+  ["i'll", 'i will'],
+  ["i'm", 'i am'],
+  ["i've", 'i have'],
+  ["i'd", 'i would'],
+  ["it's", 'it is'],
+  ["that's", 'that is'],
+  ["they're", 'they are'],
+  ["we're", 'we are'],
+  ["you're", 'you are'],
+  ["don't", 'do not'],
+  ["doesn't", 'does not'],
+  ["didn't", 'did not'],
+  ["isn't", 'is not'],
+  ["aren't", 'are not'],
+  ["can't", 'cannot'],
+  ["won't", 'will not'],
+]);
+
+function foldForRun(value: string): string {
+  let folded = lower(value).replace(/[‘’']/g, "'").replace(/[–—−]/g, '-');
+  for (const [contraction, expansion] of CONTRACTIONS) {
+    folded = folded.split(contraction).join(expansion);
+  }
+  return folded
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?,;:]+$/, '')
+    .trim();
 }
 
 /**

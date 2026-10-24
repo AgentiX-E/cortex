@@ -158,6 +158,24 @@ describe('isVerbatimRun', () => {
     ).toBe(true);
   });
 
+  it('folds a contraction, because expanding one is a spelling choice and not a rewrite', () => {
+    // The first version of this function reported the v4 run as 20.6% verbatim; folding contractions
+    // moved the same run to 44.1%. Two cards differed from the sentence by exactly this.
+    expect(
+      isVerbatimRun('I will keep an eye on the weather.', "I'll keep an eye on the weather."),
+    ).toBe(true);
+    expect(
+      isVerbatimRun('I am thinking of a club.', "I'm thinking of a club, and nothing more."),
+    ).toBe(true);
+    // And the case that must stay false: dropping a word is a rewrite, not a spelling.
+    expect(
+      isVerbatimRun(
+        'I will keep an eye on the weather.',
+        "I'll definitely keep an eye on the weather.",
+      ),
+    ).toBe(false);
+  });
+
   it('is false for an empty candidate rather than vacuously true', () => {
     expect(isVerbatimRun('   ', SOURCE)).toBe(false);
   });
