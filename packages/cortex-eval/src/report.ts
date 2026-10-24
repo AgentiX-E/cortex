@@ -75,6 +75,15 @@ export type AblationReport = {
    */
   abstentionReasons?: AbstentionReasons | undefined;
   /**
+   * What the abstention-recovery pass did: consultations attempted, and how many produced an answer.
+   *
+   * Beside `abstentionReasons` rather than inside it, because that census counts one question once
+   * and folding a retry into it would either double-count a question or hide the pass. Present only
+   * when the system exposes `recoveryCensus()`, which is the statement "this build carries the pass";
+   * absent therefore means the pass could not have fired, not that it fired zero times.
+   */
+  recovery?: RecoveryCensus | undefined;
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the
@@ -664,6 +673,18 @@ export type RetryFireCounts = {
  * only `threshold` is a statement about the gate -- reading `llm` as though the
  * gate produced it is the error §10.10 had to retract.
  */
+/**
+ * The recovery pass's own tally.
+ *
+ * `attempted` counts corrective consultations and `answered` counts the ones that came back with an
+ * answer. A run reporting `attempted: 0` carries the pass and never fired it, which is a different
+ * fact from one that fired and converted nothing.
+ */
+export type RecoveryCensus = {
+  readonly attempted: number;
+  readonly answered: number;
+};
+
 export type AbstentionReasons = {
   /** The write gate admitted nothing, so there was no evidence to decline from. */
   empty: number;
@@ -1067,6 +1088,10 @@ export function formatAblationReport(report: AblationReport): string {
       ...abstentionReasonLines(report.abstentionReasons, report.memoryArmConfig, report.runs),
     );
   }
+  // Its own guard, deliberately: the two censuses come from different optional capabilities, and
+  // nesting this one inside the abstention test would hide a recovery pass on a system that reports
+  // no bottleneck census -- which is exactly the system the recovery pass was written for.
+  lines.push(...recoveryLines(report.recovery));
   lines.push('');
   return lines.join('\n');
 }
@@ -1101,6 +1126,31 @@ export function formatAblationReport(report: AblationReport): string {
  * Only the intersection -- armed above zero, closed nothing -- is reported, which
  * is why the tests exercise both controls alongside the true positive.
  */
+/**
+ * The recovery pass, rendered only when the run could have fired it.
+ *
+ * One line rather than a table: there are two numbers and a reader needs both together -- an attempt
+ * that converted nothing and a pass that never fired look identical in a percentage and mean opposite
+ * things. `attempted: 0` is stated rather than omitted for the same reason the config field is.
+ */
+function recoveryLines(census: RecoveryCensus | undefined): string[] {
+  if (census === undefined) return [];
+  const { attempted, answered } = census;
+  const converted = attempted === 0 ? 'n/a' : `${((answered / attempted) * 100).toFixed(1)}%`;
+  return [
+    '',
+    '## Abstention recovery',
+    '',
+    '| Consultations | Answered | Converted |',
+    '|---|---|---|',
+    `| ${attempted} | ${answered} | ${converted} |`,
+    '',
+    'Attempted counts declines that contradicted their own Step 1 list; a decline with an empty list',
+    'is the state the contract licenses and is not consulted. This pass fires only on a decline, so',
+    'no answer that was already correct can move.',
+  ];
+}
+
 function abstentionReasonLines(
   reasons: AbstentionReasons,
   config?: MemoryArmConfig | undefined,

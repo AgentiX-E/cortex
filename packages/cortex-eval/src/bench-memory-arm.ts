@@ -49,6 +49,7 @@ import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
   MemoryArmConfig,
+  RecoveryCensus,
 } from './report.js';
 import {
   boundRetrievedContexts,
@@ -2015,7 +2016,7 @@ export async function runCortexMemoryArm(
   // exposure. The alternative -- returning the census and having each caller
   // remember to feed it back into a render -- is the side channel this repository
   // has already removed twice.
-  const census = abstentionReasonsOf(feature);
+  const census = { ...abstentionReasonsOf(feature), ...recoveryOf(feature) };
   const questions = buildArmRoster(
     dataset,
     report.ablation,
@@ -2064,6 +2065,9 @@ export async function runCortexMemoryArm(
     ...(census.abstentionReasons === undefined
       ? {}
       : { abstentionReasons: census.abstentionReasons }),
+    // The recovery pass's own tally, spread on the same rule: absent means the system does not
+    // carry the pass, which is a different statement from "it fired zero times".
+    ...(census.recovery === undefined ? {} : { recovery: census.recovery }),
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.
@@ -2421,6 +2425,36 @@ function voteCountsOf(system: MemorySystem): {
   // exists to prevent.
   if (counts.unanimous + counts.majority + counts.split === 0) return {};
   return { voteCounts: counts };
+}
+
+/**
+ * The recovery census, read the way `abstentionReasonsOf` reads its own.
+ *
+ * Same three decisions: an absent accessor is a system without the pass, a throwing one is a broken
+ * optional capability rather than a failed run, and a payload that is not two non-negative integers
+ * is discarded rather than coerced. The last one is what stops `NaN` from reaching a table and
+ * rendering as a real observation.
+ */
+function recoveryOf(system: MemorySystem): { recovery?: RecoveryCensus } {
+  const candidate = (system as { recoveryCensus?: unknown }).recoveryCensus;
+  if (typeof candidate !== 'function') return {};
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return {};
+  }
+
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  for (const key of ['attempted', 'answered'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  return {
+    recovery: { attempted: record.attempted as number, answered: record.answered as number },
+  };
 }
 
 function abstentionReasonsOf(system: MemorySystem): { abstentionReasons?: AbstentionReasons } {

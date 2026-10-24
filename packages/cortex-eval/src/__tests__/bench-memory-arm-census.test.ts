@@ -339,3 +339,56 @@ describe('the arm carries per-question records into the artifact', () => {
     expect(record?.turns).toEqual([]);
   });
 });
+
+describe('the arm records what the recovery pass did', () => {
+  /** A system carrying the recovery census, on the same optional-capability rule as the other one. */
+  function systemWithRecovery(payload: unknown, impl?: () => unknown): MemorySystem {
+    return {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      recoveryCensus: impl ?? (() => payload),
+    } as unknown as MemorySystem;
+  }
+
+  it('carries the two counts through, and renders them', async () => {
+    // The counts exist because a pass that fired and converted nothing and a pass that never fired
+    // look identical in any percentage and mean opposite things: the first says the reader cannot
+    // answer from its own list, the second says the population was never reached.
+    const result = await run(systemWithRecovery({ attempted: 15, answered: 6 }));
+
+    expect(result.report.recovery).toEqual({ attempted: 15, answered: 6 });
+    expect(result.markdown).toContain('## Abstention recovery');
+    expect(result.markdown).toMatch(/\|\s*15\s*\|\s*6\s*\|\s*40\.0%\s*\|/);
+  });
+
+  it('renders zero attempts as not-applicable rather than as a share of nothing', async () => {
+    const result = await run(systemWithRecovery({ attempted: 0, answered: 0 }));
+
+    expect(result.markdown).toMatch(/\|\s*0\s*\|\s*0\s*\|\s*n\/a\s*\|/);
+  });
+
+  it('omits the section for a system that does not carry the pass', async () => {
+    // `constantSystem` has no `recoveryCensus`, which is the state every archived run is in. The
+    // section must not appear, because an absent capability and a zero tally are different claims.
+    const result = await run(constantSystem('cortex-memory', 'one'));
+
+    expect(result.report.recovery).toBeUndefined();
+    expect(result.markdown).not.toContain('## Abstention recovery');
+  });
+
+  it('discards a payload that is not two whole non-negative counts', async () => {
+    // `NaN` in a table renders as an observation. The same rule `abstentionReasonsOf` follows.
+    const result = await run(systemWithRecovery({ attempted: Number.NaN, answered: 6 }));
+    expect(result.report.recovery).toBeUndefined();
+  });
+
+  it('treats a throwing accessor as absent rather than failing the run', async () => {
+    const result = await run(
+      systemWithRecovery(null, () => {
+        throw new Error('broken');
+      }),
+    );
+    expect(result.report.recovery).toBeUndefined();
+    expect(result.report.questions).toHaveLength(1);
+  });
+});
