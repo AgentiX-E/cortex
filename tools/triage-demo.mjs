@@ -185,7 +185,15 @@ async function main() {
         console.log('not stored anywhere, and no card exists for it.');
       } else {
         console.log(`${admission.id}  stored ${admission.visibility}  (rule: ${admission.triage.rule ?? 'none, deferred'})`);
-        console.log(card === null ? 'no question: the rules already answered it.' : renderCard(card));
+        // `null` has two different causes and the operator has to be able to tell them apart: a rule
+        // answered the question, or the turn holds no claim to ask about. Printing the first message
+        // for the second case would be the CLI lying about what the rules did -- they deferred it,
+        // and it was the claims gate, not a rule, that declined to open a question.
+        if (card !== null) console.log(renderCard(card));
+        else if (admission.triage.scope === 'defer') {
+          console.log('no question: this turn contains no claim, only requests or questions, so it is');
+          console.log('stored privately and there is nothing a colleague could be shown.');
+        } else console.log('no question: the rules already answered it.');
       }
     } else if (command === 'cards') {
       const cards = await session.cards();
