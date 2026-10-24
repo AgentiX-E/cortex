@@ -31,7 +31,8 @@
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
 import { claimsIn } from './claims.js';
-import { groundedIn, type TriageProposal } from './proposer.js';
+import { contentGrounded } from './grounding.js';
+import { type TriageProposal } from './proposer.js';
 import { TriageError, type Admission, type TriageWriter } from './writer.js';
 
 /** Where a card is in its life. `dismissed` and `stale` are the two that need care. */
@@ -221,10 +222,15 @@ export class CardQueue {
       );
     }
     for (const fact of proposal.facts) {
-      if (!groundedIn(fact.text, card.text)) {
+      // The same function the proposer used, because this is the second enforcement point of one
+      // contract: a queue that checked something else would either refuse every distilled atom or
+      // accept one the proposer would have refused. Until step 21 this was `groundedIn`, a substring
+      // test, and enforcing it here would have defeated any change to the prompt on its own.
+      const grounding = contentGrounded(fact.text, card.text);
+      if (!grounding.ok) {
         throw new TriageError(
           `the proposed fact ${JSON.stringify(fact.text.slice(0, 80))} is not grounded in the ` +
-            `sentence it claims to come from: a card may only offer words the person actually said`,
+            `sentence it claims to come from (${grounding.problem}: ${grounding.detail})`,
         );
       }
     }

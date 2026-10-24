@@ -146,7 +146,10 @@ describe('the prompt on the wire', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure.reason).toBe('all-withheld');
-    expect(result.failure.detail).toContain('ungrounded');
+    // Was `ungrounded` while the gate was a substring test; step 21 renamed the refusal to the kind
+    // of invention. The outcome is unchanged -- the reply is refused, not shown -- and this test is
+    // about the transport mangling the sentence, so it only needs the refusal to still happen.
+    expect(result.failure.detail).toContain('invented:');
   });
 });
 
@@ -188,9 +191,13 @@ describe('what comes back, and what the gates do to it', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.proposal.facts.map((fact) => fact.text)).toEqual(['I moved to Berlin in March']);
+    // Two different gates, two different names, and the distinction is worth keeping in the
+    // assertion: the credential is a *rule* refusal, the invented consent sentence is an
+    // *invention*. A run that could not tell them apart could not tell a table problem from a
+    // model problem.
     expect(result.proposal.withheld.map((row) => row.reason).sort()).toEqual([
+      'invented:new-word',
       'rule:credential',
-      'ungrounded',
     ]);
     // Neither withheld sentence survives anywhere in the returned value.
     const serialised = JSON.stringify(result);

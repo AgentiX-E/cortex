@@ -46,7 +46,11 @@ import {
   resolveLlmProfile,
 } from '../packages/cortex-ai/dist/index.js';
 import { DisclosureSession } from '../packages/cortex-memory/dist/index.js';
-import { PROPOSER_PROMPT_VERSION, TriageProposer } from '../packages/cortex-core/dist/index.js';
+import {
+  PROPOSER_PROMPT_VERSION,
+  TriageProposer,
+  distillationOf,
+} from '../packages/cortex-core/dist/index.js';
 import { SqliteStorage } from '../packages/cortex-storage/dist/storage/sqlite.js';
 
 const FIXTURE = new URL(
@@ -158,19 +162,36 @@ async function prepare(config) {
       const result = await session.propose(card.id);
       if (result.ok) for (const fact of result.proposal.facts) atoms.push(fact.text);
     }
+    // The reading that says whether the proposer distilled or cut. It belongs in the file rather than
+    // in a log line, because the cards are what a later run is compared against.
+    const shape = distillationOf(card.text, atoms);
     cards.push({
       cardId: card.id,
       gold: row.gold,
       source: card.text,
       atoms,
+      verbatimAtoms: shape.verbatim,
+      timeKept: shape.timeKept,
       ...(built.profile === undefined ? {} : { profile: describeProfile(built.profile) }),
       // The prompt is a variable of the treatment: v2 and v3 differ only in how they ask for a
       // split, and a `cards.json` that did not name its prompt would make the two files
       // indistinguishable -- which is the mistake this file exists to prevent, caught in itself.
       promptVersion: PROPOSER_PROMPT_VERSION,
     });
-    console.error(`  ${card.id}: ${atoms.length} atom(s)`);
+    console.error(`  ${card.id}: ${atoms.length} atom(s), ${shape.verbatim} verbatim`);
   }
+
+  // Printed as one block so a CI log carries the number the review is about. A share of 1.0 is the
+  // failure the first reviewer described in words; the point of the change is to move it.
+  const atoms = cards.reduce((sum, card) => sum + card.atoms.length, 0);
+  const verbatim = cards.reduce((sum, card) => sum + card.verbatimAtoms, 0);
+  const withTime = cards.filter((card) => card.timeKept !== null);
+  const keptTime = withTime.filter((card) => card.timeKept === true);
+  console.error(
+    `distillation: ${verbatim}/${atoms} atoms are verbatim runs ` +
+      `(${atoms === 0 ? 'n/a' : `${((verbatim / atoms) * 100).toFixed(1)}%`}); ` +
+      `time kept in ${keptTime.length}/${withTime.length} cards that named a time`,
+  );
 
   writeFileSync(config.out, `${JSON.stringify({ prepared: new Date().toISOString(), cards }, null, 2)}\n`);
   console.error(`wrote ${cards.length} card(s) to ${config.out}`);

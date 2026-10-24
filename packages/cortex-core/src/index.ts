@@ -125,12 +125,20 @@ export {
 } from './triage/card.js';
 export { claimsIn, isClaim, splitSentences } from './triage/claims.js';
 export {
+  contentGrounded,
+  distillationOf,
+  isVerbatimRun,
+  looksTemporal,
+  type DistillationOf,
+  type GroundingProblem,
+  type GroundingResult,
+} from './triage/grounding.js';
+export {
   MAX_FACTS,
   MAX_FACT_CHARS,
   PROPOSER_PROMPT_VERSION,
   TriageProposer,
   buildProposerPrompt,
-  groundedIn,
   type ProposalFailure,
   type ProposalResult,
   type ProposedFact,

@@ -36,6 +36,7 @@ import type { CompleteOptions, JsonSchema, LLM } from '../../interfaces/llm.js';
 import { MemoryStorage } from '../../__tests__/support/memory-storage.js';
 import { FederatedStorage } from '../../federation/federated-storage.js';
 import { CardQueue } from '../card.js';
+import { contentGrounded } from '../grounding.js';
 import { RULE_TABLE, classify, type TriageDecision, type TriageRule } from '../rules.js';
 import { TriageWriter } from '../writer.js';
 import {
@@ -43,7 +44,6 @@ import {
   PROPOSER_PROMPT_VERSION,
   TriageProposer,
   buildProposerPrompt,
-  groundedIn,
 } from '../proposer.js';
 
 const START = 1_700_000_000_000;
@@ -127,31 +127,29 @@ async function openCard(w: ReturnType<typeof world>, id = 'c1', text = TWO_ATOMS
   return card;
 }
 
-describe('groundedIn', () => {
-  it('accepts a contiguous run of the user\u2019s words', () => {
-    expect(groundedIn('I moved to Berlin in March', TWO_ATOMS)).toBe(true);
+describe('the gate is content grounding, not word-copying', () => {
+  // The five tests that used to live here pinned `source.includes(candidate)`. That contract was the
+  // reason the atoms were clause fragments: a summary is never a substring, so the only output the
+  // gate could pass was the sentence cut at its commas. `grounding.test.ts` now owns the rule; these
+  // two tests pin what changed at *this* layer, which is what a reader of the proposer needs to know.
+  it('keeps a distilled statement, which the old gate refused', async () => {
+    const { instance } = proposer({ facts: [{ text: 'I work on payments at Acme.' }] });
+    const result = await instance.propose(TWO_ATOMS);
+    if (!result.ok) throw new Error(`expected a proposal, got ${result.failure.reason}`);
+    expect(result.proposal.facts.map((fact) => fact.text)).toEqual(['I work on payments at Acme.']);
+    expect(result.proposal.withheld).toEqual([]);
   });
 
-  it('rejects a sentence the user did not say', () => {
-    expect(groundedIn('I live in Paris', TWO_ATOMS)).toBe(false);
-  });
-
-  it('rejects a reordering, which is a paraphrase wearing the same words', () => {
-    expect(groundedIn('in March I moved to Berlin', TWO_ATOMS)).toBe(false);
-  });
-
-  it('folds case, spacing, curly quotes and a trailing full stop', () => {
-    // Without this the gate drops everything a real model writes, and the feature is inert rather
-    // than safe -- a different defect with the same symptom ("no proposals").
-    expect(
-      groundedIn('i  moved to berlin in march.', 'I moved to Berlin in March and now I rest.'),
-    ).toBe(true);
-    expect(groundedIn('I said \u2018hello\u2019', "I said 'hello' and left.")).toBe(true);
-    expect(groundedIn('the caf\u00e9 was open', 'the café was open until six')).toBe(true);
-  });
-
-  it('rejects an empty candidate rather than letting it match everything', () => {
-    expect(groundedIn('   ', TWO_ATOMS)).toBe(false);
+  it('withholds a statement that invents a date, and says which kind of invention it was', async () => {
+    const { instance } = proposer({ facts: [{ text: 'I moved to Berlin in April 2024.' }] });
+    const result = await instance.propose(TWO_ATOMS);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected a refusal');
+    expect(result.failure.reason).toBe('all-withheld');
+    // The reason travels into the failure detail, so a run can report *how* the model went wrong
+    // rather than only how often -- "invented a date" and "wrote a word we have never seen" need
+    // opposite fixes.
+    expect(result.failure.detail).toContain('invented:new-number');
   });
 });
 
@@ -245,17 +243,30 @@ describe('the proposer, on a model that misbehaves', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.proposal.facts).toHaveLength(1);
-    expect(result.proposal.withheld).toEqual([{ reason: 'ungrounded' }]);
+    expect(result.proposal.withheld).toEqual([{ reason: 'invented:new-word' }]);
     // The dropped sentence is not retained: this object is what a card stores and an export prints.
     expect(JSON.stringify(result.proposal)).not.toContain('Paris');
   });
 
-  it('drops a reordering, which is the paraphrase a model produces most often', async () => {
+  it('keeps a reordering, because the fact is the same fact', async () => {
+    // Until step 21 this was a rejection: the gate was a substring test and a reordering is not a
+    // substring. That is also why atoms came back as clause fragments -- the gate had exactly one
+    // passing shape, and it was "copy the words".
     const { instance } = proposer({ facts: [{ text: 'in March I moved to Berlin' }] });
     const result = await instance.propose(TWO_ATOMS);
+    if (!result.ok) throw new Error(`expected a proposal, got ${result.failure.reason}`);
+    expect(result.proposal.facts.map((fact) => fact.text)).toEqual(['in March I moved to Berlin']);
+  });
+
+  it('still refuses a claim the sentence does not support, whenever the words come from it', async () => {
+    // The price of allowing compression: a claim can be assembled out of the sentence's own words.
+    // `grounding.ts` states this limit; here is the case, so nobody reads the gate as stronger than
+    // it is. "I rest" is affirmed by TWO_ATOMS only in "now I work"; negating it invents a claim.
+    const { instance } = proposer({ facts: [{ text: 'I do not work on payments at Acme.' }] });
+    const result = await instance.propose(TWO_ATOMS);
     expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.failure.detail).toContain('ungrounded');
+    if (result.ok) throw new Error('expected a refusal');
+    expect(result.failure.detail).toContain('invented:new-negation');
   });
 
   it('drops a fact the sentence told the model to invent', async () => {
@@ -273,7 +284,7 @@ describe('the proposer, on a model that misbehaves', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure.reason).toBe('all-withheld');
-    expect(result.failure.detail).toContain('ungrounded');
+    expect(result.failure.detail).toContain('invented:');
     expect(JSON.stringify(result)).not.toContain('hereby');
   });
 
@@ -712,23 +723,40 @@ describe('the card, with a proposal attached', () => {
 });
 
 describe('buildProposerPrompt', () => {
-  it('offers no sentence for a small model to copy back', () => {
-    // Measured, not stylistic. v1 demonstrated the split with a real sentence and put a sentence in
-    // the JSON template; a 0.5B model returned one or the other verbatim for 44 of 60 sentences.
-    // v2 removes every sentence-shaped string, so the only sentence in the prompt is the user's.
+  it('shows one worked example, and that example cannot be copied back into a proposal', () => {
+    // v1 carried a sentence-shaped example and a 0.5B model returned it verbatim 44 times out of 60,
+    // which is why v2 removed every sentence-shaped string. v4 puts one back on purpose -- a worked
+    // example is the only way to show what "rewritten, with its time" means -- and it is safe now for
+    // a reason that did not exist in v1: the gate reads the source, so an example about photography
+    // cannot pass grounding against a sentence about anything else. This test takes the example out
+    // of the prompt and feeds it to the gate, so the claim is checked rather than asserted.
     const prompt = buildProposerPrompt('I moved to Berlin in March.');
-    expect(prompt).not.toContain('I work at Acme');
-    expect(prompt).not.toContain('a verbatim run of the sentence');
-    expect(prompt).not.toMatch(/"text"\s*:\s*"[A-Za-z]/);
-    expect(prompt.match(/I moved to Berlin in March\./g)).toHaveLength(1);
+    const example = [
+      'I moved to Berlin in March.',
+      'I edit photos in Lightroom.',
+      'I learn photo editing from online communities.',
+    ];
+    for (const line of example) expect(prompt).toContain(line);
+    for (const line of example.slice(1)) {
+      const verdict = contentGrounded(line, 'I moved to Berlin in March.');
+      expect(verdict.ok).toBe(false);
+    }
+    // The one example line that *is* grounded is the one a person could have said; it is also the
+    // sentence itself, so copying it back produces a proposal equal to what the card already shows.
+    expect(prompt.match(/I moved to Berlin in March\./g)?.length).toBeGreaterThanOrEqual(1);
   });
 
   it('carries the version, the sentence, and the four things a model may not do', () => {
     const prompt = buildProposerPrompt('I moved to Berlin in March.');
     expect(prompt).toContain(PROPOSER_PROMPT_VERSION);
     expect(prompt).toContain('I moved to Berlin in March.');
-    expect(prompt).toMatch(/verbatim/i);
-    expect(prompt).toMatch(/do not decide|not your decision/i);
+    // The four refusals of v4, in the prompt's own words: rewritten rather than copied, subject
+    // named, time kept, nothing invented.
+    expect(prompt).toMatch(/rewritten fact, not a piece of the sentence/i);
+    expect(prompt).toMatch(/Name its subject/i);
+    expect(prompt).toMatch(/Keep time/i);
+    expect(prompt).toMatch(/add none/i);
+    expect(prompt).toMatch(/not your decision/i);
     expect(prompt).toContain('"facts"');
   });
 });
