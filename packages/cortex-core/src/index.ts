@@ -123,6 +123,7 @@ export {
   type CardState,
   type KnowledgeCard,
 } from './triage/card.js';
+export { claimsIn, isClaim, splitSentences } from './triage/claims.js';
 export {
   MAX_FACTS,
   MAX_FACT_CHARS,

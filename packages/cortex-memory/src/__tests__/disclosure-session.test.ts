@@ -110,9 +110,48 @@ describe('saying something', () => {
     expect(await sharedStore.query('facts')).toHaveLength(0);
   });
 
+  it('asks nothing about a turn that only asks, and still keeps it as private memory', async () => {
+    // The gate is inside `CardQueue.open`, and this is the wiring test for it: what a person gets
+    // when they say something to their assistant is a stored row and no question. On the real
+    // corpus that is 25.1% of deferrals -- 10,278 of 40,961 -- so a session that opened a card for
+    // each of them would be asking about tasks the owner gave their assistant.
+    const { disclosure, storage, sharedStore } = session();
+    const request = 'Can you write the texts for the presentation ?';
+    const { admission, card } = await disclosure.say(request, { id: 'r1' });
+
+    expect(admission.stored).toBe(true);
+    expect(admission.visibility).toBe('private');
+    expect(card).toBeNull();
+    expect(await disclosure.cards()).toEqual([]);
+
+    // Not a lost door: the row is still the owner's memory, and a private task still reads it. What
+    // it is not is a claim, so there is nothing a colleague could be shown.
+    expect(await storage.query('facts')).toHaveLength(1);
+    expect(await sharedStore.query('facts')).toHaveLength(0);
+    expect(
+      (await disclosure.evidence('private')).map((row) => (row.value as { text: string }).text),
+    ).toContain(request);
+  });
+
+  it('asks about the claim in a mixed turn and publishes only the claim', async () => {
+    const { disclosure, sharedStore } = session();
+    const { card } = await disclosure.say(
+      'I moved to Berlin in March. Can you suggest a neighbourhood?',
+      { id: 'm1' },
+    );
+    if (card === null) throw new Error('expected a card');
+    expect(card.text).toBe('I moved to Berlin in March.');
+
+    const published = await disclosure.accept('m1');
+    const rows = await sharedStore.query<{ text: string }>('facts');
+    expect(published.state).toBe('accepted');
+    expect(rows.map((row) => row.text)).toEqual(['I moved to Berlin in March.']);
+  });
+
   it('stores a sentence a shared rule claims without asking, and it reaches a shared task', async () => {
     const { disclosure } = session();
     const { admission, card } = await disclosure.say('The project plan moves to Thursday.');
+
     expect(admission.visibility).toBe('shared');
     // No card: nothing is in question, and a queue that asks about settled facts trains people to
     // click through it.

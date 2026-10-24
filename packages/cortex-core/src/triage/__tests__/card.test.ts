@@ -112,6 +112,85 @@ describe('open', () => {
     expect(await w.queue.list()).toEqual([]);
   });
 
+  it('opens nothing for a turn that only asks, because a yes would publish the request', async () => {
+    // `accept` publishes `card.text`. On the real corpus 73.6% of deferrals contain a question
+    // mark, so before this rule the queue's normal case was asking whether a colleague should be
+    // allowed to read a task the owner had given their assistant. Refusing the card is the fix; the
+    // row is still stored privately, and there is no claim behind the question to share.
+    const w = world();
+    const request = await w.writer.admit('Can you write the texts for the presentation ?', {
+      id: 'r',
+    });
+    expect(request.stored).toBe(true);
+    expect(request.triage.scope).toBe('defer');
+
+    expect(await w.queue.open(request)).toBeNull();
+    expect(await w.queue.list()).toEqual([]);
+  });
+
+  it('asks about the claims inside a mixed turn, and keeps the turn as the source', async () => {
+    // One turn, one card: the identity contract does not change. What changes is that the card
+    // carries the assertions only, so accepting it cannot publish the question.
+    const w = world();
+    const { card } = await openDeferral(
+      w,
+      'mixed',
+      'I run a team of four. Can you draft an agenda? We ship on Fridays.',
+    );
+
+    expect(card.text).toBe('I run a team of four. We ship on Fridays.');
+    expect(card.sourceText).toBe(
+      'I run a team of four. Can you draft an agenda? We ship on Fridays.',
+    );
+  });
+
+  it('publishes the claims, never the question, when the owner says yes', async () => {
+    const w = world();
+    const { card } = await openDeferral(
+      w,
+      'mixed',
+      'I run a team of four. Can you draft an agenda?',
+    );
+
+    const published = await w.queue.accept(card.id);
+    const row = await w.shared.get<AdmittedFact>('facts', published.id);
+
+    expect(row?.text).toBe('I run a team of four.');
+    expect(row?.text).not.toMatch(/\?/);
+    // The audit surface still holds what was actually said.
+    expect(published.sourceText).toBe('I run a team of four. Can you draft an agenda?');
+  });
+
+  it('classifies the claim again, because a shortened turn has never been judged on its own', async () => {
+    // A rule anchored to the start of the text is the case that matters: it does not fire on a turn
+    // that opens with a request, and does fire on the claim the gate pulled out of it. Accepting on
+    // the strength of the turn's verdict would publish a sentence the rule layer never saw.
+    const local = new MemoryStorage();
+    const sharedStore = new MemoryStorage();
+    const federation = new FederatedStorage({ private: local, shared: sharedStore });
+    const anchored = new TriageWriter(federation, {
+      classify: (text: string) =>
+        /^I have been diagnosed/i.test(text)
+          ? { scope: 'private' as const, rule: 'health', policy: 'Diagnoses stay private.' }
+          : { scope: 'defer' as const, rule: null, policy: null },
+    });
+    const queue = new CardQueue(federation, anchored, { now: () => START });
+
+    const admission = await anchored.admit(
+      'Can you check something for me? I have been diagnosed with asthma.',
+      { id: 'anchored' },
+    );
+    expect(admission.triage.scope).toBe('defer');
+    const card = await queue.open(admission);
+    if (card === null) throw new Error('expected a card');
+    expect(card.text).toBe('I have been diagnosed with asthma.');
+
+    const refused = await queue.accept('anchored');
+    expect(refused.state).toBe('proposed');
+    expect(refused.refused?.rule).toBe('health');
+    expect(await sharedStore.get<AdmittedFact>('facts', 'anchored')).toBeUndefined();
+  });
+
   it('opens nothing for a credential, because nothing was stored to ask about', async () => {
     const w = world();
     const admission = await w.writer.admit('The password is correct-horse-battery-staple.', {

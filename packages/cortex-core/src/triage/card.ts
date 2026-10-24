@@ -9,7 +9,7 @@
  * shareable part of the private stream" is false at this workload, and a shared fact has to be
  * produced by someone saying yes. This is the someone.
  *
- * ## The five rules from the design, and how each one is enforced rather than promised
+ * ## The six rules from the design, and how each one is enforced rather than promised
  *
  * 1. **A credential never becomes a card.** It is not admitted either: `retention: 'never'` means
  *    `TriageWriter.admit` writes nothing, so there is no row to open a card from. Checked, not
@@ -23,9 +23,14 @@
  * 5. **An edit is a new sentence, so it gets a new verdict.** If the edit introduces something a
  *    rule protects, nothing is published -- and the edit is not stored either, because the card is
  *    exported and a secret typed into a rejected edit is still a secret.
+ * 6. **A card is a question about a claim, not about anything that happened to be typed.** The queue
+ *    asks about the assertions inside a turn and nothing else, so a yes can never publish a request.
+ *    The count that made this a rule rather than a preference is in `claims.ts`: 87.2% of real user
+ *    sentences are deferrals, and 73.6% of those contain a question mark.
  */
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
+import { claimsIn } from './claims.js';
 import { groundedIn, type TriageProposal } from './proposer.js';
 import { TriageError, type Admission, type TriageWriter } from './writer.js';
 
@@ -136,9 +141,17 @@ export class CardQueue {
   /**
    * Turn an admission into a card, or explain with `null` why it is not a question.
    *
-   * `null` covers three different situations on purpose, and the caller has the admission in hand
-   * to tell them apart: nothing was stored; a rule already answered the question; or the answer was
-   * "yes" and there is nothing to ask.
+   * `null` covers four different situations on purpose, and the caller has the admission in hand to
+   * tell them apart: nothing was stored; a rule already answered the question; the answer was "yes"
+   * and there is nothing to ask; or the turn contains **no claim** -- every sentence in it is a
+   * question, a request or a fragment (see `claims.ts`).
+   *
+   * The fourth case is the one this method learned last, and it changed the card's text rather than
+   * only its existence: a card now carries the claims inside the turn, not the turn. The reason is in
+   * `claims.ts` and it is a publishing defect, not a tidiness one -- `accept` publishes this text, so
+   * before the change a yes published "please continue, provide 10 additional examples" into the
+   * organisation's knowledge. `sourceText` still holds the turn, so the export can answer "did they
+   * say that?" and a claim that reads oddly can be traced to the paragraph it came out of.
    *
    * Idempotent by id: opening twice returns the first card rather than resetting a decided one.
    */
@@ -148,13 +161,16 @@ export class CardQueue {
   ): Promise<KnowledgeCard | null> {
     if (!admission.stored || admission.triage.scope !== 'defer') return null;
 
+    const claims = claimsIn(admission.text);
+    if (claims.length === 0) return null;
+
     const existing = await this.get(admission.id);
     if (existing !== undefined) return existing;
 
     const raised = this.now();
     const card: KnowledgeCard = {
       id: admission.id,
-      text: admission.text,
+      text: claims.join(' '),
       sourceText: admission.text,
       state: 'proposed',
       reason:
@@ -237,6 +253,30 @@ export class CardQueue {
     }
 
     const raised = this.now();
+
+    // A card whose text is shorter than the turn it came from carries a sentence that has never
+    // been classified **on its own**, and a substring can trip a rule the whole turn did not. The
+    // case is not hypothetical: an anchored rule (`^I have been diagnosed`) does not fire on
+    // "I run a team of four. I have been diagnosed with ...", which is a deferral, and then fires on
+    // the claim the gate extracted. Publishing on the strength of the turn's verdict would be
+    // publishing a sentence the rule layer had not seen, so the text is re-classified first and a
+    // refusal is reported on the card rather than softened into a publication.
+    //
+    // When nothing was cut, the row's text already carries the verdict that made it a deferral, and
+    // re-classifying would be a second write with nothing to learn from it.
+    if (card.text !== card.sourceText) {
+      const verdict = await this.writer.revise(id, card.text, { table: this.table, now: raised });
+      if (!verdict.stored) {
+        const refused: KnowledgeCard = {
+          ...card,
+          updatedAt: raised,
+          refused: { rule: verdict.withheld.rule, policy: verdict.withheld.policy, at: raised },
+        };
+        await this.put(refused);
+        return refused;
+      }
+    }
+
     await this.writer.promote(id, { table: this.table, now: raised });
     const accepted: KnowledgeCard = {
       ...card,

@@ -1,0 +1,48 @@
+{
+  "what": "Card volume on real user speech, before and after the claims gate in CardQueue.open.",
+  "sample": {
+    "corpus": "test/card-volume/corpus.json",
+    "windows": 10,
+    "turns": 1087,
+    "deferred": 925,
+    "deferRate": 0.8509659613615456,
+    "before": {
+      "cards": 925,
+      "perWindow": 92.5
+    },
+    "after": {
+      "cards": 718,
+      "perWindow": 71.8,
+      "medianPerWindow": 104,
+      "maxPerWindow": 118,
+      "claims": 1292
+    },
+    "declined": 207,
+    "declinedRate": 0.22378378378378377,
+    "fusedLoss": 4,
+    "fusedLossRate": 0.004324324324324324
+  },
+  "full": {
+    "source": "benchmark-cortex-memory-ablation-report.json",
+    "run": "39699987781",
+    "windows": 500,
+    "turns": 54313,
+    "deferred": 47543,
+    "deferRate": 0.8753521256421115,
+    "before": {
+      "cards": 47543,
+      "perWindow": 95.086
+    },
+    "after": {
+      "cards": 35264,
+      "perWindow": 70.528,
+      "medianPerWindow": 60,
+      "maxPerWindow": 147,
+      "claims": 64837
+    },
+    "declined": 12279,
+    "declinedRate": 0.2582714595208548,
+    "fusedLoss": 109,
+    "fusedLossRate": 0.002292661380224218
+  }
+}
