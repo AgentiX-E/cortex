@@ -1,0 +1,24 @@
+60 row(s), 21 already judged, 39 fresh (ledger: /home/runner/work/cortex/cortex/tools/a3-judged-cards.json)
+  g34: 1 atom(s), 1 verbatim
+  g35: 1 atom(s), 0 verbatim
+  g36: 1 atom(s), 1 verbatim
+  g37: 3 atom(s), 1 verbatim
+  g39: 1 atom(s), 0 verbatim
+  g40: 2 atom(s), 1 verbatim
+  g43: 1 atom(s), 1 verbatim
+  g44: 2 atom(s), 0 verbatim
+  g45: 2 atom(s), 1 verbatim
+  g46: 2 atom(s), 2 verbatim
+  g47: 1 atom(s), 1 verbatim
+  g48: 3 atom(s), 1 verbatim
+  g50: 2 atom(s), 0 verbatim
+  g51: 2 atom(s), 1 verbatim
+  g52: 2 atom(s), 2 verbatim
+  g53: 2 atom(s), 1 verbatim
+  g54: 1 atom(s), 1 verbatim
+  g55: 1 atom(s), 0 verbatim
+  g56: 1 atom(s), 0 verbatim
+  g57: 2 atom(s), 1 verbatim
+distillation: 16/33 atoms are verbatim runs (48.5%); time kept in 2/2 cards that named a time
+wrote 20 card(s) to readings/cards-remote.json
+profile: remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required

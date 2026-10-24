@@ -1,0 +1,258 @@
+{
+  "prepared": "2026-10-24T14:21:47.806Z",
+  "cards": [
+    {
+      "cardId": "g34",
+      "gold": "defer",
+      "source": "I think I'll try to doodle during my breaks at work.",
+      "atoms": [
+        "I think I will try to doodle during my breaks at work."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g35",
+      "gold": "defer",
+      "source": "i just found a skeleton with a bag on him in the underground jungle.",
+      "atoms": [
+        "I found a skeleton with a bag on him in the underground jungle."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g36",
+      "gold": "defer",
+      "source": "I'm thinking of setting up a small herb station where guests can make their own herb-infused drinks.",
+      "atoms": [
+        "I am thinking of setting up a small herb station where guests can make their own herb-infused drinks."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g37",
+      "gold": "defer",
+      "source": "I have a lot of playlists for different moods or activities, like \"Morning Boost\" for upbeat tracks and \"Focus Flow\" for instrumental music to help me concentrate.",
+      "atoms": [
+        "I have a lot of playlists for different moods or activities.",
+        "\"Morning Boost\" is a playlist for upbeat tracks.",
+        "\"Focus Flow\" is a playlist for instrumental music to help me concentrate."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g39",
+      "gold": "defer",
+      "source": "Yeah, Betts has really impressed me this season.",
+      "atoms": [
+        "Betts has impressed me this season."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g40",
+      "gold": "defer",
+      "source": "I've found that I often mindlessly scroll through Instagram during my breaks at work, and I'd like to reduce that.",
+      "atoms": [
+        "I often mindlessly scroll through Instagram during my breaks at work.",
+        "I would like to reduce my mindless scrolling through Instagram during breaks at work."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g43",
+      "gold": "defer",
+      "source": "I found a festival celebrating an ancient ritual that I've never heard of before!",
+      "atoms": [
+        "I found a festival celebrating an ancient ritual that I have never heard of before."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g44",
+      "gold": "defer",
+      "source": "And, I'll make sure to have some prizes or treats for the winners of the games, just to add an extra layer of excitement.",
+      "atoms": [
+        "I will make sure to have prizes or treats for the winners of the games.",
+        "Prizes or treats for the winners of the games add an extra layer of excitement."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g45",
+      "gold": "defer",
+      "source": "I didn't have a specific brand in mind, but I knew I wanted a backpack with multiple compartments.",
+      "atoms": [
+        "I did not have a specific backpack brand in mind.",
+        "I wanted a backpack with multiple compartments."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g46",
+      "gold": "defer",
+      "source": "The frame is simple and the colors are pretty muted, so I think it could work.",
+      "atoms": [
+        "The frame is simple.",
+        "The colors are pretty muted."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g47",
+      "gold": "defer",
+      "source": "I think I have all the ingredients at home already.",
+      "atoms": [
+        "I think I have all the ingredients at home already."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g48",
+      "gold": "defer",
+      "source": "“All your help, your passion and your sacrifice has helped me get to this point.",
+      "atoms": [
+        "Your help has helped me get to this point.",
+        "Your passion has helped me get to this point.",
+        "Your sacrifice has helped me get to this point."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g50",
+      "gold": "defer",
+      "source": "I've been taking a comedy writing workshop on Sundays, which has been really helpful in improving my joke structure and delivery.",
+      "atoms": [
+        "I take a comedy writing workshop on Sundays.",
+        "The comedy writing workshop has helped me improve my joke structure and delivery."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g51",
+      "gold": "defer",
+      "source": "I guess I'll have to learn how to be more flexible and adjust my schedule as needed.",
+      "atoms": [
+        "I will have to learn how to be more flexible.",
+        "I will have to adjust my schedule as needed."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g52",
+      "gold": "defer",
+      "source": "I have all the ingredients already, so I'll get started on that right away.",
+      "atoms": [
+        "I have all the ingredients already.",
+        "I will get started on that right away."
+      ],
+      "verbatimAtoms": 2,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g53",
+      "gold": "defer",
+      "source": "I've been really into mythology-inspired books lately, and I just finished \"The Song of Achilles\".",
+      "atoms": [
+        "I have been into mythology-inspired books lately.",
+        "I just finished \"The Song of Achilles\"."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": true,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g54",
+      "gold": "defer",
+      "source": "I think breaking up my practice sessions into shorter ones throughout the day will work better for me.",
+      "atoms": [
+        "Breaking up my practice sessions into shorter ones throughout the day will work better for me."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g55",
+      "gold": "defer",
+      "source": "And yeah, I have a backyard flock, just a small one.",
+      "atoms": [
+        "I have a backyard flock that is small."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g56",
+      "gold": "defer",
+      "source": "I think it's really important to make AI more transparent and accountable, especially as it becomes more pervasive in our lives.",
+      "atoms": [
+        "AI is becoming more pervasive in our lives."
+      ],
+      "verbatimAtoms": 0,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    },
+    {
+      "cardId": "g57",
+      "gold": "defer",
+      "source": "I'm thinking of making the lasagna, but I don't have a lot of time to prepare.",
+      "atoms": [
+        "I am thinking of making the lasagna.",
+        "I don't have a lot of time to prepare the lasagna."
+      ],
+      "verbatimAtoms": 1,
+      "timeKept": null,
+      "profile": "remote deepseek-chat base=https://api.deepseek.com/v1 inference-network=required",
+      "promptVersion": "triage-proposer/v4"
+    }
+  ]
+}
