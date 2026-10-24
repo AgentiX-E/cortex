@@ -1,0 +1,211 @@
+{
+  "what": "Multi-session failure census: answer shape, gold coverage, and abstentions that contradict their own list.",
+  "source": "benchmark-cortex-memory-ablation-report.json",
+  "generatedFrom": {
+    "questionCount": 500,
+    "runs": 4,
+    "config": {
+      "threshold": 0,
+      "retrievalThreshold": 0,
+      "sessionBudget": null,
+      "sourceTrust": 0.5,
+      "confidenceSignal": "none",
+      "promptContract": "abstention-evidence-blocks",
+      "renderingRoutes": [
+        "abstention",
+        "multi-session",
+        "temporal",
+        "knowledge-update",
+        "assistant",
+        "flat"
+      ],
+      "ask": "enumerated",
+      "reviewPass": "none",
+      "queryExpansion": "none",
+      "askRoutes": [
+        "multi-session",
+        "flat",
+        "temporal"
+      ],
+      "relevanceSignal": "retrieval-hybrid",
+      "relevanceTopK": 256,
+      "relevanceUnits": "turn",
+      "maxTurnChars": 400,
+      "maxPromptChars": 48000,
+      "maxTurnCharsRoutes": [
+        "multi-session",
+        "temporal"
+      ],
+      "evidenceRoles": [
+        "user"
+      ],
+      "evidenceRolesRoutes": [
+        "multi-session",
+        "temporal"
+      ],
+      "embedding": {
+        "provider": "openai-compatible",
+        "model": "embedding-3",
+        "dimensions": 1024,
+        "preflight": "ok"
+      }
+    }
+  },
+  "byCapability": {
+    "MR": {
+      "questions": 121,
+      "correct": 87,
+      "failures": 34,
+      "shapes": [
+        [
+          "abstained",
+          9
+        ],
+        [
+          "numeric answer, text gold",
+          8
+        ],
+        [
+          "numeric -1",
+          6
+        ],
+        [
+          "text mismatch",
+          5
+        ],
+        [
+          "numeric +1",
+          2
+        ],
+        [
+          "text answer, numeric gold",
+          2
+        ],
+        [
+          "numeric +3",
+          1
+        ],
+        [
+          "numeric far off",
+          1
+        ]
+      ],
+      "coverage": [
+        [
+          "complete",
+          21
+        ],
+        [
+          "partial",
+          13
+        ]
+      ],
+      "abstentions": 9,
+      "abstentionsWithList": 7,
+      "recovered": 0
+    },
+    "TR": {
+      "questions": 127,
+      "correct": 95,
+      "failures": 32,
+      "shapes": [
+        [
+          "text mismatch",
+          16
+        ],
+        [
+          "abstained",
+          15
+        ],
+        [
+          "text answer, numeric gold",
+          1
+        ]
+      ],
+      "coverage": [
+        [
+          "partial",
+          17
+        ],
+        [
+          "complete",
+          15
+        ]
+      ],
+      "abstentions": 15,
+      "abstentionsWithList": 5,
+      "recovered": 0
+    },
+    "KU": {
+      "questions": 72,
+      "correct": 63,
+      "failures": 9,
+      "shapes": [
+        [
+          "text mismatch",
+          3
+        ],
+        [
+          "abstained",
+          2
+        ],
+        [
+          "text answer, numeric gold",
+          2
+        ],
+        [
+          "numeric -1",
+          2
+        ]
+      ],
+      "coverage": [
+        [
+          "partial",
+          9
+        ]
+      ],
+      "abstentions": 2,
+      "abstentionsWithList": 1,
+      "recovered": 0
+    },
+    "IE": {
+      "questions": 150,
+      "correct": 134,
+      "failures": 16,
+      "shapes": [
+        [
+          "abstained",
+          13
+        ],
+        [
+          "text mismatch",
+          3
+        ]
+      ],
+      "coverage": [
+        [
+          "partial",
+          9
+        ],
+        [
+          "complete",
+          7
+        ]
+      ],
+      "abstentions": 13,
+      "abstentionsWithList": 0,
+      "recovered": 0
+    },
+    "ABS": {
+      "questions": 30,
+      "correct": 30,
+      "failures": 0,
+      "shapes": [],
+      "coverage": [],
+      "abstentions": 0,
+      "abstentionsWithList": 0,
+      "recovered": 0
+    }
+  },
+  "mrVerdict": "21 reader (complete coverage) / 13 retrieval (partial) / 0 unrecorded"
+}

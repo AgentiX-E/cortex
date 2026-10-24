@@ -8,14 +8,21 @@
  * in `memory.ts` was written on the premise that this contract holds: it skips an abstention with
  * the sentence *"an abstention is a decision, and this pass audits a list that does not exist"*.
  *
- * Measured on three archived runs of the adopted configuration, that premise is false. Every MR
- * abstention in all three carries a **non-empty** list:
+ * Measured on three archived runs of the adopted configuration, that premise is false. Almost every
+ * MR abstention carries a **non-empty** list:
  *
  * | run | MR abstentions | with a non-empty Step 1 list |
  * | --- | --- | --- |
- * | `39367801501` | 10 | **10** |
- * | `39509698041` | 9 | **9** |
- * | `39699987781` | 9 | **9** |
+ * | `39367801501` | 10 | **8** |
+ * | `39509698041` | 9 | **7** |
+ * | `39699987781` | 9 | **8** |
+ *
+ * The two that are not are the honest case and the reason this table was corrected: their only
+ * bullets read "No item in the evidence states ...", an absence rather than an item, which
+ * `ABSENCE_OPENER` excludes. The first version of this reading counted those bullets as items and
+ * reported 10 of 10 -- **a number that would have made the pass look like it should fire on an
+ * honest decline.** `test/mr-census/run.mjs` reproduces the table through this module's own
+ * predicate rather than a copy of it.
  *
  * TR shows the same shape at a lower rate (4 to 7 of 15 to 23), and ABS shows none of it (30
  * abstentions, 0 with a list) -- which is the control this reading needed: questions whose gold

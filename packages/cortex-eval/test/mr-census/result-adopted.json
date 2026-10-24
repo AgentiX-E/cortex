@@ -1,0 +1,209 @@
+{
+  "what": "Multi-session failure census: answer shape, gold coverage, and abstentions that contradict their own list.",
+  "source": "benchmark-cortex-memory-ablation-report.json",
+  "generatedFrom": {
+    "questionCount": 500,
+    "runs": 4,
+    "config": {
+      "threshold": 0,
+      "retrievalThreshold": 0,
+      "sessionBudget": null,
+      "sourceTrust": 0.5,
+      "confidenceSignal": "none",
+      "promptContract": "abstention-evidence-blocks",
+      "renderingRoutes": [
+        "abstention",
+        "multi-session",
+        "temporal",
+        "knowledge-update",
+        "assistant",
+        "flat"
+      ],
+      "ask": "enumerated",
+      "askRoutes": [
+        "multi-session",
+        "flat",
+        "temporal"
+      ],
+      "relevanceSignal": "retrieval-hybrid",
+      "relevanceTopK": 256,
+      "relevanceUnits": "turn",
+      "maxTurnChars": 400,
+      "maxPromptChars": 48000,
+      "maxTurnCharsRoutes": [
+        "multi-session",
+        "temporal"
+      ],
+      "evidenceRoles": [
+        "user"
+      ],
+      "evidenceRolesRoutes": [
+        "multi-session",
+        "temporal"
+      ],
+      "embedding": {
+        "provider": "openai-compatible",
+        "model": "embedding-3",
+        "dimensions": 1024,
+        "preflight": "ok"
+      }
+    }
+  },
+  "byCapability": {
+    "MR": {
+      "questions": 121,
+      "correct": 84,
+      "failures": 37,
+      "shapes": [
+        [
+          "abstained",
+          10
+        ],
+        [
+          "numeric answer, text gold",
+          8
+        ],
+        [
+          "text mismatch",
+          8
+        ],
+        [
+          "numeric -1",
+          5
+        ],
+        [
+          "numeric -2",
+          2
+        ],
+        [
+          "text answer, numeric gold",
+          2
+        ],
+        [
+          "numeric +1",
+          1
+        ],
+        [
+          "numeric far off",
+          1
+        ]
+      ],
+      "coverage": [
+        [
+          "complete",
+          20
+        ],
+        [
+          "partial",
+          17
+        ]
+      ],
+      "abstentions": 10,
+      "abstentionsWithList": 8,
+      "recovered": 0
+    },
+    "TR": {
+      "questions": 127,
+      "correct": 95,
+      "failures": 32,
+      "shapes": [
+        [
+          "abstained",
+          20
+        ],
+        [
+          "text mismatch",
+          11
+        ],
+        [
+          "text answer, numeric gold",
+          1
+        ]
+      ],
+      "coverage": [
+        [
+          "complete",
+          18
+        ],
+        [
+          "partial",
+          14
+        ]
+      ],
+      "abstentions": 20,
+      "abstentionsWithList": 7,
+      "recovered": 0
+    },
+    "KU": {
+      "questions": 72,
+      "correct": 64,
+      "failures": 8,
+      "shapes": [
+        [
+          "text mismatch",
+          4
+        ],
+        [
+          "text answer, numeric gold",
+          2
+        ],
+        [
+          "numeric -1",
+          1
+        ],
+        [
+          "abstained",
+          1
+        ]
+      ],
+      "coverage": [
+        [
+          "partial",
+          8
+        ]
+      ],
+      "abstentions": 1,
+      "abstentionsWithList": 0,
+      "recovered": 0
+    },
+    "IE": {
+      "questions": 150,
+      "correct": 134,
+      "failures": 16,
+      "shapes": [
+        [
+          "abstained",
+          13
+        ],
+        [
+          "text mismatch",
+          3
+        ]
+      ],
+      "coverage": [
+        [
+          "partial",
+          11
+        ],
+        [
+          "complete",
+          5
+        ]
+      ],
+      "abstentions": 13,
+      "abstentionsWithList": 0,
+      "recovered": 0
+    },
+    "ABS": {
+      "questions": 30,
+      "correct": 30,
+      "failures": 0,
+      "shapes": [],
+      "coverage": [],
+      "abstentions": 0,
+      "abstentionsWithList": 0,
+      "recovered": 0
+    }
+  },
+  "mrVerdict": "20 reader (complete coverage) / 17 retrieval (partial) / 0 unrecorded"
+}

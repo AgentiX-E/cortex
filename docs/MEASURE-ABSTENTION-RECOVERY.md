@@ -20,20 +20,22 @@ Three archived runs of the adopted configuration. For every reply that returned
 
 | run | capability | abstentions | with a non-empty Step 1 list |
 | --- | --- | --- | --- |
-| `39367801501` | MR | 10 | **10** |
+| `39367801501` | MR | 10 | **8** |
 | `39367801501` | TR | 20 | 7 |
 | `39367801501` | ABS | 30 | **0** |
-| `39509698041` | MR | 9 | **9** |
+| `39509698041` | MR | 9 | **7** |
 | `39509698041` | TR | 15 | 5 |
 | `39509698041` | KU | 2 | 1 |
-| `39699987781` | MR | 9 | **9** |
+| `39699987781` | MR | 9 | **8** |
 | `39699987781` | TR | 23 | 4 |
-| `39699987781` | ABS | 29 | **0** |
+| `39699987781` | ABS | 30 | **0** |
 
 Two things make this a reading rather than a count:
 
-- **MR is unanimous.** Every abstention in all three runs carries a non-empty list. The reader
-  enumerated the evidence, then declined with the evidence in hand.
+- **MR is near-unanimous.** Eight of ten, seven of nine, eight of nine -- and the two that are not are
+  the honest case: their only bullets read "No item in the evidence states ...", which the shipped
+  predicate excludes, so the pass correctly does not fire on them. The reader enumerated the evidence
+  and then declined with it in hand.
 - **ABS is zero.** Thirty abstentions, no list, in both runs that have the capability. ABS questions
   are the ones whose gold answer *is* a decline, so this is the control the reading needs: a rule
   about lists cannot touch a route that does not produce one, and a system that started answering
@@ -99,7 +101,7 @@ tried first and failed that test, which is the test doing its job.
 
 | id | criterion | control |
 | --- | --- | --- |
-| P1 | `recoveryCensus.attempted` between 10 and 25, and `answered > 0` | pass did not fire |
+| P1 | `recoveryCensus.attempted` between 10 and 20, and `answered > 0` | pass did not fire; the measured population is 12 to 15 |
 | P2 | MR correct count ≥ +4 over the control | 84–88 across archived runs |
 | P3 | TR correct count not down by more than 2 | 92–95 |
 | P4 | ABS correct count unchanged | 29–30 |
@@ -111,3 +113,44 @@ retrieval.
 
 Revert if P2 and P3 both fail, or if P4 moves at all: an abstention pass that changes ABS is
 answering questions whose correct answer is "I cannot".
+
+---
+
+## The census is a script now, and it corrected this document
+
+Three readings in step 23 were done with throwaway scripts, and the first of them was wrong in a way
+worth keeping: it read the answer as the first number in the Step 2 block, which is the `2` in
+"Step 2". Every count question then looked like a disagreement between its list and its answer.
+
+`packages/cortex-eval/test/mr-census/run.mjs` is the same taxonomy, checked in, with `result-*.json`
+beside it for three archived runs. It imports `declinedItems` from the built product rather than
+re-implementing it, so the reading and the gate cannot drift apart — the rule `test/echo/run.mjs`
+follows for `OutputGuard`.
+
+Running it corrected the table at the top of this document. Through the shipped predicate, MR is
+**8 of 10, 7 of 9, 8 of 9**, not 10 of 10: the two abstentions that were counted as carrying a list
+list only *absence* ("No item in the evidence states ..."), and the predicate excludes those because
+an absence is not an item. The first number would have said the pass should fire on an honest decline.
+
+The recovered population is therefore **12 to 15 questions per run**, not 13 to 17, and the
+pre-registration's P1 band was narrowed to `[10, 20]` to match.
+
+The `mrVerdict` line is the one that decides the next experiment: on the adopted configuration the
+split is **20 reader (complete gold coverage) / 17 retrieval (partial)**. On the session-unit run it is
+**43 / 2** — the same taxonomy, a different configuration, and a reminder that this ratio is a property
+of a configuration and not of the capability.
+
+## The treatment run is blocked on billing, not on code
+
+`40087115093` (full adopted payload, `review_pass: recover`) failed at 10:46 with
+
+```
+LLM request failed: 402 Payment Required — Insufficient Balance
+```
+
+The DeepSeek account is out of credit. Every question in the run that got that far failed the same
+way, so the artifact carries no reading. Recorded rather than retried: a run re-dispatched into the
+same 402 would produce a second artifact with the same shape and the same absence of information.
+
+This is the second external block in the campaign (the first was the Zhipu embedding quota), and it
+is stated in the same terms: **the measurement is ready and the account is not.**
