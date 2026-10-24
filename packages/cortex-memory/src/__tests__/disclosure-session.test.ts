@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
-import { TriageError, TriageProposer } from '@agentix-e/cortex-core';
+import { RELEASE_TOKEN, TriageError, TriageProposer } from '@agentix-e/cortex-core';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 import { DisclosureSession } from '../disclosure/session.js';
 
@@ -389,6 +389,66 @@ describe('checking a draft before anyone reads it', () => {
     });
     expect(scan.verdict).toBe('blocked');
     expect(scan.findings.map((finding) => finding.kind)).toContain('never-retained');
+  });
+});
+
+describe('sharing something the rules kept private', () => {
+  const HEALTH = 'My therapist moved me to a new medication last week.';
+
+  it('requires the token, and refuses with the rule and its policy rather than a scold', async () => {
+    const { disclosure } = session();
+    const { admission } = await disclosure.say(HEALTH, { id: 'h1' });
+    expect(admission.stored).toBe(true);
+    expect(admission.visibility).toBe('private');
+
+    await expect(disclosure.release('h1', { acknowledge: '' })).rejects.toThrow(/rule "health"/);
+    await expect(disclosure.release('h1', { acknowledge: '' })).rejects.toThrow(/policy:/);
+    // Nothing moved, and nothing was recorded.
+    expect(await disclosure.evidence('shared')).toHaveLength(0);
+    expect(await disclosure.releases()).toHaveLength(0);
+  });
+
+  it('moves the row and leaves an audit record the owner can read', async () => {
+    const { disclosure } = session();
+    await disclosure.say(HEALTH, { id: 'h1' });
+    const { record } = await disclosure.release('h1', { acknowledge: RELEASE_TOKEN });
+
+    expect(record).toMatchObject({
+      id: 'h1',
+      rule: 'health',
+      text: HEALTH,
+      completedAt: expect.any(Number),
+    });
+    expect((await disclosure.evidence('shared')).map((row) => row.key)).toEqual(['h1']);
+    // The audit trail is the owner's: a shared task's window does not include it.
+    expect((await disclosure.releases()).map((entry) => entry.id)).toEqual(['h1']);
+  });
+
+  it('never offers to release a credential, because there is no row to release', async () => {
+    // `retention: 'never'` is enforced at admission. A release path that could resurrect a
+    // credential would undo the one policy that is absolute.
+    const { disclosure } = session();
+    await disclosure.say('My password is hunter2.', { id: 'c1' });
+    await expect(disclosure.release('c1', { acknowledge: RELEASE_TOKEN })).rejects.toThrow(
+      /no private fact with id "c1"/,
+    );
+  });
+
+  it('survives a restart, because the record is in the store and not in memory', async () => {
+    const stores = tempStores();
+    const first = new DisclosureSession({ private: stores.private, shared: stores.shared });
+    await first.say(HEALTH, { id: 'h1' });
+    await first.release('h1', { acknowledge: RELEASE_TOKEN });
+    await stores.private.close();
+    await stores.shared.close();
+
+    const reopened = new DisclosureSession({
+      private: new SqliteStorage({ filename: stores.paths[0] }),
+      shared: new SqliteStorage({ filename: stores.paths[1] }),
+    });
+    const records = await reopened.releases();
+    expect(records).toHaveLength(1);
+    expect(records[0]?.digest).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 

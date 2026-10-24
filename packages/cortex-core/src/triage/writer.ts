@@ -29,6 +29,14 @@
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
 import {
+  digestOf,
+  isIncomplete,
+  releaseVerdict,
+  releaseWarning,
+  RELEASE_TOKEN,
+  type ReleaseRecord,
+} from './release.js';
+import {
   classify as classifyWith,
   destinationOf,
   type TriageDecision,
@@ -69,6 +77,16 @@ export type AdmittedFact = {
   /** Set when a user promoted this row across the boundary, by confirming a card. */
   readonly confirmedAt?: number;
   /**
+   * Set when the row crossed the boundary by `release()` instead -- a rule was overridden, and there
+   * was no card to confirm.
+   *
+   * Kept apart from `confirmedAt` because the two are different acts with different audit records:
+   * a confirmation answers a question the rule layer asked, an override answers a question the rule
+   * layer refused to ask. A reader that could not tell them apart would see every released row as
+   * "the user confirmed this card" and look for a card that never existed.
+   */
+  readonly releasedAt?: number;
+  /**
    * Withdrawn from retrieval, pending review.
    *
    * Written by `CardQueue.expire` when a confirmed fact outlives its `decayAt`, and cleared by
@@ -102,6 +120,14 @@ export type TriageWriterOptions = {
    */
   classify?: (text: string) => TriageDecision;
 };
+
+/**
+ * Where release records live, inside the private store.
+ *
+ * A table beside `facts`, not a column on it: the record outlives the row's scope, and a query for
+ * facts must not start returning audit rows to a caller that expects sentences.
+ */
+const RELEASES = 'releases';
 
 /** The scopes this writer will accept from a classifier. Anything else is a failure, not a vote. */
 const KNOWN_SCOPES: readonly TriageScope[] = ['private', 'shared', 'defer'];
@@ -239,7 +265,92 @@ export class TriageWriter {
    * a false audit trail. `confirmedAt` is the field that records the override.
    */
   async promote(id: string, options: { table?: string; now?: number } = {}): Promise<AdmittedFact> {
+    return this.cross(id, options.table ?? 'facts', { confirmedAt: options.now ?? Date.now() });
+  }
+
+  /**
+   * Override a rule and move the row across the boundary, leaving a record of why it was allowed.
+   *
+   * This is the only door out for a row the rule table judged private, and it is deliberately
+   * awkward: the caller has to type `RELEASE_TOKEN`, the record is written **before** the row moves,
+   * and it lives in its own table so nobody reading the card table can mistake an override for an
+   * acceptance. See `release.ts` for why each of those is a decision.
+   *
+   * Idempotent like `promote`: a second call for a completed release returns the same record rather
+   * than reporting a second override, because a retry after a network error is not a second decision.
+   *
+   * @throws {TriageError} when the row does not exist, cannot be released, or the token is wrong.
+   */
+  async release(
+    id: string,
+    options: { acknowledge: string; table?: string; now?: number },
+  ): Promise<{ record: ReleaseRecord; fact: AdmittedFact }> {
     const table = options.table ?? 'facts';
+    const existing = await this.federation.get<AdmittedFact>(`private/${table}`, id);
+
+    if (existing === undefined) {
+      const previous = await this.federation.get<ReleaseRecord>(`private/${RELEASES}`, id);
+      if (previous !== undefined && !isIncomplete(previous)) {
+        const shared = await this.federation.get<AdmittedFact>(`shared/${table}`, id);
+        if (shared !== undefined) return { record: previous, fact: shared };
+      }
+      throw new TriageError(
+        `no private fact with id ${JSON.stringify(id)}: release() can only move a row that exists ` +
+          'in the private store and has not already crossed.',
+      );
+    }
+
+    const verdict = releaseVerdict(existing);
+    if (!verdict.ok) throw new TriageError(verdict.refusal);
+
+    // The token is checked after the refusals, so a caller who would be refused anyway learns that
+    // first: "you typed the token wrong" would send them to fix the wrong thing.
+    if (options.acknowledge !== RELEASE_TOKEN) {
+      throw new TriageError(releaseWarning(existing, verdict));
+    }
+
+    const now = options.now ?? Date.now();
+    const record: ReleaseRecord = {
+      id,
+      // Carried by the verdict, so there is no cast here and no way for the record and the warning
+      // to disagree about which rule was overridden.
+      rule: verdict.rule,
+      policy: verdict.policy,
+      text: existing.text,
+      digestAlgorithm: 'sha-256',
+      digest: await digestOf(existing.text),
+      acknowledged: options.acknowledge,
+      releasedAt: now,
+      completedAt: null,
+    };
+
+    // Written before the row moves: a crash between the two leaves a record that says the release
+    // did not complete, and the row still private. The other order is unaudited publication.
+    await this.federation.put(`private/${RELEASES}`, id, record);
+    const fact = await this.cross(id, table, { releasedAt: now });
+    const completed: ReleaseRecord = { ...record, completedAt: now };
+    await this.federation.put(`private/${RELEASES}`, id, completed);
+    return { record: completed, fact };
+  }
+
+  /** Every release record, newest last. The audit trail of overrides, and nothing else. */
+  async releases(): Promise<ReleaseRecord[]> {
+    const rows = await this.federation.query<ReleaseRecord>(`private/${RELEASES}`, {});
+    return rows.sort((left, right) => (left.releasedAt < right.releasedAt ? -1 : 1));
+  }
+
+  /**
+   * Move a row across the boundary, with the caller's own mark on it.
+   *
+   * Shared by `promote` and `release`, which differ in one field and in nothing else -- the ordering
+   * (write, then delete) is the part that must not be written twice, because two copies of a
+   * carefully chosen order is how one of them eventually gets the order wrong.
+   */
+  private async cross(
+    id: string,
+    table: string,
+    mark: { confirmedAt?: number; releasedAt?: number },
+  ): Promise<AdmittedFact> {
     const existing = await this.federation.get<AdmittedFact>(`private/${table}`, id);
 
     if (existing === undefined) {
@@ -251,11 +362,7 @@ export class TriageWriter {
       );
     }
 
-    const promoted: AdmittedFact = {
-      ...existing,
-      visibility: 'shared',
-      confirmedAt: options.now ?? Date.now(),
-    };
+    const promoted: AdmittedFact = { ...existing, visibility: 'shared', ...mark };
 
     // Shared copy first. See the module comment: this ordering makes a partial failure visible
     // rather than destructive.

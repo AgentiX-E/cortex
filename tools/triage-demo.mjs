@@ -20,6 +20,9 @@
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo propose <id> --llm local
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo accept <id> --atom 0
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo check shared "The plan moves to Thursday [[c3]]."
+ *     node tools/triage-demo.mjs --home /tmp/cortex-demo facts
+ *     node tools/triage-demo.mjs --home /tmp/cortex-demo release <id> --acknowledge rule-override
+ *     node tools/triage-demo.mjs --home /tmp/cortex-demo releases
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo export
  *     node tools/triage-demo.mjs --home /tmp/cortex-demo ask shared
  *
@@ -53,6 +56,7 @@ function parse(argv) {
   const options = {
     home: '.cortex-demo',
     atom: undefined,
+    acknowledge: undefined,
     llm: process.env['CORTEX_LLM_BACKEND'] ?? 'none',
     model: undefined,
     // The recorded readings used q4 (about 400 MB for the 0.5B checkpoint). The profile's own
@@ -73,6 +77,7 @@ function parse(argv) {
       else if (name === 'model') options.model = value;
       else if (name === 'dtype') options.dtype = value;
       else if (name === 'id') options.id = value;
+      else if (name === 'acknowledge') options.acknowledge = value;
       else throw new Error(`unknown option --${name}`);
       index += 1;
     } else {
@@ -141,9 +146,11 @@ function renderCard(card) {
 }
 
 async function main() {
-  const { command, args, home, atom, llm, model, dtype, id } = parse(process.argv.slice(2));
+  const { command, args, home, atom, llm, model, dtype, id, acknowledge } = parse(process.argv.slice(2));
   if (command === undefined) {
-    throw new Error('expected a command: say | cards | propose | accept | dismiss | ask | check | export');
+    throw new Error(
+      'expected a command: say | facts | cards | propose | accept | dismiss | release | releases | ask | check | export',
+    );
   }
 
   mkdirSync(home, { recursive: true });
@@ -203,6 +210,39 @@ async function main() {
       } else {
         console.log(`${card.id}  still ${card.state}  refused by ${card.refused.rule}: ${card.refused.policy}`);
         console.log('nothing was published; the card keeps the sentence it had.');
+      }
+    } else if (command === 'release') {
+      const id = args[0];
+      if (id === undefined) throw new Error('release needs a fact id (see the `facts` command)');
+      try {
+        const { record } = await session.release(id, { acknowledge: acknowledge ?? '' });
+        console.log(`released ${record.id}: rule ${record.rule} overridden`);
+        console.log(`  policy: ${record.policy}`);
+        console.log(`  digest: ${record.digestAlgorithm} ${record.digest.slice(0, 16)}…`);
+        console.log(`  recorded at ${new Date(record.releasedAt).toISOString()}` + (record.completedAt === null ? ' (INCOMPLETE)' : ''));
+      } catch (error) {
+        // The writer throws the warning itself, so the CLI does not restate the policy in its own
+        // words -- one sentence, one source.
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    } else if (command === 'releases') {
+      const records = await session.releases();
+      console.log(`${records.length} override(s)`);
+      for (const record of records) {
+        const done = record.completedAt === null ? 'INCOMPLETE' : 'complete';
+        console.log(`  ${record.id}  ${record.rule}  ${done}  ${record.digest.slice(0, 12)}…`);
+        console.log(`      ${record.text}`);
+      }
+    } else if (command === 'facts') {
+      // `evidence('private')` is what the *owner* can see, which is both stores -- a private task
+      // reads the shared window too. The label said "in the private store" and then listed a shared
+      // row, which is the kind of caption that teaches a reader the wrong model.
+      const rows = await session.evidence('private');
+      console.log(`${rows.length} row(s) visible to the owner`);
+      for (const row of rows) {
+        const fact = row.value;
+        console.log(`  ${row.key}  [${row.origin}]  rule:${fact.triage.rule ?? '-'}  ${fact.text}`);
       }
     } else if (command === 'dismiss') {
       const cardId = args[0];

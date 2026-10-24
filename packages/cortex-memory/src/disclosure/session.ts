@@ -41,7 +41,9 @@ import {
   type Admission,
   type KnowledgeCard,
   type OutputScan,
+  type AdmittedFact,
   type ProposalResult,
+  type ReleaseRecord,
   type ScopedRow,
   type TaskScope,
   type TriageProposer,
@@ -228,6 +230,30 @@ export class DisclosureSession {
         : { requireCitation: options.requireCitation }),
       ...(options.minEchoChars === undefined ? {} : { minEchoChars: options.minEchoChars }),
     });
+  }
+
+  /**
+   * Override a rule for one row the rules kept private, and record that it happened.
+   *
+   * This is the ninth command and the last one that was missing: until it existed, a sentence the
+   * rules judged private was stored privately forever with no card and no question, so the owner
+   * could not change their mind about their own memory. `g42` was the example in step 6.
+   *
+   * The awkward part is on purpose and is documented in `cortex-core`'s `release.ts`: a token has to
+   * be typed, the record is written before the row moves, and the record lives in its own table
+   * inside the private store. `acknowledge` is passed through rather than defaulted -- a default
+   * here would be a door that opens itself.
+   */
+  async release(
+    id: string,
+    options: { acknowledge: string },
+  ): Promise<{ record: ReleaseRecord; fact: AdmittedFact }> {
+    return this.writer.release(id, { acknowledge: options.acknowledge, table: this.table });
+  }
+
+  /** Every override, oldest first. The audit trail, and nothing else. */
+  async releases(): Promise<ReleaseRecord[]> {
+    return this.writer.releases();
   }
 
   /** What a task of this scope may read. The assembler enforces the boundary, not this method. */

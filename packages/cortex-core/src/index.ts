@@ -116,6 +116,7 @@ export {
   type TriageRecord,
   type TriageWriterOptions,
 } from './triage/writer.js';
+export { RELEASE_TOKEN, type ReleaseRecord } from './triage/release.js';
 export {
   CardQueue,
   type CardQueueOptions,
