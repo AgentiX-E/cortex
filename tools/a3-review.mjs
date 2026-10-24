@@ -38,7 +38,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 
-import { positionEffect, scoreA3 } from '../packages/cortex-eval/dist/index.js';
+import { drawUnjudged, positionEffect, scoreA3 } from '../packages/cortex-eval/dist/index.js';
 import {
   ProfileError,
   describeProfile,
@@ -52,6 +52,16 @@ import {
   distillationOf,
 } from '../packages/cortex-core/dist/index.js';
 import { SqliteStorage } from '../packages/cortex-storage/dist/storage/sqlite.js';
+
+/**
+ * The ids a previous round already judged.
+ *
+ * A review round cannot reuse its own cards: the reviewer remembers them, and the second judgement
+ * becomes a recall test that flatters consistency -- the one thing A3 tries to hold still. The ledger
+ * is a file rather than an `--offset` because the offset would have to be recomputed by hand after
+ * every uneven round, and a wrong offset silently re-issues cards.
+ */
+const JUDGED = new URL('./a3-judged-cards.json', import.meta.url);
 
 const FIXTURE = new URL(
   '../packages/cortex-core/src/triage/__tests__/fixtures/triage-labels.json',
@@ -82,7 +92,11 @@ function options(argv) {
  */
 async function buildProposer(backend, model, dtype) {
   const profile = resolveLlmProfile(
-    { backend, ...(model === undefined ? {} : { model }), ...(dtype === undefined ? {} : { dtype }) },
+    {
+      backend,
+      ...(model === undefined ? {} : { model }),
+      ...(dtype === undefined ? {} : { dtype }),
+    },
     process.env,
   );
 
@@ -133,7 +147,14 @@ async function prepare(config) {
   // two rows labelled `defer` are judged private by the current table, so asking for twenty "defer"
   // rows yielded eighteen pairs -- one short of the pre-registered count, for a reason that has
   // nothing to do with the treatment.
-  const candidates = rows;
+  const judgedPath = config.judged ?? JUDGED;
+  const judged = existsSync(judgedPath) ? JSON.parse(readFileSync(judgedPath, 'utf8')).judged : [];
+  const draw = drawUnjudged(rows, judged);
+  const candidates = draw.rows;
+  console.error(
+    `${rows.length} row(s), ${draw.skipped} already judged, ${candidates.length} fresh ` +
+      `(ledger: ${typeof judgedPath === 'string' ? judgedPath : JUDGED.pathname})`,
+  );
 
   const home = `${dirname(config.out)}/stores`;
   mkdirSync(home, { recursive: true });
@@ -193,7 +214,10 @@ async function prepare(config) {
       `time kept in ${keptTime.length}/${withTime.length} cards that named a time`,
   );
 
-  writeFileSync(config.out, `${JSON.stringify({ prepared: new Date().toISOString(), cards }, null, 2)}\n`);
+  writeFileSync(
+    config.out,
+    `${JSON.stringify({ prepared: new Date().toISOString(), cards }, null, 2)}\n`,
+  );
   console.error(`wrote ${cards.length} card(s) to ${config.out}`);
   if (built.profile !== undefined) console.error(`profile: ${describeProfile(built.profile)}`);
   await storage.private.close();
@@ -226,7 +250,9 @@ async function review(config) {
     return nextLine();
   };
 
-  console.log(`A3 review: ${cards.length} card(s), each shown twice. [a]ccept  [d]ismiss  [e]dit  [s]kip`);
+  console.log(
+    `A3 review: ${cards.length} card(s), each shown twice. [a]ccept  [d]ismiss  [e]dit  [s]kip`,
+  );
   let written = 0;
 
   for (const [index, card] of cards.entries()) {
@@ -249,7 +275,9 @@ async function review(config) {
         const answer = await ask('  a=accept  d=dismiss  e=edit  s=skip > ');
         if (answer === null) {
           rl.close();
-          console.log(`\ninput ended after ${written} decision(s); progress is saved in ${decisions}`);
+          console.log(
+            `\ninput ended after ${written} decision(s); progress is saved in ${decisions}`,
+          );
           return;
         }
         const key = answer.toLowerCase();
@@ -277,7 +305,9 @@ async function review(config) {
     }
   }
   rl.close();
-  console.log(`\n${written} decision(s) written to ${decisions}. Now run: score --decisions ${decisions}`);
+  console.log(
+    `\n${written} decision(s) written to ${decisions}. Now run: score --decisions ${decisions}`,
+  );
 }
 
 function score(config) {
@@ -295,7 +325,9 @@ function score(config) {
         `${arm.edited} edited, median ${arm.medianMs ?? '-'} ms`,
     );
   }
-  console.log(`  delta ${result.deltaPp.toFixed(1)}pp, exact McNemar p=${result.mcnemarP.toFixed(4)}`);
+  console.log(
+    `  delta ${result.deltaPp.toFixed(1)}pp, exact McNemar p=${result.mcnemarP.toFixed(4)}`,
+  );
 
   // The arm medians above are per-arm totals, and with an alternating order they mix two positions.
   // Printing them without this line invites a reading the data cannot support -- the first dataset had
@@ -333,7 +365,8 @@ function dosage(config) {
   const { cards } = JSON.parse(readFileSync(config.cards, 'utf8'));
   const kinds = ['split', 'one-different', 'identical', 'none'];
   const counts = new Map(kinds.map((kind) => [kind, 0]));
-  for (const card of cards) counts.set(classifyCard(card), (counts.get(classifyCard(card)) ?? 0) + 1);
+  for (const card of cards)
+    counts.set(classifyCard(card), (counts.get(classifyCard(card)) ?? 0) + 1);
 
   const usable = cards.length - (counts.get('none') ?? 0);
   const split = counts.get('split') ?? 0;
@@ -353,7 +386,11 @@ function dosage(config) {
   console.log(`  treatment share: ${(share * 100).toFixed(1)}% of ${usable} (gate: 50%)`);
   for (const profile of distinct('profile')) console.log(`  profile: ${profile}`);
   for (const prompt of distinct('promptVersion')) console.log(`  prompt: ${prompt}`);
-  console.log(share >= 0.5 ? '\nGATE PASS: the arms differ enough to measure.' : `\nGATE FAIL: ${split}/${usable} cards carry two or more atoms. Collecting clicks now would measure the model, not the presentation.`);
+  console.log(
+    share >= 0.5
+      ? '\nGATE PASS: the arms differ enough to measure.'
+      : `\nGATE FAIL: ${split}/${usable} cards carry two or more atoms. Collecting clicks now would measure the model, not the presentation.`,
+  );
 }
 
 const config = options(process.argv.slice(2));

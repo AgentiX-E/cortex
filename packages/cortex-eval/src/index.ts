@@ -38,6 +38,7 @@ export {
   type BenchmarkProgressCallback,
 } from './benchmark.js';
 export { describeFailure } from './bench-failure.js';
+export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';
 export {
   createLlmJudge,
   buildJudgePrompt,

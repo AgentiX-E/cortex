@@ -1,0 +1,62 @@
+{
+  "what": "Card ids a review round has already shown. `tools/a3-review.mjs prepare` skips them, because a second pass over the same cards is a recall test rather than a judgement and would flatter consistency -- the one thing A3 exists to hold still.",
+  "rounds": [
+    {
+      "round": 1,
+      "promptVersion": "triage-proposer/v2",
+      "run": "39187895706",
+      "cards": ["g00"]
+    },
+    {
+      "round": 2,
+      "promptVersion": "triage-proposer/v4",
+      "run": "40078035873",
+      "cards": [
+        "g00",
+        "g02",
+        "g04",
+        "g05",
+        "g06",
+        "g08",
+        "g09",
+        "g10",
+        "g12",
+        "g13",
+        "g17",
+        "g18",
+        "g19",
+        "g21",
+        "g22",
+        "g23",
+        "g25",
+        "g29",
+        "g30",
+        "g32",
+        "g33"
+      ]
+    }
+  ],
+  "judged": [
+    "g00",
+    "g02",
+    "g04",
+    "g05",
+    "g06",
+    "g08",
+    "g09",
+    "g10",
+    "g12",
+    "g13",
+    "g17",
+    "g18",
+    "g19",
+    "g21",
+    "g22",
+    "g23",
+    "g25",
+    "g29",
+    "g30",
+    "g32",
+    "g33"
+  ]
+}
