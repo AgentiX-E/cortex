@@ -154,3 +154,40 @@ same 402 would produce a second artifact with the same shape and the same absenc
 
 This is the second external block in the campaign (the first was the Zhipu embedding quota), and it
 is stated in the same terms: **the measurement is ready and the account is not.**
+
+---
+
+## Result: the gate works and the treatment does not (run `40088479628`)
+
+Full adopted payload, `review_pass: recover`, 500 questions. The config line was checked field by field
+before any score was read, which is the rule step 24 added after a dispatch that measured the product
+default: eight of eight fields match.
+
+| | value |
+| --- | --- |
+| `recovery` | **`{attempted: 10, answered: 1}`** |
+| `abstentionReasons` | `llm 75`, `threshold 0`, `answered 425` |
+| IE / TR / MR / KU / ABS | 134 / 94 / 84 / 62 / 30 = **404** |
+| control (mean of three adopted runs) | 134 / 94.75 / 84.25 / 62.5 / 29.25 = 405 |
+
+Against the pre-registration: **P1 passes** (10 attempts inside `[10, 20]`, one answered), **P3 and P4
+hold** (TR −1, ABS unchanged at 30/30), **P2 fails** — MR needed +4 and moved by −1 to 0. The default
+therefore stays `none`, and the mechanism stays in the tree as a switch nobody is required to flip.
+
+### Ten attempts, one answer
+
+That ratio is the finding. The pass reached exactly the population the census located, declined to
+touch ABS, and then failed to convert: nine times out of ten the reader, shown its own list and asked
+again, declined again.
+
+**And the artifact cannot say why.** It contains zero occurrences of the recovery prompt's own text,
+because each record's raw output is the first answer rather than the retry's. So the next step is not a
+prompt change: it is recording the retry's text, without which any retry mechanism reports a count and
+no cause. This is the second observability gap on this pass — the first was P1 being unreadable at all
+— and two on one mechanism is the reason the next round starts there.
+
+### What the numbers argue against
+
+Adding to a mechanism measured at 10% conversion, on the strength of a sentence that reads better.
+The date frame (`PREREG-DATE-FRAME.md`) costs nothing, is supported by of an external reading on the
+same benchmark, and does not depend on the call-layer machinery that just failed. It goes first.
