@@ -1,10 +1,10 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 844,
-    "withCaller": 458,
-    "orphaned": 386,
-    "referencedLocally": 321,
+    "exports": 851,
+    "withCaller": 459,
+    "orphaned": 392,
+    "referencedLocally": 327,
     "unreferenced": 65
   },
   "groups": [
@@ -477,6 +477,19 @@
         "cortex-eval: RetrievalMode (packages/cortex-eval/src/harness.ts:29)",
         "cortex-eval: sessionsOf (packages/cortex-eval/src/harness.ts:99)"
       ]
+    },
+    {
+      "category": "cortex-adapter-surface",
+      "count": 6,
+      "rationale": "THE CORTEX ADAPTER (step 36) contributes six entries, all of them types, and the one thing that is NOT here is the point: `CortexSessionProvider` left the ledger the moment it was written, because `tools/competitor-harness.mjs` calls it. THE SIX: `ProviderSession`, `ProviderTurn`, `ProviderHit`, `ProviderIngestReport`, `ProviderSearchOptions` and `CortexSessionProviderOptions` describe what the adapter takes and returns. They are deliberately **defined here rather than imported from `cortex-eval`**, because importing would make a measurement package part of the product's dependency graph; the types are structurally identical to `MemoryProvider` and its vocabulary, and the adapter satisfies the contract by shape. That choice is why the census cannot see them: the harness consumes them as runtime shapes in JavaScript and never writes the identifiers, and nothing in this package's own code names them except the adapter itself. NOTHING HERE IS A DELETION CANDIDATE while stage H1 is unrun. If the harness is abandoned, this group and the adapter should be deleted together — leaving the types behind would be an invitation to write a second adapter that quietly disagrees with the first.",
+      "declarationSites": [
+        "cortex-memory: CortexSessionProviderOptions (packages/cortex-memory/src/provider.ts:57)",
+        "cortex-memory: ProviderHit (packages/cortex-memory/src/provider.ts:44)",
+        "cortex-memory: ProviderIngestReport (packages/cortex-memory/src/provider.ts:46)",
+        "cortex-memory: ProviderSearchOptions (packages/cortex-memory/src/provider.ts:52)",
+        "cortex-memory: ProviderSession (packages/cortex-memory/src/provider.ts:38)",
+        "cortex-memory: ProviderTurn (packages/cortex-memory/src/provider.ts:36)"
+      ]
     }
   ],
   "knownOrphans": [
@@ -837,9 +850,15 @@
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
     "cortex-memory: CheckOptions",
+    "cortex-memory: CortexSessionProviderOptions",
     "cortex-memory: DECLINE_TOKEN",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
     "cortex-memory: DisclosureSessionOptions",
+    "cortex-memory: ProviderHit",
+    "cortex-memory: ProviderIngestReport",
+    "cortex-memory: ProviderSearchOptions",
+    "cortex-memory: ProviderSession",
+    "cortex-memory: ProviderTurn",
     "cortex-memory: RecoveryPlan",
     "cortex-memory: SayResult",
     "cortex-memory: asksForCount",
@@ -1253,7 +1272,13 @@
     "cortex-eval: HarnessOptions": "referenced-locally",
     "cortex-eval: ProviderScore": "referenced-locally",
     "cortex-eval: RetrievalMode": "referenced-locally",
-    "cortex-eval: sessionsOf": "referenced-locally"
+    "cortex-eval: sessionsOf": "referenced-locally",
+    "cortex-memory: CortexSessionProviderOptions": "referenced-locally",
+    "cortex-memory: ProviderHit": "referenced-locally",
+    "cortex-memory: ProviderIngestReport": "referenced-locally",
+    "cortex-memory: ProviderSearchOptions": "referenced-locally",
+    "cortex-memory: ProviderSession": "referenced-locally",
+    "cortex-memory: ProviderTurn": "referenced-locally"
   },
   "locations": {
     "cortex-ai: AvailabilityReport": [
@@ -2413,6 +2438,24 @@
     ],
     "cortex-eval: sessionsOf": [
       "packages/cortex-eval/src/harness.ts:99"
+    ],
+    "cortex-memory: CortexSessionProviderOptions": [
+      "packages/cortex-memory/src/provider.ts:57"
+    ],
+    "cortex-memory: ProviderHit": [
+      "packages/cortex-memory/src/provider.ts:44"
+    ],
+    "cortex-memory: ProviderIngestReport": [
+      "packages/cortex-memory/src/provider.ts:46"
+    ],
+    "cortex-memory: ProviderSearchOptions": [
+      "packages/cortex-memory/src/provider.ts:52"
+    ],
+    "cortex-memory: ProviderSession": [
+      "packages/cortex-memory/src/provider.ts:38"
+    ],
+    "cortex-memory: ProviderTurn": [
+      "packages/cortex-memory/src/provider.ts:36"
     ]
   }
 }

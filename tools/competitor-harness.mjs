@@ -23,6 +23,7 @@ import {
   measureRetrieval,
 } from '../packages/cortex-eval/dist/index.js';
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
+import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -43,7 +44,18 @@ const goldOf = (question) => {
   return question.context.filter((turn) => turn.toLowerCase().includes(needle));
 };
 
-const scores = await measureRetrieval(dataset, [new LexicalProvider(), new NullProvider()], {
+// Cortex's own selection, twice: unbounded (the recall ceiling of what the store holds) and at its real
+// session budget (what the reader is actually offered). The gap between the two rows is the budget's cost,
+// and it is the number this tool was built to make visible.
+const now = Date.now();
+const providers = [
+  new LexicalProvider(),
+  new CortexSessionProvider({ now }),
+  new CortexSessionProvider({ now, sessionBudget: 8 }),
+  new NullProvider(),
+];
+
+const scores = await measureRetrieval(dataset, providers, {
   limit,
   mode: 'isolated',
   goldOf,
@@ -81,9 +93,13 @@ for (const score of scores) {
   );
 }
 
-const capabilities = [...new Set(scores.flatMap((score) => Object.keys(score.byCapability)))].sort();
+const capabilities = [
+  ...new Set(scores.flatMap((score) => Object.keys(score.byCapability))),
+].sort();
 if (capabilities.length > 0) {
-  process.stdout.write(`\n${pad('capability', 12)}${scores.map((score) => pad(score.provider, 20)).join('')}\n`);
+  process.stdout.write(
+    `\n${pad('capability', 12)}${scores.map((score) => pad(score.provider, 20)).join('')}\n`,
+  );
   for (const capability of capabilities) {
     const cells = scores.map((score) => {
       const bucket = score.byCapability[capability];
@@ -98,6 +114,11 @@ if (capabilities.length > 0) {
 const sameRun = comparability(config, config);
 process.stdout.write(
   `\nconfiguration: k=${limit}, mode=isolated, reader/judge=none\ncomparability(identical): ${sameRun.grade}\n`,
+);
+process.stdout.write(
+  '\nscope: lexical-reference covers ordering and the empty store; cortex-session covers admission and the\n' +
+    'session budget only. Its missing step is the relevance ordering inside `buildSessionPrompt`, so its mrr\n' +
+    'is not comparable with the lexical row and is printed only to show that it is not.\n',
 );
 process.stdout.write(
   `\nThis table is a pipeline check, not a result. Its floor is zero by construction and its ceiling is a\n` +

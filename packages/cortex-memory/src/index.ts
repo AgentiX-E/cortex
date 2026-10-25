@@ -81,3 +81,13 @@ export {
 
 // composition
 export { CortexMemory } from './memory.js';
+
+export {
+  CortexSessionProvider,
+  type CortexSessionProviderOptions,
+  type ProviderHit,
+  type ProviderIngestReport,
+  type ProviderSearchOptions,
+  type ProviderSession,
+  type ProviderTurn,
+} from './provider.js';

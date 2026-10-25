@@ -127,6 +127,51 @@ Three things this table is, and one it is not.
 The value is that H1 now has a shape to fill: swap `LexicalProvider` for a Hindsight adapter, pass the gold
 from the LongMemEval loader instead of deriving it, and the same table answers a real question.
 
+### 3.1.2 Cortex as a provider, and the one step it cannot yet cover
+
+`CortexSessionProvider` (in `cortex-memory`, deliberately not importing `cortex-eval` — the reverse would put a
+measurement package in the product's dependency graph) calls the product's own functions:
+
+```
+admitSessions(sessions, gate)  ->  selectSessionBudget(admitted, ceiling)  ->  hits
+```
+
+An invariant test pins it: for one input, the adapter's hits equal those two functions applied by hand. If the
+adapter ever grows a private copy of selection logic, that test fails.
+
+Three rows now:
+
+```
+provider            build      recall@k  all-gold  mrr     found
+lexical-reference   none       100.0%    100.0%    0.630   24/24
+cortex-session      embedding   91.7%      8.3%    0.296   22/24
+cortex-session      embedding   87.5%      4.2%    0.291   21/24   (session budget 8)
+null-floor          none         0.0%      0.0%    0.000    0/24
+```
+
+**The gap between any-hit and all-gold is the finding.** A lexical index that ranks by the question covers
+every gold turn; the product's selection covers at least one gold turn for 22 of 24 questions but all of them
+for 2. That is the shape multi-session failure takes: a question that needs three sessions answered from one.
+
+**And the cause is in the product, not the adapter.** `selectSessionBudget` ranks sessions by
+`bestValue(session)` — recency and length — and the function never sees the query. So when the budget binds,
+what survives is whatever was recent and long, not what was relevant. A test asserts this rather than
+apologising for it: two different questions over one store return the same sessions.
+
+### 3.1.3 What the adapter does not cover, stated before it is used
+
+The product's session route has four steps and the adapter covers three. The fourth — the relevance ordering
+inside `buildSessionPrompt` — is where a session's turns are ordered and budgeted against the question. Until
+it is extracted as a pure function, `cortex-session`'s **MRR is not comparable** with the lexical row, and the
+tool prints a note saying so. The all-gold figure is also inflated in the product's disfavour by the same
+missing step: without relevance ordering, `search(limit)` truncates by session index, which is arrival order.
+
+So the honest reading of these rows is narrower than the table: *admission and the session budget do not lose
+the evidence; selection does, and the piece that would fix it is not yet callable from outside.*
+
+That is the next step, and it is small: extract the ordering from `buildSessionPrompt`, call it from both the
+prompt builder and the adapter, and the fourth step joins the first three under one invariant test.
+
 ### 3.2 Comparability is a function, not an adjective
 
 `comparability(left, right)` takes two run configurations and returns a grade plus the list of fields that
