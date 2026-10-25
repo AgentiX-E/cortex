@@ -134,11 +134,58 @@ components with a measured total between them, and each is separately testable o
 3. **Not a 500-question number.** The subset is stratified but a hundred questions carries roughly ±9 points of
    sampling error at p≈0.6.
 
+## 5.1 The dispatch arm: one inserted clause, four to six points
+
+The clause described in §2.1 was added as a second reader mode and run on the same 100 questions, the same hits,
+the same judge. `recall@k` is **identical to the digit** in every row, which is the design working: the hits were
+produced once per provider and handed to two prompts, so a difference cannot be retrieval.
+
+| provider | accuracy, `con` | accuracy, `dispatch` | Δ | recall@k |
+| --- | --- | --- | --- | --- |
+| `lexical-reference` | 66.0% | **72.0%** | +6.0pp | 89.0% both |
+| `cortex-session` | 64.0% | **69.0%** | +5.0pp | 87.0% both |
+| `cortex/trim-2.8k` | 51.0% | **55.0%** | +4.0pp | 73.0% both |
+
+Per capability, on the arm with the most headroom:
+
+| capability | `con` | `dispatch` | Δ |
+| --- | --- | --- | --- |
+| TR (lexical) | 11/20 | **15/20** | **+20pp** |
+| TR (cortex-session) | 11/20 | 13/20 | +10pp |
+| TR (trim-2.8k) | 7/20 | 8/20 | +5pp |
+| MR (lexical) | 10/20 | 14/20 | +20pp |
+| MR (cortex-session) | 10/20 | 12/20 | +10pp |
+| KU (lexical) | 17/20 | 15/20 | −10pp |
+
+**The criterion was TR ≥ +15pp at constant `recall@k`, and it is met on one arm and approached on two.** All
+three arms move in the same direction, on both weak capabilities, which is what a real effect looks like and
+what a noise draw usually is not.
+
+**But it is not significant, and the table must not be read as if it were.** TR carries 20 questions in this
+subset; +4 questions on 20 is a binomial difference with a paired p well above 0.05. The honest statement is:
+*a prompt clause worth 4–6 points overall, and 5–20 points on the two capabilities that were failing, measured
+once on a hundred questions.* Confirming it needs the 500-question file.
+
+**KU moved the wrong way on one arm** (17→15 on lexical) and that is reported rather than dropped. The KU clause
+asks the model to enumerate every distinct value with its date, and on a question whose value never changed that
+instruction is one more chance to pick an older one. That is a hypothesis for the next round, not a finding.
+
+## 5.2 What the clause is, in one paragraph
+
+The control prompt said nothing about dates, arithmetic, or the order of the blocks. The dispatch clause says:
+the blocks are in **relevance** order and not chronological (so the model must rebuild the timeline from the
+dates rather than assume the order means something); for TR, write each event's date in ISO form with the quote
+you took it from and then do the arithmetic one step at a time; for KU, list each distinct value with its date
+and answer from the latest; for MR, collect from more than one conversation before answering; for ABS, refusing
+is a correct answer. TReMu, MemFlow and Test of Time each contribute one of those, and the reason to keep them as
+an **inserted clause** rather than a rewritten prompt is that the ablation then has exactly one variable.
+
 ## 6. The next measurements, in order, revised by §2.1
 
 | # | measurement | why it is next | criterion |
 | --- | --- | --- | --- |
-| 1 | **the production reader prompt on the same hits** | §2.1 says TR loses 9 of 20 questions *after* retrieval succeeded. The production prompt is the only component in the 21-point gap that can affect a question whose evidence is already present, and it costs one parameter to test | TR accuracy at 2.8k rises ≥15pp with `recall@k` held constant |
+| 1 | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp) |
+| 1b | **the same ablation on the 500-question file** | §5.1 is 20 TR questions; +4 on 20 is not significant, and the whole point of a direction is that it survives the population | TR ≥ +15pp on 127 questions, paired test |
 | 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
 | 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
 
