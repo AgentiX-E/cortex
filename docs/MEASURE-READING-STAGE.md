@@ -214,9 +214,13 @@ Three things follow, and the second is the one that makes this a result.
 **Is it significant?** The 500-question run predates `ProviderScore.records`, so the exact paired p is not
 available from it — a mistake in ordering that is worth recording: the instrument to read a result was built
 after the result was produced. What can be said without it: a net movement of +31 questions out of 127 is
-significant under **any** pairing of that net. The worst case puts 38 net-preserving regressions against 69
-improvements (the most the baseline allows), and the exact McNemar p there is still ≈0.002. The next run carries
+significant under **any** pairing of that net, and the bound is arithmetic rather than a claim: the worst case
+puts 38 net-preserving regressions against 69 improvements — the most the baseline's 58 correct answers allow —
+and `mcnemarExact(69, 38)` is **p = 3.5e-3**. Unanimous movement would be 9.3e-10. The next run carries
 `records` and will report the number rather than this bound.
+
+The bound was computed with the tool rather than by hand, which is the point of having built it: the first draft
+of this paragraph said "about 0.002", and the function said 0.0035.
 
 **And it does not move MR.** The multi-session clause — "collect evidence from more than one conversation before
 answering" — moved 53→58 on one arm and 57→55 on the other. That clause is a suggestion, not a procedure: it
