@@ -180,12 +180,58 @@ and answer from the latest; for MR, collect from more than one conversation befo
 is a correct answer. TReMu, MemFlow and Test of Time each contribute one of those, and the reason to keep them as
 an **inserted clause** rather than a rewritten prompt is that the ablation then has exactly one variable.
 
+## 5.3 The 500-question confirmation: the direction was real, and it is specific
+
+§5.1 could only say "four to six points on a hundred questions, not significant". The 500-question run of the same
+ablation says the rest. Two arms, the same two prompts, the same corpus:
+
+| provider | accuracy, `con` | accuracy, `dispatch` | Δ | recall@k |
+| --- | --- | --- | --- | --- |
+| `lexical-reference` | 61.8% (309/500) | **69.2%** (346/500) | **+7.4pp / +37 questions** | 93.6% both |
+| `cortex-session` | 62.8% (314/500) | **69.0%** (345/500) | **+6.2pp / +31 questions** | 94.0% both |
+
+Per capability, and this is the part that makes it an effect rather than a drift:
+
+| capability | `con` lexical | `dispatch` lexical | `con` session | `dispatch` session |
+| --- | --- | --- | --- | --- |
+| **TR** | 58/127 | **89/127** (+24.4pp) | 60/127 | **89/127** (+22.8pp) |
+| MR | 53/121 | 58/121 (+4.1pp) | 57/121 | 55/121 (−1.7pp) |
+| IE | 113/150 | 111/150 (−1.3pp) | 118/150 | 117/150 (−0.7pp) |
+| KU | 60/72 | 61/72 (+1.4pp) | 57/72 | 58/72 (+1.4pp) |
+| ABS | 25/30 | 27/30 (+6.7pp) | 22/30 | 26/30 (+13.3pp) |
+
+Three things follow, and the second is the one that makes this a result.
+
+1. **The criterion is met on the population, not just on a subset.** TR ≥ +15pp at constant `recall@k`: +24.4 and
+   +22.8 points, on 127 questions each.
+2. **The effect is where the clause is.** TR moves 31 and 29 questions; every other capability moves by at most
+   five, and IE moves *down* on both arms. A prompt that made models generally better would move everything; this
+   one moves the family whose clause asks for dates and arithmetic.
+3. **Two independent retrievals land on the same number.** `lexical-reference` and `cortex-session` retrieve
+   differently (93.6% vs 94.0% recall, different hit sets) and both answer 89/127 temporal questions after the
+   clause. A coincidence in one arm is a fluke; the same exact count in two is the clause doing the work.
+
+**Is it significant?** The 500-question run predates `ProviderScore.records`, so the exact paired p is not
+available from it — a mistake in ordering that is worth recording: the instrument to read a result was built
+after the result was produced. What can be said without it: a net movement of +31 questions out of 127 is
+significant under **any** pairing of that net. The worst case puts 38 net-preserving regressions against 69
+improvements (the most the baseline allows), and the exact McNemar p there is still ≈0.002. The next run carries
+`records` and will report the number rather than this bound.
+
+**And it does not move MR.** The multi-session clause — "collect evidence from more than one conversation before
+answering" — moved 53→58 on one arm and 57→55 on the other. That clause is a suggestion, not a procedure: it
+names no artefact the model must produce, which is exactly what the TR clause does and the MR clause does not.
+The next version of the MR clause should ask for the same kind of thing the TR clause does: write down the
+candidate answers from each conversation, then choose. That is a hypothesis this table produces, and it is the
+one the next round tests.
+
 ## 6. The next measurements, in order, revised by §2.1
 
 | # | measurement | why it is next | criterion |
 | --- | --- | --- | --- |
 | 1 | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp) |
-| 1b | **the same ablation on the 500-question file** | §5.1 is 20 TR questions; +4 on 20 is not significant, and the whole point of a direction is that it survives the population | TR ≥ +15pp on 127 questions, paired test |
+| 1b | ~~the same ablation on the 500-question file~~ **done — §5.3** | §5.1 was 20 TR questions; the population is 127 | TR +24.4pp and +22.8pp, `recall@k` unchanged; exact paired p pending `records` |
+| 1c | **the MR clause, rewritten to demand an artefact** | §5.3 shows the TR clause moved 31 questions and the MR clause moved 5 and −2. TR asks for dates to be written down; MR asks for nothing | MR ≥ +10pp at constant `recall@k`, with the same "one inserted clause" discipline |
 | 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
 | 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
 
