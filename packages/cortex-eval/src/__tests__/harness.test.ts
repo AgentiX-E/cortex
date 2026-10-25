@@ -89,7 +89,13 @@ describe('measureRetrieval: the loop', () => {
 
   it('counts the unmeasurable question in its capability bucket without inflating measured', async () => {
     const [score] = await measureRetrieval(DATASET, [new LexicalProvider()], GOLD);
-    expect(score!.byCapability.TR).toEqual({ questions: 1, measured: 0, found: 0 });
+    expect(score!.byCapability.TR).toEqual({
+      questions: 1,
+      measured: 0,
+      found: 0,
+      read: 0,
+      correct: 0,
+    });
     expect(score!.byCapability.KU!.measured).toBe(1);
   });
 

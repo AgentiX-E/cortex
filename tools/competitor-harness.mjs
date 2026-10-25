@@ -196,9 +196,7 @@ const scores = await measureRetrieval(dataset, providers, {
   limit,
   mode: 'isolated',
   goldOf,
-  ...(reader === null || judge === null
-    ? {}
-    : { answer: reader, judge, accuracyFor: READ_ARMS }),
+  ...(reader === null || judge === null ? {} : { answer: reader, judge, accuracyFor: READ_ARMS }),
 });
 
 // The reader and judge are named by the model that actually ran, not by "deepseek": `comparability()` compares
@@ -244,7 +242,8 @@ for (const score of scores) {
   const tokens = Math.round(score.meanContextChars / 4);
   // `—` and `0.0%` are different cells. An arm that was not read has no accuracy; one that was read and got
   // everything wrong has zero, and collapsing the two would let a skipped stage read as a failed one.
-  const acc = score.accuracy === null ? '—' : `${pct(score.accuracy)} (${score.correct}/${score.read})`;
+  const acc =
+    score.accuracy === null ? '—' : `${pct(score.accuracy)} (${score.correct}/${score.read})`;
   process.stdout.write(
     `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(pct(score.recallAtK), 10)}${pad(pct(score.recallAllAtK), 10)}${pad(score.mrr.toFixed(3), 8)}${pad(acc, 9)}${pad(tokens, 8)}${score.unmeasurable}\n`,
   );
@@ -260,7 +259,14 @@ if (capabilities.length > 0) {
   for (const capability of capabilities) {
     const cells = scores.map((score) => {
       const bucket = score.byCapability[capability];
-      return pad(bucket === undefined ? '—' : `${bucket.found}/${bucket.measured}`, 20);
+      if (bucket === undefined) return pad('—', 20);
+      // `found/measured` is retrieval; `acc` is what the reader did with it. Both, because a family can be found
+      // and then lost in reading, and that is the difference a repair follows from.
+      const shown =
+        bucket.read === 0
+          ? `${bucket.found}/${bucket.measured}`
+          : `${bucket.found}/${bucket.measured} a${bucket.correct}/${bucket.read}`;
+      return pad(shown, 20);
     });
     process.stdout.write(`${pad(capability, 12)}${cells.join('')}\n`);
   }

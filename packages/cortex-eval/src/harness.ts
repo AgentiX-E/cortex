@@ -106,6 +106,15 @@ export type CapabilityScore = {
   readonly questions: number;
   readonly measured: number;
   readonly found: number;
+  /**
+   * Questions of this capability that were read, and how many the judge accepted.
+   *
+   * Per capability because the aggregate hides the thing worth knowing: a system can be strong on one family and
+   * useless on another, and the average of the two is a number no repair follows from. `read: 0` means the arm was
+   * not read, which is a different state from `correct: 0` — the same distinction `ProviderScore.accuracy` keeps.
+   */
+  readonly read: number;
+  readonly correct: number;
 };
 
 export type ProviderScore = {
@@ -233,7 +242,13 @@ export async function measureRetrieval(
       turns += ingest.turns;
       skipped.push(...ingest.skipped);
 
-      const bucket = byCapability[question.capability] ?? { questions: 0, measured: 0, found: 0 };
+      const bucket = byCapability[question.capability] ?? {
+        questions: 0,
+        measured: 0,
+        found: 0,
+        read: 0,
+        correct: 0,
+      };
       byCapability[question.capability] = { ...bucket, questions: bucket.questions + 1 };
 
       const gold = goldOf(question);
@@ -253,7 +268,16 @@ export async function measureRetrieval(
         const reply = await answer(question, hits);
         readCount += 1;
         if (isAbstentionReply(reply)) abstained += 1;
-        if (await judge(question, reply)) correctCount += 1;
+        const accepted = await judge(question, reply);
+        if (accepted) correctCount += 1;
+        // Recorded per capability here rather than derived later, because the bucket is the only place that knows
+        // which family a question belonged to after the loop has moved on.
+        const family = byCapability[question.capability]!;
+        byCapability[question.capability] = {
+          ...family,
+          read: family.read + 1,
+          correct: family.correct + (accepted ? 1 : 0),
+        };
       }
 
       const covered = (hit: { text: string }): boolean =>
