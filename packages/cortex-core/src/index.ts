@@ -241,6 +241,19 @@ export {
   type PenaltyOptions,
 } from './knowledge/assumption.js';
 export {
+  describePlan,
+  inferTemporality,
+  isImmutable,
+  isPlan,
+  modalityOf,
+  planFactor,
+  reconcilePlans,
+  type Certainty,
+  type Futurity,
+  type PlanState,
+  type PlanTransition,
+} from './knowledge/temporality.js';
+export {
   reviseLedger,
   type Revision,
   type RevisionOptions,

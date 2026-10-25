@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 788,
-    "withCaller": 431,
-    "orphaned": 357,
-    "referencedLocally": 291,
-    "unreferenced": 66
+    "exports": 800,
+    "withCaller": 441,
+    "orphaned": 359,
+    "referencedLocally": 294,
+    "unreferenced": 65
   },
   "groups": [
     {
@@ -413,6 +413,15 @@
         "cortex-eval: CaseFamily (packages/cortex-eval/src/assumption-ablation.ts:48)",
         "cortex-eval: CaseOutcome (packages/cortex-eval/src/assumption-ablation.ts:468)"
       ]
+    },
+    {
+      "category": "temporality-surface",
+      "count": 2,
+      "rationale": "THE TEMPORALITY AXES (step 32) add two entries, both vocabulary. `PlanTransition` is the shape `reconcilePlans` returns — the record of which plan moved where and why — and it has no caller because nothing consumes a transition log yet; the states themselves are consumed, by `planFactor` and `describePlan`, both of which the retrieval block and the ablation call. `BuildOptions` is the three switches a caller passes to `buildCases` in the ablation, and a fixture is not a product surface. Neither is a deletion candidate: inline either and the signature stops saying what it takes.",
+      "declarationSites": [
+        "cortex-core: PlanTransition (packages/cortex-core/src/knowledge/temporality.ts:191)",
+        "cortex-eval: BuildOptions (packages/cortex-eval/src/assumption-ablation.ts:96)"
+      ]
     }
   ],
   "knownOrphans": [
@@ -505,6 +514,7 @@
     "cortex-core: PackageCensus",
     "cortex-core: Penalty",
     "cortex-core: PenaltyOptions",
+    "cortex-core: PlanTransition",
     "cortex-core: ProposalFailure",
     "cortex-core: ProposedFact",
     "cortex-core: ProposedRedaction",
@@ -584,6 +594,7 @@
     "cortex-eval: ArmReport",
     "cortex-eval: AttributeRecallGapOptions",
     "cortex-eval: BenchmarkRunnerOptions",
+    "cortex-eval: BuildOptions",
     "cortex-eval: CANDIDATE_RECORD_SCHEMA_KEY",
     "cortex-eval: CONJUNCTION_ABS_CONTROLS",
     "cortex-eval: CONJUNCTION_ABS_TARGET",
@@ -1127,11 +1138,13 @@
     "cortex-core: RevisionVerdict": "referenced-locally",
     "cortex-core: assumptionPenalty": "unreferenced",
     "cortex-core: isAnswerable": "referenced-locally",
-    "cortex-eval: AblationRow": "unreferenced",
+    "cortex-eval: AblationRow": "referenced-locally",
     "cortex-eval: ArmReport": "referenced-locally",
     "cortex-eval: Case": "referenced-locally",
     "cortex-eval: CaseFamily": "referenced-locally",
-    "cortex-eval: CaseOutcome": "referenced-locally"
+    "cortex-eval: CaseOutcome": "referenced-locally",
+    "cortex-core: PlanTransition": "referenced-locally",
+    "cortex-eval: BuildOptions": "referenced-locally"
   },
   "locations": {
     "cortex-ai: AvailabilityReport": [
@@ -2104,7 +2117,7 @@
       "packages/cortex-storage/src/storage/sql.ts:198"
     ],
     "cortex-core: BlockOptions": [
-      "packages/cortex-core/src/retrieval/typed.ts:106"
+      "packages/cortex-core/src/retrieval/typed.ts:107"
     ],
     "cortex-core: BudgetFill": [
       "packages/cortex-core/src/retrieval/fuse.ts:81"
@@ -2116,10 +2129,10 @@
       "packages/cortex-core/src/knowledge/taxonomy.ts:124"
     ],
     "cortex-core: EdgeOrigin": [
-      "packages/cortex-core/src/knowledge/edge.ts:48"
+      "packages/cortex-core/src/knowledge/edge.ts:49"
     ],
     "cortex-core: ExpansionOptions": [
-      "packages/cortex-core/src/retrieval/typed.ts:45"
+      "packages/cortex-core/src/retrieval/typed.ts:46"
     ],
     "cortex-core: FACT_TYPES": [
       "packages/cortex-core/src/knowledge/taxonomy.ts:65"
@@ -2149,7 +2162,7 @@
       "packages/cortex-core/src/retrieval/fuse.ts:28"
     ],
     "cortex-core: Reached": [
-      "packages/cortex-core/src/retrieval/typed.ts:53"
+      "packages/cortex-core/src/retrieval/typed.ts:54"
     ],
     "cortex-core: UnitCensus": [
       "packages/cortex-core/src/knowledge/unit.ts:221"
@@ -2191,19 +2204,25 @@
       "packages/cortex-core/src/knowledge/assumption.ts:170"
     ],
     "cortex-eval: AblationRow": [
-      "packages/cortex-eval/src/assumption-ablation.ts:564"
+      "packages/cortex-eval/src/assumption-ablation.ts:732"
     ],
     "cortex-eval: ArmReport": [
-      "packages/cortex-eval/src/assumption-ablation.ts:518"
+      "packages/cortex-eval/src/assumption-ablation.ts:686"
     ],
     "cortex-eval: Case": [
-      "packages/cortex-eval/src/assumption-ablation.ts:64"
+      "packages/cortex-eval/src/assumption-ablation.ts:102"
     ],
     "cortex-eval: CaseFamily": [
-      "packages/cortex-eval/src/assumption-ablation.ts:48"
+      "packages/cortex-eval/src/assumption-ablation.ts:55"
     ],
     "cortex-eval: CaseOutcome": [
-      "packages/cortex-eval/src/assumption-ablation.ts:509"
+      "packages/cortex-eval/src/assumption-ablation.ts:677"
+    ],
+    "cortex-core: PlanTransition": [
+      "packages/cortex-core/src/knowledge/temporality.ts:191"
+    ],
+    "cortex-eval: BuildOptions": [
+      "packages/cortex-eval/src/assumption-ablation.ts:96"
     ]
   }
 }

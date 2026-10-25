@@ -42,6 +42,7 @@ import {
   type EdgeType,
 } from './taxonomy.js';
 import { isMarkerOf, relationMarkers } from './markers.js';
+import { isImmutable } from './temporality.js';
 import type { KnowledgeFact, KnowledgeFrame } from './frame.js';
 
 /** Where a link came from. There is no other category, on purpose — see rule 1. */
@@ -241,6 +242,10 @@ export function deriveSupersedes(facts: readonly KnowledgeFact[]): KnowledgeEdge
       const older = ordered[index - 1]!;
       const newer = ordered[index]!;
       if (older.text.trim().toLowerCase() === newer.text.trim().toLowerCase()) continue;
+      // A settled event is not replaceable. Somebody going to Paris in March is not undone by them going to
+      // Rome in June; superseding the first with the second is the system rewriting history to keep its
+      // current answer tidy, and it is the one thing an "established fact" must be protected from.
+      if (isImmutable(older)) continue;
       // Two values claiming the *same instant* are not an update: there is no order for `supersedes` to
       // express, and inventing one from the id would let a tie-break decide which of two contradictory
       // facts is current. That case is a refuted `uniqueness` (`revision.ts`), not a replacement.

@@ -34,6 +34,7 @@
  */
 
 import { describeAssumptions } from '../knowledge/assumption.js';
+import { describePlan } from '../knowledge/temporality.js';
 import { EXTRACTED_EDGE_TYPES, type EdgeType } from '../knowledge/taxonomy.js';
 import type { KnowledgeEdge } from '../knowledge/edge.js';
 import type { KnowledgeFact, KnowledgeFrame } from '../knowledge/frame.js';
@@ -156,11 +157,13 @@ export function renderBlock(
   const shown =
     options.maxRelations === undefined ? rendered : rendered.slice(0, options.maxRelations);
   const assumed = describeAssumptions(fact);
+  const plan = describePlan(fact);
   return [
     `fact:     ${fact.text}  [${fact.type}]`,
     ...(fact.stale === true ? ['status:   stale (a premise it rests on was refuted)'] : []),
     ...shown,
     ...(assumed === '' ? [] : [`assumed:  ${assumed}`]),
+    ...(plan === '' ? [] : [`plan:     ${plan}`]),
     `frame:    "${frame.text}"`,
   ];
 }

@@ -34,6 +34,7 @@
 import type { BorrowedWord } from '../triage/grounding.js';
 import type { Assumption } from './assumption.js';
 import { isFactType, isModality, isPolarity } from './taxonomy.js';
+import type { Certainty, Futurity, PlanState } from './temporality.js';
 import type { FactType, Modality, Polarity } from './taxonomy.js';
 
 /** A half-open character range, `[start, end)`, into one frame. */
@@ -90,6 +91,22 @@ export type KnowledgeFact = {
   readonly assumptions?: readonly Assumption[];
   /** How many members an enumeration asserts, when the fact enumerates. Source of the `completeness` assumption. */
   readonly count?: number;
+  /**
+   * When the statement is about. Absent reads as "not classified", and `inferTemporality` fills it.
+   *
+   * Kept beside `modality` rather than replacing it: `modality` is the projection the rest of the code
+   * already reads, and these two are the axes it projects from. A caller may set them; a caller that does
+   * not gets them inferred from the sentence, which is why `isImmutable` still works on a bare fact.
+   */
+  readonly futurity?: Futurity;
+  /** How committed the speaker is. See `Futurity`. */
+  readonly certainty?: Certainty;
+  /**
+   * Where a plan is in its life. Only meaningful on a statement with `futurity: 'future'`.
+   *
+   * Set by `reconcilePlans`, never by reading: whether a plan happened is an event somebody has to state.
+   */
+  readonly planState?: PlanState;
   /**
    * Set by a cascade: a premise this fact rests on has been refuted.
    *

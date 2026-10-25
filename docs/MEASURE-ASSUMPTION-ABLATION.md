@@ -10,13 +10,14 @@ The criteria this reads against were fixed before the code existed, in
 
 ## 1. The reading
 
-```
-controlled contradiction set: 12 cases
+Sixteen cases after the temporal axis landed: the twelve from step 31 plus a `plan` family (a commitment
+that lapsed, one still pending, one fulfilled) and an `immutable` case (two settled events on one slot).
 
-arm         correct   accuracy  retired served
-flat        3/12      25.0%     6
-annotated   3/12      25.0%     6
-gated       12/12     100.0%    0
+```
+arm         correct   accuracy
+flat        5/16      31.3%
+annotated   5/16      31.3%
+gated       16/16     100.0%
 
 family        flat      annotated gated
 type-i        0/3       0/3       3/3
@@ -25,14 +26,20 @@ false-stale   2/2       2/2       2/2
 conflict      0/2       0/2       2/2
 type-ii       0/2       0/2       2/2
 cascade       0/1       0/1       1/1
+plan          1/3       1/3       3/3
+immutable     1/1       1/1       1/1
 
 ablation (gated arm, one mechanism removed)
 removed         accuracy  delta    targeted families
 none            100.0%    0.0pp    —
 persistence     75.0%     -25.0pp  type-i, type-ii
-uniqueness      83.3%     -16.7pp  conflict
-time-anchor     100.0%    0.0pp    historical, false-stale
-cascade         91.7%     -8.3pp   cascade
+uniqueness      87.5%     -12.5pp  conflict
+time-anchor     100.0%     0.0pp   historical, false-stale
+cascade         93.8%      -6.3pp  cascade
+temporality     87.5%     -12.5pp  plan, immutable
+lapse           100.0%     0.0pp   plan
+fulfil          100.0%     0.0pp   plan
+immutability    93.8%      -6.3pp  immutable
 ```
 
 ## 2. What each row establishes, and what it does not
@@ -42,7 +49,7 @@ who is *told* which facts are retired will do the right thing. It moves nothing,
 every family. Labelling that does not change a decision is decoration; the ledger has to participate in the
 decision or it is a comment.
 
-**`flat` served six retired facts** across twelve cases. That is the failure mode the whole design is aimed
+**`flat` served seven retired facts** across sixteen cases. That is the failure mode the whole design is aimed
 at, in the form the published record describes it: the older value is still `at`-less in the reader's mind,
 it is equally relevant lexically, and nothing in the pipeline says it has been replaced.
 
@@ -106,3 +113,60 @@ E2 is the one worth a sentence: it is **not** an independent reading. If the ref
 the same direction as the expected answer, both would agree and the number would still be 12/12. The
 independent check is the `false-stale` control, where a wrongly applied refutation would take the score
 *down*, and it stays at 2/2.
+
+## 6. The third axis: settled fact, commitment, wish
+
+Step 31 recorded what a fact *assumed*. It did not distinguish a fact from a plan, and the reviewer was
+right that this is a separate capability: "if the user describes what happened, that is settled; if they
+describe what they intend, that is a plan, and a plan that is never fulfilled has to be corrected or
+forgotten."
+
+Two axes, not one. `modality` collapsed them: TimeML separates `I-ACTION` ("does not necessarily actually
+happen") and `I-STATE` ("alternative possible worlds") from plain `OCCURRENCE`, and FactBank separates
+factual / probable / possible with MEANTIME adding `possibility (future)` as its own value. So:
+
+| futurity | certainty | reads as | old `modality` |
+| --- | --- | --- | --- |
+| past / present | factual | **settled** — nothing later can unsettle it | `actual` |
+| future | factual / probable | **a commitment** | `planned` |
+| future | possible | **a wish** | `hypothetical` |
+
+The lifecycle is a state machine with three transitions on evidence and **one on absence**:
+`pending → fulfilled` needs a declaration, `pending → abandoned` needs a declaration, `pending → lapsed`
+needs only that the date passed with no word. `lapsed` discounts to 0.4 rather than deleting, because
+nobody saying a plan happened is not the same as it not happening.
+
+### What the ablation says about it
+
+**`-temporality` costs 12.5pp and takes out two families.** With the axis unread, nothing is a plan, so a
+question about what happened gets answered with a commitment — and a settled event stops being protected,
+because the protection is `type: event` **and** past.
+
+**`-immutability` costs 6.3pp on exactly one case and moves nothing else.** With the protection off,
+`deriveSupersedes` builds the edge a system without it would build, and the earlier trip is retired by the
+later one. That is the failure the distinction exists to prevent: rewriting history so the current answer
+looks tidy.
+
+**`-lapse` and `-fulfil` are inert, and the reason is worth recording.** The intent filter already keeps
+every unfulfilled plan out of a question about what happened, so removing the lapse transition changes the
+label without changing the answer; and a fulfilled plan is superseded by the event that fulfilled it, so
+`persistence` retires it before `fulfil` is consulted. Both are **state correctness** rather than
+answer accuracy on this set. They still matter — `describePlan` and `planFactor` read them, and a plan
+labelled `pending` for ever is a plan that will be offered again — but the table says plainly that this
+fixture cannot price them, and no claim is made that it does.
+
+### The gap this does not close
+
+`fulfils` and `abandons` are **declared**, exactly as `invalidates` is. Noticing that "I ran the marathon
+in April" fulfils "I will run a marathon in spring" is a matching problem, and the published machinery for
+it (PM-Bench, and the Prospective Intention Store built on it) is the reference for the day this is
+attempted. Claiming it here would be claiming a capability the fixture supplied.
+
+### The prior this sits on
+
+PM-Bench (arXiv 2607.12385) reports 65.1% F1 for the best configuration and **under 50% on cross-day
+intentions**, and names the failure precisely: plans that were *completed or cancelled* keep being acted
+on. Its companion result is the design argument for this whole module — an explicit typed store with
+deterministic transitions moved the same backbone from 65.1% to 82.9%, and a small model from 4.2% to
+66.2%. The lesson is not "use a bigger model"; it is that a state machine belongs in code and only the
+language part belongs in the model.

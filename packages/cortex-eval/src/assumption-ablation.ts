@@ -38,15 +38,29 @@
 import {
   assumptionOf,
   deriveAssumptions,
+  inferTemporality,
+  modalityOf,
+  isPlan,
+  planFactor,
+  reconcilePlans,
   reviseLedger,
   slotKey,
+  type Certainty,
+  type Futurity,
   type KnowledgeFact,
   type KnowledgeFrame,
 } from '@agentix-e/cortex-core';
 
 /** What a case isolates. One per published failure family, plus the control that must not move. */
 export type CaseFamily =
-  'type-i' | 'historical' | 'false-stale' | 'conflict' | 'type-ii' | 'cascade';
+  | 'type-i'
+  | 'historical'
+  | 'false-stale'
+  | 'conflict'
+  | 'type-ii'
+  | 'cascade'
+  | 'plan'
+  | 'immutable';
 
 /** Which mechanism is allowed to participate. */
 export type Arm = 'flat' | 'annotated' | 'gated';
@@ -57,9 +71,33 @@ export type Ablation = {
   readonly uniqueness: boolean;
   readonly timeAnchor: boolean;
   readonly cascade: boolean;
+  /** Whether a statement is read as past / future at all. Off means everything is present-and-factual. */
+  readonly temporality: boolean;
+  /** Whether a plan whose date passed without word becomes `lapsed`. */
+  readonly lapse: boolean;
+  /** Whether a plan ever becomes `fulfilled`. */
+  readonly fulfil: boolean;
+  /** Whether a settled event is protected from being replaced. */
+  readonly immutability: boolean;
 };
 
-const FULL: Ablation = { persistence: true, uniqueness: true, timeAnchor: true, cascade: true };
+const FULL: Ablation = {
+  persistence: true,
+  uniqueness: true,
+  timeAnchor: true,
+  cascade: true,
+  temporality: true,
+  lapse: true,
+  fulfil: true,
+  immutability: true,
+};
+
+/** The switches that change how a case is **built** rather than only how it is answered. */
+export type BuildOptions = {
+  readonly cascade?: boolean;
+  readonly temporality?: boolean;
+  readonly immutability?: boolean;
+};
 
 export type Case = {
   readonly id: string;
@@ -81,10 +119,22 @@ export type Case = {
    * measurement is of the propagation, not of the discovery.
    */
   readonly invalidates?: readonly (readonly [string, string])[];
+  /** `[plannedId, fulfillingId]` pairs. Declared — whether a plan happened is an event somebody states. */
+  readonly fulfils?: readonly (readonly [string, string])[];
+  /**
+   * What the question is asking for, which is the axis the fixture had been missing.
+   *
+   * A question about **what happened** must not be answered with a plan, and a question about **what is
+   * planned** must not be answered with the last settled fact. A system with no notion of the difference
+   * answers both from one pool and is wrong on one of them by construction.
+   */
+  readonly intent?: 'fact' | 'plan';
 };
 
 const DAY = 24 * 60 * 60 * 1000;
 const T0 = Date.UTC(2026, 0, 1);
+/** The clock the fixture runs at: late enough that every dated plan in it is either due or long past. */
+const NOW = T0 + 400 * DAY;
 
 let sequence = 0;
 
@@ -97,19 +147,28 @@ type SlotSpec = {
   readonly predicate: string;
   readonly at?: number;
   readonly count?: number;
+  readonly type?: 'event' | 'state' | 'goal' | 'decision';
   readonly references?: readonly { token: string; sourceId: string }[];
 };
+
+/** Whether the axis is read at all. `false` is the `-temporality` ablation: everything is present-factual. */
+let readTemporality = true;
 
 function fact(frameId: string, at: number, text: string, spec: SlotSpec): KnowledgeFact {
   sequence += 1;
   const frame = frameOf(frameId, at, text);
+  const axes: { futurity: Futurity; certainty: Certainty } = readTemporality
+    ? inferTemporality(text)
+    : { futurity: 'present', certainty: 'factual' };
   const base: KnowledgeFact = {
     id: `f${sequence}`,
     frameId,
     text,
-    type: 'state',
+    type: spec.type ?? 'state',
     polarity: 'positive',
-    modality: 'actual',
+    modality: modalityOf(axes.futurity, axes.certainty),
+    futurity: axes.futurity,
+    certainty: axes.certainty,
     sourceSpan: { start: 0, end: text.length },
     references: spec.references ?? [],
     subject: spec.subject,
@@ -128,7 +187,9 @@ const CITY = { subject: 'user', predicate: 'city' };
  * Every one is two to four facts and one slot, because a case that needs a paragraph to explain is a case
  * whose failure cannot be attributed to one mechanism.
  */
-export function buildCases(cascade = false): readonly Case[] {
+export function buildCases(options: BuildOptions = {}): readonly Case[] {
+  const cascade = options.cascade === true;
+  readTemporality = options.temporality !== false;
   sequence = 0;
   const cases: Case[] = [];
 
@@ -342,7 +403,93 @@ export function buildCases(cascade = false): readonly Case[] {
     });
   }
 
-  return cases.map((entry) => ({ ...entry, facts: reviseLedger(entry.facts, { cascade }).facts }));
+  // ---- plan: a commitment is not a fact, and its date decides which one it is -------------------
+  {
+    const TRIP = { subject: 'user', predicate: 'trip' };
+    const planned = fact('q1', T0, 'I will visit Paris next month.', {
+      ...TRIP,
+      at: T0 + 30 * DAY,
+      type: 'goal',
+    });
+    cases.push({
+      id: 'pl-lapsed-is-not-a-fact',
+      family: 'plan',
+      query: 'Did the user visit Paris?',
+      slot: TRIP,
+      facts: [planned],
+      expect: null,
+      intent: 'fact',
+    });
+  }
+  {
+    const MOVE = { subject: 'user', predicate: 'move' };
+    const planned = fact('q2', T0, 'I will move to Berlin next year.', {
+      ...MOVE,
+      at: T0 + 500 * DAY,
+      type: 'goal',
+    });
+    const settled = fact('q3', T0, 'I live in London.', { ...CITY, at: T0 });
+    cases.push({
+      id: 'pl-pending-stays-a-plan',
+      family: 'plan',
+      query: 'Where will the user move to?',
+      slot: MOVE,
+      facts: [planned, settled],
+      expect: planned.id,
+      intent: 'plan',
+    });
+  }
+  {
+    const RACE = { subject: 'user', predicate: 'race' };
+    const planned = fact('q4', T0, 'I will run a marathon in spring.', {
+      ...RACE,
+      at: T0 + 90 * DAY,
+      type: 'goal',
+    });
+    const ran = fact('q5', T0 + 100 * DAY, 'I ran the marathon in April.', {
+      ...RACE,
+      at: T0 + 100 * DAY,
+      type: 'event',
+    });
+    cases.push({
+      id: 'pl-fulfilled-becomes-a-fact',
+      family: 'plan',
+      query: 'Did the user run a marathon?',
+      slot: RACE,
+      facts: [planned, ran],
+      expect: ran.id,
+      intent: 'fact',
+      fulfils: [[planned.id, ran.id]],
+    });
+  }
+
+  // ---- immutable: a settled event is not undone by a later one ---------------------------------
+  {
+    const TRIP = { subject: 'user', predicate: 'trip' };
+    const paris = fact('r1', T0, 'I visited Paris last year.', { ...TRIP, at: T0, type: 'event' });
+    const rome = fact('r2', T0 + 300 * DAY, 'I visited Rome last month.', {
+      ...TRIP,
+      at: T0 + 300 * DAY,
+      type: 'event',
+    });
+    cases.push({
+      id: 'im-history-is-not-rewritten',
+      family: 'immutable',
+      query: 'Which city did the user visit last year?',
+      slot: TRIP,
+      facts: [paris, rome],
+      expect: paris.id,
+      // With the protection off, the fixture declares the replacement a system without it would build.
+      ...(options.immutability === false ? { invalidates: [[rome.id, paris.id]] as const } : {}),
+    });
+  }
+
+  return cases.map((entry) => {
+    const plans = reconcilePlans(entry.facts, NOW, {
+      ...(entry.fulfils === undefined ? {} : { fulfils: entry.fulfils }),
+    });
+    return { ...entry, facts: reviseLedger(plans.facts, { cascade }).facts };
+  });
 }
 
 /** Words of length >= 3, folded. Short words are connectives and pronouns and carry no topic. */
@@ -473,8 +620,20 @@ export function resolve(entry: Case, arm: Arm, ablation: Ablation = FULL): Resol
       })
     : pool;
 
+  const matchesIntent = (item: KnowledgeFact): boolean => {
+    // With temporality switched off the arm cannot tell a commitment from a fact, which is exactly the
+    // capability under test: the filter disappears and the arm answers from one pool.
+    if (!ablation.temporality) return true;
+    const wanted = entry.intent ?? 'fact';
+    if (wanted === 'plan') return isPlan(item);
+    // A fulfilled plan is a fact and stays; a pending, lapsed or abandoned one is not an answer to
+    // "what happened", however relevant it looks.
+    return !isPlan(item) || item.planState === 'fulfilled';
+  };
+
   const candidates = inWindow.filter(
-    (item) => !invalidated.has(item.id) && (dated || !retired(item, ablation)),
+    (item) =>
+      !invalidated.has(item.id) && (dated || !retired(item, ablation)) && matchesIntent(item),
   );
 
   if (candidates.length === 0) {
@@ -485,8 +644,17 @@ export function resolve(entry: Case, arm: Arm, ablation: Ablation = FULL): Resol
     };
   }
 
+  const weight = (item: KnowledgeFact): number => {
+    if (!ablation.temporality) return 1;
+    // The ablation switches are applied here rather than at build time because a plan's state is a fact
+    // about the store; what the *arm* does with it is the thing being measured.
+    if (!ablation.lapse && item.planState === 'lapsed') return 1;
+    if (!ablation.fulfil && item.planState === 'fulfilled') return 0.4;
+    return planFactor(item);
+  };
+
   const scored = candidates
-    .map((item) => ({ fact: item, score: overlap(entry.query, item.text) }))
+    .map((item) => ({ fact: item, score: overlap(entry.query, item.text) * weight(item) }))
     .sort((left, right) =>
       right.score !== left.score ? right.score - left.score : left.fact.id < right.fact.id ? -1 : 1,
     );
@@ -562,7 +730,16 @@ export function scoreArm(cases: readonly Case[], arm: Arm, ablation: Ablation = 
 
 /** One ablation row: the gated arm with exactly one mechanism removed. */
 export type AblationRow = {
-  readonly removed: 'none' | 'persistence' | 'uniqueness' | 'time-anchor' | 'cascade';
+  readonly removed:
+    | 'none'
+    | 'persistence'
+    | 'uniqueness'
+    | 'time-anchor'
+    | 'cascade'
+    | 'temporality'
+    | 'lapse'
+    | 'fulfil'
+    | 'immutability';
   readonly accuracy: number;
   readonly byFamily: Readonly<Record<CaseFamily, { n: number; correct: number }>>;
 };
@@ -574,6 +751,10 @@ export const TARGETS: Readonly<Record<AblationRow['removed'], readonly CaseFamil
   uniqueness: ['conflict'],
   'time-anchor': ['historical', 'false-stale'],
   cascade: ['cascade'],
+  temporality: ['plan', 'immutable'],
+  lapse: ['plan'],
+  fulfil: ['plan'],
+  immutability: ['immutable'],
 };
 
 /**
@@ -584,13 +765,33 @@ export const TARGETS: Readonly<Record<AblationRow['removed'], readonly CaseFamil
  */
 export function ablate(): readonly AblationRow[] {
   const rows: AblationRow[] = [];
-  for (const removed of ['none', 'persistence', 'uniqueness', 'time-anchor', 'cascade'] as const) {
-    const cases = buildCases(removed !== 'cascade');
+  for (const removed of [
+    'none',
+    'persistence',
+    'uniqueness',
+    'time-anchor',
+    'cascade',
+    'temporality',
+    'lapse',
+    'fulfil',
+    'immutability',
+  ] as const) {
+    const cases = buildCases({
+      cascade: removed !== 'cascade',
+      immutability: removed !== 'immutability',
+      // Reading the axis is a property of ingestion, so removing it has to change what was built — not only
+      // what the arm does with it. Otherwise the ablation measures a filter and not the capability.
+      temporality: removed !== 'temporality',
+    });
     let ablation = FULL;
     if (removed === 'persistence') ablation = { ...ablation, persistence: false };
     if (removed === 'uniqueness') ablation = { ...ablation, uniqueness: false };
     if (removed === 'time-anchor') ablation = { ...ablation, timeAnchor: false };
     if (removed === 'cascade') ablation = { ...ablation, cascade: false };
+    if (removed === 'temporality') ablation = { ...ablation, temporality: false };
+    if (removed === 'lapse') ablation = { ...ablation, lapse: false };
+    if (removed === 'fulfil') ablation = { ...ablation, fulfil: false };
+    if (removed === 'immutability') ablation = { ...ablation, immutability: false };
     const report = scoreArm(cases, 'gated', ablation);
     rows.push({ removed, accuracy: report.accuracy, byFamily: report.byFamily });
   }

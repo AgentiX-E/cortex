@@ -30,7 +30,16 @@ import {
   type Case,
 } from '../assumption-ablation.js';
 
-const FULL: Ablation = { persistence: true, uniqueness: true, timeAnchor: true, cascade: true };
+const FULL: Ablation = {
+  persistence: true,
+  uniqueness: true,
+  timeAnchor: true,
+  cascade: true,
+  temporality: true,
+  lapse: true,
+  fulfil: true,
+  immutability: true,
+};
 const DAY = 24 * 60 * 60 * 1000;
 const T0 = Date.UTC(2026, 0, 1);
 
@@ -67,7 +76,7 @@ function factOf(
 }
 
 describe('buildCases: the fixture is well formed', () => {
-  const cases = buildCases(true);
+  const cases = buildCases({ cascade: true });
 
   it('covers every family, so no mechanism is unmeasured', () => {
     const families = new Set(cases.map((entry) => entry.family));
@@ -76,6 +85,8 @@ describe('buildCases: the fixture is well formed', () => {
       'conflict',
       'false-stale',
       'historical',
+      'immutable',
+      'plan',
       'type-i',
       'type-ii',
     ]);
@@ -112,7 +123,7 @@ describe('buildCases: the fixture is well formed', () => {
   });
 
   it('is deterministic: two builds are equal', () => {
-    expect(buildCases(true)).toEqual(buildCases(true));
+    expect(buildCases({ cascade: true })).toEqual(buildCases({ cascade: true }));
   });
 });
 
@@ -319,7 +330,7 @@ describe('resolve: declared invalidation and the cascade', () => {
 });
 
 describe('scoreArm: counting, per family', () => {
-  const cases = buildCases(true);
+  const cases = buildCases({ cascade: true });
   const report = scoreArm(cases, 'gated');
 
   it('counts every outcome and buckets them by family', () => {
@@ -352,6 +363,10 @@ describe('ablate: one mechanism at a time', () => {
       'uniqueness',
       'time-anchor',
       'cascade',
+      'temporality',
+      'lapse',
+      'fulfil',
+      'immutability',
     ]);
   });
 
@@ -395,9 +410,123 @@ describe('ablate: one mechanism at a time', () => {
   });
 
   it('accepts each arm name without throwing', () => {
-    const cases = buildCases(true);
+    const cases = buildCases({ cascade: true });
     for (const arm of ['flat', 'annotated', 'gated'] as Arm[]) {
       expect(scoreArm(cases, arm).n).toBe(cases.length);
     }
+  });
+});
+
+describe('resolve: a commitment is not a fact', () => {
+  const plan = factOf('q1', 'f1', 'I will visit Paris next month.', {
+    subject: 'user',
+    predicate: 'trip',
+    at: T0 + 30 * DAY,
+  });
+  const lapsed: KnowledgeFact = {
+    ...plan,
+    type: 'goal',
+    modality: 'planned',
+    futurity: 'future',
+    planState: 'lapsed',
+  };
+  const pending: KnowledgeFact = { ...lapsed, planState: 'pending' };
+
+  const base: Case = {
+    id: 'pl',
+    family: 'plan',
+    query: 'Did the user visit Paris?',
+    slot: { subject: 'user', predicate: 'trip' },
+    facts: [lapsed],
+    expect: null,
+    intent: 'fact',
+  };
+
+  it('refuses to answer a question about what happened with a plan that never came due', () => {
+    expect(resolve(base, 'gated')).toMatchObject({ answer: null, reason: 'all-retired' });
+  });
+
+  it('answers the same case under flat with the plan, which is the failure being measured', () => {
+    expect(resolve(base, 'flat').answer).toBe('q1');
+  });
+
+  it('keeps a pending plan when the question asks what is planned', () => {
+    const asking: Case = {
+      ...base,
+      facts: [pending],
+      query: 'Where will the user go?',
+      intent: 'plan',
+    };
+    expect(resolve(asking, 'gated').answer).toBe('q1');
+  });
+
+  it('cannot tell the two apart once the axis is switched off, which is what -temporality measures', () => {
+    expect(resolve(base, 'gated', { ...FULL, temporality: false }).answer).toBe('q1');
+  });
+
+  it('lets a fulfilled plan stand as a fact, because it happened', () => {
+    const fulfilled: KnowledgeFact = { ...lapsed, planState: 'fulfilled' };
+    const asking: Case = { ...base, facts: [fulfilled], expect: 'q1' };
+    expect(resolve(asking, 'gated').answer).toBe('q1');
+  });
+});
+
+describe('resolve: a settled event is not replaced', () => {
+  const paris = factOf('r1', 'f1', 'I visited Paris last year.', {
+    subject: 'user',
+    predicate: 'trip',
+    at: T0,
+  });
+  const rome = factOf('r2', 'f2', 'I visited Rome last month.', {
+    subject: 'user',
+    predicate: 'trip',
+    at: T0 + 300 * DAY,
+  });
+  const settled: Case = {
+    id: 'im',
+    family: 'immutable',
+    query: 'Which city did the user visit last year?',
+    slot: { subject: 'user', predicate: 'trip' },
+    facts: [
+      { ...paris, type: 'event', futurity: 'past' },
+      { ...rome, type: 'event', futurity: 'past' },
+    ],
+    expect: 'r1',
+  };
+
+  it('still answers with the earlier visit, because nothing superseded it', () => {
+    expect(resolve(settled, 'gated').answer).toBe('r1');
+  });
+
+  it('answers with the later one once the protection is removed, which is the cost being measured', () => {
+    const unprotected: Case = { ...settled, invalidates: [['r2', 'r1']] };
+    expect(resolve(unprotected, 'gated').answer).toBe('r2');
+  });
+});
+
+describe('ablate: the two axes and the lifecycle', () => {
+  const rows = ablate();
+  const full = rows[0]!;
+
+  it('loses accuracy when the axis is not read, on both plan families', () => {
+    const withoutTemporality = rows.find((row) => row.removed === 'temporality')!;
+    expect(withoutTemporality.byFamily.plan.correct).toBeLessThan(full.byFamily.plan.correct);
+    expect(withoutTemporality.byFamily.immutable.correct).toBeLessThan(
+      full.byFamily.immutable.correct,
+    );
+  });
+
+  it('loses the protected case when immutability is removed', () => {
+    const without = rows.find((row) => row.removed === 'immutability')!;
+    expect(without.byFamily.immutable.correct).toBeLessThan(full.byFamily.immutable.correct);
+    expect(without.byFamily['type-i'].correct).toBe(full.byFamily['type-i'].correct);
+  });
+
+  it('records lapse and fulfil as inert here, and that is a reading rather than a design claim', () => {
+    // The intent filter already keeps every unfulfilled plan out of a question about what happened, so
+    // removing the lapse transition changes the label without changing the answer. Written as a test so the
+    // null cannot quietly become a claim later.
+    expect(rows.find((row) => row.removed === 'lapse')!.accuracy).toBe(full.accuracy);
+    expect(rows.find((row) => row.removed === 'fulfil')!.accuracy).toBe(full.accuracy);
   });
 });
