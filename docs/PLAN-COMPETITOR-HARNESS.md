@@ -254,6 +254,15 @@ unmeasurable and the test goes red — the mutation was run, not asserted.
 and nothing else: the only place this tool can meet the corpus is a runner. It needs no reader, no judge and no
 key, so its output is evidence recall and its own summary says it must not be quoted as answer accuracy.
 
+**The first run found two defects, and neither was in the ranking.** `recall@k 25.4%` against the lexical
+reference's `93.6%` was a unit error: `min(sessionBudget, limit)` folded the harness's top-k on hits into the
+product's budget on turns, which is invisible while a session is one turn. After the repair the same 500
+questions read `94.0% / 82.2% / 0.818` against `93.6% / 81.0% / 0.781` — **parity**. The third row is the one
+worth acting on: `sessionBudget 8` reads `8.0%`, because a real session is about ten turns and the product
+admits a session whole or not at all, so a tight prompt budget drops the evidence entirely.
+`docs/MEASURE-RETRIEVAL-BASELINE.md` is the record, including why the two readings are not answer accuracy and
+why `asOf` is currently inert.
+
 **One limit recorded rather than fixed.** `sessionsOf` stamps every session with the *question* date, so
 per-session timestamps do not survive into the provider contract — `asOf` cannot filter, and time reaches the
 signal only through the loader's `[date]` prefix in the rendered text. Fixing it means adding a per-session
