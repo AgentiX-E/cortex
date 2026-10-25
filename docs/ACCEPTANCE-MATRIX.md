@@ -164,3 +164,10 @@ node tools/assumption-ablation.mjs         # the controlled set, verbose
 The two checkers are wired into `pnpm check`. `--strict-unrun` turns an absent reading into exit 2, which is
 the flag a release uses and a normal check does not: during ordinary work, one unrun benchmark should not stop
 the other sixteen criteria from being enforced.
+
+`docs-crosscheck` reports three counts rather than one, because a bare checkout and a full one are different
+environments: **verified** (a value was computed and matched), **skipped** (no value here — the evidence for
+that criterion lives in the paired documents repository) and **mismatched** (both existed and disagreed). Only
+the third fails. Reporting the middle one is what stops a CI run without the documents repository from
+"passing" while silently comparing nothing, and it is also what stops it from failing twelve documented
+numbers for a reason that has nothing to do with the numbers.

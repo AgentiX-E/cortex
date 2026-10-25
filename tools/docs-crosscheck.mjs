@@ -157,6 +157,7 @@ function markdownFiles() {
 
 const MARKER = /<!--\s*reading:([A-Z0-9]+)\s*-->\s*([^\n]*)/g;
 const problems = [];
+const skipped = [];
 let markers = 0;
 
 for (const file of markdownFiles()) {
@@ -171,14 +172,10 @@ for (const file of markdownFiles()) {
       continue;
     }
     if (entry.rendered === null) {
-      problems.push({
-        file,
-        line,
-        id,
-        claimed: tail.trim(),
-        actual: null,
-        why: 'the criterion has no value right now',
-      });
+      // Not a mismatch: in an environment without the evidence (a bare checkout, CI without the documents
+      // repository) a criterion has no value, and comparing a document against "no value" would fail every
+      // documented number at once. Reported as skipped so the count is visible rather than silently zero.
+      skipped.push({ file, line, id, claimed: tail.trim() });
       continue;
     }
     // Take the leading number-with-unit rather than the first whitespace-delimited token: a Chinese sentence
@@ -194,14 +191,27 @@ for (const file of markdownFiles()) {
 
 const relative = (file) => path.relative(root, file);
 
+const verified = markers - skipped.length - problems.length;
+
 if (problems.length === 0) {
   process.stdout.write(
-    `docs cross-check: ${markers} reading marker(s) across ${markdownFiles().length} document(s), all matching the code\n`,
+    `docs cross-check: ${verified} of ${markers} marker(s) verified against the code` +
+      `${skipped.length === 0 ? '' : `, ${skipped.length} skipped (no value in this checkout)`} — ` +
+      `${markdownFiles().length} document(s) scanned\n`,
   );
   if (markers === 0) {
     process.stdout.write(
       '  note: no markers found — the check passed vacuously. Run with --list to see the markers a document should carry.\n',
     );
+  }
+  if (verified === 0 && skipped.length > 0) {
+    process.stdout.write(
+      '  note: nothing was verified in this environment. The evidence for those criteria lives in the paired\n' +
+        '  documents repository, so this checkout can only confirm that the markers are well formed.\n',
+    );
+    for (const entry of skipped) {
+      process.stdout.write(`    ${relative(entry.file)}:${entry.line}  ${entry.id}\n`);
+    }
   }
   process.exit(0);
 }
