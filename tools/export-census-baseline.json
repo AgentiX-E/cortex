@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 825,
+    "exports": 837,
     "withCaller": 451,
-    "orphaned": 374,
-    "referencedLocally": 310,
-    "unreferenced": 64
+    "orphaned": 386,
+    "referencedLocally": 320,
+    "unreferenced": 66
   },
   "groups": [
     {
@@ -451,6 +451,25 @@
         "cortex-eval: Source (packages/cortex-eval/src/acceptance.ts:65)",
         "cortex-eval: Unit (packages/cortex-eval/src/acceptance.ts:48)"
       ]
+    },
+    {
+      "category": "competitor-harness-surface",
+      "count": 12,
+      "rationale": "THE COMPETITOR HARNESS CONTRACT (step 34) contributes twelve entries, and nine of them are types whose only consumer today is the test suite. That is the honest state and the reason this group exists rather than a deletion: an adapter contract has no caller until the first adapter is written, and writing the contract first is what makes the adapter reviewable. WHAT THEY ARE: `MemoryProvider` is the three-method interface (ingest / search / reset) that a competitor and Cortex both implement; `MemorySession`, `MemoryTurn`, `IngestReport`, `SearchHit` and `SearchOptions` are its vocabulary, and each exists so an adapter author has one place to read what the harness will hand over and what it expects back; `BuildCost` is the declaration that decides whether a comparison is between two model-built stores or a store and an index; `RunConfig` is the seven fields two scores must share before they can be subtracted, and `Comparability` is the result of comparing them. THE THREE FUNCTIONS: `comparability` is the rule that turns the A/B/C grade from an editorial judgement into a computation, and it is the one thing in this module that a shipping path will call first; `toSessions` is the benchmark-to-contract translation, with its refusal to default a missing timestamp to the ingest time; `LexicalProvider` is the reference implementation that lets the whole pipeline run with no model, no key and no network, so that an adapter returning nothing is provably the adapter's fault. ROADMAP: `docs/PLAN-COMPETITOR-HARNESS.md` stage H1 wires `comparability` into the run report and gives `LexicalProvider` its first real peer; when that lands, the four entries that describe the harness become reachable and this paragraph should be corrected rather than left to age.",
+      "declarationSites": [
+        "cortex-eval: BuildCost (packages/cortex-eval/src/competitor.ts:80)",
+        "cortex-eval: Comparability (packages/cortex-eval/src/competitor.ts:132)",
+        "cortex-eval: IngestReport (packages/cortex-eval/src/competitor.ts:48)",
+        "cortex-eval: LexicalProvider (packages/cortex-eval/src/competitor.ts:192)",
+        "cortex-eval: MemoryProvider (packages/cortex-eval/src/competitor.ts:82)",
+        "cortex-eval: MemorySession (packages/cortex-eval/src/competitor.ts:41)",
+        "cortex-eval: MemoryTurn (packages/cortex-eval/src/competitor.ts:35)",
+        "cortex-eval: RunConfig (packages/cortex-eval/src/competitor.ts:94)",
+        "cortex-eval: SearchHit (packages/cortex-eval/src/competitor.ts:60)",
+        "cortex-eval: SearchOptions (packages/cortex-eval/src/competitor.ts:67)",
+        "cortex-eval: comparability (packages/cortex-eval/src/competitor.ts:141)",
+        "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:160)"
+      ]
     }
   ],
   "knownOrphans": [
@@ -629,6 +648,7 @@
     "cortex-eval: ArmReport",
     "cortex-eval: AttributeRecallGapOptions",
     "cortex-eval: BenchmarkRunnerOptions",
+    "cortex-eval: BuildCost",
     "cortex-eval: BuildOptions",
     "cortex-eval: CANDIDATE_RECORD_SCHEMA_KEY",
     "cortex-eval: CONJUNCTION_ABS_CONTROLS",
@@ -644,6 +664,7 @@
     "cortex-eval: CaseOutcome",
     "cortex-eval: CohortQuestion",
     "cortex-eval: CohortVerdict",
+    "cortex-eval: Comparability",
     "cortex-eval: Comparator",
     "cortex-eval: Competitor",
     "cortex-eval: CortexMemoryArmEnv",
@@ -680,8 +701,13 @@
     "cortex-eval: FactMemorySystemOptions",
     "cortex-eval: FailureCensus",
     "cortex-eval: Grade",
+    "cortex-eval: IngestReport",
     "cortex-eval: Kind",
+    "cortex-eval: LexicalProvider",
     "cortex-eval: LlmEnv",
+    "cortex-eval: MemoryProvider",
+    "cortex-eval: MemorySession",
+    "cortex-eval: MemoryTurn",
     "cortex-eval: NaturalLanguageMemorySystemOptions",
     "cortex-eval: PositionEffect",
     "cortex-eval: QuestionFlip",
@@ -709,7 +735,10 @@
     "cortex-eval: ReviewPageInput",
     "cortex-eval: ReviewPair",
     "cortex-eval: ReviewPlan",
+    "cortex-eval: RunConfig",
     "cortex-eval: RunObservation",
+    "cortex-eval: SearchHit",
+    "cortex-eval: SearchOptions",
     "cortex-eval: SessionRetrievalDiagnostic",
     "cortex-eval: Source",
     "cortex-eval: SyntheticBenchmarkOptions",
@@ -741,6 +770,7 @@
     "cortex-eval: classifyCurveMembership",
     "cortex-eval: classifyExclusion",
     "cortex-eval: clearJudgeCache",
+    "cortex-eval: comparability",
     "cortex-eval: computeMetrics",
     "cortex-eval: countLexicalMatches",
     "cortex-eval: createEmbeddingFromEnv",
@@ -796,6 +826,7 @@
     "cortex-eval: runEmbeddingBenchmark",
     "cortex-eval: sidesLandInDistinctClusters",
     "cortex-eval: timelineFor",
+    "cortex-eval: toSessions",
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
     "cortex-memory: CheckOptions",
@@ -1203,7 +1234,19 @@
     "cortex-eval: Kind": "referenced-locally",
     "cortex-eval: Resolvers": "referenced-locally",
     "cortex-eval: Source": "referenced-locally",
-    "cortex-eval: Unit": "referenced-locally"
+    "cortex-eval: Unit": "referenced-locally",
+    "cortex-eval: BuildCost": "referenced-locally",
+    "cortex-eval: Comparability": "referenced-locally",
+    "cortex-eval: IngestReport": "referenced-locally",
+    "cortex-eval: LexicalProvider": "unreferenced",
+    "cortex-eval: MemoryProvider": "referenced-locally",
+    "cortex-eval: MemorySession": "referenced-locally",
+    "cortex-eval: MemoryTurn": "referenced-locally",
+    "cortex-eval: RunConfig": "referenced-locally",
+    "cortex-eval: SearchHit": "referenced-locally",
+    "cortex-eval: SearchOptions": "referenced-locally",
+    "cortex-eval: comparability": "referenced-locally",
+    "cortex-eval: toSessions": "unreferenced"
   },
   "locations": {
     "cortex-ai: AvailabilityReport": [
@@ -2257,10 +2300,10 @@
       "packages/cortex-core/src/knowledge/assumption.ts:170"
     ],
     "cortex-eval: AblationRow": [
-      "packages/cortex-eval/src/assumption-ablation.ts:727"
+      "packages/cortex-eval/src/assumption-ablation.ts:729"
     ],
     "cortex-eval: ArmReport": [
-      "packages/cortex-eval/src/assumption-ablation.ts:681"
+      "packages/cortex-eval/src/assumption-ablation.ts:683"
     ],
     "cortex-eval: Case": [
       "packages/cortex-eval/src/assumption-ablation.ts:115"
@@ -2269,7 +2312,7 @@
       "packages/cortex-eval/src/assumption-ablation.ts:55"
     ],
     "cortex-eval: CaseOutcome": [
-      "packages/cortex-eval/src/assumption-ablation.ts:672"
+      "packages/cortex-eval/src/assumption-ablation.ts:674"
     ],
     "cortex-core: PlanTransition": [
       "packages/cortex-core/src/knowledge/temporality.ts:191"
@@ -2305,13 +2348,13 @@
       "packages/cortex-eval/src/acceptance.ts:45"
     ],
     "cortex-eval: Competitor": [
-      "packages/cortex-eval/src/acceptance.ts:95"
+      "packages/cortex-eval/src/acceptance.ts:91"
     ],
     "cortex-eval: Criterion": [
-      "packages/cortex-eval/src/acceptance.ts:103"
+      "packages/cortex-eval/src/acceptance.ts:99"
     ],
     "cortex-eval: Evaluation": [
-      "packages/cortex-eval/src/acceptance.ts:409"
+      "packages/cortex-eval/src/acceptance.ts:448"
     ],
     "cortex-eval: Grade": [
       "packages/cortex-eval/src/acceptance.ts:42"
@@ -2320,13 +2363,49 @@
       "packages/cortex-eval/src/acceptance.ts:58"
     ],
     "cortex-eval: Resolvers": [
-      "packages/cortex-eval/src/acceptance.ts:432"
+      "packages/cortex-eval/src/acceptance.ts:471"
     ],
     "cortex-eval: Source": [
       "packages/cortex-eval/src/acceptance.ts:65"
     ],
     "cortex-eval: Unit": [
       "packages/cortex-eval/src/acceptance.ts:48"
+    ],
+    "cortex-eval: BuildCost": [
+      "packages/cortex-eval/src/competitor.ts:80"
+    ],
+    "cortex-eval: Comparability": [
+      "packages/cortex-eval/src/competitor.ts:132"
+    ],
+    "cortex-eval: IngestReport": [
+      "packages/cortex-eval/src/competitor.ts:48"
+    ],
+    "cortex-eval: LexicalProvider": [
+      "packages/cortex-eval/src/competitor.ts:192"
+    ],
+    "cortex-eval: MemoryProvider": [
+      "packages/cortex-eval/src/competitor.ts:82"
+    ],
+    "cortex-eval: MemorySession": [
+      "packages/cortex-eval/src/competitor.ts:41"
+    ],
+    "cortex-eval: MemoryTurn": [
+      "packages/cortex-eval/src/competitor.ts:35"
+    ],
+    "cortex-eval: RunConfig": [
+      "packages/cortex-eval/src/competitor.ts:94"
+    ],
+    "cortex-eval: SearchHit": [
+      "packages/cortex-eval/src/competitor.ts:60"
+    ],
+    "cortex-eval: SearchOptions": [
+      "packages/cortex-eval/src/competitor.ts:67"
+    ],
+    "cortex-eval: comparability": [
+      "packages/cortex-eval/src/competitor.ts:141"
+    ],
+    "cortex-eval: toSessions": [
+      "packages/cortex-eval/src/competitor.ts:160"
     ]
   }
 }

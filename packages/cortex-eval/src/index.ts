@@ -397,3 +397,18 @@ export {
   type TargetCohort,
   type TargetMember,
 } from './b7-cohort.js';
+
+export {
+  comparability,
+  LexicalProvider,
+  toSessions,
+  type BuildCost,
+  type Comparability,
+  type IngestReport,
+  type MemoryProvider,
+  type MemorySession,
+  type MemoryTurn,
+  type RunConfig,
+  type SearchHit,
+  type SearchOptions,
+} from './competitor.js';

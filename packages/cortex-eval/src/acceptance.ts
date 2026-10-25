@@ -38,7 +38,14 @@
  * A `C` number may motivate work. It may not appear in a claim of the form "we are behind X".
  */
 
-/** How comparable a competitor figure is to ours. See the module comment. */
+/**
+ * How comparable a competitor figure is to ours.
+ *
+ * Hand-attached while the figure is a citation. The moment a run exists, the grade stops being a judgement and
+ * becomes a computation: `comparability()` in `competitor.ts` takes the two run configurations and returns it.
+ * The two types are deliberately separate rather than aliased — one describes a citation, the other a run — and
+ * `docs/PLAN-COMPETITOR-HARNESS.md` is the plan for replacing the first with the second.
+ */
 export type Grade = 'A' | 'B' | 'C';
 
 /** Which direction passes. `equals` is for counts that must be exact, such as "no leakage". */
