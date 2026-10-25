@@ -254,6 +254,24 @@ unmeasurable and the test goes red — the mutation was run, not asserted.
 and nothing else: the only place this tool can meet the corpus is a runner. It needs no reader, no judge and no
 key, so its output is evidence recall and its own summary says it must not be quoted as answer accuracy.
 
+**The budget sweep, once the granularity arm existed.** 500 questions, same corpus, same top-k:
+
+```
+provider            recall@k  all-gold  mrr     ~tok
+lexical-reference   93.6%     81.0%     0.781   34277
+cortex-session      94.0%     82.2%     0.818   33089
+cortex/whole-8t      8.0%      6.6%     0.080    2709
+cortex/trim-8t      76.2%      6.2%     0.758    2739
+cortex/trim-2.8k    80.8%     12.4%     0.782    2799
+cortex/trim-4.4k    83.8%     22.6%     0.794    4400
+cortex/trim-6.8k    87.4%     36.8%     0.806    6802
+```
+
+Two rows carry the argument. `whole-8t` and `trim-8t` get the same budget and spend the same text; one reads
+8.0% and the other 76.2%. And the unbounded rows spend 33k tokens, ten times Contextier's 2,807 — which means
+the parity reported before this sweep was measured on an axis no vendor reports. The comparison with a
+competitor has to be made at a stated budget or not at all.
+
 **The first run found two defects, and neither was in the ranking.** `recall@k 25.4%` against the lexical
 reference's `93.6%` was a unit error: `min(sessionBudget, limit)` folded the harness's top-k on hits into the
 product's budget on turns, which is invisible while a session is one turn. After the repair the same 500
