@@ -1,0 +1,143 @@
+# Retrieval-only comparison against LongMemEval-S, with no model and no API key.
+#
+# ## Why this workflow exists separately from `benchmark.yml`
+#
+# The benchmark workflow answers questions: it needs a reader, a judge, and a key. This one only asks whether
+# each provider's retrieval puts the annotated evidence in front of a reader — so it needs none of the three,
+# runs in minutes rather than hours, and can be dispatched after every change to the adapter or the signal.
+#
+# The two are not interchangeable and the difference is stated in the artifact: no reader means the numbers are
+# evidence recall, not answer accuracy, and they must never be quoted as the latter.
+#
+# ## Why the corpus is fetched here instead of committed
+#
+# LongMemEval-S is ~115 MB and lives behind HuggingFace. The sandbox this repository is developed in can reach
+# `api.github.com` and nothing else, so the only place this tool can meet the real corpus is a runner. That is
+# also why the local default is the synthetic generator: the tool has to be runnable by a developer with no
+# network at all, and it has to say which corpus it ran on.
+name: Competitor Retrieval
+
+on:
+  workflow_dispatch:
+    inputs:
+      questions:
+        description: 'Questions to sample round-robin across capabilities (0 = all 500)'
+        required: false
+        default: '100'
+        type: string
+      limit:
+        description: 'Top-k the reader would see'
+        required: false
+        default: '10'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: competitor-retrieval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  retrieval:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Download LongMemEval-S
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          node -e '
+            const rows = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            if (!Array.isArray(rows) || rows.length === 0) {
+              console.error("the corpus is not a non-empty JSON array");
+              process.exit(1);
+            }
+            const annotated = rows.filter((row) => Array.isArray(row.answer_session_ids) && row.answer_session_ids.length > 0);
+            console.log(`instances: ${rows.length}, with annotated gold: ${annotated.length}`);
+            if (annotated.length === 0) {
+              console.error("no instance carries answer_session_ids; every question would be unmeasurable");
+              process.exit(1);
+            }
+          ' "${{ github.workspace }}/data/longmemeval_s_cleaned.json"
+
+      # Two tables, deliberately: 100 questions is the H1 subset and 500 is the whole file. Running both costs
+      # one extra pass and removes the question of whether a reading came from the sample or the population.
+      - name: Compare providers (sample)
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+        run: |
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions "${{ github.event.inputs.questions || '100' }}" \
+            --limit "${{ github.event.inputs.limit || '10' }}" \
+            | tee competitor-sample.txt
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions "${{ github.event.inputs.questions || '100' }}" \
+            --limit "${{ github.event.inputs.limit || '10' }}" \
+            --json > competitor-sample.json
+
+      - name: Compare providers (full file)
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+        run: |
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions 500 \
+            --limit "${{ github.event.inputs.limit || '10' }}" \
+            | tee competitor-full.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Retrieval-only comparison'
+            echo ''
+            echo 'No reader, no judge: these are evidence-recall numbers, not answer accuracy.'
+            echo ''
+            echo '```'
+            cat competitor-sample.txt 2>/dev/null || echo 'sample run produced no output'
+            echo '```'
+            echo ''
+            echo '<details><summary>Full file</summary>'
+            echo ''
+            echo '```'
+            cat competitor-full.txt 2>/dev/null || echo 'full run produced no output'
+            echo '```'
+            echo ''
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: competitor-retrieval
+          path: |
+            competitor-sample.txt
+            competitor-sample.json
+            competitor-full.txt
+          if-no-files-found: warn

@@ -1,20 +1,33 @@
 #!/usr/bin/env node
 /**
- * Retrieval-only comparison of memory providers, on a dataset generated in-repo.
+ * Retrieval-only comparison of memory providers, on the synthetic set or on LongMemEval-S.
  *
  *     node tools/competitor-harness.mjs [--limit 10] [--people 8] [--json]
+ *     node tools/competitor-harness.mjs --data data/longmemeval_s_cleaned.json [--questions 100] [--json]
  *
- * Nothing here calls a model: the providers are the lexical reference implementation and a provider that
- * returns nothing. The second exists so the table has a floor; a comparison whose bottom row is not zero is
- * measuring arithmetic.
+ * Nothing here calls a model: the providers are the lexical reference implementation, Cortex's own session
+ * adapter, and a provider that returns nothing. The last exists so the table has a floor; a comparison whose
+ * bottom row is not zero is measuring arithmetic.
  *
- * ## The gold, and why this tool derives it
+ * ## Two datasets, two kinds of gold, and the difference is the point
  *
- * `Question.goldTurns` is produced by the LongMemEval loader and is the honest field to use. The synthetic
- * generator does not emit it, so this tool derives the gold as "the context turns that state the expected
- * answer" — which is true by construction for a generated dataset and false for a real one. That is why the
- * header says so and why a real run passes `goldOf` instead.
+ * `Question.goldTurns` is produced by the LongMemEval loader from `answer_session_ids` — an annotation in the
+ * dataset. That is the only gold this tool will subtract on.
+ *
+ * The synthetic generator emits no `goldTurns`, so on that path this tool derives the gold as "the context turns
+ * that state the expected answer", which is true by construction for a generated corpus and false for a real one.
+ * That derivation also makes the synthetic set unable to separate lexical systems: the generator writes each
+ * fact as `name attribute=value`, so the question's terms appear verbatim in its own gold and any overlap signal
+ * scores it `1.0`. The tool says so in its output rather than leaving a reader to over-read a 100%.
+ *
+ * ## Why `--questions` stratifies
+ *
+ * Taking the first 100 rows of the file would take whatever capability the file happens to start with. The
+ * sampler rounds across capabilities in a fixed order with a fixed intra-group sort, so the subset is
+ * reproducible from `(path, count)` alone and every capability that exists is represented.
  */
+
+import { readFileSync } from 'node:fs';
 
 import {
   LexicalProvider,
@@ -22,6 +35,7 @@ import {
   comparability,
   measureRetrieval,
 } from '../packages/cortex-eval/dist/index.js';
+import { loadLongMemEval } from '../packages/cortex-eval/dist/datasets/longmemeval-loader.js';
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
 import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 
@@ -33,16 +47,72 @@ const flag = (name) => {
 const asJson = argv.includes('--json');
 const limit = Number(flag('--limit') ?? 10);
 const people = Number(flag('--people') ?? 8);
+const wanted = Number(flag('--questions') ?? 100);
+const dataPath = flag('--data') ?? process.env['LONGMEMEVAL_PATH'];
 
-const dataset = generateSyntheticBenchmark({ numPeople: people, seed: 7 });
+/**
+ * Take `count` questions, round-robin across capabilities in a fixed order.
+ *
+ * Within a capability the rows are sorted by `id`, so the subset depends on `(instances, count)` and nothing
+ * else — no clock, no hash seed, no file order. A subset that cannot be reproduced makes every number taken on
+ * it unusable for a later comparison.
+ */
+function stratify(questions, count) {
+  const groups = new Map();
+  for (const question of questions) {
+    const bucket = groups.get(question.capability);
+    if (bucket === undefined) groups.set(question.capability, [question]);
+    else bucket.push(question);
+  }
+  for (const bucket of groups.values()) bucket.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-/** The gold as the generator guarantees it: the turns that state the answer. */
-const goldOf = (question) => {
-  const expected = question.expected;
-  if (expected === null) return [];
-  const needle = expected.toLowerCase();
-  return question.context.filter((turn) => turn.toLowerCase().includes(needle));
-};
+  const order = [...groups.keys()].sort();
+  const picked = [];
+  let round = 0;
+  while (picked.length < count) {
+    let added = 0;
+    for (const capability of order) {
+      const bucket = groups.get(capability);
+      if (bucket === undefined || round >= bucket.length) continue;
+      picked.push(bucket[round]);
+      added += 1;
+      if (picked.length === count) break;
+    }
+    if (added === 0) break;
+    round += 1;
+  }
+  return picked;
+}
+
+let dataset;
+let goldOf;
+let provenance;
+
+if (dataPath === undefined) {
+  dataset = generateSyntheticBenchmark({ numPeople: people, seed: 7 });
+  // The gold as the generator guarantees it: the turns that state the answer.
+  goldOf = (question) => {
+    const expected = question.expected;
+    if (expected === null) return [];
+    const needle = expected.toLowerCase();
+    return question.context.filter((turn) => turn.toLowerCase().includes(needle));
+  };
+  provenance =
+    'gold: derived from the expected answer, which is exact for a generated dataset and not for a real one';
+} else {
+  const parsed = JSON.parse(readFileSync(dataPath, 'utf8'));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${dataPath} must contain a JSON array of LongMemEval instances`);
+  }
+  const loaded = loadLongMemEval(parsed);
+  const subset = stratify(loaded.questions, Math.min(wanted, loaded.questions.length));
+  dataset = { name: `${loaded.name}/s`, questions: subset };
+  // The only gold this tool subtracts on: an annotation in the file, not an inference.
+  goldOf = (question) => question.goldTurns ?? [];
+  provenance =
+    `gold: Question.goldTurns from answer_session_ids (${parsed.length} instances in file, ` +
+    `${subset.length} sampled round-robin across capabilities)`;
+}
 
 // Cortex's own selection, twice: unbounded (the recall ceiling of what the store holds) and at its real
 // session budget (what the reader is actually offered). The gap between the two rows is the budget's cost,
@@ -80,9 +150,7 @@ const pad = (value, width) => String(value).padEnd(width);
 const pct = (value) => `${(100 * value).toFixed(1)}%`;
 
 process.stdout.write(`retrieval-only comparison — ${dataset.name}/${dataset.questions.length}\n`);
-process.stdout.write(
-  `gold: derived from the expected answer, which is exact for a generated dataset and not for a real one\n\n`,
-);
+process.stdout.write(`${provenance}\n\n`);
 
 process.stdout.write(
   `${pad('provider', 20)}${pad('build', 11)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('found', 10)}${pad('empty', 7)}unmeasurable\n`,
@@ -121,11 +189,16 @@ process.stdout.write(
     'produced by a model.\n',
 );
 process.stdout.write(
-  `\nThis table is a pipeline check, not a result. Its floor is zero by construction, and its ceiling here is\n` +
-    `reached: the synthetic corpus writes each fact as \`name attribute=value\`, so a term-overlap signal scores\n` +
-    `the gold turn 1.0 by construction. The remaining gap to lexical-reference is its stopword-free tokeniser\n` +
-    `(\`what\` in the question inflates its denominator) rather than a difference in retrieval quality. So\n` +
-    `cortex-session reading 100% and 1.000 means the signal is wired, not that the system is at SOTA. A corpus\n` +
-    `that can separate lexical systems has to come from outside this repository; see\n` +
-    `docs/PLAN-COMPETITOR-HARNESS.md.\n`,
+  dataPath === undefined
+    ? `\nThis table is a pipeline check, not a result. Its floor is zero by construction, and its ceiling here is\n` +
+        `reached: the synthetic corpus writes each fact as \`name attribute=value\`, so a term-overlap signal scores\n` +
+        `the gold turn 1.0 by construction. The remaining gap to lexical-reference is its stopword-free tokeniser\n` +
+        `(\`what\` in the question inflates its denominator) rather than a difference in retrieval quality. So\n` +
+        `cortex-session reading 100% and 1.000 means the signal is wired, not that the system is at SOTA. A corpus\n` +
+        `that can separate lexical systems has to come from outside this repository; see\n` +
+        `docs/PLAN-COMPETITOR-HARNESS.md.\n`
+    : `\nGold here is annotated (\`answer_session_ids\`), not derived, and the corpus is not one we wrote. What this\n` +
+        `table still cannot say: a hit is counted when its session text contains a gold turn, so a provider that\n` +
+        `returns whole sessions is scored on recall of evidence, not on answer accuracy. There is no reader and no\n` +
+        `judge on this path, which is why the numbers are not comparable with a QA benchmark's accuracy.\n`,
 );

@@ -1,0 +1,148 @@
+[
+  {
+    "question_id": "ie-001",
+    "question_type": "single-session-user",
+    "question": "What is my locker combination?",
+    "answer": "seven-three-nine",
+    "question_date": "2023/06/01 (Thu) 09:00",
+    "haystack_session_ids": [
+      "s1",
+      "s2",
+      "s3"
+    ],
+    "haystack_dates": [
+      "2023/05/01 (Mon) 10:00",
+      "2023/05/02 (Tue) 11:00",
+      "2023/05/03 (Wed) 12:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I keep forgetting my locker code."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "The gym is on the second floor."
+        }
+      ],
+      [
+        {
+          "role": "assistant",
+          "content": "Noted, the pool closes at eight."
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "s1"
+    ]
+  },
+  {
+    "question_id": "mr-001",
+    "question_type": "multi-session",
+    "question": "Which two cities have I lived in?",
+    "answer": "Kyoto and Porto",
+    "question_date": "2023/06/02 (Fri) 09:00",
+    "haystack_session_ids": [
+      "m1",
+      "m2",
+      "m3"
+    ],
+    "haystack_dates": [
+      "2023/04/01 (Sat) 10:00",
+      "2023/04/15 (Sat) 10:00",
+      "2023/04/20 (Thu) 10:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I moved to Kyoto for a year of study."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "The rent in Kyoto was cheaper than here."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I spent last spring in Porto."
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "m1",
+      "m3"
+    ]
+  },
+  {
+    "question_id": "tr-001",
+    "question_type": "temporal-reasoning",
+    "question": "How long after the move did the new job start?",
+    "answer": "about three weeks",
+    "question_date": "2023/06/03 (Sat) 09:00",
+    "haystack_session_ids": [
+      "t1",
+      "t2"
+    ],
+    "haystack_dates": [
+      "2023/03/01 (Wed) 10:00",
+      "2023/03/22 (Wed) 10:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "We finished moving into the flat today."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "First day at the new job."
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "t1",
+      "t2"
+    ]
+  },
+  {
+    "question_id": "ku-001",
+    "question_type": "knowledge-update",
+    "question": "What is my current phone number?",
+    "answer": "555-0142",
+    "question_date": "2023/06/04 (Sun) 09:00",
+    "haystack_session_ids": [
+      "k1",
+      "k2"
+    ],
+    "haystack_dates": [
+      "2023/02/01 (Wed) 10:00",
+      "2023/05/01 (Mon) 10:00"
+    ],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "My number is 555-0100 for now."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I changed my number to 555-0142 yesterday."
+        }
+      ]
+    ],
+    "answer_session_ids": [
+      "k2"
+    ]
+  }
+]

@@ -1,0 +1,134 @@
+"""The competition harness on a real-shaped corpus, and the one property that separates the two gold paths.
+
+## Why this file exists
+
+`tools/competitor-harness.mjs` has two datasets. On the synthetic one the gold is *derived* — "the context
+turns that state the expected answer" — which is true by construction for a generated corpus and false for a
+real one. On the LongMemEval path the gold is *annotated*: `answer_session_ids`, resolved by the loader into
+`Question.goldTurns`.
+
+Those two are not interchangeable, and the difference is invisible in a score. It is visible in one field: a
+question whose answer text does not appear verbatim in any turn is **unmeasurable** under derivation and
+**measurable** under annotation. The fixture in `fixtures/longmemeval-sample.json` contains exactly such a
+question (`ie-001`, whose answer is a locker combination discussed nowhere in the sessions), so the first test
+below fails the moment the real path starts deriving its gold.
+
+That is the whole argument for running a tool against a fixture rather than only against the corpus: the
+corpus cannot tell you which branch you are on.
+
+## Why subprocess and not an import
+
+The tool is a script with top-level `await` and `process.exit`; its contract is what it prints. Testing the
+printed table tests the thing a reader reads.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+TOOL = REPO / "tools" / "competitor-harness.mjs"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "longmemeval-sample.json"
+
+
+def run(*args: str) -> dict:
+    """Run the harness with `--json` and return the parsed payload."""
+    completed = subprocess.run(
+        ["node", str(TOOL), "--json", *args],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"harness exited {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+    return json.loads(completed.stdout)
+
+
+def by_provider(scores: list[dict]) -> dict[str, dict]:
+    return {score["provider"]: score for score in scores}
+
+
+def test_real_path_uses_annotated_gold() -> None:
+    """A question whose answer appears in no turn is still measurable, which only annotation can do."""
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    scores = payload["scores"]
+    assert scores, "no provider rows"
+    for score in scores:
+        assert score["unmeasurable"] == 0, (
+            f"{score['provider']} marked {score['unmeasurable']} question(s) unmeasurable; "
+            "the real path must read goldTurns from answer_session_ids rather than deriving "
+            "the gold from the answer text"
+        )
+        assert score["measured"] == 4
+
+
+def test_real_path_names_the_dataset_and_its_provenance() -> None:
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    assert payload["config"]["dataset"] == "longmemeval/s/4"
+    assert payload["config"]["reader"] == "none (retrieval only)"
+
+
+def test_every_capability_in_the_file_is_represented() -> None:
+    """The sampler rounds across capabilities, so a four-row file cannot sample into one capability."""
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    scores = by_provider(payload["scores"])
+    cortex = scores["cortex-session"]
+    assert set(cortex["byCapability"]) == {"IE", "MR", "TR", "KU"}
+
+
+def test_subset_is_reproducible_from_the_file_and_the_count_alone() -> None:
+    """Two runs must agree, or no later comparison against these numbers means anything."""
+    first = run("--data", str(FIXTURE), "--questions", "4")
+    second = run("--data", str(FIXTURE), "--questions", "4")
+    assert first["scores"] == second["scores"]
+
+
+def test_the_synthetic_path_is_untouched() -> None:
+    """The default invocation still generates its corpus, so the archived synthetic readings stay comparable."""
+    payload = run("--people", "2")
+    assert payload["config"]["dataset"].startswith("synthetic/")
+    # The synthetic generator emits no `goldTurns`, so some questions are legitimately unmeasurable there.
+    assert by_provider(payload["scores"])["cortex-session"]["unmeasurable"] > 0
+
+
+def test_the_adapter_declares_a_model_free_build() -> None:
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    scores = by_provider(payload["scores"])
+    assert scores["cortex-session"]["build"] == "none"
+    assert scores["lexical-reference"]["build"] == "none"
+
+
+def test_the_floor_stays_at_zero() -> None:
+    """A comparison whose bottom row is not zero is measuring arithmetic."""
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    floor = by_provider(payload["scores"])["null-floor"]
+    assert floor["recallAtK"] == 0
+    assert floor["recallAllAtK"] == 0
+    assert floor["mrr"] == 0
+
+
+def test_a_malformed_corpus_is_rejected_rather_than_scored(tmp_path: Path) -> None:
+    """A JSON object where an array was expected must fail loudly, not produce an empty table."""
+    broken = tmp_path / "broken.json"
+    broken.write_text('{"not": "an array"}', encoding="utf-8")
+    completed = subprocess.run(
+        ["node", str(TOOL), "--json", "--data", str(broken)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert "JSON array" in completed.stderr
+
+
+if __name__ == "__main__":
+    sys.exit(subprocess.call(["pytest", "-q", __file__]))
