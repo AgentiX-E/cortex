@@ -53,6 +53,13 @@ export {
 // building a second reader, which is the thing this module exists to prevent. The tests import the module
 // directly, which is why the census reports them as referenced-locally rather than as orphans.
 export { createProviderReader } from './competitor-reader.js';
+
+// Is the difference real? A paired test over two runs of the same questions, and the reason
+// `ProviderScore.records` exists. Only the two-run entry is exported: the tool compares runs, and a caller
+// reaching for `mcnemarExact` or `compareRecords` directly would be building a second comparison rather than
+// using this one. The tests import the module directly, which is why the census reports them as
+// referenced-locally.
+export { compareRuns } from './paired-test.js';
 export { runAblation, type AblationOptions } from './ablation.js';
 
 // A3: the arithmetic behind the card-acceptance criterion, so the criterion is computable before

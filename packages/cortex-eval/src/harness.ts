@@ -165,6 +165,35 @@ export type ProviderScore = {
   readonly byCapability: Readonly<Partial<Record<Capability, CapabilityScore>>>;
   /** Questions the provider's ingest reported as skipped, so a partial store is visible in the score line. */
   readonly ingestSkipped: number;
+  /**
+   * One row per measured question, so two runs can be compared question by question.
+   *
+   * ## Why this has to be here rather than recomputed
+   *
+   * An aggregate cannot answer "is this difference real". Two accuracy figures four points apart are compatible
+   * with a real effect and with a coin, and the test that separates them is **paired**: the same questions under
+   * two conditions, counting the questions that changed in each direction. That count cannot be recovered from
+   * two percentages — it needs which question moved.
+   *
+   * Recorded for every measured question, including the ones neither arm got right, because the pairs that did
+   * not move are the denominator of the test. A record that only lists changes would make every experiment look
+   * significant.
+   */
+  readonly records: readonly QuestionRecord[];
+};
+
+/** One question's outcome under one provider, which is the unit a paired test consumes. */
+export type QuestionRecord = {
+  readonly id: string;
+  readonly capability: Capability;
+  /** Whether any gold turn was retrieved. */
+  readonly found: boolean;
+  /** Whether every gold turn was retrieved. */
+  readonly foundAll: boolean;
+  /** Whether the reader was invoked for this question. */
+  readonly read: boolean;
+  /** Whether the judge accepted the answer; `false` when the question was not read. */
+  readonly correct: boolean;
 };
 
 /**
@@ -228,6 +257,7 @@ export async function measureRetrieval(
     let readCount = 0;
     let correctCount = 0;
     let abstained = 0;
+    const records: QuestionRecord[] = [];
     const graded = accuracyFor.includes(provider.name);
     const skipped: string[] = [];
     const byCapability: Partial<Record<Capability, CapabilityScore>> = {};
@@ -264,11 +294,13 @@ export async function measureRetrieval(
 
       // Reading happens here, in the same pass, so `accuracy` and `recallAtK` are two statements about one run of
       // one corpus. A second pass would differ in ingest order and in nothing a reader would ever check.
+      let lastCorrect = false;
       if (graded && answer !== undefined && judge !== undefined) {
         const reply = await answer(question, hits);
         readCount += 1;
         if (isAbstentionReply(reply)) abstained += 1;
         const accepted = await judge(question, reply);
+        lastCorrect = accepted;
         if (accepted) correctCount += 1;
         // Recorded per capability here rather than derived later, because the bucket is the only place that knows
         // which family a question belonged to after the loop has moved on.
@@ -295,6 +327,17 @@ export async function measureRetrieval(
       ) {
         foundAll += 1;
       }
+
+      records.push({
+        id: question.id,
+        capability: question.capability,
+        found: firstIndex >= 0,
+        foundAll: gold.every((turn) =>
+          hits.some((hit) => (contains ? hit.text.includes(turn) : hit.text === turn)),
+        ),
+        read: graded && answer !== undefined && judge !== undefined,
+        correct: graded && answer !== undefined && judge !== undefined ? lastCorrect : false,
+      });
 
       const seen = byCapability[question.capability]!;
       byCapability[question.capability] = {
@@ -328,6 +371,7 @@ export async function measureRetrieval(
       skipped,
       byCapability,
       ingestSkipped: skipped.length,
+      records,
     });
   }
   return scores;
