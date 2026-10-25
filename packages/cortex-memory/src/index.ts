@@ -48,8 +48,13 @@ export { lexicalRelevance } from './relevance.js';
 export {
   admitSessions,
   selectSessionBudget,
+  selectTurnsWithinBudget,
   type AdmittedSession,
   type SessionRelevance,
+  type TurnBudgetOptions,
+  type TurnBudgetPlan,
+  type TurnCost,
+  type TurnRelevance,
 } from './sessionize.js';
 
 // prompt

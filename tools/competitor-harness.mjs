@@ -48,6 +48,9 @@ const asJson = argv.includes('--json');
 const limit = Number(flag('--limit') ?? 10);
 const people = Number(flag('--people') ?? 8);
 const wanted = Number(flag('--questions') ?? 100);
+// Overrides the token budget of the priced row, so a test (or a reader) can force the budget below one session
+// and watch the trim happen. 2,800 is the default because that is Contextier's mean context on this benchmark.
+const budgetTokens = Number(flag('--budget-tokens') ?? 2800);
 const dataPath = flag('--data') ?? process.env['LONGMEMEVAL_PATH'];
 
 /**
@@ -64,7 +67,8 @@ function stratify(questions, count) {
     if (bucket === undefined) groups.set(question.capability, [question]);
     else bucket.push(question);
   }
-  for (const bucket of groups.values()) bucket.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  for (const bucket of groups.values())
+    bucket.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   const order = [...groups.keys()].sort();
   const picked = [];
@@ -114,14 +118,38 @@ if (dataPath === undefined) {
     `${subset.length} sampled round-robin across capabilities)`;
 }
 
-// Cortex's own selection, twice: unbounded (the recall ceiling of what the store holds) and at its real
-// session budget (what the reader is actually offered). The gap between the two rows is the budget's cost,
-// and it is the number this tool was built to make visible.
+/**
+ * Character budget for the token-denominated rows.
+ *
+ * The published systems report their context cost in tokens: Mem0 6,787 mean, Zep 4,408 median, Contextier
+ * 2,807 mean. `cortex-eval` counts no tokeniser, so the conversion is `tokens * 4` characters and it is stated
+ * here rather than buried in the output -- an English token is about four characters, and a reader comparing
+ * this column with a vendor's should know which side is exact.
+ */
+const charsForTokens = (tokens) => tokens * 4;
+
+// Cortex's own selection, in four arms. The first is the recall ceiling of what the store holds; the rest are
+// what a reader is actually offered at a bounded budget, and they differ only in *how* the budget is spent:
+//
+//   - whole   : `selectSessionBudget`, all-or-nothing per session (the shipped rule);
+//   - turn    : `selectTurnsWithinBudget`, trim inside a session (LongMemEval's `GRANULARITY: turn`);
+//   - tokens  : the same trim, priced in characters at a budget the published systems also report.
+//
+// Printing all four is the ablation: a granularity claim that is not measured against the whole-session rule
+// on one corpus is a preference, not a result.
 const now = Date.now();
 const providers = [
   new LexicalProvider(),
   new CortexSessionProvider({ now }),
-  new CortexSessionProvider({ now, sessionBudget: 8 }),
+  new CortexSessionProvider({ now, sessionBudget: 8, label: 'cortex/whole-8t' }),
+  new CortexSessionProvider({ now, sessionBudget: 8, trim: true, label: 'cortex/trim-8t' }),
+  new CortexSessionProvider({
+    now,
+    sessionBudget: charsForTokens(budgetTokens),
+    budgetUnit: 'chars',
+    trim: true,
+    label: `cortex/trim-${(budgetTokens / 1000).toFixed(1)}k`,
+  }),
   new NullProvider(),
 ];
 
@@ -153,11 +181,14 @@ process.stdout.write(`retrieval-only comparison — ${dataset.name}/${dataset.qu
 process.stdout.write(`${provenance}\n\n`);
 
 process.stdout.write(
-  `${pad('provider', 20)}${pad('build', 11)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('found', 10)}${pad('empty', 7)}unmeasurable\n`,
+  `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('found', 10)}${pad('~tok', 8)}unmeasurable\n`,
 );
 for (const score of scores) {
+  // `~tok` is `meanContextChars / 4`, the same conversion `charsForTokens` applies to the budget. It is what the
+  // published systems report, so it is the only column here that can be set beside a vendor figure at all.
+  const tokens = Math.round(score.meanContextChars / 4);
   process.stdout.write(
-    `${pad(score.provider, 20)}${pad(score.build, 11)}${pad(pct(score.recallAtK), 10)}${pad(pct(score.recallAllAtK), 10)}${pad(score.mrr.toFixed(3), 8)}${pad(`${score.found}/${score.measured}`, 10)}${pad(score.empty, 7)}${score.unmeasurable}\n`,
+    `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(pct(score.recallAtK), 10)}${pad(pct(score.recallAllAtK), 10)}${pad(score.mrr.toFixed(3), 8)}${pad(`${score.found}/${score.measured}`, 10)}${pad(tokens, 8)}${score.unmeasurable}\n`,
   );
 }
 

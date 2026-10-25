@@ -48,8 +48,13 @@ import { lexicalRelevance } from './relevance.js';
 import {
   admitSessions,
   selectSessionBudget,
+  selectTurnsWithinBudget,
   type AdmittedSession,
   type SessionRelevance,
+  type TurnBudgetOptions,
+  type TurnBudgetPlan,
+  type TurnCost,
+  type TurnRelevance,
 } from './sessionize.js';
 
 export type ProviderTurn = { readonly role: 'user' | 'assistant'; readonly content: string };
@@ -91,8 +96,31 @@ export type CortexSessionProviderOptions = {
    * The default is `Infinity`, which spends nothing, so the top-k alone decides how much a reader sees.
    */
   readonly sessionBudget?: number;
+  /**
+   * What {@link sessionBudget} counts.
+   *
+   * `turns` (the default) is the product's unit: a turn is the thing admission judges and the thing
+   * `selectSessionBudget` spends. `chars` is the reader's unit — a prompt is bounded in text, and the published
+   * systems report that bound in tokens (Mem0 6,787, Zep 4,408, Contextier 2,807 mean). A budget expressed in
+   * turns cannot be compared with any of those, because a turn is ten characters or two thousand.
+   */
+  readonly budgetUnit?: 'turns' | 'chars';
+  /**
+   * Spend the budget inside a session instead of only between sessions.
+   *
+   * Off by default, and the default is the measured baseline: `selectSessionBudget` admits a session whole or
+   * not at all, which on LongMemEval-S costs `all-gold 82.2% -> 6.6%` at an eight-turn budget. On, a session that
+   * does not fit is trimmed to its most relevant turns rather than dropped — the arm LongMemEval's paper calls
+   * *session decomposition for value granularity* (+9.4 recall@5, +5.4 absolute accuracy upstream).
+   *
+   * It needs a finite budget to mean anything: with `Infinity` every session fits whole and the two arms are
+   * the same run, which is why the competition table prints them as separate rows only at a bounded budget.
+   */
+  readonly trim?: boolean;
   /** Admission threshold. Zero admits everything, which is what an identity gate means. */
   readonly threshold?: number;
+  /** Row label in a comparison table. Defaults to `cortex-session`. */
+  readonly label?: string;
 };
 
 /**
@@ -103,7 +131,13 @@ export type CortexSessionProviderOptions = {
  * reproduce the flat route and make this adapter measure something the product does not do.
  */
 export class CortexSessionProvider {
-  readonly name = 'cortex-session';
+  /**
+   * The row label.
+   *
+   * Configurable because a table that prints four arms of one adapter under one name cannot be read: the whole
+   * point of the granularity and budget arms is that they are different runs of the same code.
+   */
+  readonly name: string;
   /**
    * `none`, because the ranking signal is term overlap and uses no model.
    *
@@ -117,11 +151,16 @@ export class CortexSessionProvider {
   #now: number;
   #budget: number;
   #threshold: number;
+  #unit: 'turns' | 'chars';
+  #trim: boolean;
 
   constructor(options: CortexSessionProviderOptions) {
+    this.name = options.label ?? 'cortex-session';
     this.#now = options.now;
     this.#budget = options.sessionBudget ?? Number.POSITIVE_INFINITY;
     this.#threshold = options.threshold ?? 0;
+    this.#unit = options.budgetUnit ?? 'turns';
+    this.#trim = options.trim ?? false;
   }
 
   async ingest(sessions: readonly ProviderSession[]): Promise<ProviderIngestReport> {
@@ -177,13 +216,16 @@ export class CortexSessionProvider {
     // session per question and the adapter read 25.4% recall against a lexical index's 93.6% — a measurement
     // of the adapter's unit error, not of the product.
     //
-    // The two now stay in their own units: `selectSessionBudget` spends the product's turn budget (unbounded
-    // unless the caller configured one), and the top-k is applied to hits below.
-    const selected: readonly AdmittedSession[] = selectSessionBudget(
-      admitted,
-      this.#budget,
-      relevance,
-    );
+    // The two now stay in their own units: the budget is spent in whatever unit the caller named (unbounded
+    // unless configured), and the top-k is applied to hits below.
+    //
+    // `trim` is a granularity arm, not a refinement of the same arm: whole-session admission and turn-level
+    // trimming are the two settings LongMemEval's harness exposes as `GRANULARITY: session | turn`, and its
+    // paper reports the turn setting as up to +9.4 recall@5. Keeping them as separate constructor options is
+    // what lets one run print both rows against one corpus.
+    const selected: readonly AdmittedSession[] = this.#trim
+      ? this.#fillToBudget(admitted, query)
+      : selectSessionBudget(admitted, this.#budget, relevance);
 
     // Ranked, not chronological. See point 3 in this file's header: the product's arrival-order re-sort is a
     // prompt-presentation rule, and the position of a hit here is read as its rank.
@@ -203,6 +245,24 @@ export class CortexSessionProvider {
           at: source.at,
         };
       });
+  }
+
+  /**
+   * The turn-granularity arm: spend the budget inside sessions, not only between them.
+   *
+   * Extracted so the two options (`budgetUnit`, `trim`) are read in one place. A caller reading only `search`
+   * would otherwise have to hold four combinations in their head to know which rule ran.
+   */
+  #fillToBudget(admitted: readonly AdmittedSession[], query: string): readonly AdmittedSession[] {
+    const cost: TurnCost | undefined =
+      this.#unit === 'chars' ? (turn) => turn.content.length : undefined;
+    const relevance: TurnRelevance = (turn) => lexicalRelevance(query, turn.content);
+    const options: TurnBudgetOptions = {
+      ...(cost === undefined ? {} : { cost }),
+      relevance,
+    };
+    const plan: TurnBudgetPlan = selectTurnsWithinBudget(admitted, this.#budget, options);
+    return plan.sessions;
   }
 
   async reset(): Promise<void> {

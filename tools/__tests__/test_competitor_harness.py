@@ -105,6 +105,31 @@ def test_the_adapter_declares_a_model_free_build() -> None:
     assert scores["lexical-reference"]["build"] == "none"
 
 
+def test_both_granularity_arms_are_on_the_table() -> None:
+    """A granularity claim that is not measured beside the shipped rule on one corpus is a preference."""
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    names = {score["provider"] for score in payload["scores"]}
+    assert "cortex/whole-8t" in names, names
+    assert any(name.startswith("cortex/trim-") for name in names), names
+
+
+def test_a_tiny_token_budget_actually_bounds_the_context() -> None:
+    """`--budget-tokens` has to reach the plan: a budget that does not bound anything is a recorded no-op."""
+    payload = run("--data", str(FIXTURE), "--questions", "4", "--budget-tokens", "120")
+    priced = next(s for s in payload["scores"] if s["provider"].startswith("cortex/trim-"))
+    assert priced["meanContextChars"] <= 120 * 4, priced["meanContextChars"]
+    # And a tiny budget must still return something: an empty context answers every question from nothing.
+    assert priced["empty"] == 0
+
+
+def test_the_cost_column_is_reported_for_every_provider() -> None:
+    """The only axis on which a vendor figure can be set beside ours."""
+    payload = run("--data", str(FIXTURE), "--questions", "4")
+    for score in payload["scores"]:
+        assert isinstance(score["meanContextChars"], (int, float))
+        assert score["meanContextChars"] >= 0
+
+
 def test_the_floor_stays_at_zero() -> None:
     """A comparison whose bottom row is not zero is measuring arithmetic."""
     payload = run("--data", str(FIXTURE), "--questions", "4")

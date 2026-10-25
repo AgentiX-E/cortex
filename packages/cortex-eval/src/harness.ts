@@ -80,6 +80,16 @@ export type ProviderScore = {
   readonly mrr: number;
   readonly sessions: number;
   readonly turns: number;
+  /**
+   * Mean characters of retrieved text per measured question.
+   *
+   * The cost side of a retrieval score, and the only axis on which the published memory systems can be
+   * compared at all: Mem0 reports 93.4% at 6,787 mean tokens, Zep 90.2% at 4,408 median, Contextier 91.6% at
+   * 2,807 mean. A top-k alone does not describe those runs, because a hit is a session and sessions differ in
+   * size by an order of magnitude. Characters rather than tokens because `cortex-eval` counts no tokeniser:
+   * `chars / 4` is the conversion the report uses, and it is stated rather than assumed.
+   */
+  readonly meanContextChars: number;
   readonly skipped: readonly string[];
   readonly byCapability: Readonly<Partial<Record<Capability, CapabilityScore>>>;
   /** Questions the provider's ingest reported as skipped, so a partial store is visible in the score line. */
@@ -140,6 +150,7 @@ export async function measureRetrieval(
     let reciprocalRank = 0;
     let sessions = 0;
     let turns = 0;
+    let contextChars = 0;
     const skipped: string[] = [];
     const byCapability: Partial<Record<Capability, CapabilityScore>> = {};
 
@@ -165,6 +176,7 @@ export async function measureRetrieval(
 
       const hits = await provider.search(question.question, { limit });
       if (hits.length === 0) empty += 1;
+      for (const hit of hits) contextChars += hit.text.length;
 
       const covered = (hit: { text: string }): boolean =>
         gold.some((turn) => (contains ? hit.text.includes(turn) : hit.text === turn));
@@ -206,6 +218,7 @@ export async function measureRetrieval(
       mrr: measured === 0 ? 0 : reciprocalRank / measured,
       sessions,
       turns,
+      meanContextChars: measured === 0 ? 0 : contextChars / measured,
       skipped,
       byCapability,
       ingestSkipped: skipped.length,

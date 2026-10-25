@@ -11,7 +11,11 @@ import { describe, expect, it } from 'vitest';
 import { admissionOptionsFrom } from '../admission.js';
 import { lexicalRelevance } from '../relevance.js';
 import { admitSessions, selectSessionBudget } from '../sessionize.js';
-import { CortexSessionProvider, type ProviderSession } from '../provider.js';
+import {
+  CortexSessionProvider,
+  type CortexSessionProviderOptions,
+  type ProviderSession,
+} from '../provider.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const T0 = Date.UTC(2026, 0, 1);
@@ -37,7 +41,7 @@ const SESSIONS: readonly ProviderSession[] = [
   },
 ];
 
-function providerOf(options: { now?: number; sessionBudget?: number; threshold?: number } = {}) {
+function providerOf(options: Partial<CortexSessionProviderOptions> = {}) {
   return new CortexSessionProvider({ now: options.now ?? T0 + 30 * DAY, ...options });
 }
 
@@ -234,6 +238,68 @@ describe('CortexSessionProvider: the product retrieval as a provider', () => {
     // `embedding` would have been a false statement about the cost side of the ledger: `lexicalRelevance` is a
     // term-overlap function, and a comparison that says otherwise misreports what the run spent.
     expect(providerOf().build).toBe('none');
+  });
+
+  it('can spend the budget inside a session, which is the turn-granularity arm', async () => {
+    // The arm LongMemEval's paper calls session decomposition: same adapter, same corpus, one rule different.
+    // The answering turn is in the **second** session on purpose: with every `turn.value` equal, the
+    // whole-session rule's fallback takes `ranked[0]`, which is the first session by index, so the difference
+    // between the two arms has to be a difference in which session answers and not in which index comes first.
+    const wide = [
+      {
+        id: 'w0',
+        at: T0,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: `unrelated chatter ${i}`,
+        })),
+      },
+      {
+        id: 'w1',
+        at: T0 + DAY,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: i === 3 ? 'I moved to Berlin for the new job' : `filler turn ${i}`,
+        })),
+      },
+    ];
+    const whole = providerOf({ sessionBudget: 4, label: 'whole' });
+    await whole.ingest(wide);
+    const trimmed = providerOf({ sessionBudget: 4, trim: true, label: 'trimmed' });
+    await trimmed.ingest(wide);
+
+    const question = 'where did I move for the job';
+    const wholeHits = await whole.search(question, { limit: 10 });
+    const trimmedHits = await trimmed.search(question, { limit: 10 });
+
+    const charsOf = (hits: readonly { text: string }[]): number =>
+      hits.reduce((total, hit) => total + hit.text.length, 0);
+
+    // Both arms find the answering session -- the relevance key is what does that, and it is on in both. What
+    // differs is the cost: a six-turn session against a four-turn budget does not fit, so the whole-session rule
+    // skips it and its fallback returns that session **in full, over budget**, while the trim returns four of its
+    // six turns. Same answer, less context -- which is the entire claim of the turn-granularity arm.
+    expect(wholeHits.map((hit) => hit.text).join('\n')).toContain('Berlin');
+    expect(trimmedHits.map((hit) => hit.text).join('\n')).toContain('Berlin');
+    expect(charsOf(trimmedHits)).toBeLessThan(charsOf(wholeHits));
+    // Four turns' worth, not six: the trim respected the budget it was given, which the fallback does not.
+    expect(trimmedHits[0]!.text.split('\n')).toHaveLength(4);
+  });
+
+  it('prices the budget in characters when asked to', async () => {
+    // The unit the published systems report in, and the only setting in which our number can sit beside theirs.
+    const provider = providerOf({
+      sessionBudget: 40,
+      budgetUnit: 'chars',
+      trim: true,
+      label: 'chars',
+    });
+    await provider.ingest(SESSIONS);
+    const hits = await provider.search('where does the user live', { limit: 10 });
+    const chars = hits.reduce((total, hit) => total + hit.text.length, 0);
+    // The plan may exceed the budget only through the one-turn fallback, whose cost is one turn.
+    expect(chars).toBeLessThanOrEqual(40 + 200);
+    expect(hits.length).toBeGreaterThan(0);
   });
 
   it('reads the query, and returns different sessions for different questions', async () => {
