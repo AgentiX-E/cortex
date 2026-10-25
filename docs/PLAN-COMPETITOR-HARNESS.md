@@ -221,6 +221,7 @@ is computed from the configuration, and the configuration is printed with every 
 | Phase | What | Produces | Cost |
 | --- | --- | --- | --- |
 | **H0** | `LexicalProvider` + `toSessions` + `comparability` + `measureRetrieval` + `NullProvider` — **done** | a pipeline that runs with no model, no key, no network; a floor that is provably zero; and a rule that decides what a score may claim | 0 |
+| **H1a** | the tool meets LongMemEval-S: `--data` loads it, gold comes from `answer_session_ids`, subset stratified — **done** | retrieval-only readings on a corpus this repository did not write, for every provider including Cortex's own adapter | one runner, no key, no reader |
 | **H1** | Hindsight, 100-question subset, DeepSeek reader, official judge prompt | the first **A-grade** competitor number this project has ever had | one container, ~100 × (ingest + recall), DeepSeek tokens |
 | **H2** | + Mem0 OSS, + Graphiti; same 100 questions | a three-system ranking on one axis | three services, three ingests |
 | **H3** | full 500 questions × 2 runs, four systems | the table the whitepaper quotes instead of vendor figures | ×5 the H1 cost |
@@ -228,6 +229,36 @@ is computed from the configuration, and the configuration is printed with every 
 
 H0 is the gate for everything else: until the pipeline runs end to end on a lexical control, an adapter that
 returns nothing is indistinguishable from a system that retrieves nothing.
+
+### 4.0 What H1a added, and why it had to come first
+
+H1 as written assumed the harness could meet a corpus. It could not: `tools/competitor-harness.mjs` generated its
+own dataset, and the gold it used was **derived** — "the context turns that state the expected answer" — which is
+true by construction for a generated corpus and false for any other.
+
+Two changes, both in the tool:
+
+1. `--data <path>` (or `LONGMEMEVAL_PATH`) loads LongMemEval-S through the existing loader and takes the gold
+   from `Question.goldTurns`, which the loader resolves from `answer_session_ids`. An annotation, not an
+   inference.
+2. The subset is **stratified**: questions round-robin across capabilities in a fixed order, sorted by id within
+   each. Taking the first N rows would take whatever capability the file happens to start with, and a subset
+   that depends on file order makes every number taken on it unusable for a later comparison.
+
+The distinction between derived and annotated gold is invisible in a score, so it is pinned by a fixture whose
+`ie-001` answer is a locker combination discussed in no turn: under derivation that question is *unmeasurable*,
+under annotation it is *measurable*. Reverting `goldOf` to the derived form marks 3 of 4 fixture questions
+unmeasurable and the test goes red — the mutation was run, not asserted.
+
+`.github/workflows/competitor-retrieval.yml` runs it, because the development sandbox reaches `api.github.com`
+and nothing else: the only place this tool can meet the corpus is a runner. It needs no reader, no judge and no
+key, so its output is evidence recall and its own summary says it must not be quoted as answer accuracy.
+
+**One limit recorded rather than fixed.** `sessionsOf` stamps every session with the *question* date, so
+per-session timestamps do not survive into the provider contract — `asOf` cannot filter, and time reaches the
+signal only through the loader's `[date]` prefix in the rendered text. Fixing it means adding a per-session
+timestamp to `Question`, which is a change to the evaluation contract rather than to one adapter, and it is the
+first thing H1a's readings will tell us the cost of.
 
 ### 4.1 What H1 will and will not settle
 

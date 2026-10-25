@@ -106,9 +106,7 @@ describe('CortexSessionProvider: the product retrieval as a provider', () => {
 
   it('lets the limit act as the ceiling when no budget was configured', async () => {
     // The harness's `limit` is a top-k, so a provider that ignored it would be running a different experiment
-    // while claiming to run this one. It is a ceiling on **hits**, not on turns: the budget spends a turn
-    // count, so a limit of two can still admit one session of three turns and no second session. That is the
-    // product's unit, and the adapter does not translate it.
+    // while claiming to run this one.
     const provider = providerOf();
     await provider.ingest(SESSIONS);
     const hits = await provider.search('anything', { limit: 2 });
@@ -116,10 +114,71 @@ describe('CortexSessionProvider: the product retrieval as a provider', () => {
     expect(hits.length).toBeGreaterThan(0);
   });
 
-  it('takes the smaller of the budget and the limit, so neither can silently override the other', async () => {
-    const provider = providerOf({ sessionBudget: 3 });
-    await provider.ingest(SESSIONS);
-    expect(await provider.search('anything', { limit: 1 })).toHaveLength(1);
+  it('keeps the harness top-k and the product turn budget in their own units', async () => {
+    // The defect this pins was invisible on the synthetic set, where one session is one turn, so "ten turns"
+    // and "ten sessions" were the same number. On LongMemEval-S a session carries about ten turns, and folding
+    // the top-k into the turn budget admitted **one** session per question: `recall@k 25.4%` against a lexical
+    // index's 93.6%, which measured the adapter's unit error rather than the product.
+    const wide = [
+      {
+        id: 'w0',
+        at: T0,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: `alpha note ${i}`,
+        })),
+      },
+      {
+        id: 'w1',
+        at: T0 + DAY,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: `beta note ${i}`,
+        })),
+      },
+      {
+        id: 'w2',
+        at: T0 + 2 * DAY,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: `gamma note ${i}`,
+        })),
+      },
+    ];
+    const provider = providerOf();
+    await provider.ingest(wide);
+    // Ten turns is less than two of these sessions; a top-k of two must still return two.
+    expect(await provider.search('alpha beta gamma', { limit: 2 })).toHaveLength(2);
+    expect(await provider.search('alpha beta gamma', { limit: 3 })).toHaveLength(3);
+  });
+
+  it('spends a configured turn budget across whole sessions, never splitting one', async () => {
+    // The product's unit, unchanged: a session is admitted whole or not at all, so a budget of six admits one
+    // six-turn session and no second. The top-k cannot make it admit more.
+    const wide = [
+      {
+        id: 'w0',
+        at: T0,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: `alpha ${i}`,
+        })),
+      },
+      {
+        id: 'w1',
+        at: T0 + DAY,
+        turns: Array.from({ length: 6 }, (_, i) => ({
+          role: 'user' as const,
+          content: `beta ${i}`,
+        })),
+      },
+    ];
+    const provider = providerOf({ sessionBudget: 6 });
+    await provider.ingest(wide);
+    const hits = await provider.search('alpha beta', { limit: 10 });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.text).toContain('alpha 0');
+    expect(hits[0]!.text).not.toContain('beta 0');
   });
 
   it('equals the product functions applied by hand, which is the whole contract', async () => {

@@ -82,12 +82,13 @@ export type CortexSessionProviderOptions = {
    */
   readonly now: number;
   /**
-   * Sessions the budget may hold.
+   * Turns the product's session budget may hold — the product's unit, not the harness's.
    *
-   * The effective ceiling is `min(sessionBudget, limit)`, because the harness's `limit` **is** a top-k and a
-   * provider that returned more would be running a different experiment. With the default `Infinity` the
-   * limit alone decides; a smaller value models a product whose prompt budget bites before the harness's
-   * top-k does.
+   * A session is admitted whole or not at all, so this is a ceiling on the evidence a prompt could carry and
+   * not a count of hits. The harness's top-k is applied to hits and is a different number in a different unit;
+   * a smaller `sessionBudget` models a product whose prompt budget bites before the reader's top-k does.
+   *
+   * The default is `Infinity`, which spends nothing, so the top-k alone decides how much a reader sees.
    */
   readonly sessionBudget?: number;
   /** Admission threshold. Zero admits everything, which is what an identity gate means. */
@@ -169,11 +170,20 @@ export class CortexSessionProvider {
       return best;
     };
 
-    // The harness's `limit` is the top-k of the run, and the product's session budget is the same kind of
-    // ceiling. Taking the smaller keeps one number in charge of how much evidence a question may carry, which
-    // is what makes two providers comparable at all.
-    const ceiling = Math.min(this.#budget, options.limit);
-    const selected: readonly AdmittedSession[] = selectSessionBudget(admitted, ceiling, relevance);
+    // The harness's `limit` is a top-k on **hits**; the product's session budget is a ceiling on **turns**.
+    // Folding one into the other was a defect, and it was invisible on the only corpus this tool used to have:
+    // the synthetic generator writes one turn per session, so "ten turns" and "ten sessions" were the same
+    // number. On LongMemEval-S a session carries about ten turns, so `min(budget, limit)` admitted **one**
+    // session per question and the adapter read 25.4% recall against a lexical index's 93.6% — a measurement
+    // of the adapter's unit error, not of the product.
+    //
+    // The two now stay in their own units: `selectSessionBudget` spends the product's turn budget (unbounded
+    // unless the caller configured one), and the top-k is applied to hits below.
+    const selected: readonly AdmittedSession[] = selectSessionBudget(
+      admitted,
+      this.#budget,
+      relevance,
+    );
 
     // Ranked, not chronological. See point 3 in this file's header: the product's arrival-order re-sort is a
     // prompt-presentation rule, and the position of a hit here is read as its rank.
