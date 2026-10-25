@@ -44,8 +44,15 @@ export {
   buildJudgePrompt,
   parseJudgeResponse,
   clearJudgeCache,
+  toJudgeQuestionType,
   type AnswerJudge,
 } from './judge.js';
+
+// The reading stage of the competition harness. Only the factory is exported: the tool needs a reader, and the
+// prompt, the renderer and the refusal phrase are its internals — a second caller reaching for them would be
+// building a second reader, which is the thing this module exists to prevent. The tests import the module
+// directly, which is why the census reports them as referenced-locally rather than as orphans.
+export { createProviderReader } from './competitor-reader.js';
 export { runAblation, type AblationOptions } from './ablation.js';
 
 // A3: the arithmetic behind the card-acceptance criterion, so the criterion is computable before

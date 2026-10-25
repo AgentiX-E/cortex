@@ -23,7 +23,30 @@
  */
 
 import type { Capability, BenchmarkDataset, Question } from './types.js';
-import type { MemoryProvider, MemorySession } from './competitor.js';
+import type { MemoryProvider, MemorySession, SearchHit } from './competitor.js';
+
+/**
+ * Whether a reader's reply is a refusal rather than an attempt.
+ *
+ * Counted apart from "wrong" because the two failures are repaired differently: a refusal is a context or prompt
+ * problem, a wrong answer is a reading problem. The judge still grades it — a refusal to an abstention question
+ * is a **correct** answer — so this only fills a diagnostic column and never touches `accuracy`.
+ *
+ * Deliberately a phrase list rather than a model call: a second model in the counting path would make the count
+ * depend on a judge that is also being measured.
+ */
+function isAbstentionReply(reply: string): boolean {
+  const lowered = reply.toLowerCase();
+  return (
+    lowered.includes("i don't know") ||
+    lowered.includes('i do not know') ||
+    lowered.includes('cannot determine') ||
+    lowered.includes("can't determine") ||
+    lowered.includes('not mentioned') ||
+    lowered.includes('no information') ||
+    lowered.trim() === 'unknown'
+  );
+}
 
 /** How the store is fed between questions. */
 export type RetrievalMode =
@@ -51,6 +74,32 @@ export type HarnessOptions = {
    * other one is: it changes the number.
    */
   readonly hitsContainGold?: boolean;
+  /**
+   * Turn the retrieved hits into an answer, for the providers named in {@link accuracyFor}.
+   *
+   * ## Why this is optional and why it is not a second loop
+   *
+   * Retrieval and reading are different questions and the difference is the point: a provider can put every
+   * gold turn in front of a reader and still lose the question. Measuring both in **one** pass over one corpus is
+   * what makes "recall 80.8%" and "accuracy N%" subtractable — two separate runs would differ in ingest order,
+   * in which questions are measurable, and in nothing else that anybody would notice.
+   *
+   * Absent, the score carries `accuracy: null` rather than `0`. A zero would be indistinguishable from a
+   * reader that got every question wrong, which is the same defect as an unmeasurable question counted as a
+   * miss.
+   */
+  readonly answer?: (question: Question, hits: readonly SearchHit[]) => Promise<string>;
+  /** Grade one answer. Only called when {@link accuracyFor} names the provider. */
+  readonly judge?: (question: Question, answer: string) => Promise<boolean>;
+  /**
+   * Providers whose answers are graded.
+   *
+   * A reader call and a judge call per question per provider is the cost of this stage, and the arms on the
+   * table are not all worth it: a provider that returns nothing, and an arm that differs only in budget, do
+   * not need one each. Naming them keeps the run affordable without making the choice invisible — the printed
+   * table shows `—` for a provider that was not read, which is a different cell from `0%`.
+   */
+  readonly accuracyFor?: readonly string[];
 };
 
 export type CapabilityScore = {
@@ -90,6 +139,19 @@ export type ProviderScore = {
    * `chars / 4` is the conversion the report uses, and it is stated rather than assumed.
    */
   readonly meanContextChars: number;
+  /**
+   * Questions the reader answered correctly, or `null` when no reader ran.
+   *
+   * `null` and `0` are different states and are printed differently: a provider that was not read has no
+   * accuracy, and a provider that was read and got everything wrong has zero.
+   */
+  readonly correct: number | null;
+  /** Questions that were read. The denominator of `accuracy`. */
+  readonly read: number;
+  /** `correct / read`, or `null` when no reader ran. */
+  readonly accuracy: number | null;
+  /** Questions the reader declined to answer, counted apart from a wrong answer. */
+  readonly abstained: number;
   readonly skipped: readonly string[];
   readonly byCapability: Readonly<Partial<Record<Capability, CapabilityScore>>>;
   /** Questions the provider's ingest reported as skipped, so a partial store is visible in the score line. */
@@ -139,6 +201,9 @@ export async function measureRetrieval(
   const mode = options.mode ?? 'isolated';
   const goldOf = options.goldOf ?? ((question: Question) => question.goldTurns ?? []);
   const contains = options.hitsContainGold ?? true;
+  const answer = options.answer;
+  const judge = options.judge;
+  const accuracyFor = options.accuracyFor ?? [];
 
   const scores: ProviderScore[] = [];
   for (const provider of providers) {
@@ -151,6 +216,10 @@ export async function measureRetrieval(
     let sessions = 0;
     let turns = 0;
     let contextChars = 0;
+    let readCount = 0;
+    let correctCount = 0;
+    let abstained = 0;
+    const graded = accuracyFor.includes(provider.name);
     const skipped: string[] = [];
     const byCapability: Partial<Record<Capability, CapabilityScore>> = {};
 
@@ -177,6 +246,15 @@ export async function measureRetrieval(
       const hits = await provider.search(question.question, { limit });
       if (hits.length === 0) empty += 1;
       for (const hit of hits) contextChars += hit.text.length;
+
+      // Reading happens here, in the same pass, so `accuracy` and `recallAtK` are two statements about one run of
+      // one corpus. A second pass would differ in ingest order and in nothing a reader would ever check.
+      if (graded && answer !== undefined && judge !== undefined) {
+        const reply = await answer(question, hits);
+        readCount += 1;
+        if (isAbstentionReply(reply)) abstained += 1;
+        if (await judge(question, reply)) correctCount += 1;
+      }
 
       const covered = (hit: { text: string }): boolean =>
         gold.some((turn) => (contains ? hit.text.includes(turn) : hit.text === turn));
@@ -219,6 +297,10 @@ export async function measureRetrieval(
       sessions,
       turns,
       meanContextChars: measured === 0 ? 0 : contextChars / measured,
+      correct: readCount === 0 ? null : correctCount,
+      read: readCount,
+      accuracy: readCount === 0 ? null : correctCount / readCount,
+      abstained,
       skipped,
       byCapability,
       ingestSkipped: skipped.length,

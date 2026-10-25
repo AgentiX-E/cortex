@@ -33,7 +33,11 @@ import {
   LexicalProvider,
   NullProvider,
   comparability,
+  createLlmFromEnv,
+  createLlmJudge,
+  createProviderReader,
   measureRetrieval,
+  toJudgeQuestionType,
 } from '../packages/cortex-eval/dist/index.js';
 import { loadLongMemEval } from '../packages/cortex-eval/dist/datasets/longmemeval-loader.js';
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
@@ -51,6 +55,24 @@ const wanted = Number(flag('--questions') ?? 100);
 // Overrides the token budget of the priced row, so a test (or a reader) can force the budget below one session
 // and watch the trim happen. 2,800 is the default because that is Contextier's mean context on this benchmark.
 const budgetTokens = Number(flag('--budget-tokens') ?? 2800);
+/**
+ * Run the reading stage as well as the retrieval stage.
+ *
+ * Off by default because it needs a model and a key, and H0's whole point was that the harness runs without
+ * either. On, every question is read once per named provider and graded once, so the cost is
+ * `questions x providers x 2` model calls.
+ */
+const readAnswers = argv.includes('--read');
+
+/**
+ * Which providers get read.
+ *
+ * Not every arm: a provider that returns nothing, and an arm that differs only in budget, would each cost a
+ * reader call per question to say something already visible in the recall column. These four are the ones whose
+ * accuracy answers a question the recall column cannot: the reference, the unbounded product, and two priced
+ * budgets.
+ */
+const READ_ARMS = ['lexical-reference', 'cortex-session', 'cortex/trim-2.8k', 'cortex/trim-6.8k'];
 const dataPath = flag('--data') ?? process.env['LONGMEMEVAL_PATH'];
 
 /**
@@ -153,18 +175,48 @@ const providers = [
   new NullProvider(),
 ];
 
+let reader = null;
+let judge = null;
+if (readAnswers) {
+  // A missing key has to fail loudly: a run that silently skipped the reading stage would print a table with no
+  // accuracy column and be read as a run that measured accuracy.
+  const llm = createLlmFromEnv(process.env);
+  const grade = createLlmJudge(llm);
+  reader = createProviderReader(llm);
+  judge = (question, answer) =>
+    grade(
+      question.question,
+      answer,
+      question.expected ?? '',
+      toJudgeQuestionType(question.questionType ?? '', question.capability === 'ABS'),
+    );
+}
+
 const scores = await measureRetrieval(dataset, providers, {
   limit,
   mode: 'isolated',
   goldOf,
+  ...(reader === null || judge === null
+    ? {}
+    : { answer: reader, judge, accuracyFor: READ_ARMS }),
 });
+
+// The reader and judge are named by the model that actually ran, not by "deepseek": `comparability()` compares
+// these strings, so a run whose configuration says `deepseek-chat` and whose calls went to `deepseek-v4-pro`
+// would be graded A against a run it does not match.
+const readerName = readAnswers
+  ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (chain-of-note, one request)`
+  : 'none (retrieval only)';
+const judgeName = readAnswers
+  ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (official per-type templates)`
+  : 'none (retrieval only)';
 
 const config = {
   dataset: `${dataset.name}/${dataset.questions.length}`,
   questions: dataset.questions.length,
-  reader: 'none (retrieval only)',
-  judge: 'none (retrieval only)',
-  judgePolicy: 'n/a',
+  reader: readerName,
+  judge: judgeName,
+  judgePolicy: readAnswers ? 'longmemeval-official-per-type' : 'n/a',
   topK: limit,
   tokenBudget: 0,
 };
@@ -177,18 +229,24 @@ if (asJson) {
 const pad = (value, width) => String(value).padEnd(width);
 const pct = (value) => `${(100 * value).toFixed(1)}%`;
 
-process.stdout.write(`retrieval-only comparison — ${dataset.name}/${dataset.questions.length}\n`);
+process.stdout.write(
+  `${readAnswers ? 'retrieval + reading' : 'retrieval-only'} comparison — ` +
+    `${dataset.name}/${dataset.questions.length}\n`,
+);
 process.stdout.write(`${provenance}\n\n`);
 
 process.stdout.write(
-  `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('found', 10)}${pad('~tok', 8)}unmeasurable\n`,
+  `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('acc', 9)}${pad('~tok', 8)}unmeasurable\n`,
 );
 for (const score of scores) {
   // `~tok` is `meanContextChars / 4`, the same conversion `charsForTokens` applies to the budget. It is what the
   // published systems report, so it is the only column here that can be set beside a vendor figure at all.
   const tokens = Math.round(score.meanContextChars / 4);
+  // `—` and `0.0%` are different cells. An arm that was not read has no accuracy; one that was read and got
+  // everything wrong has zero, and collapsing the two would let a skipped stage read as a failed one.
+  const acc = score.accuracy === null ? '—' : `${pct(score.accuracy)} (${score.correct}/${score.read})`;
   process.stdout.write(
-    `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(pct(score.recallAtK), 10)}${pad(pct(score.recallAllAtK), 10)}${pad(score.mrr.toFixed(3), 8)}${pad(`${score.found}/${score.measured}`, 10)}${pad(tokens, 8)}${score.unmeasurable}\n`,
+    `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(pct(score.recallAtK), 10)}${pad(pct(score.recallAllAtK), 10)}${pad(score.mrr.toFixed(3), 8)}${pad(acc, 9)}${pad(tokens, 8)}${score.unmeasurable}\n`,
   );
 }
 

@@ -119,6 +119,34 @@ jobs:
               | tee -a competitor-full.txt
           done
 
+      # The reading stage. This is the only step that needs a model: it answers each question from the retrieved
+      # context with a Chain-of-Note prompt and grades the answer with the official per-type templates. Without it
+      # the table reports evidence recall, which is an upper bound on accuracy rather than accuracy -- and the
+      # published systems report accuracy, so no comparison is possible until this runs.
+      #
+      # Four arms only, and 100 questions: the cost is questions x arms x 2 model calls, and the arms left out are
+      # the ones whose accuracy the recall column already determines.
+      - name: Read and grade (100 questions, 2.8k budget)
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+        run: |
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions 100 \
+            --limit 10 \
+            --budget-tokens 2800 \
+            --read \
+            --json > competitor-read.json
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions 100 \
+            --limit 10 \
+            --budget-tokens 2800 \
+            --read \
+            | tee competitor-read.txt
+
       - name: Summary
         if: always()
         run: |
@@ -129,6 +157,15 @@ jobs:
             echo ''
             echo '```'
             cat competitor-sample.txt 2>/dev/null || echo 'sample run produced no output'
+            echo '```'
+            echo ''
+            echo '### Reading stage (accuracy, not recall)'
+            echo ''
+            echo 'Reader and judge are the same model for every row. This is the only column comparable with a'
+            echo 'published LongMemEval accuracy, and only if the reader and judge also match.'
+            echo ''
+            echo '```'
+            cat competitor-read.txt 2>/dev/null || echo 'reading stage did not run'
             echo '```'
             echo ''
             echo '<details><summary>Full file</summary>'
@@ -149,4 +186,6 @@ jobs:
             competitor-sample.txt
             competitor-sample.json
             competitor-full.txt
+            competitor-read.txt
+            competitor-read.json
           if-no-files-found: warn

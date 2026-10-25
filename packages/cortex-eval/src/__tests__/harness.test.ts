@@ -246,3 +246,107 @@ describe('sessionsOf: the benchmark history in the provider shape', () => {
     expect(sessions.map((session) => session.id)).toEqual(['q#0', 'q#1']);
   });
 });
+
+/**
+ * The reading stage, wired into the same pass as retrieval.
+ *
+ * The property that matters is that `accuracy` and `recallAtK` are two statements about **one** run of one
+ * corpus. A harness that read the answers in a second pass would report a difference that is partly the pass.
+ *
+ * Two failure shapes are pinned here because both are silent: an arm that was never read must report `null` and
+ * not `0` (a zero reads as "got everything wrong"), and a provider outside `accuracyFor` must not be read at all
+ * (a run that quietly read it anyway would spend the budget and change nothing visible).
+ */
+describe('measureRetrieval: the reading stage', () => {
+  type Call = { readonly provider: string; readonly question: string };
+
+  /** A provider that records which questions it answered, so the call count is an assertion rather than a hope. */
+  function recording(answerFor: (question: string) => string, calls: Call[], name = 'reader') {
+    return {
+      name,
+      build: 'none' as const,
+      async ingest() {
+        return { sessions: 0, turns: 0, skipped: [] };
+      },
+      async search() {
+        return [{ text: 'I live in London.' }];
+      },
+      async reset() {},
+      answer: async (question: Question): Promise<string> => {
+        calls.push({ provider: name, question: question.id });
+        return answerFor(question.id);
+      },
+    };
+  }
+
+  it('reports null rather than zero when no reader ran', async () => {
+    const scores = await measureRetrieval(DATASET, [new LexicalProvider()]);
+    const score = scores[0]!;
+    expect(score.accuracy).toBeNull();
+    expect(score.correct).toBeNull();
+    expect(score.read).toBe(0);
+  });
+
+  it('grades every measured question once when the provider is named', async () => {
+    const calls: Call[] = [];
+    const provider = recording(() => 'London', calls);
+    const graded: string[] = [];
+    const scores = await measureRetrieval(DATASET, [provider], {
+      answer: provider.answer,
+      judge: async (question, reply) => {
+        graded.push(`${question.id}:${reply}`);
+        return question.id !== 'q2';
+      },
+      accuracyFor: ['reader'],
+    });
+    // q3 has no gold, so it is unmeasurable and is not read: the denominator is the same one every rate uses.
+    expect(calls.map((call) => call.question)).toEqual(['q1', 'q2']);
+    expect(graded).toEqual(['q1:London', 'q2:London']);
+    expect(scores[0]!.read).toBe(2);
+    expect(scores[0]!.correct).toBe(1);
+    expect(scores[0]!.accuracy).toBe(0.5);
+  });
+
+  it('does not read a provider that is not named in accuracyFor', async () => {
+    const calls: Call[] = [];
+    const provider = recording(() => 'London', calls);
+    const scores = await measureRetrieval(DATASET, [provider], {
+      answer: provider.answer,
+      judge: async () => true,
+      accuracyFor: ['someone-else'],
+    });
+    expect(calls).toEqual([]);
+    expect(scores[0]!.accuracy).toBeNull();
+  });
+
+  it('counts a refusal apart from a wrong answer, and still grades it', async () => {
+    // A refusal to an abstention question is a correct answer, so the count is diagnostic only and must never
+    // shorten `read`.
+    const provider = recording(() => "I don't know", []);
+    const scores = await measureRetrieval(DATASET, [provider], {
+      answer: provider.answer,
+      judge: async () => false,
+      accuracyFor: ['reader'],
+    });
+    expect(scores[0]!.abstained).toBe(2);
+    expect(scores[0]!.read).toBe(2);
+    expect(scores[0]!.correct).toBe(0);
+    expect(scores[0]!.accuracy).toBe(0);
+  });
+
+  it('keeps the retrieval numbers identical whether or not the reader ran', async () => {
+    // The two stages must not interact: a reader that throws would otherwise be indistinguishable from a
+    // retrieval regression, and a reader that is slow would tempt somebody to change the loop.
+    const plain = await measureRetrieval(DATASET, [new LexicalProvider()]);
+    const provider = recording(() => 'London', []);
+    const read = await measureRetrieval(DATASET, [new LexicalProvider()], {
+      answer: provider.answer,
+      judge: async () => true,
+      accuracyFor: ['lexical-reference'],
+    });
+    expect(read[0]!.recallAtK).toBe(plain[0]!.recallAtK);
+    expect(read[0]!.recallAllAtK).toBe(plain[0]!.recallAllAtK);
+    expect(read[0]!.mrr).toBe(plain[0]!.mrr);
+    expect(read[0]!.meanContextChars).toBe(plain[0]!.meanContextChars);
+  });
+});
