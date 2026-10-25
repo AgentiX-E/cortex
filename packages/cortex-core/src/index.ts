@@ -226,6 +226,28 @@ export {
   type UnitResult,
 } from './knowledge/unit.js';
 
+export {
+  assumptionOf,
+  assumptionPenalty,
+  deriveAssumptions,
+  describeAssumptions,
+  isAnswerable,
+  slotKey,
+  type Assumption,
+  type AssumptionKind,
+  type AssumptionOrigin,
+  type AssumptionStatus,
+  type Penalty,
+  type PenaltyOptions,
+} from './knowledge/assumption.js';
+export {
+  reviseLedger,
+  type Revision,
+  type RevisionOptions,
+  type RevisionResult,
+  type RevisionVerdict,
+} from './knowledge/revision.js';
+
 // retrieval: fusion, budget, and the block a reader receives
 export {
   fillBudget,

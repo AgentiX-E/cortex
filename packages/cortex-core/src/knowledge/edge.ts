@@ -207,6 +207,8 @@ export function extractedSpan(from: Span, to: Span, marker: Span): Span {
  * - A fact with no `at`, or no `subject`/`predicate`, is in no group and supersedes nothing. Silence
  *   is not evidence of replacement.
  * - Two facts with identical text are the same statement recorded twice; no link.
+ * - Two facts at the **same** time are not ordered, so no link: a tie broken by id would silently pick a
+ *   winner between two contradictory values. `revision.ts` reports that case as a refuted `uniqueness`.
  * - Ordering is total because `at` is compared first and `id` breaks ties, so a run twice on the same
  *   input produces the same edges in the same order.
  * - The link is pairwise (each fact supersedes its predecessor), not all-pairs, because `supersedes`
@@ -239,6 +241,10 @@ export function deriveSupersedes(facts: readonly KnowledgeFact[]): KnowledgeEdge
       const older = ordered[index - 1]!;
       const newer = ordered[index]!;
       if (older.text.trim().toLowerCase() === newer.text.trim().toLowerCase()) continue;
+      // Two values claiming the *same instant* are not an update: there is no order for `supersedes` to
+      // express, and inventing one from the id would let a tie-break decide which of two contradictory
+      // facts is current. That case is a refuted `uniqueness` (`revision.ts`), not a replacement.
+      if (older.at === newer.at) continue;
       edges.push({
         id: edgeId('supersedes', newer.id, older.id),
         from: newer.id,

@@ -411,11 +411,11 @@ describe('deriveSupersedes: computed from slots, and silent when the slots are a
     expect(forward).toEqual(backward);
   });
 
-  it('breaks a tie on identical times by id, so a run twice cannot disagree', () => {
-    // Different text on purpose: two facts with the same text are one statement recorded twice and
-    // are covered by the test above. Here the only thing deciding the direction is the id.
+  it('builds nothing for two values claiming the same instant', () => {
+    // This used to build an edge, broken by id. That was wrong for a reason worth keeping: a tie-break
+    // would decide which of two contradictory facts is current, and the id is not evidence. The case is
+    // reported as a refuted `uniqueness` instead, where it belongs.
     const twin = { ...newer, id: 'k0', text: 'My best 5K time is 28:04.' };
-    const edges = deriveSupersedes([newer, twin]);
-    expect(edges.map((edge) => edge.id)).toEqual(['supersedes:k2>k0']);
+    expect(deriveSupersedes([newer, twin])).toEqual([]);
   });
 });

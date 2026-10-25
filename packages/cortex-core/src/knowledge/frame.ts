@@ -32,6 +32,7 @@
  */
 
 import type { BorrowedWord } from '../triage/grounding.js';
+import type { Assumption } from './assumption.js';
 import { isFactType, isModality, isPolarity } from './taxonomy.js';
 import type { FactType, Modality, Polarity } from './taxonomy.js';
 
@@ -80,6 +81,22 @@ export type KnowledgeFact = {
   readonly predicate?: string;
   /** When the fact is true, epoch ms, when the sentence says. Absent means "the sentence did not say". */
   readonly at?: number;
+  /**
+   * What the fact took for granted in order to be stored. Derived by `deriveAssumptions`, never reported.
+   *
+   * Absent reads as "not yet derived", which is different from "rests on nothing": every fact rests on
+   * at least `persistence`. The ledger is filled before a unit is assembled and rewritten by `revise`.
+   */
+  readonly assumptions?: readonly Assumption[];
+  /** How many members an enumeration asserts, when the fact enumerates. Source of the `completeness` assumption. */
+  readonly count?: number;
+  /**
+   * Set by a cascade: a premise this fact rests on has been refuted.
+   *
+   * Never set by `deriveAssumptions` — it is the output of revision, not of reading. A fact can be true
+   * and still be stale in this sense, which is why it is a separate flag rather than a status.
+   */
+  readonly stale?: boolean;
 };
 
 /** Why a fact was refused. Each names the thing that was wrong, not the rule that noticed. */
