@@ -24,13 +24,27 @@ it to read a competitor's hits would measure the tuning as much as the retrieval
 Chain-of-Note shape plus two sentences the corpus requires (recency for knowledge-update, a refusal phrase for
 abstention). **Every provider is read through it**, which is what makes two accuracy cells subtractable.
 
+## 1.1 Two runs, three points apart, and why that matters
+
+The reading stage was run twice on the same 100 questions. `lexical-reference` read `65.0%` the first time and
+`68.0%` the second; `cortex-session` read `60.0%` both times; `cortex/trim-2.8k` `52.0%` both. DeepSeek's reader
+is not deterministic at temperature 0 in practice, and three points on one hundred questions is what that looks
+like.
+
+**So every accuracy number here carries a repeat-run spread of about ±3 points before sampling error is
+considered**, and a later comparison has to clear that as well as the ±9 points of subset error. It is stated
+because a five-point improvement measured once would otherwise look like a result; with this spread it is a
+direction at best.
+
+The tables below use the second run, which is the one the final artifact records.
+
 ## 2. The reading
 
 100 questions, top-10, `--budget-tokens 2800`, DeepSeek as reader and judge, official per-type judge templates.
 
 | provider | recall@k | all-gold | mrr | accuracy | ~tokens |
 | --- | --- | --- | --- | --- | --- |
-| `lexical-reference` | 89.0% | 72.0% | 0.701 | **65.0%** (65/100) | 34,563 |
+| `lexical-reference` | 89.0% | 72.0% | 0.701 | **68.0%** (68/100) | 34,563 |
 | `cortex-session` | 87.0% | 73.0% | 0.746 | **60.0%** (60/100) | 33,310 |
 | `cortex/trim-2.8k` | 73.0% | 6.0% | 0.708 | **52.0%** (52/100) | 2,799 |
 | `cortex/whole-8t` | 7.0% | 4.0% | 0.070 | not read | 2,584 |
@@ -39,11 +53,39 @@ abstention). **Every provider is read through it**, which is what makes two accu
 Arms marked "not read" print `—` rather than `0`. A provider that was never read has no accuracy, and a zero
 would claim it answered every question wrong.
 
+## 2.1 Per capability, and the finding that reverses the working assumption
+
+`found/measured` is retrieval; `aCorrect/Read` is what the reader did with it.
+
+| capability | lexical-reference | cortex-session | cortex/trim-2.8k |
+| --- | --- | --- | --- |
+| ABS | 19/20 → **19/20** | 18/20 → **18/20** | 13/20 → **18/20** |
+| IE | 12/20 → 9/20 | 12/20 → 10/20 | 10/20 → 9/20 |
+| KU | 19/20 → 17/20 | 20/20 → **14/20** | 20/20 → **13/20** |
+| MR | 19/20 → 12/20 | 18/20 → 11/20 | 16/20 → **4/20** |
+| TR | 20/20 → **11/20** | 19/20 → 7/20 | 14/20 → 8/20 |
+
+Four things, and the fourth changes the plan.
+
+1. **ABS inverts.** `trim-2.8k` retrieves 13/20 and answers 18/20: an abstention question needs no evidence, so a
+   reader that refuses when the context is thin is *right*. This is why the tight budget's total does not
+   collapse, and it is a reason not to read the aggregate as a retrieval score.
+2. **KU is lost in reading.** 20/20 retrieved, 13/20 answered — seven points gone after successful retrieval, on
+   the capability the end-to-end arm scores 86.8% on. The production prompt is worth roughly 20 points on KU
+   against this plain one.
+3. **MR collapses under a tight budget.** 16/20 retrieved, 4/20 answered. Twelve points lost in reading, twelve
+   more than the retrieval column suggests.
+4. **TR is not a retrieval problem at all.** `lexical-reference` retrieves 20/20 and answers 11/20; `cortex-session`
+   19/20 → 7/20. **A perfect retriever would still fail half the temporal questions with this reader.** The
+   working assumption going into this round was that MR and TR were retrieval deficits. On this evidence the
+   larger half is reading, and the end-to-end arm's TR 74.6% against this path's 35% says the production prompt is
+   where that half lives.
+
 ## 3. Finding one: reading costs about a third
 
 | arm | recall@k | accuracy | conversion |
 | --- | --- | --- | --- |
-| `lexical-reference` | 89.0% | 65.0% | 73% |
+| `lexical-reference` | 89.0% | 68.0% | 76% |
 | `cortex-session` | 87.0% | 60.0% | 69% |
 | `cortex/trim-2.8k` | 73.0% | 52.0% | 71% |
 
@@ -92,17 +134,18 @@ components with a measured total between them, and each is separately testable o
 3. **Not a 500-question number.** The subset is stratified but a hundred questions carries roughly ±9 points of
    sampling error at p≈0.6.
 
-## 6. The next three measurements, in order
+## 6. The next measurements, in order, revised by §2.1
 
 | # | measurement | why it is next | criterion |
 | --- | --- | --- | --- |
-| 1 | per-capability accuracy at 2.8k | the aggregate cannot say whether MR or TR is losing, and the two have different repairs | reported; MR and TR separated |
-| 2 | the same 100 questions through the **production** memory arm at a matched budget | tests the decomposition in §4 directly rather than inferring it from two different subsets | arms within ±10pp of 60.0%, or the gap attributed to a named component |
-| 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak retrieval" | Δ accuracy with identical `recall@k` |
+| 1 | **the production reader prompt on the same hits** | §2.1 says TR loses 9 of 20 questions *after* retrieval succeeded. The production prompt is the only component in the 21-point gap that can affect a question whose evidence is already present, and it costs one parameter to test | TR accuracy at 2.8k rises ≥15pp with `recall@k` held constant |
+| 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
+| 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
 
-Number 2 is the one that matters. Every claim in §4 is currently an inference from two runs that differ in
-dataset size, prompt and pipeline; the only way to make it a measurement is to run one pipeline with one
-component removed at a time.
+Number 1 replaces the cross-session compression item that this round's evidence demoted. The plan had MR and TR
+as retrieval deficits; the per-capability table says TR is a reading deficit (20/20 retrieved, 11/20 answered)
+and MR is both. A retrieval repair aimed at a reading problem would have produced nothing, and the only reason it
+was not attempted is that the split got measured first.
 
 ## 7. Cost of this stage
 
