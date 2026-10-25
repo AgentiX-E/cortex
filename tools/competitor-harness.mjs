@@ -85,7 +85,27 @@ if (readerMode !== 'con' && readerMode !== 'dispatch') {
  * accuracy answers a question the recall column cannot: the reference, the unbounded product, and two priced
  * budgets.
  */
-const READ_ARMS = ['lexical-reference', 'cortex-session', 'cortex/trim-2.8k', 'cortex/trim-6.8k'];
+const DEFAULT_READ_ARMS = [
+  'lexical-reference',
+  'cortex-session',
+  'cortex/trim-2.8k',
+  'cortex/trim-6.8k',
+];
+
+/**
+ * Which arms to read, overridable because the cost is linear in both questions and arms.
+ *
+ * The four-arm setting is right for a hundred questions. On the full five hundred it is four thousand model calls,
+ * and the two arms that answer the question are the reference and the unbounded product — the budget arms repeat
+ * an answer the recall column already gives.
+ */
+const READ_ARMS =
+  flag('--read-arms') === undefined
+    ? DEFAULT_READ_ARMS
+    : flag('--read-arms')
+        .split(',')
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
 const dataPath = flag('--data') ?? process.env['LONGMEMEVAL_PATH'];
 
 /**

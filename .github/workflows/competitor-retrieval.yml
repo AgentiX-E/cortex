@@ -25,6 +25,16 @@ on:
         required: false
         default: '100'
         type: string
+      read_questions:
+        description: 'Questions to read and grade (0 = skip the reading stage)'
+        required: false
+        default: '100'
+        type: string
+      read_arms:
+        description: 'Comma-separated provider names to read (empty = the four default arms)'
+        required: false
+        default: ''
+        type: string
       limit:
         description: 'Top-k the reader would see'
         required: false
@@ -41,7 +51,8 @@ concurrency:
 jobs:
   retrieval:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    # 500 questions x 2 arms x 2 prompts is ~2,000 model calls; 100 questions is ~800.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -126,25 +137,31 @@ jobs:
       #
       # Four arms only, and 100 questions: the cost is questions x arms x 2 model calls, and the arms left out are
       # the ones whose accuracy the recall column already determines.
-      - name: Read and grade (100 questions, 2.8k budget)
+      - name: Read and grade (2.8k budget)
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
         run: |
+          if [ "${{ github.event.inputs.read_questions || '100' }}" = "0" ]; then
+            echo "reading stage skipped by input"
+            exit 0
+          fi
+          ARMS="${ARMS_FLAG}"
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions 100 \
+            --questions "${{ github.event.inputs.read_questions || '100' }}" \
             --limit 10 \
             --budget-tokens 2800 \
-            --read \
+            --read $ARMS \
             --json > competitor-read.json
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions 100 \
+            --questions "${{ github.event.inputs.read_questions || '100' }}" \
             --limit 10 \
             --budget-tokens 2800 \
-            --read \
+            --read $ARMS \
             | tee competitor-read.txt
 
       # The dispatch arm. Same hits, same judge, same corpus -- one prompt differs by an inserted per-capability
@@ -152,18 +169,21 @@ jobs:
       # times, and three published lines of work (TReMu, MemFlow, Test of Time) say the omission is dates,
       # arithmetic and block order. This is the smallest run that can confirm or refute that.
       - name: Read and grade with the dispatch prompt
+        if: ${{ github.event.inputs.read_questions != '0' }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
         run: |
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions 100 \
+            --questions "${{ github.event.inputs.read_questions || '100' }}" \
             --limit 10 \
             --budget-tokens 2800 \
             --read \
             --reader dispatch \
+            $ARMS_FLAG \
             | tee competitor-read-dispatch.txt
 
       - name: Summary
