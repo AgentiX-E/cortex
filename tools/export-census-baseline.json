@@ -355,7 +355,7 @@
         "cortex-eval: MemoryTurn (packages/cortex-eval/src/competitor.ts:35)",
         "cortex-eval: NaturalLanguageMemorySystemOptions (packages/cortex-eval/src/natural-language-memory.ts:109)",
         "cortex-eval: PositionEffect (packages/cortex-eval/src/a3.ts:238)",
-        "cortex-eval: ProviderScore (packages/cortex-eval/src/harness.ts:111)",
+        "cortex-eval: ProviderScore (packages/cortex-eval/src/harness.ts:120)",
         "cortex-eval: QuestionRecordInput (packages/cortex-eval/src/question-record.ts:249)",
         "cortex-eval: ReadToggleOptions (packages/cortex-eval/src/env-toggle.ts:27)",
         "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
@@ -427,7 +427,7 @@
         "cortex-eval: retrieveTopK (packages/cortex-eval/src/retrieval.ts:442)",
         "cortex-eval: runBenchmark (packages/cortex-eval/src/benchmark.ts:259)",
         "cortex-eval: runEmbeddingBenchmark (packages/cortex-eval/src/runner.ts:218)",
-        "cortex-eval: sessionsOf (packages/cortex-eval/src/harness.ts:171)",
+        "cortex-eval: sessionsOf (packages/cortex-eval/src/harness.ts:180)",
         "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
         "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:160)",
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2671)",
@@ -1931,7 +1931,7 @@
       "packages/cortex-eval/src/a3.ts:238"
     ],
     "cortex-eval: ProviderScore": [
-      "packages/cortex-eval/src/harness.ts:111"
+      "packages/cortex-eval/src/harness.ts:120"
     ],
     "cortex-eval: QuestionFlip": [
       "packages/cortex-eval/src/variance.ts:93"
@@ -2270,7 +2270,7 @@
       "packages/cortex-eval/src/runner.ts:218"
     ],
     "cortex-eval: sessionsOf": [
-      "packages/cortex-eval/src/harness.ts:171"
+      "packages/cortex-eval/src/harness.ts:180"
     ],
     "cortex-eval: sidesLandInDistinctClusters": [
       "packages/cortex-eval/src/b7-cohort.ts:212"

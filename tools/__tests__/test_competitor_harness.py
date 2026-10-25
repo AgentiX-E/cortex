@@ -130,6 +130,24 @@ def test_the_cost_column_is_reported_for_every_provider() -> None:
         assert score["meanContextChars"] >= 0
 
 
+def test_an_unknown_reader_mode_is_rejected() -> None:
+    """A mode the reader does not implement must fail, not fall back to the control.
+
+    A silent fallback would produce a run whose artifact names `dispatch` and whose prompts were `con` -- the
+    recorded-configuration defect this repository has already been audited for twice.
+    """
+    completed = subprocess.run(
+        ["node", str(TOOL), "--read", "--reader", "bogus"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert "must be 'con' or 'dispatch'" in completed.stderr
+
+
 def test_the_floor_stays_at_zero() -> None:
     """A comparison whose bottom row is not zero is measuring arithmetic."""
     payload = run("--data", str(FIXTURE), "--questions", "4")

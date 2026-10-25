@@ -140,3 +140,87 @@ describe('sanitising the reply', () => {
     expect(prompts).toHaveLength(1);
   });
 });
+
+/**
+ * The dispatch arm: one clause, and nothing else different.
+ *
+ * The first accuracy reading answered 11 of 20 temporal questions whose evidence had been retrieved 20 of 20
+ * times. The claim this arm tests is that a prompt which says nothing about dates, arithmetic or block order is
+ * the reason. That claim is only testable if the two prompts differ in **one** place, so the last test below
+ * removes the clause from a dispatch prompt and asserts it becomes the control byte for byte.
+ *
+ * No test asserts that the clause is *right* — that is what the run is for. These assert that it is the only
+ * thing that moved, which is the precondition for the run meaning anything.
+ */
+describe('the dispatch arm', () => {
+  async function promptOf(mode: 'con' | 'dispatch', question: Question): Promise<string> {
+    const { llm, prompts } = recorder();
+    await createProviderReader(llm, mode)(question, [{ text: 'alpha', at: Date.UTC(2023, 4, 1) }]);
+    return prompts[0]!;
+  }
+
+  function questionWith(capability: Question['capability']): Question {
+    return { ...QUESTION, capability };
+  }
+
+  it('sends the control prompt unchanged when the mode is con', async () => {
+    const prompt = await promptOf('con', questionWith('TR'));
+    expect(prompt).not.toContain('NOT chronologically');
+    expect(prompt).not.toContain('YYYY-MM-DD');
+  });
+
+  it('tells a temporal question to write the dates and do the arithmetic', async () => {
+    const prompt = await promptOf('dispatch', questionWith('TR'));
+    expect(prompt).toContain('NOT chronologically');
+    expect(prompt).toContain('YYYY-MM-DD');
+    expect(prompt).toContain('one step at a time');
+    expect(prompt).toContain('Do not estimate an interval');
+  });
+
+  it('tells a knowledge-update question to enumerate the values and take the latest', async () => {
+    const prompt = await promptOf('dispatch', questionWith('KU'));
+    expect(prompt).toContain('more than one value');
+    expect(prompt).toContain('value from the latest date');
+  });
+
+  it('tells a multi-session question to collect across conversations', async () => {
+    const prompt = await promptOf('dispatch', questionWith('MR'));
+    expect(prompt).toContain('more than one conversation');
+    expect(prompt).toContain('do not stop at the first one');
+  });
+
+  it('tells an abstention question that refusing is a correct answer', async () => {
+    const prompt = await promptOf('dispatch', questionWith('ABS'));
+    expect(prompt).toContain('correct when the memory holds nothing');
+    // The abstention clause does not need the ordering statement: there is nothing to order.
+    expect(prompt).not.toContain('NOT chronologically');
+  });
+
+  it('gives a single-session question only the ordering statement', async () => {
+    const prompt = await promptOf('dispatch', questionWith('IE'));
+    expect(prompt).toContain('NOT chronologically');
+    expect(prompt).not.toContain('YYYY-MM-DD');
+  });
+
+  it('differs from the control by an insertion and nothing else', async () => {
+    // The property the whole arm rests on: the dispatch prompt is the control prompt with lines inserted, so a
+    // difference between the two readings is attributable to the inserted lines and not to a rewording. Asserted
+    // as a subsequence rather than by deleting text, because deletion has to know what the clause says and a test
+    // that reimplements the clause cannot catch a change to it.
+    const isSubsequence = (small: readonly string[], big: readonly string[]): boolean => {
+      let at = 0;
+      for (const line of big) {
+        if (at < small.length && line === small[at]) at += 1;
+      }
+      return at === small.length;
+    };
+
+    for (const capability of ['IE', 'MR', 'KU', 'TR', 'ABS'] as const) {
+      const control = (await promptOf('con', questionWith(capability))).split('\n');
+      const dispatched = (await promptOf('dispatch', questionWith(capability))).split('\n');
+      expect(isSubsequence(control, dispatched)).toBe(true);
+      // And it really inserted something: a mode that changes nothing would make the ablation vacuous.
+      expect(dispatched.length).toBeGreaterThan(control.length);
+    }
+  });
+});

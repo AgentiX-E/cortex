@@ -63,6 +63,19 @@ const budgetTokens = Number(flag('--budget-tokens') ?? 2800);
  * `questions x providers x 2` model calls.
  */
 const readAnswers = argv.includes('--read');
+/**
+ * Which reader prompt the reading stage sends.
+ *
+ * `con` is the control — the plain Chain-of-Note prompt the first accuracy reading was taken with. `dispatch`
+ * adds a per-capability clause: dates and arithmetic for temporal questions, value enumeration for
+ * knowledge-update, cross-conversation collection for multi-session, and a statement of the block order. The two
+ * prompts differ by that insertion and nothing else, which is what makes a difference between two runs
+ * attributable to it.
+ */
+const readerMode = flag('--reader') ?? 'con';
+if (readerMode !== 'con' && readerMode !== 'dispatch') {
+  throw new Error(`--reader must be 'con' or 'dispatch', got '${readerMode}'`);
+}
 
 /**
  * Which providers get read.
@@ -182,7 +195,7 @@ if (readAnswers) {
   // accuracy column and be read as a run that measured accuracy.
   const llm = createLlmFromEnv(process.env);
   const grade = createLlmJudge(llm);
-  reader = createProviderReader(llm);
+  reader = createProviderReader(llm, readerMode);
   judge = (question, answer) =>
     grade(
       question.question,
@@ -203,7 +216,7 @@ const scores = await measureRetrieval(dataset, providers, {
 // these strings, so a run whose configuration says `deepseek-chat` and whose calls went to `deepseek-v4-pro`
 // would be graded A against a run it does not match.
 const readerName = readAnswers
-  ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (chain-of-note, one request)`
+  ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (chain-of-note/${readerMode}, one request)`
   : 'none (retrieval only)';
 const judgeName = readAnswers
   ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (official per-type templates)`

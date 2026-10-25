@@ -36,7 +36,67 @@
 
 import type { LLM } from '@agentix-e/cortex-core';
 import type { SearchHit } from './competitor.js';
-import type { Question } from './types.js';
+import type { Capability, Question } from './types.js';
+
+/**
+ * Which prompt the reading stage uses.
+ *
+ * Two arms, and the difference is one thing: `dispatch` adds a per-capability clause and states the order the
+ * blocks are in. Everything else — the three steps, the refusal phrase, the memory, the question — is identical,
+ * so a difference between the two is the clause and not the prompt.
+ *
+ * `con` is the control. It is what the first accuracy reading was taken with, and keeping it as a mode is what
+ * lets a later run say "the clause is worth N points" instead of comparing two prompts that differ in four ways.
+ */
+type ReaderMode = 'con' | 'dispatch';
+
+/**
+ * The per-capability clause, and why each one is there.
+ *
+ * The first accuracy reading answered 11 of 20 temporal questions whose evidence had been retrieved 20 of 20
+ * times. Three published lines of work say why, and all three point at the same omission: the prompt said nothing
+ * about dates, nothing about arithmetic, and nothing about the order the blocks arrived in.
+ *
+ * - **TReMu** (temporal reasoning for memory agents) reports GPT-4o moving from 29.8% to 77.7% on a 600-question
+ *   temporal set when date arithmetic is executed rather than narrated, against 61.7% for plain chain-of-thought.
+ *   We cannot call a tool from here, so the clause asks for the two dates and the subtraction to be written down —
+ *   the part of that result which is a prompt rather than an executor.
+ * - **MemFlow** uses the same shape as a three-step protocol: name both dates with a quote from the context, then
+ *   compute, then answer. Its conflict-resolution prompt carries a second rule: when values conflict, the
+ *   chronologically latest one wins.
+ * - **Test of Time** reports that telling the model the order of its evidence, and ordering it chronologically, is
+ *   worth double-digit accuracy points at zero cost. Our blocks arrive in *relevance* order, so the honest version
+ *   is to say so and let the model rebuild the timeline from the dates — reordering them would trade the ranking
+ *   retrieval produced for a guess about which order the reader prefers.
+ */
+function capabilityClause(capability: Capability | undefined): readonly string[] {
+  const order =
+    'The memory blocks are ordered by relevance to the question, NOT chronologically. Use their dates to establish the order of events.';
+  switch (capability) {
+    case 'TR':
+      return [
+        order,
+        'For every block that mentions an event the question refers to, write its date in YYYY-MM-DD form and quote the phrase you took it from.',
+        'Then do the arithmetic the question asks for (a difference in days, weeks or months, or an ordering) one step at a time, and answer with the result. Do not estimate an interval you can read off two dates.',
+      ];
+    case 'KU':
+      return [
+        order,
+        'The same attribute may appear with more than one value. Write each distinct value with the date it was stated, then answer with the value from the latest date.',
+      ];
+    case 'MR':
+      return [
+        order,
+        'The answer may need evidence from more than one conversation. Collect every block that bears on the question before answering, and do not stop at the first one that looks relevant.',
+      ];
+    case 'ABS':
+      return [
+        'Answering "I don\'t know" is correct when the memory holds nothing that answers the question. Do not invent a plausible value to avoid refusing.',
+      ];
+    default:
+      return [order];
+  }
+}
 
 /** The phrase the reader emits when the context holds no answer. */
 const READER_ABSTAIN = "I don't know";
@@ -74,7 +134,12 @@ function buildReaderPrompt(
   question: string,
   hits: readonly SearchHit[],
   questionDate?: string,
+  mode: ReaderMode = 'con',
+  capability?: Capability,
 ): string {
+  // The `dispatch` clause is inserted between the shared steps and the memory, so both arms send the identical
+  // three steps, refusal phrase, date line, memory and question. One variable, in one place.
+  const clause = mode === 'dispatch' ? capabilityClause(capability) : [];
   return [
     'You are answering a question from retrieved conversation memory.',
     '',
@@ -83,6 +148,7 @@ function buildReaderPrompt(
     'one is the current value.',
     'Step 3 — Output ONLY the answer phrase (a word, a name, a number, or a short phrase), with no explanation.',
     `If the memory contains no answer at all, output exactly "${READER_ABSTAIN}".`,
+    ...(clause.length === 0 ? [] : ['', ...clause]),
     ...(questionDate === undefined ? [] : ['', `The question is asked on ${questionDate}.`]),
     '',
     'RETRIEVED MEMORY:',
@@ -107,10 +173,10 @@ type ProviderReader = (question: Question, hits: readonly SearchHit[]) => Promis
  * The reply is trimmed and its `Step 3:` echo removed: a model that repeats the label would otherwise be graded
  * on a string that begins with "Step 3:" and could be matched against a gold answer that happens to contain it.
  */
-export function createProviderReader(llm: LLM): ProviderReader {
+export function createProviderReader(llm: LLM, mode: ReaderMode = 'con'): ProviderReader {
   return async (question, hits) => {
     const raw = await llm.complete(
-      buildReaderPrompt(question.question, hits, question.questionDate),
+      buildReaderPrompt(question.question, hits, question.questionDate, mode, question.capability),
     );
     return stripStepLabel(raw).trim();
   };
