@@ -100,15 +100,24 @@ jobs:
             --limit "${{ github.event.inputs.limit || '10' }}" \
             --json > competitor-sample.json
 
-      - name: Compare providers (full file)
+      # The budget sweep. The published systems report one number each at a different context cost --
+      # Contextier 91.6% at 2,807 mean tokens, Zep 90.2% at 4,408 median, Mem0 93.4% at 6,787 mean -- so a single
+      # budget here would produce a number that cannot be placed beside any of them. Three rows, one per published
+      # budget, is the smallest sweep that answers "at what cost" rather than "how high".
+      - name: Compare providers (full file, budget sweep)
         env:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
         run: |
-          node tools/competitor-harness.mjs \
-            --data "$LONGMEMEVAL_PATH" \
-            --questions 500 \
-            --limit "${{ github.event.inputs.limit || '10' }}" \
-            | tee competitor-full.txt
+          : > competitor-full.txt
+          for tokens in 2800 4400 6800; do
+            echo "=== --budget-tokens $tokens ===" | tee -a competitor-full.txt
+            node tools/competitor-harness.mjs \
+              --data "$LONGMEMEVAL_PATH" \
+              --questions 500 \
+              --limit "${{ github.event.inputs.limit || '10' }}" \
+              --budget-tokens "$tokens" \
+              | tee -a competitor-full.txt
+          done
 
       - name: Summary
         if: always()
