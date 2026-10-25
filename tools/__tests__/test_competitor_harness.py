@@ -145,7 +145,38 @@ def test_an_unknown_reader_mode_is_rejected() -> None:
         check=False,
     )
     assert completed.returncode != 0
-    assert "must be 'con' or 'dispatch'" in completed.stderr
+    assert "must be 'con', 'dispatch' or 'dispatch2'" in completed.stderr
+
+
+def test_json_survives_a_pipe_whose_reader_is_slow() -> None:
+    """A payload over the pipe buffer must come out whole.
+
+    `process.exit` does not wait for stdout to drain, so the tool truncated its own JSON whenever the payload
+    exceeded the kernel pipe buffer and the reader was not already draining it. Measured before the fix: a
+    73,480-byte payload arrived as exactly 65,536 bytes — the pipe buffer, not a coincidence — and every
+    downstream reader saw a document that stopped mid-string rather than an error.
+
+    Two details make this a test rather than a hope. The payload has to exceed 64 KiB, or the whole thing fits in
+    the buffer and the exit is harmless. And the reader has to be **slow**, because a reader that drains
+    immediately keeps the buffer empty and the race goes the other way — which is why the bug survived until a
+    tool started piping this output, and why the earlier version of this test passed on the broken code.
+    """
+    command = f"node {TOOL} --json --people 20 | (sleep 0.5; cat)"
+    completed = subprocess.run(
+        ["sh", "-c", command],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert len(completed.stdout) > 65536, (
+        f"output was {len(completed.stdout)} bytes; a payload inside the pipe buffer cannot detect the truncation"
+    )
+    # `json.loads` is the assertion: a truncated document raises here rather than being read as a smaller run.
+    payload = json.loads(completed.stdout)
+    assert len(payload["scores"]) > 0
 
 
 def test_the_floor_stays_at_zero() -> None:

@@ -68,13 +68,14 @@ const readAnswers = argv.includes('--read');
  *
  * `con` is the control — the plain Chain-of-Note prompt the first accuracy reading was taken with. `dispatch`
  * adds a per-capability clause: dates and arithmetic for temporal questions, value enumeration for
- * knowledge-update, cross-conversation collection for multi-session, and a statement of the block order. The two
- * prompts differ by that insertion and nothing else, which is what makes a difference between two runs
- * attributable to it.
+ * knowledge-update, cross-conversation collection for multi-session, and a statement of the block order.
+ * `dispatch2` is `dispatch` with the multi-session clause replaced by a procedure that demands an artefact — the
+ * blocks as dated fact rows, then an enumerated candidate list, then an operation shown. The arms are identical on
+ * every other capability, so `con -> dispatch -> dispatch2` is two steps of one variable each.
  */
 const readerMode = flag('--reader') ?? 'con';
-if (readerMode !== 'con' && readerMode !== 'dispatch') {
-  throw new Error(`--reader must be 'con' or 'dispatch', got '${readerMode}'`);
+if (readerMode !== 'con' && readerMode !== 'dispatch' && readerMode !== 'dispatch2') {
+  throw new Error(`--reader must be 'con', 'dispatch' or 'dispatch2', got '${readerMode}'`);
 }
 
 /**
@@ -253,7 +254,18 @@ const config = {
 };
 
 if (asJson) {
-  process.stdout.write(`${JSON.stringify({ config, scores }, null, 2)}\n`);
+  const body = `${JSON.stringify({ config, scores }, null, 2)}\n`;
+  // `process.exit` does not wait for stdout to drain, and a pipe buffer is 8 KiB. The failure this prevents is
+  // silent and it happened: with one record per question the payload crossed 8 KiB, and every consumer read a
+  // file that stopped mid-string at char 8190 -- a truncated JSON document rather than an error. The callback
+  // form of `write` fires only once the chunk has been handed to the operating system, so awaiting it is what
+  // makes exit safe here.
+  //
+  // Redirecting to a file did not show this, because a file write is synchronous; only a pipe does. That is why
+  // it survived until a tool started piping the output.
+  await new Promise((resolve, reject) => {
+    process.stdout.write(body, (error) => (error === null || error === undefined ? resolve() : reject(error)));
+  });
   process.exit(0);
 }
 

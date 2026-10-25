@@ -224,3 +224,110 @@ describe('the dispatch arm', () => {
     }
   });
 });
+
+/**
+ * The second rewrite: a multi-session clause that names an artefact.
+ *
+ * The 500-question reading measured the first version of that clause at 53→58 on one arm and 57→55 on the other,
+ * against the temporal clause's 58→89 and 60→89. The difference between the two clauses is that the temporal one
+ * names what the reader must write down and the multi-session one only says to try harder.
+ *
+ * `dispatch2` is therefore an experiment in a single variable, and these tests exist to keep it that way. Two of
+ * them are about what the new arm says; the other three are about what it must not have touched.
+ */
+describe('the dispatch2 arm', () => {
+  async function promptOf(
+    mode: 'con' | 'dispatch' | 'dispatch2',
+    question: Question,
+  ): Promise<string> {
+    const { llm, prompts } = recorder();
+    await createProviderReader(llm, mode)(question, [{ text: 'alpha', at: Date.UTC(2023, 4, 1) }]);
+    return prompts[0]!;
+  }
+
+  function questionWith(capability: Question['capability']): Question {
+    return { ...QUESTION, capability };
+  }
+
+  it('demands three artefacts from a multi-session question', async () => {
+    const prompt = await promptOf('dispatch2', questionWith('MR'));
+    // A row per block, carrying the block number and its date.
+    expect(prompt).toContain('<block number> <date>');
+    // An enumerated candidate list with provenance.
+    expect(prompt).toContain('every distinct candidate answer');
+    expect(prompt).toContain('the block numbers it came from');
+    // And the operation shown rather than implied, which is what turns a "how many" question into arithmetic.
+    expect(prompt).toContain('compute it from that list and show the operation');
+  });
+
+  it('tells the reader to exclude blocks that only mention the topic', async () => {
+    // The distinction an enumerating reader gets wrong: a block about the same subject is not a block stating a
+    // fact, and counting the first kind inflates every aggregation.
+    const prompt = await promptOf('dispatch2', questionWith('MR'));
+    expect(prompt).toContain('merely mentions the topic is not evidence');
+  });
+
+  it('leaves every other capability byte-identical to dispatch', async () => {
+    // The property the whole arm rests on. If this ever fails, the dispatch→dispatch2 difference is not the
+    // multi-session clause and the reading cannot be attributed to it.
+    for (const capability of ['IE', 'KU', 'TR', 'ABS', 'single-session-user'] as const) {
+      const first = await promptOf('dispatch', questionWith(capability as Question['capability']));
+      const second = await promptOf(
+        'dispatch2',
+        questionWith(capability as Question['capability']),
+      );
+      expect(second).toBe(first);
+    }
+  });
+
+  it('changes exactly the multi-session paragraph', async () => {
+    // Stronger than "the prompts differ": the two must share a prefix and a suffix and differ only in the clause
+    // lines, so a leaked edit anywhere else shows up here rather than as an unattributable column movement.
+    const first = (await promptOf('dispatch', questionWith('MR'))).split('\n');
+    const second = (await promptOf('dispatch2', questionWith('MR'))).split('\n');
+    const shared = (a: readonly string[], b: readonly string[]): number => {
+      let i = 0;
+      while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+      return i;
+    };
+    const prefix = shared(first, second);
+    const suffix = shared([...first].reverse(), [...second].reverse());
+    // The prefix covers everything through the shared three steps, and the suffix the memory, question and label.
+    expect(prefix).toBeGreaterThanOrEqual(7);
+    expect(suffix).toBeGreaterThanOrEqual(4);
+    // The block-order statement is the last line both arms share, and the divergence starts immediately after it --
+    // which is what makes the difference the multi-session procedure and not the shared preamble.
+    expect(first[prefix - 1]).toBe(
+      'The memory blocks are ordered by relevance to the question, NOT chronologically. Use their dates to establish the order of events.',
+    );
+    expect(first[prefix]).toContain('The answer may need evidence from more than one conversation');
+    expect(second[prefix]).toContain('<block number> <date>');
+  });
+
+  it('freezes the dispatch arm the archive was taken on', async () => {
+    // `dispatch` names a run whose 500-question numbers are recorded in the measurement document. Changing what it
+    // means would make those numbers unattributable, so the exhortation is pinned here: a rewrite must become a new
+    // arm, which is exactly why `dispatch2` exists instead of an edit to `dispatch`.
+    const prompt = await promptOf('dispatch', questionWith('MR'));
+    expect(prompt).toContain(
+      'The answer may need evidence from more than one conversation. Collect every block that bears on the question',
+    );
+    expect(prompt).not.toContain('<block number> <date>');
+  });
+
+  it('is still the control prompt plus an inserted clause', async () => {
+    // `dispatch2` has to remain comparable with `con` as well, otherwise the three arms are not a chain.
+    const isSubsequence = (small: readonly string[], big: readonly string[]): boolean => {
+      let at = 0;
+      for (const line of big) {
+        if (at < small.length && line === small[at]) at += 1;
+      }
+      return at === small.length;
+    };
+    for (const capability of ['IE', 'MR', 'KU', 'TR', 'ABS'] as const) {
+      const control = (await promptOf('con', questionWith(capability))).split('\n');
+      const rewritten = (await promptOf('dispatch2', questionWith(capability))).split('\n');
+      expect(isSubsequence(control, rewritten)).toBe(true);
+    }
+  });
+});

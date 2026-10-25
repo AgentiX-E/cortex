@@ -41,14 +41,22 @@ import type { Capability, Question } from './types.js';
 /**
  * Which prompt the reading stage uses.
  *
- * Two arms, and the difference is one thing: `dispatch` adds a per-capability clause and states the order the
- * blocks are in. Everything else — the three steps, the refusal phrase, the memory, the question — is identical,
- * so a difference between the two is the clause and not the prompt.
+ * Three arms, arranged so that each step between them moves exactly one thing:
  *
- * `con` is the control. It is what the first accuracy reading was taken with, and keeping it as a mode is what
- * lets a later run say "the clause is worth N points" instead of comparing two prompts that differ in four ways.
+ * | arm | differs from the previous one by |
+ * |---|---|
+ * | `con` | — (the control; the plain Chain-of-Note prompt) |
+ * | `dispatch` | inserting a per-capability clause |
+ * | `dispatch2` | replacing the **multi-session** clause with a procedure that demands an artefact |
+ *
+ * `con` is what the first accuracy reading was taken with, and keeping every arm addressable is what lets a later
+ * run say "the clause is worth N points" or "the multi-session rewrite is worth N points" instead of comparing
+ * two prompts that differ in four ways at once.
+ *
+ * `dispatch` is frozen. The 500-question reading is archived against it, and silently changing what that name
+ * means would make every number taken on it unattributable — so a rewrite becomes a new arm rather than an edit.
  */
-type ReaderMode = 'con' | 'dispatch';
+type ReaderMode = 'con' | 'dispatch' | 'dispatch2';
 
 /**
  * The per-capability clause, and why each one is there.
@@ -69,7 +77,10 @@ type ReaderMode = 'con' | 'dispatch';
  *   is to say so and let the model rebuild the timeline from the dates — reordering them would trade the ranking
  *   retrieval produced for a guess about which order the reader prefers.
  */
-function capabilityClause(capability: Capability | undefined): readonly string[] {
+function capabilityClause(
+  capability: Capability | undefined,
+  arm: ReaderMode = 'dispatch',
+): readonly string[] {
   const order =
     'The memory blocks are ordered by relevance to the question, NOT chronologically. Use their dates to establish the order of events.';
   switch (capability) {
@@ -85,10 +96,36 @@ function capabilityClause(capability: Capability | undefined): readonly string[]
         'The same attribute may appear with more than one value. Write each distinct value with the date it was stated, then answer with the value from the latest date.',
       ];
     case 'MR':
-      return [
-        order,
-        'The answer may need evidence from more than one conversation. Collect every block that bears on the question before answering, and do not stop at the first one that looks relevant.',
-      ];
+      // Two versions of one clause, and the difference is the experiment. The first is an **exhortation** — it says
+      // what to do well ("collect every block", "do not stop at the first") and names nothing the model must
+      // produce. The 500-question reading measured what that is worth: MR moved 53->58 on one arm and 57->55 on the
+      // other, against the temporal clause's 58->89 and 60->89.
+      //
+      // The rewrite is a **procedure** that demands an artefact, on the same principle that made the temporal clause
+      // work: it names the rows the reader must write before it may answer. Four external findings shaped it.
+      //
+      // - LongMemEval's own text says multi-session queries need "further fact extraction", not more context. The
+      //   clause therefore asks for extraction into per-block facts rather than for more careful reading.
+      // - BEAM's error analysis attributes multi-session failures to retrieval omitting events and losing order, so
+      //   the enumeration is per block *with its date* rather than a bag of facts.
+      // - Zep's cross-session gains (+13.6pp on multi-session QA) come from a temporal knowledge graph in which each
+      //   fact carries validity. A prompt cannot build that graph, but it can require the same shape of output.
+      // - The previous round's own finding: a clause that names an artefact moved 31 questions; a clause that only
+      //   encourages moved 5 and -2.
+      //
+      // The last line is the part that a reader could otherwise skip: counting from an enumerated list rather than
+      // from an impression is what turns "how many" questions from recall into arithmetic.
+      return arm === 'dispatch2'
+        ? [
+            order,
+            'Write one row per block, in the form "<block number> <date> — <the specific fact this block states about the question>". Write only blocks that state a fact; a block that merely mentions the topic is not evidence and must be left out.',
+            'Then write a second list: every distinct candidate answer the rows named, each with the block numbers it came from. If the question asks for an aggregation (how many, in total, all of, the longest), compute it from that list and show the operation.',
+            'Do not stop at the first block that looks relevant and do not answer from an impression of the list. If a candidate appears in only one row, say so before choosing it.',
+          ]
+        : [
+            order,
+            'The answer may need evidence from more than one conversation. Collect every block that bears on the question before answering, and do not stop at the first one that looks relevant.',
+          ];
     case 'ABS':
       return [
         'Answering "I don\'t know" is correct when the memory holds nothing that answers the question. Do not invent a plausible value to avoid refusing.',
@@ -137,9 +174,13 @@ function buildReaderPrompt(
   mode: ReaderMode = 'con',
   capability?: Capability,
 ): string {
-  // The `dispatch` clause is inserted between the shared steps and the memory, so both arms send the identical
-  // three steps, refusal phrase, date line, memory and question. One variable, in one place.
-  const clause = mode === 'dispatch' ? capabilityClause(capability) : [];
+  // The clause is inserted between the shared steps and the memory, so every arm sends the identical three steps,
+  // refusal phrase, date line, memory and question. One variable, in one place.
+  //
+  // `dispatch2` calls the same function as `dispatch` and differs only in the multi-session branch, so the arms are
+  // byte-identical on every other capability. That is asserted in the tests rather than intended here: a rewrite
+  // that leaked into the temporal clause would show up as an unattributable difference in the temporal column.
+  const clause = mode === 'con' ? [] : capabilityClause(capability, mode);
   return [
     'You are answering a question from retrieved conversation memory.',
     '',

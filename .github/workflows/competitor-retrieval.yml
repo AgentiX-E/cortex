@@ -183,8 +183,67 @@ jobs:
             --budget-tokens 2800 \
             --read \
             --reader dispatch \
+            --json $ARMS_FLAG > competitor-read-dispatch.json
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions "${{ github.event.inputs.read_questions || '100' }}" \
+            --limit 10 \
+            --budget-tokens 2800 \
+            --read \
+            --reader dispatch \
             $ARMS_FLAG \
             | tee competitor-read-dispatch.txt
+
+      # The multi-session rewrite. `dispatch` says "collect every block and do not stop at the first"; `dispatch2`
+      # says what rows to write. The 500-question reading measured the first at 53->58 and 57->55 against the
+      # temporal clause's 58->89 and 60->89, so the question is whether naming an artefact is what the shock
+      # family needed. The two arms are byte-identical on every other capability (asserted in the reader tests),
+      # so this run moves exactly one clause.
+      - name: Read and grade with the multi-session rewrite
+        if: ${{ github.event.inputs.read_questions != '0' }}
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
+        run: |
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions "${{ github.event.inputs.read_questions || '100' }}" \
+            --limit 10 \
+            --budget-tokens 2800 \
+            --read \
+            --reader dispatch2 \
+            --json $ARMS_FLAG > competitor-read-dispatch2.json
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions "${{ github.event.inputs.read_questions || '100' }}" \
+            --limit 10 \
+            --budget-tokens 2800 \
+            --read \
+            --reader dispatch2 \
+            $ARMS_FLAG \
+            | tee competitor-read-dispatch2.txt
+
+      # Paired tests over the three arms. Without this the run reports three totals and a reader has to decide
+      # whether 69.0 against 69.2 is a difference; with it the answer is an exact McNemar p on the discordant
+      # questions, and it is the same computation every time. Both files carry one record per measured question,
+      # including the questions neither arm got right, because those are the denominator.
+      - name: Paired tests across the three arms
+        if: ${{ always() && github.event.inputs.read_questions != '0' }}
+        run: |
+          set -e
+          for pair in "competitor-read.json competitor-read-dispatch.json con->dispatch" \
+                      "competitor-read-dispatch.json competitor-read-dispatch2.json dispatch->dispatch2"; do
+            set -- $pair
+            if [ -f "$1" ] && [ -f "$2" ]; then
+              echo "=== $3 ==="
+              node tools/paired-test.mjs "$1" "$2" | tee -a competitor-paired.txt
+              echo
+            else
+              echo "=== $3: skipped, a run file is missing ===" | tee -a competitor-paired.txt
+            fi
+          done
 
       - name: Summary
         if: always()
@@ -215,6 +274,24 @@ jobs:
             cat competitor-read-dispatch.txt 2>/dev/null || echo 'dispatch arm did not run'
             echo '```'
             echo ''
+            echo '### Multi-session rewrite (dispatch2)'
+            echo ''
+            echo 'One clause differs from the stage above: the multi-session clause demands dated fact rows and an'
+            echo 'enumerated candidate list instead of asking the reader to look harder.'
+            echo ''
+            echo '```'
+            cat competitor-read-dispatch2.txt 2>/dev/null || echo 'rewrite arm did not run'
+            echo '```'
+            echo ''
+            echo '### Paired tests'
+            echo ''
+            echo 'Exact McNemar over the questions that changed. A total four points apart can be a coin; this says'
+            echo 'which it is.'
+            echo ''
+            echo '```'
+            cat competitor-paired.txt 2>/dev/null || echo 'paired tests did not run'
+            echo '```'
+            echo ''
             echo '<details><summary>Full file</summary>'
             echo ''
             echo '```'
@@ -236,4 +313,8 @@ jobs:
             competitor-read.txt
             competitor-read.json
             competitor-read-dispatch.txt
+            competitor-read-dispatch.json
+            competitor-read-dispatch2.txt
+            competitor-read-dispatch2.json
+            competitor-paired.txt
           if-no-files-found: warn
