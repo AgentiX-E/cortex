@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { admissionOptionsFrom } from '../admission.js';
+import { lexicalRelevance } from '../relevance.js';
 import { admitSessions, selectSessionBudget } from '../sessionize.js';
 import { CortexSessionProvider, type ProviderSession } from '../provider.js';
 
@@ -124,20 +125,37 @@ describe('CortexSessionProvider: the product retrieval as a provider', () => {
   it('equals the product functions applied by hand, which is the whole contract', async () => {
     const provider = providerOf({ sessionBudget: 3 });
     await provider.ingest(SESSIONS);
-    const hits = await provider.search('ignored', { limit: 10 });
+    const question = 'ignored';
+    const hits = await provider.search(question, { limit: 10 });
 
     const gate = admissionOptionsFrom(T0 + 30 * DAY, {
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: 3,
     });
+    // The adapter must call `selectSessionBudget` with the same signal it ranks hits by, so the invariant is
+    // restored with `lexicalRelevance` on both sides rather than with a weaker expectation.
+    const relevance = (session: { turns: readonly { content: string }[] }): number =>
+      session.turns.reduce(
+        (best, turn) => Math.max(best, lexicalRelevance(question, turn.content)),
+        0,
+      );
+
     const expected = selectSessionBudget(
       admitSessions(
         SESSIONS.map((session) => session.turns.map((turn) => turn.content)),
         gate,
       ),
       3,
-    ).map((session) => session.turns.map((turn) => turn.content).join('\n'));
+      relevance,
+    )
+      .map((session) => ({
+        index: session.index,
+        text: session.turns.map((turn) => turn.content).join('\n'),
+        score: relevance(session),
+      }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.text);
 
     expect(hits.map((hit) => hit.text)).toEqual(expected);
   });
@@ -153,20 +171,47 @@ describe('CortexSessionProvider: the product retrieval as a provider', () => {
     expect(await provider.search('anything', { limit: 5 })).toEqual([]);
   });
 
-  it('declares the cost of building its store', () => {
-    // `embedding` because the product's relevance is vector-based. A comparison that hid this would be
-    // comparing a model-built store against a lexical index without saying so.
-    expect(providerOf().build).toBe('embedding');
+  it('declares a model-free build, because the ranking signal reads no model', () => {
+    // `embedding` would have been a false statement about the cost side of the ledger: `lexicalRelevance` is a
+    // term-overlap function, and a comparison that says otherwise misreports what the run spent.
+    expect(providerOf().build).toBe('none');
   });
 
-  it('does not read the query, and that is reported rather than fixed here', async () => {
-    // The session budget ranks by recency and length, not by the question. Two different questions over one
-    // store therefore return the same sessions — a property of the product, surfaced by the harness rather
-    // than hidden by the adapter.
+  it('reads the query, and returns different sessions for different questions', async () => {
+    // The previous release asserted the opposite — two questions over one store returned identical sessions,
+    // because `bestValue` is constant and the ranking fell through to arrival order. The reversal is the
+    // measurement: `all-gold` on the synthetic set moved from 8.3% to 100% when this changed, and the defect
+    // was found by a harness rather than by a reader.
     const provider = providerOf();
     await provider.ingest(SESSIONS);
-    const first = await provider.search('where does the user live', { limit: 10 });
-    const second = await provider.search('how many cats are there', { limit: 10 });
-    expect(first.map((hit) => hit.text)).toEqual(second.map((hit) => hit.text));
+    const asked = await provider.search('moved to Berlin', { limit: 1 });
+    const unrelated = await provider.search('two cats', { limit: 1 });
+    expect(asked.map((hit) => hit.text)).not.toEqual(unrelated.map((hit) => hit.text));
+    expect(asked[0]!.text).toContain('Berlin');
+    expect(unrelated[0]!.text).toContain('cats');
+  });
+
+  it('falls back to arrival order when two questions cover their turns equally well', () => {
+    // A limitation, asserted rather than left to be rediscovered. Coverage is normalised on the question, so
+    // two questions that each match one of three terms in different sessions score identically, and the
+    // tie-break is `session.index`. A term-weighting (IDF over the store, or an embedding) would separate them,
+    // and either changes every number this signal produces — so it is a registered experiment, not an edit.
+    const shared = lexicalRelevance('where does the user live', SESSIONS[0]!.turns[0]!.content);
+    const other = lexicalRelevance('how many cats are there', SESSIONS[1]!.turns[0]!.content);
+    expect(shared).toBe(other);
+  });
+
+  it('ranks its hits, because the position of a hit is read as its rank', async () => {
+    // The product re-sorts selected sessions into arrival order before writing a prompt — a later session
+    // listed first makes relative-time questions unanswerable. A retrieval interface is read for rank instead,
+    // so presenting chronologically here would report a rank the selection never assigned. `s3` is the most
+    // recent session and would be last in arrival order.
+    const provider = providerOf();
+    await provider.ingest(SESSIONS);
+    const hits = await provider.search('moved to Berlin for a new job', { limit: 10 });
+    expect(hits[0]!.text).toContain('Berlin');
+    expect(hits.map((hit) => hit.score ?? 0)).toEqual(
+      [...hits.map((hit) => hit.score ?? 0)].sort((a, b) => b - a),
+    );
   });
 });

@@ -752,7 +752,36 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // answering from no evidence is worse than exceeding a prompt budget. An
     // earlier version carried a `selected.length === 0` guard here that no test
     // could reach, which is how the redundancy was found.
-    const selected = selectSessionBudget(eligible, this.#options.gate.sessionBudget);
+    //
+    // The relevance signal is threaded through from `relevanceFor`, and the
+    // question is bound here rather than captured anywhere below. Without it the
+    // ranking is `bestValue`, which is `0.5` for every session in the shipped
+    // configuration -- so the budget was spending itself in arrival order while
+    // the artifact named a session budget. See `sessionize.ts` for the
+    // measurement and for why this is a parameter of the budget rather than a
+    // second `confidenceFor`.
+    //
+    // Only this route passes one. `#admit` flattens sessions for the flat routes,
+    // where the turns are re-ranked by `PromptOptions.relevanceFor` inside the
+    // prompt, so a session order there would be discarded before it was read --
+    // and wiring a signal nobody consumes is the inert-configuration defect this
+    // file has already been audited for twice.
+    const relevance = this.#options.relevanceFor;
+    const selected = selectSessionBudget(
+      eligible,
+      this.#options.gate.sessionBudget,
+      relevance === undefined
+        ? undefined
+        : (session) =>
+            session.turns.reduce(
+              (best, turn) => Math.max(best, relevance(question, turn.content)),
+              // `-Infinity` rather than `0`: `relevanceFor` may legitimately return
+              // negative scores (a log-likelihood), and seeding with `0` would
+              // report that signal's best turn as `0` -- a value it never
+              // produced.
+              Number.NEGATIVE_INFINITY,
+            ),
+    );
 
     // The boundary label is the reason this path exists. Flattening the
     // sessions here would reproduce exactly the behaviour of the flat path and

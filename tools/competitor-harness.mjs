@@ -116,11 +116,16 @@ process.stdout.write(
   `\nconfiguration: k=${limit}, mode=isolated, reader/judge=none\ncomparability(identical): ${sameRun.grade}\n`,
 );
 process.stdout.write(
-  '\nscope: lexical-reference covers ordering and the empty store; cortex-session covers admission and the\n' +
-    'session budget only. Its missing step is the relevance ordering inside `buildSessionPrompt`, so its mrr\n' +
-    'is not comparable with the lexical row and is printed only to show that it is not.\n',
+  '\nscope: lexical-reference covers ordering and the empty store; cortex-session covers admission, the\n' +
+    'session budget, the relevance key and the hit order. Both declare build=none, so neither row was\n' +
+    'produced by a model.\n',
 );
 process.stdout.write(
-  `\nThis table is a pipeline check, not a result. Its floor is zero by construction and its ceiling is a\n` +
-    `lexical index; it exists so that H1 (docs/PLAN-COMPETITOR-HARNESS.md) can be read against something.\n`,
+  `\nThis table is a pipeline check, not a result. Its floor is zero by construction, and its ceiling here is\n` +
+    `reached: the synthetic corpus writes each fact as \`name attribute=value\`, so a term-overlap signal scores\n` +
+    `the gold turn 1.0 by construction. The remaining gap to lexical-reference is its stopword-free tokeniser\n` +
+    `(\`what\` in the question inflates its denominator) rather than a difference in retrieval quality. So\n` +
+    `cortex-session reading 100% and 1.000 means the signal is wired, not that the system is at SOTA. A corpus\n` +
+    `that can separate lexical systems has to come from outside this repository; see\n` +
+    `docs/PLAN-COMPETITOR-HARNESS.md.\n`,
 );

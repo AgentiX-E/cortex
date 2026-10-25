@@ -187,3 +187,106 @@ function admittedStub(value: number) {
     ordinal: 0,
   };
 }
+
+/**
+ * The relevance key, and the defect it repairs.
+ *
+ * `bestValue` is `0.5` for every session in the shipped configuration — admission stamps
+ * `lastAccessedAt = createdAt = now`, so recency is `1` for every turn, and with `sourceTrust` at its default
+ * and no `confidenceFor` the whole value collapses to one number. The first test below constructs exactly that
+ * state and shows the ranking falling through to arrival order; the rest show the relevance key taking over
+ * without disturbing any of the guarantees that were already tested above.
+ */
+describe('selectSessionBudget: the relevance key', () => {
+  /** A session whose every turn carries the same value, which is what admission actually produces. */
+  function flat(index: number, size = 1): AdmittedSession {
+    return {
+      index,
+      size,
+      turns: Array.from({ length: size }, (_, i) => ({
+        ...admittedStub(0.5),
+        content: `s${index} turn ${i}`,
+      })),
+    };
+  }
+
+  it('has no ranking at all when every value is equal, which is the state that was measured', () => {
+    // 24 turns, one distinct value: `bestValue` ties, so the tie-break `session.index` decides, and the budget
+    // is spent on whoever arrived first. This is not a hypothetical — it is what `distinct values: [0.5]`
+    // means, and it is why the synthetic set read `all-gold 8.3%` against `recall@k 91.7%`.
+    const sessions = [flat(0), flat(1), flat(2)];
+    expect(selectSessionBudget(sessions, 1).map((s) => s.index)).toEqual([0]);
+    expect(selectSessionBudget(sessions, 2).map((s) => s.index)).toEqual([0, 1]);
+  });
+
+  it('ranks by the relevance key instead, so the budget reaches the session that was asked about', () => {
+    const sessions = [flat(0), flat(1), flat(2)];
+    const asked = [0.1, 0.9, 0.2];
+    const selected = selectSessionBudget(sessions, 1, (session) => asked[session.index]!);
+    expect(selected.map((s) => s.index)).toEqual([1]);
+  });
+
+  it('outranks a higher value when the relevance key says so', () => {
+    // The three keys are distinct claims: what was asked, what the gate valued, what arrived first. Relevance
+    // is first, so a turn the gate valued highly does not win a budget over the session that answers.
+    const sessions = [
+      { index: 0, size: 1, turns: [{ ...admittedStub(0.9), content: 'high value' }] },
+      { index: 1, size: 1, turns: [{ ...admittedStub(0.5), content: 'asked about' }] },
+    ];
+    const selected = selectSessionBudget(sessions, 1, (session) => (session.index === 1 ? 1 : 0));
+    expect(selected.map((s) => s.index)).toEqual([1]);
+  });
+
+  it('falls back to the value when relevance ties, so the gate is not discarded', () => {
+    const sessions = [
+      { index: 0, size: 1, turns: [{ ...admittedStub(0.2), content: 'weak' }] },
+      { index: 1, size: 1, turns: [{ ...admittedStub(0.9), content: 'strong' }] },
+    ];
+    const selected = selectSessionBudget(sessions, 1, () => 0.5);
+    expect(selected.map((s) => s.index)).toEqual([1]);
+  });
+
+  it('still presents chronologically after ranking, because presentation is a different claim', () => {
+    const sessions = [flat(0), flat(1), flat(2)];
+    const asked = [0.2, 0.1, 0.9];
+    const selected = selectSessionBudget(sessions, 2, (session) => asked[session.index]!);
+    // Chosen 2 then 0, presented 0 then 2.
+    expect(selected.map((s) => s.index)).toEqual([0, 2]);
+  });
+
+  it('accepts any finite range, including negative scores', () => {
+    // A log-likelihood and a reciprocal-rank penalty are both legitimate and neither is in `[0, 1]`. Requiring
+    // a rescale would be this layer inventing a calibration it has no basis for.
+    const sessions = [flat(0), flat(1)];
+    const logLikelihood = [-2.5, -0.4];
+    const selected = selectSessionBudget(sessions, 1, (session) => logLikelihood[session.index]!);
+    expect(selected.map((s) => s.index)).toEqual([1]);
+  });
+
+  it('rejects a NaN, because every comparison against one is false', () => {
+    // The failure this guard exists for: a NaN comparator returns `0` for every pair, the sort keeps its input
+    // order, and the selection silently reverts to arrival order while the run reports that a relevance signal
+    // was supplied. That is the same shape as an inert `retrievalThreshold`.
+    expect(() => selectSessionBudget([flat(0), flat(1)], 1, () => Number.NaN)).toThrow(
+      /must return a finite number, got NaN for session/,
+    );
+  });
+
+  it('rejects an infinity, which does not order reproducibly once two of them appear', () => {
+    expect(() => selectSessionBudget([flat(0)], 1, () => Number.POSITIVE_INFINITY)).toThrow(
+      /must return a finite number, got Infinity/,
+    );
+  });
+
+  it('does not evaluate the key at all when the budget is zero', () => {
+    // The guard returns before ranking, so a caller whose signal throws on an empty store never sees the throw.
+    let called = 0;
+    expect(
+      selectSessionBudget([flat(0)], 0, () => {
+        called += 1;
+        return 1;
+      }),
+    ).toEqual([]);
+    expect(called).toBe(0);
+  });
+});

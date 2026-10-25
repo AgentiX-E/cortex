@@ -127,19 +127,19 @@ Three things this table is, and one it is not.
 The value is that H1 now has a shape to fill: swap `LexicalProvider` for a Hindsight adapter, pass the gold
 from the LongMemEval loader instead of deriving it, and the same table answers a real question.
 
-### 3.1.2 Cortex as a provider, and the one step it cannot yet cover
+### 3.1.2 Cortex as a provider, and the defect the first run found
 
 `CortexSessionProvider` (in `cortex-memory`, deliberately not importing `cortex-eval` — the reverse would put a
 measurement package in the product's dependency graph) calls the product's own functions:
 
 ```
-admitSessions(sessions, gate)  ->  selectSessionBudget(admitted, ceiling)  ->  hits
+admitSessions(sessions, gate)  ->  selectSessionBudget(admitted, ceiling, relevance)  ->  hits
 ```
 
-An invariant test pins it: for one input, the adapter's hits equal those two functions applied by hand. If the
-adapter ever grows a private copy of selection logic, that test fails.
+An invariant test pins it: for one input, the adapter's hits equal those functions applied by hand, including
+the relevance key. If the adapter ever grows a private copy of selection logic, that test fails.
 
-Three rows now:
+The first run, before the repair:
 
 ```
 provider            build      recall@k  all-gold  mrr     found
@@ -149,28 +149,55 @@ cortex-session      embedding   87.5%      4.2%    0.291   21/24   (session budg
 null-floor          none         0.0%      0.0%    0.000    0/24
 ```
 
-**The gap between any-hit and all-gold is the finding.** A lexical index that ranks by the question covers
-every gold turn; the product's selection covers at least one gold turn for 22 of 24 questions but all of them
-for 2. That is the shape multi-session failure takes: a question that needs three sessions answered from one.
+**The gap between any-hit and all-gold was the finding.** A lexical index ranking by the question covers every
+gold turn; the product's selection covered at least one for 22 of 24 questions and all of them for 2.
 
-**And the cause is in the product, not the adapter.** `selectSessionBudget` ranks sessions by
-`bestValue(session)` — recency and length — and the function never sees the query. So when the budget binds,
-what survives is whatever was recent and long, not what was relevant. A test asserts this rather than
-apologising for it: two different questions over one store return the same sessions.
+**And the cause was not "recency and length".** That sentence was in this document and it was false.
+`bestValue` is `max(turn.value)` and `turn.value` is `confidence * sourceTrust * (0.5 + 0.5 * recency)`;
+admission stamps `lastAccessedAt = createdAt = now`, so recency is `1` for every turn, and at the default
+`sourceTrust` with no `confidenceFor` every turn carries exactly `0.5`. Measured: 24 turns, **one distinct
+value**. The ranking therefore tied everywhere and the sort fell through to `session.index` — arrival order.
+Recency did not enter the ranking at all, and length entered only as the capacity check.
 
-### 3.1.3 What the adapter does not cover, stated before it is used
+### 3.1.3 The repair, and what it moved
 
-The product's session route has four steps and the adapter covers three. The fourth — the relevance ordering
-inside `buildSessionPrompt` — is where a session's turns are ordered and budgeted against the question. Until
-it is extracted as a pure function, `cortex-session`'s **MRR is not comparable** with the lexical row, and the
-tool prints a note saying so. The all-gold figure is also inflated in the product's disfavour by the same
-missing step: without relevance ordering, `search(limit)` truncates by session index, which is arrival order.
+Three changes, each with a measurement behind it:
 
-So the honest reading of these rows is narrower than the table: *admission and the session budget do not lose
-the evidence; selection does, and the piece that would fix it is not yet callable from outside.*
+1. **`lexicalRelevance(question, turn)`** in `cortex-memory/src/relevance.ts` — term coverage plus adjacent-pair
+   order, no model. It enters at the **session budget** rather than by widening `confidenceFor`, because the
+   write gate must not depend on a question that has not been asked yet.
+2. **`selectSessionBudget(sessions, budget, relevance?)`** — relevance descends first, `bestValue` second,
+   `session.index` last. Absent the signal the behaviour is byte-for-byte the archived one; a `NaN` is rejected
+   because it would silently restore the arrival-order defect while the artifact reported a signal in use.
+3. **Hits returned in ranked order.** The product re-sorts into arrival order for prompts; a retrieval
+   interface is read for rank, and MRR is read from the position of the first hit.
 
-That is the next step, and it is small: extract the ordering from `buildSessionPrompt`, call it from both the
-prompt builder and the adapter, and the fourth step joins the first three under one invariant test.
+After:
+
+```
+provider            build      recall@k  all-gold  mrr     found
+lexical-reference   none       100.0%    100.0%    0.630   24/24
+cortex-session      none       100.0%    100.0%    1.000   24/24
+cortex-session      none       100.0%     50.0%    1.000   24/24   (session budget 8)
+null-floor          none         0.0%      0.0%    0.000    0/24
+```
+
+`build` moved from `embedding` to `none` in the same edit, because a term-overlap signal is not a model and
+the cost column is not decoration.
+
+### 3.1.4 Why this is a wiring reading and not a result
+
+The synthetic generator writes each fact as `name attribute=value`, so `What is alice's city?` scores
+`alice city=new york` at exactly `1.0` by construction. `mrr 1.000` means the gold always ranks first, and
+there is no corpus left in which it could rank otherwise. The gap to `lexical-reference` is its stopword-free
+tokeniser (`what` inflates its denominator), not a difference in quality.
+
+So the table supports three claims and no more: the signal is wired, the adapter equals the product functions
+applied by hand, and the arrival-order defect is gone (five tests go red when the key is removed — verified by
+removing it). It supports **no** claim about accuracy on real language.
+
+`docs/MEASURE-SESSION-RELEVANCE.md` is the full record, including the four limitations the signal carries and
+why each is an experiment rather than an edit.
 
 ### 3.2 Comparability is a function, not an adjective
 

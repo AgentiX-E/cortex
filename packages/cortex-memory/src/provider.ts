@@ -20,10 +20,23 @@
  *    what enters the store at all — and folding it into a retrieval number would make a low score ambiguous
  *    between "the gate dropped it" and "the budget dropped it". A caller that wants the gate measured passes
  *    a different threshold and says so.
- * 2. **The session budget's value function does not see the query.** `selectSessionBudget` ranks sessions by
- *    their best turn's value, which is a function of recency and length. That is a fact about the product,
- *    not a property of this adapter, and it is exactly the kind of thing a retrieval harness should surface:
- *    if Cortex loses recall here while a lexical index does not, the loss is in selection, not in reading.
+ * 2. **The session budget's ranking is value-based, and the value is constant.** `selectSessionBudget` ranks
+ *    sessions by their best turn's value, `confidence * sourceTrust * (0.5 + 0.5 * recency)`. Admission stamps
+ *    `lastAccessedAt = createdAt = now`, so recency is `1` for every turn, and with `sourceTrust` at its
+ *    default and no `confidenceFor` every admitted turn carries exactly `0.5`. The ranking therefore ties and
+ *    falls through to arrival order — measured, not inferred: 24 turns, one distinct value. That is why this
+ *    adapter passes a `relevance` ranker (`lexicalRelevance`, bound to the query), and why it declares
+ *    `build: 'none'`: a term-overlap signal uses no model, and claiming `'embedding'` would have been a false
+ *    statement about the cost side of the ledger.
+ *
+ *    This is the kind of thing a retrieval harness exists to surface. Cortex lost `all-gold` on the synthetic
+ *    set precisely here — selection, not reading — and the adapter found the defect before the product did.
+ *
+ * 3. **Hits are returned in ranked order, not chronological order.** The product re-sorts selected sessions
+ *    into arrival order before writing a prompt, because a prompt listing a later session first makes
+ *    relative-time questions unanswerable. A *retrieval* interface is read for rank — the harness measures MRR
+ *    from the position of the first hit — so presenting chronologically there would report a rank the
+ *    selection never assigned. The two orders are different claims and this adapter states both.
  *
  * The types below are structurally identical to `cortex-eval`'s `MemoryProvider` and deliberately **not
  * imported** from it. `cortex-eval` may depend on `cortex-memory`; the reverse would make a measurement
@@ -31,7 +44,13 @@
  */
 
 import { admissionOptionsFrom, type AdmissionOptions } from './admission.js';
-import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
+import { lexicalRelevance } from './relevance.js';
+import {
+  admitSessions,
+  selectSessionBudget,
+  type AdmittedSession,
+  type SessionRelevance,
+} from './sessionize.js';
 
 export type ProviderTurn = { readonly role: 'user' | 'assistant'; readonly content: string };
 
@@ -84,7 +103,14 @@ export type CortexSessionProviderOptions = {
  */
 export class CortexSessionProvider {
   readonly name = 'cortex-session';
-  readonly build = 'embedding' as const;
+  /**
+   * `none`, because the ranking signal is term overlap and uses no model.
+   *
+   * `BuildCost` is the cost side of the ledger, and declaring `'embedding'` while ranking lexically would
+   * misreport what the run spent — the one field in the comparison a reader checks to know whether two rows
+   * were produced by the same kind of machine.
+   */
+  readonly build = 'none' as const;
 
   #sessions: ProviderSession[] = [];
   #now: number;
@@ -107,7 +133,6 @@ export class CortexSessionProvider {
   }
 
   async search(query: string, options: ProviderSearchOptions): Promise<readonly ProviderHit[]> {
-    void query;
     if (this.#sessions.length === 0) return [];
 
     const pool =
@@ -127,19 +152,47 @@ export class CortexSessionProvider {
       pool.map((session) => session.turns.map((turn) => turn.content)),
       gate,
     );
+
+    // The signal, computed once per session so the selection and the ordering below cannot disagree about a
+    // score. `lexicalRelevance` is pure and cheap, but computing it twice would be two chances to bind the
+    // wrong query rather than one place that binds it.
+    const scores = new Map<number, number>();
+    const relevance: SessionRelevance = (session) => {
+      const cached = scores.get(session.index);
+      if (cached !== undefined) return cached;
+      let best = Number.NEGATIVE_INFINITY;
+      for (const turn of session.turns) {
+        const score = lexicalRelevance(query, turn.content);
+        if (score > best) best = score;
+      }
+      scores.set(session.index, best);
+      return best;
+    };
+
     // The harness's `limit` is the top-k of the run, and the product's session budget is the same kind of
     // ceiling. Taking the smaller keeps one number in charge of how much evidence a question may carry, which
     // is what makes two providers comparable at all.
     const ceiling = Math.min(this.#budget, options.limit);
-    const selected: readonly AdmittedSession[] = selectSessionBudget(admitted, ceiling);
+    const selected: readonly AdmittedSession[] = selectSessionBudget(admitted, ceiling, relevance);
 
-    return selected.map((session) => {
-      const source = pool[session.index];
-      return {
-        text: session.turns.map((turn) => turn.content).join('\n'),
-        ...(source === undefined ? {} : { at: source.at }),
-      };
-    });
+    // Ranked, not chronological. See point 3 in this file's header: the product's arrival-order re-sort is a
+    // prompt-presentation rule, and the position of a hit here is read as its rank.
+    return selected
+      .map((session) => ({ session, score: relevance(session) }))
+      .sort((a, b) => b.score - a.score || a.session.index - b.session.index)
+      .slice(0, options.limit)
+      .map(({ session, score }) => {
+        // `session.index` is the position in the array `admitSessions` was given, and that array is
+        // `pool.map(...)` -- same length, same order, no filter. So the lookup cannot miss, and a `=== undefined`
+        // guard here would be a branch no input can enter. It was one until the coverage gate named it, which is
+        // the check this project relies on to keep a defensive branch from standing in for a thought.
+        const source = pool[session.index] as ProviderSession;
+        return {
+          text: session.turns.map((turn) => turn.content).join('\n'),
+          score,
+          at: source.at,
+        };
+      });
   }
 
   async reset(): Promise<void> {

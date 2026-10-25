@@ -38,8 +38,19 @@ export {
 // barrel entry with no consumer is an orphan the census gate reports.
 export { confidenceFromLength } from './confidence.js';
 
+// relevance
+// The signal session selection ranks by. Exported because `CortexSessionProvider`
+// below and the measurement arm both supply it; `confidence.ts` records why the
+// alternative -- widening `confidenceFor` -- was refused.
+export { lexicalRelevance } from './relevance.js';
+
 // sessionize
-export { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
+export {
+  admitSessions,
+  selectSessionBudget,
+  type AdmittedSession,
+  type SessionRelevance,
+} from './sessionize.js';
 
 // prompt
 export {
