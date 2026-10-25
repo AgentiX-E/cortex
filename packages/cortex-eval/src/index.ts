@@ -412,3 +412,13 @@ export {
   type SearchHit,
   type SearchOptions,
 } from './competitor.js';
+
+export {
+  measureRetrieval,
+  NullProvider,
+  sessionsOf,
+  type CapabilityScore,
+  type HarnessOptions,
+  type ProviderScore,
+  type RetrievalMode,
+} from './harness.js';

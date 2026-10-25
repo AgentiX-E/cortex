@@ -94,6 +94,39 @@ The current arm can be wrapped without touching the product: `buildKnowledgeUnit
 ranked block from a unit and a ranked list, and the arm's retrieval already produces the ranked list. The
 adapter is glue, and the glue is testable without a model.
 
+### 3.1.1 What H0 produced, and why a 100% recall is not a result
+
+The loop is `measureRetrieval(dataset, providers, { limit, mode, goldOf, hitsContainGold })`. It ingests,
+searches, and scores **retrieval only** — no answer, no judge, no model — and reports recall@k, all-gold
+coverage, MRR, per-capability buckets, and four counts that make a partial run visible: unmeasurable
+questions, empty retrievals, ingest skips, and the store size.
+
+```
+$ node tools/competitor-harness.mjs
+retrieval-only comparison — synthetic/40
+gold: derived from the expected answer, which is exact for a generated dataset and not for a real one
+
+provider            build      recall@k  all-gold  mrr     found     empty  unmeasurable
+lexical-reference   none       100.0%    100.0%    0.630   24/24     0      16
+null-floor          none       0.0%      0.0%      0.000   0/24      24     16
+```
+
+Three things this table is, and one it is not.
+
+- **It is a floor check.** `null-floor` scores exactly zero. If that row ever moves, the harness is broken,
+  and that is a cheaper thing to discover than a wrong leaderboard.
+- **It is an exclusion check.** Sixteen questions have no derivable gold and are counted separately rather
+  than scored as misses. A harness that folds them into the denominator reports every system as worse than
+  it is, by an amount that depends on the dataset.
+- **It is a pipeline check.** `lexical-reference` at 100% recall says the generator puts the answer in one
+  obvious turn. It says nothing about retrieval quality, and quoting it as a result would be the exact
+  mistake this project keeps finding in other people's tables.
+- **It is not a comparison.** Both rows share one configuration, so `comparability` returns `A` — and `A`
+  between a lexical index and an empty store is a true statement about two things that are both useless.
+
+The value is that H1 now has a shape to fill: swap `LexicalProvider` for a Hindsight adapter, pass the gold
+from the LongMemEval loader instead of deriving it, and the same table answers a real question.
+
 ### 3.2 Comparability is a function, not an adjective
 
 `comparability(left, right)` takes two run configurations and returns a grade plus the list of fields that
@@ -115,7 +148,7 @@ is computed from the configuration, and the configuration is printed with every 
 
 | Phase | What | Produces | Cost |
 | --- | --- | --- | --- |
-| **H0** | `LexicalProvider` + Cortex adapter + `toSessions` + `comparability` — **done in this step** | a pipeline that runs with no model, no key, no network, and a rule that decides what a score may claim | 0 |
+| **H0** | `LexicalProvider` + `toSessions` + `comparability` + `measureRetrieval` + `NullProvider` — **done** | a pipeline that runs with no model, no key, no network; a floor that is provably zero; and a rule that decides what a score may claim | 0 |
 | **H1** | Hindsight, 100-question subset, DeepSeek reader, official judge prompt | the first **A-grade** competitor number this project has ever had | one container, ~100 × (ingest + recall), DeepSeek tokens |
 | **H2** | + Mem0 OSS, + Graphiti; same 100 questions | a three-system ranking on one axis | three services, three ingests |
 | **H3** | full 500 questions × 2 runs, four systems | the table the whitepaper quotes instead of vendor figures | ×5 the H1 cost |
