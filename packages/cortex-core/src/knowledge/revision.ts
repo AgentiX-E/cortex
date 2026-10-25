@@ -63,6 +63,18 @@ export type RevisionOptions = {
   readonly edges?: readonly KnowledgeEdge[];
   /** Whether a refuted premise propagates. Off by default — see the module comment. */
   readonly cascade?: boolean;
+  /**
+   * `[newerId, olderId]` pairs declaring that the newer fact makes the older one meaningless.
+   *
+   * This is STALE's Type II conflict: the upstream attribute changed and the downstream fact was never
+   * mentioned again, so no same-slot disagreement exists to be noticed. Detecting it from text is a
+   * research problem; **recording** it, once somebody or something has said so, is bookkeeping — and PACMI
+   * draws exactly this line, evaluating "conditional on derivation links being represented or supplied".
+   *
+   * Declared invalidations go through the same `record` call as derived ones, on purpose: two paths that
+   * wrote `refuted` differently would be two semantics for one word.
+   */
+  readonly invalidations?: readonly (readonly [string, string])[];
 };
 
 export type RevisionResult = {
@@ -151,6 +163,30 @@ export function reviseLedger(
         newer.id,
         'a later fact states the time explicitly',
       );
+    }
+  }
+
+  // Declared invalidations, before the derived agreement pass so a declared refutation is never overturned
+  // by a later "these two agree" observation about unrelated facts.
+  //
+  // Only a fact that is *later* can invalidate an earlier one. A declaration pointing backwards is a caller
+  // bug, and honouring it would let a fixture or an import decide the answer by asserting the impossible.
+  for (const [newerId, olderId] of options.invalidations ?? []) {
+    const newer = byId.get(newerId);
+    const older = byId.get(olderId);
+    if (newer === undefined || older === undefined) continue;
+    const newerAt = newer.at;
+    const olderAt = older.at;
+    if (newerAt === undefined || olderAt === undefined || newerAt <= olderAt) continue;
+    record(
+      olderId,
+      'persistence',
+      'refuted',
+      newerId,
+      `declared meaningless by ${JSON.stringify(newer.text)}`,
+    );
+    if (assumptionOf(older, 'uniqueness') !== undefined) {
+      record(olderId, 'uniqueness', 'refuted', newerId, 'the slot it described no longer holds');
     }
   }
 

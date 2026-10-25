@@ -36,15 +36,15 @@
  */
 
 import {
-  assumptionOf,
+  assemble,
   deriveAssumptions,
   inferTemporality,
   modalityOf,
-  isPlan,
-  planFactor,
   reconcilePlans,
   reviseLedger,
   slotKey,
+  type AssembleCensus,
+  type AssemblePolicy,
   type Certainty,
   type Futurity,
   type KnowledgeFact,
@@ -97,6 +97,19 @@ export type BuildOptions = {
   readonly cascade?: boolean;
   readonly temporality?: boolean;
   readonly immutability?: boolean;
+  /** Whether a declared fulfilment is applied. Off leaves the plan `pending` for ever. */
+  readonly fulfil?: boolean;
+  /**
+   * Whether a plan whose date passed without word becomes `lapsed`. Off reads the store before it was due.
+   *
+   * This switch is expected to move **no answer** on this fixture, and that is a finding rather than a gap:
+   * two plans on one slot are separated by `supersedes` before `lapse` is consulted, and `supersedes` is the
+   * stronger of the two (it retires the fact; `lapse` only discounts it). What `lapse` changes here is the
+   * *state* — `pending` against `lapsed` — which `describePlan` renders and which decides whether a plan is
+   * offered again. Pricing that needs a corpus where a plan and a settled fact about a different attribute
+   * compete for one question, and this fixture is single-slot by construction.
+   */
+  readonly lapse?: boolean;
 };
 
 export type Case = {
@@ -463,6 +476,28 @@ export function buildCases(options: BuildOptions = {}): readonly Case[] {
     });
   }
 
+  {
+    // A commitment and a declaration that it happened, with no separate record of the event. This is the only
+    // shape that prices `fulfil`: the plan is the sole evidence, so if the declaration is not applied the
+    // question about what happened has no answer at all.
+    const COURSE = { subject: 'user', predicate: 'course' };
+    const planned = fact('q8', T0, 'I will take a course on statistics.', {
+      ...COURSE,
+      at: T0 + 30 * DAY,
+      type: 'goal',
+    });
+    cases.push({
+      id: 'pl-fulfilled-on-declaration',
+      query: 'Did the user take a course on statistics?',
+      family: 'plan',
+      slot: COURSE,
+      facts: [planned],
+      expect: planned.id,
+      intent: 'fact',
+      fulfils: [[planned.id, 'declared:completed']],
+    });
+  }
+
   // ---- immutable: a settled event is not undone by a later one ---------------------------------
   {
     const TRIP = { subject: 'user', predicate: 'trip' };
@@ -484,11 +519,25 @@ export function buildCases(options: BuildOptions = {}): readonly Case[] {
     });
   }
 
+  // Ingest order, and the order is the argument: a plan's life is resolved first, because whether a plan was
+  // fulfilled decides whether it is still a plan; then declared invalidations, because they remove facts;
+  // then the derived revision (supersession, agreement, contradiction) over what is left.
+  //
+  // Everything here is **ingest**: it writes a verdict onto a fact. Nothing here decides how the fact is
+  // read — that is `assemble`, and keeping the two apart is what lets the ablation switch one without the
+  // other.
+  const { fulfil = true, lapse = true } = options;
   return cases.map((entry) => {
-    const plans = reconcilePlans(entry.facts, NOW, {
-      ...(entry.fulfils === undefined ? {} : { fulfils: entry.fulfils }),
+    const plans = reconcilePlans(entry.facts, lapse ? NOW : Number.NEGATIVE_INFINITY, {
+      ...(entry.fulfils === undefined || !fulfil ? {} : { fulfils: entry.fulfils }),
     });
-    return { ...entry, facts: reviseLedger(plans.facts, { cascade }).facts };
+    return {
+      ...entry,
+      facts: reviseLedger(plans.facts, {
+        cascade,
+        ...(entry.invalidates === undefined ? {} : { invalidations: entry.invalidates }),
+      }).facts,
+    };
   });
 }
 
@@ -509,169 +558,117 @@ function overlap(query: string, text: string): number {
   return hits / asked.size;
 }
 
-/** When a fact claims to hold. `at` when stated; the anchor when it was assumed; `undefined` if neither. */
-function effectiveAt(fact: KnowledgeFact, ablation: Ablation): number | undefined {
-  if (fact.at !== undefined) return fact.at;
-  if (!ablation.timeAnchor) return undefined;
-  const anchor = assumptionOf(fact, 'time-anchor');
-  return anchor === undefined ? undefined : Number(anchor.value);
+/**
+ * The policy each arm runs under, expressed entirely in switches the product understands.
+ *
+ * This is the change that matters most in this file. The three arms used to be three implementations, so a
+ * difference between them could always have been a difference in *code* rather than in capability — and the
+ * one thing an ablation must not do is measure its own fixture. They are now one call to `assemble` with
+ * different switches, so a gap between `flat` and `gated` is a gap the product would also show.
+ *
+ * `flat` and `annotated` deliberately run the same policy. The second arm's purpose is to make the point
+ * explicitly: the ledger is still *rendered* into the block for both, and rendering it changes no decision,
+ * so the two score identically. That equality is now a property of the design rather than a coincidence of
+ * two code paths, which is a weaker claim than the one the earlier version appeared to make and the honest
+ * one.
+ */
+const ARM_POLICY: Record<Arm, AssemblePolicy> = {
+  flat: { ledger: false, temporality: false, window: false, budget: false, uniqueness: false },
+  annotated: { ledger: false, temporality: false, window: false, budget: false, uniqueness: false },
+  gated: {},
+};
+
+/** The `gated` policy with the switched-off mechanisms removed. */
+function policyFor(arm: Arm, ablation: Ablation): AssemblePolicy {
+  const base = ARM_POLICY[arm];
+  if (arm !== 'gated') return base;
+  return {
+    ...base,
+    ...(ablation.persistence ? {} : { ledger: false }),
+    ...(ablation.uniqueness ? {} : { uniqueness: false }),
+    ...(ablation.timeAnchor ? {} : { anchor: false }),
+    ...(ablation.temporality ? {} : { temporality: false }),
+  };
+}
+
+/**
+ * The fixture's frame. It is the **question**, not the sentence, and that is deliberate: `assemble` renders
+ * the frame line into the block, and a fixture that fed the original sentence there would let the rendered
+ * size depend on prose nobody measured. Nothing in the decision path reads it.
+ */
+function caseFrame(entry: Case): KnowledgeFrame {
+  return { id: `case:${entry.id}`, text: entry.query, speaker: 'user', at: NOW };
 }
 
 export type Resolution = {
   readonly answer: string | null;
   readonly reason:
     'latest' | 'windowed' | 'none-in-window' | 'all-retired' | 'conflict' | 'unplaceable';
-  /** Facts that were retired and still answered. The number that must be zero under `gated`. */
+  /**
+   * `1` when the fact that answered had been retired.
+   *
+   * Read off the penalty `assemble` attached, not recomputed here: the point of the number is that it is the
+   * product's own report of why the fact was discounted, and a second implementation of "is it retired"
+   * would be free to disagree with the first.
+   */
   readonly servedRetired: number;
+  readonly census: AssembleCensus;
 };
 
-function retired(fact: KnowledgeFact, ablation: Ablation): boolean {
-  if (fact.stale === true && ablation.cascade) return true;
-  if (!ablation.persistence) return false;
-  return assumptionOf(fact, 'persistence')?.status === 'refuted';
+/** Say which filter took everything, in the order the filters act. */
+function reasonOf(entry: Case, result: ReturnType<typeof assemble>): Resolution['reason'] {
+  const top = result.served[0];
+  if (top !== undefined)
+    return top.conflict ? 'conflict' : entry.asOf === undefined ? 'latest' : 'windowed';
+  const excluded = result.census.excluded;
+  if ((excluded['after-as-of'] ?? 0) > 0) return 'none-in-window';
+  const blocked =
+    (excluded.refuted ?? 0) +
+    (excluded.stale ?? 0) +
+    (excluded['unfulfilled-plan'] ?? 0) +
+    (excluded.abandoned ?? 0);
+  if (blocked > 0) return 'all-retired';
+  return 'unplaceable';
 }
 
 /**
- * Answer one case under one arm.
+ * Answer one case under one arm — by calling the code the product calls.
  *
- * Last-write-wins is implemented as *the latest effective time*, not as "the last item in the array": a
- * baseline that depended on array order would be measuring the fixture. Where two facts share that latest
- * time, `flat` takes the smaller id — an arbitrary tie-break, which is exactly the honest description of
- * what a system without a ledger does.
+ * The only thing this function adds to `assemble` is the two translations a measurement needs: a question
+ * becomes a ranked list (lexical overlap, because a real retriever here would be measuring the retriever),
+ * and a served fact becomes an answer (with `null` when the top of the list is a live contradiction, since
+ * choosing between two values that claim one instant is the one thing the ledger refuses to do).
  */
 export function resolve(entry: Case, arm: Arm, ablation: Ablation = FULL): Resolution {
-  const all = entry.facts;
+  // The candidate set is the slot the fixture is about. Deciding *what is relevant* is the retriever's job
+  // and is measured elsewhere; handing every fact to `assemble` here would make the arms differ by how good
+  // a lexical overlap is at ignoring a fact about a different attribute, which is not the question.
   const key = slotKey(entry.slot.subject, entry.slot.predicate);
-  const pool = all.filter(
-    (item) =>
-      item.subject !== undefined &&
-      item.predicate !== undefined &&
-      slotKey(item.subject, item.predicate) === key,
+  const onSlot = entry.facts.filter(
+    (fact) =>
+      fact.subject !== undefined &&
+      fact.predicate !== undefined &&
+      slotKey(fact.subject, fact.predicate) === key,
   );
 
-  if (arm === 'flat' || arm === 'annotated') {
-    // Last-write-wins over the *relevant* pool is the honest baseline only when relevance is given; here
-    // relevance is a lexical overlap and the tie-break is the id, which is what a system without a ledger
-    // actually does when two facts are equally similar.
-    const scored = pool
-      .map((item) => ({ fact: item, score: overlap(entry.query, item.text) }))
-      .sort((left, right) =>
-        right.score !== left.score
-          ? right.score - left.score
-          : left.fact.id < right.fact.id
-            ? -1
-            : 1,
-      );
-    const winner = scored[0]?.fact;
-    if (winner === undefined) return { answer: null, reason: 'unplaceable', servedRetired: 0 };
-    return {
-      answer: winner.id,
-      reason: 'latest',
-      servedRetired: retired(winner, ablation) ? 1 : 0,
-    };
-  }
+  const result = assemble({
+    unit: { frame: caseFrame(entry), facts: entry.facts, edges: [], unresolved: [] },
+    ranked: onSlot.map((fact) => ({ factId: fact.id, score: overlap(entry.query, fact.text) })),
+    now: NOW,
+    intent: entry.intent ?? 'fact',
+    ...(entry.asOf === undefined ? {} : { asOf: entry.asOf }),
+    policy: policyFor(arm, ablation),
+  });
 
-  // gated: declared invalidations first, because they remove facts before any time reasoning.
-  const invalidated = new Set<string>();
-  for (const [newerId, olderId] of entry.invalidates ?? []) {
-    const newer = all.find((item) => item.id === newerId);
-    const older = all.find((item) => item.id === olderId);
-    if (newer === undefined || older === undefined) continue;
-    const newerAt = effectiveAt(newer, ablation);
-    const olderAt = effectiveAt(older, ablation);
-    // Only a *later* fact can invalidate an earlier one. A declaration that points backwards is a fixture
-    // bug, and honouring it would let the fixture decide the answer.
-    if (newerAt === undefined || olderAt === undefined || newerAt <= olderAt) continue;
-    invalidated.add(olderId);
-  }
-
-  if (ablation.cascade) {
-    // A fact that borrowed a word from an invalidated fact's frame loses its premise. Iterated to a fixed
-    // point: a stale fact can be the premise of another. Switchable because PACMI's own ablation of the
-    // cascade did not reach significance (p = 0.0574), and a mechanism that size must be measurable off.
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const item of all) {
-        if (invalidated.has(item.id)) continue;
-        const bindings = (item.assumptions ?? []).filter(
-          (assumption) => assumption.kind === 'entity-binding',
-        );
-        const restsOnInvalidated = bindings.some((assumption) => {
-          const sourceId = assumption.value.split('@')[1];
-          if (sourceId === undefined) return false;
-          return all.some((other) => other.frameId === sourceId && invalidated.has(other.id));
-        });
-        if (!restsOnInvalidated) continue;
-        invalidated.add(item.id);
-        changed = true;
-      }
-    }
-  }
-
-  // A dated question reads the ledger at its own instant. `refuted` means "no longer current", never
-  // "never true", so the retirement rule is suspended here and the window does the work instead —
-  // collapsing the two is the failure PACMI measured as 1.00 → 0.36 on historical queries.
-  const dated = entry.asOf !== undefined;
-  const inWindow = dated
-    ? pool.filter((item) => {
-        const at = effectiveAt(item, ablation);
-        return at === undefined || at <= entry.asOf!;
-      })
-    : pool;
-
-  const matchesIntent = (item: KnowledgeFact): boolean => {
-    // With temporality switched off the arm cannot tell a commitment from a fact, which is exactly the
-    // capability under test: the filter disappears and the arm answers from one pool.
-    if (!ablation.temporality) return true;
-    const wanted = entry.intent ?? 'fact';
-    if (wanted === 'plan') return isPlan(item);
-    // A fulfilled plan is a fact and stays; a pending, lapsed or abandoned one is not an answer to
-    // "what happened", however relevant it looks.
-    return !isPlan(item) || item.planState === 'fulfilled';
+  const top = result.served[0];
+  return {
+    answer: top === undefined || top.conflict ? null : top.factId,
+    reason: reasonOf(entry, result),
+    // `factor === 0` is the whole definition: `aged` is a discount and a discount is still an answer.
+    servedRetired:
+      top !== undefined && entry.asOf === undefined && top.penalty.factor === 0 ? 1 : 0,
+    census: result.census,
   };
-
-  const candidates = inWindow.filter(
-    (item) =>
-      !invalidated.has(item.id) && (dated || !retired(item, ablation)) && matchesIntent(item),
-  );
-
-  if (candidates.length === 0) {
-    return {
-      answer: null,
-      reason: inWindow.length === 0 ? 'none-in-window' : 'all-retired',
-      servedRetired: inWindow.filter((item) => retired(item, ablation)).length,
-    };
-  }
-
-  const weight = (item: KnowledgeFact): number => {
-    if (!ablation.temporality) return 1;
-    // The ablation switches are applied here rather than at build time because a plan's state is a fact
-    // about the store; what the *arm* does with it is the thing being measured.
-    if (!ablation.lapse && item.planState === 'lapsed') return 1;
-    if (!ablation.fulfil && item.planState === 'fulfilled') return 0.4;
-    return planFactor(item);
-  };
-
-  const scored = candidates
-    .map((item) => ({ fact: item, score: overlap(entry.query, item.text) * weight(item) }))
-    .sort((left, right) =>
-      right.score !== left.score ? right.score - left.score : left.fact.id < right.fact.id ? -1 : 1,
-    );
-
-  // Two values claiming one instant, equally relevant: a ledger must refuse rather than pick. This is the
-  // only arm that can say "unknown", and the conflict family exists to check that it does.
-  const tied = scored.filter((item) => item.score === scored[0]!.score).map((item) => item.fact);
-  if (
-    ablation.uniqueness &&
-    tied.length > 1 &&
-    new Set(tied.map((item) => item.text.trim().toLowerCase())).size > 1 &&
-    tied.every((item) => assumptionOf(item, 'uniqueness')?.status === 'refuted')
-  ) {
-    return { answer: null, reason: 'conflict', servedRetired: 0 };
-  }
-
-  return { answer: scored[0]!.fact.id, reason: dated ? 'windowed' : 'latest', servedRetired: 0 };
 }
 
 export type CaseOutcome = {
@@ -779,6 +776,8 @@ export function ablate(): readonly AblationRow[] {
     const cases = buildCases({
       cascade: removed !== 'cascade',
       immutability: removed !== 'immutability',
+      fulfil: removed !== 'fulfil',
+      lapse: removed !== 'lapse',
       // Reading the axis is a property of ingestion, so removing it has to change what was built — not only
       // what the arm does with it. Otherwise the ablation measures a filter and not the capability.
       temporality: removed !== 'temporality',

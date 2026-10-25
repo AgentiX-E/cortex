@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 800,
-    "withCaller": 441,
-    "orphaned": 359,
-    "referencedLocally": 294,
-    "unreferenced": 65
+    "exports": 825,
+    "withCaller": 451,
+    "orphaned": 374,
+    "referencedLocally": 310,
+    "unreferenced": 64
   },
   "groups": [
     {
@@ -395,17 +395,15 @@
     },
     {
       "category": "assumption-ledger-surface",
-      "count": 14,
+      "count": 12,
       "rationale": "THE ASSUMPTION LEDGER (implementation step 31) contributes fourteen entries: nine in cortex-core and five in cortex-eval. THE CORE ENTRIES ARE A CONTRACT AND TWO SEAMS. `Revision`, `RevisionResult`, `RevisionOptions`, `RevisionVerdict`, `Penalty`, `PenaltyOptions` and `AssumptionOrigin` are the vocabulary a caller reads to know what `reviseLedger` returns and what `assumptionPenalty` decides; they have no caller because no shipping path consumes a ledger yet, and that is the honest state rather than a description of a finished feature. `assumptionPenalty` and `isAnswerable` are the two functions that turn a ledger into a decision, and their only caller today is the test suite. They are exported anyway for the reason `contentGrounded` was exported at step 21: the reading and the gate must call the same function, or a report will describe a rule the product does not use. When the retrieval wiring lands (the step after this one, recorded in `docs/PREREG-ASSUMPTION-LEDGER.md` section 5.2), both get their caller and this paragraph should be corrected rather than left to age. THE EVAL ENTRIES ARE A MEASUREMENT SURFACE: `Case`, `CaseFamily`, `ArmReport`, `CaseOutcome` and `AblationRow` describe the controlled contradiction set and its reports. `tools/assumption-ablation.mjs` prints `ArmReport` and `AblationRow` through plain property access, which the census cannot see as a call, so they sit here while the script that reads them ships. NOTHING IN THIS GROUP IS A DELETION CANDIDATE: deleting a type from a published signature to clear an entry would make the signature unreadable, which is the cost this ledger exists to avoid paying twice.",
       "declarationSites": [
         "cortex-core: AssumptionOrigin (packages/cortex-core/src/knowledge/assumption.ts:66)",
-        "cortex-core: Penalty (packages/cortex-core/src/knowledge/assumption.ts:188)",
         "cortex-core: PenaltyOptions (packages/cortex-core/src/knowledge/assumption.ts:176)",
         "cortex-core: Revision (packages/cortex-core/src/knowledge/revision.ts:52)",
         "cortex-core: RevisionOptions (packages/cortex-core/src/knowledge/revision.ts:61)",
         "cortex-core: RevisionResult (packages/cortex-core/src/knowledge/revision.ts:68)",
         "cortex-core: RevisionVerdict (packages/cortex-core/src/knowledge/revision.ts:49)",
-        "cortex-core: assumptionPenalty (packages/cortex-core/src/knowledge/assumption.ts:207)",
         "cortex-core: isAnswerable (packages/cortex-core/src/knowledge/assumption.ts:170)",
         "cortex-eval: AblationRow (packages/cortex-eval/src/assumption-ablation.ts:523)",
         "cortex-eval: ArmReport (packages/cortex-eval/src/assumption-ablation.ts:477)",
@@ -421,6 +419,37 @@
       "declarationSites": [
         "cortex-core: PlanTransition (packages/cortex-core/src/knowledge/temporality.ts:191)",
         "cortex-eval: BuildOptions (packages/cortex-eval/src/assumption-ablation.ts:96)"
+      ]
+    },
+    {
+      "category": "context-assembly-surface",
+      "count": 8,
+      "rationale": "THE CONTEXT ASSEMBLER (implementation step 33) contributes eight entries, and the group's most interesting fact is what is NOT in it: `Penalty` and `assumptionPenalty` were in the previous group and have left this one, because `assemble` calls them. That is the whole point of the step -- before it, the ledger's own functions had no caller outside their tests, and an ablation that reimplemented them measured the reimplementation. SEVEN OF THE EIGHT ARE CONTRACT VOCABULARY. `AssembleInput`, `AssembleResult`, `ServedFact` and the `Exclusion`/`ExclusionReason` pair are what a caller reads to know what it gets back and why a fact is missing; a report that wants to say \"four facts were retired and two were over budget\" has no other place to learn those words. `Ranked` is the input shape, and it exists so the module can say in its signature that it does not compute a similarity: the ranker hands one over. `RetrievalIntent` is two names for two pools, and it is exported because a caller that cannot name the pool cannot choose one. THE EIGHTH IS A MEASUREMENT SEAM. `effectiveAt` is the single definition of \"when does this fact claim to hold\" -- stated time, else the anchor it assumed -- and it is exported so that `tools/` can explain a window exclusion without a second implementation of the same rule. `assemble` calls it internally, which the census cannot see. NONE OF THESE IS A DELETION CANDIDATE: inlining them would leave `assemble`'s signature as an anonymous object with three inline unions, which is exactly the kind of unreadability this ledger is supposed to notice rather than cause.",
+      "declarationSites": [
+        "cortex-core: AssembleInput (packages/cortex-core/src/context/assemble.ts:112)",
+        "cortex-core: AssembleResult (packages/cortex-core/src/context/assemble.ts:156)",
+        "cortex-core: Exclusion (packages/cortex-core/src/context/assemble.ts:63)",
+        "cortex-core: ExclusionReason (packages/cortex-core/src/context/assemble.ts:52)",
+        "cortex-core: Ranked (packages/cortex-core/src/context/assemble.ts:73)",
+        "cortex-core: RetrievalIntent (packages/cortex-core/src/context/assemble.ts:49)",
+        "cortex-core: ServedFact (packages/cortex-core/src/context/assemble.ts:126)",
+        "cortex-core: effectiveAt (packages/cortex-core/src/context/assemble.ts:169)"
+      ]
+    },
+    {
+      "category": "acceptance-matrix-surface",
+      "count": 9,
+      "rationale": "THE ACCEPTANCE MATRIX (step 33) adds nine entries, and every one is a **type**. The functions in the same module are not here: `CRITERIA` is read by two shipping scripts, `verdictOf` and `currentOf` are called by both, and `describe` and `unrun` are called by one each, so the census sees a caller for each. The nine types cannot appear in `tools/acceptance-check.mjs` or `tools/docs-crosscheck.mjs` as names, because those are JavaScript: a `.mjs` file consumes a TypeScript type as a runtime shape and never writes the identifier, so the census is structurally unable to see the use. That is the honest reason and it is the reason this entry exists rather than a deletion. WHAT THEY ARE: `Criterion` is the record shape every gate row is an instance of; `Source` is the seven-way union saying where a number comes from; `Comparator`, `Unit`, `Kind` and `Grade` are the four closed vocabularies that make a row checkable (direction, formatting, whether a miss blocks, and how comparable a competitor figure is); `Competitor` carries a grade with its recipe; `Evaluation` is what `verdictOf` returns; `Resolvers` is the injection point that lets one evaluation path serve both the gate and the document checker. NOTHING HERE IS A DELETION CANDIDATE: inlining a seven-way union and four string literal types into a single object literal would make the table unreadable at exactly the moment readability is the point.",
+      "declarationSites": [
+        "cortex-eval: Comparator (packages/cortex-eval/src/acceptance.ts:45)",
+        "cortex-eval: Competitor (packages/cortex-eval/src/acceptance.ts:95)",
+        "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:103)",
+        "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:409)",
+        "cortex-eval: Grade (packages/cortex-eval/src/acceptance.ts:42)",
+        "cortex-eval: Kind (packages/cortex-eval/src/acceptance.ts:58)",
+        "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:432)",
+        "cortex-eval: Source (packages/cortex-eval/src/acceptance.ts:65)",
+        "cortex-eval: Unit (packages/cortex-eval/src/acceptance.ts:48)"
       ]
     }
   ],
@@ -476,7 +505,9 @@
     "cortex-ai: retryableFetchWithStats",
     "cortex-ai: sanitizePrompt",
     "cortex-core: AccessRecord",
+    "cortex-core: AssembleInput",
     "cortex-core: AssembleRequest",
+    "cortex-core: AssembleResult",
     "cortex-core: AssumptionOrigin",
     "cortex-core: BlockOptions",
     "cortex-core: BudgetFill",
@@ -490,6 +521,8 @@
     "cortex-core: EDGE_TYPES",
     "cortex-core: EchoCorpusStats",
     "cortex-core: EdgeOrigin",
+    "cortex-core: Exclusion",
+    "cortex-core: ExclusionReason",
     "cortex-core: ExpansionOptions",
     "cortex-core: ExportKind",
     "cortex-core: ExportedSymbol",
@@ -512,13 +545,13 @@
     "cortex-core: OutputScanRequest",
     "cortex-core: POLARITIES",
     "cortex-core: PackageCensus",
-    "cortex-core: Penalty",
     "cortex-core: PenaltyOptions",
     "cortex-core: PlanTransition",
     "cortex-core: ProposalFailure",
     "cortex-core: ProposedFact",
     "cortex-core: ProposedRedaction",
     "cortex-core: RELATION_KINDS",
+    "cortex-core: Ranked",
     "cortex-core: RankedItem",
     "cortex-core: Reached",
     "cortex-core: ReadSideOptions",
@@ -527,6 +560,7 @@
     "cortex-core: ReleaseVerdict",
     "cortex-core: RerankCandidate",
     "cortex-core: RetrievalDecision",
+    "cortex-core: RetrievalIntent",
     "cortex-core: ReviewOutcome",
     "cortex-core: Revision",
     "cortex-core: RevisionOptions",
@@ -534,6 +568,7 @@
     "cortex-core: RevisionVerdict",
     "cortex-core: RuleTableError",
     "cortex-core: ScopeViolation",
+    "cortex-core: ServedFact",
     "cortex-core: SinkhornResult",
     "cortex-core: SymbolCensusEntry",
     "cortex-core: TriageProposerOptions",
@@ -545,7 +580,6 @@
     "cortex-core: WithheldFact",
     "cortex-core: WriteDecision",
     "cortex-core: assertRuleTable",
-    "cortex-core: assumptionPenalty",
     "cortex-core: bodyEndLine",
     "cortex-core: clampAwayFromZero",
     "cortex-core: consolidate",
@@ -554,6 +588,7 @@
     "cortex-core: currentValue",
     "cortex-core: defaultValueFunction",
     "cortex-core: degenerateDfPValue",
+    "cortex-core: effectiveAt",
     "cortex-core: extractExportedSymbols",
     "cortex-core: findContradictions",
     "cortex-core: fuseWithScores",
@@ -609,10 +644,13 @@
     "cortex-eval: CaseOutcome",
     "cortex-eval: CohortQuestion",
     "cortex-eval: CohortVerdict",
+    "cortex-eval: Comparator",
+    "cortex-eval: Competitor",
     "cortex-eval: CortexMemoryArmEnv",
     "cortex-eval: CortexMemoryArmOptions",
     "cortex-eval: CortexMemoryArmResult",
     "cortex-eval: CortexMemoryArmRunOptions",
+    "cortex-eval: Criterion",
     "cortex-eval: CriterionVerdict",
     "cortex-eval: CurveMembership",
     "cortex-eval: CurveSummary",
@@ -637,9 +675,12 @@
     "cortex-eval: EmbeddingMemorySystemOptions",
     "cortex-eval: EmbeddingSourceStats",
     "cortex-eval: EmbeddingWithProvenance",
+    "cortex-eval: Evaluation",
     "cortex-eval: FactMemorySystem",
     "cortex-eval: FactMemorySystemOptions",
     "cortex-eval: FailureCensus",
+    "cortex-eval: Grade",
+    "cortex-eval: Kind",
     "cortex-eval: LlmEnv",
     "cortex-eval: NaturalLanguageMemorySystemOptions",
     "cortex-eval: PositionEffect",
@@ -657,6 +698,7 @@
     "cortex-eval: RerankArmOptionsInput",
     "cortex-eval: RerankEnv",
     "cortex-eval: RerankFallbackReport",
+    "cortex-eval: Resolvers",
     "cortex-eval: RetrievalDiagnostic",
     "cortex-eval: RetrievalGapAttribution",
     "cortex-eval: RetryAblationReport",
@@ -669,6 +711,7 @@
     "cortex-eval: ReviewPlan",
     "cortex-eval: RunObservation",
     "cortex-eval: SessionRetrievalDiagnostic",
+    "cortex-eval: Source",
     "cortex-eval: SyntheticBenchmarkOptions",
     "cortex-eval: TargetCohort",
     "cortex-eval: TargetMember",
@@ -677,6 +720,7 @@
     "cortex-eval: TrFailureInput",
     "cortex-eval: TransportRetryReport",
     "cortex-eval: TransportRetryScope",
+    "cortex-eval: Unit",
     "cortex-eval: VarianceStats",
     "cortex-eval: VarianceSummary",
     "cortex-eval: buildConservativeQaPrompt",
@@ -1130,21 +1174,36 @@
     "cortex-core: UnitResult": "referenced-locally",
     "cortex-core: fuseWithScores": "referenced-locally",
     "cortex-core: AssumptionOrigin": "referenced-locally",
-    "cortex-core: Penalty": "unreferenced",
     "cortex-core: PenaltyOptions": "referenced-locally",
     "cortex-core: Revision": "referenced-locally",
     "cortex-core: RevisionOptions": "referenced-locally",
     "cortex-core: RevisionResult": "referenced-locally",
     "cortex-core: RevisionVerdict": "referenced-locally",
-    "cortex-core: assumptionPenalty": "unreferenced",
     "cortex-core: isAnswerable": "referenced-locally",
-    "cortex-eval: AblationRow": "referenced-locally",
+    "cortex-eval: AblationRow": "unreferenced",
     "cortex-eval: ArmReport": "referenced-locally",
     "cortex-eval: Case": "referenced-locally",
     "cortex-eval: CaseFamily": "referenced-locally",
     "cortex-eval: CaseOutcome": "referenced-locally",
     "cortex-core: PlanTransition": "referenced-locally",
-    "cortex-eval: BuildOptions": "referenced-locally"
+    "cortex-eval: BuildOptions": "referenced-locally",
+    "cortex-core: AssembleInput": "referenced-locally",
+    "cortex-core: AssembleResult": "referenced-locally",
+    "cortex-core: Exclusion": "referenced-locally",
+    "cortex-core: ExclusionReason": "referenced-locally",
+    "cortex-core: Ranked": "referenced-locally",
+    "cortex-core: RetrievalIntent": "referenced-locally",
+    "cortex-core: ServedFact": "referenced-locally",
+    "cortex-core: effectiveAt": "referenced-locally",
+    "cortex-eval: Comparator": "referenced-locally",
+    "cortex-eval: Competitor": "referenced-locally",
+    "cortex-eval: Criterion": "referenced-locally",
+    "cortex-eval: Evaluation": "referenced-locally",
+    "cortex-eval: Grade": "referenced-locally",
+    "cortex-eval: Kind": "referenced-locally",
+    "cortex-eval: Resolvers": "referenced-locally",
+    "cortex-eval: Source": "referenced-locally",
+    "cortex-eval: Unit": "referenced-locally"
   },
   "locations": {
     "cortex-ai: AvailabilityReport": [
@@ -2179,9 +2238,6 @@
     "cortex-core: AssumptionOrigin": [
       "packages/cortex-core/src/knowledge/assumption.ts:66"
     ],
-    "cortex-core: Penalty": [
-      "packages/cortex-core/src/knowledge/assumption.ts:188"
-    ],
     "cortex-core: PenaltyOptions": [
       "packages/cortex-core/src/knowledge/assumption.ts:176"
     ],
@@ -2192,37 +2248,85 @@
       "packages/cortex-core/src/knowledge/revision.ts:61"
     ],
     "cortex-core: RevisionResult": [
-      "packages/cortex-core/src/knowledge/revision.ts:68"
+      "packages/cortex-core/src/knowledge/revision.ts:80"
     ],
     "cortex-core: RevisionVerdict": [
       "packages/cortex-core/src/knowledge/revision.ts:49"
-    ],
-    "cortex-core: assumptionPenalty": [
-      "packages/cortex-core/src/knowledge/assumption.ts:207"
     ],
     "cortex-core: isAnswerable": [
       "packages/cortex-core/src/knowledge/assumption.ts:170"
     ],
     "cortex-eval: AblationRow": [
-      "packages/cortex-eval/src/assumption-ablation.ts:732"
+      "packages/cortex-eval/src/assumption-ablation.ts:727"
     ],
     "cortex-eval: ArmReport": [
-      "packages/cortex-eval/src/assumption-ablation.ts:686"
+      "packages/cortex-eval/src/assumption-ablation.ts:681"
     ],
     "cortex-eval: Case": [
-      "packages/cortex-eval/src/assumption-ablation.ts:102"
+      "packages/cortex-eval/src/assumption-ablation.ts:115"
     ],
     "cortex-eval: CaseFamily": [
       "packages/cortex-eval/src/assumption-ablation.ts:55"
     ],
     "cortex-eval: CaseOutcome": [
-      "packages/cortex-eval/src/assumption-ablation.ts:677"
+      "packages/cortex-eval/src/assumption-ablation.ts:672"
     ],
     "cortex-core: PlanTransition": [
       "packages/cortex-core/src/knowledge/temporality.ts:191"
     ],
     "cortex-eval: BuildOptions": [
       "packages/cortex-eval/src/assumption-ablation.ts:96"
+    ],
+    "cortex-core: AssembleInput": [
+      "packages/cortex-core/src/context/assemble.ts:112"
+    ],
+    "cortex-core: AssembleResult": [
+      "packages/cortex-core/src/context/assemble.ts:156"
+    ],
+    "cortex-core: Exclusion": [
+      "packages/cortex-core/src/context/assemble.ts:63"
+    ],
+    "cortex-core: ExclusionReason": [
+      "packages/cortex-core/src/context/assemble.ts:52"
+    ],
+    "cortex-core: Ranked": [
+      "packages/cortex-core/src/context/assemble.ts:73"
+    ],
+    "cortex-core: RetrievalIntent": [
+      "packages/cortex-core/src/context/assemble.ts:49"
+    ],
+    "cortex-core: ServedFact": [
+      "packages/cortex-core/src/context/assemble.ts:126"
+    ],
+    "cortex-core: effectiveAt": [
+      "packages/cortex-core/src/context/assemble.ts:169"
+    ],
+    "cortex-eval: Comparator": [
+      "packages/cortex-eval/src/acceptance.ts:45"
+    ],
+    "cortex-eval: Competitor": [
+      "packages/cortex-eval/src/acceptance.ts:95"
+    ],
+    "cortex-eval: Criterion": [
+      "packages/cortex-eval/src/acceptance.ts:103"
+    ],
+    "cortex-eval: Evaluation": [
+      "packages/cortex-eval/src/acceptance.ts:409"
+    ],
+    "cortex-eval: Grade": [
+      "packages/cortex-eval/src/acceptance.ts:42"
+    ],
+    "cortex-eval: Kind": [
+      "packages/cortex-eval/src/acceptance.ts:58"
+    ],
+    "cortex-eval: Resolvers": [
+      "packages/cortex-eval/src/acceptance.ts:432"
+    ],
+    "cortex-eval: Source": [
+      "packages/cortex-eval/src/acceptance.ts:65"
+    ],
+    "cortex-eval: Unit": [
+      "packages/cortex-eval/src/acceptance.ts:48"
     ]
   }
 }

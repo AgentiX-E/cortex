@@ -44,10 +44,12 @@ import {
 function parseArgs(argv) {
   const at = argv.indexOf('--html');
   if (at === -1 || argv[at + 1] === undefined) {
-    process.stderr.write('usage: node tools/knowledge-probe.mjs --html path/to/review.html\n');
+    process.stderr.write(
+      'usage: node tools/knowledge-probe.mjs --html path/to/review.html [--json]\n',
+    );
     process.exit(2);
   }
-  return { html: argv[at + 1] };
+  return { html: argv[at + 1], json: argv.includes('--json') };
 }
 
 /** The pairs the review page carries: one sentence and the atoms offered for it. */
@@ -85,8 +87,61 @@ function factsOf(pair) {
   }));
 }
 
+/**
+ * The token reading, in the one shape that decides the design: what the grouped block costs against the
+ * same content rendered as self-contained blocks.
+ *
+ * Returns `null` when no pair states a relation, because the comparison needs a repaired unit and inventing
+ * one would make the saving a property of the invention.
+ */
+function tokenReading(pairs) {
+  const demo = pairs.find(
+    (pair) => relationMarkers(pair.source).length >= 1 && pair.atoms.length >= 2,
+  );
+  if (demo === undefined) return null;
+
+  const frame = { id: demo.cardId, text: demo.source };
+  const facts = factsOf(demo);
+  const marker = relationMarkers(demo.source)[0];
+  const type =
+    marker.kind === 'causal' ? 'causes' : marker.kind === 'contrast' ? 'contrast' : 'before';
+  const edge = {
+    id: edgeId(type, facts[0].id, facts[1].id),
+    from: facts[0].id,
+    to: facts[1].id,
+    type,
+    origin: 'extracted',
+    marker: marker.token,
+    evidenceSpan: extractedSpan(facts[0].sourceSpan, facts[1].sourceSpan, marker),
+  };
+
+  const repaired = buildKnowledgeUnit({ frame, facts, edges: [edge] });
+  if (!repaired.ok) return { cardId: demo.cardId, refused: repaired.problem.problem };
+
+  const lines = renderBlocks(
+    repaired.unit,
+    facts.map((fact) => fact.id),
+  );
+  const grouped = tokenEstimate(lines.join('\n'));
+  const factsById = new Map(facts.map((fact) => [fact.id, fact]));
+  const naive = facts.reduce(
+    (total, fact) => total + tokenEstimate(renderBlock(fact, frame, [edge], factsById).join('\n')),
+    0,
+  );
+  return {
+    cardId: demo.cardId,
+    marker: marker.token,
+    type,
+    lines,
+    grouped,
+    naive,
+    saving: naive === 0 ? 0 : (naive - grouped) / naive,
+    reached: expandTyped([facts[0].id], [edge]).map((hit) => `${hit.factId} via ${hit.type}`),
+  };
+}
+
 function main(argv) {
-  const { html } = parseArgs(argv);
+  const { html, json } = parseArgs(argv);
   const pairs = loadPairs(readFileSync(html, 'utf8'));
   if (pairs.length === 0) throw new Error('the page carries no complete pair');
 
@@ -119,6 +174,29 @@ function main(argv) {
     }
   }
 
+  const tokens = tokenReading(pairs);
+
+  // The machine-readable form exists so that a gate can read these numbers instead of a document quoting
+  // them. `tools/acceptance-check.mjs` is the caller, and it treats a missing key as `unrun`, not as zero.
+  if (json) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          pairs: pairs.length,
+          strictAccepted,
+          strictAcceptedRate: strictAccepted / pairs.length,
+          unresolvedMarkers: recorded,
+          unresolvedRows,
+          refusals: Object.fromEntries(refusals),
+          tokens,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
+  }
+
   process.stdout.write(`pairs                       ${pairs.length}\n`);
   process.stdout.write(
     `accepted as split (strict)  ${strictAccepted} (${((100 * strictAccepted) / pairs.length).toFixed(0)}%)\n`,
@@ -130,60 +208,23 @@ function main(argv) {
     for (const row of unresolvedRows) process.stdout.write(`  ${row}\n`);
   }
 
-  // The repaired unit: an edge built from a marker the sentence actually contains.
-  const demo = pairs.find(
-    (pair) => relationMarkers(pair.source).length >= 1 && pair.atoms.length >= 2,
-  );
-  if (demo === undefined) {
+  if (tokens === null) {
     process.stdout.write('\nno pair with two markers: nothing to demonstrate\n');
     return 0;
   }
-  const frame = { id: demo.cardId, text: demo.source };
-  const facts = factsOf(demo);
-  const marker = relationMarkers(demo.source)[0];
-  const type =
-    marker.kind === 'causal' ? 'causes' : marker.kind === 'contrast' ? 'contrast' : 'before';
-  const license = { kind: marker.kind, token: marker.token };
-  const edge = {
-    id: edgeId(type, facts[0].id, facts[1].id),
-    from: facts[0].id,
-    to: facts[1].id,
-    type,
-    origin: 'extracted',
-    marker: license.token,
-    evidenceSpan: extractedSpan(facts[0].sourceSpan, facts[1].sourceSpan, marker),
-  };
-
-  const repaired = buildKnowledgeUnit({ frame, facts, edges: [edge] });
-  process.stdout.write(`\nrepaired unit (${demo.cardId}, marker "${marker.token}" → ${type})\n`);
-  if (!repaired.ok) {
-    process.stdout.write(`  still refused: ${repaired.problem.problem}\n`);
+  if (tokens.refused !== undefined) {
+    process.stdout.write(`\nrepaired unit still refused: ${tokens.refused}\n`);
     return 0;
   }
-  const lines = renderBlocks(
-    repaired.unit,
-    facts.map((fact) => fact.id),
-  );
-  for (const line of lines) process.stdout.write(`  ${line}\n`);
-  const grouped = tokenEstimate(lines.join('\n'));
-  const factsById = new Map(facts.map((fact) => [fact.id, fact]));
-  const single = facts.reduce(
-    (total, fact) => total + tokenEstimate(renderBlock(fact, frame, [edge], factsById).join('\n')),
-    0,
-  );
-  process.stdout.write(
-    `  ${grouped} tokens grouped, ${single} tokens as ${facts.length} self-contained blocks\n`,
-  );
-  process.stdout.write(
-    `  relations declared by the sentence: ${kindsIn(demo.source).join(', ')}\n`,
-  );
 
-  // Expansion: the one hop an answer would take from the first fact, and why the second is reachable
-  // at all now that the link exists.
-  const reached = expandTyped([facts[0].id], [edge]);
   process.stdout.write(
-    `  1-hop from ${facts[0].id}: ${reached.map((hit) => `${hit.factId} via ${hit.type}`).join(', ') || 'nothing'}\n`,
+    `\nrepaired unit (${tokens.cardId}, marker "${tokens.marker}" → ${tokens.type})\n`,
   );
+  for (const line of tokens.lines) process.stdout.write(`  ${line}\n`);
+  process.stdout.write(
+    `  ${tokens.grouped} tokens grouped, ${tokens.naive} tokens as self-contained blocks\n`,
+  );
+  process.stdout.write(`  1-hop from the first fact: ${tokens.reached.join(', ') || 'nothing'}\n`);
 
   // Knowledge update: the recorded failure is two measurements in one context, older one chosen.
   const before = {
@@ -200,16 +241,15 @@ function main(argv) {
     at: 1,
   };
   const after = { ...before, id: 'k2', text: 'My best 5K time is 25:50.', at: 2 };
-  const superseded = deriveSupersedes([before, after]);
-  process.stdout.write(`\nknowledge update\n`);
-  for (const link of superseded) {
+  process.stdout.write('\nknowledge update\n');
+  for (const link of deriveSupersedes([before, after])) {
     process.stdout.write(
       `  ${link.id} (origin: ${link.origin}, no marker, no span: nothing to cite)\n`,
     );
   }
 
-  // Budget: how many repaired units a 600-token context holds. Grouped, because the block is the
-  // unit of value and an atom count would under-count it by the factor that makes it useful.
+  // Budget: how many repaired units a 600-token context holds. Grouped, because the block is the unit of
+  // value and an atom count would under-count it by the factor that makes it useful.
   const budgets = [];
   for (const pair of pairs) {
     const unit = buildKnowledgeUnit({

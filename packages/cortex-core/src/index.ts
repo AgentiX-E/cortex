@@ -261,6 +261,20 @@ export {
   type RevisionVerdict,
 } from './knowledge/revision.js';
 
+export {
+  assemble,
+  effectiveAt,
+  type AssembleCensus,
+  type AssembleInput,
+  type AssemblePolicy,
+  type AssembleResult,
+  type Exclusion,
+  type ExclusionReason,
+  type Ranked,
+  type RetrievalIntent,
+  type ServedFact,
+} from './context/assemble.js';
+
 // retrieval: fusion, budget, and the block a reader receives
 export {
   fillBudget,

@@ -153,7 +153,7 @@ describe('resolve: the flat arm is the published baseline, retired facts and all
 
   it('reports unplaceable when the slot has no facts, rather than reaching for another slot', () => {
     const empty: Case = { ...city, facts: [] };
-    expect(resolve(empty, 'flat')).toEqual({
+    expect(resolve(empty, 'flat')).toMatchObject({
       answer: null,
       reason: 'unplaceable',
       servedRetired: 0,
@@ -181,12 +181,20 @@ describe('resolve: the gated arm retires, windows and refuses', () => {
   };
 
   it('answers with the fact that is still current', () => {
-    expect(resolve(base, 'gated')).toEqual({ answer: 'b', reason: 'latest', servedRetired: 0 });
+    expect(resolve(base, 'gated')).toMatchObject({
+      answer: 'b',
+      reason: 'latest',
+      servedRetired: 0,
+    });
   });
 
   it('answers a dated question from the window, and does not treat retirement as falsehood', () => {
     const dated: Case = { ...base, family: 'historical', asOf: T0 + 5 * DAY, expect: 'a' };
-    expect(resolve(dated, 'gated')).toEqual({ answer: 'a', reason: 'windowed', servedRetired: 0 });
+    expect(resolve(dated, 'gated')).toMatchObject({
+      answer: 'a',
+      reason: 'windowed',
+      servedRetired: 0,
+    });
   });
 
   it('refuses when two equally relevant values claim one instant', () => {
@@ -231,7 +239,10 @@ describe('resolve: the gated arm retires, windows and refuses', () => {
     const resolution = resolve(allGone, 'gated');
     expect(resolution.answer).toBeNull();
     expect(resolution.reason).toBe('all-retired');
-    expect(resolution.servedRetired).toBe(2);
+    // Nothing was served, so nothing was served *retired*: the counter is about leaks, and a refusal is not
+    // one. The number of blocked facts is in the census, where a report can find it.
+    expect(resolution.servedRetired).toBe(0);
+    expect(resolution.census.excluded.refuted).toBe(2);
   });
 
   it('reads as none-in-window when the question predates every fact', () => {
@@ -269,28 +280,27 @@ describe('resolve: declared invalidation and the cascade', () => {
     subject: 'user',
     predicate: 'workplace',
   });
-  const base: Case = {
+  // The invalidation is applied where it belongs — at ingest — so the arm sees a fact that has already been
+  // retired. Declaring it inside the arm would be a second semantics for one word.
+  const withInvalidation = (pairs: readonly (readonly [string, string])[]): Case => ({
     id: 'ii',
     family: 'type-ii',
     query: 'How does the user get to the office?',
     slot: { subject: 'user', predicate: 'commute' },
-    facts: reviseLedger([commute, remote]).facts,
+    facts: reviseLedger([commute, remote], { invalidations: pairs }).facts,
     expect: null,
-    invalidates: [['r', 'c']],
-  };
+  });
 
   it('removes the invalidated fact, so the answer is unknown rather than the old value', () => {
-    expect(resolve(base, 'gated').answer).toBeNull();
+    expect(resolve(withInvalidation([['r', 'c']]), 'gated').answer).toBeNull();
   });
 
   it('ignores a declaration that points backwards in time, because only a later fact can invalidate', () => {
-    const backwards: Case = { ...base, invalidates: [['c', 'r']] };
-    expect(resolve(backwards, 'gated').answer).toBe('c');
+    expect(resolve(withInvalidation([['c', 'r']]), 'gated').answer).toBe('c');
   });
 
   it('ignores a declaration naming a fact that is not in the case', () => {
-    const ghost: Case = { ...base, invalidates: [['nope', 'c']] };
-    expect(resolve(ghost, 'gated').answer).toBe('c');
+    expect(resolve(withInvalidation([['nope', 'c']]), 'gated').answer).toBe('c');
   });
 
   const rent = factOf('r1', 'g1', 'The flat costs 900 a month.', {
@@ -309,23 +319,27 @@ describe('resolve: declared invalidation and the cascade', () => {
     subject: 'flat',
     predicate: 'occupancy',
   });
-  const chain = reviseLedger([rent, deposit, left], { cascade: true }).facts;
-  const cascadeCase: Case = {
+  const chainFor = (cascade: boolean): Case => ({
     id: 'g',
     family: 'cascade',
     query: 'How much is the deposit on the flat?',
     slot: { subject: 'flat', predicate: 'deposit' },
-    facts: chain,
+    facts: reviseLedger([rent, deposit, left], {
+      cascade,
+      invalidations: [['e1', 'r1']],
+    }).facts,
     expect: null,
-    invalidates: [['e1', 'r1']],
-  };
+  });
+  const cascadeCase = chainFor(true);
 
   it('propagates through a borrowed word when the cascade is on', () => {
     expect(resolve(cascadeCase, 'gated').answer).toBeNull();
   });
 
   it('stops at the invalidated fact when the cascade is off', () => {
-    expect(resolve(cascadeCase, 'gated', { ...FULL, cascade: false }).answer).toBe('d1');
+    // The cascade acts at ingest, so removing it has to change what was **built** — passing the flag to the
+    // read side would leave a fact already marked stale and merely stop re-marking it.
+    expect(resolve(chainFor(false), 'gated', { ...FULL, cascade: false }).answer).toBe('d1');
   });
 });
 
@@ -499,7 +513,12 @@ describe('resolve: a settled event is not replaced', () => {
   });
 
   it('answers with the later one once the protection is removed, which is the cost being measured', () => {
-    const unprotected: Case = { ...settled, invalidates: [['r2', 'r1']] };
+    // With the protection off, `deriveSupersedes` builds the edge a system without it would build, and the
+    // earlier trip retires. That is the failure the protection exists to prevent, reproduced at ingest.
+    const unprotected: Case = {
+      ...settled,
+      facts: reviseLedger(settled.facts, { invalidations: [['r2', 'r1']] }).facts,
+    };
     expect(resolve(unprotected, 'gated').answer).toBe('r2');
   });
 });
@@ -522,11 +541,16 @@ describe('ablate: the two axes and the lifecycle', () => {
     expect(without.byFamily['type-i'].correct).toBe(full.byFamily['type-i'].correct);
   });
 
-  it('records lapse and fulfil as inert here, and that is a reading rather than a design claim', () => {
-    // The intent filter already keeps every unfulfilled plan out of a question about what happened, so
-    // removing the lapse transition changes the label without changing the answer. Written as a test so the
-    // null cannot quietly become a claim later.
+  it('records lapse as inert here, and says why that null is structural', () => {
+    // Two plans on one slot are separated by `supersedes` before `lapse` is consulted, and `supersedes` is the
+    // stronger of the two. Written as a test so the null cannot later be read as a finding.
     expect(rows.find((row) => row.removed === 'lapse')!.accuracy).toBe(full.accuracy);
-    expect(rows.find((row) => row.removed === 'fulfil')!.accuracy).toBe(full.accuracy);
+  });
+
+  it('prices fulfil on the case whose only evidence is the declaration', () => {
+    // `pl-fulfilled-on-declaration` is a plan and no separate record of the event: without the transition it
+    // stays `pending`, the question about what happened excludes it, and the answer is "unknown".
+    const without = rows.find((row) => row.removed === 'fulfil')!;
+    expect(without.byFamily.plan.correct).toBeLessThan(full.byFamily.plan.correct);
   });
 });

@@ -115,6 +115,14 @@ export type BlockOptions = {
    * is only safe because the id is in the same text, which is exactly the condition this set encodes.
    */
   readonly referenced?: ReadonlySet<string>;
+  /**
+   * Extra status lines per fact id, rendered directly under the fact they describe.
+   *
+   * Exists so the caller that knows about a conflict or a cascade does not have to discover the line it
+   * just rendered and splice into it. Rendering stays in one place; the *knowledge* that a fact has a
+   * second line to say stays with whoever worked it out.
+   */
+  readonly flags?: ReadonlyMap<string, readonly string[]>;
 };
 
 /**
@@ -161,6 +169,7 @@ export function renderBlock(
   return [
     `fact:     ${fact.text}  [${fact.type}]`,
     ...(fact.stale === true ? ['status:   stale (a premise it rests on was refuted)'] : []),
+    ...(options.flags?.get(fact.id) ?? []),
     ...shown,
     ...(assumed === '' ? [] : [`assumed:  ${assumed}`]),
     ...(plan === '' ? [] : [`plan:     ${plan}`]),
