@@ -162,19 +162,16 @@ jobs:
             exit 0
           fi
           ARMS="${ARMS_FLAG}"
+          # One invocation, two outputs. Running it twice -- once for the JSON and once for the table -- produced an
+          # artifact and a printed table from two different samples that disagreed by five questions per arm, which
+          # is why `--json-out` exists.
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
             --questions "${{ github.event.inputs.read_questions || '100' }}" \
             --limit 10 \
             --budget-tokens 2800 \
             --read $ARMS \
-            --json > competitor-read.json
-          node tools/competitor-harness.mjs \
-            --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.read_questions || '100' }}" \
-            --limit 10 \
-            --budget-tokens 2800 \
-            --read $ARMS \
+            --json-out competitor-read.json \
             | tee competitor-read.txt
 
       # The dispatch arm. Same hits, same judge, same corpus -- one prompt differs by an inserted per-capability
@@ -196,14 +193,7 @@ jobs:
             --budget-tokens 2800 \
             --read \
             --reader dispatch \
-            --json $ARMS_FLAG > competitor-read-dispatch.json
-          node tools/competitor-harness.mjs \
-            --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.read_questions || '100' }}" \
-            --limit 10 \
-            --budget-tokens 2800 \
-            --read \
-            --reader dispatch \
+            --json-out competitor-read-dispatch.json \
             $ARMS_FLAG \
             | tee competitor-read-dispatch.txt
 
@@ -227,14 +217,7 @@ jobs:
             --budget-tokens 2800 \
             --read \
             --reader dispatch2 \
-            --json $ARMS_FLAG > competitor-read-dispatch2.json
-          node tools/competitor-harness.mjs \
-            --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.read_questions || '100' }}" \
-            --limit 10 \
-            --budget-tokens 2800 \
-            --read \
-            --reader dispatch2 \
+            --json-out competitor-read-dispatch2.json \
             $ARMS_FLAG \
             | tee competitor-read-dispatch2.txt
 

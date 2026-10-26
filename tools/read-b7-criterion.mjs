@@ -63,12 +63,9 @@ function load(path) {
  * returns `no-move` because nothing moved.
  */
 function extractQuestions(report, label) {
-  const candidates = [
-    report.questions,
-    report.perQuestion,
-    report.results,
-    report.details,
-  ].filter(Array.isArray);
+  const candidates = [report.questions, report.perQuestion, report.results, report.details].filter(
+    Array.isArray,
+  );
   if (candidates.length === 0) {
     throw new Error(
       `${label}: no per-question array found. Top-level keys: ${Object.keys(report).join(', ')}`,
@@ -289,16 +286,22 @@ function main() {
   for (const record of featureRecords) {
     const before = controlById.get(record.questionId);
     if (before === undefined) continue;
-    const beforeOutcome = { questionId: before.questionId, answer: toAnswer(before.answer), correct: before.correct === true };
-    const afterOutcome = { questionId: record.questionId, answer: toAnswer(record.answer), correct: record.correct === true };
+    const beforeOutcome = {
+      questionId: before.questionId,
+      answer: toAnswer(before.answer),
+      correct: before.correct === true,
+    };
+    const afterOutcome = {
+      questionId: record.questionId,
+      answer: toAnswer(record.answer),
+      correct: record.correct === true,
+    };
     if (outcomeMoved(beforeOutcome, afterOutcome)) continue;
     if (toAnswer(before.answer) === toAnswer(record.answer)) continue;
     reworded.push(record.questionId);
   }
   console.log(`\n--- movement census (both arms, one question at a time) ---`);
-  console.log(
-    `reworded but not moved: ${reworded.length} question(s) — the text differs, the`,
-  );
+  console.log(`reworded but not moved: ${reworded.length} question(s) — the text differs, the`);
   console.log(`  scorer's verdict does not. These are NOT movement and are excluded above.`);
   for (const id of reworded) console.log(`  ${id}`);
 

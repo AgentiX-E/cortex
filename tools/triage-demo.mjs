@@ -98,7 +98,11 @@ function parse(argv) {
 async function buildProposer(backend, model, dtype) {
   if (backend === 'none') return { proposer: undefined, profile: undefined };
   const profile = resolveLlmProfile(
-    { backend, ...(model === undefined ? {} : { model }), ...(dtype === undefined ? {} : { dtype }) },
+    {
+      backend,
+      ...(model === undefined ? {} : { model }),
+      ...(dtype === undefined ? {} : { dtype }),
+    },
     process.env,
   );
 
@@ -131,22 +135,26 @@ function renderCard(card) {
   const lines = [`${card.id}  ${card.state}  ${card.reason}`];
   lines.push(`    text: ${card.text}`);
   if (card.proposal !== undefined) {
-    lines.push(`    offered (${card.proposal.promptVersion}, ${card.proposal.model ?? 'unknown model'}):`);
+    lines.push(
+      `    offered (${card.proposal.promptVersion}, ${card.proposal.model ?? 'unknown model'}):`,
+    );
     card.proposal.facts.forEach((fact, index) => {
-      const marks = fact.redactions.map((span) => `${span.kind}[${span.start},${span.end})`).join(' ');
+      const marks = fact.redactions
+        .map((span) => `${span.kind}[${span.start},${span.end})`)
+        .join(' ');
       lines.push(`      [${index}] ${fact.text}${marks === '' ? '' : `  (mask ${marks})`}`);
     });
     if (card.proposal.withheld.length > 0) {
-      lines.push(
-        `    withheld: ${card.proposal.withheld.map((row) => row.reason).join(', ')}`,
-      );
+      lines.push(`    withheld: ${card.proposal.withheld.map((row) => row.reason).join(', ')}`);
     }
   }
   return lines.join('\n');
 }
 
 async function main() {
-  const { command, args, home, atom, llm, model, dtype, id, acknowledge } = parse(process.argv.slice(2));
+  const { command, args, home, atom, llm, model, dtype, id, acknowledge } = parse(
+    process.argv.slice(2),
+  );
   if (command === undefined) {
     throw new Error(
       'expected a command: say | facts | cards | propose | accept | dismiss | release | releases | ask | check | export',
@@ -184,14 +192,18 @@ async function main() {
         console.log(`withheld by ${admission.withheld.rule}: ${admission.withheld.policy}`);
         console.log('not stored anywhere, and no card exists for it.');
       } else {
-        console.log(`${admission.id}  stored ${admission.visibility}  (rule: ${admission.triage.rule ?? 'none, deferred'})`);
+        console.log(
+          `${admission.id}  stored ${admission.visibility}  (rule: ${admission.triage.rule ?? 'none, deferred'})`,
+        );
         // `null` has two different causes and the operator has to be able to tell them apart: a rule
         // answered the question, or the turn holds no claim to ask about. Printing the first message
         // for the second case would be the CLI lying about what the rules did -- they deferred it,
         // and it was the claims gate, not a rule, that declined to open a question.
         if (card !== null) console.log(renderCard(card));
         else if (admission.triage.scope === 'defer') {
-          console.log('no question: this turn contains no claim, only requests or questions, so it is');
+          console.log(
+            'no question: this turn contains no claim, only requests or questions, so it is',
+          );
           console.log('stored privately and there is nothing a colleague could be shown.');
         } else console.log('no question: the rules already answered it.');
       }
@@ -207,7 +219,11 @@ async function main() {
         console.log(`no proposal (${result.failure.reason}): ${result.failure.detail}`);
         console.log('the card keeps the sentence the person said.');
       } else {
-        console.log(renderCard(await session.cards().then((cards) => cards.find((card) => card.id === cardId))));
+        console.log(
+          renderCard(
+            await session.cards().then((cards) => cards.find((card) => card.id === cardId)),
+          ),
+        );
       }
     } else if (command === 'accept') {
       const cardId = args[0];
@@ -216,7 +232,9 @@ async function main() {
       if (card.refused === undefined) {
         console.log(`${card.id}  ${card.state}  published: ${card.text}`);
       } else {
-        console.log(`${card.id}  still ${card.state}  refused by ${card.refused.rule}: ${card.refused.policy}`);
+        console.log(
+          `${card.id}  still ${card.state}  refused by ${card.refused.rule}: ${card.refused.policy}`,
+        );
         console.log('nothing was published; the card keeps the sentence it had.');
       }
     } else if (command === 'release') {
@@ -227,7 +245,10 @@ async function main() {
         console.log(`released ${record.id}: rule ${record.rule} overridden`);
         console.log(`  policy: ${record.policy}`);
         console.log(`  digest: ${record.digestAlgorithm} ${record.digest.slice(0, 16)}…`);
-        console.log(`  recorded at ${new Date(record.releasedAt).toISOString()}` + (record.completedAt === null ? ' (INCOMPLETE)' : ''));
+        console.log(
+          `  recorded at ${new Date(record.releasedAt).toISOString()}` +
+            (record.completedAt === null ? ' (INCOMPLETE)' : ''),
+        );
       } catch (error) {
         // The writer throws the warning itself, so the CLI does not restate the policy in its own
         // words -- one sentence, one source.
@@ -260,19 +281,23 @@ async function main() {
     } else if (command === 'check') {
       const task = args[0];
       const draft = args.slice(1).join(' ');
-      if (task !== 'shared' && task !== 'private') throw new Error('check needs a scope: shared or private');
+      if (task !== 'shared' && task !== 'private')
+        throw new Error('check needs a scope: shared or private');
       if (draft.trim() === '') throw new Error('check needs a draft');
       const scan = await session.check(draft, { task });
       console.log(`${scan.verdict}  (${scan.findings.length} finding(s)) for a ${task} task`);
       for (const finding of scan.findings) {
         const why = finding.excusedBy === undefined ? '' : `  excused by ${finding.excusedBy}`;
-        console.log(`  ${finding.kind}${finding.rule === null ? '' : ` [${finding.rule}]`}: ${finding.excerpt}${why}`);
+        console.log(
+          `  ${finding.kind}${finding.rule === null ? '' : ` [${finding.rule}]`}: ${finding.excerpt}${why}`,
+        );
       }
     } else if (command === 'export') {
       console.log(await session.export());
     } else if (command === 'ask') {
       const task = args[0];
-      if (task !== 'shared' && task !== 'private') throw new Error('ask needs a scope: shared or private');
+      if (task !== 'shared' && task !== 'private')
+        throw new Error('ask needs a scope: shared or private');
       const rows = await session.evidence(task);
       console.log(`${rows.length} row(s) visible to a ${task} task`);
       for (const row of rows) {

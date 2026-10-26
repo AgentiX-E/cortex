@@ -27,7 +27,7 @@
  * reproducible from `(path, count)` alone and every capability that exists is represented.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 import {
   LexicalProvider,
@@ -49,6 +49,24 @@ const flag = (name) => {
   return at === -1 ? undefined : argv[at + 1];
 };
 const asJson = argv.includes('--json');
+/**
+ * Also write the machine-readable payload to this path, while still printing the table.
+ *
+ * ## Why this is not `--json > file`
+ *
+ * A pipeline ran each reading stage twice: once with `--json > file` for the paired test and once piped to
+ * `tee` for the human table. Both invocations call the model, so the artifact and the printed table came from
+ * **two different samples** — and they disagreed: 344 vs 339 correct for the same arm, on the same questions,
+ * with the same prompt.
+ *
+ * That is worse than waste. A reader comparing the table with `competitor-paired.txt` finds a 17-question
+ * movement in one and 10 in the other, and has no way to know which is the run. The paired test was right and
+ * the table described a different run, which is the defect class this project keeps finding: two artifacts that
+ * claim to describe one experiment.
+ *
+ * One invocation, two outputs, and the file is what was printed.
+ */
+const jsonOut = flag('--json-out');
 const limit = Number(flag('--limit') ?? 10);
 const people = Number(flag('--people') ?? 8);
 const wanted = Number(flag('--questions') ?? 100);
@@ -253,6 +271,12 @@ const config = {
   tokenBudget: 0,
 };
 
+if (jsonOut !== undefined) {
+  // Written before the table so a crash in rendering cannot cost the artifact, and with the same object the
+  // table is rendered from, so the two cannot describe different runs.
+  writeFileSync(jsonOut, `${JSON.stringify({ config, scores }, null, 2)}\n`);
+}
+
 if (asJson) {
   const body = `${JSON.stringify({ config, scores }, null, 2)}\n`;
   // `process.exit` does not wait for stdout to drain, and a pipe buffer is 8 KiB. The failure this prevents is
@@ -264,7 +288,9 @@ if (asJson) {
   // Redirecting to a file did not show this, because a file write is synchronous; only a pipe does. That is why
   // it survived until a tool started piping the output.
   await new Promise((resolve, reject) => {
-    process.stdout.write(body, (error) => (error === null || error === undefined ? resolve() : reject(error)));
+    process.stdout.write(body, (error) =>
+      error === null || error === undefined ? resolve() : reject(error),
+    );
   });
   process.exit(0);
 }

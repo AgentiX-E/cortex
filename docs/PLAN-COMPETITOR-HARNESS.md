@@ -230,6 +230,43 @@ is computed from the configuration, and the configuration is printed with every 
 H0 is the gate for everything else: until the pipeline runs end to end on a lexical control, an adapter that
 returns nothing is indistinguishable from a system that retrieves nothing.
 
+### 3.5 The October 2026 field, and why `comparability()` is not pedantry
+
+A survey of the published numbers as of October 2026, with each row's own caveat, because the caveats are the
+finding:
+
+| system | score | what the row actually is |
+| --- | --- | --- |
+| Agent Zero Memory (Zero Labs) | 95.6% | gpt-5.5; the paper states neither its setting nor its judge model |
+| Mastra Observational Memory | 94.87% | gpt-5-mini; **84.23% with gpt-4o** — same memory, different answerer |
+| Mem0 | 94.4% (472/500) | top-200 retrieval budget, GPT-5 as answerer *and* judge, cleaned file |
+| Perpetuity (NeuraWeave) | 94.0% | self-measured, 3.6k-token median frame, official judge, nothing excluded |
+| Backboard | 93.4% | unofficial judge |
+| ByteRover | 92.8% | **30 questions excluded** |
+| Hindsight | 91.4% | self-graded with GPT-OSS-120B |
+| Zep | 90.2% | gpt-5.4; **63.8% in a third-party roundup** |
+| GPT-4o on the full 115k history | 60.6% | the benchmark's own baseline |
+| Supermemory | "97%" | Recall@20 with aggregation — a retrieval metric, not answer accuracy |
+
+Three observations, and each one is why this repository reports a cost column and a comparability grade rather
+than a rank.
+
+1. **The answer model is worth about ten points.** Mastra reports the same memory system at 84.23% with gpt-4o and
+   94.87% with gpt-5-mini. Any comparison across rows with different readers is therefore comparing readers, and
+   our reader is `deepseek-chat`.
+2. **Self-reporting is not a rounding difference.** Zep publishes 90.2% and a third-party roundup puts it at
+   63.8%. Both can be honestly produced — different reader, judge and retrieval depth — and the gap is larger than
+   the entire distance between most rows on the table.
+3. **The costs are all reported, and ours is the smallest.** Mem0 6.8–7.0k tokens, Zep 4,408–5,760, Perpetuity
+   3,600 median, Contextier 2,807. Our 2.8k arm reads 2,799 and our unbounded arm reads 33,089. A row without its
+   cost is not comparable with any row on this table, which is the argument `ProviderScore.meanContextChars`
+   exists to make.
+
+What this changes in our own reporting: nothing about the numbers, and everything about the claim. **At 2.8k
+tokens we are leaner than every published system and answer 55% of the questions with a `deepseek-chat` reader**;
+their 90–95% is a different answer model, a different judge, and in one case a different question set. The honest
+sentence is the one `comparability()` produces, and its grade for these comparisons is **C**.
+
 ### 4.0 What H1a added, and why it had to come first
 
 H1 as written assumed the harness could meet a corpus. It could not: `tools/competitor-harness.mjs` generated its

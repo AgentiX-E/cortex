@@ -37,7 +37,9 @@ const flag = (name) => {
 const alpha = Number(flag('--alpha') ?? 0.05);
 
 if (positional.length !== 2) {
-  process.stderr.write('usage: node tools/paired-test.mjs baseline.json treatment.json [--alpha 0.05]\n');
+  process.stderr.write(
+    'usage: node tools/paired-test.mjs baseline.json treatment.json [--alpha 0.05]\n',
+  );
   process.exit(2);
 }
 

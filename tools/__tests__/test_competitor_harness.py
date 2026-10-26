@@ -25,6 +25,7 @@ printed table tests the thing a reader reads.
 from __future__ import annotations
 
 import json
+import pytest
 import subprocess
 import sys
 from pathlib import Path
@@ -177,6 +178,62 @@ def test_json_survives_a_pipe_whose_reader_is_slow() -> None:
     # `json.loads` is the assertion: a truncated document raises here rather than being read as a smaller run.
     payload = json.loads(completed.stdout)
     assert len(payload["scores"]) > 0
+
+
+def test_json_out_writes_the_same_run_it_prints(tmp_path: Path) -> None:
+    """One invocation, two outputs, and they describe one experiment.
+
+    The pipeline used to run every reading stage twice -- once with `--json > file` for the paired test, once
+    piped to `tee` for the table. Both invocations call the model, so the artifact and the table came from two
+    different samples: 344 against 339 correct for the same arm, same questions, same prompt. A reader comparing
+    the table with the paired report then sees a 17-question movement in one and 10 in the other and cannot tell
+    which is the run.
+
+    The assertion is equality, not plausibility: the number the table prints must be the number the file carries.
+    """
+    out = tmp_path / "run.json"
+    completed = subprocess.run(
+        ["node", str(TOOL), "--data", str(FIXTURE), "--questions", "4", "--json-out", str(out)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    # The table still prints, so a human reader loses nothing.
+    assert "provider" in completed.stdout and "recall@k" in completed.stdout
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert len(payload["scores"]) > 0
+
+    # Every provider's found/measured pair must appear in the printed table exactly as the file records it.
+    for score in payload["scores"]:
+        assert score["provider"] in completed.stdout, score["provider"]
+    # And the one number both artifacts carry is the same number: `~tok` is derived from `meanContextChars`.
+    for score in payload["scores"]:
+        tokens = round(score["meanContextChars"] / 4)
+        row = next(line for line in completed.stdout.splitlines() if line.startswith(score["provider"]))
+        assert str(tokens) in row.replace(" ", ""), (score["provider"], tokens, row)
+
+
+def test_json_out_does_not_print_the_json(tmp_path: Path) -> None:
+    """`--json-out` writes a file; it does not change what stdout is for.
+
+    Conflating the two would make the flag useless in a pipeline and would break every existing `--json`
+    consumer, which is why they are separate switches.
+    """
+    out = tmp_path / "run.json"
+    completed = subprocess.run(
+        ["node", str(TOOL), "--data", str(FIXTURE), "--questions", "4", "--json-out", str(out)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(completed.stdout)
 
 
 def test_the_floor_stays_at_zero() -> None:

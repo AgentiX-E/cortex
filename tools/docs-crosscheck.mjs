@@ -168,7 +168,14 @@ for (const file of markdownFiles()) {
     const line = text.slice(0, match.index).split('\n').length;
     const entry = readings.get(id);
     if (entry === undefined) {
-      problems.push({ file, line, id, claimed: tail.trim(), actual: null, why: 'no such criterion' });
+      problems.push({
+        file,
+        line,
+        id,
+        claimed: tail.trim(),
+        actual: null,
+        why: 'no such criterion',
+      });
       continue;
     }
     if (entry.rendered === null) {
@@ -184,7 +191,14 @@ for (const file of markdownFiles()) {
     const leading = tail.trim().match(/^-?[\d.]+(?:%|pp)?/);
     const claimed = leading === null ? (tail.trim().split(/[\s|]/)[0] ?? '') : leading[0];
     if (claimed !== entry.rendered) {
-      problems.push({ file, line, id, claimed, actual: entry.rendered, why: 'document and code disagree' });
+      problems.push({
+        file,
+        line,
+        id,
+        claimed,
+        actual: entry.rendered,
+        why: 'document and code disagree',
+      });
     }
   }
 }

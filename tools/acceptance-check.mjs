@@ -30,11 +30,7 @@ import {
   describe,
   verdictOf,
 } from '../packages/cortex-eval/dist/acceptance.js';
-import {
-  ablate,
-  buildCases,
-  scoreArm,
-} from '../packages/cortex-eval/dist/assumption-ablation.js';
+import { ablate, buildCases, scoreArm } from '../packages/cortex-eval/dist/assumption-ablation.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -48,7 +44,9 @@ const asJson = argv.includes('--json');
 const strictUnrun = argv.includes('--strict-unrun');
 const root = flag('--root') ?? path.resolve(REPO, '..');
 const reviewHtml =
-  flag('--html') ?? process.env.CORTEX_REVIEW_HTML ?? path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html');
+  flag('--html') ??
+  process.env.CORTEX_REVIEW_HTML ??
+  path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html');
 
 /** Read a dotted path out of a JSON document, or `undefined` when any step is missing. */
 function pluck(value, key) {
@@ -145,7 +143,8 @@ const show = (criterion, value) => {
   return value.toFixed(0);
 };
 const want = (criterion) => {
-  const sign = criterion.comparator === 'at-least' ? '≥' : criterion.comparator === 'at-most' ? '≤' : '=';
+  const sign =
+    criterion.comparator === 'at-least' ? '≥' : criterion.comparator === 'at-most' ? '≤' : '=';
   return `${sign} ${show(criterion, criterion.threshold)}`;
 };
 /** The word in the status column: a status is not enough once aims and accepted misses exist. */
@@ -178,10 +177,10 @@ if (asJson) {
 } else {
   const pad = (value, width) => String(value).padEnd(width);
   process.stdout.write(`acceptance matrix — ${CRITERIA.length} criteria\n\n`);
-  process.stdout.write(`${pad('id', 5)}${pad('current', 10)}${pad('want', 10)}${pad('status', 8)}capability\n`);
   process.stdout.write(
-    `${pad('', 5)}${pad('', 10)}${pad('', 10)}${pad('', 8)}\n`.slice(0, 0),
+    `${pad('id', 5)}${pad('current', 10)}${pad('want', 10)}${pad('status', 8)}capability\n`,
   );
+  process.stdout.write(`${pad('', 5)}${pad('', 10)}${pad('', 10)}${pad('', 8)}\n`.slice(0, 0));
   for (const { criterion, evaluation } of evaluations) {
     process.stdout.write(
       `${pad(criterion.id, 5)}${pad(show(criterion, evaluation.current), 10)}${pad(want(criterion), 10)}${pad(label(criterion, evaluation), 8)}${criterion.capability}\n`,
@@ -199,7 +198,9 @@ if (asJson) {
     for (const { criterion, evaluation } of failed) {
       process.stdout.write(`\n  ${criterion.id}  ${criterion.metric}\n`);
       process.stdout.write(`    on ${criterion.dataset}\n`);
-      process.stdout.write(`    got ${show(criterion, evaluation.current)}, want ${want(criterion)}\n`);
+      process.stdout.write(
+        `    got ${show(criterion, evaluation.current)}, want ${want(criterion)}\n`,
+      );
       process.stdout.write(`    on miss: ${criterion.onMiss}\n`);
     }
   }
@@ -214,9 +215,13 @@ if (asJson) {
   }
 
   if (missing.length > 0) {
-    process.stdout.write(`\n${missing.length} with no value — reported as unrun, never as a pass\n`);
+    process.stdout.write(
+      `\n${missing.length} with no value — reported as unrun, never as a pass\n`,
+    );
     for (const { criterion, evaluation } of missing) {
-      process.stdout.write(`  ${pad(criterion.id, 5)}${describe(criterion.source)}: ${evaluation.note}\n`);
+      process.stdout.write(
+        `  ${pad(criterion.id, 5)}${describe(criterion.source)}: ${evaluation.note}\n`,
+      );
     }
   }
 

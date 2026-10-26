@@ -354,13 +354,83 @@ project keeps finding: a number that was produced by the instrument rather than 
 file does not raise; it parses as a *smaller run* or not at all, and the reader of an artifact has no way to tell
 which. The `--json` path is the one every later comparison depends on.
 
+## 5.5 The multi-session rewrite, and the first exact paired p
+
+500 questions, two arms, two prompts, one run. `con` was skipped by `read_prompts` because its numbers were
+already in the previous run's log and the comparison that answers this round's question is dispatch → dispatch2.
+
+| capability | `dispatch` lexical | `dispatch2` lexical | `dispatch` session | `dispatch2` session |
+| --- | --- | --- | --- | --- |
+| ABS | 26/30 | 27/30 (+1) | 25/30 | 27/30 (+2) |
+| IE | 107/150 | 111/150 (+4) | 120/150 | 120/150 (0) |
+| KU | 60/72 | 57/72 (−3) | 53/72 | 54/72 (+1) |
+| **MR** | **64/121** | **81/121 (+17)** | **61/121** | **77/121 (+16)** |
+| TR | 87/127 | 85/127 (−2) | 77/127 | 87/127 (+10) |
+| **total** | **344/500** | **361/500 (+17)** | **336/500** | **365/500 (+29)** |
+
+Paired exact McNemar, same questions, same run:
+
+| provider | improved | regressed | net | p | verdict |
+| --- | --- | --- | --- | --- | --- |
+| `lexical-reference` | 46 | 29 | +17 (3.4%) | 0.0639 | not significant |
+| `cortex-session` | 51 | 22 | +29 (5.8%) | **0.0009** | improved |
+
+### What the table says, and the two things it refuses to say
+
+**MR is the only capability that moves systematically.** +17 and +16 questions on two independent retrievals —
+different recall (93.6% and 94.0%), different hit sets — with everything else inside ±4. That is the shape of an
+effect located where the clause is, and it is the prediction registered in §5.4: candidates drawn from *iterating
+the retrieved blocks* fix membership, and the model's own recall does not.
+
+**Which is why the significant p-value is not the headline.** `cortex-session` reaches p=0.0009 on a net of +29,
+and only 16 of those are MR. The other 13 are ABS +2, KU +1, and **TR +10** — and the temporal clause is
+byte-identical between the two arms, asserted by a test. TR's +10 is therefore a second sample of the same
+prompt, not an effect.
+
+**That is the useful part: it measures run-to-run noise on a 127-question column.** Two runs of one prompt differ
+by 10 questions, 7.9 points, with no change to the prompt at all. The earlier estimate of ±3pp came from a
+100-question, 20-per-capability sample where one question is five points; this one is better because the column
+is six times larger.
+
+The honest reading of the round is therefore:
+
+> The multi-session rewrite moves MR by **+16 to +17 questions out of 121 (13–14 points)** on both arms, and the
+> total movement it produces is not distinguishable from MR's contribution plus noise on a column that can swing
+> ten questions on its own.
+
+`lexical-reference` failing to reach significance (p=0.0639) while showing the same +17 on MR is consistent with
+that: its regressions are spread across capabilities, and with 29 of them the test cannot separate the MR effect
+from the background. **A test on the total is the wrong test for a clause that targets one capability**, which is
+why the per-capability table is the result and the p-value is a footnote to it.
+
+### The bug that produced a false disagreement
+
+The first look at this run showed a table reading `339/500 → 349/500` (net +10) next to a paired report claiming
+`improved 46, regressed 29` (net +17). Both were in the log; they disagreed by seven questions.
+
+Cause: every reading stage ran **twice** — once with `--json > file` for the paired test and once piped to `tee`
+for the table. Both invocations call the model, so the artifact and the printed table came from different samples.
+The JSON said 344 for `lexical-reference` and the table said 339; the paired test used the JSON, so it was right
+and the table described a different run.
+
+The repair is `--json-out <path>`: one invocation writes the payload and prints the table from **the same
+`{ config, scores }` object**. `test_json_out_writes_the_same_run_it_prints` asserts equality rather than
+plausibility — it reads the token count out of the file and looks for the same integer in the printed row — and
+removing the write turns it red (verified).
+
+This is the third instrument defect in three rounds, and all three have the same shape: **an artifact that
+describes a run other than the one it is filed under.** The truncated JSON said the run was smaller; the doubled
+invocation said the run scored differently.
+
 ## 6. The next measurements, in order, revised by §2.1
 
 | # | measurement | why it is next | criterion |
 | --- | --- | --- | --- |
 | 1 | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp) |
 | 1b | ~~the same ablation on the 500-question file~~ **done — §5.3** | §5.1 was 20 TR questions; the population is 127 | TR +24.4pp and +22.8pp, `recall@k` unchanged; exact paired p pending `records` |
-| 1c | ~~the MR clause, rewritten to demand an artefact~~ **implemented — §5.4**, run dispatched | §5.3 shows the TR clause moved 31 questions and the MR clause moved 5 and −2; TR asks for dates to be written down, MR asks for nothing | MR ≥ +10pp at constant `recall@k`, exact paired p from the same run |
+| 1c | ~~the MR clause, rewritten to demand an artefact~~ **done — §5.5** | §5.3 showed the TR clause moved 31 questions and the MR clause moved 5 and −2; TR asks for dates to be written down, MR asked for nothing | MR ≥ +10pp at constant `recall@k`: **+17 and +16 on 121 questions**, both arms. Criterion met, and the total is not the metric |
+| 1d | **the aggregation critique under the same test** | §5.4's prediction separates the two mechanisms by where candidates come from, and only one of them has now been measured. The critique asks the model what its list missed, which is enumeration again | MR ≥ +10pp on the memory arm with `AGGREGATION_CRITIQUE=1`, paired |
+| 1e | **a prompt-invariant noise baseline, per capability** | §5.5 measured 10 questions of swing on TR across two identical prompts. Every future claim on a 121-question column must clear that | report the swing before any Δ is called an effect |
 | 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
 | 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
 
