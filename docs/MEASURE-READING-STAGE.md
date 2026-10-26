@@ -151,6 +151,13 @@ gets wrong is which items enter the list."*
    repository's own rule ("nothing is enabled on the graded path until its own ablation is green") it is the step
    that has to happen before it can be trusted.
 
+   It now has a caller: `BenchmarkRunnerOptions.enableAggregationCritique`, forwarded to the feature only,
+   recorded in `featureConfig` for both states, and reachable from the CLI as `AGGREGATION_CRITIQUE=1`. The test
+   that matters counts **model calls**, not the config field — a runner that forwarded an option the system
+   ignored would still set the field, which is exactly the defect that kept the B7 toggle dead for a round. It
+   costs two calls per enumeration question, not one: the pass is a critique and a re-ask, and the first version
+   of the test asserted one and read 4 against 3.
+
 That is a general lesson worth recording: **before writing a mechanism, grep for one.** Two of this round's three
 "new" ideas already existed in the product, one of them implemented and never measured, which is the same shape as
 the orphan exports and the inert `retrievalThreshold` this project has caught before.
@@ -294,6 +301,30 @@ and a test pins its text, which means the next person who wants to change it has
 hold the chain single-variable: `dispatch2` is byte-identical to `dispatch` on every other capability, differs only
 in the multi-session paragraph (asserted through a shared prefix and suffix, not through a diff of the whole
 prompt), and is still the control prompt plus an insertion so `con` remains its baseline.
+
+### A prediction registered before the result
+
+One more external finding arrived after `dispatch2` was dispatched and before its numbers existed, and it makes a
+testable prediction about **both** new mechanisms. It is recorded here first, so the result can refute it.
+
+*Judging ≠ Enumerating* (arXiv 2608.01000) reports that models asked to produce a complete list suffer **silent
+omission**: after five items the list "looks complete" and generation stops, while dozens of correct items remain
+unstated. The same items, offered one at a time with "does this qualify?", are confirmed about 90% of the time. The
+prescription is to stop asking a model to recall a set and to start presenting candidates for judgement.
+
+That distinction separates the two mechanisms built in this round:
+
+| mechanism | where the candidates come from | predicted effect |
+| --- | --- | --- |
+| `dispatch2` (this round) | **iterating the retrieved blocks** — one row per block, so the candidate set is the context rather than the model's recall | movement on MR |
+| `enableAggregationCritique` (wired, not yet run) | **asking the model what its first list missed** — which is enumeration again, one level up | little or no movement, because the critique inherits the failure it is meant to repair |
+
+If MR moves under `dispatch2`, the reading is that iterating the context is what fixes membership, which agrees with
+the paper and would make the critique's design suspect. If MR does not move even under `dispatch2`, then neither
+context-iteration nor self-critique repairs membership at the prompt layer, and the gap is in the index — which is
+what LongMemEval's own "further fact extraction" sentence claims.
+
+Either outcome decides the next step, and both are better than another prompt rewrite with no prediction attached.
 
 ### The bug this uncovered, and why it is in a measurement document
 

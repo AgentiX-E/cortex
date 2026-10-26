@@ -51,8 +51,12 @@ concurrency:
 jobs:
   retrieval:
     runs-on: ubuntu-22.04
-    # 500 questions x 2 arms x 2 prompts is ~2,000 model calls; 100 questions is ~800.
-    timeout-minutes: 120
+    # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
+    # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
+    # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question
+    # reading is the only one whose temporal column has enough questions for a paired test, which is the whole
+    # reason the arms exist.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
