@@ -143,6 +143,82 @@ describe('the aggregation critique is reachable from the benchmark entry point',
  * context is numbered and one verdict per number is required, so a caller can count verdicts against markers. "I
  * found nothing missing" cannot be checked that way.
  */
+/**
+ * Counters, because "the critique did nothing" and "the critique never ran" were indistinguishable.
+ *
+ * The round's end-to-end A/B returned two arms that were identical to the digit on 500 questions. Three states
+ * produce that, and the artifact could not tell them apart: the critique never fired, it fired and found nothing,
+ * or it fired and the revision did not change the answer. The first two are cheap to separate and the third needs
+ * the counters below to even be asked.
+ */
+describe('the critique counters', () => {
+  async function countersFor(
+    reply: string,
+    options: {
+      enableAggregationCritique?: boolean;
+      mode?: 'recall' | 'per-item';
+      firstAnswer?: string;
+    } = {},
+  ) {
+    let system:
+      | { critiqueStats: { eligible: number; fired: number; noOp: number; skipped: number } }
+      | undefined;
+    await runNaturalLanguageBenchmark(
+      instances,
+      new HashEmbedding(64),
+      {
+        async complete(prompt: string) {
+          if (/auditing a draft/.test(prompt)) return reply;
+          return options.firstAnswer ?? '1. cello\n2. clarinet\nAnswer: two';
+        },
+        async completeStructured() {
+          return {} as never;
+        },
+      } as LLM,
+      {
+        runs: 1,
+        enableAggregationCritique: options.enableAggregationCritique ?? true,
+        ...(options.mode === undefined ? {} : { aggregationCritiqueMode: options.mode }),
+        onSystem: (built: unknown) => {
+          system = built as never;
+        },
+      } as never,
+    );
+    return system!.critiqueStats;
+  }
+
+  it('counts a critique that fires', async () => {
+    const stats = await countersFor('3: COUNT\nMISSED: 3\nEXTRA: none');
+    expect(stats.eligible).toBe(1);
+    expect(stats.fired).toBe(1);
+    expect(stats.noOp).toBe(0);
+    expect(stats.skipped).toBe(0);
+  });
+
+  it('counts a critique that finds nothing as a no-op rather than as a fire', async () => {
+    // The distinction the end-to-end run could not make. A no-op means the pass ran and the model reported the
+    // list complete; a fire means it reported a gap. Collapsing them makes an inert pass look like a working one.
+    const stats = await countersFor('Nothing to add');
+    expect(stats.eligible).toBe(1);
+    expect(stats.fired).toBe(0);
+    expect(stats.noOp).toBe(1);
+  });
+
+  it('counts nothing when the switch is off', async () => {
+    const stats = await countersFor('3: COUNT', { enableAggregationCritique: false });
+    expect(stats).toEqual({ eligible: 0, fired: 0, noOp: 0, skipped: 0 });
+  });
+
+  it('accounts for every eligible question exactly once', async () => {
+    // The invariant that makes the counter trustworthy: eligible is the sum of the three outcomes, so a question
+    // cannot be counted twice or vanish. Without it a counter can drift and still look plausible.
+    for (const reply of ['3: COUNT\nMISSED: 3', 'Nothing to add', 'No issue found']) {
+      const stats = await countersFor(reply);
+      expect(stats.eligible).toBe(stats.fired + stats.noOp + stats.skipped);
+    }
+  });
+});
+
 describe('the per-item critique', () => {
   async function perItemPrompts(): Promise<string[]> {
     const prompts: string[] = [];

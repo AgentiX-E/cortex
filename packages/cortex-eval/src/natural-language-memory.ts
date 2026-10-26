@@ -554,6 +554,36 @@ type AnswerParser = (raw: string, abstainToken?: string) => Answer;
 export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
   readonly name: string;
   private readonly options: NaturalLanguageMemorySystemOptions;
+  /**
+   * How the aggregation critique behaved, question by question.
+   *
+   * ## Why these four numbers exist
+   *
+   * Two end-to-end arms that differ in one prompt returned identical verdicts on all 500 questions. Three states
+   * produce that and the artifact could not distinguish them: the critique never reached the model, it reached it
+   * and the model reported nothing to change, or it changed the ledger and the change did not move the answer.
+   * Without these counters the first two collapse into "the pass did nothing", which is the state that makes an
+   * inert mechanism look like a working one.
+   *
+   * `eligible` is the sum of the other three by construction, and a test asserts it: a counter that can drift
+   * while looking plausible is worse than no counter.
+   */
+  #critique: { eligible: number; fired: number; noOp: number; skipped: number } = {
+    eligible: 0,
+    fired: 0,
+    noOp: 0,
+    skipped: 0,
+  };
+
+  /** What the critique pass did. Read after a run; never reset, because a run is one system. */
+  get critiqueStats(): {
+    readonly eligible: number;
+    readonly fired: number;
+    readonly noOp: number;
+    readonly skipped: number;
+  } {
+    return { ...this.#critique };
+  }
 
   constructor(name: string, options: NaturalLanguageMemorySystemOptions) {
     this.name = name;
@@ -1169,8 +1199,12 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     context: string,
     raw: string,
   ): Promise<string> {
+    this.#critique.eligible += 1;
     const ledger = extractAggregationLedger(raw);
     if (ledger === '') {
+      // Nothing to audit is counted apart from a no-op: "the model found nothing missing" and "there was
+      // nothing for the model to look at" are different claims about the same pass.
+      this.#critique.skipped += 1;
       return '';
     }
     const prompt =
@@ -1187,15 +1221,18 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         cache.set(prompt, critique);
       }
     }
-    if (/no issue found/i.test(critique)) return '';
-    // A per-item critique that reports both summary lines empty is a no-op too: the revision would otherwise
-    // re-ask the identical question with a note saying nothing was wrong, which only doubles the cost.
-    if (
-      this.options.aggregationCritiqueMode === 'per-item' &&
-      /nothing (?:to add|missing)/i.test(critique)
-    ) {
+    if (/no issue found/i.test(critique)) {
+      this.#critique.noOp += 1;
       return '';
     }
+    // "Nothing to add" is a no-op in either mode: it claims the list needs no supplement, which is the same claim
+    // as "No issue found". Recognising it only under `per-item` counted an inert pass as a fire, and the counters
+    // exist precisely to keep those two apart.
+    if (/nothing (?:to add|missing)/i.test(critique)) {
+      this.#critique.noOp += 1;
+      return '';
+    }
+    this.#critique.fired += 1;
     return critique;
   }
 

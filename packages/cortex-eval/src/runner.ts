@@ -156,6 +156,14 @@ export type BenchmarkRunnerOptions = {
    */
   aggregationCritiqueMode?: 'recall' | 'per-item';
   /**
+   * Called with the feature system once it is constructed.
+   *
+   * Exists so a caller can read what the system counted after the run — the critique counters in particular, which
+   * are the only way to tell "the pass did nothing" from "the pass never ran". A test can use it without reaching
+   * into the runner's internals.
+   */
+  onSystem?: (feature: unknown) => void;
+  /**
    * Candidate-context discrimination in the feature system (roadmap measure B7).
    *
    * The feature renders retrieved candidates as sides of a discriminated
@@ -283,6 +291,29 @@ export async function runEmbeddingBenchmark(
  * (there are several, e.g. `abstentionAware`) and the artifact would grow fields
  * that no consumer asked for and no reader expects.
  */
+/**
+ * Read the critique counters off a system, when it keeps them.
+ *
+ * Structural rather than nominal: the runner receives an unknown system here, and a probe that assumed the class
+ * would make the runner depend on the thing it measures. A system without the field contributes nothing, which is
+ * the honest report for an arm that does not have the pass.
+ */
+function readCritiqueCounters(
+  feature: unknown,
+): { eligible: number; fired: number; noOp: number; skipped: number } | undefined {
+  const stats = (feature as { critiqueStats?: unknown }).critiqueStats;
+  if (stats === null || typeof stats !== 'object') return undefined;
+  const record = stats as Record<string, unknown>;
+  const keys = ['eligible', 'fired', 'noOp', 'skipped'] as const;
+  if (!keys.every((key) => typeof record[key] === 'number')) return undefined;
+  return {
+    eligible: record['eligible'] as number,
+    fired: record['fired'] as number,
+    noOp: record['noOp'] as number,
+    skipped: record['skipped'] as number,
+  };
+}
+
 function describeFeatureConfig(options: BenchmarkRunnerOptions): FeatureConfig {
   return {
     candidateDiscrimination: options.candidateDiscrimination === true,
@@ -399,9 +430,12 @@ export async function runNaturalLanguageBenchmark(
       ? { aggregationCritiqueMode: options.aggregationCritiqueMode }
       : {}),
   });
+  options.onSystem?.(feature);
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);
   const featureConfig = options.featureConfig ?? describeFeatureConfig(options);
+  // What the critique pass actually did, read off the system rather than assumed from the option that enabled it.
+  const critiqueCounters = readCritiqueCounters(feature);
   const report = await runAblationReport(dataset, baseline, feature, {
     runs: options.runs ?? 3,
     scorer: judgeScorer(judge),
@@ -414,6 +448,7 @@ export async function runNaturalLanguageBenchmark(
     // testable: a caller that stops forwarding an option must fail a test here,
     // not produce a report that still claims the option was on.
     featureConfig,
+    ...(critiqueCounters === undefined ? {} : { critiqueCounters }),
   });
   // The per-question roster, assembled AFTER the ablation because the correctness
   // vector is the ablation's own output (`featureCorrect`) and the records must
