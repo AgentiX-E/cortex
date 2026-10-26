@@ -397,6 +397,26 @@ export type NaturalLanguageMemorySystemOptions = {
    */
   enableAggregationCritique?: boolean;
   /**
+   * How the critique forms its view of what the first pass missed (default `recall`).
+   *
+   * `recall` is the original pass: the model is shown its own ledger and the evidence and asked to report
+   * `MISSED` / `MERGED` / `WRONG` entries. That is an **enumeration** — "tell me what is not in this list" — and
+   * *Judging != Enumerating* (arXiv 2608.01000) reports that models asked to produce a complete list commit
+   * silent omission: a few items and the list looks done, while the same items offered one at a time are
+   * confirmed about 90% of the time.
+   *
+   * `per-item` removes the enumeration. Every line of the context is numbered and the model must emit exactly
+   * one verdict per line — `COUNT`, `NOT-COUNT`, or `DUP-OF <n>` — so the decision is made **per candidate
+   * presented to it** rather than recalled, and the two summary lines at the end are computed from that
+   * verdict table instead of from memory. Coverage is checkable: a missing line number is a malformed answer,
+   * which is not true of "list everything you think is missing".
+   *
+   * Kept as a mode rather than a replacement because the difference is the experiment. `recall` is what the
+   * flag documented before this round; `per-item` is the arm the paper predicts should work better, and one run
+   * of each on the same questions is what turns that prediction into a measurement.
+   */
+  aggregationCritiqueMode?: 'recall' | 'per-item';
+  /**
    * When true (default), an answer that comes back as a BARE abstention gets
    * exactly one re-ask of the byte-identical prompt.
    *
@@ -1153,7 +1173,10 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
     if (ledger === '') {
       return '';
     }
-    const prompt = buildAggregationCritiquePrompt(question, context, ledger);
+    const prompt =
+      this.options.aggregationCritiqueMode === 'per-item'
+        ? buildPerItemCritiquePrompt(question, context, ledger)
+        : buildAggregationCritiquePrompt(question, context, ledger);
     const cache = this.options.answerCache;
     let critique = cache === undefined ? undefined : cache.get(prompt);
     if (critique === undefined) {
@@ -1164,7 +1187,16 @@ export class NaturalLanguageMemorySystem implements SessionAwareMemorySystem {
         cache.set(prompt, critique);
       }
     }
-    return /no issue found/i.test(critique) ? '' : critique;
+    if (/no issue found/i.test(critique)) return '';
+    // A per-item critique that reports both summary lines empty is a no-op too: the revision would otherwise
+    // re-ask the identical question with a note saying nothing was wrong, which only doubles the cost.
+    if (
+      this.options.aggregationCritiqueMode === 'per-item' &&
+      /nothing (?:to add|missing)/i.test(critique)
+    ) {
+      return '';
+    }
+    return critique;
   }
 
   private async retrieveSessionsForQuestion(
@@ -2379,6 +2411,86 @@ function buildAggregationCritiquePrompt(question: string, context: string, ledge
     '',
     'Context:',
     context,
+    '',
+    `Question: ${question}`,
+  ].join('\n');
+}
+
+/**
+ * Number the context's non-empty lines, so a per-item critique can address them.
+ *
+ * Lines rather than turns: a session is rendered as one turn per line, and a line is the smallest unit a model can
+ * be asked about one at a time. Blank lines are dropped before numbering so the numbering has no gaps -- a critique
+ * that skipped "line 7" because the context had a blank line at that ordinal would look like a coverage failure.
+ */
+function numberContextLines(context: string): { numbered: string; lines: number } {
+  const kept = context
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return {
+    numbered: kept.map((line, index) => `[${index + 1}] ${line}`).join('\n'),
+    lines: kept.length,
+  };
+}
+
+/**
+ * Build the per-item critique prompt: one verdict per context line, then a summary derived from the verdicts.
+ *
+ * ## Why this is not the recall critique with different wording
+ *
+ * The recall prompt asks *"what is missing from this list"*, which is an enumeration, and *Judging != Enumerating*
+ * (arXiv 2608.01000) reports that enumeration silently stops: after a few items the list looks complete. The same
+ * paper finds that the identical items, offered one at a time as yes/no questions, are confirmed about 90% of the
+ * time. So the repair is not a better question about what is missing -- it is **not asking that question**.
+ *
+ * Every line of the context is therefore numbered and the model must emit one verdict per number. The two summary
+ * lines are then stated to be *derived from the verdicts it just wrote*, which is the part that makes the count
+ * arithmetic rather than recall.
+ *
+ * ## The three properties that make the output checkable
+ *
+ * 1. **Coverage is decidable.** A missing line number is a malformed response; "I found nothing missing" is not.
+ *    A caller can count verdicts against `[n]` markers without understanding the question.
+ * 2. **The exchange rule is a verdict, not a hint.** Two lines may both be `COUNT` even though the draft has one
+ *    entry for them, which is how a merged entry gets caught rather than described.
+ * 3. **The draft answer is withheld**, as in the recall prompt. A critique shown the number it is meant to check
+ *    agrees with it.
+ */
+function buildPerItemCritiquePrompt(question: string, context: string, ledger: string): string {
+  const { numbered, lines } = numberContextLines(context);
+  return [
+    'You are auditing a draft item list for a question about multiple conversation sessions.',
+    `The context below is split into ${lines} numbered lines. Decide, for EVERY line, whether it states an item`,
+    "that the question's action applies to. Reply with exactly one line per number, in this form:",
+    '',
+    '  <number>: COUNT',
+    '  <number>: NOT-COUNT',
+    '  <number>: DUP-OF <number>',
+    '',
+    'Rules:',
+    '  - COUNT means this line states one item that the question counts. The line may describe the item in different',
+    '    words from the draft.',
+    '  - An "exchange" is TWO items: returning the old thing AND picking up the replacement. If one line mentions the',
+    '    return and another mentions the replacement, both are COUNT.',
+    '  - If two lines describe the SAME single item, the later one is DUP-OF the earlier one.',
+    "  - A line that only mentions the topic, or whose action does not match the question's verb, is NOT-COUNT.",
+    '  - You must emit a verdict for every numbered line, including the NOT-COUNT ones. Do not skip any.',
+    '',
+    'Then, on the last lines, derive the summary FROM THE VERDICTS YOU JUST WROTE:',
+    '',
+    '  MISSED: <numbers marked COUNT that are absent from the draft list, or "none">',
+    '  EXTRA: <draft entries with no COUNT line behind them, or "none">',
+    '',
+    'Do not list items from memory. Do not restate the draft. Do not answer the question.',
+    'If every COUNT line is already in the draft and every draft entry has one, reply "Nothing to add" instead of',
+    'the two summary lines.',
+    '',
+    'Draft item list:',
+    ledger,
+    '',
+    'Numbered context:',
+    numbered,
     '',
     `Question: ${question}`,
   ].join('\n');

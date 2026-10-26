@@ -28,6 +28,7 @@ import { describe, it, expect } from 'vitest';
 import type { LLM } from '@agentix-e/cortex-core';
 import { runNaturalLanguageBenchmark } from '../runner.js';
 import { classifyAggregationKind } from '../natural-language-memory.js';
+import { parseCritiqueMode } from '../bench-arm-options.js';
 import { HashEmbedding } from '../embedding.js';
 import type { LongMemEvalInstance } from '../datasets/longmemeval-loader.js';
 
@@ -66,7 +67,10 @@ function recordingLlm(prompts: string[]): LLM {
   } as LLM;
 }
 
-async function run(options: { enableAggregationCritique?: boolean }) {
+async function run(options: {
+  enableAggregationCritique?: boolean;
+  aggregationCritiqueMode?: 'recall' | 'per-item';
+}) {
   const prompts: string[] = [];
   const { report } = await runNaturalLanguageBenchmark(
     instances,
@@ -124,5 +128,140 @@ describe('the aggregation critique is reachable from the benchmark entry point',
     expect(explicitOff.report.featureConfig?.aggregationCritique).toBe(
       absent.report.featureConfig?.aggregationCritique,
     );
+  });
+});
+
+/**
+ * The per-item critique: judgement instead of enumeration.
+ *
+ * *Judging != Enumerating* (2608.01000) reports two things that together decide this design. Asking a model to
+ * produce a complete list suffers silent omission — a few items and the list looks done. Asking it about items
+ * **one at a time** confirms them at about 90%. The recall critique asks the first kind of question; this arm asks
+ * the second.
+ *
+ * What makes the difference testable rather than stylistic is that per-item output has **decidable coverage**: the
+ * context is numbered and one verdict per number is required, so a caller can count verdicts against markers. "I
+ * found nothing missing" cannot be checked that way.
+ */
+describe('the per-item critique', () => {
+  async function perItemPrompts(): Promise<string[]> {
+    const prompts: string[] = [];
+    await runNaturalLanguageBenchmark(
+      instances,
+      new HashEmbedding(64),
+      {
+        async complete(prompt: string) {
+          prompts.push(prompt);
+          return '1: COUNT\n2: COUNT\nMISSED: none\nEXTRA: none';
+        },
+        async completeStructured() {
+          return {} as never;
+        },
+      } as LLM,
+      { runs: 1, enableAggregationCritique: true, aggregationCritiqueMode: 'per-item' },
+    );
+    return prompts;
+  }
+
+  it('numbers every context line and states how many there are', async () => {
+    const prompts = await perItemPrompts();
+    const critique = prompts.find((prompt) => prompt.includes('numbered lines'));
+    expect(critique).toBeDefined();
+    const markers = [...critique!.matchAll(/^\[(\d+)\] /gm)].map((match) => Number(match[1]));
+    // Numbering is contiguous from 1, so a missing marker is a visible gap rather than a silent shortfall.
+    expect(markers).toEqual(markers.map((_, index) => index + 1));
+    expect(markers.length).toBeGreaterThan(0);
+    // And the stated count is the number of markers actually present.
+    expect(critique).toContain(`split into ${markers.length} numbered lines`);
+  });
+
+  it('requires one verdict per line rather than a list of what is missing', async () => {
+    const critique = (await perItemPrompts()).find((prompt) => prompt.includes('numbered lines'))!;
+    expect(critique).toContain('<number>: COUNT');
+    expect(critique).toContain('<number>: NOT-COUNT');
+    expect(critique).toContain('<number>: DUP-OF <number>');
+    expect(critique).toContain('You must emit a verdict for every numbered line');
+    expect(critique).toContain('Do not skip any');
+    // The prohibition is the point: the failure being repaired is recall, so recall must be forbidden.
+    expect(critique).toContain('Do not list items from memory');
+  });
+
+  it('derives the summary from the verdicts rather than from memory', async () => {
+    const critique = (await perItemPrompts()).find((prompt) => prompt.includes('numbered lines'))!;
+    expect(critique).toContain('derive the summary FROM THE VERDICTS YOU JUST WROTE');
+    expect(critique).toContain('MISSED:');
+    expect(critique).toContain('EXTRA:');
+  });
+
+  it('turns an exchange into two verdicts instead of one merged entry', async () => {
+    // The measured MR failure is a merged entry: returning an item and picking up its replacement counted as one.
+    // A verdict per line makes both lines COUNT, which is what the revision then acts on.
+    const critique = (await perItemPrompts()).find((prompt) => prompt.includes('numbered lines'))!;
+    expect(critique).toContain('An "exchange" is TWO items');
+    expect(critique).toMatch(/both are COUNT/);
+  });
+
+  it('is structurally different from the recall prompt, not a rewording of it', async () => {
+    // If the two prompts differed only in emphasis the experiment would measure wording. The recall prompt asks
+    // for a list of problems; this one forbids that and demands a verdict table.
+    const recall = await run({ enableAggregationCritique: true });
+    const recallCritique = recall.prompts.find((prompt) => prompt.includes('auditing a draft'))!;
+    const perItem = (await perItemPrompts()).find((prompt) => prompt.includes('numbered lines'))!;
+    expect(recallCritique).toContain('Report each problem you find');
+    expect(perItem).not.toContain('Report each problem you find');
+    expect(recallCritique).not.toContain('<number>: COUNT');
+  });
+
+  it('is a no-op when it reports nothing to add', async () => {
+    // A revision that re-asks the identical question with "nothing was wrong" appended doubles the cost for no
+    // change in answer. The no-op path is what keeps the pass affordable.
+    const prompts: string[] = [];
+    await runNaturalLanguageBenchmark(
+      instances,
+      new HashEmbedding(64),
+      {
+        async complete(prompt: string) {
+          prompts.push(prompt);
+          return /numbered lines/.test(prompt)
+            ? 'Nothing to add'
+            : '1. cello\n2. clarinet\nAnswer: two';
+        },
+        async completeStructured() {
+          return {} as never;
+        },
+      } as LLM,
+      { runs: 1, enableAggregationCritique: true, aggregationCritiqueMode: 'per-item' },
+    );
+    // The critique ran once and the revision did not. Counting the calls is the wrong assertion here -- this path
+    // also spends a query-expansion call before answering -- so the assertion is on the revision prompt itself,
+    // which is the thing a no-op must not produce.
+    expect(prompts.filter((prompt) => prompt.includes('auditing a draft item list')).length).toBe(
+      1,
+    );
+    expect(
+      prompts.filter((prompt) => prompt.includes('An audit of your previous attempt')).length,
+    ).toBe(0);
+  });
+
+  it('records which critique ran, for both states', async () => {
+    const off = await run({});
+    const recall = await run({ enableAggregationCritique: true });
+    const perItem = await run({
+      enableAggregationCritique: true,
+      aggregationCritiqueMode: 'per-item',
+    });
+    expect(off.report.featureConfig?.aggregationCritiquePerItem).toBe(false);
+    expect(recall.report.featureConfig?.aggregationCritiquePerItem).toBe(false);
+    expect(perItem.report.featureConfig?.aggregationCritiquePerItem).toBe(true);
+  });
+
+  it('parses the mode strictly, so a typo cannot run the wrong prompt', () => {
+    expect(parseCritiqueMode(undefined)).toBeUndefined();
+    expect(parseCritiqueMode('')).toBeUndefined();
+    expect(parseCritiqueMode('recall')).toBe('recall');
+    expect(parseCritiqueMode('per-item')).toBe('per-item');
+    // Present but unrecognised is an error, not a default: a run whose artifact says `per-item` while the prompt
+    // was `recall` is the defect this refusal prevents.
+    expect(() => parseCritiqueMode('per_item')).toThrow(/must be 'recall' or 'per-item'/);
   });
 });

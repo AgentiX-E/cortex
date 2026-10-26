@@ -382,7 +382,11 @@ export {
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
-export { rerankArmOptions, type RerankArmOptionsInput } from './bench-arm-options.js';
+export {
+  parseCritiqueMode,
+  rerankArmOptions,
+  type RerankArmOptionsInput,
+} from './bench-arm-options.js';
 
 export {
   cortexMemoryArmEmbeddingCachePath,

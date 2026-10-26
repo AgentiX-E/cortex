@@ -1930,6 +1930,7 @@ describe('the runner records the feature configuration it was given', () => {
       entityIdentityClause: true,
       reranker: false,
       aggregationCritique: false,
+      aggregationCritiquePerItem: false,
     });
     // And it reaches the rendered report, not just the object.
     const md = formatAblationReport(report);

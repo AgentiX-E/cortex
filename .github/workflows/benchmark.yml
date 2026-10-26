@@ -48,6 +48,16 @@ on:
         required: false
         default: '0'
         type: string
+      aggregation_critique:
+        description: 'Second-pass membership audit on multi-session enumeration questions (0 = off)'
+        required: false
+        default: '0'
+        type: string
+      aggregation_critique_mode:
+        description: "How the audit finds gaps: 'recall' asks what is missing, 'per-item' numbers every context line and requires a verdict per line"
+        required: false
+        default: 'recall'
+        type: string
       retrieval_sides:
         description: 'Source B7 candidate sides from the retrieved turns (channel C, roadmap B7): 1 = on, 0 = shipped behaviour. Requires candidate_discrimination=1; without it there is no producer to feed'
         required: false
@@ -199,6 +209,16 @@ jobs:
           # so setting it without candidate_discrimination=1 changes nothing —
           # that combination is a no-op, not a second control arm.
           RETRIEVAL_SIDES: ${{ github.event.inputs.retrieval_sides || '0' }}
+          # The multi-session membership audit. Default '0' keeps every existing dispatch byte-identical, which is
+          # the rule this file follows for every switch that costs model calls.
+          #
+          # The mode matters more than the switch. `recall` asks the model what its own list missed -- an
+          # enumeration, and *Judging != Enumerating* (2608.01000) reports enumeration silently stops after a few
+          # items. `per-item` numbers every context line and demands one verdict per line, so the decision is made
+          # per candidate presented rather than recalled. Two dispatches with the same questions and different
+          # modes is the A/B that decides which is true here.
+          AGGREGATION_CRITIQUE: ${{ github.event.inputs.aggregation_critique || '0' }}
+          AGGREGATION_CRITIQUE_MODE: ${{ github.event.inputs.aggregation_critique_mode || 'recall' }}
           DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
           DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           # Default to a small stratified sample so iterative debugging does not

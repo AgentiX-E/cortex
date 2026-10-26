@@ -54,6 +54,8 @@ export type RerankArmOptionsInput = {
    * artifact claims otherwise.
    */
   readonly aggregationCritique: boolean;
+  /** How the critique looks for gaps, when one is enabled. */
+  readonly aggregationCritiqueMode?: 'recall' | 'per-item' | undefined;
 };
 
 /**
@@ -64,6 +66,20 @@ export type RerankArmOptionsInput = {
  * pass-through with nothing to verify. What is worth verifying is which keys are
  * present, and that is what the return type exposes.
  */
+/**
+ * Parse the critique mode from an environment string.
+ *
+ * Strict, like `readToggle`, and for the same reason: `bench/**` is outside coverage, so a comparison written at
+ * the call site is unreachable from any test. An unrecognised value is rejected rather than defaulted, because a
+ * run whose artifact says `per-item` while the prompt was `recall` is the exact defect this file exists to prevent
+ * -- and a typo in a workflow input is how that happens.
+ */
+export function parseCritiqueMode(raw: string | undefined): 'recall' | 'per-item' | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  if (raw === 'recall' || raw === 'per-item') return raw;
+  throw new Error(`AGGREGATION_CRITIQUE_MODE must be 'recall' or 'per-item', got '${raw}'`);
+}
+
 export function rerankArmOptions(input: RerankArmOptionsInput): Record<string, unknown> {
   return {
     reranker: input.reranker,
@@ -92,5 +108,8 @@ export function rerankArmOptions(input: RerankArmOptionsInput): Record<string, u
     // Present only when on, matching the runner's `=== true` forward. Absent is the shipped configuration, so an
     // arm that does not measure the pass sends exactly what every earlier arm sent.
     ...(input.aggregationCritique ? { enableAggregationCritique: true } : {}),
+    ...(input.aggregationCritique && input.aggregationCritiqueMode !== undefined
+      ? { aggregationCritiqueMode: input.aggregationCritiqueMode }
+      : {}),
   };
 }

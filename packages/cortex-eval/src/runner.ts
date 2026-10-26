@@ -144,6 +144,18 @@ export type BenchmarkRunnerOptions = {
    */
   enableAggregationCritique?: boolean;
   /**
+   * How the critique looks for what the first pass missed (default `recall`).
+   *
+   * `recall` asks the model what is absent from its own list, which is an enumeration; `per-item` numbers every
+   * context line and requires one verdict per line, then derives the summary from those verdicts. The distinction
+   * matters because *Judging != Enumerating* (2608.01000) reports that enumeration silently stops while per-item
+   * judgement confirms at about 90%.
+   *
+   * Only meaningful when {@link enableAggregationCritique} is on, and forwarded for the same reason: a control
+   * side that carried a different critique mode would not be a control.
+   */
+  aggregationCritiqueMode?: 'recall' | 'per-item';
+  /**
    * Candidate-context discrimination in the feature system (roadmap measure B7).
    *
    * The feature renders retrieved candidates as sides of a discriminated
@@ -281,6 +293,10 @@ function describeFeatureConfig(options: BenchmarkRunnerOptions): FeatureConfig {
     // reader to infer it from a missing key. Two arms whose artifacts differ only in what they omit cannot be
     // attributed -- the defect §20 already records for the reranking switch.
     aggregationCritique: options.enableAggregationCritique === true,
+    // The mode is recorded even when the switch is off, as the recall default, so two artifacts can never differ
+    // only in a key one of them omits.
+    aggregationCritiquePerItem:
+      options.enableAggregationCritique === true && options.aggregationCritiqueMode === 'per-item',
   };
 }
 
@@ -376,6 +392,12 @@ export async function runNaturalLanguageBenchmark(
     // Omitted rather than `false` for the same reason as the other toggles here: the system's own default is
     // absent, and an explicit `false` would be a configured value meaning "off anyway".
     ...(options.enableAggregationCritique === true ? { enableAggregationCritique: true } : {}),
+    // The mode is only forwarded alongside the switch. A mode without the switch would be a configured value that
+    // changes nothing, which is the shape of defect this repository keeps finding; refusing to forward it keeps the
+    // artifact honest about what ran.
+    ...(options.enableAggregationCritique === true && options.aggregationCritiqueMode !== undefined
+      ? { aggregationCritiqueMode: options.aggregationCritiqueMode }
+      : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);

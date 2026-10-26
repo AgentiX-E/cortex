@@ -23,6 +23,7 @@ import {
   embeddingSourceStats,
   resetEmbeddingSourceStats,
   formatIdPreview,
+  parseCritiqueMode,
   readToggle,
   rerankArmOptions,
   transportRetryReport,
@@ -458,6 +459,10 @@ async function main(): Promise<void> {
   // path, so the ablation it documents -- "nothing is enabled until its own ablation is green" -- could not be run
   // at all. `AGGREGATION_CRITIQUE=1` is what makes it runnable.
   const aggregationCritique = readToggle(process.env, 'AGGREGATION_CRITIQUE');
+  // Which critique: asking the model what its list missed (`recall`), or numbering every context line and requiring
+  // one verdict per line (`per-item`). Parsed by a function in `src/**` rather than inline, for the reason the
+  // toggles above are: a comparison written here cannot be tested.
+  const aggregationCritiqueMode = parseCritiqueMode(process.env['AGGREGATION_CRITIQUE_MODE']);
 
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
@@ -477,11 +482,15 @@ async function main(): Promise<void> {
       entityIdentityClause,
       reranker: reranker !== undefined,
       aggregationCritique,
+      aggregationCritiquePerItem: aggregationCritiqueMode === 'per-item',
     },
     ...(reranker !== undefined ? { reranker } : {}),
     ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
     ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),
     ...(aggregationCritique ? { enableAggregationCritique: true } : {}),
+    ...(aggregationCritique && aggregationCritiqueMode !== undefined
+      ? { aggregationCritiqueMode }
+      : {}),
   });
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
   for (const d of decisions) {
@@ -949,6 +958,7 @@ async function main(): Promise<void> {
           candidateDiscrimination,
           retrievalSides,
           aggregationCritique,
+          ...(aggregationCritiqueMode === undefined ? {} : { aggregationCritiqueMode }),
           ...(rerankCandidatePool === undefined ? {} : { rerankCandidatePool }),
           ...(rerankProtectedHead === undefined ? {} : { rerankProtectedHead }),
         }),
