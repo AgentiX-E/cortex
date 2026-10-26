@@ -11,6 +11,13 @@ provenance that produced it (`provider`, `model`, `baseUrl`, `dimensions`), the 
 four against the backend it is about to use, and a file from any other backend is refused whole.
 Version-1 files are refused too, because a record with no origin cannot be trusted.
 
+**This closes the last gap in a fix that was already specified.** `AUDIT-ZHIPU-429-ROOT-CAUSE.md` §7
+lists five requirements and makes item 5 — *"record the embedding provenance … so two runs can be
+compared without assuming"* — the one to do first, because "without it a green run and a red run are
+not comparable". Items 1–4 landed and item 5 landed in the **report**; the **cache file** kept
+travelling without one. The two halves were specified together and only one was built, which is why a
+cache could be older than the model that read it and no counter would object.
+
 ## 1. Why this is a measurement defect and not a caching inconvenience
 
 Both benchmark workflows restore the embedding cache from an Actions cache keyed on the **corpus**:
@@ -117,15 +124,33 @@ The next run of either workflow will restore **0** vectors and re-embed the whol
 reference pipeline that is ~115,000 turns; the diagnostic run `40378588466` reported
 `cachedTexts 56,782` with `liveTexts 40`, because it was reading a cache written by an earlier run.
 
-**This is a real operational cost and it interacts with a known quota problem.** Zhipu `embedding-3`
-has been returning `429` on a quota that is exhausted, which is why the offline fallback exists. A
-re-embed of this size against the same provider may fail partway. The two ways forward are both
-acceptable and neither is a code change: top up the quota before dispatching, or dispatch against
-the offline `hash` backend *and* record that the number is not comparable with an `embedding-3` run
-(it is a different provenance, which the report now says out loud).
+**This is a real cost, and the first version of this section sized its remedy to the wrong cause.**
+It said the re-embed "interacts with a known quota problem", that Zhipu `embedding-3` "has been
+returning `429` on a quota that is exhausted", and that the ways forward were a top-up or the offline
+fallback. **Every clause of that is wrong, and `AUDIT-ZHIPU-429-ROOT-CAUSE.md` had already said so**:
+`429` from this vendor carries error code `1305`, `模型当前访问量过大` — a **model concurrency cap**,
+not a balance. "A funded account cannot be exhausted by definition of the error code" is that
+document's §5, written about exactly this misreading, and the offline fallback is named there as a
+remedy that *"would have masked all three defects"*.
+
+The correct arithmetic, at the limits the audit tabulates:
+
+| quantity | value |
+| --- | --- |
+| turns to embed | ~115,000 |
+| entries per request (documented ceiling, which the adapter sits at) | 64 |
+| requests | ~1,800 |
+| cost of pacing the batch loop at 100 ms (`embedding_batch_interval_ms`) | ~3 minutes |
+
+So there is no prerequisite and no obstacle: the run is ~1,800 paced requests, and the pacing input
+already exists because requirement 3 of that audit implemented it. Setting it is a mitigation against
+a **concurrency** cap, which is what the 429 ever was; the audit's own §11 records the measured state
+after the three defects were fixed — both A/B arms at 169 calls, 169 attempts, **0 retries**,
+`retryRate` 0.00%. Zero throttles, on a funded account, with no top-up.
 
 What is **not** acceptable is to keep reading a cache whose origin is unknown in order to avoid the
-bill. That is the trade this fix removes from the table.
+bill. That is the trade this fix removes from the table — and it is the only thing this section was
+ever entitled to say.
 
 ## 6. What it does and does not explain
 
