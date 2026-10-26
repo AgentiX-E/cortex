@@ -299,11 +299,29 @@ with `{"empty":0,"threshold":0,"llm":247,"answered":253}`, matching `40088479628
    and they tell us where *its* 56.6 points go. That is the number this repository can now improve
    without touching the cognitive arm at all.
 
-**And one thing becomes new work rather than a blocker.** The round's own experiment — `recall` versus
-`per-item` critique — was run on `benchmark.yml` (§2's two arms). Its subject, the aggregation critique,
-is a `cortex-memory` mechanism. The two runs therefore measured the critique in a system whose MR route
-does not reach it. **The prediction is untested, not refuted**, and it has to be dispatched on
-`benchmark-cortex-memory.yml`.
+**And the round's own experiment survives, at the workflow it already ran on.** The first draft of this
+section said the `recall` versus `per-item` critique had been measured in the wrong system — that the
+critique belongs to `cortex-memory` and the runs went to `benchmark.yml`. Reading the two packages says
+otherwise, and it is worth writing down because the first draft is the same mistake this document is
+about:
+
+```
+$ rg -c critique packages/cortex-memory/src/memory.ts \
+                     packages/cortex-eval/src/natural-language-memory.ts
+packages/cortex-eval/src/natural-language-memory.ts:52
+```
+
+`grep` returns nothing for `memory.ts`. `enableAggregationCritique`, `critiqueAggregationLedger` and
+`aggregationCritiqueMode` exist only in the reference pipeline, so `benchmark.yml` is the **only**
+workflow that can measure them, and §2's two runs were on the right system. What they lack is not
+placement but *observability*: they predate `critiqueStats`, which landed afterwards, so "the two arms
+are identical" still cannot be separated into *never reached*, *reached and found nothing*, and
+*reached and changed nothing*. **The experiment needs one re-dispatch with the counters, not a move.**
+
+That correction is the same failure at one remove — an assertion about which system a mechanism lives in,
+made from the shape of the configuration rather than from the code. It cost ten minutes here and a round
+the first time. The rule generalises: **before claiming a mechanism is or is not reachable in an arm,
+grep for the symbol in that arm's source.**
 
 ### 8.5 The repair, and the general form of it
 
