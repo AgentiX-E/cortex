@@ -422,6 +422,57 @@ This is the third instrument defect in three rounds, and all three have the same
 describes a run other than the one it is filed under.** The truncated JSON said the run was smaller; the doubled
 invocation said the run scored differently.
 
+## 5.6 The aggregation critique: judgement per line instead of recall of gaps
+
+§5.4 predicted that the two mechanisms would separate by **where their candidates come from**, and §5.5 measured
+one of them: iterating the retrieved blocks moved MR by 16–17 questions, while a clause that only asked the model
+to look harder had moved 5 and −2 the round before. The other mechanism is `enableAggregationCritique`, and it
+asks the model what its own list **missed** — an enumeration.
+
+*Judging ≠ Enumerating* (arXiv 2608.01000) is the reason that is a defect rather than a wording choice. Asked for
+a complete list, a model commits **silent omission**: after a handful of items the list looks done and generation
+stops, while the same items offered one at a time are confirmed about 90% of the time. The prescription is to stop
+asking for a recall of the set and start presenting candidates for judgement.
+
+So `aggregationCritiqueMode: 'per-item'` changes what is asked, not how forcefully:
+
+```
+every non-empty context line is numbered [1]..[n]
+the model must emit exactly one verdict per number:
+    <n>: COUNT      this line states an item the question counts
+    <n>: NOT-COUNT  it does not
+    <n>: DUP-OF <m> it restates the item on line m
+then two summary lines, stated to be DERIVED FROM THE VERDICTS JUST WRITTEN:
+    MISSED: <COUNT lines absent from the draft>
+    EXTRA:  <draft entries with no COUNT line behind them>
+```
+
+Three properties follow, and the ordering is deliberate.
+
+1. **Coverage becomes decidable.** A missing line number is a malformed answer. "I found nothing missing" is not
+   checkable at all — which is precisely why the recall critique can fail silently.
+2. **A merged entry becomes two verdicts.** The measured MR failure is returning an item and picking up its
+   replacement counted as one; a per-line verdict marks both lines `COUNT`, and the summary then reports the
+   draft entry as `EXTRA`.
+3. **The summary is arithmetic over a written list.** This is the same principle §5.4 established for `dispatch2`
+   and it is the one this project keeps rediscovering: a prompt that names an artefact the model must write down
+   moves questions; a prompt that asks for diligence does not.
+
+`recall` remains the default and remains reachable, because the difference between the two is the experiment.
+
+### Predictions, registered before the run
+
+Two runs are dispatched on the same 500 questions, same reader, same judge, differing only in this mode:
+
+| arm | prediction | what would refute it |
+| --- | --- | --- |
+| `recall` vs the shipped configuration | **little or no movement on MR** — the critique inherits the enumeration failure it is meant to repair | MR moves by ≥10 questions |
+| `per-item` vs `recall` | **MR moves in favour of `per-item`**, for the reason §5.5 confirmed for `dispatch2` | `per-item` is level with or worse than `recall` |
+
+And the noise floor from §5.5 applies to both: **a 121-question column swings about 10 questions with the prompt
+unchanged (7.9 points)**. A difference under that is not a difference, and neither run will be reported as one
+without a paired test over the same questions.
+
 ## 6. The next measurements, in order, revised by §2.1
 
 | # | measurement | why it is next | criterion |
@@ -429,7 +480,7 @@ invocation said the run scored differently.
 | 1 | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp) |
 | 1b | ~~the same ablation on the 500-question file~~ **done — §5.3** | §5.1 was 20 TR questions; the population is 127 | TR +24.4pp and +22.8pp, `recall@k` unchanged; exact paired p pending `records` |
 | 1c | ~~the MR clause, rewritten to demand an artefact~~ **done — §5.5** | §5.3 showed the TR clause moved 31 questions and the MR clause moved 5 and −2; TR asks for dates to be written down, MR asked for nothing | MR ≥ +10pp at constant `recall@k`: **+17 and +16 on 121 questions**, both arms. Criterion met, and the total is not the metric |
-| 1d | **the aggregation critique under the same test** | §5.4's prediction separates the two mechanisms by where candidates come from, and only one of them has now been measured. The critique asks the model what its list missed, which is enumeration again | MR ≥ +10pp on the memory arm with `AGGREGATION_CRITIQUE=1`, paired |
+| 1d | ~~the aggregation critique under the same test~~ **implemented and dispatched — §5.6** | §5.4's prediction separates the two mechanisms by where candidates come from; only one had been measured. The recall critique asks what the list missed, which is enumeration again | `recall` vs shipped: little movement. `per-item` vs `recall`: MR moves for `per-item`. Both paired, both against a ±10-question noise floor |
 | 1e | **a prompt-invariant noise baseline, per capability** | §5.5 measured 10 questions of swing on TR across two identical prompts. Every future claim on a 121-question column must clear that | report the swing before any Δ is called an effect |
 | 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
 | 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
