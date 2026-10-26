@@ -28,6 +28,7 @@ import {
   reciprocalRankFusion,
 } from '../retrieval.js';
 import { tableEmbedding } from './test-embedding.js';
+import type { EmbeddingProvenance } from '../embedding-factory.js';
 
 describe('hashText', () => {
   it('is deterministic and stable', () => {
@@ -1095,13 +1096,21 @@ describe('retrieveTopKByQueriesHybrid', () => {
   });
 });
 
+/** A provenance of the given width, so each round-trip case names the backend it claims. */
+function provOf(dimensions: number): EmbeddingProvenance {
+  return { provider: 'hash', model: null, baseUrl: null, dimensions };
+}
+
 describe('embedding cache persistence', () => {
   it('round-trips entries through serialize/deserialize', () => {
     const cache = new Map<string, Float64Array>([
       ['hello', new Float64Array([0.1, -0.2, 0.3, 0.4])],
       ['world', new Float64Array([1, 0, 0, 0])],
     ]);
-    const restored = deserializeEmbeddingCache(serializeEmbeddingCache(cache));
+    const restored = deserializeEmbeddingCache(
+      serializeEmbeddingCache(cache, provOf(4)),
+      provOf(4),
+    );
     expect(restored.size).toBe(2);
     // float32 round-trips within ~1e-7; integer-valued vectors are exact.
     const hello = restored.get('hello')!;
@@ -1112,7 +1121,10 @@ describe('embedding cache persistence', () => {
   });
 
   it('round-trips an empty cache', () => {
-    const restored = deserializeEmbeddingCache(serializeEmbeddingCache(new Map()));
+    const restored = deserializeEmbeddingCache(
+      serializeEmbeddingCache(new Map(), provOf(4)),
+      provOf(4),
+    );
     expect(restored.size).toBe(0);
   });
 
@@ -1120,7 +1132,10 @@ describe('embedding cache persistence', () => {
     const cache = new Map<string, Float64Array>([
       ['v', new Float64Array([0.123456789, -0.987654321])],
     ]);
-    const restored = deserializeEmbeddingCache(serializeEmbeddingCache(cache));
+    const restored = deserializeEmbeddingCache(
+      serializeEmbeddingCache(cache, provOf(2)),
+      provOf(2),
+    );
     const v = restored.get('v')!;
     // float32 rounds to ~7 significant digits; the error stays below 1e-6.
     expect(Math.abs(v[0]! - 0.123456789)).toBeLessThan(1e-6);
@@ -1132,7 +1147,10 @@ describe('embedding cache persistence', () => {
       ['用户: 我搬到了上海', new Float64Array([1, 2, 3])],
       ['emoji 🎯 key', new Float64Array([4, 5, 6])],
     ]);
-    const restored = deserializeEmbeddingCache(serializeEmbeddingCache(cache));
+    const restored = deserializeEmbeddingCache(
+      serializeEmbeddingCache(cache, provOf(3)),
+      provOf(3),
+    );
     expect([...restored.get('用户: 我搬到了上海')!]).toEqual([1, 2, 3]);
     expect([...restored.get('emoji 🎯 key')!]).toEqual([4, 5, 6]);
   });
@@ -1174,14 +1192,16 @@ describe('embedding cache deserialize error handling', () => {
     const buf = new Uint8Array([
       0x00, 0x01, 0x02, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ]);
-    expect(() => deserializeEmbeddingCache(buf)).toThrow(/invalid embedding cache magic/);
+    expect(() => deserializeEmbeddingCache(buf, provOf(4))).toThrow(
+      /invalid embedding cache magic/,
+    );
   });
 
   it('rejects a buffer with an unsupported version', () => {
-    const valid = serializeEmbeddingCache(new Map());
+    const valid = serializeEmbeddingCache(new Map(), provOf(4));
     const tampered = new Uint8Array(valid);
     tampered[4] = 99; // corrupt the version byte
-    expect(() => deserializeEmbeddingCache(tampered)).toThrow(
+    expect(() => deserializeEmbeddingCache(tampered, provOf(4))).toThrow(
       /unsupported embedding cache version/,
     );
   });

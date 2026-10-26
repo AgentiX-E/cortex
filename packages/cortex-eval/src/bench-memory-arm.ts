@@ -70,6 +70,7 @@ import {
 } from './retrieval.js';
 import { DEFAULT_RELEVANCE_TOP_K } from './relevance-index.js';
 import { classifyTrFailure } from './tr-failure-class.js';
+import type { EmbeddingProvenance } from './embedding-factory.js';
 import type { AblationResult, BenchmarkDataset, GoldOverlap, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
@@ -1660,7 +1661,10 @@ export function cortexMemoryArmEmbeddingCachePath(env: CortexMemoryArmEnv): stri
  * process computed. Without that, an arm that restored at the wrong moment would
  * grade its two sides against inconsistent evidence.
  */
-export function restoreArmEmbeddingCache(path: string | undefined): number {
+export function restoreArmEmbeddingCache(
+  path: string | undefined,
+  provenance: EmbeddingProvenance,
+): number {
   // The blank check is repeated here rather than left to the caller. These two
   // functions accept a `string | undefined`, not a parsed environment, so a
   // caller may hand over the raw variable. Every other "not configured" spelling
@@ -1671,7 +1675,7 @@ export function restoreArmEmbeddingCache(path: string | undefined): number {
     return 0;
   }
   try {
-    const persisted = deserializeEmbeddingCache(readFileSync(path));
+    const persisted = deserializeEmbeddingCache(readFileSync(path), provenance);
     mergeEmbeddingCache(persisted);
     return persisted.size;
   } catch {
@@ -1741,7 +1745,10 @@ export function restoreArmEmbeddingCache(path: string | undefined): number {
  *   every downstream number, and `describeEmbeddingCachePersist` is what puts the
  *   difference in the log.
  */
-export function persistEmbeddingCache(path: string | undefined): number {
+export function persistEmbeddingCache(
+  path: string | undefined,
+  provenance: EmbeddingProvenance,
+): number {
   if (path === undefined || path.trim() === '') {
     return 0;
   }
@@ -1749,7 +1756,7 @@ export function persistEmbeddingCache(path: string | undefined): number {
   if (snapshot.size === 0) {
     return 0;
   }
-  writeFileSync(path, serializeEmbeddingCache(snapshot));
+  writeFileSync(path, serializeEmbeddingCache(snapshot, provenance));
   return snapshot.size;
 }
 

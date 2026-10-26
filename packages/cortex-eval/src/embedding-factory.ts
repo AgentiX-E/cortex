@@ -64,6 +64,56 @@ export type EmbeddingWithProvenance = {
  */
 export function createEmbeddingWithProvenanceFromEnv(env: EmbeddingEnv): EmbeddingWithProvenance {
   const apiKey = firstNonEmpty(env['ZHIPU_API_KEY'], env['EMBEDDING_API_KEY']);
+  const provenance = resolveEmbeddingProvenance(env);
+  if (
+    apiKey !== undefined &&
+    provenance.provider === 'openai-compatible' &&
+    provenance.model !== null &&
+    provenance.baseUrl !== null
+  ) {
+    return {
+      // `dimensions` is the value just validated and handed to the client, and
+      // the client's own `dimension()` returns that same field, so the two cannot
+      // disagree. Reported explicitly rather than read back so this stays a plain
+      // object a caller can log before the client exists.
+      embedding: new OpenAIEmbedding({
+        baseUrl: provenance.baseUrl,
+        apiKey,
+        model: provenance.model,
+        dimensions: provenance.dimensions,
+      }),
+      provenance,
+    };
+  }
+  return { embedding: new HashEmbedding(DEFAULT_HASH_DIMENSION), provenance };
+}
+
+/**
+ * Which backend `createEmbeddingWithProvenanceFromEnv` would build, without building it.
+ *
+ * ## Why this is exported rather than kept internal
+ *
+ * Both benchmark entry points persist the embedding cache on their **failure** path as well as
+ * their success path: a run that dies at question 300 of 500 has still paid for its embeddings,
+ * and discarding them charges the next run for the same vectors. Those handlers live in
+ * `main().catch(...)`, outside the scope where the factory was called, so they cannot see the
+ * provenance it returned. The choices were module state (an implicit global in a package that
+ * keeps its configuration explicit) or making the thing resolvable — and the provenance is a
+ * pure function of the environment, which is what makes the second one honest.
+ *
+ * ## Why the two must not be allowed to drift
+ *
+ * This is the same parse, and `createEmbeddingWithProvenanceFromEnv` now delegates to it rather
+ * than repeating it. That is load-bearing: a second copy would pass its own tests while the cache
+ * it stamped carried an identity the run was not actually using, which is the exact defect the
+ * provenance block exists to make impossible. `embedding-provenance.test.ts` asserts the
+ * equivalence on four environments rather than pinning this function's outputs separately.
+ *
+ * It takes no credential and throws on nothing, which is what makes it usable on a path that may
+ * be running *because* the credential is wrong.
+ */
+export function resolveEmbeddingProvenance(env: EmbeddingEnv): EmbeddingProvenance {
+  const apiKey = firstNonEmpty(env['ZHIPU_API_KEY'], env['EMBEDDING_API_KEY']);
   const baseUrl =
     firstNonEmpty(env['ZHIPU_BASE_URL'], env['EMBEDDING_BASE_URL']) ?? DEFAULT_ZHIPU_BASE_URL;
   const model =
@@ -71,23 +121,13 @@ export function createEmbeddingWithProvenanceFromEnv(env: EmbeddingEnv): Embeddi
     DEFAULT_ZHIPU_EMBEDDING_MODEL;
   const dimensions = Number(env['EMBEDDING_DIMENSIONS'] ?? DEFAULT_ZHIPU_EMBEDDING_DIMENSIONS);
   if (apiKey !== undefined && Number.isInteger(dimensions) && dimensions > 0) {
-    return {
-      embedding: new OpenAIEmbedding({ baseUrl, apiKey, model, dimensions }),
-      // `dimensions` is the value just validated and handed to the client, and
-      // the client's own `dimension()` returns that same field, so the two cannot
-      // disagree. Reported explicitly rather than read back so this stays a plain
-      // object a caller can log before the client exists.
-      provenance: { provider: 'openai-compatible', model, baseUrl, dimensions },
-    };
+    return { provider: 'openai-compatible', model, baseUrl, dimensions };
   }
   return {
-    embedding: new HashEmbedding(DEFAULT_HASH_DIMENSION),
-    provenance: {
-      provider: 'hash',
-      model: null,
-      baseUrl: null,
-      dimensions: DEFAULT_HASH_DIMENSION,
-    },
+    provider: 'hash',
+    model: null,
+    baseUrl: null,
+    dimensions: DEFAULT_HASH_DIMENSION,
   };
 }
 

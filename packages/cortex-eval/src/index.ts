@@ -316,6 +316,7 @@ export { HashEmbedding, embedOne, tokenize, fnv1a } from './embedding.js';
 export {
   createEmbeddingFromEnv,
   createEmbeddingWithProvenanceFromEnv,
+  resolveEmbeddingProvenance,
   DEFAULT_HASH_DIMENSION,
   DEFAULT_ZHIPU_BASE_URL,
   DEFAULT_ZHIPU_EMBEDDING_MODEL,

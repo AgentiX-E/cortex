@@ -40,6 +40,7 @@
 import {
   createLlmFromEnv,
   createEmbeddingWithProvenanceFromEnv,
+  resolveEmbeddingProvenance,
   describeFailure,
   retrieveTopKByQueriesHybrid,
   type Retrieval,
@@ -270,7 +271,7 @@ async function main(): Promise<void> {
   // excluded from coverage as an entry point, so a decision written here is a
   // decision no test can reach. What remains here is the call.
   const cachePath = cortexMemoryArmEmbeddingCachePath(process.env);
-  const restored = restoreArmEmbeddingCache(cachePath);
+  const restored = restoreArmEmbeddingCache(cachePath, provenance);
   console.log(`Restored ${restored} embedding vectors from ${cachePath ?? '(no cache path)'}`);
 
   // One cache per system, plus a shared structured cache. Shared across the two
@@ -661,7 +662,9 @@ async function main(): Promise<void> {
   // paid for" from "the run published nothing", and the workflow's cache entry for
   // this run is a copy of this file -- so a reader of the log can tell, without
   // opening the cache store, whether the next run will start from this one's work.
-  console.log(describeEmbeddingCachePersist(persistEmbeddingCache(cachePath), cachePath));
+  console.log(
+    describeEmbeddingCachePersist(persistEmbeddingCache(cachePath, provenance), cachePath),
+  );
 
   // Printed as well as written, for §10.8's reason: the log is what survives when
   // the artifact is not collected, and `37281155088` lost a ~52-minute arm with no
@@ -764,7 +767,12 @@ main().catch((error: unknown) => {
     // separates that from a salvage that worked.
     console.error(
       describeEmbeddingCachePersist(
-        persistEmbeddingCache(cortexMemoryArmEmbeddingCachePath(process.env)),
+        // Like `bench/run.ts`, resolved here rather than closed over: this handler runs when
+        // main threw, and the provenance is a pure function of the environment.
+        persistEmbeddingCache(
+          cortexMemoryArmEmbeddingCachePath(process.env),
+          resolveEmbeddingProvenance(process.env),
+        ),
         cortexMemoryArmEmbeddingCachePath(process.env),
       ),
     );

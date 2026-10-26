@@ -19,6 +19,7 @@ import { HashEmbedding } from '../embedding.js';
 import {
   createEmbeddingFromEnv,
   createEmbeddingWithProvenanceFromEnv,
+  resolveEmbeddingProvenance,
   DEFAULT_HASH_DIMENSION,
   DEFAULT_ZHIPU_BASE_URL,
   DEFAULT_ZHIPU_EMBEDDING_DIMENSIONS,
@@ -138,5 +139,55 @@ describe('createEmbeddingFromEnv', () => {
     const { embedding } = createEmbeddingWithProvenanceFromEnv(env);
     expect(direct.dimension()).toBe(embedding.dimension());
     expect(direct.constructor).toBe(embedding.constructor);
+  });
+});
+
+/**
+ * The provenance alone, resolvable without building a client.
+ *
+ * ## Why this exists as its own export rather than a destructure of the factory
+ *
+ * Both benchmark entry points persist the embedding cache on their FAILURE path as well as their
+ * success path — a run that dies at question 300 of 500 has still paid for its embeddings. Those
+ * handlers sit in `main().catch(...)`, outside the scope where the factory was called, so they
+ * cannot see the provenance it returned. The two options were to hold it in module state (an
+ * implicit global, in a package that keeps its configuration explicit) or to make the thing itself
+ * resolvable, and the provenance is a pure function of the environment.
+ *
+ * The parse must not drift from the factory's, so the assertion below is **equivalence on four
+ * environments** rather than four hand-written expectations: a second copy of these rules would
+ * pass its own tests while the cache it stamped carried the wrong identity.
+ */
+describe('resolveEmbeddingProvenance', () => {
+  const ENVIRONMENTS: Record<string, Record<string, string>> = {
+    'remote with an explicit model, endpoint and width': {
+      EMBEDDING_API_KEY: 'k',
+      EMBEDDING_BASE_URL: 'https://api.example.com/v1',
+      EMBEDDING_MODEL: 'text-embedding-3-small',
+      EMBEDDING_DIMENSIONS: '1536',
+    },
+    'remote with every value defaulted': { ZHIPU_API_KEY: 'k' },
+    'no credential at all, so the offline fallback': {},
+    'a credential that arrives as the empty string CI sends for an unset secret': {
+      ZHIPU_API_KEY: '',
+    },
+  };
+
+  for (const [name, env] of Object.entries(ENVIRONMENTS)) {
+    it(`agrees with the factory on ${name}`, () => {
+      expect(resolveEmbeddingProvenance(env)).toEqual(
+        createEmbeddingWithProvenanceFromEnv(env).provenance,
+      );
+    });
+  }
+
+  it('needs no key to run, which is what makes it usable on a failure path', () => {
+    // The failure path may be reached BECAUSE the credential is wrong. A resolver that threw on a
+    // missing key could not run there, and the cache that run paid for would be discarded.
+    expect(() => resolveEmbeddingProvenance({})).not.toThrow();
+  });
+
+  it('defaults to the hash fallback dimensions when no credential is present', () => {
+    expect(resolveEmbeddingProvenance({}).dimensions).toBe(DEFAULT_HASH_DIMENSION);
   });
 });

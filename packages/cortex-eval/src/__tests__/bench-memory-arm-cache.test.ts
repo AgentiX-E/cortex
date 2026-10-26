@@ -56,6 +56,7 @@ import {
   snapshotEmbeddingCache,
 } from '../retrieval.js';
 import { HashEmbedding } from '../embedding.js';
+import type { EmbeddingProvenance } from '../embedding-factory.js';
 import {
   cortexMemoryArmEmbeddingCachePath,
   describeEmbeddingCachePersist,
@@ -65,6 +66,22 @@ import {
 
 const TURNS = ['a haystack turn', 'another haystack turn', 'a third haystack turn'];
 const embedding = new HashEmbedding(32);
+
+/**
+ * The provenance every call in this file passes, standing in for the one
+ * `createEmbeddingWithProvenanceFromEnv` resolves at the two entry points.
+ *
+ * It matches `HashEmbedding(32)` because that is what the fixture embeds with: the cache now
+ * records the backend that produced its vectors and refuses a file that names another one, so a
+ * fixture whose provenance disagreed with its own embedding model would be testing the refusal
+ * path in every test rather than the restore path.
+ */
+const PROVENANCE: EmbeddingProvenance = {
+  provider: 'hash',
+  model: null,
+  baseUrl: null,
+  dimensions: 32,
+};
 
 let dir: string;
 let cachePath: string;
@@ -116,11 +133,11 @@ describe('restoreArmEmbeddingCache', () => {
     // the job; pass 2 is this arm's process starting fresh.
     const firstPassLive = await embedTurns();
     expect(firstPassLive).toBe(TURNS.length);
-    persistEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath, PROVENANCE);
 
     // A fresh process: the in-memory cache is gone, only the file remains.
     clearEmbeddingCache();
-    const restored = restoreArmEmbeddingCache(cachePath);
+    const restored = restoreArmEmbeddingCache(cachePath, PROVENANCE);
     expect(restored).toBe(TURNS.length);
 
     // The control that keeps the assertion above from passing vacuously: without
@@ -130,7 +147,7 @@ describe('restoreArmEmbeddingCache', () => {
   });
 
   it('reports 0 and leaves the cache untouched when the file is absent', () => {
-    const restored = restoreArmEmbeddingCache(join(dir, 'does-not-exist.bin'));
+    const restored = restoreArmEmbeddingCache(join(dir, 'does-not-exist.bin'), PROVENANCE);
     expect(restored).toBe(0);
     expect(snapshotEmbeddingCache().size).toBe(0);
   });
@@ -142,12 +159,42 @@ describe('restoreArmEmbeddingCache', () => {
     // never be trusted silently); the decision to swallow that here, and to say
     // so with a `0`, is what this function exists to own.
     writeFileSync(cachePath, Buffer.from('not an embedding cache'));
-    expect(restoreArmEmbeddingCache(cachePath)).toBe(0);
+    expect(restoreArmEmbeddingCache(cachePath, PROVENANCE)).toBe(0);
     expect(snapshotEmbeddingCache().size).toBe(0);
   });
 
+  it('reports 0 and absorbs nothing when the file was written by another backend', async () => {
+    // The case the previous reader could not see. `benchmark.yml` keys its Actions cache on the
+    // CORPUS hash, not on the model, so a run inherits the previous run's vectors whenever the
+    // corpus has not changed -- and query vectors are always embedded fresh. A file written under
+    // a different model id, endpoint, provider or width is therefore not "stale", it is
+    // *foreign*, and merging it would score fresh queries against another space.
+    await embedTurns();
+    persistEmbeddingCache(cachePath, PROVENANCE);
+
+    clearEmbeddingCache();
+    resetEmbeddingSourceStats();
+    const restored = restoreArmEmbeddingCache(cachePath, { ...PROVENANCE, model: 'some-other' });
+    expect(restored).toBe(0);
+    expect(snapshotEmbeddingCache().size).toBe(0);
+    // And the recovery is the real one: every turn has to reach the provider again.
+    expect(await embedTurns()).toBe(TURNS.length);
+  });
+
+  it('reports 0 when only the endpoint differs, at the same width and provider', async () => {
+    // Width is the field a careless comparison would check, and it agrees here.
+    await embedTurns();
+    persistEmbeddingCache(cachePath, PROVENANCE);
+    clearEmbeddingCache();
+    const restored = restoreArmEmbeddingCache(cachePath, {
+      ...PROVENANCE,
+      baseUrl: 'https://api.openai.com/v1',
+    });
+    expect(restored).toBe(0);
+  });
+
   it('reports 0 when no path was configured', () => {
-    expect(restoreArmEmbeddingCache(undefined)).toBe(0);
+    expect(restoreArmEmbeddingCache(undefined, PROVENANCE)).toBe(0);
   });
 
   it('merges rather than replaces, so vectors computed in this process survive', async () => {
@@ -163,11 +210,11 @@ describe('restoreArmEmbeddingCache', () => {
     // A file holding only an unrelated entry.
     clearEmbeddingCache();
     await embedManyCached(embedding, ['from-the-file turn']);
-    persistEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath, PROVENANCE);
 
     clearEmbeddingCache();
     await embedManyCached(embedding, ['in-process turn']);
-    const restored = restoreArmEmbeddingCache(cachePath);
+    const restored = restoreArmEmbeddingCache(cachePath, PROVENANCE);
 
     expect(restored).toBe(1);
     expect(snapshotEmbeddingCache().has('in-process turn')).toBe(true);
@@ -179,9 +226,9 @@ describe('persistArmEmbeddingCache', () => {
   it('writes a file the next process can restore', () => {
     clearEmbeddingCache();
     return embedManyCached(embedding, TURNS).then(() => {
-      persistEmbeddingCache(cachePath);
+      persistEmbeddingCache(cachePath, PROVENANCE);
       expect(existsSync(cachePath)).toBe(true);
-      const restored = deserializeEmbeddingCache(readFileSync(cachePath));
+      const restored = deserializeEmbeddingCache(readFileSync(cachePath), PROVENANCE);
       expect(restored.size).toBe(TURNS.length);
       for (const turn of TURNS) {
         expect(restored.has(turn)).toBe(true);
@@ -190,12 +237,12 @@ describe('persistArmEmbeddingCache', () => {
   });
 
   it('is a no-op when no path was configured', () => {
-    expect(persistEmbeddingCache(undefined)).toBe(0);
+    expect(persistEmbeddingCache(undefined, PROVENANCE)).toBe(0);
     expect(existsSync(cachePath)).toBe(false);
   });
 
   it('is a no-op when the path is blank', () => {
-    expect(persistEmbeddingCache('')).toBe(0);
+    expect(persistEmbeddingCache('', PROVENANCE)).toBe(0);
     expect(existsSync(cachePath)).toBe(false);
   });
 
@@ -207,7 +254,7 @@ describe('persistArmEmbeddingCache', () => {
     // say which happened.
     clearEmbeddingCache();
     await embedManyCached(embedding, TURNS);
-    expect(persistEmbeddingCache(cachePath)).toBe(TURNS.length);
+    expect(persistEmbeddingCache(cachePath, PROVENANCE)).toBe(TURNS.length);
   });
 
   it('round-trips through a real process boundary, not just within one', async () => {
@@ -217,12 +264,12 @@ describe('persistArmEmbeddingCache', () => {
     // than a copy, or `serialize` dropped vectors, this is where it shows.
     clearEmbeddingCache();
     await embedManyCached(embedding, TURNS);
-    persistEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath, PROVENANCE);
 
     clearEmbeddingCache();
     resetEmbeddingSourceStats();
     const bytes = readFileSync(cachePath);
-    mergeEmbeddingCache(deserializeEmbeddingCache(bytes));
+    mergeEmbeddingCache(deserializeEmbeddingCache(bytes, PROVENANCE));
     await embedManyCached(embedding, TURNS);
 
     expect(embeddingSourceStats().liveTexts).toBe(0);
@@ -261,16 +308,16 @@ describe('persistArmEmbeddingCache', () => {
     // texts from an exhausted account. So the two are one change.
     clearEmbeddingCache();
     await embedManyCached(embedding, ['the previous run paid for this turn']);
-    persistEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath, PROVENANCE);
     const before = readFileSync(cachePath);
 
     // A fresh process that dies before it restores: empty in memory, populated
     // on disk. Nothing has been learned and nothing may be destroyed.
     clearEmbeddingCache();
-    expect(persistEmbeddingCache(cachePath)).toBe(0);
+    expect(persistEmbeddingCache(cachePath, PROVENANCE)).toBe(0);
 
     expect(readFileSync(cachePath).equals(before)).toBe(true);
-    expect(deserializeEmbeddingCache(readFileSync(cachePath)).size).toBe(1);
+    expect(deserializeEmbeddingCache(readFileSync(cachePath), PROVENANCE).size).toBe(1);
   });
 
   it('does not create an empty file where none existed', () => {
@@ -278,20 +325,20 @@ describe('persistArmEmbeddingCache', () => {
     // published as "the newest cache"; creating one is how a poison entry gets
     // into the store in the first place.
     clearEmbeddingCache();
-    expect(persistEmbeddingCache(cachePath)).toBe(0);
+    expect(persistEmbeddingCache(cachePath, PROVENANCE)).toBe(0);
     expect(existsSync(cachePath)).toBe(false);
   });
 
   it('overwrites a previous cache rather than appending to it', async () => {
     clearEmbeddingCache();
     await embedManyCached(embedding, ['stale turn']);
-    persistEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath, PROVENANCE);
 
     clearEmbeddingCache();
     await embedManyCached(embedding, ['fresh turn']);
-    persistEmbeddingCache(cachePath);
+    persistEmbeddingCache(cachePath, PROVENANCE);
 
-    const restored = deserializeEmbeddingCache(readFileSync(cachePath));
+    const restored = deserializeEmbeddingCache(readFileSync(cachePath), PROVENANCE);
     expect(restored.size).toBe(1);
     expect(restored.has('fresh turn')).toBe(true);
     expect(restored.has('stale turn')).toBe(false);
@@ -303,8 +350,8 @@ describe('persistArmEmbeddingCache', () => {
     // module writes are readable by `serializeEmbeddingCache`'s counterpart.
     clearEmbeddingCache();
     await embedManyCached(embedding, TURNS);
-    const viaHelpers = serializeEmbeddingCache(snapshotEmbeddingCache());
-    persistEmbeddingCache(cachePath);
+    const viaHelpers = serializeEmbeddingCache(snapshotEmbeddingCache(), PROVENANCE);
+    persistEmbeddingCache(cachePath, PROVENANCE);
     const onDisk = new Uint8Array(readFileSync(cachePath));
     expect(Buffer.from(onDisk).equals(Buffer.from(viaHelpers))).toBe(true);
   });

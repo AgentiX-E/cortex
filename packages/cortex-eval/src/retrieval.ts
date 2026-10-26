@@ -7,6 +7,7 @@
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import { BruteForceVectorIndex } from '@agentix-e/cortex-core';
+import type { EmbeddingProvenance } from './embedding-factory.js';
 
 /** Zhipu embedding-3 accepts at most 64 inputs per request. */
 const EMBED_BATCH = 64;
@@ -274,18 +275,63 @@ export async function embedOneCached(
 
 /** Binary magic for the persisted embedding cache ("EMBC" big-endian). */
 const EMBEDDING_CACHE_MAGIC = 0x454d4243;
-/** Format version; bump when the binary layout changes. */
-const EMBEDDING_CACHE_VERSION = 1;
+/**
+ * Format version; bump when the binary layout changes.
+ *
+ * `2` added the provenance block. A version-1 file is REFUSED rather than migrated: it carries
+ * only magic, version, count and dim, so there is no evidence in it that would let a reader
+ * decide whether its vectors belong to the model this run is about to use. Re-embedding is the
+ * recovery path, and it is the only honest one.
+ */
+const EMBEDDING_CACHE_VERSION = 2;
 
 /**
- * Serialize a text→vector cache into a compact binary buffer. Vectors are
- * stored as float32 (the native precision of the embedding API) rather than the
- * float64 they are held in, halving the payload while keeping the error well
- * below what cosine similarity can notice. The cache is deterministic at
- * temperature 0, so persisting it lets a later benchmark run reuse the same
- * haystack-turn embeddings instead of re-calling the embedding provider.
+ * The cache file was written by a different embedding backend than the one this run is using.
+ *
+ * A named error rather than a bare `Error` because the two are repaired differently: a corrupt
+ * buffer is a truncated write, while a provenance mismatch is a stale file that is *structurally
+ * valid* and must be discarded wholesale. The callers already collapse both into "start from an
+ * empty cache" and report the count, so this type is for the log line and for the test that has
+ * to tell the two apart.
+ *
+ * Deliberately NOT exported. `tools/export-census.mjs` counts an export with no production caller
+ * as an orphan, and the honest reading here is that there is none: both entry points catch
+ * everything and report a count. `name` is what makes it classifiable from a log, and the tests
+ * assert on `name` rather than on the constructor for the same reason.
  */
-export function serializeEmbeddingCache(cache: ReadonlyMap<string, Float64Array>): Uint8Array {
+class EmbeddingCacheProvenanceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmbeddingCacheProvenanceError';
+  }
+}
+
+/**
+ * Serialize a text→vector cache into a compact binary buffer, stamped with the backend that
+ * produced it.
+ *
+ * Vectors are stored as float32 (the native precision of the embedding API) rather than the
+ * float64 they are held in, halving the payload while keeping the error well below what cosine
+ * similarity can notice. The cache is deterministic at temperature 0, so persisting it lets a
+ * later benchmark run reuse the same haystack-turn embeddings instead of re-calling the provider.
+ *
+ * ## Why the provenance is part of the file and not of the filename
+ *
+ * The Actions cache key is `longmemeval-embedding-<corpus sha256>-`, which says nothing about the
+ * model. A run therefore inherits the previous run's vectors whenever the corpus has not changed,
+ * while query vectors are embedded fresh every time. If the backend moved between those two runs,
+ * the reader graded fresh queries against vectors from another space and **every counter in the
+ * artifact still read healthy**: the determinism check only proves that one text embeds the same
+ * way twice, which stays true across a model change.
+ *
+ * A filename cannot carry this. `EMBEDDING_CACHE_PATH` is one string set by the workflow, and
+ * neither entry point composes it from the model. So the identity goes into the bytes, where the
+ * reader can refuse a file that does not match the backend it is about to use.
+ */
+export function serializeEmbeddingCache(
+  cache: ReadonlyMap<string, Float64Array>,
+  provenance: EmbeddingProvenance,
+): Uint8Array {
   const entries: { text: Buffer; vector: Float32Array }[] = [];
   let dim = 0;
   let payloadBytes = 0;
@@ -297,12 +343,44 @@ export function serializeEmbeddingCache(cache: ReadonlyMap<string, Float64Array>
     entries.push({ text: textBuf, vector: Float32Array.from(vector) });
     payloadBytes += 4 + textBuf.length + vector.length * 4;
   }
-  const buf = Buffer.alloc(13 + payloadBytes); // magic(4) + version(1) + count(4) + dim(4)
+  // An EMPTY cache still writes a width, and it takes the one the provenance declares rather
+  // than the `0` no vector produced. The reader compares that field against the caller's
+  // provenance, so writing `0` would make every empty file unreadable by the only run that could
+  // legitimately read it -- and the arm's writer deliberately publishes empty files.
+  if (dim === 0) {
+    dim = provenance.dimensions;
+  }
+  // Asserted at the WRITE, not only at the read. A file whose payload width disagrees with the
+  // provenance it carries is a file whose reader must reject it, so writing one is a bug in the
+  // caller rather than a condition the format has to survive -- and the failure belongs here,
+  // where it names the two numbers, rather than one process later as "could not restore".
+  if (dim !== provenance.dimensions) {
+    throw new Error(
+      `refusing to write an embedding cache whose vectors are ${String(dim)}-wide under a ` +
+        `provenance declaring ${String(provenance.dimensions)} dimensions`,
+    );
+  }
+  const provJson = Buffer.from(
+    JSON.stringify({
+      provider: provenance.provider,
+      model: provenance.model,
+      baseUrl: provenance.baseUrl,
+      dimensions: provenance.dimensions,
+    }),
+    'utf8',
+  );
+  // magic(4) + version(1) + provLen(4) + provJson + count(4) + dim(4)
+  const headerBytes = 4 + 1 + 4 + provJson.length + 4 + 4;
+  const buf = Buffer.alloc(headerBytes + payloadBytes);
   let offset = 0;
   buf.writeUInt32BE(EMBEDDING_CACHE_MAGIC, offset);
   offset += 4;
   buf.writeUInt8(EMBEDDING_CACHE_VERSION, offset);
   offset += 1;
+  buf.writeUInt32LE(provJson.length, offset);
+  offset += 4;
+  provJson.copy(buf, offset);
+  offset += provJson.length;
   buf.writeUInt32LE(entries.length, offset);
   offset += 4;
   buf.writeUInt32LE(dim, offset);
@@ -321,12 +399,33 @@ export function serializeEmbeddingCache(cache: ReadonlyMap<string, Float64Array>
 }
 
 /**
- * Deserialize a binary buffer produced by `serializeEmbeddingCache` back into a
- * text→vector Map (vectors are widened from float32 to float64 to match the
- * in-memory representation). Throws on a corrupt or incompatible buffer so a
- * stale cache is never silently trusted.
+ * Deserialize a binary buffer produced by `serializeEmbeddingCache`, but only if it was written
+ * by the backend named in `expected`.
+ *
+ * Vectors are widened from float32 to float64 to match the in-memory representation.
+ *
+ * ## What "incompatible" used to mean, and what it means now
+ *
+ * This function documented itself as throwing "on a corrupt or incompatible buffer so a stale
+ * cache is never silently trusted", and it checked `magic` and `version`. Neither field carries
+ * the identity of the embedding backend, so two vectors produced by two different models were
+ * byte-indistinguishable to this reader whenever both were the same width — which is the normal
+ * case, since the width is what the workflow configures. The documented property did not exist.
+ *
+ * It exists now, and it is checked in two places rather than one: the four provenance fields are
+ * compared against `expected`, and the payload's own width is compared against the header's, so a
+ * header edited to match the caller cannot make a differently-widthed payload readable. Version 1
+ * files are refused outright — they carry no record of their origin, so there is no evidence that
+ * would let them be trusted.
+ *
+ * The error names both backends and every differing field. That is deliberate: this path is
+ * swallowed by both callers, which report a count instead of throwing, so the message is the only
+ * thing a log will ever say about why a run re-embedded 115,000 turns.
  */
-export function deserializeEmbeddingCache(data: Uint8Array): Map<string, Float64Array> {
+export function deserializeEmbeddingCache(
+  data: Uint8Array,
+  expected: EmbeddingProvenance,
+): Map<string, Float64Array> {
   const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
   let offset = 0;
   const magic = buf.readUInt32BE(offset);
@@ -337,12 +436,48 @@ export function deserializeEmbeddingCache(data: Uint8Array): Map<string, Float64
   const version = buf.readUInt8(offset);
   offset += 1;
   if (version !== EMBEDDING_CACHE_VERSION) {
-    throw new Error(`unsupported embedding cache version: ${version}`);
+    throw new Error(
+      `unsupported embedding cache version: ${version} (this reader writes and accepts ` +
+        `version ${EMBEDDING_CACHE_VERSION}, which carries the provenance a cache needs to be ` +
+        `trusted; an older file has no such record and must be re-embedded)`,
+    );
+  }
+  const provLen = buf.readUInt32LE(offset);
+  offset += 4;
+  const provText = buf.toString('utf8', offset, offset + provLen);
+  offset += provLen;
+  let written: EmbeddingProvenance;
+  try {
+    written = JSON.parse(provText) as EmbeddingProvenance;
+  } catch {
+    throw new EmbeddingCacheProvenanceError(
+      `embedding cache provenance block is not JSON: ${provText.slice(0, 120)}`,
+    );
+  }
+  const differs = (['provider', 'model', 'baseUrl', 'dimensions'] as const).filter(
+    (field) => written[field] !== expected[field],
+  );
+  if (differs.length > 0) {
+    // Every differing field is named, not just the first. A single-field comparison is the
+    // defect this replaces: `dimensions` alone would have let five of the six ways two backends
+    // can differ pass unnoticed.
+    throw new EmbeddingCacheProvenanceError(
+      `embedding cache was written by ${describeProvenance(written)} but this run uses ` +
+        `${describeProvenance(expected)}; differing: ${differs.join(', ')}`,
+    );
   }
   const count = buf.readUInt32LE(offset);
   offset += 4;
   const dim = buf.readUInt32LE(offset);
   offset += 4;
+  // The header is checked against the payload as well as against the caller: a provenance block
+  // edited to match this run must not make a differently-widthed payload readable.
+  if (dim !== expected.dimensions) {
+    throw new EmbeddingCacheProvenanceError(
+      `embedding cache declares ${String(dim)} dimensions in its payload but its provenance ` +
+        `and this run both say ${String(expected.dimensions)}; the file has been edited`,
+    );
+  }
   const cache = new Map<string, Float64Array>();
   for (let i = 0; i < count; i++) {
     const textLen = buf.readUInt32LE(offset);
@@ -357,6 +492,13 @@ export function deserializeEmbeddingCache(data: Uint8Array): Map<string, Float64
     cache.set(text, vector);
   }
   return cache;
+}
+
+/** One line naming a backend, used in every provenance error so a log is enough to diagnose it. */
+function describeProvenance(provenance: EmbeddingProvenance): string {
+  const model = provenance.model ?? '(none)';
+  const endpoint = provenance.baseUrl ?? '(none)';
+  return `${provenance.provider}:${model}@${endpoint} x${String(provenance.dimensions)}`;
 }
 
 export type RetrievalHit = {

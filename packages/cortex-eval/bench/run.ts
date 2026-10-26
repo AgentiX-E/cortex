@@ -13,6 +13,7 @@ import {
   computeRetrievalDiagnostics,
   computeSessionRetrievalDiagnostics,
   createEmbeddingWithProvenanceFromEnv,
+  resolveEmbeddingProvenance,
   createLlmFromEnv,
   computeRecallCurve,
   createRerankerFromEnv,
@@ -249,7 +250,13 @@ async function main(): Promise<void> {
   const embeddingCachePath = process.env['EMBEDDING_CACHE_PATH'];
   if (embeddingCachePath && existsSync(embeddingCachePath)) {
     try {
-      const persisted = deserializeEmbeddingCache(readFileSync(embeddingCachePath));
+      // The provenance of THIS run, so a file written by another backend is refused rather
+      // than merged. `deserializeEmbeddingCache` compares all four fields and says which
+      // ones differ, which is what makes `Could not restore` below diagnosable from the log.
+      const persisted = deserializeEmbeddingCache(
+        readFileSync(embeddingCachePath),
+        embeddingProvenance,
+      );
       mergeEmbeddingCache(persisted);
       console.log(`Restored ${persisted.size} embedding vectors from ${embeddingCachePath}`);
     } catch (err) {
@@ -1054,7 +1061,14 @@ async function main(): Promise<void> {
   // `persistEmbeddingCache` refuses the write in that case and the sentence it
   // pairs with says which happened.
   console.log(
-    describeEmbeddingCachePersist(persistEmbeddingCache(embeddingCachePath), embeddingCachePath),
+    describeEmbeddingCachePersist(
+      // Resolved here rather than carried out of `main`, because this handler is reached when
+      // main threw -- possibly before it built the embedding at all. The provenance is a pure
+      // function of the environment, so it is still knowable, and a cache written without it
+      // would be a cache no later run could attribute.
+      persistEmbeddingCache(embeddingCachePath, resolveEmbeddingProvenance(process.env)),
+      embeddingCachePath,
+    ),
   );
 }
 
@@ -1077,7 +1091,12 @@ main().catch((err) => {
   try {
     const cachePath = process.env['EMBEDDING_CACHE_PATH'];
     if (cachePath) {
-      console.error(describeEmbeddingCachePersist(persistEmbeddingCache(cachePath), cachePath));
+      console.error(
+        describeEmbeddingCachePersist(
+          persistEmbeddingCache(cachePath, resolveEmbeddingProvenance(process.env)),
+          cachePath,
+        ),
+      );
     }
   } catch {
     // Persisting the cache is best-effort; never mask the original error.
