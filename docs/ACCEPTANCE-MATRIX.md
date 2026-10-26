@@ -58,11 +58,16 @@ unrun    no value could be computed — reported, never counted as a pass
 | T4 | <!-- reading:T4 -->100.0% | = 100.0% | pass | settled fact versus plan | controlled set, `−lapse` |
 | D1 | — | ≤ 45.0% | unrun | extraction fidelity | A3 round 2, verbatim share |
 | R1 | <!-- reading:R1 -->-1 | ≥ 1 | accept | abstention recovery | LongMemEval-S, 500 questions |
-| S1 | <!-- reading:S1 -->81.0% | ≥ 85.0% | aim | end-to-end memory | LongMemEval-S, 500 questions |
+| S1 | <!-- reading:S1 -->81.0% | ≥ 85.0% | aim | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
 | S2 | <!-- reading:S2 -->86.8% | ≥ 85.0% | pass | knowledge update | LongMemEval-S, 72 questions |
 | S3 | <!-- reading:S3 -->69.6% | ≥ 85.0% | aim | multi-session reasoning | LongMemEval-S, 121 questions |
 | S4 | <!-- reading:S4 -->74.6% | ≥ 85.0% | aim | temporal reasoning | LongMemEval-S, 127 questions |
 | S5 | <!-- reading:S5 -->97.5% | ≥ 80.0% | pass | abstention | LongMemEval-S, 30 questions |
+
+Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
+`benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
+its numbers are not on this page and must not be substituted for these. `MEASURE-BASELINE-DRIFT.md` §8 is
+the record of what happens when they are.
 
 `D1` is `unrun` and that is stated rather than hidden: the distillation reading needs an A3 run with a fresh
 prompt, and no such run exists. A row with no value is the honest form of "we have not measured this".
@@ -117,7 +122,7 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | --- | --- | --- | --- |
 | memoricai | 85.8% | A | 500 questions, official prompts, gpt-4o-2024-08-06 as reader and judge, ~11k-token contexts |
 | Supermemory | 81.6% | A | the published GPT-4o-reader configuration, per the same independent comparison |
-| **Cortex** | <!-- reading:S1 -->81.0% | — | DeepSeek reader, official judge prompts, four runs |
+| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->81.0% | — | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256` |
 | Zep | 71.2% | A | as reported in Zep's own LongMemEval paper, GPT-4o reader |
 | full-context GPT-4o | 60.2% | A | the paper baseline: the whole history in the window |
 | Hindsight (vendor) | 94.6% | C | vendor-reported; reader, judge and preprocessing not published reproducibly |

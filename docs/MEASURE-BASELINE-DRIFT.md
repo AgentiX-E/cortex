@@ -1,5 +1,11 @@
 # End-to-end baseline drift: 81.0% → 44.2%, and what it blocks
 
+> **Superseded in its premise by §8.** The two numbers belong to two different systems — 81.0% is
+> `cortex-memory` (`benchmark-cortex-memory.yml`), 44.2% is the reference pipeline
+> (`benchmark.yml`) — and run `40088479628` measures both in one invocation at 80.80% and 43.40%.
+> Sections 0–7 are kept as written, because the measurements in them are correct and the reasoning
+> that failed is the subject of §8.5. Read §8 first.
+
 ## 0. One paragraph
 
 Two 500-question end-to-end runs were dispatched to decide whether a per-line critique beats a
@@ -196,3 +202,137 @@ the only one that decides whether there is a regression at all.
 as an abstention before the critique runs. A run whose answers are mostly refusals therefore still pays for the
 audit pass on those questions. Recorded rather than fixed: moving an abstention boundary changes behaviour and
 needs its own measurement, and the counters now make the cost visible.
+
+## 8. The drift is not a drift: the two numbers belong to two systems
+
+### 8.1 One paragraph
+
+`40378588466` was dispatched to decide whether 44.2% reproduced the archived 81.0% under the shipped
+configuration. It read **43.80%**, and the document above concluded that the drift predates the round's
+switches. That conclusion is correct and the question was wrong. `40378588466` ran `benchmark.yml`,
+whose feature arm is **`nl-abstain-feature`** — the reference pipeline in `natural-language-memory.ts`.
+The 81.0% was measured by **`benchmark-cortex-memory.yml`**, whose feature arm is **`cortex-memory`** —
+the cognitive arm configured at `maxPromptChars=48000`, `relevanceTopK=256`,
+`relevanceSignal=retrieval-hybrid`, `evidenceRoles=user` (`PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3).
+**Two workflows, two systems, one headline.** Nothing regressed. 43.8% and 81.0% are the same baseline
+read under two different titles.
+
+### 8.2 The measurement that settles it, and it was already in a downloaded artifact
+
+Run **`40088479628`** (`benchmark-cortex-memory.yml`, 2026-10-24) evaluates **both** systems in one
+invocation, on one reader, one embedding model and one judge. Its ablation table:
+
+| | accuracy | IE | MR | KU | TR | ABS |
+| --- | --- | --- | --- | --- | --- | --- |
+| `reference-pipeline` (baseline) | **43.40%** | 0.67% | 84.30% | 0.00% | 66.14% | 100% |
+| `cortex-memory` (feature) | **80.80%** | 89.33% | 69.42% | 86.11% | 74.02% | 100% |
+
+Set that beside `40378588466`'s feature arm:
+
+| | `40378588466` (`benchmark.yml`) | `40088479628` baseline | `40088479628` feature |
+| --- | --- | --- | --- |
+| head-line | 43.80% | 43.40% | 80.80% |
+| IE | 0.67% | 0.67% | 89.33% |
+| MR | 84.30% | 84.30% | 69.42% |
+| KU | 1.39% | 0.00% | 86.11% |
+| TR | 66.93% | 66.14% | 74.02% |
+| ABS | 100% | 100% | 100% |
+
+`40378588466` **is** the bottom-left cell of `40088479628`, reproduced to within `runs=1` sampling on
+KU and TR. The two runs are four days apart, on different commits, and they agree on five capabilities
+because they are the same system. `cortex-memory` is 37.4 points above it in the same run, with
+McNemar `p = 1.694e-33` — a paired comparison over 500 questions in which the baseline wins 38 and
+the feature wins 225.
+
+### 8.3 The mechanism is the configuration, and it explains the *direction* of every capability
+
+The two arms do not differ by a prompt. They differ by how evidence is selected:
+
+| | `benchmark.yml` (`nl-*`) | `benchmark-cortex-memory.yml` (`cortex-memory`) |
+| --- | --- | --- |
+| retrieval | `retrieveTopKByQueriesHybrid`, `topK` 15, radius 1 | relevance index over the full haystack, `relevanceTopK=256` |
+| evidence room | product default 24,000 characters, **applied to what retrieval returned** | `maxPromptChars=48000`, applied to a 256-wide pool |
+| role filter | none | `user` on `multi-session,temporal` |
+| turn cap | none | 400 characters on those two routes |
+| ask | `abstention-evidence-blocks` | `enumerated` |
+
+The direction of every capability follows from that table and from nothing else:
+
+- **IE and KU collapse under `nl-*`** because their answers are a short phrase appearing once in a
+  ~500-turn haystack, and a 15-turn retrieval has to rank it first. On `40378588466`'s 379
+  single-session records, the gold's content words (length ≥ 4, minus any word the question already
+  contains) appear **anywhere** in the delivered context for **38.0% of IE** (49/129) and **22.5% of
+  KU** (9/40) questions, against **79.5% of TR** (62/78) and **93.3% of ABS** (28/30). The reader then
+  declines, correctly, on evidence it was never shown.
+- This is a **different statistic** from §7.1's table, which asked for **≥ 50%** of the gold's words
+  and read 16/135 for IE. Both are true and neither supersedes the other: §7.1 measures how much of
+  the answer was present, this measures whether any of it was. The two are stated apart on purpose —
+  a coverage number is only comparable with one that uses the same threshold, which is the same rule
+  that made a bare `- Overall accuracy:` line unreadable.
+- **MR rises under `nl-*`** (84.30% against 69.42%) because multi-session questions need breadth across
+  sessions rather than precision inside one, and the reference pipeline retrieves **sessions**,
+  truncates each one, and enumerates — the shape MR's ask rewards (§13.105.1 records that it answers
+  102 of 121).
+- **TR is close** (66.93% against 74.02%) because temporal questions tolerate a wider window and
+  `nl-*` has a date-aware path of its own.
+
+This is not a new hypothesis. §7 and §7.2 measured the same facts from `40378588466`'s log and
+concluded that "the refusals track the retrieval". Every number in §7 is correct. What §7 could not
+know is that the system it was describing is not the system 81.0% belongs to.
+
+### 8.4 What this retracts, and what it does not
+
+**Retracted.** The premise of §0 and §4 — that 405/500 and 221/500 are two measurements of one
+configuration. They are not comparable at all, and the four checks in §5 were ordered by the cost of
+answering a question that does not exist. §4.1's diagnostic dispatch has now answered it: `43.80%`,
+with `{"empty":0,"threshold":0,"llm":247,"answered":253}`, matching `40088479628`'s baseline row.
+
+**Not retracted, and worth keeping for its own sake.**
+
+1. **The corpus hash.** `benchmark.yml` prints `sha256` and `bytes` on every dispatch and accepts a
+   `corpus_sha256` assertion. This document's own failure mode is "a number whose provenance is
+   unrecorded", and the corpus is part of a number's provenance. The current corpus is
+   `d6f21ea9…a442`, 277,383,467 bytes.
+2. **The critique counters.** Two arms producing 500 identical verdicts is still a fact about a run
+   that a run must be able to explain.
+3. **§7's four eliminations.** They are eliminations for the reference pipeline, correctly performed,
+   and they tell us where *its* 56.6 points go. That is the number this repository can now improve
+   without touching the cognitive arm at all.
+
+**And one thing becomes new work rather than a blocker.** The round's own experiment — `recall` versus
+`per-item` critique — was run on `benchmark.yml` (§2's two arms). Its subject, the aggregation critique,
+is a `cortex-memory` mechanism. The two runs therefore measured the critique in a system whose MR route
+does not reach it. **The prediction is untested, not refuted**, and it has to be dispatched on
+`benchmark-cortex-memory.yml`.
+
+### 8.5 The repair, and the general form of it
+
+The renderer now carries the arm on every line a reader quotes in isolation:
+
+```
+# Cortex Benchmark Report — `cortex-memory`
+- System under test: `cortex-memory` vs baseline `reference-pipeline`
+- Overall accuracy (`cortex-memory`): 80.80%
+```
+
+`report-system-identity.test.ts` pins it, including the negative property — **no** `- Overall accuracy`
+or `- Abstention` line may exist without an arm name — and the pair assertion that makes this incident
+unrepresentable: two different feature arms must produce two different titles.
+
+The general lesson is narrower than "label your numbers". The repository already required a system
+name in `- Feature: … vs baseline …`, five lines above the accuracy. It was read past, because the
+title and the quotable line were the two places a number leaves the document. **A label on a document
+is not a label on a number**: the strings that get copied are the title and the `- Metric: value` lines,
+so the identity has to be inside them or it does not travel.
+
+### 8.6 Where this leaves the project
+
+The end-to-end state is **80.80% / 500** on `cortex-memory`, reproducible in a workflow that prints its
+own arm name, its corpus hash and its configuration. That is 0.2 points below the archived 81.0%
+four-run mean, which is consistent with a single run and does not warrant a claim either way.
+
+The largest single gap inside that number is **MR 69.42%**, the one capability where the cognitive arm
+loses to the reference pipeline by 14.9 points with `p = 2.935e-3`. It is now the only capability where
+a known-better answer exists inside this repository, which makes it the cheapest place to look next —
+and `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §13.105 already registered that experiment with six
+predictions.

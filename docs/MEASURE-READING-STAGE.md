@@ -105,22 +105,38 @@ diagnostic about budget adequacy, not about correctness.
 
 ## 4. Finding two: the adapter is 21 points below the product
 
+> **Correction, 2026-10-27.** The row below attributed 81.0% to `NaturalLanguageMemory`. It is not that
+> system. The archived reading comes from `benchmark-cortex-memory.yml`, whose feature arm is
+> `cortex-memory` at `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3 (`maxPromptChars=48000`,
+> `relevanceTopK=256`, `relevanceSignal=retrieval-hybrid`, `evidenceRoles=user`,
+> `maxTurnChars=400` on two routes, `ask=enumerated`). `NaturalLanguageMemory` is the **baseline** in
+> that same workflow and reads **43.40%** — run `40088479628` measures both. §4.1 below reads
+> `natural-language-memory.ts`, so its four components are a description of the 43.40% system's
+> machinery, not of the 81.0% system's. **The 21 points are real; the decomposition of them is not.**
+> `MEASURE-BASELINE-DRIFT.md` §8 records how the two systems came to share a headline.
+
 | path | score | what runs |
 | --- | --- | --- |
-| memory arm, end to end (500 questions) | **81.0%** (405/500) | `NaturalLanguageMemory`: query expansion, rerank, abstention recovery, the production prompt |
+| memory arm, end to end (500 questions) | **81.0%** (405/500) | `cortex-memory` at §10.3: 256-wide relevance pool, 48,000-character room, user-only roles on two routes, `enumerated` ask |
 | competition adapter (100 questions) | **60.0%** | `admitSessions` + session budget + `lexicalRelevance`, then a plain Chain-of-Note reader |
 
-The adapter is a *minimal* composition of the product's pure functions. It has no query expansion, no reranker, no
-abstention recovery, and a different reader prompt. So the 21-point gap is not a contradiction — it is a
-decomposition, and it names the four things that carry 21 points:
+The adapter is a *minimal* composition of the product's pure functions. It has no relevance ranking, no
+48,000-character room, no role filter, no enumeration contract, and a different reader prompt. So the
+21-point gap is not a contradiction — it is a decomposition **that has not been performed**, and the
+four components named below are where it was expected to come from rather than where it has been shown
+to come from:
 
 1. **query expansion** (`query-expansion.ts`) — the paper's third optimisation, unmeasured on this path;
 2. **reranking** (`rerank.ts` / `rerank-factory.ts`);
 3. **abstention recovery** (the `R1` campaign, currently net −1);
 4. **the production reader prompt**, which is tuned and which this path deliberately does not use.
 
-**This is the round's most useful result**, because it converts "the product scores 81.0%" into a list of
-components with a measured total between them, and each is separately testable on the same harness.
+**The useful thing this section established, and the thing it got wrong.** It converted "the product
+scores 81.0%" into a list of components with a measured total between them, which is the right shape.
+It then attributed the total to components that belong to the other arm, which is the same defect §8 of
+`MEASURE-BASELINE-DRIFT.md` records: a number carried away from its system. The four components above
+are still each separately testable on the same harness; what is now known is that testing them
+measures the 43.40% arm.
 
 ## 4.1 What the four components actually are, read from the code
 
