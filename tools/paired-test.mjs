@@ -43,35 +43,101 @@ if (positional.length !== 2) {
   process.exit(2);
 }
 
+/**
+ * The per-question records of one run, from either artifact shape.
+ *
+ * ## Why two shapes and still one comparator
+ *
+ * The competition harness writes `scores[]`, one entry per provider, each with its own `records[]`. The
+ * benchmark's ablation report writes `questions[]`, one entry per question, and carries the **feature** side's
+ * verdict in `correct`. Both are a set of (question, correct) pairs; only the envelope differs.
+ *
+ * So the adapter lives here and the statistic does not move. The alternative -- a second McNemar implementation
+ * for the second format -- is the defect this repository has caught twice: `paired-test` was deliberately
+ * exported as one entry point so that a later caller could not build a second comparison, and a second reader
+ * would have been the same mistake wearing a different hat.
+ *
+ * A report is labelled `feature` because that is what its `correct` field describes: the arm with the switch on.
+ * A competitor run and a report therefore share no provider name, and pairing them reports "nothing here can be
+ * paired" rather than silently comparing two different things.
+ */
+function scoresOf(payload) {
+  if (Array.isArray(payload.scores)) return payload.scores;
+  if (Array.isArray(payload.questions)) {
+    const records = payload.questions.map((question) => ({
+      id: question.id,
+      capability: question.capability,
+      // Retrieval columns do not exist in a report, and inventing `false` for them would make an arm look empty.
+      found: true,
+      foundAll: true,
+      read: true,
+      correct: question.correct === true,
+    }));
+    const correct = records.filter((record) => record.correct).length;
+    return [
+      {
+        provider: 'feature',
+        build: 'n/a',
+        questions: records.length,
+        measured: records.length,
+        unmeasurable: 0,
+        found: records.length,
+        foundAll: records.length,
+        empty: 0,
+        recallAtK: 1,
+        recallAllAtK: 1,
+        mrr: 1,
+        sessions: 0,
+        turns: 0,
+        meanContextChars: 0,
+        correct,
+        read: records.length,
+        accuracy: records.length === 0 ? null : correct / records.length,
+        abstained: 0,
+        skipped: [],
+        byCapability: {},
+        ingestSkipped: 0,
+        records,
+      },
+    ];
+  }
+  throw new Error(
+    'this file does not look like a harness run: it has neither a scores[] array nor a questions[] array',
+  );
+}
+
+/** The dataset label of one run, from either shape. */
+function datasetOf(payload) {
+  return payload.config?.dataset ?? payload.dataset ?? 'unstated';
+}
+
 function load(file) {
   const payload = JSON.parse(readFileSync(file, 'utf8'));
-  if (!Array.isArray(payload.scores)) {
-    throw new Error(`${file} does not look like a harness run: no 'scores' array`);
-  }
-  return { name: path.basename(file), payload };
+  const scores = scoresOf(payload);
+  return { name: path.basename(file), payload, scores, dataset: datasetOf(payload) };
 }
 
 const baseline = load(positional[0]);
 const treatment = load(positional[1]);
 
-const sameCorpus = baseline.payload.config?.dataset === treatment.payload.config?.dataset;
+const sameCorpus = baseline.dataset === treatment.dataset;
 if (!sameCorpus) {
   // Not fatal — a reader may be comparing two subsets on purpose — but it has to be said before the p-value,
   // because a paired test over two different samples is not a paired test.
   process.stdout.write(
     `warning: the two runs name different datasets ` +
-      `(${baseline.payload.config?.dataset} vs ${treatment.payload.config?.dataset}); ` +
+      `(${baseline.dataset} vs ${treatment.dataset}); ` +
       `pairing by question id still applies to whatever they share\n\n`,
   );
 }
 
-const results = compareRuns(baseline.payload.scores, treatment.payload.scores);
+const results = compareRuns(baseline.scores, treatment.scores);
 
 const pad = (value, width) => String(value).padEnd(width);
 const pct = (value) => `${(100 * value).toFixed(1)}%`;
 
-process.stdout.write(`baseline : ${baseline.name}  (${baseline.payload.config?.dataset})\n`);
-process.stdout.write(`treatment: ${treatment.name}  (${treatment.payload.config?.dataset})\n`);
+process.stdout.write(`baseline : ${baseline.name}  (${baseline.dataset})\n`);
+process.stdout.write(`treatment: ${treatment.name}  (${treatment.dataset})\n`);
 process.stdout.write(`alpha    : ${alpha}\n\n`);
 
 if (results.length === 0) {

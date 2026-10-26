@@ -141,5 +141,49 @@ def test_rejects_a_payload_that_is_not_a_harness_run(tmp_path: Path) -> None:
     assert "does not look like a harness run" in completed.stderr
 
 
+def ablation(records: list[dict], dataset: str = "longmemeval/s/500") -> dict:
+    """A benchmark ablation report: one entry per question, the feature verdict in `correct`."""
+    return {
+        "dataset": dataset,
+        "questions": [{"id": r["id"], "capability": r["capability"], "correct": r["correct"]} for r in records],
+    }
+
+
+def test_pairs_two_ablation_reports_without_a_second_comparator(tmp_path: Path) -> None:
+    """The benchmark report carries `questions[]`, the harness carries `scores[]`; one statistic reads both.
+
+    Two shapes and one comparator, because the alternative -- a second McNemar for the second envelope -- is what
+    this repository has caught twice already: a tool that grows its own copy of a decision stops agreeing with the
+    original without anybody noticing.
+    """
+    before = ablation([record(f"q{i}", i < 10) for i in range(20)])
+    after = ablation([record(f"q{i}", i < 14) for i in range(20)])
+    out = run(tmp_path, before, after)
+    assert "feature" in out
+    assert "4" in out  # net +4
+    # Four improved and none regressed is 0.125, the same arithmetic the harness path produces.
+    assert "0.1250" in out
+
+
+def test_refuses_to_pair_a_report_against_a_competitor_run(tmp_path: Path) -> None:
+    """Different provider names is the guard, so two artifacts that describe different arms cannot be paired.
+
+    A report's `correct` is the feature side; a harness run's rows are named providers. Sharing no name means the
+    tool says so rather than comparing a feature arm against a competitor provider and reporting it as a delta.
+    """
+    report = ablation([record("q0", True), record("q1", False)])
+    competitor = payload("longmemeval/s/500", [score("cortex-session", [record("q0", False), record("q1", True)])])
+    out = run(tmp_path, report, competitor)
+    assert "nothing here can be paired" in out
+
+
+def test_reads_the_dataset_from_either_shape(tmp_path: Path) -> None:
+    """The dataset label is what warns a reader that two runs are not the same sample."""
+    before = ablation([record("q0", False)], dataset="longmemeval/s/100")
+    after = ablation([record("q0", True)], dataset="longmemeval/s/500")
+    out = run(tmp_path, before, after)
+    assert "different datasets" in out
+
+
 if __name__ == "__main__":
     sys.exit(subprocess.call(["pytest", "-q", __file__]))
