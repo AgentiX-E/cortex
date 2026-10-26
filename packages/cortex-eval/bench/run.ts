@@ -449,6 +449,15 @@ async function main(): Promise<void> {
   // dispatch could set it, so the channel-C arm could not be constructed. An
   // unset value is `false` and the shipped configuration is byte-identical.
   const retrievalSides = readToggle(process.env, 'RETRIEVAL_SIDES');
+  // The multi-session aggregation critique. Strict `'1'`, default off -- the same reader and the same reasoning as
+  // the toggles above, because `bench/**` is outside coverage and a comparison written on this line would be
+  // unreachable from any test.
+  //
+  // This is the one switch in this file whose mechanism was fully built and whose only caller was a unit test. The
+  // flag targeted a measured failure ("MR error is dominated by set membership") and had never been on the graded
+  // path, so the ablation it documents -- "nothing is enabled until its own ablation is green" -- could not be run
+  // at all. `AGGREGATION_CRITIQUE=1` is what makes it runnable.
+  const aggregationCritique = readToggle(process.env, 'AGGREGATION_CRITIQUE');
 
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
@@ -467,10 +476,12 @@ async function main(): Promise<void> {
       retrievalSides,
       entityIdentityClause,
       reranker: reranker !== undefined,
+      aggregationCritique,
     },
     ...(reranker !== undefined ? { reranker } : {}),
     ...(rerankCandidatePool !== undefined ? { rerankCandidatePool } : {}),
     ...(rerankProtectedHead !== undefined ? { rerankProtectedHead } : {}),
+    ...(aggregationCritique ? { enableAggregationCritique: true } : {}),
   });
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
   for (const d of decisions) {
@@ -937,6 +948,7 @@ async function main(): Promise<void> {
           reranker,
           candidateDiscrimination,
           retrievalSides,
+          aggregationCritique,
           ...(rerankCandidatePool === undefined ? {} : { rerankCandidatePool }),
           ...(rerankProtectedHead === undefined ? {} : { rerankProtectedHead }),
         }),

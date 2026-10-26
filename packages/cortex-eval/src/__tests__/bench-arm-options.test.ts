@@ -28,6 +28,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
     });
     expect('candidateDiscrimination' in options).toBe(false);
   });
@@ -37,8 +38,34 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: true,
       retrievalSides: true,
+      aggregationCritique: false,
     });
     expect(options.candidateDiscrimination).toBe(true);
+  });
+
+  it('omits the aggregation critique when the toggle is off', () => {
+    // The shipped configuration. An always-present key would make the system's own default unreachable, and the
+    // pass costs a model call per enumeration question.
+    const options = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+      aggregationCritique: false,
+    });
+    expect('enableAggregationCritique' in options).toBe(false);
+  });
+
+  it('sets the aggregation critique only when the toggle is on', () => {
+    const on = rerankArmOptions({
+      reranker: { name: 'r' },
+      candidateDiscrimination: false,
+      retrievalSides: false,
+      aggregationCritique: true,
+    });
+    expect(on.enableAggregationCritique).toBe(true);
+    // And it is `true`, not the parsed boolean: the runner forwards on `=== true`, so an explicit `false` would be
+    // a configured value that the forward drops.
+    expect(Object.keys(on)).toContain('enableAggregationCritique');
   });
 
   it('carries the reranker through in both cases', () => {
@@ -47,7 +74,12 @@ describe('rerankArmOptions', () => {
     const reranker = { name: 'r' };
     for (const candidateDiscrimination of [false, true]) {
       expect(
-        rerankArmOptions({ reranker, candidateDiscrimination, retrievalSides: false }).reranker,
+        rerankArmOptions({
+          reranker,
+          candidateDiscrimination,
+          retrievalSides: false,
+          aggregationCritique: false,
+        }).reranker,
       ).toBe(reranker);
     }
   });
@@ -60,6 +92,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
     });
     expect('rerankCandidatePool' in without).toBe(false);
 
@@ -67,6 +100,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
       rerankCandidatePool: 50,
     });
     expect(withPool.rerankCandidatePool).toBe(50);
@@ -79,6 +113,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
       rerankProtectedHead: 0,
     });
     expect(zero.rerankProtectedHead).toBe(0);
@@ -87,6 +122,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
     });
     expect('rerankProtectedHead' in absent).toBe(false);
   });
@@ -98,6 +134,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
       temperature: 0,
       runs: 3,
     });
@@ -108,6 +145,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
     });
     expect('temperature' in absent).toBe(false);
     expect('runs' in absent).toBe(false);
@@ -121,6 +159,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
       entityIdentityClause: false,
     });
     expect(off.entityIdentityClause).toBe(false);
@@ -129,6 +168,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
     });
     expect('entityIdentityClause' in absent).toBe(false);
   });
@@ -141,6 +181,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: true,
       retrievalSides: true,
+      aggregationCritique: false,
     });
     expect(Object.keys(both).sort()).toEqual([
       'candidateDiscrimination',
@@ -152,6 +193,7 @@ describe('rerankArmOptions', () => {
       reranker: { name: 'r' },
       candidateDiscrimination: false,
       retrievalSides: false,
+      aggregationCritique: false,
     });
     expect(Object.keys(neither)).toEqual(['reranker']);
   });
@@ -162,6 +204,7 @@ describe('rerankArmOptions', () => {
         reranker: { name: 'r' },
         candidateDiscrimination: true,
         retrievalSides: false,
+        aggregationCritique: false,
       });
       expect('retrievalSides' in options).toBe(false);
     });
@@ -171,6 +214,7 @@ describe('rerankArmOptions', () => {
         reranker: { name: 'r' },
         candidateDiscrimination: true,
         retrievalSides: true,
+        aggregationCritique: false,
       });
       expect(options.retrievalSides).toBe(true);
     });
@@ -186,6 +230,7 @@ describe('rerankArmOptions', () => {
         reranker: { name: 'r' },
         candidateDiscrimination: false,
         retrievalSides: true,
+        aggregationCritique: false,
       });
       expect(inert.retrievalSides).toBe(true);
       expect('candidateDiscrimination' in inert).toBe(false);

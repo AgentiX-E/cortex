@@ -128,6 +128,22 @@ export type BenchmarkRunnerOptions = {
    */
   entityIdentityClause?: boolean;
   /**
+   * The aggregation critique pass: re-examine a multi-session enumeration's own ledger for membership errors
+   * and re-ask with the critique folded in (default false).
+   *
+   * Exposed because the flag existed, was consumed, and had **never run on the graded path** — it was reachable
+   * only from unit tests, which is the same shape as the orphan exports and the inert `retrievalThreshold` this
+   * repository has caught before. Its own documentation states the failure it targets: *"the measured MR error is
+   * dominated by set membership rather than arithmetic: the model already emits a numbered ledger, already folds
+   * duplicate mentions correctly at Step 2, and its stated count follows its own list. What it gets wrong is
+   * which items enter the list."*
+   *
+   * Forwarded to the FEATURE only, on the same reasoning as every option above: a control side that also carries
+   * the pass measures nothing. Costs one extra model call per enumeration question, which is why it stays off
+   * until an ablation says otherwise.
+   */
+  enableAggregationCritique?: boolean;
+  /**
    * Candidate-context discrimination in the feature system (roadmap measure B7).
    *
    * The feature renders retrieved candidates as sides of a discriminated
@@ -261,6 +277,10 @@ function describeFeatureConfig(options: BenchmarkRunnerOptions): FeatureConfig {
     retrievalSides: options.retrievalSides === true,
     entityIdentityClause: options.entityIdentityClause !== false,
     reranker: options.reranker !== undefined,
+    // Recorded for both states, so an artifact says "this arm did not carry the pass" rather than leaving a
+    // reader to infer it from a missing key. Two arms whose artifacts differ only in what they omit cannot be
+    // attributed -- the defect §20 already records for the reranking switch.
+    aggregationCritique: options.enableAggregationCritique === true,
   };
 }
 
@@ -352,6 +372,10 @@ export async function runNaturalLanguageBenchmark(
     // read with `=== true`.
     ...(options.candidateDiscrimination === true ? { candidateDiscrimination: true } : {}),
     ...(options.retrievalSides === true ? { retrievalSides: true } : {}),
+    // The aggregation critique, present only when on. Absence means off, matching the system's `=== true` read.
+    // Omitted rather than `false` for the same reason as the other toggles here: the system's own default is
+    // absent, and an explicit `false` would be a configured value meaning "off anyway".
+    ...(options.enableAggregationCritique === true ? { enableAggregationCritique: true } : {}),
   });
   // Natural-language answers need semantic equivalence grading, not exact match.
   const judge = options.judge ?? createLlmJudge(llm);

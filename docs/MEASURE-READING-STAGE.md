@@ -122,6 +122,39 @@ decomposition, and it names the four things that carry 21 points:
 **This is the round's most useful result**, because it converts "the product scores 81.0%" into a list of
 components with a measured total between them, and each is separately testable on the same harness.
 
+## 4.1 What the four components actually are, read from the code
+
+§4 named four components as a hypothesis. Reading `natural-language-memory.ts` turns three of them into facts and
+changes what the next experiment should be.
+
+| component | state in the product | what it means for the 21 points |
+| --- | --- | --- |
+| temporal arithmetic | **on by default**: `enableTemporalEngine` — the model extracts event dates, then a deterministic engine computes elapsed time, intervals and ordering | This is the executor half of TReMu, which the dispatch clause could only imitate by asking the model to write the subtraction down. The product is **stronger than the prompt arm here**, so porting the temporal clause into production would be a downgrade. |
+| knowledge update | **on by default**: `enableBitemporalKnowledgeUpdate` — the model reports the subject's `(object, date)` history, then exact date ordering picks current vs previous | Same conclusion. The clause asks for "the value from the latest date"; the product computes it. |
+| multi-session membership | the production prompt **already emits a numbered ledger** and already folds duplicate mentions correctly | So the artefact-discipline idea in §5.4 is not new to the product — it is new only to the competition reader, which had none. That predicts a real gain on `cortex-session` and no gain from porting it back. |
+| aggregation critique | **implemented, default off, never measured** — `enableAggregationCritique` re-examines the first pass's own ledger for *membership* errors (items missed, an exchange collapsed into one, items that should have been excluded) and re-asks with that critique folded in | This is the one that matches the measured failure. |
+
+The comment on that last flag records the measurement this round's MR result independently reproduces: *"The
+measured MR error is dominated by set membership rather than arithmetic: the model already emits a numbered
+ledger, already folds duplicate mentions correctly at Step 2, and its stated count follows its own list. What it
+gets wrong is which items enter the list."*
+
+**Two consequences, and they are the reason this section is here.**
+
+1. **The plan's `P1` — "port the dispatch clause into the production prompt" — is withdrawn.** Three of the four
+   components it would have ported are already in the product, and two of them are stronger than a prompt
+   instruction. Porting them would have produced a number indistinguishable from zero and would have been read as
+   "prompts do not help".
+2. **The replacement is a flag that already exists and has never been on the scale.** `enableAggregationCritique`
+   is default-off, reachable only from tests, and targets exactly the failure the MR column shows. Enabling it and
+   running its own ablation is a cheaper and better-aimed experiment than any prompt rewrite — and by this
+   repository's own rule ("nothing is enabled on the graded path until its own ablation is green") it is the step
+   that has to happen before it can be trusted.
+
+That is a general lesson worth recording: **before writing a mechanism, grep for one.** Two of this round's three
+"new" ideas already existed in the product, one of them implemented and never measured, which is the same shape as
+the orphan exports and the inert `retrievalThreshold` this project has caught before.
+
 ## 5. What this is not
 
 1. **Not comparable with Contextier's 91.6%.** Different reader (`deepseek-chat` vs their unspecified low-cost

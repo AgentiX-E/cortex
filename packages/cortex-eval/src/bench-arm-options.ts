@@ -46,6 +46,14 @@ export type RerankArmOptionsInput = {
   readonly runs?: number | undefined;
   /** Entity-identity sentence in the abstention prompt (shipped config: on). */
   readonly entityIdentityClause?: boolean | undefined;
+  /**
+   * The multi-session aggregation critique, already parsed from the environment.
+   *
+   * Required rather than optional for the reason given on `candidateDiscrimination`: an increment that can be
+   * omitted is an increment that will be omitted, and the arm then runs the control configuration while its
+   * artifact claims otherwise.
+   */
+  readonly aggregationCritique: boolean;
 };
 
 /**
@@ -81,5 +89,8 @@ export function rerankArmOptions(input: RerankArmOptionsInput): Record<string, u
     ...(input.entityIdentityClause === undefined
       ? {}
       : { entityIdentityClause: input.entityIdentityClause }),
+    // Present only when on, matching the runner's `=== true` forward. Absent is the shipped configuration, so an
+    // arm that does not measure the pass sends exactly what every earlier arm sent.
+    ...(input.aggregationCritique ? { enableAggregationCritique: true } : {}),
   };
 }

@@ -1920,13 +1920,16 @@ describe('the runner records the feature configuration it was given', () => {
     // The derived values are asserted exactly, because each is a default that a
     // reader has to be able to trust: the two B7 switches default off, the
     // entity-identity clause defaults ON (unset means the shipped configuration),
-    // and no reranker was supplied.
+    // no reranker was supplied, and the aggregation critique defaults off -- it
+    // costs two model calls per enumeration question, so a caller that did not ask
+    // for it must not get it.
     const { report } = await runNaturalLanguageBenchmark([], emptyEmbedding, stubLlm, { runs: 1 });
     expect(report.featureConfig).toEqual({
       candidateDiscrimination: false,
       retrievalSides: false,
       entityIdentityClause: true,
       reranker: false,
+      aggregationCritique: false,
     });
     // And it reaches the rendered report, not just the object.
     const md = formatAblationReport(report);
