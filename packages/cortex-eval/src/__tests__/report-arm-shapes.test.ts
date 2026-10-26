@@ -158,7 +158,10 @@ describe('every arm shape renders after a JSON round-trip', () => {
       const md = formatAblationReport(persisted);
       expect(md).toContain('# Cortex Benchmark Report');
       expect(md).toContain('## Ablation (abstention-aware accuracy)');
-      expect(md).toContain('## Per-capability breakdown (feature system)');
+      // The section heading names the arm since the two workflow documents became
+      // distinguishable (`report-system-identity.test.ts` is the suite for that), so
+      // this assertion pins the prefix rather than the old parenthetical.
+      expect(md).toContain('## Per-capability breakdown (`feature` arm)');
       expect(md).toContain('## Per-capability paired significance');
     });
   }

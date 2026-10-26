@@ -776,9 +776,18 @@ export function formatAblationReport(report: AblationReport): string {
   const pct = (x: number): string => `${(x * 100).toFixed(2)}%`;
   const ab = report.ablation;
   const lines: string[] = [
-    `# Cortex Benchmark Report`,
+    // The arm goes in the title because two workflows write this document for two
+    // different systems, and a bare "Cortex Benchmark Report" made them the same
+    // document to anyone reading a table of contents. Run `40088479628` measures both
+    // in one run -- `reference-pipeline` 43.40%, `cortex-memory` 80.80% -- which is
+    // exactly the pair a headline without an arm name invites a reader to compare.
+    `# Cortex Benchmark Report — \`${report.feature.name}\``,
     '',
     `- Dataset: \`${report.dataset}\` (${report.questionCount} questions)`,
+    // Both arms, on one line, above every number in the document. The line is what
+    // makes a screenshot of this report self-describing, which the per-section labels
+    // below are too far down the page to do.
+    `- System under test: \`${report.feature.name}\` vs baseline \`${report.baseline.name}\``,
     `- Generated at: ${report.generatedAt}`,
     `- Feature: \`${report.feature.name}\` vs baseline \`${report.baseline.name}\``,
   ];
@@ -1014,7 +1023,7 @@ export function formatAblationReport(report: AblationReport): string {
     `- Welch t-test p-value (over stochastic runs): **${formatPValue(ab.pValue, 'n/a (deterministic)')}** (significant: ${ab.significant ? 'yes' : 'no'})`,
     `- Cohen's d: **${formatEffectSize(ab.effectSize)}**`,
     '',
-    '## Per-capability breakdown (feature system)',
+    '## Per-capability breakdown (`' + report.feature.name + '` arm)',
     '',
     // §13.88: the accuracy below is the FIRST repetition's, and it used to be the only number on
     // the page while the section above quoted a mean over four. The spread columns are added when
@@ -1036,9 +1045,20 @@ export function formatAblationReport(report: AblationReport): string {
             `${spread.avg.toFixed(1)} | ${spread.max} |`,
     );
   }
-  lines.push('', `- Overall accuracy: ${pct(report.feature.metrics.accuracy)}`);
-  lines.push(`- Abstention rate: ${pct(report.feature.metrics.abstentionRate)}`);
-  lines.push(`- Abstention correct rate: ${pct(report.feature.metrics.abstentionCorrectRate)}`);
+  // The three lines a reader quotes in isolation, so each carries the arm. The noun is
+  // repeated on every line rather than announced once above them, because these lines are
+  // copied out by line -- into a summary table, a commit message, a plan -- and a heading
+  // three lines up does not travel with them.
+  lines.push(
+    '',
+    `- Overall accuracy (\`${report.feature.name}\`): ${pct(report.feature.metrics.accuracy)}`,
+  );
+  lines.push(
+    `- Abstention rate (\`${report.feature.name}\`): ${pct(report.feature.metrics.abstentionRate)}`,
+  );
+  lines.push(
+    `- Abstention correct rate (\`${report.feature.name}\`): ${pct(report.feature.metrics.abstentionCorrectRate)}`,
+  );
   lines.push('', '## Per-capability paired significance (McNemar + Wilson CI)', '');
   lines.push(
     '| Capability | Total | Baseline acc | Feature acc | b✓f✗ | b✗f✓ | McNemar p | Significant |',
