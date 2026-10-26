@@ -354,3 +354,40 @@ loses to the reference pipeline by 14.9 points with `p = 2.935e-3`. It is now th
 a known-better answer exists inside this repository, which makes it the cheapest place to look next —
 and `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §13.105 already registered that experiment with six
 predictions.
+
+## 8.7 An external analysis, checked claim by claim
+
+An independent review of this repository (Yuanbao, 2026-10-27, against `4c45163` / `28cef28`)
+reached the same conclusion as §8 and added four claims this document had not made. They were
+checked one at a time rather than adopted, and the result is mixed in a way that is worth recording:
+**the two that survived are the two that were verifiable from a file in the repository.**
+
+| # | claim | verdict | evidence |
+| --- | --- | --- | --- |
+| 1 | 81.0% and 44.2% are two arms | **agreed, and it sharpens §8** | it pairs 44.20% with the **archived reference-pipeline** 224/500 (`04 §1.2`), which is 3 questions away, rather than with `40088479628`'s baseline at 217/500. Three readings of one system — 217, 221, 224 — put that arm's run-to-run spread at ~1.4pp, which §8 had no number for |
+| 2 | the embedding cache carries no model identity | **confirmed, and worse than stated** | `retrieval.ts` wrote `magic + version + count + dim` and its docstring claimed it threw "so a stale cache is never silently trusted". Fixed: `MEASURE-CACHE-PROVENANCE.md` |
+| 3 | the same arm regressed from 430/500 (Sept) to 221/500 (Oct) | **unproven** | the 430 reading is real (`MEASURE-FAILURE-CENSUS.md` §2–3: IE 145/150, KU 59/72, MR 106/121, TR 91/127, ABS 29/30), but the September run **predates `featureConfig` being written into the artifact**, so there is no record that its switches match October's. The claim compares two readings of unknown configuration, which is the same shape as the error this document is about |
+| 4 | extracting `packages/cortex-ai` changed the embedding defaults | **not checkable here** | the local `.git` is shallow, so the rename history cannot be diffed. It is also moot in the direction that matters: whatever the defaults are now, a cache stamped with them can no longer be silently reused by a run using others |
+
+**What claim 3 gets right, and what it does not.** The *shape* of the September-to-October movement —
+the two single-session capabilities collapsing (IE 145 → 1, KU 59 → 0) while the two multi-session
+ones barely move (MR 106 → 104, TR 91 → 86) — is exactly what a foreign vector space predicts, because
+single-session questions are served by embedding similarity alone while multi-session questions also
+travel the lexical, turn-level and temporal channels. That is a mechanism with a predicted signature,
+not a finding. It is recorded as a pre-registered candidate in `MEASURE-CACHE-PROVENANCE.md` §6 with
+the reading that would discriminate it, and it is **not** written into the plan as a regression.
+
+**One hypothesis of my own, refuted by a date.** Before reading the external analysis I suspected
+`entityIdentityClause`: it is a sentence that licenses declining when the question names an entity
+absent from the context, IE questions are exactly that shape, and `runner.ts:321` defaults it to on.
+Run `35097952715` removed the clause in a controlled A/B — on **2026-09-16**, nine days before the
+430/500 reading. A clause that was already present when IE read 145/150 cannot explain IE at 1/150.
+Eliminated in one command, and recorded because a plausible mechanism that survives inspection of the
+code and dies on inspection of a date is the normal case, not the exception.
+
+**The general lesson, and it is the third time this round.** Claims 1 and 2 were checkable by opening
+a file. Claim 3 needed a fact that was never recorded (the September configuration) and claim 4 needed
+history the checkout does not have. The distance between "verifiable here" and "plausible here" is not
+about the reviewer's care — it is about whether the artifact kept the field. **A number whose
+configuration was not written down cannot be compared with anything, and that includes itself a month
+later.**
