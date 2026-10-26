@@ -85,6 +85,28 @@ quotes as the end-to-end state, including the acceptance gate. If the same confi
 the shared path changed between then and now. Both possibilities matter more than this round's ablation,
 because every claim about progress is denominated in that number.
 
+## 4.1 What has been done about it since
+
+Two of the four checks are now implemented rather than planned.
+
+**The corpus hash is printed and can be asserted.** `benchmark.yml` runs `sha256sum` on the downloaded file, logs
+`corpus sha256:` and `corpus bytes:` on every dispatch, and accepts a `corpus_sha256` input that fails the job on a
+mismatch. Every artifact from now on carries the version of the corpus it read, which no previous artifact did.
+
+**The critique counters exist.** `NaturalLanguageMemorySystem.critiqueStats` reports `eligible`, `fired`, `noOp`
+and `skipped`, surfaced in the ablation report. They separate the three states that produce two identical arms:
+never reached, reached and found nothing, reached and changed nothing.
+
+**And analysis of the existing artifact narrowed the hypothesis to one.** §7 does that with the log's own
+per-question records: the refusals track the retrieval, four technical causes are eliminated by measurement, and
+what remains is the query side, the session segmentation, or the corpus — of which only the corpus can change
+without a code change.
+
+A diagnostic run is dispatched with the shipped configuration (`aggregation_critique=0`) on the full 500 questions.
+If it also reads ~44.2%, the drift predates this round's switches and the corpus hash from that run is the reference
+for everything after it. If it reads ~81.0%, then the critique switch is implicated after all, and the counters from
+the next run will say which of the three states did it.
+
 ## 5. The four checks that would localise it
 
 Ordered by cost, and each one narrows the same question: **is the regression in the code, the data, or
