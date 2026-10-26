@@ -229,13 +229,74 @@ The next version of the MR clause should ask for the same kind of thing the TR c
 candidate answers from each conversation, then choose. That is a hypothesis this table produces, and it is the
 one the next round tests.
 
+## 5.4 The second rewrite: a clause that names an artefact
+
+§5.3 ended on an asymmetry worth acting on. Two clauses went into the same prompt at the same time, and one moved
+31 questions while the other moved 5 and −2:
+
+| clause | what it says | questions moved (lexical / session) |
+| --- | --- | --- |
+| temporal | write each event's date in ISO form, quote the phrase you took it from, then do the subtraction one step at a time | **+31 / +29** |
+| multi-session | "collect every block that bears on the question before answering, and do not stop at the first one" | +5 / −2 |
+
+The temporal clause names **what the reader must write down**. The multi-session clause names nothing; it asks for
+diligence. `--reader dispatch2` is the same prompt with that one clause replaced by a procedure:
+
+1. one row per block — `<block number> <date> — the specific fact this block states` — and a block that merely
+   mentions the topic is not evidence and must be left out;
+2. then every distinct candidate answer, each with the block numbers it came from;
+3. aggregations computed **from that list** with the operation shown, not estimated from an impression of it.
+
+Four findings shaped it, and none of them is our own guess:
+
+| source | what it says | what it changed |
+| --- | --- | --- |
+| LongMemEval (ICLR 2025) | multi-session queries need "further fact extraction", not more context | asks for extraction into per-block facts rather than for careful reading |
+| BEAM (2510.27246) | multi-session failures come from retrieval omitting events and losing order | every row carries its date, so a merged list is still ordered |
+| Zep | +13.6pp on multi-session QA from a temporal graph where each fact has validity | a prompt cannot build that graph, but it can demand the same shape of output |
+| §5.3, this document | a clause naming an artefact moved 31; one encouraging moved 5 and −2 | the whole reason for trying this |
+
+`dispatch` is **frozen, not edited**. Its numbers are archived against that name, so a rewrite becomes a new arm —
+and a test pins its text, which means the next person who wants to change it has to add a mode instead. Six tests
+hold the chain single-variable: `dispatch2` is byte-identical to `dispatch` on every other capability, differs only
+in the multi-session paragraph (asserted through a shared prefix and suffix, not through a diff of the whole
+prompt), and is still the control prompt plus an insertion so `con` remains its baseline.
+
+### The bug this uncovered, and why it is in a measurement document
+
+Building the paired test needed two run files, which meant piping the harness's JSON. It broke immediately, and
+not in the way that was being tested:
+
+```
+json.decoder.JSONDecodeError: Unterminated string starting at: line 384 column 9 (char 8190)
+```
+
+`--json` wrote its payload and called `process.exit(0)` in the same tick. Exit does not wait for stdout to drain,
+so whatever was still in the pipe was discarded. Measured on a payload of known size:
+
+| code | bytes produced | bytes received |
+| --- | --- | --- |
+| `write` then `process.exit` | 73,480 | **65,536** |
+| `await` the write callback, then exit | 73,480 | 73,480 |
+
+65,536 is the kernel pipe buffer. The artifact was never corrupt on disk, because a file write is synchronous —
+which is why every previous run looked fine — and it was never corrupt when the reader drained immediately, which
+is why the first version of the regression test **passed on the broken code**. A test for this has to pipe
+through a slow reader with a payload larger than 64 KiB; with that shape it fails on the old code and passes on
+the new one, both verified.
+
+**This belongs in the measurement document rather than a changelog** because it is the same class of defect this
+project keeps finding: a number that was produced by the instrument rather than by the system. A truncated JSON
+file does not raise; it parses as a *smaller run* or not at all, and the reader of an artifact has no way to tell
+which. The `--json` path is the one every later comparison depends on.
+
 ## 6. The next measurements, in order, revised by §2.1
 
 | # | measurement | why it is next | criterion |
 | --- | --- | --- | --- |
 | 1 | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp) |
 | 1b | ~~the same ablation on the 500-question file~~ **done — §5.3** | §5.1 was 20 TR questions; the population is 127 | TR +24.4pp and +22.8pp, `recall@k` unchanged; exact paired p pending `records` |
-| 1c | **the MR clause, rewritten to demand an artefact** | §5.3 shows the TR clause moved 31 questions and the MR clause moved 5 and −2. TR asks for dates to be written down; MR asks for nothing | MR ≥ +10pp at constant `recall@k`, with the same "one inserted clause" discipline |
+| 1c | ~~the MR clause, rewritten to demand an artefact~~ **implemented — §5.4**, run dispatched | §5.3 shows the TR clause moved 31 questions and the MR clause moved 5 and −2; TR asks for dates to be written down, MR asks for nothing | MR ≥ +10pp at constant `recall@k`, exact paired p from the same run |
 | 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
 | 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
 
