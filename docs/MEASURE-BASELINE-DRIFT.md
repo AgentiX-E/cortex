@@ -238,11 +238,17 @@ Set that beside `40378588466`'s feature arm:
 | TR | 66.93% | 66.14% | 74.02% |
 | ABS | 100% | 100% | 100% |
 
-`40378588466` **is** the bottom-left cell of `40088479628`, reproduced to within `runs=1` sampling on
-KU and TR. The two runs are four days apart, on different commits, and they agree on five capabilities
-because they are the same system. `cortex-memory` is 37.4 points above it in the same run, with
-McNemar `p = 1.694e-33` — a paired comparison over 500 questions in which the baseline wins 38 and
-the feature wins 225.
+`40378588466` reproduces `40088479628`'s baseline to **4 questions of 500** (219 against 217 as absolute
+counts; 43.80% against 43.40%), and its five capability rows match within `runs=1` sampling on KU and
+TR. The two runs are four days apart on different commits, and they agree on five capabilities because
+they are the same system. `cortex-memory` is 37.4 points above it **in the same run**, with McNemar
+`p = 1.694e-33` — a paired comparison over 500 questions in which the baseline wins 38 and the feature
+wins 225.
+
+Two numbers, two systems, and the distinction matters more than the 4 questions: `40378588466` is
+`nl-abstain-feature` and `40088479628`'s baseline is `reference-pipeline`. They are close because they
+share the retrieval path and the reader, not because they are the same arm — §8.7 records what happens
+when that closeness is written as identity.
 
 ### 8.3 The mechanism is the configuration, and it explains the *direction* of every capability
 
@@ -364,10 +370,25 @@ checked one at a time rather than adopted, and the result is mixed in a way that
 
 | # | claim | verdict | evidence |
 | --- | --- | --- | --- |
-| 1 | 81.0% and 44.2% are two arms | **agreed, and it sharpens §8** | it pairs 44.20% with the **archived reference-pipeline** 224/500 (`04 §1.2`), which is 3 questions away, rather than with `40088479628`'s baseline at 217/500. Three readings of one system — 217, 221, 224 — put that arm's run-to-run spread at ~1.4pp, which §8 had no number for |
+| 1 | 81.0% and 44.2% are two arms | **agreed, and it sharpens §8** | it pairs 44.20% with the **archived reference pipeline** at 224/500 (`04 §1.2`) rather than with `40088479628`'s baseline at 217/500. That pairing is right and the arithmetic needs stating more carefully than either of us first wrote it — see below |
 | 2 | the embedding cache carries no model identity | **confirmed, and worse than stated** | `retrieval.ts` wrote `magic + version + count + dim` and its docstring claimed it threw "so a stale cache is never silently trusted". Fixed: `MEASURE-CACHE-PROVENANCE.md` |
 | 3 | the same arm regressed from 430/500 (Sept) to 221/500 (Oct) | **unproven** | the 430 reading is real (`MEASURE-FAILURE-CENSUS.md` §2–3: IE 145/150, KU 59/72, MR 106/121, TR 91/127, ABS 29/30), but the September run **predates `featureConfig` being written into the artifact**, so there is no record that its switches match October's. The claim compares two readings of unknown configuration, which is the same shape as the error this document is about |
 | 4 | extracting `packages/cortex-ai` changed the embedding defaults | **not checkable here** | the local `.git` is shallow, so the rename history cannot be diffed. It is also moot in the direction that matters: whatever the defaults are now, a cache stamped with them can no longer be silently reused by a run using others |
+
+**The three readings are two systems, not one.** The first version of this table said "three
+readings of one system — 217, 221, 224 — put that arm's spread at ~1.4pp". That is wrong, and the
+error is small enough to be worth spelling out because it is the same class as the one this document
+is about. The rows pair up like this:
+
+| system | readings | spread | what the spread is |
+| --- | --- | --- | --- |
+| `reference-pipeline` (`run-ablation.ts`'s baseline: `enableAbstention`, every other option default) | **217** (`40088479628`) and **224** (archived, `04 §1.2`, "single run") | 7 questions, **1.4pp** | four days and several commits apart — this is the run-to-run spread of one system, and it is the number §8 did not have |
+| `nl-abstain-feature` (`enableAbstention` + `abstainThreshold` + `entityIdentityClause`) | **219** (`40378588466`, 43.80%) and **221** (the `recall` / `per-item` pair, 44.20%) | 2 questions, **0.4pp** | same week, and §2 already reports these two as identical to the digit at the capability level |
+
+So `44.20%` sits 2 questions from one reading of its own arm and 4 from the other arm's baseline. Both
+are inside noise, which is why the conclusion holds — but the coincidences that make them all land
+between 217 and 224 are not one system's variance, and writing them as one would be a small copy of
+the failure under study.
 
 **What claim 3 gets right, and what it does not.** The *shape* of the September-to-October movement —
 the two single-session capabilities collapsing (IE 145 → 1, KU 59 → 0) while the two multi-session
