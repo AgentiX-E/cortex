@@ -48,6 +48,11 @@ on:
         required: false
         default: '0'
         type: string
+      corpus_sha256:
+        description: 'Expected SHA-256 of longmemeval_s_cleaned.json (empty = accept whatever the branch serves)'
+        required: false
+        default: ''
+        type: string
       aggregation_critique:
         description: 'Second-pass membership audit on multi-session enumeration questions (0 = off)'
         required: false
@@ -158,12 +163,27 @@ jobs:
       - name: Download LongMemEval-S
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Passed through `env` rather than interpolated into the script: a dispatch input is user-controlled, and
+          # string interpolation into a shell command is how an input becomes code.
+          CORPUS_SHA_INPUT: ${{ github.event.inputs.corpus_sha256 }}
         run: |
           mkdir -p "${{ github.workspace }}/data"
           curl -fL --retry 3 --retry-delay 5 \
             -H "Authorization: Bearer ${HF_TOKEN}" \
             -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
             "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          # The file is served from a moving branch, so two dispatches can measure two different corpora while
+          # both artifacts claim to be "LongMemEval-S / 500". Measured: this is the one candidate that explains a
+          # 81.0% -> 44.2% swing without any code change, which is why the hash is printed on every run and can be
+          # asserted when a comparison matters.
+          ACTUAL_SHA="$(sha256sum "${{ github.workspace }}/data/longmemeval_s_cleaned.json" | cut -d' ' -f1)"
+          echo "corpus sha256: $ACTUAL_SHA"
+          echo "corpus bytes : $(stat -c%s "${{ github.workspace }}/data/longmemeval_s_cleaned.json")"
+          EXPECTED="$CORPUS_SHA_INPUT"
+          if [ -n "$EXPECTED" ] && [ "$EXPECTED" != "$ACTUAL_SHA" ]; then
+            echo "::error::corpus hash mismatch: expected $EXPECTED, got $ACTUAL_SHA"
+            exit 1
+          fi
 
       # The primary key names the entry THIS run will write, and deliberately cannot
       # match anything older -- see the block above `Save embedding cache` at the bottom

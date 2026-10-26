@@ -120,3 +120,57 @@ Three things, none of which needs the run to be trusted.
    prompt and produce the same 500 verdicts mean the prompt is not reaching the model, or the model is
    not using it, or the artifact is not measuring it. Any of the three is worth more than the effect that
    was being hunted.
+
+## 7. The analysis that narrowed it, run on the artifact itself
+
+The 12 MB job log carries one record per single-session question — `question`, `ground_truth`, `decision.retrieved`,
+`decision.llmRaw` — for all 379 of them. Analysing that array answered more than any further speculation would.
+
+### 7.1 The evidence is not in the context, so the refusals are correct
+
+For each question, count the ground-truth words (length ≥ 4) that appear in the retrieved context:
+
+| capability | abstained | of which the context covers ≥50% of the gold | answered | of which the context covers ≥50% |
+| --- | --- | --- | --- | --- |
+| IE | 135 | **16** | 15 | 4 |
+| KU | 58 | **4** | 14 | 4 |
+| TR | 22 | 6 | 105 | **76** |
+
+The reader is not malfunctioning. On IE it declined 135 questions and only 16 of them had the answer in front of it;
+on TR it answered 105 and 76 of those had the answer in front of it. **The refusal rate tracks the retrieval rate.**
+That moves the whole question from "why does the reader refuse" to "why is the evidence absent", and the second one
+is answerable from the same artifact.
+
+### 7.2 Four technical causes eliminated with the artifact's own numbers
+
+| cause | measurement | verdict |
+| --- | --- | --- |
+| context window truncated | median retrieved length: IE 11,198 chars, KU 4,361, TR 10,512, max 28,462 | eliminated — nothing is being cut to a few hundred characters |
+| degenerate embeddings | 162 hit scores spanning **0.408–0.987**, median 0.664, p10 0.585 / p90 0.765 | eliminated — a collapsed embedding produces a flat or NaN distribution, not this one |
+| assistant turns filtered out | IE contexts carry 31% assistant turns; KU and TR carry **0%**; and gold words found *only* in assistant turns: **5 of 117** IE abstentions | eliminated — the answers are not on the assistant side |
+| embedding cache mismatched | the cache is a `Map<text, vector>` serialized with text keys, magic and dimension | eliminated — a cache hit cannot return another text's vector |
+
+So the embedding is informative, the window is large enough, the turns are present, and the cache cannot lie. What
+remains is **the query side, the session segmentation, or the corpus**.
+
+### 7.3 Where that leaves the hypothesis
+
+`recall@1 = 0.408` against `recall@5 = 0.776` on the 100-question diagnostic says the right session is usually in
+the top five but rarely first. For IE that is fatal in a way it is not for TR: an IE answer is a short phrase that
+appears once, and the reader only sees the sessions that were retrieved, not the five that were ranked.
+
+**And one candidate explains all of it without any code change: the corpus.** `benchmark.yml` downloads
+`longmemeval_s_cleaned.json` from a moving branch on every run, so the questions, the gold answers and the session
+boundaries can change between two dispatches while the artifact records nothing about which version it read. If the
+file changed, 405/500 and 221/500 are measurements of two different datasets, and every conclusion drawn from
+comparing them is an artefact of the redownload.
+
+That is why pinning the file by hash is the first of the four checks rather than the cheapest afterthought: it is
+the only one that decides whether there is a regression at all.
+
+### 7.4 One behaviour found while writing the counter tests
+
+`UNANSWERABLE` is the token the model actually emits when it declines, and the aggregation path does not treat it
+as an abstention before the critique runs. A run whose answers are mostly refusals therefore still pays for the
+audit pass on those questions. Recorded rather than fixed: moving an abstention boundary changes behaviour and
+needs its own measurement, and the counters now make the cost visible.
