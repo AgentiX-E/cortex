@@ -391,6 +391,15 @@ export type MemoryArmConfig = {
    */
   readonly reviewPass?: string | undefined;
   /**
+   * Whether a decline that named nothing was asked once more, with the abstention token not offered.
+   *
+   * Optional in the type for the same reason `reviewPass` is, and always written by the producer: `false` is a state
+   * a run can be dispatched to, so an artifact that spelled nothing would leave "ran the control" and "predates the
+   * field" as the same bytes. The type stays permissive because archived artifacts genuinely predate it; the
+   * producer is where the guarantee lives, and `test/` pins it there.
+   */
+  readonly reviewBareDecline?: boolean | undefined;
+  /**
    * Whether the multi-session route's ranking was built from the question alone or from the
    * question plus model-written activity phrases (§13.97).
    *

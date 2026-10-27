@@ -32,14 +32,19 @@ import {
 } from './admission.js';
 import {
   RENDERING_BY_CONTRACT,
-  buildPrompt,
   buildAuditPrompt,
+  buildPrompt,
+  buildRetryPrompt,
   buildSessionPrompt,
+  type AssembledPrompt,
   type PromptContract,
   type PromptOptions,
-  type AssembledPrompt,
 } from './prompt.js';
-import { buildRecoveryPrompt, planAbstentionRecovery } from './abstention-recovery.js';
+import {
+  buildRecoveryPrompt,
+  isBareDecline,
+  planAbstentionRecovery,
+} from './abstention-recovery.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
@@ -183,6 +188,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
     llm: 0,
     answered: 0,
   };
+
+  /**
+   * The bare-decline retry, counted.
+   *
+   * Two numbers rather than one, for the reason §13.105's null result lacked: "the pass did not fire" and "the pass
+   * fired and changed nothing" are different findings about the same run, and a single tally collapses them.
+   */
+  readonly #bareRetries: { attempted: number; answered: number } = { attempted: 0, answered: 0 };
 
   /**
    * How many corrective consultations were attempted, and how many produced an answer.
@@ -709,6 +722,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return { ...this.#reasons };
   }
 
+  /** How often a bare decline was re-asked, and how often the second answer stood. */
+  bareRetries(): { attempted: number; answered: number } {
+    return { ...this.#bareRetries };
+  }
+
   /** What the abstention-recovery pass did, for a run that turned it on. */
   recoveryCensus(): { attempted: number; answered: number } {
     return { ...this.#recoveries };
@@ -998,26 +1016,61 @@ export class CortexMemory implements SessionAwareMemorySystem {
      */
     route: TurnCapRoute,
   ): Promise<Answer> {
-    // `contract` names this route's ASK and is not overridden. Overriding it here
-    // is what the first fix did, and §12.9 records why that was wrong: naming the
-    // abstention contract on the KU or flat route would replace their instruction
-    // block with one that tells the model to decline, which moves the ask and the
-    // evidence at once -- two variables in a run whose whole value is that it has
-    // one -- and on MR it would invite abstention on questions that must be
-    // answered. The rendering is resolved in `#promptOptions` instead, so every
-    // route keeps its own ask and only the evidence presentation moves.
-    // Filtered here rather than at admission: the gate decides what may be *answered from*,
-    // this decides what may be *shown among the turns already kept*, and §13.83 registers the
-    // second. An emptied list is the same state as admitting nothing, so it declines before
-    // spending a request.
+    return this.#answerWithBareRetry(question, turns, contract, route, undefined);
+  }
+
+  /**
+   * Consult, and if the reply was the token and nothing else, ask once more without offering it.
+   *
+   * ## Why the answer is taken from the second call and the decline from the second call too
+   *
+   * A retry that declined again is not a failure of the retry — it is the honest outcome for evidence that holds
+   * nothing, and both `attempted` and `answered` are reported so that "the pass did not fire" and "the pass fired
+   * and changed nothing" stay distinguishable.
+   *
+   * ## What is deliberately not overridden
+   *
+   * `contract` names this route's ASK and is passed through untouched. Overriding it here is what an earlier fix
+   * did, and §12.9 records why that was wrong: naming the abstention contract on the KU or flat route would replace
+   * their instruction block with one that tells the model to decline — two variables at once, in a run whose whole
+   * value is that it has one.
+   *
+   * ## Why the reach is the routes that call this and not the abstention route
+   *
+   * `answerAbstention` does not go through here at all. `ABS`'s gold is a decline, 29 of its 30 answers are this
+   * exact bare token, and it reads 30/30 — a treatment reaching it would spend a call to convert a correct answer
+   * into a wrong one.
+   */
+  async #answerWithBareRetry(
+    question: string,
+    turns: AdmittedTurn[],
+    contract: PromptContract,
+    route: TurnCapRoute,
+    questionDate: string | undefined,
+  ): Promise<Answer> {
+    const options = this.#promptOptions(route);
     const kept = this.#turnsForRoute(turns, route);
     if (kept.length === 0) return this.#declinedEmpty();
-    const assembled = buildPrompt(question, kept, contract, this.#promptOptions(route));
+    const assembled = buildPrompt(question, kept, contract, {
+      ...options,
+      ...(questionDate === undefined ? {} : { questionDate }),
+    });
     this.#recordEvidence(kept, assembled);
-    // §13.107: the outcome is recorded here, once per question, rather than inside `#consult`.
-    // A route that consults once is unaffected; a route that consults several times per question
-    // is the reason the tally moved out.
-    return this.#recordOutcome(await this.#consult(assembled.prompt));
+    // §13.107: the outcome is recorded once per question, here rather than inside `#consult`, so a route that
+    // consults twice does not enter the census twice.
+    const first = await this.#consult(assembled.prompt);
+    // The abstention route shares this path and must be excluded here rather than at the call site: `#prompt` is the
+    // entry point for it, so a guard on the option alone would reach the one capability whose gold is a decline.
+    // `ABS` reads 30/30 with 29 bare tokens; converting one of those would spend a call to turn a right answer into
+    // a wrong one.
+    if (first !== null || this.#options.reviewBareDecline !== true || route === 'abstention') {
+      return this.#recordOutcome(first);
+    }
+    if (!isBareDecline(this.#lastRawOutput)) return this.#recordOutcome(first);
+    this.#bareRetries.attempted += 1;
+    const second = await this.#consult(buildRetryPrompt(question, kept, options));
+    if (second !== null) this.#bareRetries.answered += 1;
+    return this.#recordOutcome(second);
   }
 
   async #promptWithDate(
@@ -1026,18 +1079,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     contract: PromptContract,
     questionDate: string | undefined,
   ): Promise<Answer> {
-    const base = this.#promptOptions('temporal');
-    const kept = this.#turnsForRoute(turns, 'temporal');
-    if (kept.length === 0) return this.#declinedEmpty();
-    const assembled = buildPrompt(question, kept, contract, {
-      ...base,
-      ...(questionDate === undefined ? {} : { questionDate }),
-    });
-    this.#recordEvidence(kept, assembled);
-    // §13.107: the outcome is recorded here, once per question, rather than inside `#consult`.
-    // A route that consults once is unaffected; a route that consults several times per question
-    // is the reason the tally moved out.
-    return this.#recordOutcome(await this.#consult(assembled.prompt));
+    // One implementation for both paths, so the retry cannot exist on `flat` and not on `temporal` — the two routes
+    // that carry the 21 first-attempt bare declines the treatment was derived from.
+    return this.#answerWithBareRetry(question, turns, contract, 'temporal', questionDate);
   }
 
   /** Render selected sessions with their boundaries intact. */

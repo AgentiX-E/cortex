@@ -1025,6 +1025,48 @@ export type AssembledPrompt = {
   readonly carried: readonly AdmittedTurn[];
 };
 
+/**
+ * The prompt for the one question a bare decline gets back.
+ *
+ * ## Why this is not `buildPrompt` with a stronger sentence
+ *
+ * The contract that produced the decline already says *"a bare `INSUFFICIENT_EVIDENCE` with no list is not a valid
+ * response"*, and `MEASURE-SOTA-FAILURES.md` §2 counts 21 replies that are exactly that. Repeating the sentence
+ * would be advice twice. What changes here is the **affordance**: this prompt does not contain the abstention token
+ * at all, so declining is not among the answers it offers.
+ *
+ * That is also why it is a separate builder rather than a flag on `buildPrompt`. Every contract in
+ * `CONTRACT_INSTRUCTIONS` ends by naming the token, on purpose — the token is what makes a honest decline
+ * expressible on routes that need one. Removing it is a different ask, and a flag threading through that table
+ * would make the table's invariant ("every instruction block names the token") false in one branch.
+ *
+ * The evidence and the question are rendered exactly as the first pass rendered them, so the only difference
+ * between the two calls is the instruction. A retry that re-sampled a different window would be a second
+ * observation rather than a correction.
+ */
+export function buildRetryPrompt(
+  question: string,
+  turns: readonly AdmittedTurn[],
+  options: PromptOptions = {},
+): string {
+  const render = (picked: readonly AdmittedTurn[]): string =>
+    options.rendering === 'sourced'
+      ? formatEvidenceWithSources(picked, options.maxTurnChars)
+      : formatEvidence(picked, capOption(options.maxTurnChars));
+  const evidence = render(turns);
+  return [
+    `EVIDENCE:\n${evidence.length === 0 ? NO_EVIDENCE : evidence}`,
+    '',
+    `QUESTION: ${question}`,
+    '',
+    'Answer the question using only the evidence above.',
+    'The previous reply named no evidence, so it was not a valid answer to this question.',
+    'Write the items in the evidence that match the question as a numbered list first, one per line, each with the',
+    'date it was stated, then compute the answer from that list.',
+    'Reply with the answer alone on the last line.',
+  ].join('\n');
+}
+
 export function buildPrompt(
   question: string,
   turns: readonly AdmittedTurn[],

@@ -52,6 +52,38 @@
  * answer -- and leaves every other question free to decline again.
  */
 
+/**
+ * Whether a reply was the token and nothing else.
+ *
+ * ## What this separates, and why the parser cannot
+ *
+ * `parse.ts` collapses three shapes to `null`: the token alone, the token after a list, and the token after prose.
+ * To everything downstream those are one outcome, and they call for three different repairs:
+ *
+ * | shape | what it means | repair |
+ * | --- | --- | --- |
+ * | token alone | the reader never engaged | ask again, **without offering the token** |
+ * | token after a list | the reader engaged and gave up | the list is worth quoting back |
+ * | token after prose | the reader engaged and reasoned | read the reasoning |
+ *
+ * `MEASURE-SOTA-FAILURES.md` §2 measures the population: 30 of 45 wrong declines on the shipped arm are the first
+ * shape, and 29 of `ABS`'s 30 *correct* answers are that same shape — which is why the treatment that consumes
+ * this predicate must never reach the abstention route.
+ *
+ * Wrappers count as bare. A model that writes `**INSUFFICIENT_EVIDENCE**` said nothing but the token, and
+ * `stripLabel`'s own fixpoint folds those before this is asked; testing the raw text here keeps the two layers
+ * from disagreeing about a decorated token.
+ */
+export function isBareDecline(raw: string | null): boolean {
+  if (raw === null) return false;
+  const text = raw.trim();
+  // Empty is *not* bare: nothing was said, which is a different state and belongs to the empty-evidence path.
+  if (text === '') return false;
+  const stripped = text.replace(new RegExp(DECLINE_TOKEN, 'gi'), ' ').trim();
+  // Only wrappers left means the token stood alone. Anything else is content and the reader engaged.
+  return /^[*_`"'\s]*$/.test(stripped);
+}
+
 /** A reply that declined, and the items it had already listed. */
 export type RecoveryPlan =
   | { readonly kind: 'none'; readonly why: 'disabled' | 'answered' | 'no-list' }

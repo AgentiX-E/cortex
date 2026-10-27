@@ -451,9 +451,17 @@ async function main(): Promise<void> {
     // the key, for the reason every other conditional spread here is: every archived artifact was
     // produced without a pass, and a present-but-inert key would make the option indistinguishable
     // from a configured one to a `!== undefined` check.
-    ...(armOptions.reviewPass === 'none' || armOptions.reviewPass === undefined
+    // `bare` is a value of `reviewPass` at the dispatch boundary but not a member of the product's `ReviewPass`
+    // union: it is a different treatment, not a different pass over the same reply. Excluded here so the cast below
+    // cannot smuggle it into a field the product would interpret as `recover`.
+    ...(armOptions.reviewPass === 'none' ||
+    armOptions.reviewPass === undefined ||
+    armOptions.reviewPass === 'bare'
       ? {}
       : { reviewPass: armOptions.reviewPass as ReviewPass }),
+    // Same conditional shape as `reviewPass`: absent is the shipped behaviour, and a present-but-false key would
+    // make "the control ran" indistinguishable from "the switch was configured off" to a `!== undefined` check.
+    ...(armOptions.reviewBareDecline === true ? { reviewBareDecline: true } : {}),
     // §13.101's sample count. `none` IS one consultation and is expressed by NOT passing the key, for
     // the reason every conditional spread here is: every archived artifact was produced with one
     // consultation, and a present-but-inert key would make the option indistinguishable from a

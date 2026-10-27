@@ -383,6 +383,28 @@ export type CortexMemoryOptions = {
    * separate the treatment from the cost.
    */
   reviewPass?: ReviewPass;
+
+  /**
+   * Give a decline that named nothing one question back, without offering the abstention token.
+   *
+   * ## The measurement
+   *
+   * `MEASURE-SOTA-FAILURES.md` §2: of 45 wrong declines on the shipped arm, **30 are a bare
+   * `INSUFFICIENT_EVIDENCE`** with nothing around it. The ask already calls that shape invalid and it was produced
+   * 21 times on the two routes that never retry, so the sentence is advice — the parser accepts the shape and
+   * nothing happens. Meanwhile `ABS`, the only capability whose gold is a decline, reads 30/30 with **29 of its 30
+   * answers being that same token**: the shape is optimal exactly where it is graded.
+   *
+   * ## Reach, and why it is two routes rather than three
+   *
+   * `flat` and `temporal`, which carry the 21 first-attempt bare declines. `multi-session` already runs
+   * `reviewPass: 'recover'`; adding a second retry there would make any movement two variables. The abstention
+   * route is excluded outright — a bare decline there is the correct answer and this option would spend a call to
+   * turn a right answer into a wrong one.
+   *
+   * Default `false`, which is the shipped behaviour and the setting every archived artifact was produced under.
+   */
+  reviewBareDecline?: boolean;
   /**
    * How many times the multi-session route consults the model on one prompt, and whether the
    * answers are reduced by majority. `1` (the default) is the shipped behaviour.

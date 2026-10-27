@@ -186,6 +186,7 @@ async function runCortexMemoryArmReport(config: {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        reviewBareDecline: false,
       },
     },
   );
@@ -687,6 +688,7 @@ describe('relevance signal', () => {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        reviewBareDecline: false,
         relevanceSignal: 'retrieval',
         relevanceTopK: 64,
         relevanceUnits: 'session',
@@ -705,6 +707,7 @@ describe('relevance signal', () => {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        reviewBareDecline: false,
         relevanceSignal: 'none',
         relevanceTopK: 64,
         // Named even though the signal is `none`, so the assertion below can show that the
@@ -753,6 +756,7 @@ describe('source trust reaches the artifact', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      reviewBareDecline: false,
       queryExpansion: 'none',
       selfConsistency: 'none',
     });
@@ -922,6 +926,7 @@ describe('runCortexMemoryArm', () => {
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
         },
       },
     );
@@ -941,6 +946,7 @@ describe('runCortexMemoryArm', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      reviewBareDecline: false,
     });
   });
 
@@ -1037,6 +1043,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        reviewBareDecline: false,
       },
     });
 
@@ -1257,6 +1264,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
+        reviewBareDecline: false,
         queryExpansion: 'none',
         selfConsistency: 'none',
       });
@@ -1567,6 +1575,7 @@ describe('the retrieval threshold', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      reviewBareDecline: false,
     });
   });
 });
@@ -1696,6 +1705,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       ask: 'route',
       askRoutes: [],
       reviewPass: 'none',
+      reviewBareDecline: false,
       queryExpansion: 'none',
       selfConsistency: 'none',
     });
@@ -2255,6 +2265,7 @@ describe('the ask reaches the artifacts, in both renderings', () => {
         ask: 'extractive',
         askRoutes: [],
         reviewPass: 'none',
+        reviewBareDecline: false,
       },
     });
     expect(markdown).toContain('- Evidence ask reached: `none`');
@@ -2350,6 +2361,7 @@ describe('a bounded run reports what the bound dropped', () => {
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
         },
         evidenceBound: { maxTurnsPerRecord: bound },
       },
@@ -2449,6 +2461,7 @@ describe('a bounded run reports what the bound dropped', () => {
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
         },
         evidenceBound: { maxTurnsPerRecord: 2 },
       },
@@ -2523,6 +2536,7 @@ describe('the prompt-carried evidence size reaches the record', () => {
     ask: 'route',
     askRoutes: [],
     reviewPass: 'none',
+    reviewBareDecline: false,
   } as const;
 
   /** A system that can say what it retrieved and what the prompt carried. */
@@ -2663,6 +2677,7 @@ describe('the arm reports groundedness with the published classifier', () => {
     ask: 'route',
     askRoutes: [],
     reviewPass: 'none',
+    reviewBareDecline: false,
   } as const;
 
   function datasetGraded(expected: string): BenchmarkDataset {
@@ -2830,6 +2845,7 @@ describe('the arm records how much of the gold the ranking offered', () => {
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
         },
         ...(relevancePoolFor === undefined ? {} : { relevancePoolFor }),
       },
@@ -2940,6 +2956,7 @@ describe('the per-turn cap', () => {
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
           relevanceSignal: 'retrieval',
           relevanceTopK: 64,
           relevanceUnits: 'turn',
@@ -3217,6 +3234,7 @@ describe('the route each capability answers on, as the denominator sees it', () 
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
         },
         evidenceRoles: ['user'],
         evidenceRolesRoutes: reach,
@@ -3312,6 +3330,7 @@ describe('the gold denominator follows the role policy', () => {
           ask: 'route',
           askRoutes: [],
           reviewPass: 'none',
+          reviewBareDecline: false,
         },
         ...arm,
       },

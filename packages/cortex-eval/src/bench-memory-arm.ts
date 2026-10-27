@@ -176,6 +176,15 @@ export type CortexMemoryArmOptions = {
    */
   reviewPass?: string | undefined;
   /**
+   * Whether a decline that named nothing is asked once more without the abstention token being offered
+   * (`CORTEX_MEMORY_REVIEW_BARE_DECLINE`).
+   *
+   * A boolean rather than a pass name because it is a treatment, not a mode: `true` adds at most one call per
+   * question, and only on questions that already declined bare. Optional for the reason `reviewPass` is — absent
+   * means the shipped behaviour, which is what every archived artifact was produced under.
+   */
+  reviewBareDecline?: boolean | undefined;
+  /**
    * Whether the multi-session route's relevance index is built from the question alone or
    * from the question plus model-written activity phrases (§13.97).
    *
@@ -796,6 +805,9 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
     reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
+    // A value of `reviewPass` rather than an input of its own: the workflow is at the dispatch-input ceiling,
+    // and these are two treatments rather than two knobs — no run should administer both.
+    reviewBareDecline: readReviewPass(env[REVIEW_PASS_VARIABLE]) === 'bare',
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
@@ -1084,7 +1096,7 @@ function readAsk(raw: string | undefined): string {
 const REVIEW_PASS_VARIABLE = 'CORTEX_MEMORY_REVIEW_PASS';
 
 /** The passes this arm can dispatch, in the order the config line spells them. */
-const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover'];
+const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare'];
 
 /**
  * Read the review pass, rejecting anything the product does not implement.
@@ -1578,6 +1590,10 @@ export function toMemoryArmConfig(
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
     ask: options.ask,
     reviewPass: options.reviewPass ?? 'none',
+    // Recorded unconditionally rather than only when true: "the control ran" and "the field predates the run" are
+    // the same bytes otherwise, and this field exists because a claim of treatment nobody can check is the defect
+    // the whole `featureConfig` block was added to close.
+    reviewBareDecline: options.reviewBareDecline === true,
     // §13.97. Always present for the reason `reviewPass` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
