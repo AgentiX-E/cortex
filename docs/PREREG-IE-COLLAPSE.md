@@ -125,3 +125,66 @@ was not where I said it was.
 corpus, the cache and throttling; §7's remaining candidate is the **ask and the evidence it is given**,
 and that is measured from an artifact already on disk rather than by another dispatch. The next
 document records that measurement; a second dispatch happens only after it.
+
+## 8. Result: three of five predictions refuted, and the fourth is unmeasurable
+
+Run **`40427127569`**, 500 questions, `entity_identity_clause=0`, everything else byte-identical to
+`40408635007`.
+
+| | control (`40408635007`, clause **on**) | treatment (clause **off**) | Δ |
+| --- | --- | --- | --- |
+| overall | 44.60% (223) | **44.00% (220)** | −3 |
+| IE | 1/150 | **1/150** | 0 |
+| KU | 0/72 | **0/72** | 0 |
+| MR | 105/121 | **104/121** | −1 |
+| TR | 87/127 | **85/127** | −2 |
+| ABS | 30/30 | **30/30** | 0 |
+| `decisionReasons` | `{llm: 249}` | `{llm: 247}` | −2 |
+
+| # | prediction | measured | verdict |
+| --- | --- | --- | --- |
+| **P1** | config reads `entityIdentityClause=off` | `featureConfig.entityIdentityClause: false` | **met** |
+| **P2** | IE ≥ 51/150 | **1** | **refuted** |
+| **P3** | KU ≥ 30/72 | **0** | **refuted** |
+| **P4** | MR, TR, ABS each move ≤ 5 | −1, −2, 0 | **met** |
+| **P5** | ABS does not fall below 27/30 | **30/30** | **met — vacuously** |
+
+**P2 and P3 failed exactly as §7 predicted they would**, for the reason §7 gave: the clause is bound to
+the abstention route's prompt builder and cannot reach the flat route IE and KU travel. The prediction
+was written against a mechanism that was not where I said it was, and refuting it is the correct
+outcome rather than a wasted run.
+
+**P5 is the interesting one, and it is not a pass.** The prediction was a floor, and the floor was not
+reached from above because **it cannot be**: ABS reads 30/30 **with the clause and 30/30 without it**.
+The +3 that run `35097952715` measured (29/30 → 26/30) has no room to appear in a 500-question run
+whose ABS column is already saturated. So this run does not confirm the attribution, does not refute it,
+and **cannot**: a treatment measured against a control at the ceiling is unmeasured, not null.
+
+### 8.1 What the run does establish
+
+**On this configuration, the clause is a no-op across all five capabilities.** Every column moved by
+0, 1 or 2 questions. The four readings this arm now has are 219, 221, 223 and 220 — a mean of 220.75 and
+a range of 4 questions (0.8pp) — so a 3-question overall delta is inside this arm's own measured
+repetition spread and is not evidence of anything.
+
+That is worth stating plainly: **a sentence shipped in the abstention prompt, with an attribution note
+claiming +3, produces no measurable effect on 500 questions in the configuration that ships.** It is not
+therefore wrong — the note's +3 was measured against a control that was not at the ceiling — but the
+repository has been carrying a component whose contribution it cannot demonstrate, and that state is
+now recorded rather than assumed benign.
+
+### 8.2 What is not concluded
+
+- **Not** "delete the clause." Its own experiment had a sub-ceiling control; this one does not. Removing
+  a component because the only test available is saturated would be the same error as adopting one.
+- **Not** "IE is broken because of a prompt." IE's collapse is a retrieval fact, quantified in
+  `MEASURE-BASELINE-DRIFT.md` §8.9: the gold phrase reaches the delivered context for **4 of 150**
+  questions, so the reader's ceiling is 2.7%.
+
+### 8.3 The measurement this configuration cannot make
+
+To test the +3 again, ABS must have headroom. Two ways, and both are dispatches rather than edits:
+a configuration whose ABS sits below 30/30 (the pre-`enumerated` ask is one), or the original
+`35097952715` protocol reproduced exactly. Until one of those runs, the note in
+`natural-language-memory.ts` stands as a measurement made **under conditions this benchmark no longer
+produces** — which is a weaker claim than the note's phrasing suggests, and is now stated.
