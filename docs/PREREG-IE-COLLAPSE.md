@@ -91,3 +91,37 @@ clause suppresses IE" from "IE is broken for an unrelated reason".
 It does not claim the clause is a defect. It was validated where it was measured and it earns its
 keep there. The claim under test is narrower: **that a sentence which licenses declining, installed on
 a route whose retrieval is the weakest thing in the system, was never measured on that route.**
+
+## 7. Post-dispatch correction, written before the result exists
+
+**Dispatch `40427127569` was already queued when this section was written, and it is written now rather
+than after reading the artifact.**
+
+The hypothesis in §2 is **wrong at the code level**, and one `rg` says so:
+
+```
+$ rg -n "buildConservativeQaPrompt" packages/cortex-eval/src
+natural-language-memory.ts:856:      return buildConservativeQaPrompt(q, c, token ?? DEFAULT_ABSTAIN_TOKEN, {
+```
+
+One call site. It is the `conservativePrompt` closure built inside the **abstention** route, and
+`entityIdentityClause` is passed to that closure and to nothing else. So the sentence **cannot reach
+the flat route that IE and KU travel**. P2 and P3 predict a movement the treatment cannot produce, and
+they will be refuted — which is the correct fate for a prediction registered against a mechanism that
+was not where I said it was.
+
+**The run is not wasted, and it is not re-specified.** Its three readings are:
+
+1. **P2 and P3 refuting** — an elimination, and eliminations are what this file's §5 promised to
+   record. The clause is not the cause of the IE collapse.
+2. **The ABS arm of the clause's own attribution** — run `35097952715` measured 26/30 with the clause
+   removed. If this run reproduces ~26/30, that +3 is confirmed on a second run and the clause keeps
+   its keep; if ABS stays at 30/30, the +3 does not reproduce and that verdict needs its own look.
+3. **P4 becoming the strictest test in the file.** If IE, KU, MR and TR move at all, the routes are
+   not what §2 and the code both say they are, and the more interesting finding is that a switch
+   documented as unreachable from four routes is reachable from them.
+
+**What replaces the hypothesis is not another guess.** The three runs in §1 have eliminated the
+corpus, the cache and throttling; §7's remaining candidate is the **ask and the evidence it is given**,
+and that is measured from an artifact already on disk rather than by another dispatch. The next
+document records that measurement; a second dispatch happens only after it.
