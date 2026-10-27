@@ -178,7 +178,7 @@ now recorded rather than assumed benign.
 - **Not** "delete the clause." Its own experiment had a sub-ceiling control; this one does not. Removing
   a component because the only test available is saturated would be the same error as adopting one.
 - **Not** "IE is broken because of a prompt." IE's collapse is a retrieval fact, quantified in
-  `MEASURE-BASELINE-DRIFT.md` §8.9: the gold phrase reaches the delivered context for **4 of 150**
+  `MEASURE-BASELINE-DRIFT.md` §8.8: the gold phrase reaches the delivered context for **4 of 150**
   questions, so the reader's ceiling is 2.7%.
 
 ### 8.3 The measurement this configuration cannot make

@@ -412,3 +412,53 @@ history the checkout does not have. The distance between "verifiable here" and "
 about the reviewer's care — it is about whether the artifact kept the field. **A number whose
 configuration was not written down cannot be compared with anything, and that includes itself a month
 later.**
+
+## 8.8 The verbatim-hit rate: 4 of 150, and why it is the only number that caps IE
+
+Run `40408635007` carried 379 per-question records with the delivered context, so the question §7.1
+approximated can now be answered exactly: **does the gold phrase appear in the context the reader was
+shown?**
+
+| capability | n | gold phrase **verbatim** in context | correct | correct **and** in context | correct **without** it |
+| --- | --- | --- | --- | --- | --- |
+| IE | 150 | **4** | 1 | 1 | 0 |
+| KU | 72 | **10** | 0 | 0 | 0 |
+| TR | 127 | 27 | **87** | 23 | **64** |
+| ABS | 30 | 0 | 30 | 0 | 30 |
+
+**For IE and KU this is a ceiling, not a correlate.** Their gold is a short phrase — "Business
+Administration", "four" — and a reader that never receives that phrase cannot answer, whatever it does
+with what it did receive. IE's ceiling is **4/150 = 2.7%** and it read 1/150. **The reader is not the
+bottleneck; 97.3% of the evidence never arrives.**
+
+**For TR it is neither.** 64 of TR's 87 correct answers have no verbatim gold in context, because a TR
+gold is a sentence the model composes ("I went on a day hike… then a road trip…") and a TR answer is a
+date or an ordering the model computes from evidence it does have. So the same measurement is a
+necessary condition for one capability and irrelevant to another, and the two must be reported apart —
+the single most common way this table could be misread is to add its rows.
+
+### 8.8.1 This is a sharper statistic than §8.3's, and it does not replace it
+
+§8.3 counted *any* distinguishing gold word appearing *anywhere* in the delivered text: 38.0% for IE,
+22.5% for KU, 79.5% for TR. This one requires the **whole phrase, verbatim**. Both are true:
+
+| statistic | IE | what it says |
+| --- | --- | --- |
+| any gold word present (§8.3) | 38.0% | the context is *about* the right thing |
+| whole phrase verbatim (§8.8) | **2.7%** | the context contains the *answer* |
+
+A retrieval that returns the topic but not the sentence scores 38% on the first and 2.7% on the second.
+**The gap between them is the whole failure**, and §8.3 alone would have supported the wrong conclusion —
+that a third of IE questions had their evidence and the reader threw it away. It did not.
+
+### 8.8.2 What it rules out, and what it proposes
+
+**Rules out** "the reader declines too readily on IE": on 146 of 150 questions there was nothing to
+answer from. It also rules out the September comparison in the strongest form: 145/150 on IE would
+require 145 questions whose gold phrase reached the context, and the retrieval in this arm delivers 4.
+Whatever produced 430/500 in September, its evidence delivery was not this.
+
+**Proposes** one number to move: **verbatim-hit rate**, IE from 4/150. It is measured by the harness
+already, it needs no reader change, and every retrieval candidate can be scored on it before a single
+LLM call is spent. Note that this is the `nl-*` arm — the cognitive arm reads IE 89.33% and does not
+need it — so the number is a diagnostic for the reference pipeline rather than a target for the product.

@@ -115,4 +115,6 @@ possibility (the unit of the budget) from that list.
 **Prerequisite before it is worth building**: the honest MR baseline is 69.42 at `turn` + `recover` and
 71.90 at `turn` + `none`. Any new channel has to be measured against the same ask, contract and
 `reviewPass` as its control, and the noise floor for a 121-question column is ~2 questions
-(`§13.100.2`), so the bar is MR ≥ 80/121 to be worth a second run.
+(`§13.100.2`), so the bar is **MR ≥ 96/121** (79.34%, twelve questions above the 69.42% control). An earlier draft
+said 80/121, which is *below* the baseline — a floor a no-op would clear. Corrected in
+`PREREG-MR-SESSION-CHANNEL.md` §5 and left visible here.
