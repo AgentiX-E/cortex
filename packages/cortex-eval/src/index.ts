@@ -374,6 +374,7 @@ export {
   type RelevanceIndexOptions,
   type Retrieval,
 } from './relevance-index.js';
+export { buildSessionRelevanceIndex, type SessionRelevanceCase } from './session-relevance.js';
 
 export {
   expandMultiSessionQueries,

@@ -403,6 +403,23 @@ const RELEVANCE_SIGNALS = {
    * `session`: a value whose meaning changed between two runs makes both unreadable.
    */
   'retrieval-hybrid': 'retrieval-hybrid',
+  /**
+   * Each **session** scored as one unit, projected onto its turns.
+   *
+   * ## Why this is a signal and not a fourth `relevanceUnits` value
+   *
+   * `session` in `RELEVANCE_UNITS` ranks *turns* and then takes the largest prefix of whole sessions
+   * that fits; run `39699987781` measured it losing 11 questions to the turn unit. What the
+   * reference pipeline does is different — one embedding per session, top-k sessions — and no value
+   * of the unit could express it, because the unit decides what the budget buys while this decides
+   * what the ranking is over.
+   *
+   * Pair it with `relevanceUnits=session`: a score constant inside a session makes the unit's own
+   * "rank by best-scoring turn" rule rank by session, which is the point. On `turn` units the
+   * constant score degenerates to arrival order, so the two are meant to travel together and the
+   * registration fixes both.
+   */
+  'retrieval-session': 'retrieval-session',
 } as const;
 
 /** The signal a run gets when it does not name one. */

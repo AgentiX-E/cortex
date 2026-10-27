@@ -114,6 +114,19 @@ export type RelevanceCase = {
    */
   readonly queries?: readonly string[];
   readonly context: readonly string[];
+  /**
+   * The session boundaries `context` was flattened from, when the caller has them.
+   *
+   * Not read here, and deliberately carried anyway: `session-relevance.ts` scores a **session** as
+   * one unit and needs the boundaries, and a second case type that differed only by this field
+   * would let the two builders drift in what they consider a case. `loadLongMemEval` produces both
+   * (`context: sessions.flat()`), so the field costs a reference and never a copy.
+   *
+   * Absent is a real state and not an error here — every archived run's cases had no boundaries,
+   * and this module does not need them. It is `buildSessionRelevanceIndex` that refuses, because
+   * there the absence would silently change which operation ran.
+   */
+  readonly sessions?: readonly (readonly string[])[];
 };
 
 /** How to build the index. */

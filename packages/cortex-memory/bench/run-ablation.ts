@@ -49,6 +49,8 @@ import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-ai';
 import {
   NaturalLanguageMemorySystem,
   buildRetrievalRelevanceIndex,
+  buildSessionRelevanceIndex,
+  type SessionRelevanceCase,
   createLlmJudge,
   judgeScorer,
   loadLongMemEval,
@@ -346,6 +348,16 @@ async function main(): Promise<void> {
     return {
       question: question.question,
       context: question.context,
+      // Carried unconditionally rather than only for `retrieval-session`. `loadLongMemEval` sets
+      // `context: sessions.flat()`, so the two are index-aligned by construction and a case that
+      // chose to include boundaries only sometimes would make the alignment a per-run fact. The
+      // turn-scored builder ignores the field; `session-relevance.ts` refuses without it.
+      // `Question.sessions` is optional in the contract, so the spread is conditional rather than
+      // `?? []`: an empty array would tell `session-relevance.ts` the question has boundaries and
+      // none, which is a different statement from "this dataset did not carry them" and would be
+      // refused with the wrong message. Absent propagates, and that builder's refusal names the
+      // real cause.
+      ...(question.sessions === undefined ? {} : { sessions: question.sessions }),
       ...(phrases === undefined ? {} : { queries: phrases }),
     };
   });
@@ -360,13 +372,29 @@ async function main(): Promise<void> {
       ? (queries, context, topK) =>
           retrieveTopKByQueriesHybrid(embedding, [...queries], [...context], topK)
       : undefined;
+  // Two builders behind one name-typed switch, for the same reason `retriever` above is a
+  // mechanism rather than a flag: the artifact says which operation ranked the turns, and two runs
+  // whose `relevanceSignal` differs can be compared because the difference is a value.
+  //
+  // `retrieval-session` is not a wider `retrieval`: it scores a session as one unit and projects the
+  // score onto that session's turns, which is the operation `reference-pipeline` performs and this
+  // arm could not express. Pair it with `relevanceUnits=session` — see `RELEVANCE_SIGNALS`.
   const relevance: RelevanceIndex | null =
-    armOptions.relevanceSignal === 'retrieval' || armOptions.relevanceSignal === 'retrieval-hybrid'
-      ? await buildRetrievalRelevanceIndex(embedding, relevanceCases, {
-          ...relevanceOptions,
-          ...(retriever === undefined ? {} : { retrieve: retriever }),
-        })
-      : null;
+    armOptions.relevanceSignal === 'retrieval-session'
+      ? await buildSessionRelevanceIndex(
+          embedding,
+          relevanceCases as readonly SessionRelevanceCase[],
+          {
+            topK: armOptions.relevanceTopK,
+          },
+        )
+      : armOptions.relevanceSignal === 'retrieval' ||
+          armOptions.relevanceSignal === 'retrieval-hybrid'
+        ? await buildRetrievalRelevanceIndex(embedding, relevanceCases, {
+            ...relevanceOptions,
+            ...(retriever === undefined ? {} : { retrieve: retriever }),
+          })
+        : null;
   if (relevance !== null) {
     console.log(
       `Relevance index: ${relevance.scoredPairs} scored (question, turn) pairs over ` +

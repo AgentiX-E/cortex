@@ -50,6 +50,14 @@ So the change is confined to the index:
 3. `relevanceFor(question, turn)` looks the turn's text up in a `Map<turnText, sessionScore>` built at
    construction and returns the session score.
 
+**One variable, or two?** The signal changes and `relevanceUnits` changes with it, because a
+session-constant score on `turn` units degenerates to arrival order — the two are a mechanism and its
+required setting, not two treatments. The width is therefore carried at the **control's** value
+(`relevanceTopK=256`) rather than at this module's default of 32: in session units 256 exceeds the
+pool (~50 sessions per question), so the width is inert on both arms instead of narrowing one of them.
+That is stated here rather than left to the dispatch, because "256" in two artifacts that count
+different things is exactly the kind of coincidence this repository keeps finding afterwards.
+
 **Why not a new option on the memory arm**: the arm does not embed. Every signal in this repository is
 built outside it and injected as a callback, and `relevance-index.ts` states why — the index must be a
 function of what it was handed, so two runs holding the same cases score identically. A signal that
