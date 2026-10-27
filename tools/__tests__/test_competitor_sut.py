@@ -208,3 +208,30 @@ def test_a_driver_that_cannot_start_names_its_missing_package() -> None:
     assert "SutFailure" in completed.stdout
     # Either the manifest could not be produced (no key) or the fastembed module is missing; both are named.
     assert any(token in completed.stdout.lower() for token in ("fastembed", "key", "could not describe itself"))
+
+
+def test_harness_runs_the_sut_as_one_more_arm() -> None:
+    """The wiring that makes requirement 7 a configuration rather than a fork of the harness.
+
+    Three things have to be visible in the printed table for the row to be quotable, and this asserts all three:
+    the arm appears with its own name, its `build` cost class travels with the row, and the manifest — which says
+    *which* configuration produced it — is printed before any number.
+    """
+    completed = subprocess.run(
+        ["node", str(REPO / "tools" / "competitor-harness.mjs"), "--sut", "reference", "--limit", "3"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert completed.returncode == 0, completed.stderr
+    out = completed.stdout
+    assert "system under test: reference/lexical" in out
+    assert "build=none" in out
+    # The row itself, in the provider table: a manifest without a row would mean the arm was described and never
+    # run, which is the failure mode a print-only "supported competitor" would have.
+    rows = [line for line in out.splitlines() if line.startswith("reference/lexical")]
+    assert rows, out
+    assert "100.0%" in rows[0]
+    # And the two counts that a score cannot carry.
+    assert "0 refusal(s)" in out

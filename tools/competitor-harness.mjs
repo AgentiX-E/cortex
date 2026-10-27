@@ -42,6 +42,7 @@ import {
 import { loadLongMemEval } from '../packages/cortex-eval/dist/datasets/longmemeval-loader.js';
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
 import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
+import { createSutProvider } from './competitor-sut.mjs';
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -227,6 +228,21 @@ const providers = [
   new NullProvider(),
 ];
 
+/**
+ * A competitor's own code, as one more arm.
+ *
+ * `--sut mem0` launches `tools/competitor-sut/mem0_driver.py` and treats it like any other provider, which is the
+ * whole point: the reader, the judge, the data, the top-k and the budget are ours, and the only thing that differs
+ * is whose memory system is answering. That is what makes the resulting number quotable rather than a vendor's
+ * claim about their own configuration.
+ *
+ * The manifest is printed before any score, because a competitor's number without its commit and settings is the
+ * same failure as one of ours without its arm name.
+ */
+const sutDriver = flag('--sut');
+const sut = sutDriver === undefined ? null : await createSutProvider({ driver: sutDriver });
+if (sut !== null) providers.push(sut);
+
 let reader = null;
 let judge = null;
 if (readAnswers) {
@@ -302,7 +318,18 @@ process.stdout.write(
   `${readAnswers ? 'retrieval + reading' : 'retrieval-only'} comparison — ` +
     `${dataset.name}/${dataset.questions.length}\n`,
 );
-process.stdout.write(`${provenance}\n\n`);
+process.stdout.write(`${provenance}\n`);
+
+// The competitor's own description of itself, printed before any number it produced. `notes` carries the driver's
+// configuration — which embedder, whether the LLM ran at ingest — which is exactly what a reader needs in order to
+// decide whether the row can be set beside a published figure at all.
+if (sut !== null) {
+  process.stdout.write(
+    `system under test: ${sut.manifest.name} ${sut.manifest.version} (build=${sut.manifest.build}) — ` +
+      `${sut.manifest.notes}\n`,
+  );
+}
+process.stdout.write('\n');
 
 process.stdout.write(
   `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('acc', 9)}${pad('~tok', 8)}unmeasurable\n`,
@@ -368,3 +395,18 @@ process.stdout.write(
         `returns whole sessions is scored on recall of evidence, not on answer accuracy. There is no reader and no\n` +
         `judge on this path, which is why the numbers are not comparable with a QA benchmark's accuracy.\n`,
 );
+
+// Two counts a score cannot carry. `refusals` is the system declining a search; `emptyResults` is it answering
+// with nothing. Both are claims about the system and they point opposite ways — a run that collapsed them would
+// turn a broken driver into a retrieval failure, which is the defect this repository keeps finding in its own
+// instruments.
+if (sut !== null) {
+  process.stdout.write(
+    `\nsystem under test: ${String(sut.refusals.length)} refusal(s), ` +
+      `${String(sut.emptyResults)} empty result(s) of ${String(dataset.questions.length)} question(s).\n`,
+  );
+  for (const refusal of sut.refusals.slice(0, 5)) {
+    process.stdout.write(`  — ${refusal.error}\n`);
+  }
+  await sut.close();
+}

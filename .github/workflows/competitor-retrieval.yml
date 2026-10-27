@@ -48,6 +48,16 @@ on:
         required: false
         default: '10'
         type: string
+      sut:
+        description: 'System under test to run as one more arm (empty = none; `mem0` runs its own code, `reference` is the offline floor)'
+        required: false
+        default: ''
+        type: string
+      sut_infer:
+        description: 'For `mem0`: 1 runs its LLM extraction at ingest (one model call per turn, ~275k on 500 questions) — 0 stores turns as given'
+        required: false
+        default: '0'
+        type: string
 
 permissions:
   contents: read
@@ -82,6 +92,16 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # The competitor's own package, installed only when one was asked for. `faiss-cpu` because Mem0's local store
+      # needs it and a server store would add a service to start; neither is in the repository's own dependencies,
+      # which is the point of a process boundary.
+      - name: Install the system under test
+        if: inputs.sut == 'mem0'
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "mem0ai==2.2.1" faiss-cpu
+          python3 -c 'import mem0, faiss; print("mem0", mem0.__version__, "faiss ok")'
 
       - name: Download LongMemEval-S
         env:
@@ -122,6 +142,29 @@ jobs:
             --questions "${{ github.event.inputs.questions || '100' }}" \
             --limit "${{ github.event.inputs.limit || '10' }}" \
             --json > competitor-sample.json
+
+      # The system under test. Its own code, our data, our top-k and our embedding space, so the row is a
+      # comparison rather than a quotation: the repository's own arms are in the same table, measured in the same
+      # invocation, on the same corpus.
+      #
+      # Cost is why this is a separate step rather than a flag on the two above: a `llm`-build system multiplies
+      # the ingest by the number of questions, and the budget sweep above runs three times.
+      - name: Compare against the system under test
+        if: github.event.inputs.sut != ''
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          SUT: ${{ github.event.inputs.sut }}
+          MEM0_INFER: ${{ github.event.inputs.sut_infer || '0' }}
+          # The driver's embedder. Zhipu's `embedding-3` through Mem0's own OpenAI client, so the competitor reads
+          # the corpus in the same vector space the repository's arms do.
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+        run: |
+          node tools/competitor-harness.mjs \
+            --data "$LONGMEMEVAL_PATH" \
+            --questions "${{ github.event.inputs.questions || '100' }}" \
+            --limit "${{ github.event.inputs.limit || '10' }}" \
+            --sut "$SUT" \
+            | tee "competitor-sut-$(echo "$SUT" | tr '/' '-').txt"
 
       # The budget sweep. The published systems report one number each at a different context cost --
       # Contextier 91.6% at 2,807 mean tokens, Zep 90.2% at 4,408 median, Mem0 93.4% at 6,787 mean -- so a single
@@ -313,6 +356,7 @@ jobs:
             competitor-read.json
             competitor-read-dispatch.txt
             competitor-read-dispatch.json
+            competitor-sut-*.txt
             competitor-read-dispatch2.txt
             competitor-read-dispatch2.json
             competitor-paired.txt
