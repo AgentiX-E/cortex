@@ -430,7 +430,13 @@ export const CRITERIA: readonly Criterion[] = [
       key: 'categories.temporal-reasoning.accuracy',
     },
     onMiss:
-      'At 74.6%, and the date-frame pre-registration predicts the recovery. If that run does not move this row, the frame is not the lever and the next candidate is the session-time anchoring in the reader prompt.',
+      // The first version of this line said the date-frame pre-registration predicted the recovery.
+      // `PREREG-DATE-FRAME.md` §0 withdrew it: the temporal prompt has carried the published anchor
+      // ("The question was asked on …") and the per-turn date since the contract existed, so the
+      // frame is not a treatment this route can receive. What is left is the failure shape —
+      // 21 of TR's 33 misses are abstentions over evidence that was delivered — and the recovery
+      // pass, which reaches `multi-session` only.
+      'At 74.0%, and the frame is already installed, so it cannot be the lever: 21 of the 33 misses are abstentions over delivered evidence, and `reviewPass: recover` does not reach this route.',
   },
   {
     id: 'S5',

@@ -2,12 +2,110 @@
 
 A pre-registration, written before the code, for telling the reader what day it is.
 
+> **STATUS: WITHDRAWN, never dispatched.** The premise below — "the reader is told nothing" — is
+> false, and it was false when this was written. §0 states the evidence, what it costs, and what it
+> leaves standing. The registered text is kept unedited underneath, because the interesting part is
+> that a P0 got this far on an unchecked claim.
+
+## 0. Withdrawal
+
+### 0.1 The premise, and what rendering the prompt says
+
+The design section claims `prompt.ts` "carries no statement of the conversation's date". It does —
+for exactly one route, and that route is the one the predictions are about:
+
+```
+$ node -e "…buildPrompt(q, [datedTurn], 'temporal', {questionDate:'2023/06/02'})"
+
+EVIDENCE:
+1. [2023/05/20] user: I ran ten kilometres today.
+
+QUESTION: How far did I run last month?
+
+Answer the question using only the evidence above.
+The question was asked on 2023/06/02. Resolve every relative expression ("last week", "two months
+ago") against that date.
+Show the resolved date in your answer when the question asks when something happened.
+```
+
+That is the published mechanism, whole. The paper's date frame is *"the current date in the message,
+and each content block's own date"*, and both halves are in that prompt: the anchor sentence, and the
+`[2023/05/20]` prefix that survives rendering on **every** route — `formatEvidence` renders
+`turn.content` unchanged, and the date is part of the content.
+
+`date-frame-presence.test.ts` pins all of it, including the two negative cases, because the claim
+being withdrawn is a claim about what the code renders:
+
+| route | anchor sentence | per-turn date |
+| --- | --- | --- |
+| `temporal` | **present** (when the dataset supplies `question_date`) | present |
+| flat (`abstention-evidence-blocks`) | absent — `buildPrompt` discards `questionDate` for every contract but `temporal` | present |
+| `multi-session` (`buildSessionPrompt`) | absent — its builder takes no date at all | present |
+
+So the only route with no anchor is `multi-session`. That is not the experiment this document
+registered: P1 and P2 are both about **temporal**, where the mechanism is already installed, and a
+temporal arm cannot move for a treatment it already received.
+
+### 0.2 The document refutes itself one section earlier than I do
+
+The closing section, "What this does not address", already says:
+
+> **The reader-side count errors.** Twenty multi-session failures carry every gold turn and still
+> answer wrong; `numeric -1` is the largest single shape. **A date frame does nothing for arithmetic.**
+
+That is the correct reading of the remaining `multi-session` gap, and this document's own §Design put
+the frame on `multi-session` anyway. The contradiction sat nine paragraphs apart and neither of us
+read them together.
+
+### 0.3 What the withdrawal is worth
+
+**The external +9.3 is not available to us as an improvement, because we already banked it.** If the
+published system moved LongMemEval-S from 80.7% to 90.0% by adding a date frame, and this repository's
+temporal route has carried that frame while reading 74.02%, then **the frame is not the TR lever** —
+the gap to 90 sits in something the frame does not touch. That is an elimination, and it is the same
+conclusion P1's revert clause would have produced, reached for zero dispatches instead of one:
+
+| would have cost | what was done instead |
+| --- | --- |
+| a 500-question dispatch, ~55 minutes of runner time | `buildPrompt` on two contracts, plus 5 assertions; one read of `prompt.ts` and one of `memory.ts` |
+
+**And one P0 slot is freed**, which is the real currency here: `multi-session`'s gap is 18 questions
+against a same-run control, and `temporal`'s is 33 failures of which 21 are abstentions. A frame was
+never going to address either.
+
+### 0.4 The rule, and it is the third instance
+
+`PREREG-DATE-FRAME` asserted a fact about the code and did not check it. The two earlier instances
+are recorded in `MEASURE-BASELINE-DRIFT.md` §8.7 (a number attributed to the wrong arm) and in this
+file's sibling `PREREG-MR-SESSION-CHANNEL.md` (a mechanism attributed to the wrong package, caught by
+one `rg` after dispatch). The rule those produced applies here verbatim:
+
+> **A pre-registration's premise is a claim, and it is checked against the code before the dispatch,
+> not after the result.**
+
+### 0.5 What survives of the registered text
+
+Nothing operational — P1 through P5 are void, and no run will answer them. Two pieces of evidence
+stay relevant and are kept where they are:
+
+1. **TR's relative-time split**: 66% (33/50) against 81% (62/77), one run z≈1.84 and three
+   same-direction runs at sign-test p=0.125. It is still a *target*, and it is still not a finding.
+   What has changed is the hypothesis it supports: not "the reader lacks a date", but "the reader has
+   a date and still mis-resolves". That is a different experiment, and it needs the resolved-date
+   traces that the prompt above already asks the reader to write out.
+2. **The multi-session count errors**: 12 of 37 MR failures answer exactly one lower than gold
+   (`MEASURE-SOTA-FAILURES.md` §3). A frame cannot help; the counting step is where the loss is.
+
+
 ## What the reader is told today
 
 Nothing. `prompt.ts` carries no statement of the conversation's date, and a turn's `[2023/05/27]`
 prefix is the only temporal information in the prompt. So a question asking what happened "last month"
 requires the reader to pick a reference date out of a two-hundred-turn window and do the arithmetic
 itself.
+
+*(Kept as registered. §0.1 is its correction: the sentence is true of `multi-session` and false of
+`temporal`, which is the route every prediction below is about.)*
 
 That is a deterministic computation delegated to a language model, which is the same defect
 `timeWindow` annotation fixed in step 9 for a different question ("how far is this turn from the
