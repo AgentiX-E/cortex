@@ -71,14 +71,21 @@ existing turn-scored index, byte-identical.
 
 ## 4. Cost, which goes down
 
-| | sessions embedded | turns embedded |
+| | **items** embedded | **characters** embedded |
 | --- | --- | --- |
-| `retrieval-hybrid` (current) | 0 | ~19,000 live per run after de-duplication (`40408635007`: `liveTexts 19,251`) |
-| `retrieval-session` (this) | one per session, so roughly one per ten turns at LongMemEval-S's session length — **an order of magnitude fewer** | 0 for the index |
+| `retrieval-hybrid` (current) | ~19,000 live texts after de-duplication (`40408635007`: `liveTexts 19,251`) | ~5.2 M — a delivered turn has a median of 272 characters |
+| `retrieval-session` (this) | ~25,000 — one per session, and each question carries its own haystack of roughly fifty | **~136 M — about 26× more** |
 
-The session channel **replaces** the turn index rather than adding to it, and each session's text is
-longer than a turn's, so the token bill does not fall by the same factor. The claim here is only
-directional: the run stays cheap enough to repeat, which is what a second dispatch would need.
+**The first draft of this table said "an order of magnitude fewer", and it was wrong in the direction
+that matters.** It counted *items*: `retrieval-hybrid` embeds 19,000 turns while the session channel
+embeds one document per session. But a session's joined user turns are ~20 turns × 272 characters
+≈ 5,400 characters, so trading one embedding per turn for one per session trades 19,000 short inputs
+for 25,000 long ones. **Fewer units, far more tokens.**
+
+That is not a reason to reject the experiment — the mechanism is what is being tested, and the run is
+one dispatch either way — but it is a reason to say the cost honestly, and to expect the workflow to
+take **substantially longer** than a turn-scored A/B. Recorded because a cost table that is wrong by
+26× in the optimistic direction is the kind of line a later round would quote as fact.
 
 ## 5. Predictions, registered before the implementation
 

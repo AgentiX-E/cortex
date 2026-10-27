@@ -9,10 +9,13 @@ On the arm that ships, **the gold turn reaches the rendered prompt for 500 of 50
 (`goldOverlap.carried > 0` everywhere, `pool = 0` nowhere). Retrieval on this arm is not the
 bottleneck, and no retrieval experiment can recover the 96 misses by finding evidence it already
 found. Of the 96, **45 are the reader declining** on evidence it was given and **51 are the reader
-answering wrong**. The abstention gate is therefore the single largest failure source on the best
-arm this repository has — while the capability that is *supposed* to abstain reads 30/30. Two shapes
-account for the largest share of the rest: **12 of MR's 37 misses answer exactly one lower than
-gold**, and **21 of TR's 33 are abstentions**, which is a route the recovery pass does not reach.
+answering wrong**. And the declines are mostly **one response shape**: 21 of them are a bare
+`INSUFFICIENT_EVIDENCE` with nothing around it, on routes whose ask already calls that an invalid
+response — while **29 of `ABS`'s 30 correct answers are that same bare token**. So the single largest
+failure source on the best arm this repository has is a shape that is *optimal* on the one capability
+that grades it and unpunished on the four that do not. Two shapes account for most of the rest:
+**12 of MR's 37 misses answer exactly one lower than gold**, and TR's remaining declines read a hedge
+word in the evidence as a disqualifier.
 
 ## 1. The decomposition
 
@@ -71,9 +74,9 @@ Three things it cannot say, and this document does not pretend otherwise:
    arm in this artifact, so the 18-question MR gap against `reference-pipeline` can be described
    (102 against 84) but not decomposed. That is a gap in the instrument, and §5 states its cost.
 
-## 2. The largest single source: the reader declines
+## 2. The largest single source, and it is one response shape
 
-Forty-five of ninety-six. And it is not uniform across routes:
+Forty-five of ninety-six. By route:
 
 | capability | declined | share of that capability's misses |
 | --- | --- | --- |
@@ -82,12 +85,89 @@ Forty-five of ninety-six. And it is not uniform across routes:
 | MR | 10 | 27% |
 | KU | 2 | 20% |
 
-The abstention machinery is *precise*: on the thirty false-premise questions it reads 30/30, and
-`decisionReasons` shows `{empty: 0, threshold: 0, llm: 75}` — every decline is the model's, none is
-a gate firing on an empty or low-scoring pool. So the gate does exactly what it was built to do, and
-then fires 45 more times on questions whose gold the prompt contains.
+The gate itself is not at fault: `decisionReasons` reads `{empty: 0, threshold: 0, llm: 75}`, so not
+one of the 75 declines is a gate firing on an empty or low-scoring pool. Every one is the model's.
 
-**What the declines look like.** A TR case, verbatim from `rawOutput`:
+### 2.1 The shape: a bare token, and it is worth 30/30 on the one capability that grades it
+
+Stripping the token and measuring what is left:
+
+| capability | declines | **bare token** (≤ 40 characters left) | does that route run a recovery pass? |
+| --- | --- | --- | --- |
+| IE | 12 | **12** | no (`flat`) |
+| KU | 2 | 0 | no |
+| MR | 10 | **9** | **yes** (`reviewPass: recover`) |
+| TR | 21 | **9** | no (`temporal`) |
+| **ABS (correct declines)** | **30** | **29** | no |
+
+**`ABS` is the control, and it is the whole argument.** The thirty false-premise questions are the
+only population where a decline is the right answer, and **29 of their 30 answers are the bare
+token**. That is not a coincidence; it is what the contract rewards. `ABS` reads 30/30.
+
+The same shape, on the four capabilities whose gold is never a decline, produces **30 failures**.
+So the reader has learned one move — emit `INSUFFICIENT_EVIDENCE`, stop — and that move is optimal
+exactly where it is graded and unpunished exactly where it is not:
+
+> **A bare decline is the one response shape that scores 30/30 somewhere in this benchmark and
+> scores zero everywhere else.**
+
+### 2.2 The instruction that forbids it exists, and is violated 21 times
+
+The `enumerated` ask, which reaches `flat`, `multi-session` and `temporal`, already says:
+
+> Do not reply `INSUFFICIENT_EVIDENCE` without first writing the Step 1 list: **a bare
+> `INSUFFICIENT_EVIDENCE` with no list is not a valid response.**
+
+It is stated, and 21 first-attempt answers on the two routes that never retry (IE 12, TR 9) are
+exactly the thing it calls invalid. **An instruction with no mechanical consequence is advice** —
+this repository's own repeated finding — and here the consequence-free instruction is measured
+against 21 violations.
+
+### 2.3 The only remediation is blind to most of it, and its own retries are bare
+
+`planAbstentionRecovery` retries a decline that contradicts its own Step 1 list. It is wired into one
+call site:
+
+```
+$ rg -n "planAbstentionRecovery" packages/cortex-memory/src/memory.ts
+# one call site, inside #promptSessionAware
+```
+
+So it reaches `multi-session` and nothing else. Three facts then line up exactly:
+
+| | value |
+| --- | --- |
+| `recovery: {attempted, answered}` | **10, 1** |
+| MR declines | 10 |
+| MR declines that are bare tokens | **9** |
+
+**Ten attempts, one conversion, nine bare retries.** The pass is handed the reader's own list, quotes
+it back, and the reader declines again — with the same bare token. So on this artifact the recorded
+`rawOutput` for those nine questions is **the retry's output, not the first attempt's**, because
+`memory.ts` keeps the last reply on purpose ("the last thing the reader said about this question is
+the more informative of the two declines"). That is a defensible choice and it has a cost that
+nothing in the record discloses: **the first attempt's shape is unrecoverable for any question the
+pass touched.** §5 counts it as an instrument gap.
+
+Two readings of §2.1's 21, and the honest one is the second:
+
+- *Extend the pass* to `temporal` and `flat`: 33 untried declines at MR's measured 1/10 is **+3**, and
+  MR's own retries are bare — so the pass's prompt does not fix this shape either. **+3 against a
+  15-question marginal range is not measurable without pairing**, and the prior says it stays +3.
+- *Forbid the shape*: on the four capabilities whose gold is never a decline, a bare token is a
+  **format violation**, and this repository already has a precedent for that — a reply in the wrong
+  shape gets one corrective consultation. That pass targets *the shape*, not the content, so it is
+  not blind to a reply that has no list to quote. **Population: 21 first-attempt + 9 retry = 30.**
+
+That is the registrable mechanism, and it is a parse-level constraint rather than a wording change,
+which is what the project's own rule requires. **The mechanism is registered here; the change is not
+made in this round**, because the shapes have to be counted before they are changed and because
+`40498191604` is still measuring a different intervention on one of these routes.
+
+### 2.4 The secondary shape, on TR only
+
+TR's nine *reasoned* declines (those that are not bare tokens) share one pattern, and it is worth
+naming because it is a different defect:
 
 ```
 Let me search the evidence for two charity events on consecutive days.
@@ -101,53 +181,10 @@ Let me search the evidence for two charity events on consecutive days.
 The clearest consecutive-day pair: Feb 14 ... and Feb 15 ... But Feb 15's ride is described as
 ```
 
-The reader found the two events, ordered them, and then declined **because one of them carried the
-word "recently"**. The evidence was sufficient; the hedge word in the evidence was read as a
-disqualifier. That is a specific failure of the abstention contract on temporal questions, and it is
-not what the contract says — the contract asks for `INSUFFICIENT_EVIDENCE` when the evidence *does
-not establish* an answer, and two dated events on consecutive days do.
-
-### 2.1 The recovery that exists for exactly this shape does not reach two of the four routes
-
-`planAbstentionRecovery` retries a decline that contradicts its own Step 1 list, and it is wired into
-`#promptSessionAware` — the `multi-session` route — and nowhere else:
-
-```
-$ rg -n "planAbstentionRecovery" packages/cortex-memory/src/memory.ts
-# one call site, inside #promptSessionAware
-```
-
-The artifact's own counters say what that is worth there:
-
-```
-recovery: {attempted: 10, answered: 1}
-```
-
-Ten attempts — exactly MR's ten declines — and **one** conversion. So the mechanism as it stands
-converts 10% of the population it targets, and the 33 declines on `temporal` and `flat` are never
-retried at all.
-
-Two readings, and the honest one is the second:
-
-- *Extend it*: 33 untried declines, a mechanism that cannot hurt (it only consults on questions that
-  are already wrong). At MR's measured 1/10 rate that is **+3 questions**. The adopted
-  configuration's four genuine repeats span **397–412 — 15 questions** (`cortex-docs` 01 §2 item 5
-  and its totals table, run `39367801501`). **A +3 marginal effect cannot be seen against a
-  15-question marginal range**, and the prior is not a guess: it is the same mechanism's measured
-  conversion rate on the route where it already runs.
-- A correction to this section's first draft: it cited `409 / 392 / 404` as three readings of one
-  arm. They are not. `392` is `relevanceUnits: session` (`39699987781`) and `409` is
-  `reviewPass: none` (`39509698041`); only `404` is the shipped configuration. Three numbers from
-  three configurations, presented as one arm's variance — the same mistake, at the same size, as
-  `MEASURE-BASELINE-DRIFT.md` §8.7's `217/221/224`.
-- *Fix the target*: the TR decline above is not a decline that contradicts a list — it is a decline
-  that *has* the list and reads a hedge word as fatal. The recovery pass quotes the list back and
-  asks again, which is the wrong correction for it.
-
-**So the finding is the population, not the fix.** 33 declines on two routes that the only existing
-remediation does not reach, with a documented example of what they look like. The experiment that
-follows from this needs a mechanism aimed at *"the evidence is hedged, not absent"*, and this
-document registers that as the open question rather than proposing a wording.
+The reader found the two events, ordered them, and declined **because one carried the word
+"recently"**. Measured across the population: **8 of TR's 21 declines** contain a hedge word
+(`recently`, `about`, `around`, `a few`, `probably`, `might have`) — and **0 of IE's, KU's or MR's**
+do. So this is a TR-specific shape, at most 8 questions, and it is *not* the larger problem.
 
 ## 3. The second source: MR answers exactly one low, and the traces say why
 
@@ -268,8 +305,13 @@ what it is worth. That makes the gap *smaller in mechanism-space* than it looked
 2. **No field for what survived the cap.** §1.2's first item. `evidenceChars` and `carried` exist;
    a per-turn `renderedChars` would make "the cap cut the answer" a count instead of an inference.
    This is the same class as the two instrument defects the project has already found (a report that
-   named neither of its two systems; a cache that named no model), and it is recorded rather than
-   fixed because nothing in this round depends on it.
+   named neither of its two systems; a cache that named no model).
+3. **No field for the first attempt.** `rawOutput` is the *last* reply, so any question the recovery
+   pass touched reports its retry. §2.3 is the arithmetic proof — `attempted 10, answered 1` and nine
+   bare MR declines cannot both be true of first attempts when the module's own census says the first
+   attempts carried lists. `firstRawOutput` would make "what did it say before we corrected it" a
+   field instead of a subtraction, and the subtraction is only available because two unrelated
+   counters happen to line up.
 
 ## 6. Where this leaves the numbers
 
@@ -278,6 +320,7 @@ what it is worth. That makes the gap *smaller in mechanism-space* than it looked
 | `cortex-memory` end to end | **404/500 = 80.80%** | `40088479628` |
 | failures | **96** | above |
 | reader declined | **45** | §2 |
+| — of which a bare token | **30** (21 first attempt, 9 retry) | §2.1, §2.3 |
 | reader answered wrong | **51** | §3 |
 | failures attributable to missing evidence | **0** | §1.1 |
 
@@ -288,9 +331,15 @@ before a dispatch:
 
 | candidate | population it addresses | ceiling | measurability at n=500 |
 | --- | --- | --- | --- |
-| forbid cross-session merging without a shared citation (§3.2) | 5 MR | **+5** | paired only — 5 is inside the 15-question marginal range (§2.1) |
-| extend `reviewPass: recover` to `temporal` and `flat` (§2.1) | 33 declines, ~1/10 convert | **+3** | paired only |
-| a contract for hedged-but-sufficient evidence (§2) | up to 45 declines | unknown | paired, and the biggest of the three |
+| **forbid the bare token on the four routes whose gold is never a decline** (§2.2) | **21 first-attempt + 9 retry = 30** | **+30** | paired; the largest population available anywhere in this measurement |
+| forbid cross-session merging without a shared citation (§3.2) | 5 MR | +5 | paired only — 5 is inside the 15-question marginal range (§2.3) |
+| extend `reviewPass: recover` to `temporal` and `flat` (§2.3) | 33 declines, ~1/10 convert | +3 | paired only, and its own retries are bare, so the prior says +3 |
+| a contract for hedged-but-sufficient evidence (§2.4) | 8 TR | +8 | paired |
+
+Note what changed here: the first draft's top candidate was "a contract for hedged evidence", sized
+"up to 45". The measurement cut it to **8** — the hedge word is a TR-only shape — and promoted a
+candidate that had not been on the list at all, because the declines turned out to be one response
+shape rather than forty-five reasons.
 
 **The bar is the discordant pair, not the marginal total.** `paired-test.ts` computes an exact McNemar
 over the same 500 questions, so a change that wins 12 and loses 5 is significant even though its
