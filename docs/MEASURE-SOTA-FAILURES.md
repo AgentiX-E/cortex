@@ -88,7 +88,23 @@ Forty-five of ninety-six. By route:
 The gate itself is not at fault: `decisionReasons` reads `{empty: 0, threshold: 0, llm: 75}`, so not
 one of the 75 declines is a gate firing on an empty or low-scoring pool. Every one is the model's.
 
-### 2.1 The shape: a bare token, and it is worth 30/30 on the one capability that grades it
+### 2.1 The shape, and what this measurement adds to what was already known
+
+**The bare token is not a new observation and must not be presented as one.** `PREREGISTRATION` §13.22.6
+already tabulated it per capability on an older configuration (TR 36 bare of 51 abstentions, MR 21 of
+24), and the 120-question reading behind §13.22 recorded 116 of 120 outputs as a bare token across
+five capabilities. `tools/classify-raw-outputs.py` is the shipped classifier that produces those
+counts, and running it on this artifact reproduces the numbers below **to the case**.
+
+What is new here is three things, and only three:
+
+1. **All five capabilities in one run, including `ABS`.** `ABS` is the control the earlier tables did
+   not carry beside the others, and it is what turns "the declines are mostly bare" into an argument:
+   the bare token is **correct** there.
+2. **`IE` at 12 of 12.** The earlier per-capability tables covered TR and MR; IE's declines are the
+   same shape, plus a gold-shape fact §2.5 records.
+3. **The retry attribution in §2.3** — that nine of MR's ten recorded declines are the recovery pass's
+   *second* answer, which no field declares.
 
 Stripping the token and measuring what is left:
 
@@ -102,7 +118,8 @@ Stripping the token and measuring what is left:
 
 **`ABS` is the control, and it is the whole argument.** The thirty false-premise questions are the
 only population where a decline is the right answer, and **29 of their 30 answers are the bare
-token**. That is not a coincidence; it is what the contract rewards. `ABS` reads 30/30.
+token** — `tools/classify-raw-outputs.py` on this artifact: `ABS bare 29, prose-then-token 1`. That is
+not a coincidence; it is what the contract rewards. `ABS` reads 30/30.
 
 The same shape, on the four capabilities whose gold is never a decline, produces **30 failures**.
 So the reader has learned one move — emit `INSUFFICIENT_EVIDENCE`, stop — and that move is optimal
@@ -166,8 +183,8 @@ made in this round**, because the shapes have to be counted before they are chan
 
 ### 2.4 The secondary shape, on TR only
 
-TR's nine *reasoned* declines (those that are not bare tokens) share one pattern, and it is worth
-naming because it is a different defect:
+TR's twelve *reasoned* declines — 11 `prose-then-token` plus one `other`, per the classifier — share
+one pattern, and it is worth naming because it is a different defect:
 
 ```
 Let me search the evidence for two charity events on consecutive days.
@@ -185,6 +202,27 @@ The reader found the two events, ordered them, and declined **because one carrie
 "recently"**. Measured across the population: **8 of TR's 21 declines** contain a hedge word
 (`recently`, `about`, `around`, `a few`, `probably`, `might have`) — and **0 of IE's, KU's or MR's**
 do. So this is a TR-specific shape, at most 8 questions, and it is *not* the larger problem.
+
+### 2.5 IE's twelve declines are a question shape, not a reasoning failure
+
+Ten of IE's twelve declined questions carry a gold that begins **"The user would prefer …"** — they are
+`single-session-preference` questions, and the question text asks for a recommendation:
+
+| question | gold |
+| --- | --- |
+| "Can you recommend some recent publications or conferences that I might find interesting?" | "The user would prefer suggestions related to recent research papers …" |
+| "Can you suggest a hotel for my upcoming trip to Miami?" | "The user would prefer suggestions of hotels in Miami that offer great views …" |
+| "How much is the painting of a sunset worth in terms of the amount I paid for it?" | "The painting is worth triple what I paid for it." |
+
+Sixteen of IE's 134 *correct* answers are preference-shaped too, so the shape is answerable — but the
+twelve that fail do so with a bare refusal, and the first one is a two-word lookup ("What breed is my
+dog?" → "Golden Retriever") whose gold turn was carried 12 of 12.
+
+So IE's declines are not "the preference route is broken". They are the same bare-token reflex landing
+on questions where an evidence-QA contract has no instruction for *"suggest something"* — the contract
+says answer from the evidence, and a recommendation request does not read like a question about the
+evidence. That is a distinct repair from §2.2's format constraint and is recorded rather than merged
+into it.
 
 ## 3. The second source: MR answers exactly one low, and the traces say why
 
