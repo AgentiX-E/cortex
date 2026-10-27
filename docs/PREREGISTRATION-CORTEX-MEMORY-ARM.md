@@ -11472,6 +11472,13 @@ inert by construction.
 
 ### 13.105.3 Predictions, registered before the dispatch
 
+> **RESULT: this dispatch ran, and the headline prediction was falsified.** The run is
+> **`39699987781`** (2026-10-22), and its MR is **62.81%** against the registered floor of
+> **≥ 91**. The unit of the budget is closed as a lever by §13.105.4's own
+> criterion. All six predictions are judged in `MEASURE-MR-UNITS.md` §2, which also corrects the
+> `86–87%` MR figure in §13.105.1 above: **no `cortex-memory` run has ever read that on MR**, the
+> figure belongs to `reference-pipeline` in the same runs. The text below is kept as registered.
+
 Dispatch: `--set cortex_memory_relevance_units=session` on §10.3's configuration. Control:
 **`39509698041`** (`enumerated`, `turn`, 48,000, k=256, user roles, cap 400).
 
