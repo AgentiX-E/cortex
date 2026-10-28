@@ -2,7 +2,7 @@
 
 **Scope:** the 30 exports no file refers to, classified by **why** they are unreferenced
 rather than by whether they are.
-**Verdict:** §28's two-way split — *tested-but-unwired* (29) versus *zero-referenced* (1) — is
+**Verdict:** §28's two-way split — _tested-but-unwired_ (29) versus _zero-referenced_ (1) — is
 **true and not actionable**. It groups four different situations under one label, and one of
 them is a genuine defect that the split actively hides: **two exports are not unwired but
 superseded**, and a live replacement for them is already running in production.
@@ -18,12 +18,12 @@ exercised by tests and 2 are not. That measurement survives re-derivation. What 
 survive is being used as a **disposition**, because "has a test and no production caller"
 describes four unrelated situations:
 
-| Situation | Signature | Correct action |
-| --- | --- | --- |
-| **Library surface** | A public API of a package meant to be consumed as a library | Keep. The absence of an in-repo caller is the point. |
-| **Test instrument** | Exists so a test can observe or reset something | Keep, but the docstring must stop implying a production consumer. |
-| **Built-but-unwired** | A feature with a complete implementation and no caller | Wire it, or delete it with its tests. The B7 class. |
-| **Superseded** | An earlier implementation that a newer one replaced in place | **Delete.** Keeping it is worse than dead code — it is a second, divergent answer to a question already answered. |
+| Situation             | Signature                                                    | Correct action                                                                                                    |
+| --------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| **Library surface**   | A public API of a package meant to be consumed as a library  | Keep. The absence of an in-repo caller is the point.                                                              |
+| **Test instrument**   | Exists so a test can observe or reset something              | Keep, but the docstring must stop implying a production consumer.                                                 |
+| **Built-but-unwired** | A feature with a complete implementation and no caller       | Wire it, or delete it with its tests. The B7 class.                                                               |
+| **Superseded**        | An earlier implementation that a newer one replaced in place | **Delete.** Keeping it is worse than dead code — it is a second, divergent answer to a question already answered. |
 
 Only the last one is a defect with a mechanical remedy, and it is invisible under a
 two-way split.
@@ -100,7 +100,9 @@ file's job.
 
 ```ts
 export function isTemporalQuestion(question: string): boolean {
-  return /\b(how many (days|weeks|months|hours)|ago|before or after|happened first|which .* first|order from first)/i.test(question);
+  return /\b(how many (days|weeks|months|hours)|ago|before or after|happened first|which .* first|order from first)/i.test(
+    question,
+  );
 }
 ```
 
@@ -116,15 +118,15 @@ if (/\bhow many\b/i.test(question) && /\b(ago|since|passed)\b/i.test(question)) 
 }
 ```
 
-The older function's `ago` alternative matches *"Which book did I finish a week ago?"* and
+The older function's `ago` alternative matches _"Which book did I finish a week ago?"_ and
 answers `true`, routing it toward date arithmetic — the exact error the replacement's comment
 names. **The two functions do not merely differ in fidelity; they disagree, and the older one
 is wrong on a case the newer one documents.**
 
 ### 3.3 Why this is worse than dead code
 
-Dead code costs maintenance and misleads a reader about the *repository*. A superseded export
-misleads a reader about the *answer*: it is a second, divergent implementation of a question
+Dead code costs maintenance and misleads a reader about the _repository_. A superseded export
+misleads a reader about the _answer_: it is a second, divergent implementation of a question
 the package has already answered, sitting in the public barrel, reachable by any consumer, and
 tested — so its tests certify the wrong classifier.
 
@@ -160,13 +162,13 @@ Every remaining symbol is a legitimate public API of its package. The census's `
 class is a **measured fact about call sites**, and for these it is measuring the intended
 state:
 
-| Group | Members | Why no in-repo caller is correct |
-| --- | --- | --- |
-| Storage backends | `PgStorage`, `SqliteStorage`, `ensurePgSchema` | `interfaces/storage.ts` defines the contract; these are two implementations of it, selected by a consumer that lives outside the repo or in `bench/`. |
-| Cognitive primitives | 13 in `cortex-core` (`consolidate`, `createMemory`, `decideWrite`, `decideRetrieval`, `resolveContradiction`, …) | Exported from the barrel because the package *is* the cognitive library. `index.test.ts` asserts 13 of them are functions, so the barrel surface is itself under test. |
-| Measurement helpers | `candidateSpanCount`, `flattenTurns`, `sidesLandInDistinctClusters` | Produce numbers that a reader reads, not values a program branches on. Their consumer is the person interpreting a report. |
-| Environment adapters | `createEmbeddingFromEnv`, `createLongMemEvalMini`, `generateSyntheticBenchmark` | Factory/builder entry points for the evaluation harness, driven from `bench/` and from operator commands. |
-| Aggregation | `createRetryStatsAggregate`, `runEmbeddingBenchmark` | Same shape as the above for the LLM and runner layers. |
+| Group                | Members                                                                                                          | Why no in-repo caller is correct                                                                                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage backends     | `PgStorage`, `SqliteStorage`, `ensurePgSchema`                                                                   | `interfaces/storage.ts` defines the contract; these are two implementations of it, selected by a consumer that lives outside the repo or in `bench/`.                  |
+| Cognitive primitives | 13 in `cortex-core` (`consolidate`, `createMemory`, `decideWrite`, `decideRetrieval`, `resolveContradiction`, …) | Exported from the barrel because the package _is_ the cognitive library. `index.test.ts` asserts 13 of them are functions, so the barrel surface is itself under test. |
+| Measurement helpers  | `candidateSpanCount`, `flattenTurns`, `sidesLandInDistinctClusters`                                              | Produce numbers that a reader reads, not values a program branches on. Their consumer is the person interpreting a report.                                             |
+| Environment adapters | `createEmbeddingFromEnv`, `createLongMemEvalMini`, `generateSyntheticBenchmark`                                  | Factory/builder entry points for the evaluation harness, driven from `bench/` and from operator commands.                                                              |
+| Aggregation          | `createRetryStatsAggregate`, `runEmbeddingBenchmark`                                                             | Same shape as the above for the LLM and runner layers.                                                                                                                 |
 
 `cortex-eval: FactMemorySystem` deserves its own note: it is a **whole reference
 implementation** of the `MemorySystem` interface used to demonstrate the M2 feature through
@@ -189,11 +191,11 @@ is corrected to stop asserting a consumer that does not exist.
 
 ## 5. Result
 
-| Class | Count | Disposition |
-| --- | --- | --- |
-| Superseded by a live implementation | **2** | **Delete** (with their 4 tests) |
-| Zero-referenced | 1 | Roadmap call (`ProvenanceNode`) — **resolved: deleted, superseded by `Fact`**. See `DECISION-PROVENANCE-NODE.md` |
-| Public surface, tested, correctly unwired | 27 | Keep; correct one docstring — **re-examined by `AUDIT-UNREFERENCED-GROUPS.md`**: 26 confirmed as surface, **1 was a defect, not surface** (`isCandidateDiscriminationEnabled`, an inert switch; deleted) |
+| Class                                     | Count | Disposition                                                                                                                                                                                              |
+| ----------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Superseded by a live implementation       | **2** | **Delete** (with their 4 tests)                                                                                                                                                                          |
+| Zero-referenced                           | 1     | Roadmap call (`ProvenanceNode`) — **resolved: deleted, superseded by `Fact`**. See `DECISION-PROVENANCE-NODE.md`                                                                                         |
+| Public surface, tested, correctly unwired | 27    | Keep; correct one docstring — **re-examined by `AUDIT-UNREFERENCED-GROUPS.md`**: 26 confirmed as surface, **1 was a defect, not surface** (`isCandidateDiscriminationEnabled`, an inert switch; deleted) |
 
 `AUDIT-UNREFERENCED-EXPORTS.md` is **amended, not superseded**: its 29/2 split is a correct
 measurement. What changes is the reading of the 29 — one of them was never the B7 class at

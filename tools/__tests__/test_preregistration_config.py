@@ -90,13 +90,22 @@ CONCEPT_TO_INPUT = {
     # §13.97's ranking-queries variable. Registered at `none`; the expansion run departs from the
     # table with `--set`, which this guard deliberately does not read -- its subject is the
     # registered configuration, not every dispatch.
+    # §13.115's switch. Registered at the identity (`none`); the reranking dispatch departs from the
+    # table with `--set cortex_memory_rerank=on`, and its control is the same run at
+    # `relevance_top_k=128` without the stage -- a pairing §13.115 records rather than a second variable.
+    "rerank": "cortex_memory_rerank",
     "queryExpansion": "cortex_memory_query_expansion",
     # §13.101's sample count. Registered at `none`; the voting run departs from the table with
     # `--set`, which this guard deliberately does not read.
     "selfConsistency": "cortex_memory_self_consistency",
     "evidenceRoles": "cortex_memory_evidence_roles",
     "evidenceRolesRoutes": "cortex_memory_evidence_roles_routes",
-    "budgetMinutes": "cortex_memory_budget_minutes",
+    # `budgetMinutes` is deliberately ABSENT as of §13.115. It is registered in §10.3 and still
+    # bounds every pass, but it is no longer a dispatch input: the surface sat one below GitHub's
+    # 25-input ceiling when the reranking switch needed a slot, and this value is a hang detector
+    # rather than a treatment. The workflow sets it as a constant (90), which is where a reader of a
+    # run looks for it -- the same repair, for the same reason, as `evidenceTurnsPerRecord` in §13.94.
+
     "limit": "limit",
     "ablation_runs": "ablation_runs",
     "temperature": "temperature",

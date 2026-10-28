@@ -57,11 +57,11 @@ get read. The other direction would hide debt.
 
 ## 3. The measured split
 
-| Class               | Count   | Meaning                                                     |
-| ------------------- | ------- | ----------------------------------------------------------- |
+| Class                | Count   | Meaning                                                                                   |
+| -------------------- | ------- | ----------------------------------------------------------------------------------------- |
 | `referenced-locally` | **206** | live call site in its own file; the `export` may be unnecessary — see the amendment at §6 |
-| `unreferenced`       | **31**  | nothing mentions it anywhere; a dead-code candidate         |
-| total               | **237** | the old undifferentiated number                             |
+| `unreferenced`       | **31**  | nothing mentions it anywhere; a dead-code candidate                                       |
+| total                | **237** | the old undifferentiated number                                                           |
 
 The 31 were checked against a second, independently written scanner: for each
 name, how many non-test, non-barrel, non-`dist` files mention it at all? The
@@ -89,12 +89,12 @@ A mention in a comment or a string counts as a local reference. This is a
 deliberate over-count and it is the only choice that does not reclassify live
 code as dead:
 
-| Symbol                        | Evidence                                                    | Under a strict rule      |
-| ----------------------------- | ----------------------------------------------------------- | ------------------------ |
-| the text-hashing helper       | called **6×** inside template literals in `retrieval.ts`      | falsely **dead**         |
-| the candidate schema key      | 2 template interpolations inside `appendLabel`                | falsely **dead**         |
-| `sinkhorn`                    | 2 docstring/error-string mentions, no body use                | —                        |
-| `retrieveTopK`                | **one comment line is its only mention in the repository**    | correctly dead, but      |
+| Symbol                   | Evidence                                                   | Under a strict rule |
+| ------------------------ | ---------------------------------------------------------- | ------------------- |
+| the text-hashing helper  | called **6×** inside template literals in `retrieval.ts`   | falsely **dead**    |
+| the candidate schema key | 2 template interpolations inside `appendLabel`             | falsely **dead**    |
+| `sinkhorn`               | 2 docstring/error-string mentions, no body use             | —                   |
+| `retrieveTopK`           | **one comment line is its only mention in the repository** | correctly dead, but |
 
 Two live, heavily-used symbols would be reported dead by the strict rule, and one
 genuinely dead symbol would be reported correctly. A census that cries wolf is
@@ -158,10 +158,10 @@ convergence, not defect repair, and it is the next P1 item. It is now mechanical
 
 > **Amendment, `AUDIT-REFERENCED-LOCALLY-CONVERGENCE.md`.** "It is now mechanical" and
 > "produces the worklist" were both wrong, and the error is the kind this document
-> exists to catch. `referenced-locally` says *where the references are*, not whether the
+> exists to catch. `referenced-locally` says _where the references are_, not whether the
 > `export` is load-bearing — and for 187 of the 206 it is: **182 are re-exported from a
 > package barrel**, so the keyword **is** the published interface, and **5 are imported
 > by tests**, so removing it breaks the suite. The actual worklist was **19**. Turning a
-> classification into a worklist requires asking what each reference is *for*; that is
+> classification into a worklist requires asking what each reference is _for_; that is
 > two commands per symbol, and skipping them nearly produced a committed plan to change
 > 206 declarations. The 19 are now converged and the class reads **187**.

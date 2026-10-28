@@ -9,11 +9,11 @@ Context: `MEASURE-BASELINE-DRIFT.md` §8 (two systems, not a drift) and the thre
 `benchmark.yml`'s feature arm reads **44.60%** on run `40408635007`, with **IE 1/150** and
 **KU 0/72**. That is the third measurement of the same shape:
 
-| run | overall | IE | KU | MR | TR | ABS | corpus sha256 | embedding source |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `40378588466` | 43.80% (219) | **1** | 1 | 104 | 87 | 30 | `d6f21ea9…a442` | v1 cache hit (56,782 texts) |
-| `recall` / `per-item` | 44.20% (221) | **1** | 0 | 104 | 86 | 30 | not recorded | v1 cache hit |
-| **`40408635007`** | **44.60% (223)** | **1** | **0** | **105** | **87** | **30** | `d6f21ea9…a442` | **v1 refused → 19,251 live texts embedded** |
+| run                   | overall          | IE    | KU    | MR      | TR     | ABS    | corpus sha256   | embedding source                            |
+| --------------------- | ---------------- | ----- | ----- | ------- | ------ | ------ | --------------- | ------------------------------------------- |
+| `40378588466`         | 43.80% (219)     | **1** | 1     | 104     | 87     | 30     | `d6f21ea9…a442` | v1 cache hit (56,782 texts)                 |
+| `recall` / `per-item` | 44.20% (221)     | **1** | 0     | 104     | 86     | 30     | not recorded    | v1 cache hit                                |
+| **`40408635007`**     | **44.60% (223)** | **1** | **0** | **105** | **87** | **30** | `d6f21ea9…a442` | **v1 refused → 19,251 live texts embedded** |
 
 Three things are now eliminated by measurement rather than by argument:
 
@@ -64,13 +64,13 @@ gh workflow run benchmark.yml -f limit=0 -f runs=1 -f ablation_runs=1 -f tempera
 
 ## 4. Predictions, registered before the run
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **P1** | mechanism: the artifact's `Feature config` reads `entityIdentityClause=off`, and the fixed prompt is shorter than the control's by the clause length on the flat route | the config line reads `on`, or `promptChars` is unchanged |
-| **P2** | **IE ≥ 51/150** (from 1) | IE ≤ 5 |
-| **P3** | **KU ≥ 30/72** (from 0) | KU ≤ 5 |
-| **P4** | MR, TR and ABS each move ≤ 5 questions | any moves further — the clause is not reached by their routes, so a move means the routes are not what this registration claims |
-| **P5** | ABS does not fall below 27/30 | ABS ≤ 26 — that would be the clause's own measured benefit disappearing, which is a cost to record, not a bug |
+| #      | prediction                                                                                                                                                             | falsified if                                                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **P1** | mechanism: the artifact's `Feature config` reads `entityIdentityClause=off`, and the fixed prompt is shorter than the control's by the clause length on the flat route | the config line reads `on`, or `promptChars` is unchanged                                                                       |
+| **P2** | **IE ≥ 51/150** (from 1)                                                                                                                                               | IE ≤ 5                                                                                                                          |
+| **P3** | **KU ≥ 30/72** (from 0)                                                                                                                                                | KU ≤ 5                                                                                                                          |
+| **P4** | MR, TR and ABS each move ≤ 5 questions                                                                                                                                 | any moves further — the clause is not reached by their routes, so a move means the routes are not what this registration claims |
+| **P5** | ABS does not fall below 27/30                                                                                                                                          | ABS ≤ 26 — that would be the clause's own measured benefit disappearing, which is a cost to record, not a bug                   |
 
 **P2 is the claim.** P3 is the same mechanism on a second capability, and it is what separates "the
 clause suppresses IE" from "IE is broken for an unrelated reason".
@@ -131,23 +131,23 @@ document records that measurement; a second dispatch happens only after it.
 Run **`40427127569`**, 500 questions, `entity_identity_clause=0`, everything else byte-identical to
 `40408635007`.
 
-| | control (`40408635007`, clause **on**) | treatment (clause **off**) | Δ |
-| --- | --- | --- | --- |
-| overall | 44.60% (223) | **44.00% (220)** | −3 |
-| IE | 1/150 | **1/150** | 0 |
-| KU | 0/72 | **0/72** | 0 |
-| MR | 105/121 | **104/121** | −1 |
-| TR | 87/127 | **85/127** | −2 |
-| ABS | 30/30 | **30/30** | 0 |
-| `decisionReasons` | `{llm: 249}` | `{llm: 247}` | −2 |
+|                   | control (`40408635007`, clause **on**) | treatment (clause **off**) | Δ   |
+| ----------------- | -------------------------------------- | -------------------------- | --- |
+| overall           | 44.60% (223)                           | **44.00% (220)**           | −3  |
+| IE                | 1/150                                  | **1/150**                  | 0   |
+| KU                | 0/72                                   | **0/72**                   | 0   |
+| MR                | 105/121                                | **104/121**                | −1  |
+| TR                | 87/127                                 | **85/127**                 | −2  |
+| ABS               | 30/30                                  | **30/30**                  | 0   |
+| `decisionReasons` | `{llm: 249}`                           | `{llm: 247}`               | −2  |
 
-| # | prediction | measured | verdict |
-| --- | --- | --- | --- |
-| **P1** | config reads `entityIdentityClause=off` | `featureConfig.entityIdentityClause: false` | **met** |
-| **P2** | IE ≥ 51/150 | **1** | **refuted** |
-| **P3** | KU ≥ 30/72 | **0** | **refuted** |
-| **P4** | MR, TR, ABS each move ≤ 5 | −1, −2, 0 | **met** |
-| **P5** | ABS does not fall below 27/30 | **30/30** | **met — vacuously** |
+| #      | prediction                              | measured                                    | verdict             |
+| ------ | --------------------------------------- | ------------------------------------------- | ------------------- |
+| **P1** | config reads `entityIdentityClause=off` | `featureConfig.entityIdentityClause: false` | **met**             |
+| **P2** | IE ≥ 51/150                             | **1**                                       | **refuted**         |
+| **P3** | KU ≥ 30/72                              | **0**                                       | **refuted**         |
+| **P4** | MR, TR, ABS each move ≤ 5               | −1, −2, 0                                   | **met**             |
+| **P5** | ABS does not fall below 27/30           | **30/30**                                   | **met — vacuously** |
 
 **P2 and P3 failed exactly as §7 predicted they would**, for the reason §7 gave: the clause is bound to
 the abstention route's prompt builder and cannot reach the flat route IE and KU travel. The prediction

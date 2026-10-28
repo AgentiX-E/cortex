@@ -13,7 +13,7 @@ ever saying why any of them failed.
 ## 1. The question the census left open
 
 The census established that TR is the largest failure population and that 27 of
-its 36 failures are *answered wrong* rather than refused. It did not say why.
+its 36 failures are _answered wrong_ rather than refused. It did not say why.
 
 For an answered-wrong question there are two mechanisms and they need opposite
 work:
@@ -45,7 +45,7 @@ explanations rather than reading a record.
 
 Word boundaries are load-bearing rather than fastidious. TR asks for counts and
 the answers are single digits, so a substring test would satisfy an answer of
-`"1"` from the date `2023/01/21` inside the question's *own* retrieved timestamp.
+`"1"` from the date `2023/01/21` inside the question's _own_ retrieved timestamp.
 That would report the most common TR failure as grounded and point the work at
 the reader when the evidence was never there.
 
@@ -59,10 +59,10 @@ Measured against the A2 artifact, that filter removed **10 of 22 records** in th
 MR file — and **8 of those 10 had been answered correctly**. The answers it
 discarded were `2`, `3`, `4`, `5`.
 
-| design                       | guards `2023/01/21` | handles `4` in "visited 4 stores" | corpus reach |
-| ---------------------------- | ------------------- | --------------------------------- | ------------ |
-| substring + min length 2     | yes                 | **no**                            | **12 / 22**  |
-| word boundary + no min length | **yes**            | yes                               | **22 / 22**  |
+| design                        | guards `2023/01/21` | handles `4` in "visited 4 stores" | corpus reach |
+| ----------------------------- | ------------------- | --------------------------------- | ------------ |
+| substring + min length 2      | yes                 | **no**                            | **12 / 22**  |
+| word boundary + no min length | **yes**             | yes                               | **22 / 22**  |
 
 The premise was wrong: the word-boundary rule already defeats the date case, so
 the length filter was defending against a threat that no longer existed. Keeping
@@ -75,7 +75,7 @@ looked complete.
 The rule the measurement supports is narrower: a token is dropped only when it
 carries no alphanumeric content at all.
 
-> **Discipline:** a guard written for a threat that a *different* guard already
+> **Discipline:** a guard written for a threat that a _different_ guard already
 > removes is not conservative. It is a second cost with no first benefit, and it
 > hides itself as caution.
 
@@ -85,12 +85,12 @@ Run over the 27 answered-wrong TR failures of the A2 artifact
 (`lm_report/benchmark-single-session-diagnostics.json`, 379 records, TR = 127,
 wrong = 36, answered-wrong = 27):
 
-| bucket                            | count | occurrences of the answer token |
-| --------------------------------- | ----- | ------------------------------- |
-| **ungrounded** — evidence absent  | **13** | 0 (at least one token absent)  |
-| grounded, strong evidence         | **4**  | 1–2                             |
-| grounded, moderate evidence       | **5**  | 3–9                             |
-| grounded, weak evidence           | **5**  | ≥ 10                            |
+| bucket                           | count  | occurrences of the answer token |
+| -------------------------------- | ------ | ------------------------------- |
+| **ungrounded** — evidence absent | **13** | 0 (at least one token absent)   |
+| grounded, strong evidence        | **4**  | 1–2                             |
+| grounded, moderate evidence      | **5**  | 3–9                             |
+| grounded, weak evidence          | **5**  | ≥ 10                            |
 
 The ungrounded column is solid: every one of the 13 is ungrounded because at least
 one token of a multi-token answer is absent, or because a single token genuinely
@@ -101,14 +101,14 @@ The grounded column is **mixed**, and the occurrence counts are what separate it
 The retrieved contexts run 8k–14k characters, so a token that occurs dozens of
 times is not evidence that the fact was retrieved:
 
-| id             | answer | context | occurrences | driver token |
-| -------------- | ------ | ------- | ----------- | ------------ |
-| `b46e15ed`     | 2      | 12,465  | **1**       | `2`          |
-| `0bc8ad92`     | 5      | 13,641  | **1**       | `5`          |
-| `gpt4_385a5000`| Tomatoes | 12,258 | **2**      | `tomatoes`   |
-| `gpt4_76048e76`| bike   | 12,625  | 10          | `bike`       |
-| `gpt4_59149c78`| 5-token | 12,981 | 16          | `museum`     |
-| `gpt4_7abb270c`| 19-token | 12,970 | 48          | `art`        |
+| id              | answer   | context | occurrences | driver token |
+| --------------- | -------- | ------- | ----------- | ------------ |
+| `b46e15ed`      | 2        | 12,465  | **1**       | `2`          |
+| `0bc8ad92`      | 5        | 13,641  | **1**       | `5`          |
+| `gpt4_385a5000` | Tomatoes | 12,258  | **2**       | `tomatoes`   |
+| `gpt4_76048e76` | bike     | 12,625  | 10          | `bike`       |
+| `gpt4_59149c78` | 5-token  | 12,981  | 16          | `museum`     |
+| `gpt4_7abb270c` | 19-token | 12,970  | 48          | `art`        |
 
 So `grounded` here means **"the answer string occurs in the context"**, not "the
 evidence was adequate". The 14 is an **upper bound** on reader-attributable
@@ -138,14 +138,14 @@ The fix is to compute the term over **distinctive** tokens only, and to report t
 driver token alongside the count, because a bare number cannot be audited: 95
 means one thing when the token is `metropolitan` and the opposite when it is `the`.
 
-| bucket   | raw-count version | distinctive version | note                                |
-| -------- | ----------------- | ------------------- | ----------------------------------- |
-| strong   | 4                 | **4**               | unchanged                           |
-| moderate | 4                 | **5**               | `gpt4_d31cdae3` weak → moderate     |
-| weak     | 6                 | **5**               | same question                       |
+| bucket   | raw-count version | distinctive version | note                            |
+| -------- | ----------------- | ------------------- | ------------------------------- |
+| strong   | 4                 | **4**               | unchanged                       |
+| moderate | 4                 | **5**               | `gpt4_d31cdae3` weak → moderate |
+| weak     | 6                 | **5**               | same question                   |
 
 **The correction moved exactly one question.** That is the honest scale of it, and
-it is worth stating plainly because the *temptation* was to treat the discovery as
+it is worth stating plainly because the _temptation_ was to treat the discovery as
 having invalidated the earlier split — it did not. The grounded/ungrounded split
 (13 / 14) is a containment result and was never affected; only the confidence
 attribution was wrong, and only for one bucket assignment.
@@ -195,16 +195,16 @@ refused TR failures in either bucket would invent a finding.
 
 ## 6. Verification
 
-| check                                        | result                                                             |
-| -------------------------------------------- | ------------------------------------------------------------------ |
-| unit tests                                   | 23 passing, 100% on all four coverage dimensions                    |
-| defect injection (12 mutations)              | **12 / 12 caught**, implementation restored byte-identical (md5)    |
-| same input as string and as JSON number      | identical tokens and identical classification                       |
-| numeric answer inside a longer number        | `4` not satisfied by `40`; not by a date                            |
-| single-digit answers matchable               | `4`/`3`/`5` yield `['4']`/`['3']`/`['5']`                           |
-| null answer                                  | ungrounded, and the fixture contains the literal word `null` so the verdict depends on the guard rather than on the fixture |
-| token at position zero / at end of string    | counted once, verified on both                                       |
-| real-data run                                | 27 records classified, 0 lost to the token filter                    |
+| check                                     | result                                                                                                                      |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| unit tests                                | 23 passing, 100% on all four coverage dimensions                                                                            |
+| defect injection (12 mutations)           | **12 / 12 caught**, implementation restored byte-identical (md5)                                                            |
+| same input as string and as JSON number   | identical tokens and identical classification                                                                               |
+| numeric answer inside a longer number     | `4` not satisfied by `40`; not by a date                                                                                    |
+| single-digit answers matchable            | `4`/`3`/`5` yield `['4']`/`['3']`/`['5']`                                                                                   |
+| null answer                               | ungrounded, and the fixture contains the literal word `null` so the verdict depends on the guard rather than on the fixture |
+| token at position zero / at end of string | counted once, verified on both                                                                                              |
+| real-data run                             | 27 records classified, 0 lost to the token filter                                                                           |
 
 Two defects were caught **by the verification rather than by review**:
 

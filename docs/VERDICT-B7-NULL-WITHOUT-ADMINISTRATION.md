@@ -68,10 +68,10 @@ baselineIncorrectFeatureCorrect: ["0862e8bf_abs", "15745da0_abs", "bc8a6e93_abs"
 
 ### 2.3 Every aggregate matches
 
-| metric | control | feature |
-| --- | --- | --- |
-| accuracy | 0.716667 | 0.716667 |
-| abstentionRate | 0.000000 | 0.000000 |
+| metric                  | control  | feature  |
+| ----------------------- | -------- | -------- |
+| accuracy                | 0.716667 | 0.716667 |
+| abstentionRate          | 0.000000 | 0.000000 |
 | abstentionAwareAccuracy | 0.716667 | 0.716667 |
 
 Per capability (IE 24/26, MR 8/9, KU 5/8, TR 6/8, ABS 0/9) is identical on both
@@ -141,7 +141,7 @@ The workflow input's help text says:
 That is accurate, and it is the trap. B7's intervention is an instruction added
 to the reader's prompt, so the arm that varies it has to be an arm that varies
 the reader's prompt — which, as currently wired, is the rerank ablation. But the
-rerank ablation exists to vary *reranking*, and B7 rides along inside it rather
+rerank ablation exists to vary _reranking_, and B7 rides along inside it rather
 than having an arm of its own. Dispatching `candidate_discrimination` without
 `rerank` is therefore a no-op that looks exactly like a completed experiment:
 the runs go green, the artifacts land, and every number is valid for a hypothesis
@@ -154,7 +154,7 @@ control arm is a faithful control for the shipped configuration.
 
 It is also not a defect in `env-toggle.ts` or `bench-arm-options.ts`. Both are
 correct and both are tested to 100%: the toggle parses strictly and the options
-builder spreads conditionally. The gap is that the *call site* of the main
+builder spreads conditionally. The gap is that the _call site_ of the main
 benchmark never asks for the value — and `bench/**` is outside coverage, which is
 precisely why `env-toggle.ts` was extracted in the first place. The extraction
 covered the parsing and left the wiring.
@@ -172,13 +172,13 @@ only in control: []
 
 and the retrieval diagnostics move with it:
 
-| | control | feature |
-| --- | --- | --- |
-| recallAt1 | 0.3953488372093023 | 0.37209302325581395 |
-| recallAt5 | 0.8372093023255814 | 0.8604651162790697 |
-| admittedAtOne | 13 | 12 |
-| rankingGapQuestions | 27 | 28 |
-| coveredQuestions | 40 | 40 |
+|                     | control            | feature             |
+| ------------------- | ------------------ | ------------------- |
+| recallAt1           | 0.3953488372093023 | 0.37209302325581395 |
+| recallAt5           | 0.8372093023255814 | 0.8604651162790697  |
+| admittedAtOne       | 13                 | 12                  |
+| rankingGapQuestions | 27                 | 28                  |
+| coveredQuestions    | 40                 | 40                  |
 
 `58bf7951` moved from `admittedAtOne` to `rankingGap`: it fell out of rank 1 but
 remained within rank 5, which is why `recallAt5` rises as `recallAt1` falls.

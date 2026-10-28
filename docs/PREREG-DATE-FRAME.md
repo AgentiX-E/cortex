@@ -28,19 +28,19 @@ ago") against that date.
 Show the resolved date in your answer when the question asks when something happened.
 ```
 
-That is the published mechanism, whole. The paper's date frame is *"the current date in the message,
-and each content block's own date"*, and both halves are in that prompt: the anchor sentence, and the
+That is the published mechanism, whole. The paper's date frame is _"the current date in the message,
+and each content block's own date"_, and both halves are in that prompt: the anchor sentence, and the
 `[2023/05/20]` prefix that survives rendering on **every** route — `formatEvidence` renders
 `turn.content` unchanged, and the date is part of the content.
 
 `date-frame-presence.test.ts` pins all of it, including the two negative cases, because the claim
 being withdrawn is a claim about what the code renders:
 
-| route | anchor sentence | per-turn date |
-| --- | --- | --- |
-| `temporal` | **present** (when the dataset supplies `question_date`) | present |
-| flat (`abstention-evidence-blocks`) | absent — `buildPrompt` discards `questionDate` for every contract but `temporal` | present |
-| `multi-session` (`buildSessionPrompt`) | absent — its builder takes no date at all | present |
+| route                                  | anchor sentence                                                                  | per-turn date |
+| -------------------------------------- | -------------------------------------------------------------------------------- | ------------- |
+| `temporal`                             | **present** (when the dataset supplies `question_date`)                          | present       |
+| flat (`abstention-evidence-blocks`)    | absent — `buildPrompt` discards `questionDate` for every contract but `temporal` | present       |
+| `multi-session` (`buildSessionPrompt`) | absent — its builder takes no date at all                                        | present       |
 
 So the only route with no anchor is `multi-session`. That is not the experiment this document
 registered: P1 and P2 are both about **temporal**, where the mechanism is already installed, and a
@@ -65,8 +65,8 @@ temporal route has carried that frame while reading 74.02%, then **the frame is 
 the gap to 90 sits in something the frame does not touch. That is an elimination, and it is the same
 conclusion P1's revert clause would have produced, reached for zero dispatches instead of one:
 
-| would have cost | what was done instead |
-| --- | --- |
+| would have cost                                     | what was done instead                                                                             |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | a 500-question dispatch, ~55 minutes of runner time | `buildPrompt` on two contracts, plus 5 assertions; one read of `prompt.ts` and one of `memory.ts` |
 
 **And one P0 slot is freed**, which is the real currency here: `multi-session`'s gap is 18 questions
@@ -89,13 +89,12 @@ Nothing operational — P1 through P5 are void, and no run will answer them. Two
 stay relevant and are kept where they are:
 
 1. **TR's relative-time split**: 66% (33/50) against 81% (62/77), one run z≈1.84 and three
-   same-direction runs at sign-test p=0.125. It is still a *target*, and it is still not a finding.
+   same-direction runs at sign-test p=0.125. It is still a _target_, and it is still not a finding.
    What has changed is the hypothesis it supports: not "the reader lacks a date", but "the reader has
    a date and still mis-resolves". That is a different experiment, and it needs the resolved-date
    traces that the prompt above already asks the reader to write out.
 2. **The multi-session count errors**: 12 of 37 MR failures answer exactly one lower than gold
    (`MEASURE-SOTA-FAILURES.md` §3). A frame cannot help; the counting step is where the loss is.
-
 
 ## What the reader is told today
 
@@ -104,8 +103,8 @@ prefix is the only temporal information in the prompt. So a question asking what
 requires the reader to pick a reference date out of a two-hundred-turn window and do the arithmetic
 itself.
 
-*(Kept as registered. §0.1 is its correction: the sentence is true of `multi-session` and false of
-`temporal`, which is the route every prediction below is about.)*
+_(Kept as registered. §0.1 is its correction: the sentence is true of `multi-session` and false of
+`temporal`, which is the route every prediction below is about.)_
 
 That is a deterministic computation delegated to a language model, which is the same defect
 `timeWindow` annotation fixed in step 9 for a different question ("how far is this turn from the
@@ -121,7 +120,7 @@ identical or near-identical across three archived runs (−15, −15, −17 poin
 questions. One test gives z≈1.84, p≈0.066 -- **not significant**, and three same-direction runs are
 weak evidence (sign test p=0.125). So it is a target, not a finding.
 
-The same split on multi-session did *not* replicate (61%, 70%, 48% against 73%, 73%, 68%), and the
+The same split on multi-session did _not_ replicate (61%, 70%, 48% against 73%, 73%, 68%), and the
 19.7-point gap published in step 23 came from the worst of three runs. That retraction is recorded in
 `cortex-docs` 04 §9.28 and it is the reason this document demands a repeat before a conclusion.
 
@@ -140,7 +139,7 @@ used for every adopted change.
 1. **Anchor.** The maximum parseable date among the turns the prompt carries. Deterministic, no model
    call, computed in the same renderer that already walks every turn.
 2. **One line.** `The conversation runs to <YYYY-MM-DD>; resolve any relative time in the question
-   against that date.` Placed beside the existing session note, not inside the question.
+against that date.` Placed beside the existing session note, not inside the question.
 3. **Nothing when there is nothing.** If no turn carries a parseable date, the line is absent and the
    prompt is **byte-identical** to the control's. A test pins that, because an injected line that
    silently appears on a dateless window would make every comparison unreadable.
@@ -153,13 +152,13 @@ used for every adopted change.
 
 ## Pre-registration
 
-| id | criterion | control |
-| --- | --- | --- |
-| P1 | temporal questions containing a relative expression: **≥ +8 points** | 33/50 (66%) |
-| P2 | temporal overall: **not down by more than 2** | 95/127 (75%) |
-| P3 | multi-session: **not down by more than 2** | 84–87/121 |
-| P4 | `IE`, `KU`, `ABS`: **identical** | 134/150, 63/64/72, 30/30 |
-| P5 | dateless windows: prompt byte-identical | test, not a run |
+| id  | criterion                                                            | control                  |
+| --- | -------------------------------------------------------------------- | ------------------------ |
+| P1  | temporal questions containing a relative expression: **≥ +8 points** | 33/50 (66%)              |
+| P2  | temporal overall: **not down by more than 2**                        | 95/127 (75%)             |
+| P3  | multi-session: **not down by more than 2**                           | 84–87/121                |
+| P4  | `IE`, `KU`, `ABS`: **identical**                                     | 134/150, 63/64/72, 30/30 |
+| P5  | dateless windows: prompt byte-identical                              | test, not a run          |
 
 **P1 at +8 rather than +9.3**: the published interval is [+4.0, +15.3] on a development sample, so the
 lower bound of what would be worth adopting is around 4 and the midpoint is around 9. Setting the bar

@@ -12,12 +12,12 @@ session budget costs 86 points**, because a ten-turn session cannot fit an eight
 
 ## 1. Why a real corpus was necessary, in one measurement
 
-| | synthetic | LongMemEval-S |
-| --- | --- | --- |
-| gold | derived from the answer text | annotated (`answer_session_ids`) |
-| turns per session | 1 | ~10 |
-| questions | 40 | 500 |
-| can separate lexical systems? | no (the gold scores `1.0` by construction) | yes |
+|                               | synthetic                                  | LongMemEval-S                    |
+| ----------------------------- | ------------------------------------------ | -------------------------------- |
+| gold                          | derived from the answer text               | annotated (`answer_session_ids`) |
+| turns per session             | 1                                          | ~10                              |
+| questions                     | 40                                         | 500                              |
+| can separate lexical systems? | no (the gold scores `1.0` by construction) | yes                              |
 
 The second row is the one that found a bug. Everything below follows from it.
 
@@ -67,12 +67,12 @@ null-floor          none     0.0%      0.0%     0.000      0/500
 Per capability (found / measured):
 
 | capability | lexical-reference | cortex-session |
-| --- | --- | --- |
-| ABS | 29/30 | 28/30 |
-| IE | 130/150 | 133/150 |
-| KU | 71/72 | 72/72 |
-| MR | 118/121 | 117/121 |
-| TR | 120/127 | 120/127 |
+| ---------- | ----------------- | -------------- |
+| ABS        | 29/30             | 28/30          |
+| IE         | 130/150           | 133/150        |
+| KU         | 71/72             | 72/72          |
+| MR         | 118/121           | 117/121        |
+| TR         | 120/127           | 120/127        |
 
 **This is parity, not a win, and the arithmetic says so.** recall differs by two questions out of five
 hundred; all-gold by six; MRR by 0.037. Under a paired test on 500 items a two-question difference is not
@@ -143,11 +143,11 @@ somewhere other than ranking.
 
 ## 8. What changed in the code
 
-| file | change |
-| --- | --- |
-| `packages/cortex-memory/src/provider.ts` | top-k applied to hits; turn budget left in turns; `build: 'none'` |
+| file                                                    | change                                                                                  |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `packages/cortex-memory/src/provider.ts`                | top-k applied to hits; turn budget left in turns; `build: 'none'`                       |
 | `packages/cortex-memory/src/__tests__/provider.test.ts` | two six-turn-session tests that distinguish the units, plus the ranking and query tests |
-| `tools/competitor-harness.mjs` | `--data` / `LONGMEMEVAL_PATH`, stratified subset, annotated gold |
-| `tools/__tests__/test_competitor_harness.py` | eight tests, including the one a derived gold cannot pass |
-| `.github/workflows/competitor-retrieval.yml` | runs both subsets on a runner, retrieval only |
-| `package.json` | `build` before `test:tools`, because the tools tests read `dist/` |
+| `tools/competitor-harness.mjs`                          | `--data` / `LONGMEMEVAL_PATH`, stratified subset, annotated gold                        |
+| `tools/__tests__/test_competitor_harness.py`            | eight tests, including the one a derived gold cannot pass                               |
+| `.github/workflows/competitor-retrieval.yml`            | runs both subsets on a runner, retrieval only                                           |
+| `package.json`                                          | `build` before `test:tools`, because the tools tests read `dist/`                       |

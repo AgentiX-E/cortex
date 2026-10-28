@@ -18,17 +18,17 @@ measured. It is false.
 Three archived runs of the adopted configuration. For every reply that returned
 `INSUFFICIENT_EVIDENCE` with no parsed answer, the bullets before the `Step 2` heading were counted.
 
-| run | capability | abstentions | with a non-empty Step 1 list |
-| --- | --- | --- | --- |
-| `39367801501` | MR | 10 | **8** |
-| `39367801501` | TR | 20 | 7 |
-| `39367801501` | ABS | 30 | **0** |
-| `39509698041` | MR | 9 | **7** |
-| `39509698041` | TR | 15 | 5 |
-| `39509698041` | KU | 2 | 1 |
-| `39699987781` | MR | 9 | **8** |
-| `39699987781` | TR | 23 | 4 |
-| `39699987781` | ABS | 30 | **0** |
+| run           | capability | abstentions | with a non-empty Step 1 list |
+| ------------- | ---------- | ----------- | ---------------------------- |
+| `39367801501` | MR         | 10          | **8**                        |
+| `39367801501` | TR         | 20          | 7                            |
+| `39367801501` | ABS        | 30          | **0**                        |
+| `39509698041` | MR         | 9           | **7**                        |
+| `39509698041` | TR         | 15          | 5                            |
+| `39509698041` | KU         | 2           | 1                            |
+| `39699987781` | MR         | 9           | **8**                        |
+| `39699987781` | TR         | 23          | 4                            |
+| `39699987781` | ABS        | 30          | **0**                        |
 
 Two things make this a reading rather than a count:
 
@@ -37,7 +37,7 @@ Two things make this a reading rather than a count:
   predicate excludes, so the pass correctly does not fire on them. The reader enumerated the evidence
   and then declined with it in hand.
 - **ABS is zero.** Thirty abstentions, no list, in both runs that have the capability. ABS questions
-  are the ones whose gold answer *is* a decline, so this is the control the reading needs: a rule
+  are the ones whose gold answer _is_ a decline, so this is the control the reading needs: a rule
   about lists cannot touch a route that does not produce one, and a system that started answering
   them would be trading a correct refusal for a wrong answer.
 
@@ -56,12 +56,12 @@ comment.
 
 `abstention-recovery.ts`:
 
-| decision | state |
-| --- | --- |
-| `disabled` | the feature was not requested |
-| `answered` | the reader answered; nothing to correct |
-| `no-list` | the decline was honest — the list is empty, which is the state the contract licenses |
-| `retry` | the decline contradicts its own list |
+| decision   | state                                                                                |
+| ---------- | ------------------------------------------------------------------------------------ |
+| `disabled` | the feature was not requested                                                        |
+| `answered` | the reader answered; nothing to correct                                              |
+| `no-list`  | the decline was honest — the list is empty, which is the state the contract licenses |
+| `retry`    | the decline contradicts its own list                                                 |
 
 A `retry` asks one more question, and it does **not** re-send the evidence. The list is the reader's
 own extraction; for a counting question its length is the answer, so quoting it back is a complete
@@ -78,8 +78,8 @@ answer rather than a guess.
 ## What this does not do
 
 - **It does not touch a question that answered.** The pass fires on `first === null` only, so no
-  correct answer can move. The route test that pins this needed a fixture where the model *answers
-  and* writes a list — the obvious fixture (a bare answer) has no bullets to find, and hardcoding
+  correct answer can move. The route test that pins this needed a fixture where the model _answers
+  and_ writes a list — the obvious fixture (a bare answer) has no bullets to find, and hardcoding
   the guard to `false` left the suite green.
 - **It does not rescue a two-hop question whose second hop was never retrieved.** MR failures split
   20 reader / 17 retrieval on full versus partial gold coverage, and this pass only addresses the
@@ -99,12 +99,12 @@ workflow at 24 of its 25 dispatch inputs -- the suite forbids a workflow from si
 and a 25th input would have made the next registration impossible. Adding it as its own field was
 tried first and failed that test, which is the test doing its job.
 
-| id | criterion | control |
-| --- | --- | --- |
-| P1 | `recoveryCensus.attempted` between 10 and 20, and `answered > 0` | pass did not fire; the measured population is 12 to 15 |
-| P2 | MR correct count ≥ +4 over the control | 84–88 across archived runs |
-| P3 | TR correct count not down by more than 2 | 92–95 |
-| P4 | ABS correct count unchanged | 29–30 |
+| id  | criterion                                                        | control                                                |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------ |
+| P1  | `recoveryCensus.attempted` between 10 and 20, and `answered > 0` | pass did not fire; the measured population is 12 to 15 |
+| P2  | MR correct count ≥ +4 over the control                           | 84–88 across archived runs                             |
+| P3  | TR correct count not down by more than 2                         | 92–95                                                  |
+| P4  | ABS correct count unchanged                                      | 29–30                                                  |
 
 P1 failing means the pass is not reaching the population the reading located, and is a bug rather
 than a result. P2 failing means the reader cannot answer from its own list, which would say the
@@ -129,7 +129,7 @@ follows for `OutputGuard`.
 
 Running it corrected the table at the top of this document. Through the shipped predicate, MR is
 **8 of 10, 7 of 9, 8 of 9**, not 10 of 10: the two abstentions that were counted as carrying a list
-list only *absence* ("No item in the evidence states ..."), and the predicate excludes those because
+list only _absence_ ("No item in the evidence states ..."), and the predicate excludes those because
 an absence is not an item. The first number would have said the pass should fire on an honest decline.
 
 The recovered population is therefore **12 to 15 questions per run**, not 13 to 17, and the
@@ -163,11 +163,11 @@ Full adopted payload, `review_pass: recover`, 500 questions. The config line was
 before any score was read, which is the rule step 24 added after a dispatch that measured the product
 default: eight of eight fields match.
 
-| | value |
-| --- | --- |
-| `recovery` | **`{attempted: 10, answered: 1}`** |
-| `abstentionReasons` | `llm 75`, `threshold 0`, `answered 425` |
-| IE / TR / MR / KU / ABS | 134 / 94 / 84 / 62 / 30 = **404** |
+|                                      | value                                    |
+| ------------------------------------ | ---------------------------------------- |
+| `recovery`                           | **`{attempted: 10, answered: 1}`**       |
+| `abstentionReasons`                  | `llm 75`, `threshold 0`, `answered 425`  |
+| IE / TR / MR / KU / ABS              | 134 / 94 / 84 / 62 / 30 = **404**        |
 | control (mean of three adopted runs) | 134 / 94.75 / 84.25 / 62.5 / 29.25 = 405 |
 
 Against the pre-registration: **P1 passes** (10 attempts inside `[10, 20]`, one answered), **P3 and P4

@@ -9,7 +9,7 @@
 Before this package, `cortex-core`'s four cognitive primitives —
 `decideWrite`, `decideRetrieval`, `consolidate`, `resolveContradiction` — had
 **zero production callers**. Their only references were the barrel and their own
-unit tests. The cognitive layer was not wrong; it was *unreachable*, and a layer
+unit tests. The cognitive layer was not wrong; it was _unreachable_, and a layer
 nothing can reach is a layer nothing can measure.
 
 `cortex-memory` is the seam that makes it reachable. Its one job:
@@ -37,13 +37,13 @@ shape into a package whose stated purpose is to replace that shape.
 
 The measurable difference is **what decides admission**:
 
-| | Reference pipeline | `cortex-memory` |
-| --- | --- | --- |
-| Admission | lexical / embedding retrieval score clears a threshold | `cortex-core`'s value function clears a threshold |
-| Prompt shape | eleven builders, one per capability, each restating the layout | one builder parameterised by an answer contract |
-| Abstention | the model is asked to notice the absence | the gate detects it before the model is consulted |
+|              | Reference pipeline                                             | `cortex-memory`                                   |
+| ------------ | -------------------------------------------------------------- | ------------------------------------------------- |
+| Admission    | lexical / embedding retrieval score clears a threshold         | `cortex-core`'s value function clears a threshold |
+| Prompt shape | eleven builders, one per capability, each restating the layout | one builder parameterised by an answer contract   |
+| Abstention   | the model is asked to notice the absence                       | the gate detects it before the model is consulted |
 
-The third row is the one that can be *mechanically* better rather than merely
+The third row is the one that can be _mechanically_ better rather than merely
 different: a `retrieve: false` from `decideRetrieval` is a machine-derived
 abstention, and it cannot hallucinate and does not cost a request.
 
@@ -80,17 +80,17 @@ needed.
 
 ## 5. The routing declarations
 
-`runBenchmark` routes on the *presence* of optional members, so what
+`runBenchmark` routes on the _presence_ of optional members, so what
 `CortexMemory` declares is not style — it is the thing under test.
 
-| Member | Declared | Mechanism |
-| --- | --- | --- |
-| `answerSessions` | **required** | Session boundaries. Without it the system is not session-aware and MR questions fall to the flat path. |
-| `answerTemporal?` | yes | The question date is the reference point for relative time, and the flat path cannot receive it at all. |
-| `answerAbstention?` | yes | **Gate mechanism.** `decideRetrieval`'s below-threshold result is a machine-derived abstention. |
-| `answerAssistant?` | yes | Evidence for `single-session-assistant` questions lives in an assistant turn. |
-| `answerKnowledgeUpdate?` | yes | **Gate mechanism.** A previous-vs-current question is a bitemporal query, and `cortex-core` carries `currentFacts` / `currentValue` / `findContradictions` for it. |
-| `answerPreference?` | **deferred** | A gate filters *evidence*; a preference question asks for a *suggestion*. Declaring it would route questions into a path with no mechanism behind it. |
+| Member                   | Declared     | Mechanism                                                                                                                                                          |
+| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `answerSessions`         | **required** | Session boundaries. Without it the system is not session-aware and MR questions fall to the flat path.                                                             |
+| `answerTemporal?`        | yes          | The question date is the reference point for relative time, and the flat path cannot receive it at all.                                                            |
+| `answerAbstention?`      | yes          | **Gate mechanism.** `decideRetrieval`'s below-threshold result is a machine-derived abstention.                                                                    |
+| `answerAssistant?`       | yes          | Evidence for `single-session-assistant` questions lives in an assistant turn.                                                                                      |
+| `answerKnowledgeUpdate?` | yes          | **Gate mechanism.** A previous-vs-current question is a bitemporal query, and `cortex-core` carries `currentFacts` / `currentValue` / `findContradictions` for it. |
+| `answerPreference?`      | **deferred** | A gate filters _evidence_; a preference question asks for a _suggestion_. Declaring it would route questions into a path with no mechanism behind it.              |
 
 Deferring `answerPreference` is asserted, not assumed: the conformance suite
 checks that preference questions reach the flat path and that the contract tail
@@ -132,14 +132,14 @@ revisits a decision:
 
 A prompt that loses (1) and keeps (3) removes the ability to decline. A prompt
 that loses (2) and keeps (1) is at least evaluable — the model abstains. The
-tests assert monotonicity across *every* budget, not one boundary, which is what
+tests assert monotonicity across _every_ budget, not one boundary, which is what
 distinguishes a priority order from two heuristics that agree at the sampled
 points.
 
 ### 6.3 Two redundant branches, deleted rather than covered
 
 `isAbstention` carried a trailing-label rule and a "leading label on a
-single-line response" rule. For a single-line response the last line *is* the
+single-line response" rule. For a single-line response the last line _is_ the
 whole text, so the second rule could never decide anything the first had not.
 Two rules that always agree are one rule with a redundant copy.
 
@@ -184,7 +184,7 @@ only always-false. Three consequences, each wrong independently of any benchmark
 `GateOptions.sourceTrust?: number` fixes all three at once, and its **default does
 not move**. That is what separates the change from a re-tuning: a caller who sets
 nothing gets the previous behaviour, so every measurement taken before the field
-existed keeps its meaning, and only the *reachable* set grows. Verified after the
+existed keeps its meaning, and only the _reachable_ set grows. Verified after the
 change: `sourceTrust: 1` yields value `1`, a threshold of `0.6` admits a
 fully-trusted turn and rejects a default one.
 
@@ -214,11 +214,11 @@ range it is compared against.**
 The cause is structural, and `admitTurns` had fixed all three factors for every
 turn it constructs:
 
-| Factor | Value | Why it could not vary |
-| --- | --- | --- |
-| `confidence` | `1` | not passed, so `createMemory` defaulted it |
-| `sourceTrust` | one value | one value per admission by definition |
-| `recency` | `1` | `lastAccessedAt === createdAt === now`, so `exp(0)` |
+| Factor        | Value     | Why it could not vary                               |
+| ------------- | --------- | --------------------------------------------------- |
+| `confidence`  | `1`       | not passed, so `createMemory` defaulted it          |
+| `sourceTrust` | one value | one value per admission by definition               |
+| `recency`     | `1`       | `lastAccessedAt === createdAt === now`, so `exp(0)` |
 
 `GateOptions.confidenceFor?: (turn: string) => number` is the repair, and
 `confidence` is the only factor with room. It is a callback rather than a
@@ -231,14 +231,14 @@ is lexical overlap, retrieval rank, or an embedding score, and none of those can
 be computed here — `cortex-memory` depends on `cortex-core` only and reads no
 embedding model, so measuring turn quality in the composition layer would make it
 depend on a retrieval mechanism it exists to sit above. This layer owns the
-*mechanism*; whoever has a *measurement* injects one. It is the same boundary
+_mechanism_; whoever has a _measurement_ injects one. It is the same boundary
 `valueFunction` and `CortexMemoryOptions.llm` already use.
 
 `confidence.ts` ships one signal anyway — `confidenceFromLength`, monotone
 saturation over `min(1, length / 2000)` — and the reason is the arm: a
 registration whose variation is a private closure inside an excluded entry point
 is variation no test can reach and no reader can audit. It is chosen for being the
-*weakest* defensible signal: no model, no vocabulary, no tuning corpus, and
+_weakest_ defensible signal: no model, no vocabulary, no tuning corpus, and
 legible enough that a reader can check it by eye. It is not a claim that length
 predicts relevance, and the arm's artifact records which signal ran.
 
@@ -263,24 +263,24 @@ keeps its meaning.
 
 ## 7. Defect injection
 
-Six injections, each expected to be caught by a *different* subset:
+Six injections, each expected to be caught by a _different_ subset:
 
-| # | Injection | Caught by | Count |
-| --- | --- | --- | --- |
-| 1 | `answerTemporal` routed through the flat path, dropping `questionDate` | `memory-conformance.test.ts` | 2 / 126 |
-| 2 | Write threshold tightened by `1e-9` | `admission.test.ts` | **0 / 126 at first** → 2 / 129 after adding the equality test |
-| 3 | Session labels dropped from `formatEvidence` | `prompt.test.ts` + `branch-coverage.test.ts` | 2 / 129 |
-| 4 | `sourceTrust` field ignored, reverted to the literal `0.5` | `admission.test.ts` + `index.test.ts` | 4 / 144 |
-| 5 | `sourceTrust` hardcoded in `toMemoryArmConfig`, discarding the parsed value | `bench-memory-arm.test.ts` | 1 / 45 |
-| 6 | Dispatched key renamed so it no longer matches a declared workflow input | `test_dispatch_inputs.py` | 2 / 4 |
-| 7 | `confidenceFor` ignored, so per-turn variation never reaches the value | `retrieval-discrimination.test.ts` | 6 / 8 |
-| 8 | `validateConfidence`'s range check relaxed to only `value < 0` | `retrieval-discrimination.test.ts` | 1 / 8 |
-| 9 | `confidenceFor` forwarding dropped from `admissionOptionsFrom` | `index.test.ts` | 2 / 9 |
-| 10 | `validateConfidence` clamped instead of throwing | `retrieval-discrimination.test.ts` | 1 / 8 |
+| #   | Injection                                                                   | Caught by                                    | Count                                                         |
+| --- | --------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------- |
+| 1   | `answerTemporal` routed through the flat path, dropping `questionDate`      | `memory-conformance.test.ts`                 | 2 / 126                                                       |
+| 2   | Write threshold tightened by `1e-9`                                         | `admission.test.ts`                          | **0 / 126 at first** → 2 / 129 after adding the equality test |
+| 3   | Session labels dropped from `formatEvidence`                                | `prompt.test.ts` + `branch-coverage.test.ts` | 2 / 129                                                       |
+| 4   | `sourceTrust` field ignored, reverted to the literal `0.5`                  | `admission.test.ts` + `index.test.ts`        | 4 / 144                                                       |
+| 5   | `sourceTrust` hardcoded in `toMemoryArmConfig`, discarding the parsed value | `bench-memory-arm.test.ts`                   | 1 / 45                                                        |
+| 6   | Dispatched key renamed so it no longer matches a declared workflow input    | `test_dispatch_inputs.py`                    | 2 / 4                                                         |
+| 7   | `confidenceFor` ignored, so per-turn variation never reaches the value      | `retrieval-discrimination.test.ts`           | 6 / 8                                                         |
+| 8   | `validateConfidence`'s range check relaxed to only `value < 0`              | `retrieval-discrimination.test.ts`           | 1 / 8                                                         |
+| 9   | `confidenceFor` forwarding dropped from `admissionOptionsFrom`              | `index.test.ts`                              | 2 / 9                                                         |
+| 10  | `validateConfidence` clamped instead of throwing                            | `retrieval-discrimination.test.ts`           | 1 / 8                                                         |
 
 Injection 2 is the instructive one. It passed every test in its first run,
 because every threshold assertion sat clearly on one side of the line and none
-of them exercised *equality*. `decideWrite` uses `>=`, so the boundary is a real
+of them exercised _equality_. `decideWrite` uses `>=`, so the boundary is a real
 behaviour with a real observable difference, and it was untested until the
 injection said so. The three equality tests added in response are the reason the
 table's third column changes between runs.

@@ -12,8 +12,8 @@ four against the backend it is about to use, and a file from any other backend i
 Version-1 files are refused too, because a record with no origin cannot be trusted.
 
 **This closes the last gap in a fix that was already specified.** `AUDIT-ZHIPU-429-ROOT-CAUSE.md` §7
-lists five requirements and makes item 5 — *"record the embedding provenance … so two runs can be
-compared without assuming"* — the one to do first, because "without it a green run and a red run are
+lists five requirements and makes item 5 — _"record the embedding provenance … so two runs can be
+compared without assuming"_ — the one to do first, because "without it a green run and a red run are
 not comparable". Items 1–4 landed and item 5 landed in the **report**; the **cache file** kept
 travelling without one. The two halves were specified together and only one was built, which is why a
 cache could be older than the model that read it and no counter would object.
@@ -36,12 +36,12 @@ from a different space, and it had no way to notice.
 **Every counter in the artifact reads healthy in that state.** This is what makes it a measurement
 defect rather than a cache bug:
 
-| counter | why it cannot see it |
-| --- | --- |
+| counter                                | why it cannot see it                                                                                                                   |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `embedding.determinism max abs diff 0` | it embeds the same text twice **in one process** and compares. A model change is constant across both calls, so the difference stays 0 |
-| `returnedDimensions 1024` | a foreign model at the same width passes |
-| `cache restored N vectors` | N is a count of entries, not a claim about their origin |
-| per-capability accuracy | moves, which is what one is trying to explain, not what identifies the cause |
+| `returnedDimensions 1024`              | a foreign model at the same width passes                                                                                               |
+| `cache restored N vectors`             | N is a count of entries, not a claim about their origin                                                                                |
+| per-capability accuracy                | moves, which is what one is trying to explain, not what identifies the cause                                                           |
 
 ## 2. The code that was there
 
@@ -95,19 +95,19 @@ This costs a re-embed on the next dispatch of both workflows — see §5.
 
 `embedding-cache-provenance.test.ts`, 11 cases, written before the implementation (7 red):
 
-| assertion | what it rules out |
-| --- | --- |
-| control: same provenance round-trips | a fix that broke the working path |
-| different `model` id | the realistic case — a model rename at the same vendor |
-| different `baseUrl` | the same model served from another endpoint |
-| different `provider` at the same width | `hash` fallback vs HTTP, both configured to N |
-| provenance declares a width its payload does not have | a header edited to match |
-| error names both backends | a log line that cannot diagnose itself |
-| version-1 buffer refused | inheriting an unattributable file |
-| foreign magic still rejected first | the check order not regressing |
-| `hash` provenance with null model and endpoint round-trips | a null-field comparison treated as a mismatch |
-| empty cache round-trips under its provenance | the writer publishes empty files on purpose |
-| a 500-character `baseUrl` round-trips | a header offset assumed to be constant (the old one was 13 bytes) |
+| assertion                                                  | what it rules out                                                 |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| control: same provenance round-trips                       | a fix that broke the working path                                 |
+| different `model` id                                       | the realistic case — a model rename at the same vendor            |
+| different `baseUrl`                                        | the same model served from another endpoint                       |
+| different `provider` at the same width                     | `hash` fallback vs HTTP, both configured to N                     |
+| provenance declares a width its payload does not have      | a header edited to match                                          |
+| error names both backends                                  | a log line that cannot diagnose itself                            |
+| version-1 buffer refused                                   | inheriting an unattributable file                                 |
+| foreign magic still rejected first                         | the check order not regressing                                    |
+| `hash` provenance with null model and endpoint round-trips | a null-field comparison treated as a mismatch                     |
+| empty cache round-trips under its provenance               | the writer publishes empty files on purpose                       |
+| a 500-character `baseUrl` round-trips                      | a header offset assumed to be constant (the old one was 13 bytes) |
 
 `bench-memory-arm-cache.test.ts` adds two at the layer a run actually touches: a file written under
 another model restores **0** and forces every turn back to the provider; the same holds when only
@@ -131,15 +131,15 @@ fallback. **Every clause of that is wrong, and `AUDIT-ZHIPU-429-ROOT-CAUSE.md` h
 `429` from this vendor carries error code `1305`, `模型当前访问量过大` — a **model concurrency cap**,
 not a balance. "A funded account cannot be exhausted by definition of the error code" is that
 document's §5, written about exactly this misreading, and the offline fallback is named there as a
-remedy that *"would have masked all three defects"*.
+remedy that _"would have masked all three defects"_.
 
 The correct arithmetic, at the limits the audit tabulates:
 
-| quantity | value |
-| --- | --- |
-| turns to embed | ~115,000 |
-| entries per request (documented ceiling, which the adapter sits at) | 64 |
-| requests | ~1,800 |
+| quantity                                                                | value      |
+| ----------------------------------------------------------------------- | ---------- |
+| turns to embed                                                          | ~115,000   |
+| entries per request (documented ceiling, which the adapter sits at)     | 64         |
+| requests                                                                | ~1,800     |
 | cost of pacing the batch loop at 100 ms (`embedding_batch_interval_ms`) | ~3 minutes |
 
 So there is no prerequisite and no obstacle: the run is ~1,800 paced requests, and the pacing input

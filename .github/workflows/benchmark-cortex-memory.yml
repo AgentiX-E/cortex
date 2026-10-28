@@ -39,12 +39,12 @@ on:
   workflow_dispatch:
     inputs:
       limit:
-        description: 'Sample size (0 = full 500-question dataset). The pre-registration fixes 0; the default is the main benchmark''s to keep an unconfigured dispatch cheap'
+        description: "Sample size (0 = full 500-question dataset). The pre-registration fixes 0; the default is the main benchmark's to keep an unconfigured dispatch cheap"
         required: false
         default: '60'
         type: string
       ablation_runs:
-        description: 'Number of runs per ablation (keep at 1: shared answer caches make extra runs redundant). The pre-registration fixes 4 for the arm''s own comparisons'
+        description: "Number of runs per ablation (keep at 1: shared answer caches make extra runs redundant). The pre-registration fixes 4 for the arm's own comparisons"
         required: false
         default: '1'
         type: string
@@ -69,7 +69,7 @@ on:
         default: '0'
         type: string
       cortex_memory:
-        description: 'Run the cortex-memory A/B: 1 = run it, 0 = nothing. Defaults to 1 because this workflow exists for that one arm -- the toggle is kept rather than removed so a dispatch can still ask for an empty run, and it is forwarded rather than hardcoded so the arm''s own reader (`readToggle`, which recognises only the literal 1) has a single source of truth'
+        description: "Run the cortex-memory A/B: 1 = run it, 0 = nothing. Defaults to 1 because this workflow exists for that one arm -- the toggle is kept rather than removed so a dispatch can still ask for an empty run, and it is forwarded rather than hardcoded so the arm's own reader (`readToggle`, which recognises only the literal 1) has a single source of truth"
         required: false
         default: '1'
         type: string
@@ -148,13 +148,13 @@ on:
         required: false
         default: ''
         type: string
-      cortex_memory_budget_minutes:
-        description: 'Per-pass wall-clock ceiling in minutes (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.30): empty = no ceiling, which is what every archived run was produced under; a positive number = abandon any single pass that exceeds it. Section 13.30 is why this exists: run 38725510400 hung for OVER FIVE HOURS inside the reference pipeline first question and never ended -- the job-level timeout-minutes: 240 did not fire -- so its durable record was EMPTY rather than thin, which is worse than the run before it, whose TimeoutError at least reached catch and produced a benchmark-error.log. The ceiling is enforced between questions by the pass itself, so a hang ends with a record naming the question it stopped at; it cannot interrupt a request already in flight, and cortex-llm per-attempt timeout bounds that one. Set well above what any healthy pass has measured (a completed run is about 3h32m for eight passes): a ceiling that fires on a slow pass destroys the measurement it was meant to protect. A value of 0 or below is REJECTED rather than treated as no ceiling, because it would abandon every pass before its first question -- a failed run reading as a healthy configuration'
+      cortex_memory_prompt_contract:
+        description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
         required: false
         default: ''
         type: string
-      cortex_memory_prompt_contract:
-        description: 'Evidence rendering the cortex-memory arm uses: empty or abstention = the baseline rendering (numbered turns, blank-line separated); abstention-evidence-blocks = every turn labelled with its source memory id, so a boundary the admission layer preserved is visible to the model rather than implied by position (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 12.5, 12.9). This is the single variable of the 12.5 experiment: 12.4 measured b-to-f repairs of zero on every capability with the feature abstentions attributed to the model, and 12.3 measured that no retrieval threshold can carry the arm, so what remains is what the arm PRESENTS. It is a RENDERING and not a contract override: every route keeps its own instruction block and only the evidence presentation moves, which is why it now reaches all six dispatched routes rather than the abstention route alone. The gate inputs are deliberately unchanged by this switch. An unrecognised value is REJECTED rather than defaulted to the baseline, because a run dispatched to test a rendering that silently ran the baseline would publish a delta reading as evidence the rendering does not help'
+      cortex_memory_rerank:
+        description: 'Cross-encoder reranking over the retrieved pool, the one stage RAW-RAG has and this arm does not (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.115 and SOTA-LANDSCAPE.md 4.9). Empty or none = the retrieved order is the order the budget spends, which is every prior artifact; on or openai = score each (question, turn) pair through an OpenAI-compatible /rerank endpoint -- the Runner points it at Zhipu rerank -- and reorder the whole retrieved pool before the budget sees it. The mechanism is not an optional refinement: removing the identical stage from RAW-RAG costs 3.92 points, more than any mechanism they added, and it is the largest single component of their pipeline. THREE PROPERTIES ARE PRE-REGISTERED AND THE ARTIFACT MUST SHOW ALL THREE. First, the pool must fit the endpoint in ONE call: Zhipu accepts 128 documents of at most 4096 characters each and rejects the whole call above either bound, so this arm runs relevance_top_k=128 here and the 128-document limit is declared in the job env as CORTEX_MEMORY_RERANK_MAX_DOCUMENTS -- the index REFUSES a wider pool at construction rather than batching it, because relevance_score is normalised per call and a batch-local winner can outrank a true winner while every number still looks plausible. Second, fallbacks must be zero: cortex-core rerankHits degrades to the retrieved order on a thrown request, a short reply or a non-finite score, so an arm whose endpoint answered 401 five hundred times produces the same accuracy as one whose cross-encoder agreed with the retriever every time. fallbacks > 0 is registered as an ASSEMBLY FAILURE, not as evidence that reranking does not help, and the report prints that sentence beside the counters. Third, changed is reported beside fallbacks because they are the two halves of did the stage do anything: 0 and 0 is a cross-encoder that ran and confirmed the ranking, which is a result, while 500 and 0 is a stage that never executed. Passages longer than the per-document limit are clipped at the boundary and counted separately, so the reader can see how often the ordering judged a prefix -- the reader itself still sees the whole turn. The control is the same arm at the same pool width without the stage, so the only variable is the reranking; section 13.4 requires this dispatch to follow the budget decision rather than run beside it, because both change what the reader sees'
         required: false
         default: ''
         type: string
@@ -166,6 +166,26 @@ env:
   DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
   ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
   HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  # Section 13.115's endpoint. Machine configuration rather than an experimental variable, so it lives
+  # here and not in the dispatch's input list -- which is now at GitHub's 25-input ceiling, a constraint
+  # this file's header records. Zhipu's /rerank is the OpenAI-compatible shape cortex-ai already speaks,
+  # and its key is already in the Runner, so the stage costs no new secret.
+  # Section 13.30's per-pass wall-clock ceiling, now a workflow constant rather than a dispatch input.
+  # It is a HANG DETECTOR, not an experimental variable: 90 minutes is about three and a half times the
+  # longest pass any completed run has produced on this arm (a full run is roughly 3h32m for eight
+  # passes). It moved out of the input list when the reranking switch needed the slot -- the surface
+  # sits one below GitHub's 25-input ceiling, and `test_dispatch_inputs.py` refuses a workflow that
+  # reaches it. The precedent is `evidenceTurnsPerRecord` (section 13.94): a value that is a
+  # writability guard rather than a treatment belongs in the job, where a reader of a run looks anyway.
+  CORTEX_MEMORY_BUDGET_MINUTES: '90'
+  CORTEX_MEMORY_RERANK_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+  CORTEX_MEMORY_RERANK_MODEL: rerank
+  # The endpoint's published wire limits: 128 documents per call, 4096 characters per document. The
+  # first is what forces relevance_top_k=128 on this arm (the index refuses a wider pool rather than
+  # batching it); the second is why long turns are clipped at the boundary and counted.
+  CORTEX_MEMORY_RERANK_MAX_DOCUMENTS: '128'
+  CORTEX_MEMORY_RERANK_MAX_DOCUMENT_CHARS: '4096'
+  RERANK_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
 
 jobs:
   cortex-memory-ablation:
@@ -344,6 +364,12 @@ jobs:
           # which turns survive the write gate and this decides which admitted turns
           # the prompt budget buys, so moving it cannot change an admission decision.
           # That separation is what keeps a non-zero delta attributable to one change.
+          # Section 13.115's switch, on its own line for the reason every other arm input is: the
+          # product defaults a blank to off, and defaulting here instead would put the same default in
+          # two places. `on` turns the cross-encoder on for this arm ONLY -- the reference pipeline's
+          # switch is `CORTEX_RERANK`, which stays unset, so the paired control keeps the shipped
+          # ranking and the delta measures the stage rather than a reranked pair.
+          CORTEX_MEMORY_RERANK: ${{ github.event.inputs.cortex_memory_rerank }}
           CORTEX_MEMORY_RELEVANCE: ${{ github.event.inputs.cortex_memory_relevance }}
           # The width the index is built at, on its own line rather than folded into
           # the signal because the two are different claims: the name says a ranking
@@ -390,7 +416,6 @@ jobs:
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
           # The per-pass ceiling, passed the same way. Blank means no ceiling, and the
           # arm rejects a non-positive one rather than reading it as "unset".
-          CORTEX_MEMORY_BUDGET_MINUTES: ${{ github.event.inputs.cortex_memory_budget_minutes }}
           # Section 13.12's bound, passed the same way. It is what keeps the run from
           # dying at the JSON write: run 38003036421 graded all four runs of all five
           # hundred questions and then lost the whole measurement to

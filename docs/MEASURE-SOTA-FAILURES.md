@@ -12,34 +12,34 @@ found. Of the 96, **45 are the reader declining** on evidence it was given and *
 answering wrong**. And the declines are mostly **one response shape**: 21 of them are a bare
 `INSUFFICIENT_EVIDENCE` with nothing around it, on routes whose ask already calls that an invalid
 response — while **29 of `ABS`'s 30 correct answers are that same bare token**. So the single largest
-failure source on the best arm this repository has is a shape that is *optimal* on the one capability
+failure source on the best arm this repository has is a shape that is _optimal_ on the one capability
 that grades it and unpunished on the four that do not. Two shapes account for most of the rest:
 **12 of MR's 37 misses answer exactly one lower than gold**, and TR's remaining declines read a hedge
 word in the evidence as a disqualifier.
 
 ## 1. The decomposition
 
-| capability | n | correct | failures | declined | answered wrong |
-| --- | --- | --- | --- | --- | --- |
-| IE | 150 | 134 | 16 | **12** | 4 |
-| KU | 72 | 62 | 10 | 2 | 8 |
-| MR | 121 | 84 | **37** | 10 | **27** |
-| TR | 127 | 94 | 33 | **21** | 12 |
-| ABS | 30 | 30 | 0 | — | — |
-| **all** | **500** | **404** | **96** | **45** | **51** |
+| capability | n       | correct | failures | declined | answered wrong |
+| ---------- | ------- | ------- | -------- | -------- | -------------- |
+| IE         | 150     | 134     | 16       | **12**   | 4              |
+| KU         | 72      | 62      | 10       | 2        | 8              |
+| MR         | 121     | 84      | **37**   | 10       | **27**         |
+| TR         | 127     | 94      | 33       | **21**   | 12             |
+| ABS        | 30      | 30      | 0        | —        | —              |
+| **all**    | **500** | **404** | **96**   | **45**   | **51**         |
 
-`ABS`'s thirty abstentions are correct by construction — its gold *is* a decline — and are excluded
+`ABS`'s thirty abstentions are correct by construction — its gold _is_ a decline — and are excluded
 from the declined column. Every other row's declined count is a miss.
 
 ### 1.1 The row that settles what kind of problem this is
 
 | capability | gold turns present, as a fraction of the question's gold set | questions with **no** gold turn in the prompt |
-| --- | --- | --- |
-| IE | 75/150 complete, 150/150 at least one | 0 |
-| KU | 5/72 complete, 72/72 at least one | 0 |
-| MR | 85/121 complete, 121/121 at least one | 0 |
-| TR | 89/127 complete, 127/127 at least one | 0 |
-| ABS | 2/30 complete, 30/30 at least one | 0 |
+| ---------- | ------------------------------------------------------------ | --------------------------------------------- |
+| IE         | 75/150 complete, 150/150 at least one                        | 0                                             |
+| KU         | 5/72 complete, 72/72 at least one                            | 0                                             |
+| MR         | 85/121 complete, 121/121 at least one                        | 0                                             |
+| TR         | 89/127 complete, 127/127 at least one                        | 0                                             |
+| ABS        | 2/30 complete, 30/30 at least one                            | 0                                             |
 
 **Zero questions in five hundred have no gold turn in the prompt.** This is the arm's defining
 property and it is what makes it a different system from the reference pipeline: with a 256-wide
@@ -48,7 +48,7 @@ score is decided entirely by what the reader does with it.
 
 Partial carriage is common (36 of 121 MR questions, 38 of 127 TR) and it costs accuracy — 75.3%
 against 55.6% on MR, 83.1% against 52.6% on TR — but it cannot be the whole gap, because the
-questions that carry the *complete* gold set are still wrong **21 times out of 85** on MR.
+questions that carry the _complete_ gold set are still wrong **21 times out of 85** on MR.
 
 ### 1.2 What the artifact says, and what it cannot
 
@@ -61,7 +61,7 @@ against a 48,000 ceiling on MR and 47,130 against the same ceiling on TR.
 
 Three things it cannot say, and this document does not pretend otherwise:
 
-1. **Whether a *phrase* survived.** A gold turn enters the prompt through a 400-character cap on
+1. **Whether a _phrase_ survived.** A gold turn enters the prompt through a 400-character cap on
    `multi-session,temporal`. Measured: the answer phrase starts beyond character 400 in 4 MR
    questions and 0 TR questions, so the cap is not cutting answers materially — but the field that
    would tell you directly does not exist.
@@ -79,11 +79,11 @@ Three things it cannot say, and this document does not pretend otherwise:
 Forty-five of ninety-six. By route:
 
 | capability | declined | share of that capability's misses |
-| --- | --- | --- |
-| TR | 21 | **64%** |
-| IE | 12 | 75% |
-| MR | 10 | 27% |
-| KU | 2 | 20% |
+| ---------- | -------- | --------------------------------- |
+| TR         | 21       | **64%**                           |
+| IE         | 12       | 75%                               |
+| MR         | 10       | 27%                               |
+| KU         | 2        | 20%                               |
 
 The gate itself is not at fault: `decisionReasons` reads `{empty: 0, threshold: 0, llm: 75}`, so not
 one of the 75 declines is a gate firing on an empty or low-scoring pool. Every one is the model's.
@@ -104,17 +104,17 @@ What is new here is three things, and only three:
 2. **`IE` at 12 of 12.** The earlier per-capability tables covered TR and MR; IE's declines are the
    same shape, plus a gold-shape fact §2.5 records.
 3. **The retry attribution in §2.3** — that nine of MR's ten recorded declines are the recovery pass's
-   *second* answer, which no field declares.
+   _second_ answer, which no field declares.
 
 Stripping the token and measuring what is left:
 
-| capability | declines | **bare token** (≤ 40 characters left) | does that route run a recovery pass? |
-| --- | --- | --- | --- |
-| IE | 12 | **12** | no (`flat`) |
-| KU | 2 | 0 | no |
-| MR | 10 | **9** | **yes** (`reviewPass: recover`) |
-| TR | 21 | **9** | no (`temporal`) |
-| **ABS (correct declines)** | **30** | **29** | no |
+| capability                 | declines | **bare token** (≤ 40 characters left) | does that route run a recovery pass? |
+| -------------------------- | -------- | ------------------------------------- | ------------------------------------ |
+| IE                         | 12       | **12**                                | no (`flat`)                          |
+| KU                         | 2        | 0                                     | no                                   |
+| MR                         | 10       | **9**                                 | **yes** (`reviewPass: recover`)      |
+| TR                         | 21       | **9**                                 | no (`temporal`)                      |
+| **ABS (correct declines)** | **30**   | **29**                                | no                                   |
 
 **`ABS` is the control, and it is the whole argument.** The thirty false-premise questions are the
 only population where a decline is the right answer, and **29 of their 30 answers are the bare
@@ -152,11 +152,11 @@ $ rg -n "planAbstentionRecovery" packages/cortex-memory/src/memory.ts
 
 So it reaches `multi-session` and nothing else. Three facts then line up exactly:
 
-| | value |
-| --- | --- |
+|                                   | value     |
+| --------------------------------- | --------- |
 | `recovery: {attempted, answered}` | **10, 1** |
-| MR declines | 10 |
-| MR declines that are bare tokens | **9** |
+| MR declines                       | 10        |
+| MR declines that are bare tokens  | **9**     |
 
 **Ten attempts, one conversion, nine bare retries.** The pass is handed the reader's own list, quotes
 it back, and the reader declines again — with the same bare token. So on this artifact the recorded
@@ -168,12 +168,12 @@ pass touched.** §5 counts it as an instrument gap.
 
 Two readings of §2.1's 21, and the honest one is the second:
 
-- *Extend the pass* to `temporal` and `flat`: 33 untried declines at MR's measured 1/10 is **+3**, and
+- _Extend the pass_ to `temporal` and `flat`: 33 untried declines at MR's measured 1/10 is **+3**, and
   MR's own retries are bare — so the pass's prompt does not fix this shape either. **+3 against a
   15-question marginal range is not measurable without pairing**, and the prior says it stays +3.
-- *Forbid the shape*: on the four capabilities whose gold is never a decline, a bare token is a
+- _Forbid the shape_: on the four capabilities whose gold is never a decline, a bare token is a
   **format violation**, and this repository already has a precedent for that — a reply in the wrong
-  shape gets one corrective consultation. That pass targets *the shape*, not the content, so it is
+  shape gets one corrective consultation. That pass targets _the shape_, not the content, so it is
   not blind to a reply that has no list to quote. **Population: 21 first-attempt + 9 retry = 30.**
 
 That is the registrable mechanism, and it is a parse-level constraint rather than a wording change,
@@ -183,7 +183,7 @@ made in this round**, because the shapes have to be counted before they are chan
 
 ### 2.4 The secondary shape, on TR only
 
-TR's twelve *reasoned* declines — 11 `prose-then-token` plus one `other`, per the classifier — share
+TR's twelve _reasoned_ declines — 11 `prose-then-token` plus one `other`, per the classifier — share
 one pattern, and it is worth naming because it is a different defect:
 
 ```
@@ -201,62 +201,62 @@ The clearest consecutive-day pair: Feb 14 ... and Feb 15 ... But Feb 15's ride i
 The reader found the two events, ordered them, and declined **because one carried the word
 "recently"**. Measured across the population: **8 of TR's 21 declines** contain a hedge word
 (`recently`, `about`, `around`, `a few`, `probably`, `might have`) — and **0 of IE's, KU's or MR's**
-do. So this is a TR-specific shape, at most 8 questions, and it is *not* the larger problem.
+do. So this is a TR-specific shape, at most 8 questions, and it is _not_ the larger problem.
 
 ### 2.5 IE's twelve declines are a question shape, not a reasoning failure
 
 Ten of IE's twelve declined questions carry a gold that begins **"The user would prefer …"** — they are
 `single-session-preference` questions, and the question text asks for a recommendation:
 
-| question | gold |
-| --- | --- |
-| "Can you recommend some recent publications or conferences that I might find interesting?" | "The user would prefer suggestions related to recent research papers …" |
-| "Can you suggest a hotel for my upcoming trip to Miami?" | "The user would prefer suggestions of hotels in Miami that offer great views …" |
-| "How much is the painting of a sunset worth in terms of the amount I paid for it?" | "The painting is worth triple what I paid for it." |
+| question                                                                                   | gold                                                                            |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| "Can you recommend some recent publications or conferences that I might find interesting?" | "The user would prefer suggestions related to recent research papers …"         |
+| "Can you suggest a hotel for my upcoming trip to Miami?"                                   | "The user would prefer suggestions of hotels in Miami that offer great views …" |
+| "How much is the painting of a sunset worth in terms of the amount I paid for it?"         | "The painting is worth triple what I paid for it."                              |
 
-Sixteen of IE's 134 *correct* answers are preference-shaped too, so the shape is answerable — but the
+Sixteen of IE's 134 _correct_ answers are preference-shaped too, so the shape is answerable — but the
 twelve that fail do so with a bare refusal, and the first one is a two-word lookup ("What breed is my
 dog?" → "Golden Retriever") whose gold turn was carried 12 of 12.
 
 So IE's declines are not "the preference route is broken". They are the same bare-token reflex landing
-on questions where an evidence-QA contract has no instruction for *"suggest something"* — the contract
+on questions where an evidence-QA contract has no instruction for _"suggest something"_ — the contract
 says answer from the evidence, and a recommendation request does not read like a question about the
 evidence. That is a distinct repair from §2.2's format constraint and is recorded rather than merged
 into it.
 
 ## 3. The second source: MR answers exactly one low, and the traces say why
 
-| delta from gold | count |
-| --- | --- |
-| **−1** | **12** |
-| > 3 (any direction) | 7 |
-| +1 | 2 |
-| +2 | 2 |
-| −2 | 2 |
-| non-numeric | 2 |
+| delta from gold     | count  |
+| ------------------- | ------ |
+| **−1**              | **12** |
+| > 3 (any direction) | 7      |
+| +1                  | 2      |
+| +2                  | 2      |
+| −2                  | 2      |
+| non-numeric         | 2      |
 
-Twelve of MR's twenty-seven answered-wrong misses are *exactly* one short. That is not a random
+Twelve of MR's twenty-seven answered-wrong misses are _exactly_ one short. That is not a random
 error distribution — a reader guessing would scatter.
 
 ### 3.1 The hypothesis this section first carried, and why it is dead
 
-The first draft reasoned from the ask's own contract to a mechanism: the contract says *"Do not reply
-`INSUFFICIENT_EVIDENCE` without first writing the Step 1 list"*, so an answer one low should be a list
+The first draft reasoned from the ask's own contract to a mechanism: the contract says _"Do not reply
+`INSUFFICIENT_EVIDENCE` without first writing the Step 1 list"_, so an answer one low should be a list
 one short. The lists are in `rawOutput`, so it was checkable in a script rather than in a dispatch, and
 it was checked:
 
-| list length relative to gold | count |
-| --- | --- |
-| exactly gold − 1 | **3 of 12** |
-| exactly gold | 4 of 12 |
-| shorter still (1 item against gold 3) | 3 of 12 |
-| longer than gold (8 against 5, 12 against 4) | 2 of 12 |
+| list length relative to gold                 | count       |
+| -------------------------------------------- | ----------- |
+| exactly gold − 1                             | **3 of 12** |
+| exactly gold                                 | 4 of 12     |
+| shorter still (1 item against gold 3)        | 3 of 12     |
+| longer than gold (8 against 5, 12 against 4) | 2 of 12     |
 
 **The list length bears no relation to the answer.** One case answers 2 from a one-item list against a
 gold of 3 (`10d9b85a`); another answers 22 from a three-item list against a gold of 23
 (`gpt4_2f91af09`). The count is not derived from the list, so "a list with one item missing" is not
-the mechanism, and the reasoning that produced it — *the contract orders these two steps, therefore
-they disagree* — was sound and wrong.
+the mechanism, and the reasoning that produced it — _the contract orders these two steps, therefore
+they disagree_ — was sound and wrong.
 
 ### 3.2 What the traces do say: the model merges two events the gold counts separately
 
@@ -279,23 +279,23 @@ Three items listed, two counted, one sentence of justification. The gold counts 
 
 Two clauses, and the first one wins when an event is mentioned in two sessions with different
 wording. `10d9b85a` shows the same shape without the de-dup sentence: gold "3 days", answered 2, and
-its single list item is *"2-day workshop attended on the 17th and 18th of April"* — two days
+its single list item is _"2-day workshop attended on the 17th and 18th of April"_ — two days
 aggregated into one item before Step 2 was reached.
 
 **Measuring it across the arm, in the reader's own words**, with the model's echo of the instruction
 itself removed first (one of the twelve quoted the sentence back, which would otherwise have counted
 as a merge):
 
-| population | carries merge / de-dup language | rate |
-| --- | --- | --- |
-| exactly-one-low failures (n = 12) | **5** | **41.7%** |
-| correct answers (n = 84) | 4 | 4.8% |
+| population                        | carries merge / de-dup language | rate      |
+| --------------------------------- | ------------------------------- | --------- |
+| exactly-one-low failures (n = 12) | **5**                           | **41.7%** |
+| correct answers (n = 84)          | 4                               | 4.8%      |
 
 Fisher exact, two-sided: **p = 0.0012**.
 
 **What that is and is not.** It is an association between a sentence in the output and the outcome,
 not a manipulation — the sentence could be a rationalisation written after the count rather than the
-cause of it. It is also the first MR finding in this repository that is *specific enough to be wrong*:
+cause of it. It is also the first MR finding in this repository that is _specific enough to be wrong_:
 it predicts that a contract which forbids merging across sessions without a shared citation moves
 these five, and that the seven without merge language do not move at all.
 
@@ -305,7 +305,7 @@ measurable only as a **paired** comparison over the same 500 questions — which
 exists for, and which is why the next MR change should be registered with a discordant-pair criterion
 rather than a marginal one.
 
-### 3.3 What is *not* the cause, eliminated by measurement
+### 3.3 What is _not_ the cause, eliminated by measurement
 
 - **Prompt dilution.** `promptChars` median is 46,200 for correct answers and 46,173 for wrong ones
   on MR; 47,130 against 47,188 on TR. The budget binds identically on both populations, so "too much
@@ -321,7 +321,7 @@ rather than a marginal one.
 
 **The MR experiment that is running now tests a retrieval change on an arm whose retrieval is
 saturated.** `retrieval-session` can still move MR, but not by finding gold it was already finding;
-its only route to an effect is *budget allocation* — which of the other turns occupy the 48,000
+its only route to an effect is _budget allocation_ — which of the other turns occupy the 48,000
 characters around the gold. That is a legitimate mechanism and it is the one the reference pipeline
 differs by, but the registration's own framing ("the operation `reference-pipeline` performs and this
 arm cannot") overstated it: the reference pipeline's advantage is not recall, because we have recall.
@@ -330,13 +330,13 @@ recorded before the result is read rather than after.
 
 **The reference pipeline's 102/121 is not a retrieval result.** Both arms carry gold. Whatever the
 baseline does better is done to the reader or to the arrangement of the room, and 18 questions is
-what it is worth. That makes the gap *smaller in mechanism-space* than it looked — one lever, not two
+what it is worth. That makes the gap _smaller in mechanism-space_ than it looked — one lever, not two
 — and it is why §7 ranks by population rather than by evidence strength.
 
 ## 5. Two instrument gaps, and what closing them would cost
 
 1. **No per-question records for the baseline arm.** `ablation.baseline` carries aggregate metrics
-   only, so a paired comparison can compute a p-value over outcomes but cannot ask *why* the two
+   only, so a paired comparison can compute a p-value over outcomes but cannot ask _why_ the two
    arms differ on a specific question. Recording them costs one array in the artifact and no model
    call; it is not done here because the artifact is also the evidence archive and its size is
    already 50 MB.
@@ -344,7 +344,7 @@ what it is worth. That makes the gap *smaller in mechanism-space* than it looked
    a per-turn `renderedChars` would make "the cap cut the answer" a count instead of an inference.
    This is the same class as the two instrument defects the project has already found (a report that
    named neither of its two systems; a cache that named no model).
-3. **No field for the first attempt.** `rawOutput` is the *last* reply, so any question the recovery
+3. **No field for the first attempt.** `rawOutput` is the _last_ reply, so any question the recovery
    pass touched reports its retry. §2.3 is the arithmetic proof — `attempted 10, answered 1` and nine
    bare MR declines cannot both be true of first attempts when the module's own census says the first
    attempts carried lists. `firstRawOutput` would make "what did it say before we corrected it" a
@@ -353,26 +353,26 @@ what it is worth. That makes the gap *smaller in mechanism-space* than it looked
 
 ## 6. Where this leaves the numbers
 
-| | value | source |
-| --- | --- | --- |
-| `cortex-memory` end to end | **404/500 = 80.80%** | `40088479628` |
-| failures | **96** | above |
-| reader declined | **45** | §2 |
-| — of which a bare token | **30** (21 first attempt, 9 retry) | §2.1, §2.3 |
-| reader answered wrong | **51** | §3 |
-| failures attributable to missing evidence | **0** | §1.1 |
+|                                           | value                              | source        |
+| ----------------------------------------- | ---------------------------------- | ------------- |
+| `cortex-memory` end to end                | **404/500 = 80.80%**               | `40088479628` |
+| failures                                  | **96**                             | above         |
+| reader declined                           | **45**                             | §2            |
+| — of which a bare token                   | **30** (21 first attempt, 9 retry) | §2.1, §2.3    |
+| reader answered wrong                     | **51**                             | §3            |
+| failures attributable to missing evidence | **0**                              | §1.1          |
 
 ## 7. What the next change has to clear, and why the bar moved
 
 Three candidate mechanisms came out of this measurement, and each has a ceiling that can be stated
 before a dispatch:
 
-| candidate | population it addresses | ceiling | measurability at n=500 |
-| --- | --- | --- | --- |
+| candidate                                                                                                                   | population it addresses             | ceiling | measurability at n=500                                                |
+| --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------- | --------------------------------------------------------------------- |
 | **forbid the bare token on the four routes whose gold is never a decline** (§2.2) — **implemented as `reviewPass: 'bare'`** | **21 first-attempt + 9 retry = 30** | **+30** | paired; the largest population available anywhere in this measurement |
-| forbid cross-session merging without a shared citation (§3.2) | 5 MR | +5 | paired only — 5 is inside the 15-question marginal range (§2.3) |
-| extend `reviewPass: recover` to `temporal` and `flat` (§2.3) | 33 declines, ~1/10 convert | +3 | paired only, and its own retries are bare, so the prior says +3 |
-| a contract for hedged-but-sufficient evidence (§2.4) | 8 TR | +8 | paired |
+| forbid cross-session merging without a shared citation (§3.2)                                                               | 5 MR                                | +5      | paired only — 5 is inside the 15-question marginal range (§2.3)       |
+| extend `reviewPass: recover` to `temporal` and `flat` (§2.3)                                                                | 33 declines, ~1/10 convert          | +3      | paired only, and its own retries are bare, so the prior says +3       |
+| a contract for hedged-but-sufficient evidence (§2.4)                                                                        | 8 TR                                | +8      | paired                                                                |
 
 Note what changed here: the first draft's top candidate was "a contract for hedged evidence", sized
 "up to 45". The measurement cut it to **8** — the hedge word is a TR-only shape — and promoted a
@@ -392,12 +392,12 @@ once (a new treatment on `flat`/`temporal`, the absence of a retry on `multi-ses
 `39509698041` (`reviewPass: none`) the only difference is the treatment, and MR is identical in both
 by construction. That is the comparison the registration below is written against.
 
-| prediction | content | refutation |
-| --- | --- | --- |
-| P1 | the mechanism fires: `attempted` > 0 on a run whose declines include bare ones | `attempted` is 0 |
-| P2 | IE's declines fall from **12** and TR's from **21** — the 21 first-attempt bare declines are the population | either column moves by fewer than 3 questions |
-| P3 | `ABS` stays at **30/30** and `MR` does not move — neither route is reached | any movement on either |
-| P4 | the run costs at most ~35 extra calls (the 21 bare declines plus misclassification) | more than 80 |
+| prediction | content                                                                                                     | refutation                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| P1         | the mechanism fires: `attempted` > 0 on a run whose declines include bare ones                              | `attempted` is 0                              |
+| P2         | IE's declines fall from **12** and TR's from **21** — the 21 first-attempt bare declines are the population | either column moves by fewer than 3 questions |
+| P3         | `ABS` stays at **30/30** and `MR` does not move — neither route is reached                                  | any movement on either                        |
+| P4         | the run costs at most ~35 extra calls (the 21 bare declines plus misclassification)                         | more than 80                                  |
 
 P3 is the one that matters most: it is an internal control that the treatment did what its reach says
 and nothing else. A run where `ABS` moves is a run where the guard failed, whatever the other columns
@@ -407,16 +407,16 @@ say.
 
 Run `40615882821`, 500 questions, arm differing from `39509698041` in exactly one field (`reviewPass`).
 
-| | control | bare | Δ |
-| --- | --- | --- | --- |
-| **overall** | 80.80% (404) | **83.40% (417)** | **+13** |
-| IE | 93.33% | 93.33% | 0 |
-| **MR** | 65.29% (79) | 72.73% (88) | **+9** |
-| KU | 83.33% (60) | 80.56% (58) | −2 |
-| TR | 75.59% (96) | 80.31% (102) | +6 |
-| ABS | 96.67% (29) | 96.67% (29) | 0 |
-| `llm` declines | 61 | **52** | −9 |
-| `bareRetry` | — | **22 / 22 / 100.0%** | — |
+|                | control      | bare                 | Δ       |
+| -------------- | ------------ | -------------------- | ------- |
+| **overall**    | 80.80% (404) | **83.40% (417)**     | **+13** |
+| IE             | 93.33%       | 93.33%               | 0       |
+| **MR**         | 65.29% (79)  | 72.73% (88)          | **+9**  |
+| KU             | 83.33% (60)  | 80.56% (58)          | −2      |
+| TR             | 75.59% (96)  | 80.31% (102)         | +6      |
+| ABS            | 96.67% (29)  | 96.67% (29)          | 0       |
+| `llm` declines | 61           | **52**               | −9      |
+| `bareRetry`    | —            | **22 / 22 / 100.0%** | —       |
 
 **P1 is met and it is not ambiguous**: the pass fired 22 times and every one of the 22 produced an answer.
 This is the first time in this project's history that a treatment's firing is observable at all, and it is
@@ -430,13 +430,13 @@ measurement of run-to-run noise on a 121-question column: **9 questions**.
 
 That number re-reads every other column:
 
-| column | Δ | within the untreated-column noise of 9? |
-| --- | --- | --- |
-| MR (untreated) | +9 | — this *is* the noise estimate |
-| TR (treated) | +6 | **yes** |
-| KU (treated) | −2 | yes |
-| IE (treated) | 0 | yes |
-| overall | +13 | **yes** |
+| column         | Δ   | within the untreated-column noise of 9? |
+| -------------- | --- | --------------------------------------- |
+| MR (untreated) | +9  | — this _is_ the noise estimate          |
+| TR (treated)   | +6  | **yes**                                 |
+| KU (treated)   | −2  | yes                                     |
+| IE (treated)   | 0   | yes                                     |
+| overall        | +13 | **yes**                                 |
 
 So the honest reading is: **the mechanism is confirmed, the net effect is not.** A +13 with a 9-question
 noise floor measured in the same run cannot be separated into "the pass converted 13" and "the pass
@@ -478,24 +478,24 @@ prompt contains.
 
 Two runs per arm, same input set from `docs/ARM-PRESETS.md`, one field apart.
 
-| arm | run | overall | IE | MR | KU | TR | ABS | retries |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| control | `39509698041` | 404 | 140 | 79 | 60 | 96 | 29 | — |
-| control | `40620469763` | **399** | 137 | 81 | 61 | 91 | 29 | 0 |
-| bare | `40615882821` | **417** | 140 | 88 | 58 | 102 | 29 | **22 / 22** |
-| bare | `40620480416` | **415** | 139 | 87 | 65 | 95 | 29 | **19 / 19** |
+| arm     | run           | overall | IE  | MR  | KU  | TR  | ABS | retries     |
+| ------- | ------------- | ------- | --- | --- | --- | --- | --- | ----------- |
+| control | `39509698041` | 404     | 140 | 79  | 60  | 96  | 29  | —           |
+| control | `40620469763` | **399** | 137 | 81  | 61  | 91  | 29  | 0           |
+| bare    | `40615882821` | **417** | 140 | 88  | 58  | 102 | 29  | **22 / 22** |
+| bare    | `40620480416` | **415** | 139 | 87  | 65  | 95  | 29  | **19 / 19** |
 
 **The §7.2 conclusion is withdrawn and replaced.** §7.2 read the untreated-column movement as a nine-question
 noise floor and put the +13 inside it. With two runs per arm that reading is no longer available, because the
 repeats separate the two things it was conflating:
 
-| quantity | value |
-| --- | --- |
-| spread **within** the control arm | **5** questions (404, 399) |
-| spread **within** the bare arm | **2** questions (417, 415) |
-| the four possible arm-to-arm differences | **+13, +18, +16, +11** |
-| smallest arm-to-arm difference | **11** |
-| largest within-arm spread | **5** |
+| quantity                                 | value                      |
+| ---------------------------------------- | -------------------------- |
+| spread **within** the control arm        | **5** questions (404, 399) |
+| spread **within** the bare arm           | **2** questions (417, 415) |
+| the four possible arm-to-arm differences | **+13, +18, +16, +11**     |
+| smallest arm-to-arm difference           | **11**                     |
+| largest within-arm spread                | **5**                      |
 
 Eleven is more than twice five, and all four differences are positive. Under a null of no effect the signs are
 random, so four positives is p = 1/16 ≈ 0.06 — small-sample evidence, stated as such rather than dressed up.

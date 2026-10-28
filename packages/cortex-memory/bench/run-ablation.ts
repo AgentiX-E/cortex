@@ -38,8 +38,12 @@
  * admission and not a difference in what the model was asked.
  */
 import {
+  assertRerankReachesRanking,
   createLlmFromEnv,
+  createMemoryArmReranker,
   resolveReaderIdentity,
+  resolveRerankBounds,
+  resolveRerankIdentity,
   createEmbeddingWithProvenanceFromEnv,
   resolveEmbeddingProvenance,
   describeFailure,
@@ -66,6 +70,7 @@ import {
   runCortexMemoryArm,
   sampleInstances,
   toMemoryArmConfig,
+  toRerankRecord,
   type BenchmarkProgress,
   type EmbeddingPreflight,
   type ExpansionTarget,
@@ -362,7 +367,35 @@ async function main(): Promise<void> {
       ...(phrases === undefined ? {} : { queries: phrases }),
     };
   });
-  const relevanceOptions: RelevanceIndexOptions = { topK: armOptions.relevanceTopK };
+  // §13.115. The reranker is resolved from the arm's own switch and handed to the index below; the
+  // identity comes from the same resolver, so the model that reorders the pool and the model the
+  // artifact names cannot be two readings of one environment. `arm: true` is what keeps the switch
+  // off `CORTEX_RERANK`, which belongs to the reference pipeline this run pairs against.
+  const rerankIdentity = resolveRerankIdentity(process.env, { arm: true });
+  const rerankBounds = resolveRerankBounds(process.env);
+  const rerank = createMemoryArmReranker(process.env);
+  // Refused before any retrieval: an arm whose ranking cannot carry the stage must not produce a
+  // number at all, because its delta would be read as the reranker's verdict.
+  assertRerankReachesRanking(armOptions.relevanceSignal, rerankIdentity);
+  if (rerank !== undefined) {
+    console.log(
+      `Rerank stage: ${rerankIdentity.provider}` +
+        `${rerankIdentity.provider === 'none' ? '' : ` (${rerankIdentity.model ?? 'n/a'})`}`,
+    );
+  }
+  const relevanceOptions: RelevanceIndexOptions = {
+    topK: armOptions.relevanceTopK,
+    ...(rerank === undefined ? {} : { rerank }),
+    // The endpoint's declared wire limits travel with the stage, because they decide whether a pool of
+    // this width can be scored at all and how much of a long turn the ordering saw. Undeclared stays
+    // undeclared rather than defaulting to one vendor's numbers.
+    ...(rerankBounds.maxDocuments === null
+      ? {}
+      : { rerankMaxDocuments: rerankBounds.maxDocuments }),
+    ...(rerankBounds.maxDocumentChars === null
+      ? {}
+      : { rerankMaxDocumentChars: rerankBounds.maxDocumentChars }),
+  };
   // §13.63. Two mechanisms behind one name-typed switch, so the artifact's
   // `relevanceSignal` says which one ranked the turns and the two arms are comparable
   // across runs. `retrieval` is dense cosine alone and is what every archived run used;
@@ -401,7 +434,19 @@ async function main(): Promise<void> {
       `Relevance index: ${relevance.scoredPairs} scored (question, turn) pairs over ` +
         `${relevance.questions} questions at topK=${relevance.topK}`,
     );
+    // The stage's own line, because the artifact's counters are only trustworthy if the log and the
+    // report agree -- and because `fallbacks > 0` is worth seeing before a 40-minute run finishes.
+    if (relevance.rerank !== undefined) {
+      const { calls, pairs, fallbacks, changed, clipped } = relevance.rerank;
+      console.log(
+        `Rerank census: ${calls} calls, ${pairs} pairs, ${fallbacks} fallback(s), ` +
+          `${changed} question(s) reordered, ${clipped} passage(s) clipped`,
+      );
+    }
   }
+  // The identity and the census travel together into the artifact. Split, a report could name a model
+  // it never consulted -- the ambiguity §13.115 registers as unreadable rather than negative.
+  const rerankRecord = toRerankRecord(rerankIdentity, rerankBounds, relevance?.rerank);
 
   const feature = new CortexMemory({
     llm,
@@ -607,6 +652,10 @@ async function main(): Promise<void> {
       // and `temperature: null` states the fact §13.114 registers rather than the value the
       // workflow input claims.
       resolveReaderIdentity(process.env),
+      // §13.115: which scorer reordered the pool, and what it reported. Always present -- `provider:
+      // 'none'` for the control -- so an artifact written from here never leaves "dispatched the
+      // control" and "predates the field" as the same bytes.
+      rerankRecord,
     ),
     featureConfig: { cortexMemory: true },
     // Read from the parsed arm options, not decided here: §13.12 registers the

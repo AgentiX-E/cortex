@@ -5,12 +5,12 @@ falsifiable prediction.
 
 ## 0. Where the gap is, measured rather than assumed
 
-| arm | what it scores | number |
-| --- | --- | --- |
-| `cortex-session` | recall@10, 100 stratified LongMemEval questions | **87.0%** |
-| `lexical-reference` | recall@10, same questions | **89.0%** |
-| agentmemory V4 (self-reported) | **R@5**, same benchmark | 95.2% |
-| MemPalace (self-reported) | R@5, vector-only | 96.6% |
+| arm                            | what it scores                                  | number    |
+| ------------------------------ | ----------------------------------------------- | --------- |
+| `cortex-session`               | recall@10, 100 stratified LongMemEval questions | **87.0%** |
+| `lexical-reference`            | recall@10, same questions                       | **89.0%** |
+| agentmemory V4 (self-reported) | **R@5**, same benchmark                         | 95.2%     |
+| MemPalace (self-reported)      | R@5, vector-only                                | 96.6%     |
 
 Two cautions before this becomes a target. Their figure is R@5 and ours is @10 — a **harder** recall at a
 **larger** k is not a like-for-like pair, and the correct interpretation is "there is room", not "we are 8
@@ -21,15 +21,15 @@ its configuration.
 What makes this actionable rather than aspirational is that **the signal list is public**. agentmemory V4
 scores six of them:
 
-| signal | weight | do we have it |
-| --- | --- | --- |
-| semantic | 0.30 | yes — `relevance-hybrid` |
-| activation | 0.18 | **no** |
-| graph | 0.18 | **no** |
-| lexical / BM25 | 0.12 | yes — `relevance-hybrid` |
-| temporal | 0.12 | partially — date frame renders, nothing scores on it |
-| importance | 0.10 | **no** |
-| cross-encoder rerank | after fusion | **no** |
+| signal               | weight       | do we have it                                        |
+| -------------------- | ------------ | ---------------------------------------------------- |
+| semantic             | 0.30         | yes — `relevance-hybrid`                             |
+| activation           | 0.18         | **no**                                               |
+| graph                | 0.18         | **no**                                               |
+| lexical / BM25       | 0.12         | yes — `relevance-hybrid`                             |
+| temporal             | 0.12         | partially — date frame renders, nothing scores on it |
+| importance           | 0.10         | **no**                                               |
+| cross-encoder rerank | after fusion | **no**                                               |
 
 So the plan is not "invent retrieval". It is: three missing signals, one half-built signal, and one
 post-fusion stage, each added alone.
@@ -83,15 +83,15 @@ inputs in one place. The current `relevanceFor` callback stays as the seam — n
 
 ## 3. The increments, in the order they should run
 
-| # | signal | cost | prediction | refuted if |
-| --- | --- | --- | --- | --- |
-| **S-1** | temporal | zero — dates are already parsed and rendered | recall@10 **+3** on TR's 20 questions, ≤1 elsewhere | TR moves <2 of 20 |
-| **S-2** | activation | zero — `lastAccessedAt` and `createdAt` exist | +2 overall; **must not** move ABS | ABS moves at all |
-| **S-3** | graph | one pass over already-admitted turns | MR +3 of 20 (the cross-session population) | MR <2 of 20 |
-| **S-4** | importance | zero — entity density is a token count | +1, or nothing | it moves nothing, and is then **removed** |
-| **S-5** | cross-encoder rerank | 1 HTTP call per question, top-50 in → top-10 out | +2 overall at equal recall | recall drops while accuracy rises, which means it is re-ranking noise |
+| #       | signal               | cost                                             | prediction                                          | refuted if                                                            |
+| ------- | -------------------- | ------------------------------------------------ | --------------------------------------------------- | --------------------------------------------------------------------- |
+| **S-1** | temporal             | zero — dates are already parsed and rendered     | recall@10 **+3** on TR's 20 questions, ≤1 elsewhere | TR moves <2 of 20                                                     |
+| **S-2** | activation           | zero — `lastAccessedAt` and `createdAt` exist    | +2 overall; **must not** move ABS                   | ABS moves at all                                                      |
+| **S-3** | graph                | one pass over already-admitted turns             | MR +3 of 20 (the cross-session population)          | MR <2 of 20                                                           |
+| **S-4** | importance           | zero — entity density is a token count           | +1, or nothing                                      | it moves nothing, and is then **removed**                             |
+| **S-5** | cross-encoder rerank | 1 HTTP call per question, top-50 in → top-10 out | +2 overall at equal recall                          | recall drops while accuracy rises, which means it is re-ranking noise |
 
-S-1 first because it is the only one where the information is already in the prompt and only the *ordering*
+S-1 first because it is the only one where the information is already in the prompt and only the _ordering_
 is missing — the cheapest possible experiment with a real mechanism behind it. S-5 last because it is the
 only one with a per-question cost, and the cost has to be justified by the four ahead of it.
 
@@ -99,11 +99,11 @@ only one with a per-question cost, and the cost has to be justified by the four 
 
 Every row is a criterion in `docs/ACCEPTANCE-MATRIX.md`, not a wish in this file.
 
-| level | what must hold |
-| --- | --- |
-| **unit** | 100% statements on the new module; the fusion function's weight table is data, so a zero weight is asserted to reproduce the previous ranking exactly |
-| **controlled** | the ablation table (`assumption-ablation.ts` style) shows the signal moves **only** its targeted capability families |
-| **artifact** | the per-signal census appears in the report and is non-zero when the weight is non-zero — the `attempted: 0` rule, applied to retrieval |
+| level          | what must hold                                                                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **unit**       | 100% statements on the new module; the fusion function's weight table is data, so a zero weight is asserted to reproduce the previous ranking exactly                                                  |
+| **controlled** | the ablation table (`assumption-ablation.ts` style) shows the signal moves **only** its targeted capability families                                                                                   |
+| **artifact**   | the per-signal census appears in the report and is non-zero when the weight is non-zero — the `attempted: 0` rule, applied to retrieval                                                                |
 | **end to end** | 100-question recall@10 ≥ **93%** on `cortex-session`, no capability below its current value, and the 500-question arm's S1 ≥ **81.0%** (a regression here reverts the signal, however good the recall) |
 
 The last clause is the one that matters. **Recall is a means.** A signal that raises recall@10 by 4 points

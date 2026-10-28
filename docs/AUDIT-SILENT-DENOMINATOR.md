@@ -10,7 +10,7 @@ this document · **Instrument** `cortex-eval`'s recall curve (roadmap measure B2
 `benchmark-recall-curve.json` reported every percentage against **428** questions
 while `benchmark-report.json` reported accuracy against **500**, and neither file
 said the two populations differed. The 72 missing were answerable
-knowledge-update questions whose answers are *derived* values; the exclusion was
+knowledge-update questions whose answers are _derived_ values; the exclusion was
 invisible because the code that performs it has exactly one observable outcome
 ("no answer text") for three different causes.
 
@@ -24,14 +24,14 @@ defect, and its cost is that a number that looked comparable to another was not.
 Not by reading the code. While reconciling the artifact set from the full A2 run,
 every capability count was checked against the run's own report:
 
-| Capability | Total | Correct | Accuracy |
-| --- | --- | --- | --- |
-| IE | 150 | 145 | 96.67% |
-| MR | 121 | 106 | 87.60% |
-| **KU** | **72** | **59** | **81.94%** |
-| TR | 127 | 91 | 71.65% |
-| ABS | 30 | 29 | 96.67% |
-| **Σ** | **500** | **430** | **86.00%** |
+| Capability | Total   | Correct | Accuracy   |
+| ---------- | ------- | ------- | ---------- |
+| IE         | 150     | 145     | 96.67%     |
+| MR         | 121     | 106     | 87.60%     |
+| **KU**     | **72**  | **59**  | **81.94%** |
+| TR         | 127     | 91      | 71.65%     |
+| ABS        | 30      | 29      | 96.67%     |
+| **Σ**      | **500** | **430** | **86.00%** |
 
 Those reconcile exactly. The curve's denominator does not:
 
@@ -50,17 +50,15 @@ numbers in the same payload:
 { "totalQuestions": 500, "answerableQuestions": 428, ... }
 ```
 
-So the artifact set **knew** the denominator was 428 and **recorded** that it was
-428. What no artifact recorded was *which* 72 questions were dropped or *why*.
+So the artifact set **knew** the denominator was 428 and **recorded** that it was 428. What no artifact recorded was _which_ 72 questions were dropped or _why_.
 The only place the shortfall appeared was an `n=` in a console line, and the
-console line printed the *sample* size rather than the measured count:
+console line printed the _sample_ size rather than the measured count:
 
 ```
 k      recall   ceiling  gain     (n=500 sampled questions)
 ```
 
-That line is the defect's signature: it states 500 next to a table computed over
-428.
+That line is the defect's signature: it states 500 next to a table computed over 428.
 
 ---
 
@@ -77,11 +75,11 @@ if (answerTexts.size === 0 || context.length === 0) {
 `answerTexts` is filled from user turns carrying `has_answer`. An empty set
 therefore arises in three unrelated situations:
 
-| Reason | What it means | Is excluding it right? |
-| --- | --- | --- |
-| `abstention` | The correct answer is to refuse. No evidence turn exists by design. | **Yes** — it carries no retrieval signal. This is the documented rule. |
-| `derived` | The question *is* answerable, but its answer is computed from the evidence rather than stated in it. | **No, not silently.** It is a real question removed from the denominator. |
-| `no-flag` | The question is answerable and no turn was ever marked. | **No** — a data or loader problem, and a pure measurement loss. |
+| Reason       | What it means                                                                                        | Is excluding it right?                                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `abstention` | The correct answer is to refuse. No evidence turn exists by design.                                  | **Yes** — it carries no retrieval signal. This is the documented rule.    |
+| `derived`    | The question _is_ answerable, but its answer is computed from the evidence rather than stated in it. | **No, not silently.** It is a real question removed from the denominator. |
+| `no-flag`    | The question is answerable and no turn was ever marked.                                              | **No** — a data or loader problem, and a pure measurement loss.           |
 
 The documentation described only the first. `docs/MEASURE-B2-RECALL-CURVE.md`
 §2.3 said, in full, that abstention questions are excluded — which was true and
@@ -98,8 +96,8 @@ KU answers in LongMemEval-S are aggregates and updated values:
 'Friday'   'Paris'   'under my bed'   'seven'   '220'
 ```
 
-66 of the 72 are under 30 characters. These are answers a reader produces *from*
-the evidence, not text that appears *in* it. The graded path scores them fine —
+66 of the 72 are under 30 characters. These are answers a reader produces _from_
+the evidence, not text that appears _in_ it. The graded path scores them fine —
 the reader composes "four" from four separate running mentions — but the curve's
 membership test is verbatim text matching against retrieved turns, and a composed
 value matches nothing.
@@ -111,9 +109,9 @@ though it does.
 
 > **Note on an intermediate wrong hypothesis.** An earlier pass tested whether KU
 > answers appear verbatim in retrieved context and found 73.6% do — which
-> superficially contradicts this section. It does not: appearing *somewhere in a
-> retrieved blob* is not the same predicate as *being the text of a turn marked
-> `has_answer`*. The first is a substring check over a concatenation; the second
+> superficially contradicts this section. It does not: appearing _somewhere in a
+> retrieved blob_ is not the same predicate as _being the text of a turn marked
+> `has_answer`_. The first is a substring check over a concatenation; the second
 > is the membership test the curve actually performs. The substring result is what
 > made the wrong explanation look plausible, and it is recorded here so the
 > distinction is not re-collapsed by the next reader.
@@ -133,8 +131,8 @@ changing what is excluded.
 ```ts
 type RecallCurveResult = {
   points: RecallCurvePoint[];
-  considered: number;                       // the denominator, stated
-  excluded: RecallCurveExclusion[];         // every drop, with its reason
+  considered: number; // the denominator, stated
+  excluded: RecallCurveExclusion[]; // every drop, with its reason
 };
 
 type RecallCurveExclusion = {
@@ -151,7 +149,7 @@ confused.
 
 ```ts
 export function classifyExclusion(inst, hadContext): RecallCurveExclusion | null {
-  if (!hadContext) return null;                    // nothing to retrieve: not a shortfall
+  if (!hadContext) return null; // nothing to retrieve: not a shortfall
   const id = inst.question_id ?? '';
   if (id.endsWith('_abs')) return { questionId: id, reason: 'abstention' };
   if (hasFlaggedTurn(inst)) return { questionId: id, reason: 'derived' };
@@ -165,7 +163,7 @@ Three details are load-bearing:
    retrieve. It is not an answer-set problem, and counting it as one would inflate
    the shortfall with questions that were never measurable.
 2. **Abstention is checked first.** It is the one case where an empty answer set is
-   *expected*, so it must never be mislabelled as a data defect. Checking `derived`
+   _expected_, so it must never be mislabelled as a data defect. Checking `derived`
    first would have reported all 30 abstention questions as defects on every run
    and buried the 42 that are.
 3. **`question_id` is optional, so the read is guarded.** The unguarded version
@@ -176,11 +174,11 @@ Three details are load-bearing:
 
 ### 3.3 Every consumer states it
 
-| Consumer | Before | After |
-| --- | --- | --- |
-| `benchmark-recall-curve.json` | bare array of points | `{points, considered, excluded[]}` |
-| Console (`bench/run.ts`) | `n=500 sampled questions` | `n=428 of 500 sampled questions`, plus a per-reason breakdown |
-| Job summary (`tools/benchmark-summary.py`) | table only | table + "Covered **428** questions" + "Excluded **72** (derived 42, abstention 30)" |
+| Consumer                                   | Before                    | After                                                                               |
+| ------------------------------------------ | ------------------------- | ----------------------------------------------------------------------------------- |
+| `benchmark-recall-curve.json`              | bare array of points      | `{points, considered, excluded[]}`                                                  |
+| Console (`bench/run.ts`)                   | `n=500 sampled questions` | `n=428 of 500 sampled questions`, plus a per-reason breakdown                       |
+| Job summary (`tools/benchmark-summary.py`) | table only                | table + "Covered **428** questions" + "Excluded **72** (derived 42, abstention 30)" |
 
 The summary accepts both shapes, because older artifacts are bare arrays and a
 summary that stops rendering when the writer changes shape is worse than one that
@@ -195,10 +193,10 @@ renders an older table.
 Both halves were reverted one at a time and the suite re-run. This is the check
 that separates a test from decoration.
 
-| Injected defect | Result |
-| --- | --- |
+| Injected defect                                                              | Result             |
+| ---------------------------------------------------------------------------- | ------------------ |
 | Silent `continue` restored in `computeRecallCurve` (no `excluded` reporting) | **5 failed** of 40 |
-| `curve_denominator` call removed from the summary renderer | **1 failed** of 15 |
+| `curve_denominator` call removed from the summary renderer                   | **1 failed** of 15 |
 
 Both files were then restored and confirmed **byte-identical** by `diff` before
 the gate was re-run.
@@ -209,22 +207,22 @@ the gate was re-run.
 functions / lines), up from 96.66 / 91.30 when the fix first landed. The two
 intermediate shortfalls were genuine gaps, not noise:
 
-| Gap | Why it existed | Test added |
-| --- | --- | --- |
-| `derived` branch | No test produced a flagged turn that yields no answer text | An assistant turn carrying `has_answer` — dropped before the answer set is built, so the flag exists and contributes nothing |
-| `haystack_sessions ?? []` (×2) | Every test supplied sessions | An instance with the key absent, via `computeRecallCurve` and via the exported `classifyExclusion` |
+| Gap                            | Why it existed                                             | Test added                                                                                                                   |
+| ------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `derived` branch               | No test produced a flagged turn that yields no answer text | An assistant turn carrying `has_answer` — dropped before the answer set is built, so the flag exists and contributes nothing |
+| `haystack_sessions ?? []` (×2) | Every test supplied sessions                               | An instance with the key absent, via `computeRecallCurve` and via the exported `classifyExclusion`                           |
 
 ### 4.3 Gate
 
 `pnpm check` — lint, typecheck, tests, prettier — **green**.
 
-| Package | Tests | Stmts | Branch | Funcs | Lines |
-| --- | --- | --- | --- | --- | --- |
-| cortex-core | 127 | 98.48 | 98.34 | 100 | 98.48 |
-| cortex-node | 16 | 100 | 98.61 | 100 | 100 |
-| cortex-llm | 71 | 100 | 98.47 | 100 | 100 |
-| cortex-eval | 971 | 99.87 | 98.70 | 100 | 99.87 |
-| **Total** | **1185** | | | | |
+| Package     | Tests    | Stmts | Branch | Funcs | Lines |
+| ----------- | -------- | ----- | ------ | ----- | ----- |
+| cortex-core | 127      | 98.48 | 98.34  | 100   | 98.48 |
+| cortex-node | 16       | 100   | 98.61  | 100   | 100   |
+| cortex-llm  | 71       | 100   | 98.47  | 100   | 100   |
+| cortex-eval | 971      | 99.87 | 98.70  | 100   | 99.87 |
+| **Total**   | **1185** |       |        |       |       |
 
 ---
 
@@ -233,12 +231,12 @@ intermediate shortfalls were genuine gaps, not noise:
 The repository now has four recorded defects of the same shape — **a measurement
 that silently narrowed its own scope**:
 
-| Document | The narrowing |
-| --- | --- |
-| `FIX-COHORT-COVERAGE-SIDE-CHANNEL.md` | Coverage returned *beside* the report, so a 1-of-7 cohort read as an ordinary result |
-| `AUDIT-PERSISTED-NULLS.md` | `NaN` → `null` on serialization, so a loss was indistinguishable from a value |
-| `FIX-COVERAGE-GATE-NOISE.md` §12.2 | A property test with a hardcoded parameter, so a generator looked like it ranged over the parameter it had pinned |
-| **this document** | A denominator that shrank without saying so, so a ceiling over 428 sat beside an accuracy over 500 |
+| Document                              | The narrowing                                                                                                     |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `FIX-COHORT-COVERAGE-SIDE-CHANNEL.md` | Coverage returned _beside_ the report, so a 1-of-7 cohort read as an ordinary result                              |
+| `AUDIT-PERSISTED-NULLS.md`            | `NaN` → `null` on serialization, so a loss was indistinguishable from a value                                     |
+| `FIX-COVERAGE-GATE-NOISE.md` §12.2    | A property test with a hardcoded parameter, so a generator looked like it ranged over the parameter it had pinned |
+| **this document**                     | A denominator that shrank without saying so, so a ceiling over 428 sat beside an accuracy over 500                |
 
 The common structure is that **the artifact was internally consistent and
 externally misleading**. Nothing threw. No test failed. Every number in every
@@ -253,8 +251,8 @@ number that can be checked and a number that has to be trusted.
 
 ## 6. Open items
 
-| Item | Status |
-| --- | --- |
-| Should `derived` questions be *included* rather than excluded? | **Open.** Including them needs a membership test for composed answers, which is a reader-level judgement the curve deliberately does not make. The current answer is to report them, not to guess. |
-| Is 42 a stable count, or does it move run to run? | **Unknown.** It is a property of the dataset's `has_answer` annotation, so it should be constant — but it has been observed in one full run only. |
-| Any other artifact with a denominator that differs from 500? | **Checked for the A2 set.** `benchmark-single-session-diagnostics.json` is 379 = 500 − MR(121), which matches its own documented membership rule (`DIAGNOSED_CAPABILITIES`). The recall curve was the only unexplained one. |
+| Item                                                           | Status                                                                                                                                                                                                                      |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Should `derived` questions be _included_ rather than excluded? | **Open.** Including them needs a membership test for composed answers, which is a reader-level judgement the curve deliberately does not make. The current answer is to report them, not to guess.                          |
+| Is 42 a stable count, or does it move run to run?              | **Unknown.** It is a property of the dataset's `has_answer` annotation, so it should be constant — but it has been observed in one full run only.                                                                           |
+| Any other artifact with a denominator that differs from 500?   | **Checked for the A2 set.** `benchmark-single-session-diagnostics.json` is 379 = 500 − MR(121), which matches its own documented membership rule (`DIAGNOSED_CAPABILITIES`). The recall curve was the only unexplained one. |

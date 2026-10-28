@@ -8,7 +8,7 @@ The roadmap names this as B1's primary failure mode, in its own words:
 > **重排同样会改排序，因此必须审计 `hits[0].score` 的所有读取点。**
 
 The reranker is a stage whose only effect is to change the order of the retrieved hits.
-The abstention decision is taken from the *score of whichever hit is first*. So a stage
+The abstention decision is taken from the _score of whichever hit is first_. So a stage
 that reorders and a signal that reads position 1 are coupled: turning reranking on can
 change when the system declines to answer, without changing anything about how well it
 answers. Measured once already: RRF v1 moved `hits[0]` and IE dropped from 95.0% to
@@ -21,15 +21,15 @@ The audit below is therefore a precondition for reading the A/B, not a follow-up
 
 `packages/cortex-eval/src/natural-language-memory.ts`:
 
-| Line | Expression | Order-sensitive? | Consumer |
-|---|---|---|---|
-| 571 | `hits[0]?.score ?? 0` | **yes** | `respondWith(..., top1Score, ..., abstainThreshold)` — temporal path |
-| 1009 | `hits[0]?.score ?? 0` | **yes** | `respondWith(..., top1Score, ..., sessionAbstainThreshold)` — aggregation path |
-| 487 | `this.maxHitScore(hits)` | no | abstention confidence |
-| 649 | `this.maxHitScore(hits)` | no | abstention confidence |
-| 709 | `this.maxHitScore(hits)` | no | abstention confidence |
-| 745 | `this.maxHitScore(hits)` | no | abstention confidence |
-| 794 | `this.maxHitScore(hits)` | no | abstention confidence |
+| Line | Expression               | Order-sensitive? | Consumer                                                                       |
+| ---- | ------------------------ | ---------------- | ------------------------------------------------------------------------------ |
+| 571  | `hits[0]?.score ?? 0`    | **yes**          | `respondWith(..., top1Score, ..., abstainThreshold)` — temporal path           |
+| 1009 | `hits[0]?.score ?? 0`    | **yes**          | `respondWith(..., top1Score, ..., sessionAbstainThreshold)` — aggregation path |
+| 487  | `this.maxHitScore(hits)` | no               | abstention confidence                                                          |
+| 649  | `this.maxHitScore(hits)` | no               | abstention confidence                                                          |
+| 709  | `this.maxHitScore(hits)` | no               | abstention confidence                                                          |
+| 745  | `this.maxHitScore(hits)` | no               | abstention confidence                                                          |
+| 794  | `this.maxHitScore(hits)` | no               | abstention confidence                                                          |
 
 `maxHitScore` is defined at 1214-1222 and returns the maximum score over the hit list,
 which is independent of the order those hits are in.
@@ -64,10 +64,10 @@ TR: baseline e/f vs feature g/h (McNemar p=...)
 
 The reading rule, stated before the numbers exist so that it cannot be chosen after them:
 
-| Abstention shift | What the accuracy delta means |
-|---|---|
-| ≈ 0 | attributable to reranking's effect on which evidence is read |
-| non-zero | **confounded** — the system changed when it declines, not only what it reads |
+| Abstention shift | What the accuracy delta means                                                |
+| ---------------- | ---------------------------------------------------------------------------- |
+| ≈ 0              | attributable to reranking's effect on which evidence is read                 |
+| non-zero         | **confounded** — the system changed when it declines, not only what it reads |
 
 ## 4. The available control
 

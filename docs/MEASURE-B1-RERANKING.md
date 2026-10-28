@@ -280,14 +280,14 @@ Two choices carry the whole experiment:
 Run `35624110842`, `completed/success`, 15/15 steps green; artifact `10654395809`
 retrieved byte-exact. Configuration was exactly the one pre-registered above.
 
-| Pre-registered item | Predicted before the data | Observed |
-| --- | --- | --- |
-| Δ accuracy | not predicted | **+1.33 pp** (86.00% → 87.33%) |
-| McNemar p | not predicted | **0.7539**, not significant |
-| Reading rule 1: `fallbacks` | if non-null and non-zero, no verdict follows | **`null`** — see below |
-| Reading rule 2: `abstentionShift` | if non-zero, the delta is confounded | **+2.00 pp — confounded** |
-| Reading rule 3: MR/TR pair, not aggregate | — | MR **0 vs 0**; TR 2 vs 0 |
-| Power: `p>=0.05` means underpowered, not refuted | stated as the expected outcome | **exactly what happened** |
+| Pre-registered item                              | Predicted before the data                    | Observed                       |
+| ------------------------------------------------ | -------------------------------------------- | ------------------------------ |
+| Δ accuracy                                       | not predicted                                | **+1.33 pp** (86.00% → 87.33%) |
+| McNemar p                                        | not predicted                                | **0.7539**, not significant    |
+| Reading rule 1: `fallbacks`                      | if non-null and non-zero, no verdict follows | **`null`** — see below         |
+| Reading rule 2: `abstentionShift`                | if non-zero, the delta is confounded         | **+2.00 pp — confounded**      |
+| Reading rule 3: MR/TR pair, not aggregate        | —                                            | MR **0 vs 0**; TR 2 vs 0       |
+| Power: `p>=0.05` means underpowered, not refuted | stated as the expected outcome               | **exactly what happened**      |
 
 **Reading rule 1 fired in a way the pre-registration did not anticipate.** The rule
 anticipates `fallbacks` being non-null and non-zero. It was `null` — which the rule

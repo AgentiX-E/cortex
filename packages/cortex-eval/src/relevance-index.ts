@@ -44,9 +44,11 @@
  * or the model changed. The phrases arrive as data, produced by `query-expansion.ts`
  * before the index is built, and a case that names none is retrieved exactly as before.
  */
-import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import type { EmbeddingModel, RerankScoreFn } from '@agentix-e/cortex-core';
+import { rerankHits } from '@agentix-e/cortex-core';
 import { retrieveTopKByQueries, type RetrievalHit } from './retrieval.js';
 import { temporalBoosts } from './temporal-relevance.js';
+import { countedRerank, type CountedRerank, type RerankCensus } from './rerank-census.js';
 
 /**
  * What a turn scores when the index holds no measurement for it.
@@ -197,6 +199,80 @@ export type RelevanceIndexOptions = {
    * temporal questions of a 20-question column, at most `1` elsewhere, refuted below `+2`.
    */
   readonly temporalWeight?: number;
+  /**
+   * A cross-encoder that reorders each question's retrieved pool before the budget spends it.
+   *
+   * ## Why the stage lives here rather than in the prompt builder
+   *
+   * The budget buys a prefix of an order, and the order is this index's only product. A reranker
+   * wired further down — in `cortex-memory`'s selection — would have to re-score turns the selection
+   * had already admitted, which is the opposite of what a retrieval-stage reranker is for: RAW-RAG
+   * reranks the *retrieved pool* and then hands the reader a prefix of it, and their ablation says
+   * removing that stage costs **3.92** points, more than any mechanism they added
+   * (`SOTA-LANDSCAPE.md` §4.9). Scoring after admission could only reorder what survived a ranking it
+   * never saw.
+   *
+   * ## Why the pool is everything retrieved, and not a narrower slice
+   *
+   * There is no `pool` option on purpose. This arm retrieves `topK` turns and the reranker is shown
+   * all of them, so **one scale covers every scored turn** and no turn can be ranked by a number
+   * that came from a different model. A narrower pool would reintroduce exactly that: the turns
+   * above the cut would carry cross-encoder scores, the turns below it the retriever's, and the two
+   * are not comparable — RAW-RAG's own pipeline has the same property (K = 128 retrieved, all 128
+   * rescored, top 15 read).
+   *
+   * ## What the score becomes, and why it is a ladder rather than the cross-encoder's output
+   *
+   * `relevanceFor` answers one question — which of these two turns is more relevant — and the only
+   * thing that reads it is a sort and a max-aggregation. But the number it returns is also the
+   * domain of {@link UNSCORED_RELEVANCE}: a turn is "in the index" iff its score is above the floor,
+   * and `candidatesFor` is asserted against that equivalence.
+   *
+   * Providers do not share a score scale. `/rerank` endpoints answer with `relevance_score` in
+   * `[0, 1]`; a local ms-marco cross-encoder answers with an unbounded logit, and small logits are
+   * **negative**. Writing those through would put a scored turn below the floor and break the
+   * equivalence at the one place the module's own type says it cannot break. So the *order* is the
+   * reranker's and the *number* is a strictly decreasing ladder over that order, which is inside
+   * `(0, 1]` for every provider and states position rather than pretending to state similarity.
+   *
+   * ## The composition this refuses
+   *
+   * `temporalWeight` above zero alongside a reranker throws at construction. Both rewrite the same
+   * number by unrelated rules — an addition to a cosine versus a permutation of the pool — and the
+   * order of those two operations is not a decision this project has registered or measured. §13.4
+   * already requires the two increments to be dispatched serially because both change what the
+   * reader sees; refusing the combination in code is that constraint moved to where it cannot be
+   * forgotten.
+   */
+  readonly rerank?: RerankScoreFn;
+  /**
+   * The widest pool the scorer can score **in one call**, when the provider declares one.
+   *
+   * ## Why this is a refusal rather than a chunking strategy
+   *
+   * Zhipu's `/rerank` accepts at most **128** documents per request and answers `400` above that;
+   * Cohere accepts 1,000. A pool wider than the provider's limit cannot be scored, and the two
+   * obvious repairs are both wrong: dropping the excess back onto the retriever's scale is the mixed
+   * -scale defect {@link RelevanceIndexOptions.rerank} refuses, and splitting the pool into batches
+   * makes the scores incomparable across batches — `relevance_score` is normalised **per call**, so a
+   * batch-local winner can outrank a true winner from another batch while every number looks
+   * plausible.
+   *
+   * So a run that names a pool the provider cannot take is refused at construction, before it spends
+   * a retrieval call. The alternative — running it and reading `fallbacks: 500` — costs a full
+   * dispatch to learn a fact this project already knows.
+   */
+  readonly rerankMaxDocuments?: number;
+  /**
+   * The longest passage the scorer accepts, when the provider declares one.
+   *
+   * Zhipu's `/rerank` rejects the **whole call** when a single document exceeds 4,096 characters, and
+   * this corpus carries turns up to 15,369 (§13.67). Without a clip, a handful of long turns would
+   * turn entire questions into `fallbacks` — which §13.115 reads as an assembly failure — for a reason
+   * that has nothing to do with the reranker's judgement. The clip is applied at the boundary and
+   * counted, so the artifact says how often the scorer judged a prefix.
+   */
+  readonly rerankMaxDocumentChars?: number;
 };
 
 /** The shape both provided retrievers have: queries and a context in, ranked hits out. */
@@ -284,6 +360,16 @@ export type RelevanceIndex = {
    * distinction `bareRetry` keeps for a retry pass, and it is the reason a census is not optional here.
    */
   readonly temporal?: { readonly scored: number; readonly total: number } | undefined;
+  /**
+   * What the rerank stage did, when one was configured.
+   *
+   * Absent for a run that carried no reranker, for the reason `temporal` is: `fallbacks: 0` and
+   * "this artifact predates the field" must not be the same bytes. The registered reading of the
+   * increment turns on it — `fallbacks > 0` is an **assembly failure**, not a null result, because
+   * `rerankHits` degrades to the retrieved order and an arm in that state would report the
+   * reranker's absence as the reranker's verdict.
+   */
+  readonly rerank?: RerankCensus | undefined;
 };
 
 /**
@@ -316,6 +402,43 @@ export async function buildRetrievalRelevanceIndex(
     options.retrieve ??
     ((queries, context, width) =>
       retrieveTopKByQueries(embedding, [...queries], [...context], width));
+  // Resolved once, before the first retrieval, so a run that names both refuses before it spends
+  // anything: the composition of a temporal addition and a pool permutation has no registered
+  // definition, and discovering that halfway through a 500-question index build would be an
+  // expensive way to learn it.
+  if (options.rerank !== undefined && temporalWeight > 0) {
+    throw new Error(
+      'A reranker and a non-zero temporalWeight cannot be configured together: both rewrite the ' +
+        'relevance score by unrelated rules (an addition to the cosine versus a permutation of the ' +
+        'retrieved pool) and this project has registered no order for the two. Run them as separate ' +
+        'arms -- §13.4 requires those dispatches to be serial anyway.',
+    );
+  }
+  // The provider's declared pool width, checked before anything is retrieved. See
+  // `RelevanceIndexOptions.rerankMaxDocuments` for why an over-wide pool is refused rather than
+  // trimmed or batched.
+  const rerankMaxDocuments = options.rerankMaxDocuments;
+  if (
+    options.rerank !== undefined &&
+    rerankMaxDocuments !== undefined &&
+    topK > rerankMaxDocuments
+  ) {
+    throw new Error(
+      `relevanceTopK=${topK} is wider than the reranker accepts in one call ` +
+        `(CORTEX_MEMORY_RERANK_MAX_DOCUMENTS=${rerankMaxDocuments}), so no question could be ` +
+        'reranked and every one would fall back to the retrieved order. Lower the pool to the ' +
+        "provider's limit, or leave the reranker off.",
+    );
+  }
+  const reranking =
+    options.rerank === undefined
+      ? undefined
+      : countedRerank(options.rerank, {
+          ...(options.rerankMaxDocumentChars === undefined
+            ? {}
+            : { maxDocumentChars: options.rerankMaxDocumentChars }),
+        });
+
   const scores = new Map<string, Map<string, number>>();
   // The ranker's own order, kept for measurement. `scores` stays because the lookup is by
   // turn and must remain O(1); this array is what gives a turn a position.
@@ -355,7 +478,16 @@ export async function buildRetrievalRelevanceIndex(
       // working while it is really the floor leaking.
       byTurn.set(hit.text, hit.score + temporalWeight * (boosts?.affinityFor(hit.text) ?? 0));
     }
-    ranked.set(entry.question, order);
+    // The reranker sees the whole retrieved pool and decides its order; the score written is a
+    // ladder over that order rather than the cross-encoder's own number. See
+    // `RelevanceIndexOptions.rerank` for why the two must not be mixed, and note that the ladder is
+    // assigned only after `rerankHits` has degraded -- so a fallback leaves the retrieval order and
+    // the retrieval scores exactly as they were, which is what makes `fallbacks` readable.
+    const finalOrder =
+      reranking === undefined
+        ? order
+        : await rerankedOrder(entry.question, order, byTurn, reranking);
+    ranked.set(entry.question, finalOrder);
     scoredPairs += byTurn.size;
     // Last write wins for a repeated question. The arm asks each question once, so
     // the case is not one the run creates; what matters is that the lookup stays a
@@ -372,6 +504,8 @@ export async function buildRetrievalRelevanceIndex(
     ...(temporalWeight === 0
       ? {}
       : { temporal: { scored: temporal.scored, total: temporal.total } }),
+    // Only present when the stage was configured, for the reason `temporal` is.
+    ...(reranking === undefined ? {} : { rerank: reranking.snapshot() }),
     relevanceFor(question: string, turn: string): number {
       return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
     },
@@ -387,4 +521,50 @@ export async function buildRetrievalRelevanceIndex(
       return [...(ranked.get(question) ?? [])];
     },
   };
+}
+
+/**
+ * The pool's order after the cross-encoder, with the score map rewritten as a ladder over it.
+ *
+ * Module-private: the only caller is the build loop above, and an export would advertise a second
+ * consumer that does not exist (`tools/export-census.mjs` reports exactly that).
+ *
+ * ## Why the ladder is skipped when the call degraded
+ *
+ * `rerankHits` returns the retrieved order on a failure, so the ladder would be a permutation of
+ * the identity — but it would also **replace every cosine with a position**, for a question the
+ * reranker never actually ranked. One run would then hold two incompatible meanings for the number
+ * `relevanceFor` returns (a similarity on the questions that worked, a rank on the ones that did
+ * not), and the budget would spend those two questions' evidence under different rules while the
+ * artifact reported one configuration. Leaving the retrieval scores in place keeps a degraded
+ * question exactly as it was before the stage existed, which is also what makes `fallbacks` the
+ * only thing a reader has to check to know which of the two happened.
+ *
+ * A zero-length pool cannot reach here — `rerankHits` answers `[]` without calling the scorer, and
+ * the loop body would have nothing to write — so the empty case is expressed by the caller's own
+ * `order.length === 0` rather than by a branch here. It is not: the `forEach` below is a no-op on an
+ * empty array, and returning early would be the unreachable-branch shape this repository's coverage
+ * gate has removed before.
+ */
+async function rerankedOrder(
+  question: string,
+  order: readonly string[],
+  byTurn: Map<string, number>,
+  reranking: CountedRerank,
+): Promise<string[]> {
+  const candidates = order.map((text) => ({ id: text, text, score: byTurn.get(text) ?? 0 }));
+  const fallbacksBefore = reranking.snapshot().fallbacks;
+  const reranked = await rerankHits(candidates, question, reranking.score);
+  const degraded = reranking.snapshot().fallbacks > fallbacksBefore;
+  const finalOrder = reranked.map((candidate) => candidate.id);
+  reranking.observeOrder(order, finalOrder);
+  if (degraded) {
+    return finalOrder;
+  }
+  // Strictly decreasing, inside `(0, 1]`: above `UNSCORED_RELEVANCE` for every provider's scale
+  // (including the negative logits a local cross-encoder returns), and with no ties, so the sort
+  // downstream cannot fall back to an arrival order the reranker meant to replace.
+  const width = finalOrder.length;
+  finalOrder.forEach((text, index) => byTurn.set(text, (width - index) / width));
+  return finalOrder;
 }

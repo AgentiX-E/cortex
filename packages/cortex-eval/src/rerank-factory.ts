@@ -148,6 +148,234 @@ export type RerankFactoryOptions = {
 };
 
 /**
+ * Which variables a caller's switch reads.
+ *
+ * ## Why the arm needs its own switch and not a boolean
+ *
+ * `run-ablation.ts` constructs **both** sides of the A/B in one process: the memory arm (the
+ * treatment) and `cortex-eval`'s reference pipeline (the paired control). If the arm read
+ * `CORTEX_RERANK` — the variable `bench-arm-options.ts` already wires into the reference pipeline —
+ * then one dispatch would turn reranking on for the control as well, and the arm's delta would
+ * compare a reranked system with a reranked system while its artifact claimed a single variable.
+ * That is the conflation `PREREGISTRATION` §13.110 charged a whole run for on the reader axis.
+ *
+ * So the *switch* is arm-specific. The provider variable and the credential stay shared, because
+ * only one of the two systems can carry the stage at a time: `run-ablation.ts` never hands a
+ * reranker to the reference pipeline, and a second credential variable would be a second secret for
+ * one endpoint.
+ */
+type RerankVariableSet = {
+  readonly enable: string;
+  readonly provider: string;
+  readonly baseUrl: string;
+  readonly model: string;
+  /** Credential for the `/rerank` endpoint. */
+  readonly apiKey: string;
+  /** Credential the `llm` backend reuses, because it calls the chat endpoint. */
+  readonly llmApiKey: string;
+};
+
+/** The reference pipeline's set, unchanged since the B1 ablation first ran. */
+const REFERENCE_VARIABLES: RerankVariableSet = {
+  enable: 'CORTEX_RERANK',
+  provider: 'CORTEX_RERANK_PROVIDER',
+  baseUrl: 'RERANK_BASE_URL',
+  model: 'RERANK_MODEL',
+  apiKey: 'RERANK_API_KEY',
+  llmApiKey: 'DEEPSEEK_API_KEY',
+};
+
+/**
+ * The memory arm's set. Only the two switches differ; see {@link RerankVariableSet}.
+ *
+ * `CORTEX_MEMORY_RERANK` follows the arm's own `CORTEX_MEMORY_*` convention, which is what makes a
+ * dispatch's input list readable as a description of one system.
+ */
+const MEMORY_ARM_VARIABLES: RerankVariableSet = {
+  ...REFERENCE_VARIABLES,
+  enable: 'CORTEX_MEMORY_RERANK',
+  provider: 'CORTEX_MEMORY_RERANK_PROVIDER',
+  model: 'CORTEX_MEMORY_RERANK_MODEL',
+  baseUrl: 'CORTEX_MEMORY_RERANK_BASE_URL',
+};
+
+/**
+ * What the artifact records about the stage, resolved without touching a credential.
+ *
+ * ## Why the identity is a separate function from the constructor
+ *
+ * The reader axis paid for this lesson (§13.110/§13.114): if the identity can only be produced by a
+ * process that could also score, then a report rendered from a replayed artifact cannot state what
+ * scored it. Identity is not a permission — it is a fact about which environment variables were
+ * read — so it resolves with no key, no network and no peer.
+ *
+ * ## Why `model` and `host` are `null` rather than absent
+ *
+ * `provider: 'none'` is a run that dispatched the control, and it has no model or host to name.
+ * `null` says "there is none", and the type does not permit a `'none'` identity to carry a model.
+ */
+export type RerankIdentity =
+  | { readonly provider: 'none' }
+  | {
+      readonly provider: 'openai-compatible' | 'llm' | 'local';
+      /** The model id the scorer was built with, or the documented default. */
+      readonly model: string;
+      /** The service host, or `null` for the local cross-encoder, which talks to no service. */
+      readonly host: string | null;
+    };
+
+/** A resolved choice: either the control, or a backend with every value the client needs. */
+type RerankChoice =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly backend: RerankProvider;
+      readonly model: string;
+      readonly baseUrl: string;
+    };
+
+/**
+ * Read and validate the switch, in one place, for both public functions.
+ *
+ * This is the structural guarantee behind the identity: {@link resolveRerankIdentity} and
+ * {@link createMemoryArmReranker} cannot disagree about the model, the base URL or the provider,
+ * because neither of them reads an environment variable — they both read this.
+ */
+function readChoice(env: RerankEnv, variables: RerankVariableSet): RerankChoice {
+  const raw = env[variables.enable];
+  const flag = (raw ?? '').trim().toLowerCase();
+
+  if (DISABLED_VALUES.has(flag)) {
+    return { enabled: false };
+  }
+
+  const providerInFlag = RERANK_PROVIDERS.find((provider) => provider === flag);
+  if (providerInFlag !== undefined) {
+    throw new Error(
+      `${variables.enable}="${raw}" is a backend name, not an enable flag. ` +
+        `Set ${variables.enable}=on to enable the stage and ` +
+        `${variables.provider}=${providerInFlag} to select that backend; ` +
+        `leave ${variables.enable} unset (or "off") to run without reranking.`,
+    );
+  }
+
+  if (!ENABLED_VALUES.has(flag)) {
+    throw new Error(
+      `Unknown ${variables.enable} value "${raw}"; expected one of ` +
+        `${[...ENABLED_VALUES].join(', ')} to enable, or ` +
+        `${[...DISABLED_VALUES].filter(Boolean).join(', ')} to disable.`,
+    );
+  }
+
+  const backend = resolveProvider(env, variables);
+  // Model and base URL are resolved here rather than inside the constructor, so that the value the
+  // artifact names and the value the request carries are one reading of one variable.
+  if (backend === 'local') {
+    return {
+      enabled: true,
+      backend,
+      model: env[variables.model] ?? DEFAULT_LOCAL_RERANK_MODEL,
+      baseUrl: '',
+    };
+  }
+  if (backend === 'llm') {
+    return {
+      enabled: true,
+      backend,
+      model: env['DEEPSEEK_MODEL'] ?? DEFAULT_LLM_RERANK_MODEL,
+      baseUrl: env['DEEPSEEK_BASE_URL'] ?? DEFAULT_LLM_RERANK_BASE_URL,
+    };
+  }
+  return {
+    enabled: true,
+    backend,
+    model: env[variables.model] ?? DEFAULT_RERANK_MODEL,
+    baseUrl: env[variables.baseUrl] ?? DEFAULT_RERANK_BASE_URL,
+  };
+}
+
+/**
+ * The identity of the reranking stage this environment configures.
+ *
+ * Never touches a credential and never constructs a client. Throws on a value the factory would
+ * also refuse, so a dispatch that mistypes the switch fails in the same place whether the caller
+ * asked for the stage or only for its name.
+ */
+export function resolveRerankIdentity(
+  env: RerankEnv,
+  options: { readonly arm?: boolean } = {},
+): RerankIdentity {
+  const choice = readChoice(env, options.arm === true ? MEMORY_ARM_VARIABLES : REFERENCE_VARIABLES);
+  if (!choice.enabled) {
+    return { provider: 'none' };
+  }
+  if (choice.backend === 'local') {
+    return { provider: 'local', model: choice.model, host: null };
+  }
+  let host: string | null = null;
+  try {
+    host = new URL(choice.baseUrl).host;
+  } catch {
+    // A malformed base URL is the constructor's to refuse, with the message the operator needs. An
+    // identity is still worth stating — the provider and the model are known — so this records the
+    // host as unknown rather than throwing here and destroying the artifact over a description.
+    host = null;
+  }
+  return {
+    provider: choice.backend === 'llm' ? 'llm' : 'openai-compatible',
+    model: choice.model,
+    host,
+  };
+}
+
+/**
+ * The scorer's wire limits, when the deployment declares them.
+ *
+ * ## Why these are configuration and not constants
+ *
+ * They are properties of an **endpoint**, not of a cross-encoder: Zhipu's `/rerank` takes 128
+ * documents of at most 4,096 characters and refuses the call above either bound, while Cohere takes
+ * 1,000. Baking 128 into the library would make one vendor's limit look like the stage's semantics,
+ * and the arm would silently clip a Cohere deployment to a fifth of what it accepts.
+ *
+ * ## Why they are optional, and what `null` means
+ *
+ * `null` is "this deployment declared no limit", which is the state of every run before this field
+ * existed and the correct state for a local cross-encoder that reads whole strings. It is not the
+ * same as a limit of zero, and the parser refuses a value that is not a positive integer rather than
+ * coercing it — a limit of `0` would clip every passage to the empty string and every score would be
+ * a measurement of nothing.
+ */
+export type RerankBounds = {
+  readonly maxDocuments: number | null;
+  readonly maxDocumentChars: number | null;
+};
+
+/** Read a declared limit, or `null` when the variable is absent or blank. */
+function readBound(env: RerankEnv, variable: string): number | null {
+  const raw = env[variable];
+  if (raw === undefined || raw.trim() === '') {
+    return null;
+  }
+  const value = Number(raw.trim());
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${variable}="${raw}" must be a positive integer when set; a limit of zero would clip every ` +
+        'passage to nothing, and a non-integer is not a wire limit.',
+    );
+  }
+  return value;
+}
+
+/** The stage's declared wire limits. Reads the arm's variables; see {@link RerankBounds}. */
+export function resolveRerankBounds(env: RerankEnv): RerankBounds {
+  return {
+    maxDocuments: readBound(env, 'CORTEX_MEMORY_RERANK_MAX_DOCUMENTS'),
+    maxDocumentChars: readBound(env, 'CORTEX_MEMORY_RERANK_MAX_DOCUMENT_CHARS'),
+  };
+}
+
+/**
  * Build the configured reranker, or `undefined` when the stage is off.
  *
  * `off` is spelled out in `DISABLED_VALUES` precisely so that "this value was a
@@ -162,6 +390,24 @@ export function createRerankerFromEnv(
 }
 
 /**
+ * The memory arm's reranking stage, or `undefined` when the arm is running the control.
+ *
+ * Same adapters, same credential rules, same refusal of a misspelled switch; the only difference is
+ * which variables the switch and the model read. See {@link RerankVariableSet} for why that matters
+ * in a process that also builds the paired control.
+ */
+export function createMemoryArmReranker(
+  env: RerankEnv,
+  options: RerankFactoryOptions = {},
+): RerankScoreFn | undefined {
+  return createReranker(
+    env,
+    options.pipelineFactory ?? makeDefaultRerankPipelineFactory,
+    MEMORY_ARM_VARIABLES,
+  );
+}
+
+/**
  * The decision itself, with the loader required rather than defaulted.
  *
  * Internal: {@link createRerankerFromEnv} is the entry point, and it supplies the
@@ -172,33 +418,13 @@ export function createRerankerFromEnv(
 function createReranker(
   env: RerankEnv,
   pipelineFactory: (model: string) => () => Promise<CrossEncoderPipeline>,
+  variables: RerankVariableSet = REFERENCE_VARIABLES,
 ): RerankScoreFn | undefined {
-  const raw = env['CORTEX_RERANK'];
-  const flag = (raw ?? '').trim().toLowerCase();
-
-  if (DISABLED_VALUES.has(flag)) {
+  const choice = readChoice(env, variables);
+  if (!choice.enabled) {
     return undefined;
   }
-
-  const providerInFlag = RERANK_PROVIDERS.find((provider) => provider === flag);
-  if (providerInFlag !== undefined) {
-    throw new Error(
-      `CORTEX_RERANK="${raw}" is a backend name, not an enable flag. ` +
-        `Set CORTEX_RERANK=on to enable the stage and ` +
-        `CORTEX_RERANK_PROVIDER=${providerInFlag} to select that backend; ` +
-        `leave CORTEX_RERANK unset (or "off") to run without reranking.`,
-    );
-  }
-
-  if (!ENABLED_VALUES.has(flag)) {
-    throw new Error(
-      `Unknown CORTEX_RERANK value "${raw}"; expected one of ` +
-        `${[...ENABLED_VALUES].join(', ')} to enable, or ` +
-        `${[...DISABLED_VALUES].filter(Boolean).join(', ')} to disable.`,
-    );
-  }
-
-  return buildReranker(env, resolveProvider(env), pipelineFactory);
+  return buildReranker(env, variables, choice, pipelineFactory);
 }
 
 /**
@@ -210,12 +436,12 @@ function createReranker(
  * report the resulting accuracy as a fact about the named one — the exact class of
  * silent substitution this project has already paid for once.
  */
-function resolveProvider(env: RerankEnv): RerankProvider {
-  const raw = (env['CORTEX_RERANK_PROVIDER'] ?? 'openai').trim().toLowerCase();
+function resolveProvider(env: RerankEnv, variables: RerankVariableSet): RerankProvider {
+  const raw = (env[variables.provider] ?? 'openai').trim().toLowerCase();
   const found = RERANK_PROVIDERS.find((provider) => provider === raw);
   if (found === undefined) {
     throw new Error(
-      `Unknown CORTEX_RERANK_PROVIDER "${raw}"; expected one of ${RERANK_PROVIDERS.join(', ')}`,
+      `Unknown ${variables.provider} "${raw}"; expected one of ${RERANK_PROVIDERS.join(', ')}`,
     );
   }
   return found;
@@ -241,10 +467,11 @@ function withFallbackCounters(
 
 function buildReranker(
   env: RerankEnv,
-  provider: RerankProvider,
+  variables: RerankVariableSet,
+  choice: Extract<RerankChoice, { enabled: true }>,
   pipelineFactory: (model: string) => () => Promise<CrossEncoderPipeline>,
 ): RerankScoreFn {
-  if (provider === 'local') {
+  if (choice.backend === 'local') {
     // No credential of any kind is consulted. This is the offline path, and it is
     // the reason the B1 A/B can run where no rerank provider is configured.
     //
@@ -252,7 +479,7 @@ function buildReranker(
     // downloaded once on first use rather than per call, and constructing the
     // reranker stays synchronous — a factory that awaited here would turn this
     // function async and force every call site to handle startup failure.
-    const model = env['CORTEX_RERANK_MODEL'] ?? DEFAULT_LOCAL_RERANK_MODEL;
+    const model = choice.model;
     const loadPipeline = pipelineFactory(model);
     let cached: Promise<CrossEncoderPipeline> | undefined;
     const pipeline: CrossEncoderPipeline = (texts, options) => {
@@ -299,33 +526,36 @@ function buildReranker(
     return new CrossEncoderReranker({ pipeline }).score;
   }
 
-  if (provider === 'llm') {
+  if (choice.backend === 'llm') {
     // Reuses the chat credential the pipeline already has, so reranking does not
     // require a second secret. `RERANK_API_KEY` is deliberately NOT consulted: it
     // would be a key the chat endpoint cannot use, and accepting it would move the
     // failure from startup to the first request.
-    const apiKey = env['DEEPSEEK_API_KEY'];
+    const apiKey = env[variables.llmApiKey];
     if (!apiKey) {
       throw new Error(
         'DEEPSEEK_API_KEY is required when CORTEX_RERANK_PROVIDER=llm; the LLM reranker reuses the chat credential, so set it (or switch to CORTEX_RERANK_PROVIDER=local, which needs no credential)',
       );
     }
     const llm = new OpenAICompatibleLLM({
-      baseUrl: env['DEEPSEEK_BASE_URL'] ?? DEFAULT_LLM_RERANK_BASE_URL,
+      baseUrl: choice.baseUrl,
       apiKey,
-      model: env['DEEPSEEK_MODEL'] ?? DEFAULT_LLM_RERANK_MODEL,
+      model: choice.model,
     });
     const reranker = new LLMReranker({ llm });
     return withFallbackCounters(reranker.score, reranker);
   }
 
-  const apiKey = env['RERANK_API_KEY'];
+  const apiKey = env[variables.apiKey];
   if (!apiKey) {
     throw new Error(
-      'RERANK_API_KEY is required when CORTEX_RERANK is enabled; unset CORTEX_RERANK to run without reranking',
+      `${variables.apiKey} is required when ${variables.enable} is enabled; unset ` +
+        `${variables.enable} to run without reranking`,
     );
   }
-  const baseUrl = env['RERANK_BASE_URL'] ?? DEFAULT_RERANK_BASE_URL;
-  const model = env['RERANK_MODEL'] ?? DEFAULT_RERANK_MODEL;
-  return new OpenAICompatibleReranker({ baseUrl, apiKey, model }).score;
+  return new OpenAICompatibleReranker({
+    baseUrl: choice.baseUrl,
+    apiKey,
+    model: choice.model,
+  }).score;
 }

@@ -6,11 +6,11 @@ Reads with `MEASURE-MR-UNITS.md` (the negative result this is built on) and
 
 ## 1. The gap this is for
 
-| run | `cortex-memory` MR | `reference-pipeline` MR, same run |
-| --- | --- | --- |
-| `39509698041` | 71.90% (87/121) | **88.43%** (107/121) |
-| `39699987781` | 62.81% (76/121) | **84.30%** (102/121) |
-| `40088479628` | 69.42% (84/121) | **84.30%** (102/121) |
+| run           | `cortex-memory` MR | `reference-pipeline` MR, same run |
+| ------------- | ------------------ | --------------------------------- |
+| `39509698041` | 71.90% (87/121)    | **88.43%** (107/121)              |
+| `39699987781` | 62.81% (76/121)    | **84.30%** (102/121)              |
+| `40088479628` | 69.42% (84/121)    | **84.30%** (102/121)              |
 
 15 to 25 questions, paired, in every run. It is the only capability where a better answer exists
 **inside this repository under the same reader, judge and corpus**.
@@ -21,16 +21,16 @@ throttling** (`MEASURE-BASELINE-DRIFT.md` §8.8, run `40408635007`).
 
 ## 2. What the reference pipeline does that this arm cannot
 
-| | what is scored | what the budget buys |
-| --- | --- | --- |
-| `reference-pipeline` | a **session** — its concatenated text, **one embedding** | the top-k sessions, each truncated |
+|                                           | what is scored                                                | what the budget buys                 |
+| ----------------------------------------- | ------------------------------------------------------------- | ------------------------------------ |
+| `reference-pipeline`                      | a **session** — its concatenated text, **one embedding**      | the top-k sessions, each truncated   |
 | `cortex-memory`, `relevanceUnits=session` | a **turn** — the session's best-scoring turn decides its rank | whole sessions in that induced order |
 
 The negative result in `MEASURE-MR-UNITS.md` closed the **second** row. It says nothing about the first,
 which this arm cannot express: `relevanceFor(question, turn)` is scored per turn, and `memory.ts` builds
 its index over `context`, a flat turn list with the boundaries already flattened away.
 
-## 3. The mechanism, and why it needs no new interface for the *budget*
+## 3. The mechanism, and why it needs no new interface for the _budget_
 
 **Score a session once, then project that score onto every turn it contains.**
 
@@ -71,13 +71,13 @@ existing turn-scored index, byte-identical.
 
 ## 4. Cost, which goes down
 
-| | **items** embedded | **characters** embedded |
-| --- | --- | --- |
-| `retrieval-hybrid` (current) | ~19,000 live texts after de-duplication (`40408635007`: `liveTexts 19,251`) | ~5.2 M — a delivered turn has a median of 272 characters |
-| `retrieval-session` (this) | ~25,000 — one per session, and each question carries its own haystack of roughly fifty | **~136 M — about 26× more** |
+|                              | **items** embedded                                                                     | **characters** embedded                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `retrieval-hybrid` (current) | ~19,000 live texts after de-duplication (`40408635007`: `liveTexts 19,251`)            | ~5.2 M — a delivered turn has a median of 272 characters |
+| `retrieval-session` (this)   | ~25,000 — one per session, and each question carries its own haystack of roughly fifty | **~136 M — about 26× more**                              |
 
 **The first draft of this table said "an order of magnitude fewer", and it was wrong in the direction
-that matters.** It counted *items*: `retrieval-hybrid` embeds 19,000 turns while the session channel
+that matters.** It counted _items_: `retrieval-hybrid` embeds 19,000 turns while the session channel
 embeds one document per session. But a session's joined user turns are ~20 turns × 272 characters
 ≈ 5,400 characters, so trading one embedding per turn for one per session trades 19,000 short inputs
 for 25,000 long ones. **Fewer units, far more tokens.**
@@ -92,13 +92,13 @@ take **substantially longer** than a turn-scored A/B. Recorded because a cost ta
 Control: **`40088479628`** (`turn`, `recover`, `enumerated`, 48,000, k=256, `user`-only on two routes,
 cap 400). MR 69.42% (84/121).
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **P1** | mechanism: the artifact reads `relevanceSignal=retrieval-session`, and the scored-unit count is **well below** the turn index's | any other value, or a count at or above the turn index's |
-| **P2** | **MR ≥ 96/121 = 79.34%**, from the control's **84/121 = 69.42%** — a gain of 12 questions, six times the 2-question noise floor measured for a 121-question column | MR ≤ 90 |
-| **P3** | MR abstentions do not rise: the decline count stays ≤ the control's | any increase |
-| **P4** | IE, KU, TR, ABS each move ≤ 3 questions. The signal is route-scoped to `multi-session`, so a larger move means the reach is not what this registration says | any moves further |
-| **P5** | `promptChars` on the multi-session route stays within ±20% of the control's. The budget's *ceiling* is unchanged (48,000) but its *fill* can move, because a different ordering admits different turns before the room runs out | outside that band |
+| #      | prediction                                                                                                                                                                                                                      | falsified if                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **P1** | mechanism: the artifact reads `relevanceSignal=retrieval-session`, and the scored-unit count is **well below** the turn index's                                                                                                 | any other value, or a count at or above the turn index's |
+| **P2** | **MR ≥ 96/121 = 79.34%**, from the control's **84/121 = 69.42%** — a gain of 12 questions, six times the 2-question noise floor measured for a 121-question column                                                              | MR ≤ 90                                                  |
+| **P3** | MR abstentions do not rise: the decline count stays ≤ the control's                                                                                                                                                             | any increase                                             |
+| **P4** | IE, KU, TR, ABS each move ≤ 3 questions. The signal is route-scoped to `multi-session`, so a larger move means the reach is not what this registration says                                                                     | any moves further                                        |
+| **P5** | `promptChars` on the multi-session route stays within ±20% of the control's. The budget's _ceiling_ is unchanged (48,000) but its _fill_ can move, because a different ordering admits different turns before the room runs out | outside that band                                        |
 
 **P2 is the claim, and it is a floor rather than a target.** The reference pipeline reaches 102/121 on
 this operation, so a session-scored index has 18 questions of room before it has to explain the rest by
@@ -155,24 +155,24 @@ cortex-memory gate: … relevanceSignal=retrieval-session, relevanceTopK=256, re
 maxTurnChars=400, maxPromptChars=48000, reviewPass=recover, evidenceRoles=user
 ```
 
-| | registered | measured | verdict |
-| --- | --- | --- | --- |
-| **P1** mechanism | artifact reads `relevanceSignal=retrieval-session` and scores fewer units than the turn index | confirmed by the gate line above | **met** |
-| **P2** the claim | **MR ≥ 96/121 = 79.34%** | **83/121 = 68.60%** | **refuted, by 13 questions** |
-| **P3** MR abstention does not rise | — | run-wide abstention **13.00% (65)** against the control's 75 | **met** |
-| **P4** IE/KU/TR/ABS each move ≤ 3 | — | IE −2, KU **+3**, TR **+7**, ABS **−2** | **refuted by TR** |
-| **P5** `promptChars` within ±20% | — | not reported per question in this artifact | **unmeasured** |
+|                                    | registered                                                                                    | measured                                                     | verdict                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------- |
+| **P1** mechanism                   | artifact reads `relevanceSignal=retrieval-session` and scores fewer units than the turn index | confirmed by the gate line above                             | **met**                      |
+| **P2** the claim                   | **MR ≥ 96/121 = 79.34%**                                                                      | **83/121 = 68.60%**                                          | **refuted, by 13 questions** |
+| **P3** MR abstention does not rise | —                                                                                             | run-wide abstention **13.00% (65)** against the control's 75 | **met**                      |
+| **P4** IE/KU/TR/ABS each move ≤ 3  | —                                                                                             | IE −2, KU **+3**, TR **+7**, ABS **−2**                      | **refuted by TR**            |
+| **P5** `promptChars` within ±20%   | —                                                                                             | not reported per question in this artifact                   | **unmeasured**               |
 
 ### 6.1 What the run produced, per capability
 
-| capability | baseline in the same run | feature | discordant (b/f) |
-| --- | --- | --- | --- |
-| IE | 0.67% | **88.00%** (132/150) | 0 / 131 |
-| MR | **85.12%** (103/121) | **68.60% (83/121)** | 29 / 9 |
-| KU | 1.39% | **90.28%** (65/72) | 0 / 64 |
-| TR | 67.72% | **79.53%** (101/127) | 11 / 26 |
-| ABS | 100.00% | **93.33%** (28/30) | 2 / 0 |
-| **overall** | 44.20% | **81.80% (409/500)** | 42 / 230 |
+| capability  | baseline in the same run | feature              | discordant (b/f) |
+| ----------- | ------------------------ | -------------------- | ---------------- |
+| IE          | 0.67%                    | **88.00%** (132/150) | 0 / 131          |
+| MR          | **85.12%** (103/121)     | **68.60% (83/121)**  | 29 / 9           |
+| KU          | 1.39%                    | **90.28%** (65/72)   | 0 / 64           |
+| TR          | 67.72%                   | **79.53%** (101/127) | 11 / 26          |
+| ABS         | 100.00%                  | **93.33%** (28/30)   | 2 / 0            |
+| **overall** | 44.20%                   | **81.80% (409/500)** | 42 / 230         |
 
 Against the turn-scored control `40088479628`: IE −2, KU **+3**, MR **−1**, TR **+7**, ABS **−2**, overall
 **+5**.
@@ -214,6 +214,6 @@ Three reasons not to adopt it, stated so a later round does not read the +5 as o
 3. **n = 1.** The registration said a repeat is required before adoption, and the previous round published a
    19.7-point gap that did not survive one.
 
-What it *does* earn is a registered repeat with a paired criterion: if `TR` is genuinely +7 and `MR` genuinely
+What it _does_ earn is a registered repeat with a paired criterion: if `TR` is genuinely +7 and `MR` genuinely
 −1, a second run should reproduce the same discordant set — 26 wins and 11 losses on TR. That is the next
 dispatch, not a conclusion.

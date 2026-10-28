@@ -13,13 +13,13 @@ reason.
 Both present as `http=000` with a **5.001s** wall clock. The discriminator is
 what **other** hosts do in the **same** check.
 
-| Condition | `api.github.com` | known-good Azure host (`sa3`) | Meaning |
-| --- | --- | --- | --- |
-| **A — sandbox egress down** | TLS fails, `000`, 5.00s | **also fails, `000`, 5.00s** | nothing on our side can be fetched; wait and retry |
-| **B — one blob host intercepted** | **works** | `sa3` works, `409` | a single host assignment is unusable; re-dispatch |
+| Condition                         | `api.github.com`        | known-good Azure host (`sa3`) | Meaning                                            |
+| --------------------------------- | ----------------------- | ----------------------------- | -------------------------------------------------- |
+| **A — sandbox egress down**       | TLS fails, `000`, 5.00s | **also fails, `000`, 5.00s**  | nothing on our side can be fetched; wait and retry |
+| **B — one blob host intercepted** | **works**               | `sa3` works, `409`            | a single host assignment is unusable; re-dispatch  |
 
 **The control is the whole method.** A 5-second TLS failure on one host means
-nothing on its own; the same failure on *every* host means the sandbox, not the
+nothing on its own; the same failure on _every_ host means the sandbox, not the
 target.
 
 ### 2.1 Measured state, 2026-09-21 ~00:00 +08:00 (condition A)
@@ -68,23 +68,23 @@ diagnosable instead of merely annoying.
 
 Measured 2026-09-21 ~08:10 +08:00:
 
-| Host | Resolved to | Result |
-| --- | --- | --- |
-| `api.github.com` | `198.18.0.15` | `000` at 5.001s |
-| `github.com` | `198.18.0.14` | `000` at 5.001s |
-| `codeload.github.com` | `198.18.0.35` | `000` |
-| `objects.githubusercontent.com` | `198.18.0.40` | `000` |
-| `registry.npmjs.org` | `198.18.0.13` | `000` at 5.001s |
-| `pypi.org` | `198.18.0.4` | `000` at 5.001s |
-| `files.pythonhosted.org` | `198.18.0.41` | `000` |
-| `www.google.com` | `198.18.0.8` | `000` |
-| — | — | — |
-| `example.com` | real | **`200` at 0.57s** |
-| `www.baidu.com` | real | **`200` at 0.03s** |
-| `open.bigmodel.cn` | real | **`200` at 0.10s** |
-| `api.deepseek.com` | real | **`401` at 0.21s** |
-| `api.cohere.com` | real | **`403` at 1.06s** |
-| `api.voyageai.com` | real | **`404` at 1.01s** |
+| Host                            | Resolved to   | Result             |
+| ------------------------------- | ------------- | ------------------ |
+| `api.github.com`                | `198.18.0.15` | `000` at 5.001s    |
+| `github.com`                    | `198.18.0.14` | `000` at 5.001s    |
+| `codeload.github.com`           | `198.18.0.35` | `000`              |
+| `objects.githubusercontent.com` | `198.18.0.40` | `000`              |
+| `registry.npmjs.org`            | `198.18.0.13` | `000` at 5.001s    |
+| `pypi.org`                      | `198.18.0.4`  | `000` at 5.001s    |
+| `files.pythonhosted.org`        | `198.18.0.41` | `000`              |
+| `www.google.com`                | `198.18.0.8`  | `000`              |
+| —                               | —             | —                  |
+| `example.com`                   | real          | **`200` at 0.57s** |
+| `www.baidu.com`                 | real          | **`200` at 0.03s** |
+| `open.bigmodel.cn`              | real          | **`200` at 0.10s** |
+| `api.deepseek.com`              | real          | **`401` at 0.21s** |
+| `api.cohere.com`                | real          | **`403` at 1.06s** |
+| `api.voyageai.com`              | real          | **`404` at 1.01s** |
 
 **The rule has no counterexample across the hosts tested: if the name resolves
 into `198.18.0.0/15`, the connection is blackholed; if it resolves to a real
@@ -102,12 +102,12 @@ This matters for three concrete reasons:
    egress path is demonstrably healthy at the same instant: `example.com` answers
    in 0.57s and `api.deepseek.com` completes a TLS handshake and returns `401`.
    So "the sandbox has no internet" is the wrong description, and any procedure
-   that waits for *the network* to come back is waiting for something that is not
+   that waits for _the network_ to come back is waiting for something that is not
    the problem.
 2. **It is not a routing fault.** TCP connects in 0.00s to the synthetic address,
    because the proxy accepts locally. Nothing about retrying, re-resolving, or
    changing the request will help.
-3. **It names the causal direction.** The block is applied by *name*, so the same
+3. **It names the causal direction.** The block is applied by _name_, so the same
    process that could fetch `pypi.org` a minute ago will fail if the resolver
    starts answering `198.18.0.x` for it. That is what makes it intermittent from
    the caller's point of view while being perfectly deterministic per check.
@@ -120,15 +120,15 @@ This matters for three concrete reasons:
 ### 3.3 Interaction with §2
 
 Condition A remains "do not re-dispatch" — a re-dispatched workflow would run on
-GitHub's runners, not here, and so is unaffected; but the *artifact fetch* that
+GitHub's runners, not here, and so is unaffected; but the _artifact fetch_ that
 motivated the re-dispatch would still fail. The refinement is only about
 **diagnosis**, and it strengthens the §2 conclusion:
 
-| What was thought | What the measurement says |
-| --- | --- |
-| "egress is down" | egress is up; a set of names resolves into a non-routable range |
-| "wait for the network" | the network is fine; wait for the resolver to change its answer |
-| "the sandbox has no internet" | false at the same instant, provably (`example.com` `200`) |
+| What was thought              | What the measurement says                                       |
+| ----------------------------- | --------------------------------------------------------------- |
+| "egress is down"              | egress is up; a set of names resolves into a non-routable range |
+| "wait for the network"        | the network is fine; wait for the resolver to change its answer |
+| "the sandbox has no internet" | false at the same instant, provably (`example.com` `200`)       |
 
 **Practical check, before interpreting any `000`:**
 
@@ -165,7 +165,7 @@ for a fault that has nothing to do with it.
 4. Condition B → the named host is unusable; re-dispatch and wait for another
    assignment (§2.1.1, §2.1.2).
 5. Record which condition applied, because "the fetch failed" is not a finding
-   until it says which of the two it was — and now also *which names* were
+   until it says which of the two it was — and now also _which names_ were
    affected, since condition A is a set rather than a switch.
 
 > **Where this sits in the discipline list:** it is the same shape as everything
@@ -192,12 +192,12 @@ conclusion** rather than after.
 169.254.0.3     mirrors.tencent.com
 ```
 
-| Host | Resolved to | Result |
-| --- | --- | --- |
-| `api.github.com` | `198.18.0.5` | `000` at **5.001s** |
-| `github.com` | `198.18.0.16` | `000` at **5.001s** |
-| `productionresultssa3.blob.core.windows.net` | synthetic | `000` at **5.001s** |
-| `mirrors.tencent.com` | `169.254.0.3` | **`200` at 0.020s** |
+| Host                                         | Resolved to   | Result              |
+| -------------------------------------------- | ------------- | ------------------- |
+| `api.github.com`                             | `198.18.0.5`  | `000` at **5.001s** |
+| `github.com`                                 | `198.18.0.16` | `000` at **5.001s** |
+| `productionresultssa3.blob.core.windows.net` | synthetic     | `000` at **5.001s** |
+| `mirrors.tencent.com`                        | `169.254.0.3` | **`200` at 0.020s** |
 
 The wall clock is pinned at 5.001s on every blocked name and the working control
 answers in 0.020s. **This is §3's rule reproduced exactly, with no counterexample
@@ -240,11 +240,11 @@ getent hosts api.github.com
   -> 198.18.0.12                       (the synthetic answer)
 ```
 
-| Host | System resolver | DoH | Connection with the DoH address |
-| --- | --- | --- | --- |
-| `api.github.com` | `198.18.0.12` | `20.205.243.168` | **`200`** |
-| `github.com` | `198.18.0.16` | `20.205.243.166` | `200` |
-| `nodejs.org` | `198.18.0.45` | `104.16.212.131` | headers download succeeds |
+| Host             | System resolver | DoH              | Connection with the DoH address |
+| ---------------- | --------------- | ---------------- | ------------------------------- |
+| `api.github.com` | `198.18.0.12`   | `20.205.243.168` | **`200`**                       |
+| `github.com`     | `198.18.0.16`   | `20.205.243.166` | `200`                           |
+| `nodejs.org`     | `198.18.0.45`   | `104.16.212.131` | headers download succeeds       |
 
 The decisive step is the last column and it is one command:
 
@@ -258,7 +258,7 @@ curl --resolve api.github.com:443:20.205.243.168 \
 **Nothing changed but the address.** Same host name, same TLS, same token.
 That is what turns "the resolver is answering wrong" from a diagnosis into a
 repair, and it is why §2's framing of condition A as environmental was
-incomplete: the *symptom* is environmental, the *cause* is a resolution answer
+incomplete: the _symptom_ is environmental, the _cause_ is a resolution answer
 that a second, unblocked channel can supply.
 
 ### 8.1 The repair, and why it is a script
@@ -363,12 +363,12 @@ broken.**
 
 ### 7.3 What this changes
 
-| Claim | Status after §7 |
-| --- | --- |
-| "egress is down" | wrong; the real endpoints answer in under a second |
-| "wait for the resolver" | not necessary; `pin-github-hosts.py` bypasses it |
-| "a `000` means retry later" | a `000` on a synthetic answer means **pin, then proceed** |
-| §5 step 3 ("do local work; retry the network") | superseded for pinned hosts: pin first, then push |
+| Claim                                          | Status after §7                                           |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| "egress is down"                               | wrong; the real endpoints answer in under a second        |
+| "wait for the resolver"                        | not necessary; `pin-github-hosts.py` bypasses it          |
+| "a `000` means retry later"                    | a `000` on a synthetic answer means **pin, then proceed** |
+| §5 step 3 ("do local work; retry the network") | superseded for pinned hosts: pin first, then push         |
 
 The §5 procedure is left in place because its diagnosis is correct and its
 "do not re-dispatch" instruction is still right — a re-dispatch would run on
@@ -409,14 +409,14 @@ The same two addresses, minutes apart, exchanged which one worked. The quantity
 being sampled is **intermittent**, so a single probe of it says nothing. Three
 attempts per address, run concurrently, gave the actual shape:
 
-| Host | Address | Success |
-| --- | --- | --- |
-| `api.github.com` | `20.205.243.168` (DoH) | 3/3 |
+| Host             | Address                  | Success  |
+| ---------------- | ------------------------ | -------- |
+| `api.github.com` | `20.205.243.168` (DoH)   | 3/3      |
 | `api.github.com` | `140.82.112.6` … `121.6` | 3/3 each |
-| `github.com` | `20.205.243.166` (DoH) | 2/3 |
-| `github.com` | `20.205.243.167` | 2/3 |
-| `github.com` | `140.82.112.3`, `.113.3` | 3/3 |
-| `github.com` | `140.82.114.3` | 1/3 |
+| `github.com`     | `20.205.243.166` (DoH)   | 2/3      |
+| `github.com`     | `20.205.243.167`         | 2/3      |
+| `github.com`     | `140.82.112.3`, `.113.3` | 3/3      |
+| `github.com`     | `140.82.114.3`           | 1/3      |
 
 And a later run of the same probe returned **3/3 for every address on every
 host**, including the DoH answers. So the population is not "good addresses and

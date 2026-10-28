@@ -11,12 +11,12 @@ product's own end-to-end score**, which means the adapter was never a proxy for 
 
 ## 1. What was added
 
-| piece | why |
-| --- | --- |
-| `measureRetrieval` gains `answer` / `judge` / `accuracyFor` | one pass, one corpus: `accuracy` and `recallAtK` have to describe the same run |
-| `competitor-reader.ts` | one Chain-of-Note prompt for every provider, deliberately **not** the production prompt |
-| `CapabilityScore.read` / `.correct` | the aggregate hides which family is losing |
-| workflow step at the 2.8k budget | the only context size at which a published accuracy can be compared at all |
+| piece                                                       | why                                                                                     |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `measureRetrieval` gains `answer` / `judge` / `accuracyFor` | one pass, one corpus: `accuracy` and `recallAtK` have to describe the same run          |
+| `competitor-reader.ts`                                      | one Chain-of-Note prompt for every provider, deliberately **not** the production prompt |
+| `CapabilityScore.read` / `.correct`                         | the aggregate hides which family is losing                                              |
+| workflow step at the 2.8k budget                            | the only context size at which a published accuracy can be compared at all              |
 
 The reader is a separate prompt from `natural-language-memory.ts` on purpose. The production prompt is tuned
 against one route and carries that route's abstention token, candidate-discrimination clause and variants; using
@@ -42,13 +42,13 @@ The tables below use the second run, which is the one the final artifact records
 
 100 questions, top-10, `--budget-tokens 2800`, DeepSeek as reader and judge, official per-type judge templates.
 
-| provider | recall@k | all-gold | mrr | accuracy | ~tokens |
-| --- | --- | --- | --- | --- | --- |
-| `lexical-reference` | 89.0% | 72.0% | 0.701 | **68.0%** (68/100) | 34,563 |
-| `cortex-session` | 87.0% | 73.0% | 0.746 | **60.0%** (60/100) | 33,310 |
-| `cortex/trim-2.8k` | 73.0% | 6.0% | 0.708 | **52.0%** (52/100) | 2,799 |
-| `cortex/whole-8t` | 7.0% | 4.0% | 0.070 | not read | 2,584 |
-| `null-floor` | 0.0% | 0.0% | 0.000 | not read | 0 |
+| provider            | recall@k | all-gold | mrr   | accuracy           | ~tokens |
+| ------------------- | -------- | -------- | ----- | ------------------ | ------- |
+| `lexical-reference` | 89.0%    | 72.0%    | 0.701 | **68.0%** (68/100) | 34,563  |
+| `cortex-session`    | 87.0%    | 73.0%    | 0.746 | **60.0%** (60/100) | 33,310  |
+| `cortex/trim-2.8k`  | 73.0%    | 6.0%     | 0.708 | **52.0%** (52/100) | 2,799   |
+| `cortex/whole-8t`   | 7.0%     | 4.0%     | 0.070 | not read           | 2,584   |
+| `null-floor`        | 0.0%     | 0.0%     | 0.000 | not read           | 0       |
 
 Arms marked "not read" print `—` rather than `0`. A provider that was never read has no accuracy, and a zero
 would claim it answered every question wrong.
@@ -57,18 +57,18 @@ would claim it answered every question wrong.
 
 `found/measured` is retrieval; `aCorrect/Read` is what the reader did with it.
 
-| capability | lexical-reference | cortex-session | cortex/trim-2.8k |
-| --- | --- | --- | --- |
-| ABS | 19/20 → **19/20** | 18/20 → **18/20** | 13/20 → **18/20** |
-| IE | 12/20 → 9/20 | 12/20 → 10/20 | 10/20 → 9/20 |
-| KU | 19/20 → 17/20 | 20/20 → **14/20** | 20/20 → **13/20** |
-| MR | 19/20 → 12/20 | 18/20 → 11/20 | 16/20 → **4/20** |
-| TR | 20/20 → **11/20** | 19/20 → 7/20 | 14/20 → 8/20 |
+| capability | lexical-reference | cortex-session    | cortex/trim-2.8k  |
+| ---------- | ----------------- | ----------------- | ----------------- |
+| ABS        | 19/20 → **19/20** | 18/20 → **18/20** | 13/20 → **18/20** |
+| IE         | 12/20 → 9/20      | 12/20 → 10/20     | 10/20 → 9/20      |
+| KU         | 19/20 → 17/20     | 20/20 → **14/20** | 20/20 → **13/20** |
+| MR         | 19/20 → 12/20     | 18/20 → 11/20     | 16/20 → **4/20**  |
+| TR         | 20/20 → **11/20** | 19/20 → 7/20      | 14/20 → 8/20      |
 
 Four things, and the fourth changes the plan.
 
 1. **ABS inverts.** `trim-2.8k` retrieves 13/20 and answers 18/20: an abstention question needs no evidence, so a
-   reader that refuses when the context is thin is *right*. This is why the tight budget's total does not
+   reader that refuses when the context is thin is _right_. This is why the tight budget's total does not
    collapse, and it is a reason not to read the aggregate as a retrieval score.
 2. **KU is lost in reading.** 20/20 retrieved, 13/20 answered — seven points gone after successful retrieval, on
    the capability the end-to-end arm scores 86.8% on. The production prompt is worth roughly 20 points on KU
@@ -83,11 +83,11 @@ Four things, and the fourth changes the plan.
 
 ## 3. Finding one: reading costs about a third
 
-| arm | recall@k | accuracy | conversion |
-| --- | --- | --- | --- |
-| `lexical-reference` | 89.0% | 68.0% | 76% |
-| `cortex-session` | 87.0% | 60.0% | 69% |
-| `cortex/trim-2.8k` | 73.0% | 52.0% | 71% |
+| arm                 | recall@k | accuracy | conversion |
+| ------------------- | -------- | -------- | ---------- |
+| `lexical-reference` | 89.0%    | 68.0%    | 76%        |
+| `cortex-session`    | 87.0%    | 60.0%    | 69%        |
+| `cortex/trim-2.8k`  | 73.0%    | 52.0%    | 71%        |
 
 **Consistent across three different retrieval qualities**, which is what makes it a property of the reading
 stage rather than of one arm. Roughly 70% of a question whose evidence was retrieved becomes a correct answer.
@@ -97,7 +97,7 @@ reader and this prompt. That reframes every retrieval number in this repository 
 was never going to produce above roughly 68% accuracy.
 
 **`all-gold` is the misleading column here**, and the 2.8k row proves it: `all-gold 6.0%` with `accuracy 52.0%`.
-The metric requires *every* gold turn to be present, and a LongMemEval session carries about ten turns of which
+The metric requires _every_ gold turn to be present, and a LongMemEval session carries about ten turns of which
 one states the answer. A reader needs the one. `all-gold` measures "the whole conversation is here", which is not
 the question anybody asks; `recall@k` (any gold turn) is the one that tracks answerability. It stays in the table
 because it was reported before and removing it would look like tidying, but its role changes: it is now a
@@ -115,12 +115,12 @@ diagnostic about budget adequacy, not about correctness.
 > machinery, not of the 81.0% system's. **The 21 points are real; the decomposition of them is not.**
 > `MEASURE-BASELINE-DRIFT.md` §8 records how the two systems came to share a headline.
 
-| path | score | what runs |
-| --- | --- | --- |
+| path                                   | score               | what runs                                                                                                                 |
+| -------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | memory arm, end to end (500 questions) | **81.0%** (405/500) | `cortex-memory` at §10.3: 256-wide relevance pool, 48,000-character room, user-only roles on two routes, `enumerated` ask |
-| competition adapter (100 questions) | **60.0%** | `admitSessions` + session budget + `lexicalRelevance`, then a plain Chain-of-Note reader |
+| competition adapter (100 questions)    | **60.0%**           | `admitSessions` + session budget + `lexicalRelevance`, then a plain Chain-of-Note reader                                  |
 
-The adapter is a *minimal* composition of the product's pure functions. It has no relevance ranking, no
+The adapter is a _minimal_ composition of the product's pure functions. It has no relevance ranking, no
 48,000-character room, no role filter, no enumeration contract, and a different reader prompt. So the
 21-point gap is not a contradiction — it is a decomposition **that has not been performed**, and the
 four components named below are where it was expected to come from rather than where it has been shown
@@ -143,17 +143,17 @@ measures the 43.40% arm.
 §4 named four components as a hypothesis. Reading `natural-language-memory.ts` turns three of them into facts and
 changes what the next experiment should be.
 
-| component | state in the product | what it means for the 21 points |
-| --- | --- | --- |
-| temporal arithmetic | **on by default**: `enableTemporalEngine` — the model extracts event dates, then a deterministic engine computes elapsed time, intervals and ordering | This is the executor half of TReMu, which the dispatch clause could only imitate by asking the model to write the subtraction down. The product is **stronger than the prompt arm here**, so porting the temporal clause into production would be a downgrade. |
-| knowledge update | **on by default**: `enableBitemporalKnowledgeUpdate` — the model reports the subject's `(object, date)` history, then exact date ordering picks current vs previous | Same conclusion. The clause asks for "the value from the latest date"; the product computes it. |
-| multi-session membership | the production prompt **already emits a numbered ledger** and already folds duplicate mentions correctly | So the artefact-discipline idea in §5.4 is not new to the product — it is new only to the competition reader, which had none. That predicts a real gain on `cortex-session` and no gain from porting it back. |
-| aggregation critique | **implemented, default off, never measured** — `enableAggregationCritique` re-examines the first pass's own ledger for *membership* errors (items missed, an exchange collapsed into one, items that should have been excluded) and re-asks with that critique folded in | This is the one that matches the measured failure. |
+| component                | state in the product                                                                                                                                                                                                                                                     | what it means for the 21 points                                                                                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| temporal arithmetic      | **on by default**: `enableTemporalEngine` — the model extracts event dates, then a deterministic engine computes elapsed time, intervals and ordering                                                                                                                    | This is the executor half of TReMu, which the dispatch clause could only imitate by asking the model to write the subtraction down. The product is **stronger than the prompt arm here**, so porting the temporal clause into production would be a downgrade. |
+| knowledge update         | **on by default**: `enableBitemporalKnowledgeUpdate` — the model reports the subject's `(object, date)` history, then exact date ordering picks current vs previous                                                                                                      | Same conclusion. The clause asks for "the value from the latest date"; the product computes it.                                                                                                                                                                |
+| multi-session membership | the production prompt **already emits a numbered ledger** and already folds duplicate mentions correctly                                                                                                                                                                 | So the artefact-discipline idea in §5.4 is not new to the product — it is new only to the competition reader, which had none. That predicts a real gain on `cortex-session` and no gain from porting it back.                                                  |
+| aggregation critique     | **implemented, default off, never measured** — `enableAggregationCritique` re-examines the first pass's own ledger for _membership_ errors (items missed, an exchange collapsed into one, items that should have been excluded) and re-asks with that critique folded in | This is the one that matches the measured failure.                                                                                                                                                                                                             |
 
-The comment on that last flag records the measurement this round's MR result independently reproduces: *"The
+The comment on that last flag records the measurement this round's MR result independently reproduces: _"The
 measured MR error is dominated by set membership rather than arithmetic: the model already emits a numbered
 ledger, already folds duplicate mentions correctly at Step 2, and its stated count follows its own list. What it
-gets wrong is which items enter the list."*
+gets wrong is which items enter the list."_
 
 **Two consequences, and they are the reason this section is here.**
 
@@ -196,22 +196,22 @@ The clause described in §2.1 was added as a second reader mode and run on the s
 the same judge. `recall@k` is **identical to the digit** in every row, which is the design working: the hits were
 produced once per provider and handed to two prompts, so a difference cannot be retrieval.
 
-| provider | accuracy, `con` | accuracy, `dispatch` | Δ | recall@k |
-| --- | --- | --- | --- | --- |
-| `lexical-reference` | 66.0% | **72.0%** | +6.0pp | 89.0% both |
-| `cortex-session` | 64.0% | **69.0%** | +5.0pp | 87.0% both |
-| `cortex/trim-2.8k` | 51.0% | **55.0%** | +4.0pp | 73.0% both |
+| provider            | accuracy, `con` | accuracy, `dispatch` | Δ      | recall@k   |
+| ------------------- | --------------- | -------------------- | ------ | ---------- |
+| `lexical-reference` | 66.0%           | **72.0%**            | +6.0pp | 89.0% both |
+| `cortex-session`    | 64.0%           | **69.0%**            | +5.0pp | 87.0% both |
+| `cortex/trim-2.8k`  | 51.0%           | **55.0%**            | +4.0pp | 73.0% both |
 
 Per capability, on the arm with the most headroom:
 
-| capability | `con` | `dispatch` | Δ |
-| --- | --- | --- | --- |
-| TR (lexical) | 11/20 | **15/20** | **+20pp** |
-| TR (cortex-session) | 11/20 | 13/20 | +10pp |
-| TR (trim-2.8k) | 7/20 | 8/20 | +5pp |
-| MR (lexical) | 10/20 | 14/20 | +20pp |
-| MR (cortex-session) | 10/20 | 12/20 | +10pp |
-| KU (lexical) | 17/20 | 15/20 | −10pp |
+| capability          | `con` | `dispatch` | Δ         |
+| ------------------- | ----- | ---------- | --------- |
+| TR (lexical)        | 11/20 | **15/20**  | **+20pp** |
+| TR (cortex-session) | 11/20 | 13/20      | +10pp     |
+| TR (trim-2.8k)      | 7/20  | 8/20       | +5pp      |
+| MR (lexical)        | 10/20 | 14/20      | +20pp     |
+| MR (cortex-session) | 10/20 | 12/20      | +10pp     |
+| KU (lexical)        | 17/20 | 15/20      | −10pp     |
 
 **The criterion was TR ≥ +15pp at constant `recall@k`, and it is met on one arm and approached on two.** All
 three arms move in the same direction, on both weak capabilities, which is what a real effect looks like and
@@ -219,8 +219,8 @@ what a noise draw usually is not.
 
 **But it is not significant, and the table must not be read as if it were.** TR carries 20 questions in this
 subset; +4 questions on 20 is a binomial difference with a paired p well above 0.05. The honest statement is:
-*a prompt clause worth 4–6 points overall, and 5–20 points on the two capabilities that were failing, measured
-once on a hundred questions.* Confirming it needs the 500-question file.
+_a prompt clause worth 4–6 points overall, and 5–20 points on the two capabilities that were failing, measured
+once on a hundred questions._ Confirming it needs the 500-question file.
 
 **KU moved the wrong way on one arm** (17→15 on lexical) and that is reported rather than dropped. The KU clause
 asks the model to enumerate every distinct value with its date, and on a question whose value never changed that
@@ -241,27 +241,27 @@ an **inserted clause** rather than a rewritten prompt is that the ablation then 
 §5.1 could only say "four to six points on a hundred questions, not significant". The 500-question run of the same
 ablation says the rest. Two arms, the same two prompts, the same corpus:
 
-| provider | accuracy, `con` | accuracy, `dispatch` | Δ | recall@k |
-| --- | --- | --- | --- | --- |
-| `lexical-reference` | 61.8% (309/500) | **69.2%** (346/500) | **+7.4pp / +37 questions** | 93.6% both |
-| `cortex-session` | 62.8% (314/500) | **69.0%** (345/500) | **+6.2pp / +31 questions** | 94.0% both |
+| provider            | accuracy, `con` | accuracy, `dispatch` | Δ                          | recall@k   |
+| ------------------- | --------------- | -------------------- | -------------------------- | ---------- |
+| `lexical-reference` | 61.8% (309/500) | **69.2%** (346/500)  | **+7.4pp / +37 questions** | 93.6% both |
+| `cortex-session`    | 62.8% (314/500) | **69.0%** (345/500)  | **+6.2pp / +31 questions** | 94.0% both |
 
 Per capability, and this is the part that makes it an effect rather than a drift:
 
-| capability | `con` lexical | `dispatch` lexical | `con` session | `dispatch` session |
-| --- | --- | --- | --- | --- |
-| **TR** | 58/127 | **89/127** (+24.4pp) | 60/127 | **89/127** (+22.8pp) |
-| MR | 53/121 | 58/121 (+4.1pp) | 57/121 | 55/121 (−1.7pp) |
-| IE | 113/150 | 111/150 (−1.3pp) | 118/150 | 117/150 (−0.7pp) |
-| KU | 60/72 | 61/72 (+1.4pp) | 57/72 | 58/72 (+1.4pp) |
-| ABS | 25/30 | 27/30 (+6.7pp) | 22/30 | 26/30 (+13.3pp) |
+| capability | `con` lexical | `dispatch` lexical   | `con` session | `dispatch` session   |
+| ---------- | ------------- | -------------------- | ------------- | -------------------- |
+| **TR**     | 58/127        | **89/127** (+24.4pp) | 60/127        | **89/127** (+22.8pp) |
+| MR         | 53/121        | 58/121 (+4.1pp)      | 57/121        | 55/121 (−1.7pp)      |
+| IE         | 113/150       | 111/150 (−1.3pp)     | 118/150       | 117/150 (−0.7pp)     |
+| KU         | 60/72         | 61/72 (+1.4pp)       | 57/72         | 58/72 (+1.4pp)       |
+| ABS        | 25/30         | 27/30 (+6.7pp)       | 22/30         | 26/30 (+13.3pp)      |
 
 Three things follow, and the second is the one that makes this a result.
 
 1. **The criterion is met on the population, not just on a subset.** TR ≥ +15pp at constant `recall@k`: +24.4 and
    +22.8 points, on 127 questions each.
 2. **The effect is where the clause is.** TR moves 31 and 29 questions; every other capability moves by at most
-   five, and IE moves *down* on both arms. A prompt that made models generally better would move everything; this
+   five, and IE moves _down_ on both arms. A prompt that made models generally better would move everything; this
    one moves the family whose clause asks for dates and arithmetic.
 3. **Two independent retrievals land on the same number.** `lexical-reference` and `cortex-session` retrieve
    differently (93.6% vs 94.0% recall, different hit sets) and both answer 89/127 temporal questions after the
@@ -290,10 +290,10 @@ one the next round tests.
 §5.3 ended on an asymmetry worth acting on. Two clauses went into the same prompt at the same time, and one moved
 31 questions while the other moved 5 and −2:
 
-| clause | what it says | questions moved (lexical / session) |
-| --- | --- | --- |
-| temporal | write each event's date in ISO form, quote the phrase you took it from, then do the subtraction one step at a time | **+31 / +29** |
-| multi-session | "collect every block that bears on the question before answering, and do not stop at the first one" | +5 / −2 |
+| clause        | what it says                                                                                                       | questions moved (lexical / session) |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| temporal      | write each event's date in ISO form, quote the phrase you took it from, then do the subtraction one step at a time | **+31 / +29**                       |
+| multi-session | "collect every block that bears on the question before answering, and do not stop at the first one"                | +5 / −2                             |
 
 The temporal clause names **what the reader must write down**. The multi-session clause names nothing; it asks for
 diligence. `--reader dispatch2` is the same prompt with that one clause replaced by a procedure:
@@ -305,12 +305,12 @@ diligence. `--reader dispatch2` is the same prompt with that one clause replaced
 
 Four findings shaped it, and none of them is our own guess:
 
-| source | what it says | what it changed |
-| --- | --- | --- |
-| LongMemEval (ICLR 2025) | multi-session queries need "further fact extraction", not more context | asks for extraction into per-block facts rather than for careful reading |
-| BEAM (2510.27246) | multi-session failures come from retrieval omitting events and losing order | every row carries its date, so a merged list is still ordered |
-| Zep | +13.6pp on multi-session QA from a temporal graph where each fact has validity | a prompt cannot build that graph, but it can demand the same shape of output |
-| §5.3, this document | a clause naming an artefact moved 31; one encouraging moved 5 and −2 | the whole reason for trying this |
+| source                  | what it says                                                                   | what it changed                                                              |
+| ----------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| LongMemEval (ICLR 2025) | multi-session queries need "further fact extraction", not more context         | asks for extraction into per-block facts rather than for careful reading     |
+| BEAM (2510.27246)       | multi-session failures come from retrieval omitting events and losing order    | every row carries its date, so a merged list is still ordered                |
+| Zep                     | +13.6pp on multi-session QA from a temporal graph where each fact has validity | a prompt cannot build that graph, but it can demand the same shape of output |
+| §5.3, this document     | a clause naming an artefact moved 31; one encouraging moved 5 and −2           | the whole reason for trying this                                             |
 
 `dispatch` is **frozen, not edited**. Its numbers are archived against that name, so a rewrite becomes a new arm —
 and a test pins its text, which means the next person who wants to change it has to add a mode instead. Six tests
@@ -323,17 +323,17 @@ prompt), and is still the control prompt plus an insertion so `con` remains its 
 One more external finding arrived after `dispatch2` was dispatched and before its numbers existed, and it makes a
 testable prediction about **both** new mechanisms. It is recorded here first, so the result can refute it.
 
-*Judging ≠ Enumerating* (arXiv 2608.01000) reports that models asked to produce a complete list suffer **silent
+_Judging ≠ Enumerating_ (arXiv 2608.01000) reports that models asked to produce a complete list suffer **silent
 omission**: after five items the list "looks complete" and generation stops, while dozens of correct items remain
 unstated. The same items, offered one at a time with "does this qualify?", are confirmed about 90% of the time. The
 prescription is to stop asking a model to recall a set and to start presenting candidates for judgement.
 
 That distinction separates the two mechanisms built in this round:
 
-| mechanism | where the candidates come from | predicted effect |
-| --- | --- | --- |
-| `dispatch2` (this round) | **iterating the retrieved blocks** — one row per block, so the candidate set is the context rather than the model's recall | movement on MR |
-| `enableAggregationCritique` (wired, not yet run) | **asking the model what its first list missed** — which is enumeration again, one level up | little or no movement, because the critique inherits the failure it is meant to repair |
+| mechanism                                        | where the candidates come from                                                                                             | predicted effect                                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `dispatch2` (this round)                         | **iterating the retrieved blocks** — one row per block, so the candidate set is the context rather than the model's recall | movement on MR                                                                         |
+| `enableAggregationCritique` (wired, not yet run) | **asking the model what its first list missed** — which is enumeration again, one level up                                 | little or no movement, because the critique inherits the failure it is meant to repair |
 
 If MR moves under `dispatch2`, the reading is that iterating the context is what fixes membership, which agrees with
 the paper and would make the critique's design suspect. If MR does not move even under `dispatch2`, then neither
@@ -354,10 +354,10 @@ json.decoder.JSONDecodeError: Unterminated string starting at: line 384 column 9
 `--json` wrote its payload and called `process.exit(0)` in the same tick. Exit does not wait for stdout to drain,
 so whatever was still in the pipe was discarded. Measured on a payload of known size:
 
-| code | bytes produced | bytes received |
-| --- | --- | --- |
-| `write` then `process.exit` | 73,480 | **65,536** |
-| `await` the write callback, then exit | 73,480 | 73,480 |
+| code                                  | bytes produced | bytes received |
+| ------------------------------------- | -------------- | -------------- |
+| `write` then `process.exit`           | 73,480         | **65,536**     |
+| `await` the write callback, then exit | 73,480         | 73,480         |
 
 65,536 is the kernel pipe buffer. The artifact was never corrupt on disk, because a file write is synchronous —
 which is why every previous run looked fine — and it was never corrupt when the reader drained immediately, which
@@ -367,7 +367,7 @@ the new one, both verified.
 
 **This belongs in the measurement document rather than a changelog** because it is the same class of defect this
 project keeps finding: a number that was produced by the instrument rather than by the system. A truncated JSON
-file does not raise; it parses as a *smaller run* or not at all, and the reader of an artifact has no way to tell
+file does not raise; it parses as a _smaller run_ or not at all, and the reader of an artifact has no way to tell
 which. The `--json` path is the one every later comparison depends on.
 
 ## 5.5 The multi-session rewrite, and the first exact paired p
@@ -376,27 +376,27 @@ which. The `--json` path is the one every later comparison depends on.
 already in the previous run's log and the comparison that answers this round's question is dispatch → dispatch2.
 
 | capability | `dispatch` lexical | `dispatch2` lexical | `dispatch` session | `dispatch2` session |
-| --- | --- | --- | --- | --- |
-| ABS | 26/30 | 27/30 (+1) | 25/30 | 27/30 (+2) |
-| IE | 107/150 | 111/150 (+4) | 120/150 | 120/150 (0) |
-| KU | 60/72 | 57/72 (−3) | 53/72 | 54/72 (+1) |
-| **MR** | **64/121** | **81/121 (+17)** | **61/121** | **77/121 (+16)** |
-| TR | 87/127 | 85/127 (−2) | 77/127 | 87/127 (+10) |
-| **total** | **344/500** | **361/500 (+17)** | **336/500** | **365/500 (+29)** |
+| ---------- | ------------------ | ------------------- | ------------------ | ------------------- |
+| ABS        | 26/30              | 27/30 (+1)          | 25/30              | 27/30 (+2)          |
+| IE         | 107/150            | 111/150 (+4)        | 120/150            | 120/150 (0)         |
+| KU         | 60/72              | 57/72 (−3)          | 53/72              | 54/72 (+1)          |
+| **MR**     | **64/121**         | **81/121 (+17)**    | **61/121**         | **77/121 (+16)**    |
+| TR         | 87/127             | 85/127 (−2)         | 77/127             | 87/127 (+10)        |
+| **total**  | **344/500**        | **361/500 (+17)**   | **336/500**        | **365/500 (+29)**   |
 
 Paired exact McNemar, same questions, same run:
 
-| provider | improved | regressed | net | p | verdict |
-| --- | --- | --- | --- | --- | --- |
-| `lexical-reference` | 46 | 29 | +17 (3.4%) | 0.0639 | not significant |
-| `cortex-session` | 51 | 22 | +29 (5.8%) | **0.0009** | improved |
+| provider            | improved | regressed | net        | p          | verdict         |
+| ------------------- | -------- | --------- | ---------- | ---------- | --------------- |
+| `lexical-reference` | 46       | 29        | +17 (3.4%) | 0.0639     | not significant |
+| `cortex-session`    | 51       | 22        | +29 (5.8%) | **0.0009** | improved        |
 
 ### What the table says, and the two things it refuses to say
 
 **MR is the only capability that moves systematically.** +17 and +16 questions on two independent retrievals —
 different recall (93.6% and 94.0%), different hit sets — with everything else inside ±4. That is the shape of an
-effect located where the clause is, and it is the prediction registered in §5.4: candidates drawn from *iterating
-the retrieved blocks* fix membership, and the model's own recall does not.
+effect located where the clause is, and it is the prediction registered in §5.4: candidates drawn from _iterating
+the retrieved blocks_ fix membership, and the model's own recall does not.
 
 **Which is why the significant p-value is not the headline.** `cortex-session` reaches p=0.0009 on a net of +29,
 and only 16 of those are MR. The other 13 are ABS +2, KU +1, and **TR +10** — and the temporal clause is
@@ -445,7 +445,7 @@ one of them: iterating the retrieved blocks moved MR by 16–17 questions, while
 to look harder had moved 5 and −2 the round before. The other mechanism is `enableAggregationCritique`, and it
 asks the model what its own list **missed** — an enumeration.
 
-*Judging ≠ Enumerating* (arXiv 2608.01000) is the reason that is a defect rather than a wording choice. Asked for
+_Judging ≠ Enumerating_ (arXiv 2608.01000) is the reason that is a defect rather than a wording choice. Asked for
 a complete list, a model commits **silent omission**: after a handful of items the list looks done and generation
 stops, while the same items offered one at a time are confirmed about 90% of the time. The prescription is to stop
 asking for a recall of the set and start presenting candidates for judgement.
@@ -480,10 +480,10 @@ Three properties follow, and the ordering is deliberate.
 
 Two runs are dispatched on the same 500 questions, same reader, same judge, differing only in this mode:
 
-| arm | prediction | what would refute it |
-| --- | --- | --- |
-| `recall` vs the shipped configuration | **little or no movement on MR** — the critique inherits the enumeration failure it is meant to repair | MR moves by ≥10 questions |
-| `per-item` vs `recall` | **MR moves in favour of `per-item`**, for the reason §5.5 confirmed for `dispatch2` | `per-item` is level with or worse than `recall` |
+| arm                                   | prediction                                                                                            | what would refute it                            |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `recall` vs the shipped configuration | **little or no movement on MR** — the critique inherits the enumeration failure it is meant to repair | MR moves by ≥10 questions                       |
+| `per-item` vs `recall`                | **MR moves in favour of `per-item`**, for the reason §5.5 confirmed for `dispatch2`                   | `per-item` is level with or worse than `recall` |
 
 And the noise floor from §5.5 applies to both: **a 121-question column swings about 10 questions with the prompt
 unchanged (7.9 points)**. A difference under that is not a difference, and neither run will be reported as one
@@ -491,15 +491,15 @@ without a paired test over the same questions.
 
 ## 6. The next measurements, in order, revised by §2.1
 
-| # | measurement | why it is next | criterion |
-| --- | --- | --- | --- |
-| 1 | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp) |
-| 1b | ~~the same ablation on the 500-question file~~ **done — §5.3** | §5.1 was 20 TR questions; the population is 127 | TR +24.4pp and +22.8pp, `recall@k` unchanged; exact paired p pending `records` |
-| 1c | ~~the MR clause, rewritten to demand an artefact~~ **done — §5.5** | §5.3 showed the TR clause moved 31 questions and the MR clause moved 5 and −2; TR asks for dates to be written down, MR asked for nothing | MR ≥ +10pp at constant `recall@k`: **+17 and +16 on 121 questions**, both arms. Criterion met, and the total is not the metric |
-| 1d | ~~the aggregation critique under the same test~~ **implemented and dispatched — §5.6** | §5.4's prediction separates the two mechanisms by where candidates come from; only one had been measured. The recall critique asks what the list missed, which is enumeration again | `recall` vs shipped: little movement. `per-item` vs `recall`: MR moves for `per-item`. Both paired, both against a ±10-question noise floor |
-| 1e | **a prompt-invariant noise baseline, per capability** | §5.5 measured 10 questions of swing on TR across two identical prompts. Every future claim on a 121-question column must clear that | report the swing before any Δ is called an effect |
-| 2 | the same 100 questions through the **production** memory arm at a matched budget | turns the §4 decomposition into one measurement instead of an inference from two subsets | arms within ±10pp, or the gap attributed to a named component |
-| 3 | reader swap: `deepseek-chat` vs a second model on frozen hits | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one | Δ accuracy with identical `recall@k` |
+| #   | measurement                                                                                                      | why it is next                                                                                                                                                                      | criterion                                                                                                                                   |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | ~~the production reader prompt on the same hits~~ **done — §5.1**, as a clause rather than the production prompt | the clause is the part of the production prompt that could be isolated; the rest of that prompt is route-specific and would have changed four things at once                        | TR ≥ +15pp at constant `recall@k`: met on `lexical-reference` (+20pp), approached on `cortex-session` (+10pp)                               |
+| 1b  | ~~the same ablation on the 500-question file~~ **done — §5.3**                                                   | §5.1 was 20 TR questions; the population is 127                                                                                                                                     | TR +24.4pp and +22.8pp, `recall@k` unchanged; exact paired p pending `records`                                                              |
+| 1c  | ~~the MR clause, rewritten to demand an artefact~~ **done — §5.5**                                               | §5.3 showed the TR clause moved 31 questions and the MR clause moved 5 and −2; TR asks for dates to be written down, MR asked for nothing                                           | MR ≥ +10pp at constant `recall@k`: **+17 and +16 on 121 questions**, both arms. Criterion met, and the total is not the metric              |
+| 1d  | ~~the aggregation critique under the same test~~ **implemented and dispatched — §5.6**                           | §5.4's prediction separates the two mechanisms by where candidates come from; only one had been measured. The recall critique asks what the list missed, which is enumeration again | `recall` vs shipped: little movement. `per-item` vs `recall`: MR moves for `per-item`. Both paired, both against a ±10-question noise floor |
+| 1e  | **a prompt-invariant noise baseline, per capability**                                                            | §5.5 measured 10 questions of swing on TR across two identical prompts. Every future claim on a 121-question column must clear that                                                 | report the swing before any Δ is called an effect                                                                                           |
+| 2   | the same 100 questions through the **production** memory arm at a matched budget                                 | turns the §4 decomposition into one measurement instead of an inference from two subsets                                                                                            | arms within ±10pp, or the gap attributed to a named component                                                                               |
+| 3   | reader swap: `deepseek-chat` vs a second model on frozen hits                                                    | separates "weak reader" from "weak prompt"; with §1.1's ±3pp spread, a difference under 5pp is not one                                                                              | Δ accuracy with identical `recall@k`                                                                                                        |
 
 Number 1 replaces the cross-session compression item that this round's evidence demoted. The plan had MR and TR
 as retrieval deficits; the per-capability table says TR is a reading deficit (20/20 retrieved, 11/20 answered)

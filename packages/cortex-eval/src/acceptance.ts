@@ -530,6 +530,53 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       'Thirty questions is a wide interval, so a single run decides nothing. The row stays because the denominator is fixed and the direction is not.',
   },
+
+  // ---- the one RAW-RAG stage this arm did not have (§13.115) --------------------------------------
+  {
+    id: 'S6',
+    capability: 'reranking',
+    metric: 'questions whose rerank reply was discarded, falling back to the retrieved order',
+    dataset: 'LongMemEval-S, 500 questions, one rerank invocation per question',
+    comparator: 'at-most',
+    threshold: 0,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/rerank-stage.json',
+      key: 'census.fallbacks',
+    },
+    onMiss:
+      'This is an invariant rather than a reading, so there is no partial pass: `rerankHits` degrades to the retrieved order on a thrown request, a short reply or a non-finite score, which means an endpoint answering 401 five hundred times and a cross-encoder that agreed every time produce the **same accuracy**. A single fallback therefore makes the paired run unreadable — it is an assembly failure, not a null result — and the answer is to fix the call (credential, model name, declared bounds) and re-dispatch, never to read the delta. The census in the artifact carries `calls` beside it so that a stage which never ran (`calls: 0`) cannot be mistaken for a clean one.',
+  },
+  {
+    id: 'S7',
+    capability: 'reranking',
+    metric:
+      'multi-session correct answers gained by the cross-encoder over the same 128-wide pool without it',
+    dataset:
+      'LongMemEval-S, 121 multi-session questions, treatment and control paired in one invocation',
+    comparator: 'at-least',
+    threshold: 3,
+    unit: 'count',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/rerank-stage.json',
+      key: 'delta.multiSession',
+    },
+    competitors: [
+      {
+        name: 'RAW-RAG (their set, reranker on)',
+        value: 0.4832,
+        grade: 'C',
+        recipe:
+          'their own 20,000-sample set, k = 15, 256/32-token windows, their reader — a different corpus, which is why the grade is C and the figure prices the mechanism rather than our gap. Their single-variable ablation with Holm correction puts the same pipeline at 44.40 with the reranker removed, so the stage is worth 3.92 points to the pipeline that has it; removing reranking costs them more than any mechanism they added (atomic facts −19.62 and summaries −5.81 are additions that hurt)',
+      },
+    ],
+    onMiss:
+      'Two ways to miss, and they are different findings. If `changed > 0` and the multi-session category moves by 3 or fewer, **delete the stage**: a mechanism the strongest published pipeline needs and this arm does not is either a difference in the corpus or a difference in what it is reranking, and both are results rather than reasons to keep it. If `changed = 0` with `fallbacks = 0`, the cross-encoder agreed with the fusion on all 500 questions, which settles the reranking question negatively for this corpus at this pool width — also a result, and also a reason to stop paying for it. The row is not reachable by overall accuracy: a stage that buys 3 questions in one category and loses 3 in another has moved the order without improving the answer, so no capability may fall by more than 2 within the same pair.',
+  },
 ];
 
 /** What the checker found for one criterion. Filled in by the runner, never by hand. */

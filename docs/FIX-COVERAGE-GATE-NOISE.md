@@ -11,8 +11,8 @@ figure as "a stale cached report". That dismissal was wrong, and the repetition 
 what turned a dismissed anomaly into an investigation.
 
 > **This document was wrong once.** It originally concluded that the six
-> `c8 ignore` guards in `math/stats.ts` were *unreachable* and that v8's
-> application of the ignore hints was *non-deterministic*. The first half of that
+> `c8 ignore` guards in `math/stats.ts` were _unreachable_ and that v8's
+> application of the ignore hints was _non-deterministic_. The first half of that
 > was false, and the second half was never demonstrated. §5 onward records what
 > the corrected investigation found, including the two real defects it uncovered.
 > The wrong version is summarised in §4 rather than deleted, because the reason it
@@ -27,19 +27,19 @@ or test edit between them. Twelve runs under conditions I controlled directly (o
 process, sequential, no concurrent load in this workspace):
 
 | Run | covered / total | Result |
-| --- | --- | --- |
-| 1 | 779 / 789 | 98.73% |
-| 2 | 781 / 789 | 98.99% |
-| 3 | 783 / 789 | 99.24% |
-| 4 | 779 / 789 | 98.48% |
-| 5 | 781 / 789 | 98.99% |
-| 6 | 783 / 789 | 99.24% |
-| 7 | 779 / 789 | 98.73% |
-| 8 | 777 / 789 | 98.48% |
-| 9 | 781 / 789 | 98.99% |
-| 10 | 779 / 789 | 98.73% |
-| 11 | 781 / 789 | 98.99% |
-| 12 | 777 / 789 | 98.48% |
+| --- | --------------- | ------ |
+| 1   | 779 / 789       | 98.73% |
+| 2   | 781 / 789       | 98.99% |
+| 3   | 783 / 789       | 99.24% |
+| 4   | 779 / 789       | 98.48% |
+| 5   | 781 / 789       | 98.99% |
+| 6   | 783 / 789       | 99.24% |
+| 7   | 779 / 789       | 98.73% |
+| 8   | 777 / 789       | 98.48% |
+| 9   | 781 / 789       | 98.99% |
+| 10  | 779 / 789       | 98.73% |
+| 11  | 781 / 789       | 98.99% |
+| 12  | 777 / 789       | 98.48% |
 
 **Five distinct values, 98.48% – 99.24%: a 0.76pp spread.** The denominator is
 **constant at 789 statements** across every run; only the numerator moves.
@@ -57,12 +57,12 @@ passes.
 Comparing per-statement covered flags across runs isolates the movement to
 `math/stats.ts`. The varying statement ids and their source lines:
 
-| Statement id | Line | Source |
-| --- | --- | --- |
-| 189, 190 | 190, 191 | `d = 1e-30;` and its closing `}` |
-| 194, 195 | 195, 196 | `c = 1e-30;` and its closing `}` |
-| 202, 203 | 203, 204 | `d = 1e-30;` and its closing `}` |
-| 207, 208 | 208, 209 | `c = 1e-30;` and its closing `}` |
+| Statement id | Line     | Source                           |
+| ------------ | -------- | -------------------------------- |
+| 189, 190     | 190, 191 | `d = 1e-30;` and its closing `}` |
+| 194, 195     | 195, 196 | `c = 1e-30;` and its closing `}` |
+| 202, 203     | 203, 204 | `d = 1e-30;` and its closing `}` |
+| 207, 208     | 208, 209 | `c = 1e-30;` and its closing `}` |
 
 Every one is the **body of an underflow guard carrying `/* c8 ignore next */`**:
 
@@ -70,7 +70,7 @@ Every one is the **body of an underflow guard carrying `/* c8 ignore next */`**:
 d = 1 + aa * d;
 /* c8 ignore next -- defensive guard, unreachable via valid inputs */
 if (Math.abs(d) < 1e-30) {
-  d = 1e-30;                    // <- flips between covered and not
+  d = 1e-30; // <- flips between covered and not
 }
 ```
 
@@ -120,6 +120,7 @@ The deeper mistake was procedural, and it is the reason this section exists:
 > "unreachable" was itself perturbing the thing it measured.
 
 ## 5. Correction: all five guards are reachable
+
 The first version's probe instrumented the guard bodies with counters and
 concluded they never fired. Re-running that probe with a **different method**
 removes the ambiguity.
@@ -129,21 +130,21 @@ real suite. A truly unreachable guard leaves the suite green. A reachable one
 fails loudly and names itself. This involves **no counters and no coverage
 machinery**, so nothing about the instrument can be confused with the result.
 
-| Guard | Line | Sentinel result |
-| --- | --- | --- |
-| pre-loop `\|d\| < 1e-30` | 181 | **REACHED — 6 tests fail** |
-| loop `\|d\| < 1e-30` | 191 | **REACHED — 6 tests fail** |
-| loop `\|c\| < 1e-30` | 196 | **REACHED — 6 tests fail** |
-| loop `\|d\| < 1e-30` | 204 | **REACHED — 6 tests fail** |
-| loop `\|c\| < 1e-30` | 209 | **REACHED — 6 tests fail** |
+| Guard                    | Line | Sentinel result            |
+| ------------------------ | ---- | -------------------------- |
+| pre-loop `\|d\| < 1e-30` | 181  | **REACHED — 6 tests fail** |
+| loop `\|d\| < 1e-30`     | 191  | **REACHED — 6 tests fail** |
+| loop `\|c\| < 1e-30`     | 196  | **REACHED — 6 tests fail** |
+| loop `\|d\| < 1e-30`     | 204  | **REACHED — 6 tests fail** |
+| loop `\|c\| < 1e-30`     | 209  | **REACHED — 6 tests fail** |
 
 All five fire on the **existing** test suite, on ordinary valid inputs.
 
 ### 5.1 …and are unreachable again, because §6.3 and §6.4 changed the arithmetic
 
 **This is the part that makes the story worth keeping.** After fixing the two
-defects in §6.3 and §6.4, the *same* sentinel experiment was re-run against the
-*same kind of* test suite, and it came back **green — all 124 tests pass with all
+defects in §6.3 and §6.4, the _same_ sentinel experiment was re-run against the
+_same kind of_ test suite, and it came back **green — all 124 tests pass with all
 five guards replaced by `throw`.**
 
 So the annotation text, `unreachable via valid inputs`, is **true now and was
@@ -156,12 +157,12 @@ bug fixes then made it accidentally correct.
 > true — and the same mechanism can make a true one false — with no signal at all.
 > This is the argument for the pinned-annotation test in
 > `packages/cortex-core/src/__tests__/coverage-annotations.test.ts`: not that the
-> reasons are verified (they are prose, and cannot be), but that the *set* cannot
+> reasons are verified (they are prose, and cannot be), but that the _set_ cannot
 > change without a reviewer seeing it.
 
 **Method note.** The sentinel run had to be done carefully: an earlier attempt
 left the instrumented file in the working tree and a subsequent `git stash`
-cycle silently restored the *unfixed* source, so a first pass reported "no change"
+cycle silently restored the _unfixed_ source, so a first pass reported "no change"
 for the wrong reason. The re-run above copies the pristine source aside first and
 verifies both `diff` and the sentinel count (`0`) before and after.
 
@@ -179,7 +180,7 @@ if (Math.abs(d) < 1e-30) {
 
 with the same block minus the annotation made **exactly one** test fail —
 `the coverage-ignore annotation set is pinned`, in
-`coverage-annotations.test.ts`. That test asserts the annotation *text* is still
+`coverage-annotations.test.ts`. That test asserts the annotation _text_ is still
 present, so removing it makes the test fail **regardless of whether the guard was
 ever reached.** Read naively, "one guard ⇒ one failing test" looks like evidence
 of reachability. It is evidence of an edited comment.
@@ -188,36 +189,36 @@ The corrected experiment keeps **every annotation line byte-identical** and
 replaces **only the guarded body**, so the only possible reason for a failure is
 that the body executed:
 
-| Guard body replaced with `throw` | Annotation text left intact | Failing tests |
-| --- | --- | --- |
-| `welchTTest` df guard (line 76) | 6 of 6 present | **0** — 127/127 pass |
-| `betaContinuedFraction` `d` init (line 204) | 6 of 6 present | **0** — 127/127 pass |
-| both in-loop `d` guards | 6 of 6 present | **0** — 127/127 pass |
-| both in-loop `c` guards | 6 of 6 present | **0** — 127/127 pass |
+| Guard body replaced with `throw`            | Annotation text left intact | Failing tests        |
+| ------------------------------------------- | --------------------------- | -------------------- |
+| `welchTTest` df guard (line 76)             | 6 of 6 present              | **0** — 127/127 pass |
+| `betaContinuedFraction` `d` init (line 204) | 6 of 6 present              | **0** — 127/127 pass |
+| both in-loop `d` guards                     | 6 of 6 present              | **0** — 127/127 pass |
+| both in-loop `c` guards                     | 6 of 6 present              | **0** — 127/127 pass |
 
 All four runs leave the suite green at the current revision, which is
 perturbation-free proof that the guards are unreachable: **a `throw` on an
 executed path cannot pass a test suite.**
 
-This also corrects the *earlier* figure. The "six tests fail per guard" recorded
+This also corrects the _earlier_ figure. The "six tests fail per guard" recorded
 in §5 was measured by a run that did not separately protect the annotation text,
 so an unknown part of it was this same false positive. The honest statement of
 the before/after is therefore:
 
-| Revision | Sentinels in guard bodies | Annotation text | Failing tests | Verdict |
-| --- | --- | --- | --- | --- |
-| before §6.3 / §6.4 fixes | `throw` | **removed** | 1 (annotation pin) | inconclusive |
-| before §6.3 / §6.4 fixes | `throw` | intact | not re-measured | — |
-| after §6.3 / §6.4 fixes | `throw` | intact | **0** | unreachable |
+| Revision                 | Sentinels in guard bodies | Annotation text | Failing tests      | Verdict      |
+| ------------------------ | ------------------------- | --------------- | ------------------ | ------------ |
+| before §6.3 / §6.4 fixes | `throw`                   | **removed**     | 1 (annotation pin) | inconclusive |
+| before §6.3 / §6.4 fixes | `throw`                   | intact          | not re-measured    | —            |
+| after §6.3 / §6.4 fixes  | `throw`                   | intact          | **0**              | unreachable  |
 
 The "after" row is the only one that is methodologically clean end-to-end, and
 it is the one the annotation's truth value rests on. The before-row is recorded as
-*inconclusive* rather than restated, because the revision it was taken on no
+_inconclusive_ rather than restated, because the revision it was taken on no
 longer exists in the tree and re-creating it would require reverting two
 independent bug fixes.
 
 > **A sentinel experiment has two perturbation knobs, and both must be held
-> fixed.** The body must change (that is the probe) and *nothing else* may. Here
+> fixed.** The body must change (that is the probe) and _nothing else_ may. Here
 > the annotation comment was an unacknowledged second knob, and it was wired to a
 > test that fails on being turned.
 
@@ -233,7 +234,7 @@ This is directly demonstrable. Instrumenting only line 181:
 ```
 
 The counter reported **20000 hits** — but those hits belong to the `if` at line
-178 being *evaluated*, not to the body at 181 being *entered*. The arithmetic
+178 being _evaluated_, not to the body at 181 being _entered_. The arithmetic
 confirms it: the sweep calls `studentTCdf` 20,000 times, and the guard body's
 condition `|d| < 1e-30` is never satisfied for any of them. **The instrument
 credits the wrong line, in exactly the way the phenomenon under investigation
@@ -276,16 +277,16 @@ including on inputs that have not converged.
 
 The decisive evidence is `tol = 0`:
 
-| Call | `iterations` | `converged` | Reading |
-| --- | --- | --- | --- |
-| `tol = 1e-300` | 1 | **true** | impossible for a real residual — `maxDiff` cannot be `< 1e-300` |
-| `tol = 0` | 1000 | **false** | `0 < 0` is false, so `maxDiff` is exactly 0 |
+| Call           | `iterations` | `converged` | Reading                                                         |
+| -------------- | ------------ | ----------- | --------------------------------------------------------------- |
+| `tol = 1e-300` | 1            | **true**    | impossible for a real residual — `maxDiff` cannot be `< 1e-300` |
+| `tol = 0`      | 1000         | **false**   | `0 < 0` is false, so `maxDiff` is exactly 0                     |
 
 `tol = 0` failing while `tol = 1e-300` passes can only happen if `maxDiff` is a
 constant zero. Fixed by snapshotting: `const uPrev = Float64Array.from(u)`.
 
 **Severity:** latent, not active. `docs/AUDIT-CODE-VS-DOCS.md` already records
-that `sinkhorn` is *exported but never called*, so nothing in the product consumed
+that `sinkhorn` is _exported but never called_, so nothing in the product consumed
 the wrong answer. It would have become active the moment the
 optimal-transport distillation path in `ARCHITECTURE.md` was wired up — and it
 would have presented as a **silent** "converged" that was not convergence.
@@ -305,15 +306,15 @@ it was missing. `sin(pi z)` is negative throughout `(-1, 0)`, `(-3, -2)`, …, s
 
 Measured against `math.lgamma` from the C library:
 
-| `z` | Expected | Before | After |
-| --- | --- | --- | --- |
-| `-0.5` | 1.265512123484645 | **NaN** | 1.2655121234846451 |
-| `-0.25` | 1.5895753125511862 | **NaN** | 1.589575312551186 |
-| `-0.75` | 1.5757045971498589 | **NaN** | 1.5757045971498587 |
-| `-2.5` | -0.05624371649767457 | **NaN** | -0.056243716497675456 |
-| `-1.5` | 0.8600470153764812 | 0.8600470153764792 | 0.8600470153764792 |
+| `z`     | Expected             | Before             | After                 |
+| ------- | -------------------- | ------------------ | --------------------- |
+| `-0.5`  | 1.265512123484645    | **NaN**            | 1.2655121234846451    |
+| `-0.25` | 1.5895753125511862   | **NaN**            | 1.589575312551186     |
+| `-0.75` | 1.5757045971498589   | **NaN**            | 1.5757045971498587    |
+| `-2.5`  | -0.05624371649767457 | **NaN**            | -0.056243716497675456 |
+| `-1.5`  | 0.8600470153764812   | 0.8600470153764792 | 0.8600470153764792    |
 
-**Why this survived review, and it is not "nobody looked".** There *is* a test
+**Why this survived review, and it is not "nobody looked".** There _is_ a test
 named `logGamma reflection formula handles z < 0.5`. It asserts `z = 0.3` and
 `z = 0.7` — **both positive**, so it never takes the branch its name refers to.
 And `-1.5` works, because `sin(-1.5 * pi)` happens to be `+1`. So a spot check on
@@ -340,11 +341,11 @@ asked to evaluate a divergent expansion whenever `x` was near 1.
 Because `binomialCdf` calls it with `x = 1 - p`, a small `p` drove it deep into
 the divergent region:
 
-| Call | Exact (binomial pmf sum) | Before | After |
-| --- | --- | --- | --- |
-| `binomialCdf(2, 40, 1e-6)` | 0.9999999999999901 | **0.9694** | 0.9999999999999901 |
-| `binomialCdf(2, 10, 1e-12)` | 1 | **6.6e-5** | 1 |
-| `binomialCdf(3, 100, 0.02)` | 0.8589615633982938 | 0.8589615633983717 | 0.8589615633982832 |
+| Call                        | Exact (binomial pmf sum) | Before             | After              |
+| --------------------------- | ------------------------ | ------------------ | ------------------ |
+| `binomialCdf(2, 40, 1e-6)`  | 0.9999999999999901       | **0.9694**         | 0.9999999999999901 |
+| `binomialCdf(2, 10, 1e-12)` | 1                        | **6.6e-5**         | 1                  |
+| `binomialCdf(3, 100, 0.02)` | 0.8589615633982938       | 0.8589615633983717 | 0.8589615633982832 |
 
 Three things make this worse than a wrong number:
 
@@ -353,7 +354,7 @@ Three things make this worse than a wrong number:
 2. **The error was worst where the function is most certain.** Small `p` means the
    CDF is essentially 1; that is exactly where the value collapsed.
 3. **It broke monotonicity.** `binomialCdf(k, 40, 1e-6)` gave `0.9694` at `k = 2`
-   and `0.99999` at `k = 3` — a CDF that *decreases* is self-evidently invalid.
+   and `0.99999` at `k = 3` — a CDF that _decreases_ is self-evidently invalid.
 
 **A trap in the fix itself.** The natural repair is to recurse on the
 complementary pair. With a **non-strict** comparison (`x >= threshold`) the
@@ -379,12 +380,12 @@ So the residual instability is genuinely about how the ignore hints are applied,
 which is the part of the first version's conclusion that survives. But it is now
 on a **narrower and better-evidenced** basis:
 
-| Claim | Evidence |
-| --- | --- |
-| Numerator moves, denominator constant | 12 runs: 777/779/781/783 over a constant 789 |
-| Movement is confined to annotated guard bodies | per-statement diff; no other statement varies |
-| The guards **were** reachable when the annotation was written | throwing sentinels: all 5 reached by 6 tests each (§5) |
-| The guards are **now** unreachable, after §6.3/§6.4 | same sentinels, suite green (§5.1) |
+| Claim                                                             | Evidence                                                                               |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Numerator moves, denominator constant                             | 12 runs: 777/779/781/783 over a constant 789                                           |
+| Movement is confined to annotated guard bodies                    | per-statement diff; no other statement varies                                          |
+| The guards **were** reachable when the annotation was written     | throwing sentinels: all 5 reached by 6 tests each (§5)                                 |
+| The guards are **now** unreachable, after §6.3/§6.4               | same sentinels, suite green (§5.1)                                                     |
 | Therefore the movement is **false negatives and false positives** | a reachable body should be credited every run; it is sometimes credited, sometimes not |
 
 The important consequence, and it has two halves that must be stated together:
@@ -443,16 +444,16 @@ dismiss it as caching, exactly as I did twice.
 
 ## 9. Acceptance
 
-| Criterion | Evidence |
-| --- | --- |
-| Instability quantified, not described | 12 runs, 5 distinct results, 0.76pp spread, constant denominator |
-| Varying statements identified | 4 flaky ids + 2 permanently-uncovered, all in `stats.ts`, all annotated |
-| The guards' reachability **measured, not argued** | throwing sentinels: 5/5 reached, 6 failing tests each |
-| The instrument itself validated | the counter probe's 20000 hits shown to be a line-attribution artifact (§5.1) |
-| Real defects found and fixed | `sinkhorn` inert residual (§6.2) + untested branch (§6.1) |
-| Fixes covered by tests that fail without them | `tol = 0` must not converge; achievable `tol` must |
-| No threshold weakened | 95 unchanged |
-| No regression | four packages pass; every dimension ≥95% |
+| Criterion                                         | Evidence                                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Instability quantified, not described             | 12 runs, 5 distinct results, 0.76pp spread, constant denominator              |
+| Varying statements identified                     | 4 flaky ids + 2 permanently-uncovered, all in `stats.ts`, all annotated       |
+| The guards' reachability **measured, not argued** | throwing sentinels: 5/5 reached, 6 failing tests each                         |
+| The instrument itself validated                   | the counter probe's 20000 hits shown to be a line-attribution artifact (§5.1) |
+| Real defects found and fixed                      | `sinkhorn` inert residual (§6.2) + untested branch (§6.1)                     |
+| Fixes covered by tests that fail without them     | `tol = 0` must not converge; achievable `tol` must                            |
+| No threshold weakened                             | 95 unchanged                                                                  |
+| No regression                                     | four packages pass; every dimension ≥95%                                      |
 
 ## 10. Residual risk and open items, stated
 
@@ -468,12 +469,12 @@ dismiss it as caching, exactly as I did twice.
   the hints moves the reported figure and therefore belongs in its own change with
   its own evidence.
 - **The sentinel experiment has two perturbation knobs and both must be held.**
-  Recorded once as a stash accident (the *source* was restored silently) and once
-  as a false positive (the *annotation text* was disturbed, tripping a test that
+  Recorded once as a stash accident (the _source_ was restored silently) and once
+  as a false positive (the _annotation text_ was disturbed, tripping a test that
   pins it, §5.1.1). The method now requires: copy the pristine source aside, keep
   annotations byte-identical, change bodies only, and assert `diff` clean
   afterwards. The "six tests fail per guard" figure in §5 is therefore downgraded
-  to *inconclusive* rather than restated.
+  to _inconclusive_ rather than restated.
 - **`logGamma`'s public contract was broken for all negative non-integer inputs**
   (§6.3). Fixed and covered, but it is a reminder that "the statistics are fine"
   is not the same as "the exported function is fine" — the two diverge whenever
@@ -483,7 +484,7 @@ dismiss it as caching, exactly as I did twice.
   parameter values, so no published number is affected — but that is a statement
   about today's call sites, not about correctness.
 - **The sentinel experiment is easy to get wrong, and was, twice.** Once as a
-  stash accident that silently restored the *pre-fix* source, giving "no change"
+  stash accident that silently restored the _pre-fix_ source, giving "no change"
   for the wrong reason; once as a false positive where patching a guard also
   removed its `c8 ignore` comment, which failed the annotation-pinning test and
   was briefly read as evidence the guard had been reached (§5.1.1). The method is
@@ -514,13 +515,13 @@ touching a line of the annotation or a test of its claim.
 > A comment that asserts a property of the code will drift away from that
 > property, and there is no compiler for prose. The defence is not to write
 > better comments; it is to put a mechanism where the claim is structural —
-> here, a test that pins the annotation *set*, so that the claim cannot change
+> here, a test that pins the annotation _set_, so that the claim cannot change
 > quietly even though its truth cannot be checked automatically.
 
 ## 12. Addendum — the two defect classes the correction exposed, generalised
 
-Fixing §6.3 and §6.4 was not the end of it. Both defects had the same *reason for
-surviving*, and once that reason was named it was found a second time.
+Fixing §6.3 and §6.4 was not the end of it. Both defects had the same _reason for
+surviving_, and once that reason was named it was found a second time.
 
 ### 12.1 A test named for a branch it never takes
 
@@ -548,7 +549,7 @@ fc.assert(
 
 ### 12.2 A property test with a hardcoded parameter inside it
 
-The second instance was worse, because it *was* a property test and therefore
+The second instance was worse, because it _was_ a property test and therefore
 looked like the strong form of the check. `binomialCdf`'s monotonicity test read
 `fc.property(n, k, ...)` and then used `p = 0.5` from the enclosing scope, never
 taking `p` as a generated input.
@@ -563,7 +564,7 @@ evaluated the routine in the region where it was wrong.**
 The fix is to generate the parameter that matters:
 
 ```ts
-fc.double({ min: Number.MIN_VALUE, max: 1, noNaN: true })
+fc.double({ min: Number.MIN_VALUE, max: 1, noNaN: true });
 ```
 
 `Number.MIN_VALUE` rather than an arbitrary "small" number, because the error grew
@@ -572,9 +573,9 @@ as `p` shrank and the smallest representable positive `p` is where it was worst.
 **Verification that the new tests are not decoration.** Each was run against the
 defective code with the fix reverted, one defect at a time:
 
-| Injected defect | Tests that turn red |
-| --- | --- |
-| `Math.abs` removed from the `logGamma` reflection branch | 3 — including the generative anchor |
+| Injected defect                                               | Tests that turn red                   |
+| ------------------------------------------------------------- | ------------------------------------- |
+| `Math.abs` removed from the `logGamma` reflection branch      | 3 — including the generative anchor   |
 | complementary branch removed from `regularizedIncompleteBeta` | 5 — including both generative anchors |
 
 Both defects are now caught by more than one independent test, and by at least one
@@ -583,5 +584,5 @@ that asserts a **property over generated inputs** rather than a constant.
 > **A property test is only as strong as its generator.** `fc.property` with a
 > free variable that is then overridden by a constant in the enclosing scope is
 > strictly weaker than no property test at all, because it reads as a general
-> claim. When adding one, the question to ask is: *which input would have to occur
-> for this to fail, and does the generator produce it?*
+> claim. When adding one, the question to ask is: _which input would have to occur
+> for this to fail, and does the generator produce it?_

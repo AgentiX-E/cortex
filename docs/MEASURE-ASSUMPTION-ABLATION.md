@@ -45,7 +45,7 @@ immutability    93.8%      -6.3pp  immutable
 ## 2. What each row establishes, and what it does not
 
 **`annotated` equals `flat`, exactly.** This is the arm that tests the cheapest hypothesis — that a reader
-who is *told* which facts are retired will do the right thing. It moves nothing, and it moves nothing on
+who is _told_ which facts are retired will do the right thing. It moves nothing, and it moves nothing on
 every family. Labelling that does not change a decision is decoration; the ledger has to participate in the
 decision or it is a comment.
 
@@ -60,7 +60,7 @@ none of these do.
 
 **Two mechanisms were expected to be inert, and one is.** `time-anchor` costs nothing on accuracy, which
 §7.3 of the pre-registration predicted before the code existed: an ingestion timestamp is never wrong in a
-fixture where every timestamp is known exactly, so its value is in *being recorded*, not in being read. The
+fixture where every timestamp is known exactly, so its value is in _being recorded_, not in being read. The
 prediction is written down so that a null result cannot later be sold as a discovery.
 
 **`cascade` was expected to be inert and is not — on one case.** PACMI's own ablation of its cascade did not
@@ -74,18 +74,18 @@ The number that matters is the **shape** of the table, not its top row. Three re
 quoted as anything else:
 
 1. **The baseline is weaker than reality, deliberately.** `flat` breaks a tie by fact id. In a real
-   corpus, relevance is not a tie — the older fact is often *more* similar to the question, because it was
+   corpus, relevance is not a tie — the older fact is often _more_ similar to the question, because it was
    discussed at length. A stronger baseline would make `flat` look better and `gated` look worse on
    `type-i`, and neither number would be more true.
 2. **The conflicts are constructed, not found.** The generator writes both the premise and the update. A
-   real conversation buries both in filler, and the hard part — *noticing* that the update invalidates the
+   real conversation buries both in filler, and the hard part — _noticing_ that the update invalidates the
    premise — is not tested here at all (see §4).
 3. **Twelve cases cannot support a percentage.** Written as 12/12, not as 100%, whenever it is quoted.
 
 ## 4. What this set does **not** measure
 
-- **Whether a system can *find* an invalidation.** STALE Type II is hard precisely because the changed
-  attribute is never mentioned in relation to the fact it breaks. This fixture *declares* the invalidation
+- **Whether a system can _find_ an invalidation.** STALE Type II is hard precisely because the changed
+  attribute is never mentioned in relation to the fact it breaks. This fixture _declares_ the invalidation
   (`invalidates`) and measures only whether the system propagates it. That is PACMI's boundary as well
   ("conditional on derivation links being represented or supplied"), and it is the honest one: detecting the
   link is a research problem, using it is bookkeeping.
@@ -102,21 +102,21 @@ quoted as anything else:
 The pre-registration gated four extraction endpoints (E1–E4). Three are asserted in the unit suite rather
 than reported here, because they are accounting rules with a 100% bar:
 
-| # | Endpoint | Where it is checked | Reading |
-| --- | --- | --- | --- |
-| E1 | every undated fact carries a `time-anchor`; every fact carries `persistence` | `assumption.test.ts` | passes by construction: `deriveAssumptions` is the only producer and it always emits `persistence` |
-| E2 | revision verdicts match gold on the controlled set | implicit in §1: `gated` cannot reach 12/12 unless every refutation landed where it should | 12/12 |
-| E3 | no assumption whose origin cannot be recomputed | `assumption.test.ts` (origin is a literal per branch) | passes; the origin is a constant in the code, not a value a model supplies |
-| E4 | the `strict` unit gate still passes on the 20 reviewed pairs | `knowledge-probe` + `unit.test.ts` | 15/20 unchanged — the ledger did not become a way around the relation gate |
+| #   | Endpoint                                                                     | Where it is checked                                                                       | Reading                                                                                            |
+| --- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| E1  | every undated fact carries a `time-anchor`; every fact carries `persistence` | `assumption.test.ts`                                                                      | passes by construction: `deriveAssumptions` is the only producer and it always emits `persistence` |
+| E2  | revision verdicts match gold on the controlled set                           | implicit in §1: `gated` cannot reach 12/12 unless every refutation landed where it should | 12/12                                                                                              |
+| E3  | no assumption whose origin cannot be recomputed                              | `assumption.test.ts` (origin is a literal per branch)                                     | passes; the origin is a constant in the code, not a value a model supplies                         |
+| E4  | the `strict` unit gate still passes on the 20 reviewed pairs                 | `knowledge-probe` + `unit.test.ts`                                                        | 15/20 unchanged — the ledger did not become a way around the relation gate                         |
 
 E2 is the one worth a sentence: it is **not** an independent reading. If the refutation rule were wrong in
 the same direction as the expected answer, both would agree and the number would still be 12/12. The
 independent check is the `false-stale` control, where a wrongly applied refutation would take the score
-*down*, and it stays at 2/2.
+_down_, and it stays at 2/2.
 
 ## 6. The third axis: settled fact, commitment, wish
 
-Step 31 recorded what a fact *assumed*. It did not distinguish a fact from a plan, and the reviewer was
+Step 31 recorded what a fact _assumed_. It did not distinguish a fact from a plan, and the reviewer was
 right that this is a separate capability: "if the user describes what happened, that is settled; if they
 describe what they intend, that is a plan, and a plan that is never fulfilled has to be corrected or
 forgotten."
@@ -125,11 +125,11 @@ Two axes, not one. `modality` collapsed them: TimeML separates `I-ACTION` ("does
 happen") and `I-STATE` ("alternative possible worlds") from plain `OCCURRENCE`, and FactBank separates
 factual / probable / possible with MEANTIME adding `possibility (future)` as its own value. So:
 
-| futurity | certainty | reads as | old `modality` |
-| --- | --- | --- | --- |
-| past / present | factual | **settled** — nothing later can unsettle it | `actual` |
-| future | factual / probable | **a commitment** | `planned` |
-| future | possible | **a wish** | `hypothetical` |
+| futurity       | certainty          | reads as                                    | old `modality` |
+| -------------- | ------------------ | ------------------------------------------- | -------------- |
+| past / present | factual            | **settled** — nothing later can unsettle it | `actual`       |
+| future         | factual / probable | **a commitment**                            | `planned`      |
+| future         | possible           | **a wish**                                  | `hypothetical` |
 
 The lifecycle is a state machine with three transitions on evidence and **one on absence**:
 `pending → fulfilled` needs a declaration, `pending → abandoned` needs a declaration, `pending → lapsed`
@@ -165,7 +165,7 @@ attempted. Claiming it here would be claiming a capability the fixture supplied.
 ### The prior this sits on
 
 PM-Bench (arXiv 2607.12385) reports 65.1% F1 for the best configuration and **under 50% on cross-day
-intentions**, and names the failure precisely: plans that were *completed or cancelled* keep being acted
+intentions**, and names the failure precisely: plans that were _completed or cancelled_ keep being acted
 on. Its companion result is the design argument for this whole module — an explicit typed store with
 deterministic transitions moved the same backbone from 65.1% to 82.9%, and a small model from 4.2% to
 66.2%. The lesson is not "use a bigger model"; it is that a state machine belongs in code and only the

@@ -14,12 +14,12 @@ produced it cannot separate two lexical systems for any reason other than their 
 `node tools/competitor-harness.mjs`, synthetic set, 40 questions / 24 measurable, `k=10`, isolated ingest, no
 reader, no judge, gold derived as "the context turns that state the expected answer".
 
-| provider | build | recall@k | all-gold | mrr | found |
-| --- | --- | --- | --- | --- | --- |
-| `lexical-reference` | none | 100.0% | 100.0% | 0.630 | 24/24 |
-| `cortex-session` | *embedding* | 91.7% | 8.3% | 0.296 | 22/24 |
-| `cortex-session` (budget 8) | *embedding* | 87.5% | 4.2% | 0.291 | 21/24 |
-| `null-floor` | none | 0.0% | 0.0% | 0.000 | 0/24 |
+| provider                    | build       | recall@k | all-gold | mrr   | found |
+| --------------------------- | ----------- | -------- | -------- | ----- | ----- |
+| `lexical-reference`         | none        | 100.0%   | 100.0%   | 0.630 | 24/24 |
+| `cortex-session`            | _embedding_ | 91.7%    | 8.3%     | 0.296 | 22/24 |
+| `cortex-session` (budget 8) | _embedding_ | 87.5%    | 4.2%     | 0.291 | 21/24 |
+| `null-floor`                | none        | 0.0%     | 0.0%     | 0.000 | 0/24  |
 
 Two things in that table were wrong before the numbers were. `build` claimed `embedding` for a ranking that
 used no model at all. And the adapter's own docstring said the session budget "ranks sessions by their best
@@ -84,12 +84,12 @@ selection never assigned, which is why `mrr` sat at 0.296 while the correct sess
 
 ## 4. The reading after the repair
 
-| provider | build | recall@k | all-gold | mrr | found |
-| --- | --- | --- | --- | --- | --- |
-| `lexical-reference` | none | 100.0% | 100.0% | 0.630 | 24/24 |
-| `cortex-session` | **none** | 100.0% | **100.0%** | **1.000** | 24/24 |
-| `cortex-session` (budget 8) | **none** | 100.0% | 50.0% | 1.000 | 24/24 |
-| `null-floor` | none | 0.0% | 0.0% | 0.000 | 0/24 |
+| provider                    | build    | recall@k | all-gold   | mrr       | found |
+| --------------------------- | -------- | -------- | ---------- | --------- | ----- |
+| `lexical-reference`         | none     | 100.0%   | 100.0%     | 0.630     | 24/24 |
+| `cortex-session`            | **none** | 100.0%   | **100.0%** | **1.000** | 24/24 |
+| `cortex-session` (budget 8) | **none** | 100.0%   | 50.0%      | 1.000     | 24/24 |
+| `null-floor`                | none     | 0.0%     | 0.0%       | 0.000     | 0/24  |
 
 `all-gold` at budget 8 is 50% and that is arithmetic, not a defect: the budget is spent in turns, each synthetic
 session is one turn, so 8 of 24 sessions fit, and a question whose gold spans 3–4 same-attribute turns cannot be
@@ -124,12 +124,12 @@ system. That needs a corpus from outside this repository.
 
 ## 6. Limitations, stated as limitations
 
-| limitation | effect | why it is not fixed here |
-| --- | --- | --- |
-| no stemming | `move` does not match `moved`, so tense-disagreeing evidence scores `0` | a stemmer changes every number this signal produces; it is an A/B, not an edit |
-| no IDF | two questions each matching one of three terms in different sessions score identically, and `session.index` decides | requires corpus statistics, which makes the signal stateful and no longer a pure function of two strings |
-| coverage normalised on the question | a long turn mentioning everything out-scores a short turn stating the answer, which the order term only partly offsets | a length prior would be a second unmeasured weight |
-| English-only tokenisation | `[^a-z0-9]` splitting drops non-Latin scripts entirely | LongMemEval is English; a multilingual tokeniser is a separate registration |
+| limitation                          | effect                                                                                                                 | why it is not fixed here                                                                                 |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| no stemming                         | `move` does not match `moved`, so tense-disagreeing evidence scores `0`                                                | a stemmer changes every number this signal produces; it is an A/B, not an edit                           |
+| no IDF                              | two questions each matching one of three terms in different sessions score identically, and `session.index` decides    | requires corpus statistics, which makes the signal stateful and no longer a pure function of two strings |
+| coverage normalised on the question | a long turn mentioning everything out-scores a short turn stating the answer, which the order term only partly offsets | a length prior would be a second unmeasured weight                                                       |
+| English-only tokenisation           | `[^a-z0-9]` splitting drops non-Latin scripts entirely                                                                 | LongMemEval is English; a multilingual tokeniser is a separate registration                              |
 
 Each of these is asserted in `__tests__/relevance.test.ts` or `__tests__/provider.test.ts` rather than left to be
 rediscovered. A limitation with a test is a known boundary; a limitation with a comment is a rumour.

@@ -21,7 +21,7 @@ The requirement is not ceremony, and the repository holds its own proof.
 measured **77.95% → 70.87%** (Δ −7.09pp, one-sided exact McNemar p = 0.039, 15
 broken / 6 repaired). It was the third consecutive rejection of that line. §6.3's
 judgement is that pre-registration is what stopped that arm being rationalised into
-the roadmap *after* the fact — and the failure mode it guards against is not fraud,
+the roadmap _after_ the fact — and the failure mode it guards against is not fraud,
 it is the ordinary human tendency to read a `+0.4pp` as a signal once it is already
 on the page.
 
@@ -45,7 +45,7 @@ embeddings). That document carries its own warning, in bold:
 
 A frozen score whose measuring instrument has since been rewritten by 8,326 inserted
 lines is not a baseline. Quoting it as "the number to beat" would make this arm's
-result depend on two differences at once — the cognitive layer, *and* six weeks of
+result depend on two differences at once — the cognitive layer, _and_ six weeks of
 harness drift — which is precisely the confound the paired design exists to remove.
 
 ### 2.2 The point estimate this arm actually uses
@@ -55,25 +55,25 @@ harness drift — which is precisely the confound the paired design exists to re
 This is stronger than a historical anchor, not a substitute for one. The pairing
 invariant is that both sides are evaluated by **one** `runAblationReport` call on the
 same dataset under the same scorer. Its consequence is that the baseline arm's number
-*is* the current-`master` reference number, measured under the current instrument, on
+_is_ the current-`master` reference number, measured under the current instrument, on
 the same questions, in the same runner, at the same moment.
 
-| Quantity | Value |
-| --- | --- |
-| Point estimate the feature must beat | **the baseline side's `abstentionAwareAccuracy` from the same dispatch** |
-| Sample | full LongMemEval-S, **N = 500** |
-| Runs | **4**, `temperature: 0` (deterministic) |
-| Comparison statistics | exact paired McNemar over questions, per capability and overall; Wilson 95% intervals on both sides |
+| Quantity                             | Value                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Point estimate the feature must beat | **the baseline side's `abstentionAwareAccuracy` from the same dispatch**                            |
+| Sample                               | full LongMemEval-S, **N = 500**                                                                     |
+| Runs                                 | **4**, `temperature: 0` (deterministic)                                                             |
+| Comparison statistics                | exact paired McNemar over questions, per capability and overall; Wilson 95% intervals on both sides |
 
 **This subsumes §6.2 step 5.** Step 5 asks for a re-measurement of LongMemEval-S at
 current `master` with full N=500, 4 runs and Wilson intervals published. The baseline
 side of this arm is that re-measurement. A second dispatch for step 5 would spend the
-same guarded quota to answer the same question with a *staler* revision.
+same guarded quota to answer the same question with a _staler_ revision.
 
 ### 2.3 What is deliberately NOT claimed
 
 The arm does **not** claim the cognitive layer is better than the reference pipeline
-at producing answers — the two systems differ in *what decides admission*, not in the
+at producing answers — the two systems differ in _what decides admission_, not in the
 reader or the extraction. `DESIGN-CORTEX-MEMORY.md` states the honest version: step 2
 made the cognitive layer **reachable**, and this arm measures whether reachability
 **costs** anything. A delta of zero is a legitimate and useful result; see §4.
@@ -87,11 +87,11 @@ made the cognitive layer **reachable**, and this arm measures whether reachabili
 The primary endpoint is **overall abstention-aware accuracy on the full N=500 set**,
 compared between the two sides by an **exact paired McNemar test** over questions.
 
-| Verdict | Rule |
-| --- | --- |
-| **The feature helps** | `Δ > 0` **and** McNemar `p < 0.05`, with the discordant pair set naming its questions |
-| **Null (a real, reportable result)** | `|Δ|` within the noise floor and McNemar not significant — see §3.3 |
-| **The feature hurts** | `Δ < 0` and McNemar `p < 0.05` → **reject the arm**, per the D2/B7 precedent |
+| Verdict                              | Rule                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------- |
+| **The feature helps**                | `Δ > 0` **and** McNemar `p < 0.05`, with the discordant pair set naming its questions |
+| **Null (a real, reportable result)** | `                                                                                     | Δ   | ` within the noise floor and McNemar not significant — see §3.3 |
+| **The feature hurts**                | `Δ < 0` and McNemar `p < 0.05` → **reject the arm**, per the D2/B7 precedent          |
 
 ### 3.2 Why overall accuracy alone is not the endpoint
 
@@ -111,14 +111,14 @@ effects an arm of this kind could plausibly find. So:
 
 The cognitive layer's only lever is **admission**. `decideWrite` filters turns before
 the prompt is built; the reference pipeline filters by retrieval score. This yields
-predictions that are falsifiable *and* that a null result still satisfies:
+predictions that are falsifiable _and_ that a null result still satisfies:
 
-| Capability | Prediction | Reason |
-| --- | --- | --- |
-| **IE** (single-session) | **Δ ≈ 0, expected null** | IE questions usually have one obvious evidence turn. Both gates admit it. |
-| **MR** (multi-session) | **Δ ≥ 0 if it moves at all** | The session-preserving path is the one behavioural difference: `cortex-memory` admits per session and keeps boundaries, which the reference pipeline's flat context does not. |
-| **KU / TR** | **Δ ≈ 0, expected null** | The gate does not change extraction or temporal reasoning, and both sides reach the same contract instructions. |
-| **ABS** (abstention) | **Δ = 0 by construction** | The baseline scored **120/120 = 100.00%** at `a52628f`. A ceiling cannot move, so an ABS delta must be zero and any non-zero value is a bug report about the harness, not a finding. |
+| Capability              | Prediction                   | Reason                                                                                                                                                                               |
+| ----------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **IE** (single-session) | **Δ ≈ 0, expected null**     | IE questions usually have one obvious evidence turn. Both gates admit it.                                                                                                            |
+| **MR** (multi-session)  | **Δ ≥ 0 if it moves at all** | The session-preserving path is the one behavioural difference: `cortex-memory` admits per session and keeps boundaries, which the reference pipeline's flat context does not.        |
+| **KU / TR**             | **Δ ≈ 0, expected null**     | The gate does not change extraction or temporal reasoning, and both sides reach the same contract instructions.                                                                      |
+| **ABS** (abstention)    | **Δ = 0 by construction**    | The baseline scored **120/120 = 100.00%** at `a52628f`. A ceiling cannot move, so an ABS delta must be zero and any non-zero value is a bug report about the harness, not a finding. |
 
 **The null hypothesis is the expected outcome** and is written down here so that a
 null cannot later be reinterpreted as an unexpected failure. Specifically: `Δ ≈ 0` on
@@ -146,7 +146,7 @@ Registered before dispatch:
    early stopping on a partial sample, no "let us just see the first 60".
 2. **No re-running to get a better draw.** If the first dispatch fails for an
    infrastructure reason (quota, network, artifact loss), it is re-dispatched with the
-   reason recorded. A failure is not a result. A *bad result* is a result.
+   reason recorded. A failure is not a result. A _bad result_ is a result.
 3. **The outcome terminates this line.** Whichever verdict §3.1 returns:
    - **helps** → the feature becomes the shipped path, and the reference pipeline
      stays in the harness as the control arm (`AUDIT-CODE-VS-DOCS.md` §6.1 already
@@ -156,8 +156,8 @@ Registered before dispatch:
      into a positive. Tuning after a null is the rationalisation §6.3 exists to
      prevent, and the identity configuration (§4 of `DESIGN-CORTEX-MEMORY.md`) is the
      pre-committed one;
-   - **hurts** → the arm is rejected and `cortex-memory` is documented as *reachable
-     but not measured-better*, which is what it already was before this step.
+   - **hurts** → the arm is rejected and `cortex-memory` is documented as _reachable
+     but not measured-better_, which is what it already was before this step.
 4. **`Zhipu GLM embedding-3` is a known blocker.** Its quota was exhausted (429) and
    the offline fallback (`@agentix-e/embed-code-node`) produces different vectors, so
    the run must record which backend produced it. `bench/run.ts` already prints
@@ -173,7 +173,7 @@ Registered before dispatch:
 §6.2 step 3 assumes the arm is a small addition. It is not, because it is the first
 arm in the package whose two sides are **different systems**.
 
-Every other arm is an A/B *within* `NaturalLanguageMemorySystem` — two instances
+Every other arm is an A/B _within_ `NaturalLanguageMemorySystem` — two instances
 differing by options, both constructed inside `cortex-eval` (`runRerankAblation` is
 the template). This arm's feature side lives in `cortex-memory`, and today's
 dependency graph gives `cortex-eval` no path to it:
@@ -186,15 +186,15 @@ cortex-memory  --(devDep, type-only)-->  cortex-eval
 
 Three placements were considered.
 
-| Option | Shape | Verdict |
-| --- | --- | --- |
-| **A — assembly in `cortex-eval/src/`, systems injected** | `bench-memory-arm.ts` takes both systems already constructed and never names `cortex-memory`; the CLI builds them and hands them over | **Chosen** |
-| B — new `cortex-bench` package depending on both | Architecturally the cleanest: the coordinating layer depends on both sides | Rejected on cost: a 1051-line CLI moves house, plus a full toolchain, and `pnpm check` grows a stage |
-| C — assembly in `cortex-memory/bench/` | Dependency direction is natural today | Rejected: `bench/**` is excluded from coverage, so the wiring would be untestable — the exact defect `bench-arm-options.ts` documents |
+| Option                                                   | Shape                                                                                                                                 | Verdict                                                                                                                               |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **A — assembly in `cortex-eval/src/`, systems injected** | `bench-memory-arm.ts` takes both systems already constructed and never names `cortex-memory`; the CLI builds them and hands them over | **Chosen**                                                                                                                            |
+| B — new `cortex-bench` package depending on both         | Architecturally the cleanest: the coordinating layer depends on both sides                                                            | Rejected on cost: a 1051-line CLI moves house, plus a full toolchain, and `pnpm check` grows a stage                                  |
+| C — assembly in `cortex-memory/bench/`                   | Dependency direction is natural today                                                                                                 | Rejected: `bench/**` is excluded from coverage, so the wiring would be untestable — the exact defect `bench-arm-options.ts` documents |
 
 **Option A's cost is real and is accepted:** `cortex-eval` gains a module that exists
 to serve a product package, which a reader may find impure. The counter-argument is
-that the assembly is *the instrument's* job — it is the thing that decides what is
+that the assembly is _the instrument's_ job — it is the thing that decides what is
 compared against what — and it belongs inside the coverage boundary. The dependency
 edge itself is unchanged, which is what `AUDIT-EVAL-CONTRACTS.md` §2 relied on when it
 found the edge acyclic; the arm's suite asserts that no `cortex-memory` dependency is
@@ -237,19 +237,19 @@ every existing artifact; the narrower field is the smaller blast radius.
 
 ## 7. Acceptance criteria for the code half (delivered with this registration)
 
-| Criterion | Result |
-| --- | --- |
-| Tests written before implementation (TDD) | ✅ module failed to load, then 16 → 20 → 25 tests |
-| Coverage, all four dimensions, on the new module | ✅ **70/70 statements, 5/5 functions, 0 uncovered branches, 100% lines** |
-| Package-level gate | ✅ 99.88 / 99.07 / 100 / 99.88, floor is 95 |
-| A deliberately under-covered commit fails | ✅ see defect injection below |
-| Defect injection, each caught by a named test | ✅ 5 injections in the arm (one escape, closed), 5 in the dispatch path (§7.3), 5 in the retrieval gate (§7.4), none escaping |
-| No mocks | ✅ real `runAblationReport`, real `exactMatchScorer`, hand-written recording systems |
-| No `v8 ignore` | ✅ none added |
-| Blank dispatch inputs mean "not configured" | ✅ threshold 0, budget unbounded — and an explicit `'0'` still means zero (§7.3) |
-| The abstention path computes its decision before consulting the model | ✅ asserted on observed model calls, not source text (§7.4) |
-| Both thresholds recorded, set independently, and rendered into the artifact | ✅ `threshold` and `retrievalThreshold` on the config line and in the JSON (§7.4) |
-| `tsc` clean (`vitest` does not typecheck) | ✅ 3 errors caught by `tsc` that `vitest` reported green |
+| Criterion                                                                   | Result                                                                                                                        |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Tests written before implementation (TDD)                                   | ✅ module failed to load, then 16 → 20 → 25 tests                                                                             |
+| Coverage, all four dimensions, on the new module                            | ✅ **70/70 statements, 5/5 functions, 0 uncovered branches, 100% lines**                                                      |
+| Package-level gate                                                          | ✅ 99.88 / 99.07 / 100 / 99.88, floor is 95                                                                                   |
+| A deliberately under-covered commit fails                                   | ✅ see defect injection below                                                                                                 |
+| Defect injection, each caught by a named test                               | ✅ 5 injections in the arm (one escape, closed), 5 in the dispatch path (§7.3), 5 in the retrieval gate (§7.4), none escaping |
+| No mocks                                                                    | ✅ real `runAblationReport`, real `exactMatchScorer`, hand-written recording systems                                          |
+| No `v8 ignore`                                                              | ✅ none added                                                                                                                 |
+| Blank dispatch inputs mean "not configured"                                 | ✅ threshold 0, budget unbounded — and an explicit `'0'` still means zero (§7.3)                                              |
+| The abstention path computes its decision before consulting the model       | ✅ asserted on observed model calls, not source text (§7.4)                                                                   |
+| Both thresholds recorded, set independently, and rendered into the artifact | ✅ `threshold` and `retrievalThreshold` on the config line and in the JSON (§7.4)                                             |
+| `tsc` clean (`vitest` does not typecheck)                                   | ✅ 3 errors caught by `tsc` that `vitest` reported green                                                                      |
 
 ### 7.1 The escape, recorded because it is the useful part
 
@@ -281,7 +281,7 @@ The first pairing test also asserted that the two sides were evaluated
 `runAblation` evaluates each side in full before starting the other. The assertion was
 wrong, not the implementation: "paired" means the two sides are compared
 **question-by-question on the same dataset under the same scorer**, which the
-per-question discordant loop provides and a staggered *comparison* does not.
+per-question discordant loop provides and a staggered _comparison_ does not.
 Interleaving is not part of the property. The corrected suite asserts the property
 that is real — a fixture where each side is correct on a **different** question and
 the marginals agree, so an unpaired comparison would report `Δ = 0.00pp` while the
@@ -329,13 +329,13 @@ The fix for the second is a `trim()` test rather than a falsy test, so that blan
 "the default" by making a real zero inexpressible would be the same defect mirrored, and
 that is what injection 5 below checks.
 
-| Injection | Caught by |
-| --- | --- |
-| Drop the `mergeEmbeddingCache` call (reads the file, uses nothing) | 2 tests: `absorbs the provider calls a previous process already paid for`, `merges rather than replaces` |
-| Clear the cache before merging (restore wipes in-process vectors) | the same 2 tests |
-| Default `CORTEX_MEMORY` on | 3 tests, incl. `reports the arm as disabled when the toggle is off` |
-| Revert to the `undefined`-only blank check (the original defect) | 3 tests, incl. `treats a blank session budget as UNBOUNDED, not as zero` |
-| Falsy check instead of a blank check (explicit `0` becomes unreachable) | 1 test: `treats whitespace as blank, not as a number` |
+| Injection                                                               | Caught by                                                                                                |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Drop the `mergeEmbeddingCache` call (reads the file, uses nothing)      | 2 tests: `absorbs the provider calls a previous process already paid for`, `merges rather than replaces` |
+| Clear the cache before merging (restore wipes in-process vectors)       | the same 2 tests                                                                                         |
+| Default `CORTEX_MEMORY` on                                              | 3 tests, incl. `reports the arm as disabled when the toggle is off`                                      |
+| Revert to the `undefined`-only blank check (the original defect)        | 3 tests, incl. `treats a blank session budget as UNBOUNDED, not as zero`                                 |
+| Falsy check instead of a blank check (explicit `0` becomes unreachable) | 1 test: `treats whitespace as blank, not as a number`                                                    |
 
 Five injections, no escapes. The first is §7.1's failure mode in a new place — a restore
 that reads the file and discards it looks wired in the diff and reuses nothing.
@@ -345,10 +345,10 @@ that reads the file and discards it looks wired in the diff and reuses nothing.
 Run `37094200823` completed green, and the numbers it produced are the reason this
 section exists:
 
-| Side | Accuracy (4 runs) | Abstention rate |
-| --- | --- | --- |
-| `reference-pipeline` | 84.20% / 85.05% / 85.40% / 85.30% | 9.2% |
-| `cortex-memory` | 6.40% / 6.50% / 6.60% / 6.50% | **95.40%** |
+| Side                 | Accuracy (4 runs)                 | Abstention rate |
+| -------------------- | --------------------------------- | --------------- |
+| `reference-pipeline` | 84.20% / 85.05% / 85.40% / 85.30% | 9.2%            |
+| `cortex-memory`      | 6.40% / 6.50% / 6.60% / 6.50%     | **95.40%**      |
 
 Δ = −78.55 pp, McNemar p = 4.920e−117. Per capability the feature scored IE 0.67%
 (150), MR 0.83% (121), KU 0.00% (72), TR 0.00% (127), ABS 100% (30).
@@ -378,13 +378,13 @@ shares one `valueFunction` between them: `threshold` decides whether a turn is w
 evidence is good", which is the configuration this arm needs in order to test the
 mechanism it claims.
 
-| Injection | Caught by |
-| --- | --- |
-| Delete the `#retrievalAdmitted` call from the abstention path | 2 tests: `returns null WITHOUT calling the model when the retrieval gate closes`, `confines the machine decision to the abstention path` |
-| Force the retrieval gate open (`decision.retrieve \|\| true`) | the same 2 tests |
-| Hardcode the threshold in the call, ignoring the configuration | the same 2 tests |
-| Project a constant into the artifact (`retrievalThreshold: 0`) | 1 test: `reports the retrieval threshold as set, separately from the write threshold` |
-| Drop the field from the Markdown renderer | 2 tests, incl. `renders the gate configuration into the Markdown, so the artifact carries it` |
+| Injection                                                      | Caught by                                                                                                                                |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Delete the `#retrievalAdmitted` call from the abstention path  | 2 tests: `returns null WITHOUT calling the model when the retrieval gate closes`, `confines the machine decision to the abstention path` |
+| Force the retrieval gate open (`decision.retrieve \|\| true`)  | the same 2 tests                                                                                                                         |
+| Hardcode the threshold in the call, ignoring the configuration | the same 2 tests                                                                                                                         |
+| Project a constant into the artifact (`retrievalThreshold: 0`) | 1 test: `reports the retrieval threshold as set, separately from the write threshold`                                                    |
+| Drop the field from the Markdown renderer                      | 2 tests, incl. `renders the gate configuration into the Markdown, so the artifact carries it`                                            |
 
 Five more injections, no escapes. The first was drafted wrong and caught itself: an
 earlier version set a single `threshold: 0.9` to "close retrieval", and 4 of 5 tests
@@ -421,13 +421,13 @@ Run [`37110579101`](https://github.com/AgentiX-E/cortex/actions/runs/37110579101
 3h00m, `check-output` confirming on the runner that `abstention-decision.test.ts` ran and
 that `cortex-memory` reports `100/100/100/100`.
 
-| Side | Run `37094200823` (pre-repair) | Run `37110579101` (post-repair) |
-| --- | --- | --- |
-| `reference-pipeline` | 85.20% | 84.70% (84.60–84.80) |
-| `cortex-memory` | 6.40% | **6.45%** (6.40–6.60) |
-| Δ | −78.55 pp | **−78.25 pp** |
-| Abstention rate | 95.40% | **95.80%** |
-| McNemar p | 4.920e−117 | 3.906e−116 |
+| Side                 | Run `37094200823` (pre-repair) | Run `37110579101` (post-repair) |
+| -------------------- | ------------------------------ | ------------------------------- |
+| `reference-pipeline` | 85.20%                         | 84.70% (84.60–84.80)            |
+| `cortex-memory`      | 6.40%                          | **6.45%** (6.40–6.60)           |
+| Δ                    | −78.55 pp                      | **−78.25 pp**                   |
+| Abstention rate      | 95.40%                         | **95.80%**                      |
+| McNemar p            | 4.920e−117                     | 3.906e−116                      |
 
 **The repair did not move the number.** The artifact's config line is now
 `threshold=0, retrievalThreshold=0, sessionBudget=unbounded` — so the second gate was
@@ -455,7 +455,7 @@ exactly `1`. `decideRetrieval` thresholds the **value function's output** — no
 `[0, 0.5]`: every threshold at or below `0.5` is **always open**, and every threshold above
 it is **always closed**.
 
-Because the three factors multiply to the constant `0.5` for *every* admitted turn, the
+Because the three factors multiply to the constant `0.5` for _every_ admitted turn, the
 reachable range is not merely bounded but **degenerate**: within `[0, 0.5]` the gate cannot
 distinguish one threshold from another, and `0.25` is a no-op. The distinction matters
 because it changes what a later comparison could have shown. A bounded-but-populated range
@@ -464,7 +464,7 @@ the range the same experiment, which is why §10.9's draw was read against the w
 hypothesis.
 
 This is the defect §7.4 fixed viewed from the other side. Before the repair there was no
-call site, so *no* threshold could have had an effect and the config line could not say
+call site, so _no_ threshold could have had an effect and the config line could not say
 so. After the repair there is a call site, and the config line says exactly what the
 gate was — which is how the no-op became visible in one comparison instead of after
 another three hours.
@@ -472,7 +472,7 @@ another three hours.
 **What this does not license.** Re-dispatching with a closed gate would be tuning a
 parameter toward a preferred outcome, which §4 forbids, and it would also be measuring
 something else: with the gate at `> 0.5` every question abstains by construction, so the
-score is `0%` by arithmetic rather than by experiment. The retrieval gate's *value* is
+score is `0%` by arithmetic rather than by experiment. The retrieval gate's _value_ is
 not the variable this arm is registered to optimise.
 
 **What it does license, and what the registered endpoint now needs.** The arm's
@@ -490,6 +490,7 @@ and pins `lastAccessedAt` to the injected clock, so a value function composed wi
 cannot exceed `0.5` no matter how confident the evidence. Every threshold in this arm's
 vocabulary therefore means half of what an intuitive `[0, 1]` reading suggests, which is
 the same "correct number, wrong units" shape §38.3 recorded.
+
 ## 8. Reproducing the dispatch
 
 > **Dispatched.** Run [`37094200823`](https://github.com/AgentiX-E/cortex/actions/runs/37094200823)
@@ -509,7 +510,6 @@ the same "correct number, wrong units" shape §38.3 recorded.
 > `ablation_runs: 4`, `temperature: 0`; the added input is
 > `cortex_memory_retrieval_threshold: '0'` (§7.4). This is the measurement of the
 > repaired program, not a second draw from the first one's distribution.
-
 
 ```bash
 python3 tools/dispatch-cortex-memory-ab.py            # registers the arm
@@ -536,11 +536,11 @@ section exists to state why one does not.
 passed `sourceTrust: 0.5` as a literal with no way to pass anything else, so the
 composition layer could not express a fully-trusted memory.
 
-| Property | Before | After |
-| --- | --- | --- |
-| Reachable value range | `[0, 0.5]` | `[0, 1]` |
-| `threshold > 0.5` | admits nothing | discriminates |
-| Default behaviour | `sourceTrust = 0.5` | **unchanged** |
+| Property              | Before              | After         |
+| --------------------- | ------------------- | ------------- |
+| Reachable value range | `[0, 0.5]`          | `[0, 1]`      |
+| `threshold > 0.5`     | admits nothing      | discriminates |
+| Default behaviour     | `sourceTrust = 0.5` | **unchanged** |
 
 Verified on the built packages: the default still yields `0.5`, `sourceTrust: 1` yields
 `1`, and at `threshold 0.6` a fully-trusted turn is admitted while a default one is not.
@@ -550,13 +550,13 @@ Verified on the built packages: the default still yields `0.5`, `sourceTrust: 1`
 §4 forbids re-running for a better draw and forbids promoting a configuration after a
 null. Neither applies, and the distinction is stated as a test rather than asserted:
 
-| Test | Remedy | Tuning |
-| --- | --- | --- |
-| Are the registered parameters altered? | no | yes |
-| Does it change what the code can *express* or what it is *set to*? | can express | is set to |
-| Is the old behaviour wrong independent of any benchmark? | yes (§9.3) | no |
-| Would reverting it be defended on principle? | yes | no |
-| Does the default move? | **no** | usually yes |
+| Test                                                               | Remedy      | Tuning      |
+| ------------------------------------------------------------------ | ----------- | ----------- |
+| Are the registered parameters altered?                             | no          | yes         |
+| Does it change what the code can _express_ or what it is _set to_? | can express | is set to   |
+| Is the old behaviour wrong independent of any benchmark?           | yes (§9.3)  | no          |
+| Would reverting it be defended on principle?                       | yes         | no          |
+| Does the default move?                                             | **no**      | usually yes |
 
 The last row is the decisive one for this repository's purposes. Because the default is
 unchanged, **every artifact produced before this field existed still describes the
@@ -602,7 +602,7 @@ the precondition that must hold first.
 ### 10.1 Why this is a new registration rather than a continuation
 
 §9.4 said arming the gate is a new registration, and this is it. The reason is not
-ceremony: the arm now asks a *different question*. Through §7.5 the arm asked "does
+ceremony: the arm now asks a _different question_. Through §7.5 the arm asked "does
 composing the cognitive layer move accuracy at all", with both gates at their identity
 settings so the only variable was composition. A run that sets a non-zero
 `retrievalThreshold` asks "does the machine-derived abstention decision help", which is a
@@ -611,13 +611,13 @@ claim about a mechanism rather than about composition.
 Three things are therefore re-stated rather than inherited, because a rule carried over
 implicitly is a rule that was never decided for this question:
 
-| Element | §7.5 (composition) | §10 (armed gate) |
-| --- | --- | --- |
-| Point estimate | the baseline side of the same dispatch | **unchanged** |
-| Endpoint | overall abstention-aware accuracy, McNemar p < 0.05, N=500, 4 runs, T=0 | **unchanged** |
-| Stopping rule | one dispatch, no peeking, no redraw for a better draw | **unchanged** |
-| Gate settings | `threshold: 0`, `retrievalThreshold: 0` | **named in §10.3** |
-| Mechanism prediction | §3.3 (positive-leaning, with the null stated) | **new, §10.4, and it is falsifiable in the opposite direction** |
+| Element              | §7.5 (composition)                                                      | §10 (armed gate)                                                |
+| -------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Point estimate       | the baseline side of the same dispatch                                  | **unchanged**                                                   |
+| Endpoint             | overall abstention-aware accuracy, McNemar p < 0.05, N=500, 4 runs, T=0 | **unchanged**                                                   |
+| Stopping rule        | one dispatch, no peeking, no redraw for a better draw                   | **unchanged**                                                   |
+| Gate settings        | `threshold: 0`, `retrievalThreshold: 0`                                 | **named in §10.3**                                              |
+| Mechanism prediction | §3.3 (positive-leaning, with the null stated)                           | **new, §10.4, and it is falsifiable in the opposite direction** |
 
 The endpoint and the stopping rule are unchanged deliberately. If a mechanism claim were
 allowed to select its own endpoint, every arm would be judged by the metric it happens to
@@ -629,17 +629,17 @@ one.
 `sourceTrust` existed in `cortex-memory` after §9 but could not be dispatched. The gap was
 in three layers at once:
 
-| Layer | Before | After |
-| --- | --- | --- |
-| `tools/dispatch-cortex-memory-ab.py` | no `cortex_memory_source_trust` key | sent explicitly as `'0.5'` |
-| `.github/workflows/benchmark.yml` | no input, no `env:` forward | input declared, forwarded as `CORTEX_MEMORY_SOURCE_TRUST` |
-| `packages/cortex-eval/src/bench-memory-arm.ts` | `CortexMemoryArmOptions` had no field | parses, validates, projects into `MemoryArmConfig` |
-| `packages/cortex-memory/bench/run-ablation.ts` | gate built from three fields | four, plus `sourceTrust=` on the logged line |
+| Layer                                          | Before                                | After                                                     |
+| ---------------------------------------------- | ------------------------------------- | --------------------------------------------------------- |
+| `tools/dispatch-cortex-memory-ab.py`           | no `cortex_memory_source_trust` key   | sent explicitly as `'0.5'`                                |
+| `.github/workflows/benchmark.yml`              | no input, no `env:` forward           | input declared, forwarded as `CORTEX_MEMORY_SOURCE_TRUST` |
+| `packages/cortex-eval/src/bench-memory-arm.ts` | `CortexMemoryArmOptions` had no field | parses, validates, projects into `MemoryArmConfig`        |
+| `packages/cortex-memory/bench/run-ablation.ts` | gate built from three fields          | four, plus `sourceTrust=` on the logged line              |
 
 This is §7.3's defect in its third form, and it is worth naming precisely because the
 symptom is invisible: a dispatch carrying an input the workflow never declared is accepted
 by the API, the run starts, the arm executes, and the artifact records the configuration
-the operator *intended*. Nothing in the run's output disagrees with anything else, because
+the operator _intended_. Nothing in the run's output disagrees with anything else, because
 from the workflow's point of view nothing was wrong. §7.3 found this once in the workflow
 and once in the CLI; this is it again one layer further out.
 
@@ -648,40 +648,40 @@ and once in the CLI; this is it again one layer further out.
 dispatch script sends is a declared `workflow_dispatch` input and that every arm input is
 forwarded into a step's `env`. Three injections were run against it:
 
-| Injection | Caught by |
-| --- | --- |
+| Injection                                                          | Caught by                                                                                                 |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | rename the dispatched key to an undeclared `cortex_memory_ceiling` | `test_every_dispatched_key_is_a_declared_workflow_input`, `test_source_trust_is_dispatched_and_forwarded` |
-| delete the `env:` forward, keep the input | `test_the_arm_inputs_have_an_env_forward` |
-| delete the input declaration, keep the dispatch key | both of the above |
+| delete the `env:` forward, keep the input                          | `test_the_arm_inputs_have_an_env_forward`                                                                 |
+| delete the input declaration, keep the dispatch key                | both of the above                                                                                         |
 
 ### 10.3 The configuration this registration names
 
-* `sourceTrust: 0.5` — **the default, sent explicitly rather than omitted.**
-* The **admission threshold** is fixed at `0` by the workflow, unchanged from §7.5 and no longer a
+- `sourceTrust: 0.5` — **the default, sent explicitly rather than omitted.**
+- The **admission threshold** is fixed at `0` by the workflow, unchanged from §7.5 and no longer a
   dispatch input as of §13.101.3: every turn is admitted, so the only gate under test is the retrieval
   one. The reach argument — and the two measurements that closed the non-zero values — are in that
   section.
-* `retrievalThreshold: 0` — **amended from `0.25` by §10.9.** At `0.25` the gate abstained
+- `retrievalThreshold: 0` — **amended from `0.25` by §10.9.** At `0.25` the gate abstained
   on 479/500, lost 186 questions the baseline got right, and won none (McNemar
   p = 2.039e-56). The pre-committed recovery for that outcome is the revert to `0`, so
   until a replacement arming is registered with its own prediction, the registered value
   is the control.
-* **The multi-session block's closing line — adopted by §13.61.** Under `enumerated` the
+- **The multi-session block's closing line — adopted by §13.61.** Under `enumerated` the
   block's last line is `Reply with the Step 2 number alone. If the Step 1 list is empty
-  because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.`
+because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.`
   It replaces the `extractive` block's unconditional close, which was the last thing the
   model read and re-licensed the decline after every qualifier above it. Adopted on
   mechanism, not on the `+29.45pp` run that followed: the forbidden state fell 12 → 7,
   MR's declines fell 23 → 20, and the predicted cost appeared as `numeric_mismatch`
   27 → 32. §13.61.5 states what that decision does not claim.
-* **`relevanceSignal: retrieval-hybrid` — adopted by §13.64.** Dense cosine fused with a
+- **`relevanceSignal: retrieval-hybrid` — adopted by §13.64.** Dense cosine fused with a
   rare-keyword channel by reciprocal rank (`retrieveTopKByQueriesHybrid`). Adopted on TR's
   +17 (85/127, eighteen declines turned into correct answers), no capability regressed, and
   the grounding share of TR's correct answers rose rather than fell. **Its three registered
   mechanism predictions were falsified** — the pool's reach did not improve — and §13.64.4
-  records that the coverage instrument measures quantity while the effect moved *which*
+  records that the coverage instrument measures quantity while the effect moved _which_
   turn decides. A run with `relevanceSignal=retrieval` is the pre-§13.64 configuration.
-* `maxTurnChars: 400` — **adopted by §13.76.** The global form was rejected by §13.72 (roster 357 against 371,
+- `maxTurnChars: 400` — **adopted by §13.76.** The global form was rejected by §13.72 (roster 357 against 371,
   union 80.20% against 87.40%, IE −30 while MR +13); the route-scoped form was registered by §13.73 and met all
   five of its predictions in run `39205060432`: IE 135, MR 72, KU 59, TR 94, roster **389**. It is
   written down rather than omitted because §13.67 registered the cap as a variable and
@@ -692,25 +692,25 @@ forwarded into a step's `env`. Three injections were run against it:
   default. §13.67.1 is why the variable exists at all: the evidence room is spent on a
   **tail** of long turns (median 272 characters, p90 2,305) rather than on turns, so the cut
   that decides coverage falls at rank 26 of a 64-wide pool.
-* `maxTurnCharsRoutes: multi-session,temporal` — **adopted by §13.76 with the width above.** The two routes
+- `maxTurnCharsRoutes: multi-session,temporal` — **adopted by §13.76 with the width above.** The two routes
   whose questions need cross-turn evidence, and the only two where the cap has been measured twice above the
   control (MR 75 then 72 against 62; TR 92 then 94 against 85). The three untouched capabilities reproduce their
   control's window **to the turn**, which is the check §13.75 registered before the run existed. The accepted
   spellings are `all`, `none` and a comma-separated list of the six route names; anything else is rejected, and
   a reach that reached five routes while the artifact said six is the one failure no number in the run could
   show.
-* `relevanceTopK: 256` — **adopted by §13.79.** The pool reaches rank 255, which is what makes a 121-turn room
+- `relevanceTopK: 256` — **adopted by §13.79.** The pool reaches rank 255, which is what makes a 121-turn room
   expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
   fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
   overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
-* `maxPromptChars: 48000` — **the evidence budget, adopted by §13.82** (registered at the product's 24,000 by
+- `maxPromptChars: 48000` — **the evidence budget, adopted by §13.82** (registered at the product's 24,000 by
   §13.81 and raised by that section's run). It is written down because §13.80 showed the room cannot be bought
   by truncating: at a 200-character cap the room reached 100 turns and MR fell to 29 of 121. The budget is the
   only lever that grows the room without touching a turn, and a value a run depends on should not live in
   another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
   delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
   §13.82.3 states what its two failed predictions do to the step hypothesis.
-* `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84, on mechanism
+- `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84, on mechanism
   and mean; §13.87 corrected the magnitude.** The filter exists because §13.82 measured the composition rather
   than the size of the 48,000-character room: 51.9% of multi-session's rendered characters were assistant turns,
   and the treatment reads **100.0%** user characters with the window at 174 turns (from 144). The **mean** roster
@@ -719,11 +719,11 @@ forwarded into a step's `env`. Three injections were run against it:
   smaller number is §13.87.3: the gold set carries every statement twice, so the policy removes **exactly half**
   of MR's gold — 50.01% — and the reader's accuracy did not fall, which says the removed half is a restatement.
   The `all` spelling remains the identity for any run that names no filter.
-* `evidenceRolesRoutes: multi-session,temporal` — **adopted by §13.84 beside the roles above.** The two routes
+- `evidenceRolesRoutes: multi-session,temporal` — **adopted by §13.84 beside the roles above.** The two routes
   whose questions assemble evidence across turns; the three untouched capabilities reproduce their control's
   window **to the character** (61.0 / 62.0 / 72.0 turns) and that is the check §13.83 registered before the run
   existed. `all` reaches every route and is the identity a run with no filter is in.
-* `reviewPass: bare` — **adopted by §13.112, which is also the section that found the drift this
+- `reviewPass: bare` — **adopted by §13.112, which is also the section that found the drift this
   line had accumulated.** The bare-decline retry is what a dispatch now ships: a reply that is the
   abstention token and nothing else is asked once more with that token absent from the prompt, on the
   flat and temporal routes only. It was registered at the identity by §13.94 and adopted on the
@@ -732,7 +732,32 @@ forwarded into a step's `env`. Three injections were run against it:
   still expressible and still matters: `none` is the control, it must be named explicitly by any run
   that wants it, and §13.112 states why the difference between "ships" and "is the control" has to be
   written in the same place as the number.
-* `queryExpansion: none` — **registered by §13.97 at the identity**: the relevance index is built
+- `rerank: none` — **registered by §13.115 at the identity, which is the control the reranking
+  increment is measured against.** `none` is the retrieved order the prompt budget spends, which is what
+  every archived artifact was produced under. `on` is the treatment: each question's whole retrieved pool
+  is scored `(question, turn)`-wise through an OpenAI-compatible `/rerank` endpoint and reordered before
+  the budget sees it — the one stage RAW-RAG has and this arm does not, and the largest single component
+  of their pipeline (removing it costs them **3.92** points, more than any mechanism they added). Three
+  things are part of the registration rather than of the implementation. **One:** the pool must fit the
+  endpoint in a single call. The Runner's rerank provider is Zhipu, whose `/rerank` accepts **128**
+  documents of at most **4,096** characters and rejects the whole call above either bound, so the
+  reranking dispatch is registered as a **pair of runs**: a 128-wide pool with the stage on, against the
+  same 128-wide pool with it off. That is one variable plus one re-registration of the pool width, not
+  two variables at once — the control for the treatment is the same width, so the only thing that moves
+  between them is the stage, and 128 is RAW-RAG's own `K`. (The width itself is the bullet above this
+  one; §13.115 amends it for these two runs and for nothing else.) The
+  index **refuses** a wider pool at construction rather than batching it, because `relevance_score` is
+  normalised per call and a batch-local winner could outrank a true winner while every number still
+  looked plausible. **Two:** `fallbacks` must be `0`. `cortex-core`'s `rerankHits` degrades to the
+  retrieved order on a thrown request, a short reply or a non-finite score, so an arm whose endpoint
+  answered `401` five hundred times produces the same accuracy as one whose cross-encoder agreed with
+  the retriever every time; `fallbacks > 0` is an **assembly failure**, not a null result, and the
+  report prints that sentence beside the counters. **Three:** `changed` is empty-or-not alongside
+  `fallbacks`, because `0/0` is a cross-encoder that ran and confirmed the ranking — a result — while
+  `500/0` is a stage that never executed. Passage lengths are clipped to the endpoint's per-document
+  limit at the boundary and counted, so a reader can see how often the ordering judged a prefix; the
+  reader itself still sees whole turns.
+- `queryExpansion: none` — **registered by §13.97 at the identity**: the relevance index is built
   from the question alone, which is the state every archived run was in. The variable exists because
   §13.96 localised the residual multi-session loss to the matching decision rather than to list
   length, and because `--numbers` shows the gold's digits absent from the window for 12 of 44 wrong
@@ -740,30 +765,30 @@ forwarded into a step's `env`. Three injections were run against it:
   call per multi-session question, before the index is built, carried into
   `RelevanceCase.queries`. §13.97.4 registers what a run of it must show, and the adoption decision
   is taken after that run rather than by this line.
-* `selfConsistency: none` — **registered by §13.101 at the identity**: one consultation per question,
+- `selfConsistency: none` — **registered by §13.101 at the identity**: one consultation per question,
   which is the state every archived run is in. `3` is the treatment: three consultations of a
   byte-identical prompt on the multi-session route, and the answer a strict majority holds. The
   variable exists because §13.100.2 measured the reader's judgement moving on 24 of 121 answers with
   no treatment at all, so sampling it and voting is the one mechanism whose target is the instrument's
   own measured defect. §13.101.4 registers what a run of it must show.
-* `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
-* `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
+- `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
+- `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-* `ask: enumerated` — **set by §13.34, after §13.26 sent `computed`.** It is `computed` plus
+- `ask: enumerated` — **set by §13.34, after §13.26 sent `computed`.** It is `computed` plus
   a **two-step contract on the multi-session route alone**: enumerate every matching item with
   its date, compute the answer from that list per the question's kind, and make the abstain
   token conditional on the list existing. Run `38828538851` is why — MR's 47 wrong answers
   include **41 numeric mismatches**, and 22 questions abstained with 14–20 gold turns already
   in the window, so the reader holds the evidence and either miscounts it or declines with it
-  in hand, while the reference pipeline scores 86.78% on MR over a *smaller* window using a
+  in hand, while the reference pipeline scores 86.78% on MR over a _smaller_ window using a
   two-step contract of its own. On flat and temporal this ask is **byte-identical to
   `computed`** (asserted in `evidence-ask-reach.test.ts`), so §13.26's TR gain and IE's 88.67%
   on the flat path are held and the only route whose reading moves is multi-session. The
   reach set is unchanged from `computed` — the artifact separates the two asks by this value
   beside an unchanged `askRoutes` — and the multi-session route needs its own scope argument
-  because `buildSessionPrompt` and the flat path both build with the `extractive` contract.  Sent explicitly rather than left blank for the reason `sourceTrust` is. §13.3 records the
+  because `buildSessionPrompt` and the flat path both build with the `extractive` contract. Sent explicitly rather than left blank for the reason `sourceTrust` is. §13.3 records the
   four values this entry replaced, in order, and why each was retired. **A sixth value is registered by
   §13.103**: `aggregation`, the reference pipeline's aggregation shape on the multi-session route
   alone, whose Step 1 says an exchange is two items and whose Step 2 maps four question forms to four
@@ -781,12 +806,12 @@ forwarded into a step's `env`. Three injections were run against it:
   ask is held at §13's value rather than reverted, because reverting it would restore
   the shipped per-route blocks and change the surface the evidence capture is being
   read from.
-  *(**status: decided, by run `39005914398` (§13.45).** `+26.95pp` against `computed`'s
+  _(**status: decided, by run `39005914398` (§13.45).** `+26.95pp` against `computed`'s
   `+25.75pp`, MR 51.24% against 42.15%, McNemar p = 6.053e-15 over four repetitions. The
   dispatch that decided it was §13.41.6's, and it required two instrument repairs first:
   §13.40's `+26.75pp` was a transcript being judged (gate-true **0** of 33 gate decisions)
   and §13.41's `+23.25pp` was a gate reading an operand. **Both of those numbers are in this
-  document and neither is a measurement of this ask**; the third is.)*
+  document and neither is a measurement of this ask**; the third is.)_
   **That reason expired, and §13.20 is what expired it.** The capture is independent of
   the ask since §13.19 -- `goldOverlap` is measured against the captured context, not
   against the prompt -- so the fixed surface is no longer load-bearing. What replaced it
@@ -794,7 +819,7 @@ forwarded into a step's `env`. Three injections were run against it:
   every one of the 56 MR and 88 TR abstentions had at least one gold turn **inside the
   context the model was shown** (56/56 and 87/88), and every abstention in the run was the
   bare `INSUFFICIENT_EVIDENCE` token. The ask is therefore not a wording preference: the
-  `extractive` block *removes* each route's reasoning instruction, and the two instructions
+  `extractive` block _removes_ each route's reasoning instruction, and the two instructions
   it removes are the temporal block's date resolution and the knowledge-update block's
   earlier-versus-later rule -- on exactly the two capabilities the feature side loses.
   Reverting to `route` restores them and moves nothing else.
@@ -831,10 +856,10 @@ forwarded into a step's `env`. Three injections were run against it:
   asserted in `evidence-ask-reach.test.ts`, so the single variable between §13.21's run and
   this one is what the temporal route reads. `abstention` is deliberately out of reach:
   its block calls declining "expected and is a valid outcome" and ABS's gold IS abstention.
-* **The record bound `evidenceTurnsPerRecord` is 256** — *stated in prose rather than as a
+- **The record bound `evidenceTurnsPerRecord` is 256** — _stated in prose rather than as a
   paired form because, as of §13.94, it is a workflow constant rather than a dispatch
   input; `test_preregistration_config.py` therefore cannot hold it to a dispatch key, and it holds
-  the workflow's own constant instead.* **Added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
+  the workflow's own constant instead._ **Added by §13.12, re-valued by §13.15.** Track `b✗f✓`. Run `38003036421`
   completed all four runs of all five hundred questions and then died writing the JSON
   with `Invalid string length` (§13.11.10). The evidence is carried
   unbounded — `admission.ts` declines to truncate and the arm admits every session — and
@@ -849,7 +874,7 @@ forwarded into a step's `env`. Three injections were run against it:
   reads — it is a writability guard, not a measurement. The value is unchanged at 256, the artifact
   still records what it carried, and restoring it as an input is the right move if a run ever needs
   to move the bound.
-* **The selection signal — added by §13.17, and superseded by §13.64's hybrid.** Its opening
+- **The selection signal — added by §13.17, and superseded by §13.64's hybrid.** Its opening
   line used to spell the concept and its value in one backticked pair, and §13.64's
   adoption bullet appears ABOVE this one, so the parser in
   `tools/__tests__/test_preregistration_config.py` read this stale line last and took it as
@@ -875,7 +900,7 @@ forwarded into a step's `env`. Three injections were run against it:
   has no ground-truth parameter, so this is structural rather than promised, and
   `relevance-index.test.ts` measures it by building two indices from cases that differ only
   in an unread field.
-* **The index width — added by §13.17 at 64, superseded by §13.79's 256.** Registered
+- **The index width — added by §13.17 at 64, superseded by §13.79's 256.** Registered
   separately because the signal's name and the signal's extent are different claims: a
   `retrieval` signal built at a width of `8` ranks almost nothing, and an artifact naming
   only the signal would make that run and this one look like the same experiment.
@@ -887,12 +912,12 @@ forwarded into a step's `env`. Three injections were run against it:
   the budget: every scored turn survives selection, so widening the index would reorder the
   low-scoring turns rather than admit more high-scoring ones. **§13.79 measured that argument
   when the room grew to 68 turns and it split in two**: delivery moved 72.2% → 72.9%, which is
-  the "reorder, not admit" half holding; and the share of MR's gold the ranker never *surfaced*
+  the "reorder, not admit" half holding; and the share of MR's gold the ranker never _surfaced_
   fell 28.1% → 5.0%, which is the half that was false. The width was adopted for the second half
   and for the reason §13.79.5 gives — a 121-turn room is not expressible on a 64-wide pool. Sent explicitly rather than
   left blank for the reason `sourceTrust` is: a value that never reaches the environment is
   a value this guard cannot compare against the registration.
-* `relevanceUnits: turn` — **added by §13.27, refuted by §13.31, and held at the shipped
+- `relevanceUnits: turn` — **added by §13.27, refuted by §13.31, and held at the shipped
   default by §13.34** because the variable of that dispatch is the ask: §13.26 is its
   comparison, so the signal, the width, the room and the unit all stay where that run left
   them. §13.31's `session-fill` remains the repaired form of §13.27's rule and remains the
@@ -924,8 +949,10 @@ forwarded into a step's `env`. Three injections were run against it:
   confirmed-negative configuration is kept elsewhere in this project, and the repair arrives as a
   value whose name says which rule it is. A reader can therefore execute either run's
   configuration and get the run that was reported.
-* `budgetMinutes: 90` — **added by §13.30, and it is a run option rather than a measurement
-  configuration.** Each **pass** (one system over one repetition) is abandoned once it exceeds
+- **The per-pass wall-clock ceiling is 90 minutes** — **added by §13.30, and it is a run option rather
+  than a measurement configuration.** It is stated here as prose rather than as one of the parsed
+  key-and-value pairs below, because §13.115 moved it out of the dispatch surface and into the workflow's job environment, and a
+  concept the parser reads but no dispatch input carries is a registration that cannot be reproduced. Each **pass** (one system over one repetition) is abandoned once it exceeds
   this ceiling, and the pass itself enforces it between questions, so a hang ends with a
   failure record naming the question it stopped at. §13.30 records why this exists: run
   `38725510400` hung for over five hours inside the reference pipeline's first question and
@@ -935,8 +962,13 @@ forwarded into a step's `env`. Three injections were run against it:
   ceiling that fires on a slow pass destroys the measurement it was meant to protect. It is not
   a member of `memoryArmConfig` for the reason that type's own docs give: the config is what the
   numbers are conditioned on and it is serialized, while a ceiling changes only whether the run
-  finishes. Sent explicitly rather than left blank for the reason `sourceTrust` is.
-
+  finishes.
+  **As of §13.115 it is a workflow constant rather than a dispatch input.** The arm's input surface sat
+  one below GitHub's 25-input ceiling when the reranking switch needed a slot, and between a hang
+  detector and a treatment the detector is the one that belongs in the job — where a reader of a run
+  looks for it anyway. The value is unchanged at `90`, the environment variable is unchanged, and the
+  dispatch script's table gives up the line rather than the arm giving up the guard. The precedent is
+  `evidenceTurnsPerRecord` (§13.94), moved for exactly this reason one registration earlier.
 
   The value moved from sixteen to two hundred and fifty-six because §13.15 changed
   what the roster holds, and that is a change to what the bound protects rather than a
@@ -949,16 +981,17 @@ forwarded into a step's `env`. Three injections were run against it:
   this arm's measured one hundred and forty-four characters per turn, so it is a
   writability guard rather than a measurement, and if it ever bites the marker and
   `evidenceReduction` both record it rather than the roster silently losing turns.
+
 > **Amended by §12.5, in place rather than below**, for the reason §10.9's note gives:
 > `registered()` reads the list and stops at the first blank line, so an amendment note
 > placed between the heading and the list would silently disable the guard. This entry is
 > the first that is not a gate knob, and that is deliberate — the registration is still a
-> registration of *the run's independent variable*, and §12.5 is where that variable
+> registration of _the run's independent variable_, and §12.5 is where that variable
 > changed from a threshold to a rendering.
 
 > **Amended by §10.9, in place rather than below.** The bullet list above is read by
 > `tools/__tests__/test_preregistration_config.py`, whose `registered()` stops at the
-> first blank line after the heading — so the amendment note belongs *after* the list,
+> first blank line after the heading — so the amendment note belongs _after_ the list,
 > not between the heading and it. The first draft of this amendment put a blockquote
 > directly under the heading and the guard's control test failed with `parsed []`, which
 > is the guard catching a document edit that would have silently disabled the check. The
@@ -977,7 +1010,7 @@ reproduced `37094200823` to the digit.
 point.** At `sourceTrust: 0.5` the reachable interval is `[0, 0.5]`, so
 `retrievalThreshold: 0.25` is a genuinely discriminating value — but the gate it drives is
 still a **threshold on a quantity whose usable range is half the nominal one**. The
-configuration tests *that the gate is wired and that its midpoint does something*, not
+configuration tests _that the gate is wired and that its midpoint does something_, not
 "the gate at its most expressive".
 
 ### 10.4 The falsifiable prediction, stated before the run
@@ -1003,22 +1036,22 @@ in the sense §4 forbids: a second configuration chosen after seeing the first o
 
 **The pre-committed reading of each outcome:**
 
-| Observed | Verdict |
-| --- | --- |
-| abstention falls, endpoint significantly up | opened verdict: the machine-derived gate helps at the midpoint |
-| abstention falls, endpoint unchanged | the gate is live and the signal is neutral — a mechanism result, reported as such |
-| abstention unchanged to the digit | the arming is not in the reachable mass; the ceiling, not the threshold, is the binding constraint |
-| p < 0.05 with delta < 0 | the gate harms; reported as a refutation and reverted to `retrievalThreshold: 0` |
+| Observed                                    | Verdict                                                                                            |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| abstention falls, endpoint significantly up | opened verdict: the machine-derived gate helps at the midpoint                                     |
+| abstention falls, endpoint unchanged        | the gate is live and the signal is neutral — a mechanism result, reported as such                  |
+| abstention unchanged to the digit           | the arming is not in the reachable mass; the ceiling, not the threshold, is the binding constraint |
+| p < 0.05 with delta < 0                     | the gate harms; reported as a refutation and reverted to `retrievalThreshold: 0`                   |
 
 The third row is the one worth having written down in advance. It is the outcome that
-distinguishes "the mechanism is wired" from "the mechanism is wired *and reachable*", and
+distinguishes "the mechanism is wired" from "the mechanism is wired _and reachable_", and
 after §9 that distinction is exactly where this project's remaining uncertainty about the
 arm sits.
 
 ### 10.5 What this registration does NOT claim
 
-1. It is not a claim that `0.25` is the right threshold. It is the *midpoint of the
-   reachable interval*, chosen before the data and defensible without it.
+1. It is not a claim that `0.25` is the right threshold. It is the _midpoint of the
+   reachable interval_, chosen before the data and defensible without it.
 2. It is not a claim about a raised ceiling. That is a separate registration; a run that
    both raised the ceiling and armed the gate would confound two changes, and the whole
    point of §10.4's prediction table is to separate them.
@@ -1039,10 +1072,10 @@ input to `MemoryArmConfig`, asserted by `bench-memory-arm.test.ts` and
 `ablation_runs: 1`, its numbers read as wiring evidence and never as a result. It met both
 halves of the check:
 
-| Half | Observation |
-| --- | --- |
+| Half                             | Observation                                                                                          |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | log line names `sourceTrust=0.5` | `cortex-memory gate: threshold=0, retrievalThreshold=0.25, sessionBudget=unbounded, sourceTrust=0.5` |
-| artifact names `sourceTrust=0.5` | JSON `memoryArmConfig.sourceTrust = 0.5`; the report header repeats the full line |
+| artifact names `sourceTrust=0.5` | JSON `memoryArmConfig.sourceTrust = 0.5`; the report header repeats the full line                    |
 
 Both were read **before** the probe's accuracy was looked at, as this section requires.
 
@@ -1091,8 +1124,8 @@ Error: LLM request failed: 402 Payment Required —
     at ... runAblationReport (.../report.ts:276:20)
 ```
 
-This is the case §8 names: *"a failure for an infrastructure reason (quota, artifact loss)
-is re-dispatched with that reason recorded rather than treated as a result."* The LLM
+This is the case §8 names: _"a failure for an infrastructure reason (quota, artifact loss)
+is re-dispatched with that reason recorded rather than treated as a result."_ The LLM
 account's balance was exhausted **during** the arm — the primary benchmark had already
 completed at 08:33 and the arm ran until 09:25 before the first 402 — so this is not a
 fast failure and not a code defect.
@@ -1108,12 +1141,12 @@ of attempts, so retrying would only delay the diagnostic.
 
 **What the failure did establish**, none of which needed the arm to complete:
 
-| Observation | Evidence |
-| --- | --- |
-| The dispatch carried all six §10.3 values | the dispatch log, and step 14 running at all |
-| The arm reached the LLM reader with them | the stack: `expandQuestion` → `complete` → `post` |
-| The failure is isolated to the arm, not the run | step 13 `success`, step 9 `success` |
-| The primary benchmark is unaffected | its own N=500 artifact, `38.80%` → `44.80%` |
+| Observation                                     | Evidence                                          |
+| ----------------------------------------------- | ------------------------------------------------- |
+| The dispatch carried all six §10.3 values       | the dispatch log, and step 14 running at all      |
+| The arm reached the LLM reader with them        | the stack: `expandQuestion` → `complete` → `post` |
+| The failure is isolated to the arm, not the run | step 13 `success`, step 9 `success`               |
+| The primary benchmark is unaffected             | its own N=500 artifact, `38.80%` → `44.80%`       |
 
 **Re-dispatch is gated on the account, not on the code.** Nothing in this repository
 needs to change first, and no re-run should be attempted until the balance is restored --
@@ -1199,12 +1232,12 @@ abstention would **fall**, on the argument that a `0.25` cut sits near the middl
 mass bounded by the `0.5` ceiling. It did not fall. It moved almost the entire remaining
 range the other way:
 
-| Quantity | `reference-pipeline` (control) | `cortex-memory` (feature) | Δ |
-| --- | --- | --- | --- |
-| Abstention rate | 49.40% (247/500) | **95.80%** (479/500) | **+46.40pp** |
-| Abstention-aware accuracy | 43.80% | **6.60%** | **−37.20pp** |
-| Correct | 219 | 33 | −186 |
-| Aggregate avg, 4 runs | 43.75% | 6.50% | −37.25% |
+| Quantity                  | `reference-pipeline` (control) | `cortex-memory` (feature) | Δ            |
+| ------------------------- | ------------------------------ | ------------------------- | ------------ |
+| Abstention rate           | 49.40% (247/500)               | **95.80%** (479/500)      | **+46.40pp** |
+| Abstention-aware accuracy | 43.80%                         | **6.60%**                 | **−37.20pp** |
+| Correct                   | 219                            | 33                        | −186         |
+| Aggregate avg, 4 runs     | 43.75%                         | 6.50%                     | −37.25%      |
 
 **Statistics.**
 
@@ -1221,12 +1254,12 @@ no subset of the dataset on which this arming helps.
 sits exactly on the two capabilities the baseline solves, and abstention is what eats them:
 
 | Capability | Baseline abstained | Feature abstained | Baseline correct | Feature correct |
-| --- | --- | --- | --- | --- |
-| MR | 2 | 117 | 105 | 2 |
-| TR | 20 | 122 | 83 | 0 |
-| IE | 136 | 149 | 1 | 1 |
-| KU | 59 | 61 | 0 | 0 |
-| ABS | 30 | 30 | 30 | 30 |
+| ---------- | ------------------ | ----------------- | ---------------- | --------------- |
+| MR         | 2                  | 117               | 105              | 2               |
+| TR         | 20                 | 122               | 83               | 0               |
+| IE         | 136                | 149               | 1                | 1               |
+| KU         | 59                 | 61                | 0                | 0               |
+| ABS        | 30                 | 30                | 30               | 30              |
 
 MR falls `86.78% → 1.65%` and TR falls `65.35% → 0.00%`, each at McNemar p < 1e-24. IE and
 KU are unchanged and were already near the floor before the arm; ABS is `30/30` on both
@@ -1244,7 +1277,7 @@ original reading was reachable at all, is in §10.10.
 **Verdict, per the pre-committed table.** Read literally, this run does not fit any row
 cleanly, and the honest report says so. Abstention did not fall, and it did not stay
 "unchanged to the digit" either — it moved `+46.40pp`. §10.10 establishes that the movement
-was produced by the model rather than by the gate, so the run discharged the *third* row's
+was produced by the model rather than by the gate, so the run discharged the _third_ row's
 underlying proposition (the arming is not in the reachable mass) while arriving at it by a
 route the table did not enumerate. The table's fourth row was applied at the time, and §10.4
 requires a `delta < 0` with `p < 0.05` to be **reverted to `retrievalThreshold: 0`** — a
@@ -1261,7 +1294,7 @@ number, which is the redraw §4 forbids and the specific temptation the third ro
 a `6.60%` endpoint, 186 questions below the control and none above it — and §10.10 shows
 the gate was inert while that happened, so the deficit is attributable to the arm's
 composition, not to its retrieval cut.** A future attempt on the gate must be a new
-registration carrying its own prediction *and a reachable arming*, not a slide of this one's
+registration carrying its own prediction _and a reachable arming_, not a slide of this one's
 dial.
 
 **One thing the run re-confirmed.** The control side's own number is reproduced at full
@@ -1277,7 +1310,7 @@ on 500 questions, consistent with §10.7's composition-arm finding on the same d
    `best = Math.max(best, clamp01(valueFn(m, queryContext)))` in
    `packages/cortex-core/src/value/value.ts`, and the local variable is named `confidence`
    only because it is the best value the loop found. The field named `confidence` on a
-   memory is one *input* to that value and is never the compared quantity.
+   memory is one _input_ to that value and is never the compared quantity.
 2. §10.9 therefore attributed the `+46.40pp` abstention movement to the retrieval gate
    closing. It could not have. `admission.ts` passes `sourceTrust: 0.5` to `createMemory`,
    sets `lastAccessedAt === createdAt === options.now`, and does not pass `confidence`, so
@@ -1287,14 +1320,14 @@ on 500 questions, consistent with §10.7's composition-arm finding on the same d
 
 **How the correction was established.** Independently, not by re-reading:
 
-| Probe | Threshold | `retrieve` |
-| --- | --- | --- |
-| `admitTurns(..., { sourceTrust: 0.5 })` → value | — | `0.5`, `0.5` (constant) |
-| same candidates | `0` | `true` |
-| same candidates | `0.25` (registered) | `true` |
-| same candidates | `0.5` | `true` |
-| same candidates | `0.5 + 1e-9` | `false` |
-| same candidates | `0.51` | `false` |
+| Probe                                           | Threshold           | `retrieve`              |
+| ----------------------------------------------- | ------------------- | ----------------------- |
+| `admitTurns(..., { sourceTrust: 0.5 })` → value | —                   | `0.5`, `0.5` (constant) |
+| same candidates                                 | `0`                 | `true`                  |
+| same candidates                                 | `0.25` (registered) | `true`                  |
+| same candidates                                 | `0.5`               | `true`                  |
+| same candidates                                 | `0.5 + 1e-9`        | `false`                 |
+| same candidates                                 | `0.51`              | `false`                 |
 
 The boundary sits exactly at the ceiling, so the reachable range is `[0, 0.5]` for opening
 and `(0.5, 1]` for closing. The write gate is inert for the same reason: `threshold: 0` with
@@ -1304,7 +1337,7 @@ and `(0.5, 1]` for closing. The write gate is inert for the same reason: `thresh
 `answerAbstention` returning `null` that remains is the LLM emitting `UNANSWERABLE`
 (`reason: "llm"`). The feature arm is not an armed gate; it is a composition whose prompt
 makes the model decline. That is a legitimate finding about the composition and it is
-*not* a finding about the retrieval gate.
+_not_ a finding about the retrieval gate.
 
 **A diagnostic gap this exposed.** `decisionReasons` is produced only by
 `packages/cortex-eval/bench/run.ts` (the reference CLI). `cortex-memory/bench/run-ablation.ts`
@@ -1314,23 +1347,23 @@ separate probe rather than read off the run's own output. Closing that gap is th
 prerequisite for any future arming registration: a gate experiment must be able to report
 whether the gate fired.
 
-**The lesson, which generalises past this arm.** Testing that a knob *has an effect* is not
-testing that the knob is *reachable*. `abstention-decision.test.ts` exercised `0.9` (closed)
+**The lesson, which generalises past this arm.** Testing that a knob _has an effect_ is not
+testing that the knob is _reachable_. `abstention-decision.test.ts` exercised `0.9` (closed)
 and `0.1` (open) and passed — but it varied the threshold and never the ceiling, and under
 the single-point hypothesis those two samples are entirely consistent with an inert knob. A
 parameter can be accepted, recorded in the artifact, echoed in the dispatch line, and still
-be inert, because the quantity it thresholds has a range the caller's *other* settings
+be inert, because the quantity it thresholds has a range the caller's _other_ settings
 collapsed to a point. The guard is
 `packages/cortex-memory/src/__tests__/retrieval-reachable-range.test.ts`, which pins the
 constant, the boundary, and the widening — and which fails all four of its assertions if
 `sourceTrust` is dropped from the value function.
 
-**What is *not* being done about it.** §10.9's stats are untouched and remain correct as
+**What is _not_ being done about it.** §10.9's stats are untouched and remain correct as
 statistics; only their attribution changes. The revert of `retrievalThreshold` to `0`
 stands, and for a stronger reason than §10.9 gave: the arming was a no-op, so a new
 registration is required regardless. No threshold will be slid to `0.1` to search for a
 number — with a degenerate range, every value in `[0, 0.5]` is the same experiment, so the
-next step is to make the range *reachable* (raise the ceiling, or admit with varying
+next step is to make the range _reachable_ (raise the ceiling, or admit with varying
 `confidence`), then register a cut against a range that can respond to it.
 
 ## 11. The discriminating registration: what must exist before a cut is registered
@@ -1340,10 +1373,10 @@ next step is to make the range *reachable* (raise the ceiling, or admit with var
 took the first and measured that it is **not sufficient**, which turns the second from an
 alternative into a prerequisite:
 
-| Ceiling | Reachable range | Can it separate a strong turn from a weak one |
-| --- | --- | --- |
-| `0.5` (default) | `[0, 0.5]`, a point | no (§10.10) |
-| `1` | `[0, 1]`, a set | **still no** |
+| Ceiling         | Reachable range     | Can it separate a strong turn from a weak one |
+| --------------- | ------------------- | --------------------------------------------- |
+| `0.5` (default) | `[0, 0.5]`, a point | no (§10.10)                                   |
+| `1`             | `[0, 1]`, a set     | **still no**                                  |
 
 At `sourceTrust: 1` every admitted turn carries exactly `1`, so `0.9999` admits everything
 and `1 + 1e-9` admits nothing. The fix that §10.10 named makes the range reachable and
@@ -1364,7 +1397,7 @@ passes. `DESIGN-CORTEX-MEMORY.md` §6.5 records the design; the short form is:
 - **the default is absent**, so `confidence` stays at `createMemory`'s `1` and every run
   whose artifact predates the field keeps its meaning.
 
-`min(1, length / 2000)` is the shipped signal. It is chosen for being the *weakest*
+`min(1, length / 2000)` is the shipped signal. It is chosen for being the _weakest_
 defensible one — no model, no vocabulary, no tuning corpus — and it is not a claim that
 length predicts relevance. The artifact records which signal ran, so a later registration
 can replace it and compare.
@@ -1372,7 +1405,7 @@ can replace it and compare.
 ### 11.2 What a cut on top of it may and may not be
 
 The next registration may now name a `retrievalThreshold` inside `(0, S]` and a
-`confidenceSignal`, because the pair is what makes the cut *about* something. Two
+`confidenceSignal`, because the pair is what makes the cut _about_ something. Two
 constraints carry over from §4 and are not relaxed by the mechanism arriving:
 
 1. **One dispatch, no threshold search.** The prediction is stated before the run and the
@@ -1380,7 +1413,7 @@ constraints carry over from §4 and are not relaxed by the mechanism arriving:
    through it to find a number that wins — that is the sweep §4 exists to forbid, and it
    would be hidden rather than healed by the fact that the numbers now differ.
 2. **The zero hypothesis is still the expected outcome** until a run says otherwise. §11.1
-   makes a discriminating cut *expressible*; it does not predict that any particular cut
+   makes a discriminating cut _expressible_; it does not predict that any particular cut
    helps, and the registration has to name its threshold and its prediction before dispatch.
 
 ### 11.3 The defect this round would have shipped without the gate
@@ -1392,7 +1425,7 @@ orphans and the check failed. The remedy was to narrow them, not to add them to
 symbol two hours old is a decision to keep an unused export forever.
 
 This is §10.10's diagnostic-gap lesson one level over. There, the artifact could not say
-which mechanism fired. Here, the *code* could not say which symbols have consumers — and
+which mechanism fired. Here, the _code_ could not say which symbols have consumers — and
 both are the same failure: a claim nobody could check from the evidence present. The census
 gate is what made the second checkable before the commit rather than after a reader asked.
 
@@ -1409,15 +1442,15 @@ The dispatched run `37313582403` published a `longmemeval-s-report` artifact who
 `benchmark-diagnostics.json` carries the embedding score distribution over the 100-question
 diagnostic subset. That distribution was read, not re-derived:
 
-| Quantity | Value |
-| --- | --- |
-| diagnostic questions | 100 (76 answerable) |
-| `recallAt1` | 0.368 |
-| `recallAt5` | 0.763 |
-| hit scores (`n=28`) | range **`[0.5212, 0.7861]`**, median 0.686 |
-| miss scores (`n=48`) | range **`[0.5165, 0.7944]`**, median 0.637 |
-| `recommendedThreshold` | **0.6433** |
-| minimum score over all 76 | **0.5165** |
+| Quantity                  | Value                                      |
+| ------------------------- | ------------------------------------------ |
+| diagnostic questions      | 100 (76 answerable)                        |
+| `recallAt1`               | 0.368                                      |
+| `recallAt5`               | 0.763                                      |
+| hit scores (`n=28`)       | range **`[0.5212, 0.7861]`**, median 0.686 |
+| miss scores (`n=48`)      | range **`[0.5165, 0.7944]`**, median 0.637 |
+| `recommendedThreshold`    | **0.6433**                                 |
+| minimum score over all 76 | **0.5165**                                 |
 
 ### 12.2 The first finding: the dispatched threshold was below every score
 
@@ -1440,13 +1473,13 @@ has to be read from a prior run rather than assumed.
 This is the part that changes the plan rather than the parameters. Sweeping the threshold
 over the measured distributions:
 
-| cut | hits admitted | misses admitted | precision | hit recall |
-| --- | --- | --- | --- | --- |
-| 0.25 (dispatched) | 28/28 | 48/48 | **0.368** | 1.000 |
-| 0.50 | 28/28 | 48/48 | **0.368** | 1.000 |
-| 0.598 | 27/28 | 31/48 | 0.466 | 0.964 |
-| 0.6433 (recommended) | 22/28 | 21/48 | 0.512 | 0.786 |
-| 0.70 | 11/28 | 7/48 | 0.611 | 0.393 |
+| cut                  | hits admitted | misses admitted | precision | hit recall |
+| -------------------- | ------------- | --------------- | --------- | ---------- |
+| 0.25 (dispatched)    | 28/28         | 48/48           | **0.368** | 1.000      |
+| 0.50                 | 28/28         | 48/48           | **0.368** | 1.000      |
+| 0.598                | 27/28         | 31/48           | 0.466     | 0.964      |
+| 0.6433 (recommended) | 22/28         | 21/48           | 0.512     | 0.786      |
+| 0.70                 | 11/28         | 7/48            | 0.611     | 0.393      |
 
 The hit and miss distributions **overlap almost completely**: hits `[0.5212, 0.7861]`,
 misses `[0.5165, 0.7944]`. The best precision reachable at full-ish recall is **0.466**,
@@ -1466,13 +1499,13 @@ is expensive, falsifiable, and uninformative.
 
 The per-capability table in the same artifact localises the loss precisely:
 
-| Capability | Total | Baseline | Feature | b✓f✗ | b✗f✓ |
-| --- | --- | --- | --- | --- | --- |
-| IE | 150 | 0.67% | 0.67% | 0 | 0 |
-| MR | 121 | 86.78% | 1.65% | **103** | **0** |
-| KU | 72 | 0.00% | 0.00% | 0 | 0 |
-| TR | 127 | 65.35% | 0.00% | **83** | **0** |
-| ABS | 30 | 100% | 100% | 0 | 0 |
+| Capability | Total | Baseline | Feature | b✓f✗    | b✗f✓  |
+| ---------- | ----- | -------- | ------- | ------- | ----- |
+| IE         | 150   | 0.67%    | 0.67%   | 0       | 0     |
+| MR         | 121   | 86.78%   | 1.65%   | **103** | **0** |
+| KU         | 72    | 0.00%    | 0.00%   | 0       | 0     |
+| TR         | 127   | 65.35%   | 0.00%   | **83**  | **0** |
+| ABS        | 30    | 100%     | 100%    | 0       | 0     |
 
 Two facts, and they are the whole diagnosis:
 
@@ -1498,6 +1531,7 @@ gate filters evidence out. The gate is a red herring for this arm.
 evidence rendering — while leaving `threshold`, `retrievalThreshold`, `sessionBudget`,
 `sourceTrust` and `confidenceFor` **exactly as dispatched** — will move MR and TR off zero.
 In the same run:
+
 - MR and TR feature accuracy will each be **> 0%**, since `0/121` and `0/127` are the
   numbers being explained;
 - `b✗f✓` will be **non-zero** for at least one of MR/TR, because a rendering fix that
@@ -1524,7 +1558,7 @@ heuristic meaning "admit roughly 75% of hits". It does **not** maximize precisio
 not consult the miss distribution at all, and its name asserts a recommendation it does
 not compute.
 
-A reader who saw `0.6433` and the word *recommended* pulled it into `INPUTS` as
+A reader who saw `0.6433` and the word _recommended_ pulled it into `INPUTS` as
 `cortex_memory_retrieval_threshold` — that is how the dispatch came to carry a number whose
 provenance was a percentile of the hits. The behaviour is defensible as a coverage rule;
 the name is what misled, and the name is a two-word fix. It is recorded here rather than
@@ -1550,13 +1584,13 @@ it.
 `bcf66463`, `limit=120`, `ablation_runs=1`:
 
 | capability | baseline | feature | `b+f-` | `b-f+` |
-| --- | --- | --- | --- | --- |
-| MR | 13/17 | 0/17 | 13 | 0 |
-| TR | 15/17 | 0/17 | 15 | 0 |
-| IE | 0/52 | 0/52 | 0 | 0 |
-| KU | 0/17 | 0/17 | 0 | 0 |
-| ABS | 17/17 | 17/17 | 0 | 0 |
-| total | 45/120 | 17/120 | 28 | **0** |
+| ---------- | -------- | ------- | ------ | ------ |
+| MR         | 13/17    | 0/17    | 13     | 0      |
+| TR         | 15/17    | 0/17    | 15     | 0      |
+| IE         | 0/52     | 0/52    | 0      | 0      |
+| KU         | 0/17     | 0/17    | 0      | 0      |
+| ABS        | 17/17    | 17/17   | 0      | 0      |
+| total      | 45/120   | 17/120  | 28     | **0**  |
 
 MR and TR are at exactly 0%, and `b-f+ = 0`. Read against §12.5 as written, that is the
 falsification: "the evidence never reaches the prompt at all".
@@ -1582,11 +1616,11 @@ const resolved =
 ```
 
 `runBenchmark` dispatches `answerAbstention` for `capability === 'ABS'` only. So
-`abstention-evidence-blocks` reaches **17 of 120 questions**, and ABS gold *is*
+`abstention-evidence-blocks` reaches **17 of 120 questions**, and ABS gold _is_
 abstention — the variable is installed on the questions where declining is correct.
 
 The falsification clause could therefore only ever fire on MR/TR, which never receive
-the rendering. Its inference was: *MR/TR at zero, therefore evidence is absent.* Two
+the rendering. Its inference was: _MR/TR at zero, therefore evidence is absent._ Two
 causes produce that antecedent, and the clause named one of them:
 
 1. `#admit` returns nothing → evidence absent;
@@ -1660,7 +1694,7 @@ deferred.
 **The `promptContract` substitution is extended to every route whose contract can carry
 an evidence rendering.** The alternative — narrowing the registration to declare ABS as
 the reachable set — is rejected, and the reason is not preference: the variable exists to
-test whether *evidence presentation* moves MR and TR, and ABS gold IS abstention, so a
+test whether _evidence presentation_ moves MR and TR, and ABS gold IS abstention, so a
 variable confined to ABS cannot test the hypothesis it was registered for. Narrowing the
 registration would make the arm honest and useless.
 
@@ -1727,10 +1761,10 @@ parameter, and neither consults `options.promptContract`. They are **not** "rout
 condition is too narrow" — they are routes the substitution cannot express. §12.8 treated
 all routes as one kind of thing. They are two kinds:
 
-| kind | routes | why the substitution does not reach | what it takes |
-|---|---|---|---|
-| condition-narrow | `answer`, `answerAssistant`, `answerKnowledgeUpdate`, `answerPreference`, `answerAbstention` | `#prompt` names `contract === 'abstention'` | widen one condition |
-| structurally-absent | `answerTemporal` (TR), `answerSessions` (MR) | their builders have no contract parameter | plumb a contract through the builder |
+| kind                | routes                                                                                       | why the substitution does not reach         | what it takes                        |
+| ------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------ |
+| condition-narrow    | `answer`, `answerAssistant`, `answerKnowledgeUpdate`, `answerPreference`, `answerAbstention` | `#prompt` names `contract === 'abstention'` | widen one condition                  |
+| structurally-absent | `answerTemporal` (TR), `answerSessions` (MR)                                                 | their builders have no contract parameter   | plumb a contract through the builder |
 
 The second kind is the kind that carries **28 of the 28 lost questions**. The routes that
 would be easiest to widen are the ones whose loss is zero or near it; the two that hold the
@@ -1744,7 +1778,7 @@ session boundaries through `{ sessionIndex }` — the very boundary 12.5's docst
 abstention route never got. So "extend the substitution to MR" cannot mean "let MR's
 contract pick a rendering", because MR pins its own.
 
-What MR *is* missing is the `formatEvidenceWithSources` treatment: it renders boundaries
+What MR _is_ missing is the `formatEvidenceWithSources` treatment: it renders boundaries
 without source identity. `formatEvidence(turns, { sessionIndex })` is called with
 `session.turns` — and `AdmittedTurn` carries `id`, so the identity is available and unused.
 The MR extension is therefore a **rendering choice inside `buildSessionPrompt`**, selected
@@ -1762,7 +1796,7 @@ candidate holds the ask FIXED and moves only the evidence.
 
 That property dies if the same name is handed to MR, whose ask is `extractive` and whose
 prompt must keep the `SESSION_NOTE`. Naming `abstention-evidence-blocks` on the MR route
-would move the instruction text *and* the evidence rendering — two variables, in a run
+would move the instruction text _and_ the evidence rendering — two variables, in a run
 whose entire value is that it has one. §12.8's consequence 2 said the single-variable
 property "is harder to keep" and would be guarded by the reach test. The code shows it
 cannot be kept by that route at all: the name is not separable from its ask.
@@ -1774,8 +1808,8 @@ cannot be kept by that route at all: the name is not separable from its ask.
 
 1. **The reachable set is declared per route, and the naming is per route.** A rendering
    cannot be addressed by an abstention-named contract on a route whose ask is extractive.
-   The variable is therefore *"the evidence rendering, selected by the run, applied to the
-   routes whose contract can carry it"* — and for MR/TR the contract name that selects it
+   The variable is therefore _"the evidence rendering, selected by the run, applied to the
+   routes whose contract can carry it"_ — and for MR/TR the contract name that selects it
    is new, with its own instruction block held byte-identical to what the route emits
    today.
 2. **The reachable set is reported as rendered-or-not per route, measured from the
@@ -1785,12 +1819,11 @@ cannot be kept by that route at all: the name is not separable from its ask.
    for the rendering, which is what `prompt-contract-reach.test.ts` already does and what
    the arm can log without trusting its own dispatch table.
 
-
 ### 12.10 The prediction was tested and it failed; the rendering line is retired
 
 §12.9 wrote its falsifier before the code existed, and it was reachable this time:
-*"MR and TR both stay at exactly 0% with `b-f+ = 0` in a run whose artifact shows the
-rendering was administered to them."* Dispatch `37827496757` (`6000f5ab`, `limit=120`,
+_"MR and TR both stay at exactly 0% with `b-f+ = 0` in a run whose artifact shows the
+rendering was administered to them."_ Dispatch `37827496757` (`6000f5ab`, `limit=120`,
 `ablation_runs=1`, `cortex_memory_prompt_contract=abstention-evidence-blocks`) produced
 exactly that antecedent. The line is retired here rather than deferred.
 
@@ -1812,14 +1845,14 @@ uninterpretable.
 
 #### The numbers
 
-| capability | baseline | feature | b+f− | b−f+ |
-|---|---|---|---|---|
-| MR | 14/17 | **0/17** | 14 | 0 |
-| TR | 15/17 | **0/17** | 15 | 0 |
-| IE | 0/52 | 0/52 | 0 | 0 |
-| KU | 0/17 | 0/17 | 0 | 0 |
-| ABS | 17/17 | 17/17 | 0 | 0 |
-| **total** | **46/120** | **17/120** | **29** | **0** |
+| capability | baseline   | feature    | b+f−   | b−f+  |
+| ---------- | ---------- | ---------- | ------ | ----- |
+| MR         | 14/17      | **0/17**   | 14     | 0     |
+| TR         | 15/17      | **0/17**   | 15     | 0     |
+| IE         | 0/52       | 0/52       | 0      | 0     |
+| KU         | 0/17       | 0/17       | 0      | 0     |
+| ABS        | 17/17      | 17/17      | 0      | 0     |
+| **total**  | **46/120** | **17/120** | **29** | **0** |
 
 `delta = -0.2417`, `feature.abstentionRate = 0.9583` against the baseline's `0.6333`,
 `abstentionReasons = {empty: 0, threshold: 0, llm: 17, answered: 0}`.
@@ -1839,18 +1872,18 @@ is a model behaviour, not a plumbing failure.
 
 #### The output distribution, which is where the real finding is
 
-| capability | bare token | engaged (prose) |
-|---|---|---|
-| MR | 16 | 1 (`"2"`) |
-| TR | 17 | 0 |
-| IE | 52 | 0 |
-| KU | 13 | 4 (`"No."`, `"Thursday"`, `"200"`, a prose summary) |
-| ABS | 17 | 0 |
+| capability | bare token | engaged (prose)                                     |
+| ---------- | ---------- | --------------------------------------------------- |
+| MR         | 16         | 1 (`"2"`)                                           |
+| TR         | 17         | 0                                                   |
+| IE         | 52         | 0                                                   |
+| KU         | 13         | 4 (`"No."`, `"Thursday"`, `"200"`, a prose summary) |
+| ABS        | 17         | 0                                                   |
 
 116 of 120 outputs are a bare `INSUFFICIENT_EVIDENCE`, and every one of them is `null`
 after the parse — the §60.2 finding reproduced. The four that engaged answered
 **substantively and wrongly** (or unscored): one gave a bare `"2"`, three gave short
-answers. The model is not struggling to *read* the evidence; it is declining to try,
+answers. The model is not struggling to _read_ the evidence; it is declining to try,
 and when it does try it is not finding the answer.
 
 #### What this retires, stated precisely
@@ -1862,7 +1895,7 @@ and it is now excluded by measurement.
 
 It does **not** retire the abstention contract, and the distinction matters. Within this
 ablation the feature abstains at 95.8% against the baseline's 63.3% — the feature is
-*far more* willing to decline than the pipeline it is measured against, on the same
+_far more_ willing to decline than the pipeline it is measured against, on the same
 evidence, with the gate open. (These are the two figures inside
 `benchmark-cortex-memory-ablation-report.json`'s `ablation` block. The main
 `benchmark-report.json` shows the reference pipeline at `abstentionRate 0` because that
@@ -1900,10 +1933,10 @@ Within `37827496757`'s ablation block, on the same dataset, the same admission
 (`threshold = 0`, `retrievalThreshold = 0`, `sessionBudget = null`), and the same
 evidence:
 
-| arm | abstentionRate | accuracy |
-|---|---|---|
-| feature (`cortex-memory`, abstention ask) | **95.8%** | 14.2% |
-| baseline (reference pipeline) | **63.3%** | 38.3% |
+| arm                                       | abstentionRate | accuracy |
+| ----------------------------------------- | -------------- | -------- |
+| feature (`cortex-memory`, abstention ask) | **95.8%**      | 14.2%    |
+| baseline (reference pipeline)             | **63.3%**      | 38.3%    |
 
 The baseline abstains 32.5 points less and scores 24.1 points higher. It has no
 mechanism this arm lacks -- §12.4 established the gate is not what is declining. What
@@ -1971,8 +2004,8 @@ a falsifier that could actually fire.
 
 Whether the reference pipeline's advantage is its ask or its retrieval. The baseline
 differs from this arm in the instruction block AND in how it produces candidates, so a
-recovery under this experiment identifies the ask as *sufficient to move the number*,
-not as *the whole difference*. Stating this here prevents the result, if positive, from
+recovery under this experiment identifies the ask as _sufficient to move the number_,
+not as _the whole difference_. Stating this here prevents the result, if positive, from
 being over-read.
 
 ### 13.7 Status
@@ -2016,14 +2049,14 @@ Two things are proved by these four lines, and the second is new:
 
 #### The reading
 
-| Capability | n | baseline | feature (ask=extractive) | `b-f+` | `b+f-` |
-| --- | --- | --- | --- | --- | --- |
-| MR | 17 | 13 | **0** | 0 | 13 |
-| TR | 17 | 16 | **0** | 0 | 16 |
-| IE | 52 | 0 | 0 | 0 | 0 |
-| KU | 17 | 0 | 0 | 0 | 0 |
-| ABS | 17 | 17 | **17** | 0 | 0 |
-| **total** | 120 | 46 | **17** | **0** | 29 |
+| Capability | n   | baseline | feature (ask=extractive) | `b-f+` | `b+f-` |
+| ---------- | --- | -------- | ------------------------ | ------ | ------ |
+| MR         | 17  | 13       | **0**                    | 0      | 13     |
+| TR         | 17  | 16       | **0**                    | 0      | 16     |
+| IE         | 52  | 0        | 0                        | 0      | 0      |
+| KU         | 17  | 0        | 0                        | 0      | 0      |
+| ABS        | 17  | 17       | **17**                   | 0      | 0      |
+| **total**  | 120 | 46       | **17**                   | **0**  | 29     |
 
 `delta = -0.2417`; `pValue = null`; `significant = false`. Abstention rate 63.33% →
 **94.17%**. **`b-f+ = 0` on every capability and MR/TR are both 0/17, which is below the
@@ -2033,11 +2066,11 @@ registered 4/17.** The falsifier fired.
 
 The output census is the part worth keeping. Of 120 feature outputs:
 
-| Shape | Count |
-| --- | --- |
-| bare `INSUFFICIENT_EVIDENCE` | **113** |
-| engaged (produced text that was not the token) | 7 |
-| empty | 0 |
+| Shape                                          | Count   |
+| ---------------------------------------------- | ------- |
+| bare `INSUFFICIENT_EVIDENCE`                   | **113** |
+| engaged (produced text that was not the token) | 7       |
+| empty                                          | 0       |
 
 and the abstention census reads `{"empty": 0, "threshold": 0, "llm": 17, "answered": 0}`.
 
@@ -2060,8 +2093,8 @@ specifically inert on the two capabilities it was aimed at.
 
 #### The candidate space, restated honestly
 
-§13.6 registered that a positive result would identify the ask as *sufficient to move
-the number*, not as *the whole difference*. The negative result has the mirror
+§13.6 registered that a positive result would identify the ask as _sufficient to move
+the number_, not as _the whole difference_. The negative result has the mirror
 obligation: it retires the ask as the cause of the MR/TR gap but does not, by itself,
 promote any other candidate to the top. §13.5 named the two that remain — **retrieval
 quality on these two capabilities, and the scorer's treatment of a short answer** — and
@@ -2093,15 +2126,15 @@ registers the run that makes it falsifiable.
 ### 13.11.1 The defect the previous runs could not see past
 
 `buildArmRoster` passed `retrieved: ''` unconditionally. The arm collects no retrieval
-trace, so the honest refusal to guess was the right *value* and the wrong *state*: with
+trace, so the honest refusal to guess was the right _value_ and the wrong _state_: with
 the field hardcoded, "the reader was shown the wrong turn" and "the reader was shown
 nothing" collapse into one absence on all 120 records, and the §13 dispatch could not
 tell them apart even in principle.
 
-This is the §12.8 defect one layer down. There, a run recorded the *name* of a
+This is the §12.8 defect one layer down. There, a run recorded the _name_ of a
 rendering while the rendering reached 17 of 120 questions, so a reader would have
 attributed a 45→17 drop to a treatment four capabilities never received. Here, the
-artifact recorded an *absence* that was the same bytes whether the arm retrieved badly
+artifact recorded an _absence_ that was the same bytes whether the arm retrieved badly
 or retrieved nothing — and unlike §12.8's name, an empty list reads as a finding
 ("retrieval found nothing on MR") rather than as a gap.
 
@@ -2111,13 +2144,13 @@ or retrieved nothing — and unlike §12.8's name, an empty list reads as a find
 One entry per question: the admitted turns joined by newlines, or `null` when the
 machine declined before a reader was shown anything.
 
-* `null` and `''` are different statements and the code keeps them apart. `null` is "no
+- `null` and `''` are different statements and the code keeps them apart. `null` is "no
   reader was shown anything", which is what a machine decline produces. `''` would
   claim a context was shown and happened to be blank.
-* The value is the **turns** and not the prompt. A prompt also carries the instruction
+- The value is the **turns** and not the prompt. A prompt also carries the instruction
   block and the question, so a reader trying to separate the two hypotheses would have
   to parse the other two back out. The turns are the claim.
-* Capture is an **observer**, not a participant: the answers are bit-identical with and
+- Capture is an **observer**, not a participant: the answers are bit-identical with and
   without the sink, which `benchmark-retrieval-capture.test.ts` pins by running both.
 
 The four transfers that could each drop the value independently are wired and each is
@@ -2127,7 +2160,7 @@ asserted at its own layer: `CortexMemory.#recordEvidence` →
 
 The last transfer is the one with a trap in it, and it is the same trap the raw-output
 transfer has: the roster is built **after** the ablation finishes, so an implementation
-that read the single-slot accessor at that point would give every record the *final*
+that read the single-slot accessor at that point would give every record the _final_
 question's evidence. `arm-roster-retrieval.test.ts` asserts per-record, with distinct
 fixture values, so that shortcut cannot pass.
 
@@ -2156,8 +2189,8 @@ have now moved every presentation variable without touching admission once.
 
 ### 13.11.5 What would still not be known afterwards
 
-A non-empty `turns` on a lost question identifies the evidence as *present*, not as
-*correct*. Whether the right turn was in it is a question about ranking, and it needs a
+A non-empty `turns` on a lost question identifies the evidence as _present_, not as
+_correct_. Whether the right turn was in it is a question about ranking, and it needs a
 gold-turn attribution the dataset does not carry on this arm. §13.11 can therefore move
 the candidate from "retrieval quality" to "ranking within a correct-length context" and
 cannot, by itself, pick the ranker.
@@ -2193,7 +2226,7 @@ Two things about the failure are worth separating, because they have different r
 defaults to `maxRetries: 5`, `baseDelayMs: 1000`, `timeoutMs: 60000` and a
 `retryBudgetMs` of 120 s, and `isRetryableStatus` retries `429` and `>= 500`; a thrown
 transport error is also caught and retried. But the budget is a **wall-clock ceiling on
-the retry sequence**, checked *before* each sleep: once 120 s of backoff has been spent,
+the retry sequence**, checked _before_ each sleep: once 120 s of backoff has been spent,
 the next retry is not made and the loop re-throws. Two minutes is deliberately larger than
 a throttle window measured in seconds — and still smaller than a connection that hangs for
 the full per-attempt deadline twice. The configuration is not obviously wrong; the budget
@@ -2205,15 +2238,15 @@ kept.
 run had measured.** `bench/run-ablation.ts` writes
 `benchmark-cortex-memory-ablation-report.md` and `.json` **only after
 `runCortexMemoryArm` returns**, and the arm returns only on success. The failure path
-writes `benchmark-error.log` and persists the embedding cache — it saves the *vectors*,
-which are the cheapest thing the run paid for, and discards the *answers*, which are the
+writes `benchmark-error.log` and persists the embedding cache — it saves the _vectors_,
+which are the cheapest thing the run paid for, and discards the _answers_, which are the
 only thing it was measuring. The artifact listing for the run says this without ambiguity:
 
-| Written | File | What it holds |
-| --- | --- | --- |
-| ✅ | `cortex-memory/benchmark-error.log` | the progress line and the stack |
-| ❌ | `cortex-memory/benchmark-cortex-memory-ablation-report.json` | **absent** |
-| ❌ | `cortex-memory/benchmark-cortex-memory-ablation-report.md` | **absent** |
+| Written | File                                                         | What it holds                   |
+| ------- | ------------------------------------------------------------ | ------------------------------- |
+| ✅      | `cortex-memory/benchmark-error.log`                          | the progress line and the stack |
+| ❌      | `cortex-memory/benchmark-cortex-memory-ablation-report.json` | **absent**                      |
+| ❌      | `cortex-memory/benchmark-cortex-memory-ablation-report.md`   | **absent**                      |
 
 So the run spent ~40 minutes grading questions across six routes and two sides and left no
 record of a single answer. This is the §52.6 defect in a new place: there, a value reached
@@ -2245,11 +2278,11 @@ infrastructure failure cannot cost another 40 minutes of grading for no record.
 declares what a **failure** leaves behind, not only what a success does. For this arm the
 three sets are:
 
-| Set | File | Written when |
-| --- | --- | --- |
-| Complete | `benchmark-cortex-memory-ablation-report.{md,json}` | `runCortexMemoryArm` returns |
-| Diagnostic | `benchmark-error.log` | any throw |
-| Partial | `benchmark-cortex-memory-partial.json` | any throw, if either side measured anything |
+| Set        | File                                                | Written when                                |
+| ---------- | --------------------------------------------------- | ------------------------------------------- |
+| Complete   | `benchmark-cortex-memory-ablation-report.{md,json}` | `runCortexMemoryArm` returns                |
+| Diagnostic | `benchmark-error.log`                               | any throw                                   |
+| Partial    | `benchmark-cortex-memory-partial.json`              | any throw, if either side measured anything |
 
 **What the partial set deliberately does not carry** — `delta`, any aggregate, any
 per-capability table. Each is a function of both sides over one index vector; with a side
@@ -2279,22 +2312,22 @@ RangeError: Invalid string length
 ```
 
 **The measurement completed.** All four runs of all five hundred questions finished; the
-throw is on the last line of the happy path, writing the JSON, *after* the Markdown had
+throw is on the last line of the happy path, writing the JSON, _after_ the Markdown had
 already been written (5636 bytes on disk).
 
 #### What the artifact holds
 
-| File | Present |
-| --- | --- |
-| `benchmark-cortex-memory-ablation-report.md` | yes, 5636 bytes |
-| `benchmark-cortex-memory-ablation-report.json` | **no** -- the throw |
-| `benchmark-cortex-memory-partial.json` | **no** -- and correctly so, see below |
-| `benchmark-error.log` | yes, 312 bytes |
+| File                                           | Present                               |
+| ---------------------------------------------- | ------------------------------------- |
+| `benchmark-cortex-memory-ablation-report.md`   | yes, 5636 bytes                       |
+| `benchmark-cortex-memory-ablation-report.json` | **no** -- the throw                   |
+| `benchmark-cortex-memory-partial.json`         | **no** -- and correctly so, see below |
+| `benchmark-error.log`                          | yes, 312 bytes                        |
 
 **`attachPartial` did not fire, and that is not a bug in it.** It attaches to a thrown
-*error object* from `runAblation`; here the ablation **returned**. The throw is downstream,
+_error object_ from `runAblation`; here the ablation **returned**. The throw is downstream,
 in the arm's own writer, so there was no error to attach to. That is exactly why §13.11.9
-does not claim the partial set covers every failure: it covers a failure *of the ablation*.
+does not claim the partial set covers every failure: it covers a failure _of the ablation_.
 
 #### The mechanism: `JSON.stringify` has a hard ceiling
 
@@ -2311,19 +2344,19 @@ length, `2**29 - 24` = 536,870,888 characters. Measured on this runtime:
 
 The primary benchmark's roster in the same artifact is **bounded**, and measurably so:
 
-| | Primary benchmark roster |
-| --- | --- |
-| turns per question | median 53, max 262 |
-| chars per question | median 11,771, max 28,194 |
+|                         | Primary benchmark roster         |
+| ----------------------- | -------------------------------- |
+| turns per question      | median 53, max 262               |
+| chars per question      | median 11,771, max 28,194        |
 | 500-record roster total | 6.98 MB, of which `turns` is 98% |
 
 **The memory arm has no such bound.** Two independent reasons:
 
-1. `admission.ts` declines to truncate, and says so in its own docstring -- *"Content is passed
-   through untruncated: prompt budget is a property of prompt assembly"*.
+1. `admission.ts` declines to truncate, and says so in its own docstring -- _"Content is passed
+   through untruncated: prompt budget is a property of prompt assembly"_.
 2. This run set `sessionBudget = unbounded`, which the report header records. `selectSessionBudget`
    is the only capacity control on the session path, and `#retrievalAdmitted` is a **boolean**
-   gate that decides *whether* to answer and never trims `turns`. With `threshold: 0` every
+   gate that decides _whether_ to answer and never trims `turns`. With `threshold: 0` every
    turn clears the write gate, and with `retrievalThreshold: 0` the retrieval gate never closes.
 
 The report carries the evidence **twice** -- once in `ablation.featureRetrievedContexts`, once
@@ -2372,16 +2405,16 @@ That set is the right one for three reasons:
    at 28 KB per question is ~5 MB, two orders of magnitude under the ceiling.
 3. **It is not chosen by looking at the outcome.** The cohort is a function of the correctness
    vectors, which are the primary result and are read either way. Selecting on them does not
-   bias the evidence measurement, because the measurement being taken is *"what did this
-   question's reader see"* -- a question about a record that is already in the set.
+   bias the evidence measurement, because the measurement being taken is _"what did this
+   question's reader see"_ -- a question about a record that is already in the set.
 
 ### 13.12.3 What every record carries regardless of cohort
 
-| Field | Meaning |
-| --- | --- |
-| `turns` | in full for cohort members; for others, the first `k` turns plus a reduction marker |
-| `evidenceTurns` | how many turns the reader was shown -- **always**, never reduced |
-| `evidenceChars` | the size of the evidence -- **always**, never reduced |
+| Field           | Meaning                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `turns`         | in full for cohort members; for others, the first `k` turns plus a reduction marker |
+| `evidenceTurns` | how many turns the reader was shown -- **always**, never reduced                    |
+| `evidenceChars` | the size of the evidence -- **always**, never reduced                               |
 
 `evidenceTurns` and `evidenceChars` are the measurement that survives any bound. Prediction 1
 of §13.11.3 ("MR/TR records carry non-empty `turns`") is decided by `evidenceTurns > 0` and
@@ -2394,11 +2427,11 @@ A truncated record and a record whose reader was shown nothing must not render t
 marker distinguishes three states, matching the `null`/`''` discipline the rest of the
 artifact uses:
 
-| State | `turns` | `evidenceTurns` |
-| --- | --- | --- |
-| reader shown nothing | `[]` | `0` |
-| shown and carried in full | complete | `turns.length` |
-| shown and reduced | prefix + marker | the true count |
+| State                     | `turns`         | `evidenceTurns` |
+| ------------------------- | --------------- | --------------- |
+| reader shown nothing      | `[]`            | `0`             |
+| shown and carried in full | complete        | `turns.length`  |
+| shown and reduced         | prefix + marker | the true count  |
 
 A test fails if any two of the last three columns ever render identically. This is the
 `§57.6` / `§13.11.2` shape again: an absence that reads as a value is worse than an error.
@@ -2421,7 +2454,7 @@ dispatch.
 ### 13.12.7 The artifact contract this adds
 
 §6.3.1 requires a registered arm to declare what a **failure** leaves behind. §13.11.10 showed
-that a throw *after a complete measurement* is a case the partial set does not cover. §13.12
+that a throw _after a complete measurement_ is a case the partial set does not cover. §13.12
 adds the fourth clause:
 
 > **An artifact declares its own size bound, and a reduction is a recorded fact.**
@@ -2447,7 +2480,7 @@ model, and it turned a correct verdict into a hedged one.
 
 ```ts
 const prompt = buildPrompt(question, turns, contract, this.#promptOptions());
-this.#recordEvidence(turns);          // memory.ts:535-536
+this.#recordEvidence(turns); // memory.ts:535-536
 ```
 
 `#recordEvidence` stores `turns.map((t) => t.content).join('\n')`, which is what
@@ -2462,16 +2495,16 @@ left**. The arm never sets `maxPromptChars`, so `maxChars` is
 averaged **506,338 characters** per question. Every question in the run was over
 budget.
 
-So the artifact's `evidenceTurns` (3,016-4,528) counts turns that were *offered*
+So the artifact's `evidenceTurns` (3,016-4,528) counts turns that were _offered_
 to `buildPrompt`, while the model received at most 24,000 characters -- on the
 run's own ratio of 144 characters per turn, roughly 150-160 turns. The
 overstatement is about twenty times.
 
-`#recordEvidence`'s own docstring says the accessor answers *"which turns reached
-the reader"* and that a reader comparing it against the roster *"wants the same
-turns the prompt carried, in the same order"*. Both sentences are false whenever
+`#recordEvidence`'s own docstring says the accessor answers _"which turns reached
+the reader"_ and that a reader comparing it against the roster _"wants the same
+turns the prompt carried, in the same order"_. Both sentences are false whenever
 the prompt is over budget, and `QuestionRecord.evidenceTurns` was documented as
-*"how many turns the reader was shown"*, inheriting the error. Those docstrings
+_"how many turns the reader was shown"_, inheriting the error. Those docstrings
 are corrected as of this section; the measurement is not, which is what §13.13
 registers.
 
@@ -2509,10 +2542,10 @@ it.
 **Implemented.** The open question was the measurement's shape, and it is settled by
 carrying both quantities rather than by choosing between them:
 
-| Quantity | Field | Answers |
-| --- | --- | --- |
-| admitted context | `evidenceTurns` / `evidenceChars` | `§13.11.3`'s two predictions: did retrieval *produce* evidence |
-| prompt-carried evidence | `promptChars` | `§13.11.5`'s ranking question: did the evidence *reach the model* |
+| Quantity                | Field                             | Answers                                                           |
+| ----------------------- | --------------------------------- | ----------------------------------------------------------------- |
+| admitted context        | `evidenceTurns` / `evidenceChars` | `§13.11.3`'s two predictions: did retrieval _produce_ evidence    |
+| prompt-carried evidence | `promptChars`                     | `§13.11.5`'s ranking question: did the evidence _reach the model_ |
 
 They are different questions about one run, so one field cannot answer both -- and
 the repair is additive, which is why `§13.11.3`'s reading is unaffected.
@@ -2573,13 +2606,13 @@ on every question means.
 **Prediction 2: confirmed.** `promptChars` spans **23,460 to 23,794**, with the
 per-capability ranges almost entirely overlapping:
 
-| Capability | n | min | median | max |
-| --- | --- | --- | --- | --- |
-| IE | 150 | 23,460 | 23,739 | 23,794 |
-| MR | 121 | 23,649 | 23,746 | 23,782 |
-| KU | 72 | 23,692 | 23,756 | 23,782 |
-| TR | 127 | 23,572 | 23,735 | 23,781 |
-| ABS | 30 | 23,702 | 23,751 | 23,787 |
+| Capability | n   | min    | median | max    |
+| ---------- | --- | ------ | ------ | ------ |
+| IE         | 150 | 23,460 | 23,739 | 23,794 |
+| MR         | 121 | 23,649 | 23,746 | 23,782 |
+| KU         | 72  | 23,692 | 23,756 | 23,782 |
+| TR         | 127 | 23,572 | 23,735 | 23,781 |
+| ABS        | 30  | 23,702 | 23,751 | 23,787 |
 
 The whole spread is **334 characters**, which is the instruction block and the
 question line varying while the budget holds -- `evidenceRoom = maxChars -
@@ -2617,8 +2650,6 @@ is complete (minimum 3,016 turns, none empty). This is now the campaign's bindin
 constraint, and it is measurable -- but only against gold-turn attribution, which
 this dataset does not carry on this arm (§13.11.5, §13.13.4).
 
-
-
 ## 13.14 The prompt carries a chronological prefix of the haystack, and the gold turn is outside it for 87.6% of questions
 
 Registered because `§13.11.5` handed the next round a ranking question, `§13.13`
@@ -2629,14 +2660,14 @@ different question: **the feature has no ranking to blame.**
 
 The chain from the dataset to the model, read end to end:
 
-| Step | Where | What it does to the order |
-| --- | --- | --- |
-| `flattenSessions(haystack_sessions, haystack_dates)` | `longmemeval-loader.ts` | session order, i.e. the dataset's own haystack order |
-| `CortexMemory.answer(question, context)` | `memory.ts` | passes `context` straight to `#admit` |
-| `#admit(context)` | `memory.ts:534` | `admissionOptionsFrom` + `admitTurns`, no reordering |
-| `admitTurns(turns, options)` | `admission.ts:189` | `for (ordinal = 0; ordinal < turns.length; ordinal++)`, **push in iteration order**; no `sort` |
-| `#prompt` → `buildPrompt` | `prompt.ts` | `formatEvidence(turns)`, preserving that order |
-| `fitToBudget` | `prompt.ts` | `truncateCodePointSafe(evidenceText, evidenceRoom)` -- **a prefix** |
+| Step                                                 | Where                   | What it does to the order                                                                      |
+| ---------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `flattenSessions(haystack_sessions, haystack_dates)` | `longmemeval-loader.ts` | session order, i.e. the dataset's own haystack order                                           |
+| `CortexMemory.answer(question, context)`             | `memory.ts`             | passes `context` straight to `#admit`                                                          |
+| `#admit(context)`                                    | `memory.ts:534`         | `admissionOptionsFrom` + `admitTurns`, no reordering                                           |
+| `admitTurns(turns, options)`                         | `admission.ts:189`      | `for (ordinal = 0; ordinal < turns.length; ordinal++)`, **push in iteration order**; no `sort` |
+| `#prompt` → `buildPrompt`                            | `prompt.ts`             | `formatEvidence(turns)`, preserving that order                                                 |
+| `fitToBudget`                                        | `prompt.ts`             | `truncateCodePointSafe(evidenceText, evidenceRoom)` -- **a prefix**                            |
 
 `memory.ts` contains **no** `retrieveTopK`, no `embedding`, no `similarity`, no
 `rank` and no `sort(`. Its only retrieval-shaped member, `#retrievalAdmitted`, is a
@@ -2656,10 +2687,10 @@ already exists -- no new run and no dataset access needed.
 
 For the **121** questions whose gold session could be located:
 
-| Quantity | min | p25 | median | p75 | max |
-| --- | --- | --- | --- | --- | --- |
-| gold session position, as a fraction of the haystack | 0.000 | 0.115 | **0.220** | 0.438 | 0.891 |
-| implied gold turn ordinal (fraction x `evidenceTurns`) | 0 | 400 | **748** | 1,452 | 3,136 |
+| Quantity                                               | min   | p25   | median    | p75   | max   |
+| ------------------------------------------------------ | ----- | ----- | --------- | ----- | ----- |
+| gold session position, as a fraction of the haystack   | 0.000 | 0.115 | **0.220** | 0.438 | 0.891 |
+| implied gold turn ordinal (fraction x `evidenceTurns`) | 0     | 400   | **748**   | 1,452 | 3,136 |
 
 **The gold turn falls inside the carried prefix for 15 of 121 questions -- 12.4%.**
 
@@ -2679,15 +2710,15 @@ can recover a question whose evidence never reached the prompt.**
 
 ### 13.14.3 This corrects a verdict of this document
 
-`§13.11.4` pre-committed the recovery to the shape *"it is a look at `admission.ts`,
+`§13.11.4` pre-committed the recovery to the shape _"it is a look at `admission.ts`,
 because producing no evidence for a question whose context demonstrably contains the
-answer is a write-gate defect"*. `cortex-docs` §70.3 and §4.1.28 recorded that this
+answer is a write-gate defect"_. `cortex-docs` §70.3 and §4.1.28 recorded that this
 recovery **does not apply**, on the grounds that `empty = 0` proves the write gate
 rejected nothing.
 
 **That reading was wrong, and the correction matters more than the original
 statement did.** `admission.ts` is exactly where the defect lives -- not in the gate
-that decides *whether* a turn is admitted, which admits nearly everything at
+that decides _whether_ a turn is admitted, which admits nearly everything at
 `threshold: 0`, but in the **order** it admits them in, which is the caller's order
 and carries no notion of relevance. The pre-committed recovery named the right file
 for a reason that was close but not the reason the defect exists.
@@ -2703,12 +2734,12 @@ The retrieval machinery this repository already measures is not the feature's.
 `recall-curve.ts` drives `retrieveTopKByQueries` -- the bi-encoder the reference
 pipeline uses -- and run `38114272884`'s curve reports:
 
-| k | recall | ceiling | gain |
-| --- | --- | --- | --- |
-| 1 | 0.276 | 0.921 | 0.645 |
-| 5 | 0.579 | 0.921 | 0.342 |
-| 20 | 0.868 | 0.921 | 0.053 |
-| 50 | **0.921** | 0.921 | **0.000** |
+| k   | recall    | ceiling | gain      |
+| --- | --------- | ------- | --------- |
+| 1   | 0.276     | 0.921   | 0.645     |
+| 5   | 0.579     | 0.921   | 0.342     |
+| 20  | 0.868     | 0.921   | 0.053     |
+| 50  | **0.921** | 0.921   | **0.000** |
 
 At k=50 the bi-encoder's own top-50 already contains every answer turn that is in
 the pool at all: **gain is zero**, so reordering alone can add nothing more, and
@@ -2734,6 +2765,7 @@ that speak to the second, and there are 15 of them.
 **Registered.** The measurement is a reading of artifacts that already exist; the
 repair it points at is not yet designed, because it changes what the feature's
 admission path does and therefore what every number this arm has produced means.
+
 ## 13.15 The budget is spent on the turns that matter, and the roster names them
 
 Registered because §13.14 located the root cause — the feature ranks nothing, so the
@@ -2743,13 +2775,13 @@ has produced means.
 
 ### 13.15.1 What moved
 
-| Surface | Before | After |
-| --- | --- | --- |
-| Evidence selection under budget | a character prefix of the arrival order | the largest prefix of the **relevance** order whose chronological rendering fits |
-| Evidence presentation | arrival order | arrival order — **unchanged, deliberately** |
-| Session note on an over-budget prompt | dropped | allocated after the question and rendered with the evidence |
-| `lastRetrievedContext` / the roster `turns` | the turns **offered** to the builder | the turns the prompt **carried** |
-| `evidenceTurnsPerRecord` (§10.3) | 16 | 256 |
+| Surface                                     | Before                                  | After                                                                            |
+| ------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------- |
+| Evidence selection under budget             | a character prefix of the arrival order | the largest prefix of the **relevance** order whose chronological rendering fits |
+| Evidence presentation                       | arrival order                           | arrival order — **unchanged, deliberately**                                      |
+| Session note on an over-budget prompt       | dropped                                 | allocated after the question and rendered with the evidence                      |
+| `lastRetrievedContext` / the roster `turns` | the turns **offered** to the builder    | the turns the prompt **carried**                                                 |
+| `evidenceTurnsPerRecord` (§10.3)            | 16                                      | 256                                                                              |
 
 ### 13.15.2 The signal is injected, and that is the package boundary
 
@@ -2772,7 +2804,7 @@ remembered string.
 The repair does **not** reorder the log. A prompt that lists a later session before an
 earlier one makes relative-time and knowledge-update questions unanswerable, which is
 why `selectSessionBudget` pays for a second sort to put chosen sessions back into
-chronological order. Selecting by relevance and *printing* in relevance order would
+chronological order. Selecting by relevance and _printing_ in relevance order would
 trade the 87.6% miss for a defect the session route already refused, so the tests pin
 both halves: the selected set is the top-k by relevance, and it is printed in arrival
 order.
@@ -2808,17 +2840,17 @@ outside the builder can name it: `AssembledPrompt.carried` travels out with the 
 
 The three states are now readable from two fields, and they are different outcomes:
 
-| State | `turns.length` | `evidenceTurns` |
-| --- | --- | --- |
-| no reader was consulted | 0 | 0 |
-| nothing was cut | n | n |
-| the budget or the bound removed turns | m | n, m < n |
+| State                                 | `turns.length` | `evidenceTurns` |
+| ------------------------------------- | -------------- | --------------- |
+| no reader was consulted               | 0              | 0               |
+| nothing was cut                       | n              | n               |
+| the budget or the bound removed turns | m              | n, m < n        |
 
 ### 13.15.6 The session note was a defect of the same family, found while wiring this
 
 `buildSessionPrompt` assembles `[evidence, note, question, instruction]` and stated the
-principle itself: *"a boundary that is rendered but unexplained is worse than one the
-model is told about"*. On the over-budget path it called the allocator with no way to
+principle itself: _"a boundary that is rendered but unexplained is worse than one the
+model is told about"_. On the over-budget path it called the allocator with no way to
 pass the note, so **every over-budget multi-session prompt reached the model with the
 boundaries drawn and the sentence explaining them missing** — and run `38114272884` had
 every question over budget, so the note was absent from every MR, TR, ABS and KU prompt
@@ -2863,7 +2895,7 @@ silently losing turns.
 
 The dispatch that follows this section **supplies no relevance signal**, so the arm's
 selection behaviour is unchanged and the only prompt-level change is the note. That is
-deliberate: §13.14's repair moves the prompt's *content* for every session-route
+deliberate: §13.14's repair moves the prompt's _content_ for every session-route
 question, and folding it into the same run as the note would leave two changes and no
 attribution.
 
@@ -2890,16 +2922,16 @@ a confirmed prediction and a defect in the change that made the prediction reada
 3.9 MB, which is the roster now carrying ~143 carried lines per question instead of
 sixteen offered ones.
 
-| Metric | `38114272884` | `38142407062` |
-| --- | --- | --- |
-| baseline | 44.30% | 44.90% |
-| feature | 6.35% | 6.40% |
-| delta | -37.95pp | **-38.50pp** |
-| discordant b✓f✗ / b✗f✓ | 189 / 0 | **192 / 0** |
-| MR feature | 0.00% | **0.83%** (1 question) |
-| abstention rate | 96.45% | **95.40%** |
-| answered, per run | 70 | **92** |
-| `empty` / `threshold` | 0 / 0 | **0 / 0** |
+| Metric                 | `38114272884` | `38142407062`          |
+| ---------------------- | ------------- | ---------------------- |
+| baseline               | 44.30%        | 44.90%                 |
+| feature                | 6.35%         | 6.40%                  |
+| delta                  | -37.95pp      | **-38.50pp**           |
+| discordant b✓f✗ / b✗f✓ | 189 / 0       | **192 / 0**            |
+| MR feature             | 0.00%         | **0.83%** (1 question) |
+| abstention rate        | 96.45%        | **95.40%**             |
+| answered, per run      | 70            | **92**                 |
+| `empty` / `threshold`  | 0 / 0         | **0 / 0**              |
 
 The model answered twenty-two more questions per run and got one of them right. The
 movement is inside this endpoint's own noise, which §20 quantifies; **nothing here is
@@ -2907,16 +2939,16 @@ evidence that the note helped**, and that is how §13.15.6 registered it.
 
 ### 13.16.2 Prediction 1: the mechanism is confirmed and the magnitude was wrong
 
-Registered: *"`promptChars` on the session routes is now about 172 characters lower than
-on the flat route."*
+Registered: _"`promptChars` on the session routes is now about 172 characters lower than
+on the flat route."_
 
 `promptChars` per question, before and after:
 
-| Capability | `38114272884` min / median / max | `38142407062` min / median / max |
-| --- | --- | --- |
-| IE (flat) | 23,460 / 23,739 / 23,794 | **identical** |
-| MR (session) | 23,649 / 23,746 / 23,782 | **23,499 / 23,596 / 23,632** |
-| TR, KU, ABS | -- | **identical** |
+| Capability   | `38114272884` min / median / max | `38142407062` min / median / max |
+| ------------ | -------------------------------- | -------------------------------- |
+| IE (flat)    | 23,460 / 23,739 / 23,794         | **identical**                    |
+| MR (session) | 23,649 / 23,746 / 23,782         | **23,499 / 23,596 / 23,632**     |
+| TR, KU, ABS  | --                               | **identical**                    |
 
 Two findings, and the second is the one worth the registration.
 
@@ -2937,18 +2969,18 @@ Two findings, and the second is the one worth the registration.
 §13.14 measured 12.4% and labelled its turn ordinal an **estimate** from session dates.
 The roster names the carried lines, so the same quantity is now exact:
 
-| Quantity | Value |
-| --- | --- |
-| questions whose gold session could be located | 121 |
-| **gold turn inside the carried set** | **14 / 121 = 11.6%** |
-| cross-check: the session-index rule agrees with exact turn identity | **121 / 121** |
+| Quantity                                                            | Value                |
+| ------------------------------------------------------------------- | -------------------- |
+| questions whose gold session could be located                       | 121                  |
+| **gold turn inside the carried set**                                | **14 / 121 = 11.6%** |
+| cross-check: the session-index rule agrees with exact turn identity | **121 / 121**        |
 
 **The estimate was confirmed to 0.8pp**, and the cross-check is what makes the number
 trustworthy: the rule "the first answer session's index is at or before the last carried
 turn's index" is computable from date stamps alone, and it agrees with turn identity on
 every question.
 
-**A first attempt read 27.3% and was wrong.** It intersected *lines*: turn content in this
+**A first attempt read 27.3% and was wrong.** It intersected _lines_: turn content in this
 dataset spans newlines, so a line of one turn matches a line of another and every
 question with a common phrase became a hit. The corrected probe parses turns -- a stamped
 segment, its continuation lines attached -- and the two probes agree only after that fix.
@@ -2966,7 +2998,7 @@ offer any more: it is derived from the captured context, and §13.15 changed the
 context from the **offer** to the **delivery**. So the record had `turns` and
 `evidenceTurns` both describing the delivery, and nothing reporting how much evidence had
 existed -- which is what §13.11.3 reads and what makes the budget's effect legible. The
-artifact had been made *less* able to describe a run by the change that made it able to
+artifact had been made _less_ able to describe a run by the change that made it able to
 answer §13.11.5.
 
 **Fixed by giving the offer its own capture**, `MemorySystem.lastAdmittedEvidence`,
@@ -3048,19 +3080,19 @@ measurement and no way to attribute either.
 exit 0, cortex-eval 1,790 tests and cortex-memory 269, all four coverage dimensions 100%
 in both, census clean, pre-registration guard 300 passed with 20 subtests.
 
-| Priority | Item |
-| --- | --- |
-| **P0** | Supply the retrieval relevance signal (§13.14.4's registered prediction: gold-inside-carried 11.6% -> ~92%). Now the single remaining variable, because the note is measured and the offer is reported again |
-| **P0** | Read the next artifact for `admittedTurns` per question, which is the first run that can report how much evidence existed |
-| P1 | Repair the line/turn unit (§13.16.6), as its own registered change |
-| P1 | Per-turn gold attribution, to replace the session-index rule with a turn-level measurement |
-| P2 | The in-band marker's ambiguity: a context line that happens to carry the exact marker shape would be read as a reduction |
+| Priority | Item                                                                                                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **P0**   | Supply the retrieval relevance signal (§13.14.4's registered prediction: gold-inside-carried 11.6% -> ~92%). Now the single remaining variable, because the note is measured and the offer is reported again |
+| **P0**   | Read the next artifact for `admittedTurns` per question, which is the first run that can report how much evidence existed                                                                                    |
+| P1       | Repair the line/turn unit (§13.16.6), as its own registered change                                                                                                                                           |
+| P1       | Per-turn gold attribution, to replace the session-index rule with a turn-level measurement                                                                                                                   |
+| P2       | The in-band marker's ambiguity: a context line that happens to carry the exact marker shape would be read as a reduction                                                                                     |
 
 ## 13.17 The budget learns which turns matter, and what that is registered to change
 
 §13.16 left exactly one variable open, and it is the one §13.14 predicted the whole loss
 turns on. The prompt's budget is settled: 24,000 characters against a context whose mean is
-506,338, carrying 4.69% of it. Its *size* is therefore not a live question — §13.13 measured
+506,338, carrying 4.69% of it. Its _size_ is therefore not a live question — §13.13 measured
 that enlarging it would buy a better chance of hitting the answer by luck — and what
 remained is that it bought the **wrong** turns. Until this section nothing beneath the
 builder ranked anything at all, so the prefix it spent the budget on was the dataset's
@@ -3075,7 +3107,7 @@ flattened, six questions with no answer turn in the bundle). Both numbers come f
 `38142407062`, and §13.16.3 records how they were read and cross-checked (121 of 121
 records agreed between the two independent paths).
 
-The gap is therefore not between what retrieval *could* find and what it *did* find — the
+The gap is therefore not between what retrieval _could_ find and what it _did_ find — the
 ceiling is what the bundle offers — but between what the bundle offers and what the budget
 pays for. Eleven point six per cent against ninety-two point one per cent is the whole of
 the defect, and it is a selection defect rather than a budget, prompt or model defect.
@@ -3116,7 +3148,7 @@ graded itself.
 Both are read from the next run's artifact, and neither is a restatement of "the code
 changed".
 
-* **P1 — `gold-in-carried` rises to at least 0.80, point estimate 0.92.** The mechanism is
+- **P1 — `gold-in-carried` rises to at least 0.80, point estimate 0.92.** The mechanism is
   arithmetic: the prompt holds roughly 167 turns at 24,000 characters and the index scores
   the top 64, so **every scored turn survives selection** and a gold turn that retrieval
   places inside its top 64 is carried regardless of where it sits in arrival order. The
@@ -3125,7 +3157,7 @@ changed".
   width than this run's — so a reading materially below `0.80` falsifies the mechanism
   rather than the arithmetic, and the first thing to check would be whether the index's
   keys matched the admitted turns at all.
-* **P2 — the feature side's abstention rate falls below 80%, from 95.40%.** This is the
+- **P2 — the feature side's abstention rate falls below 80%, from 95.40%.** This is the
   prediction that connects selection to the score. §13 established that the feature's
   abstentions are the **model's** (`reason: "llm"`, `retrievalThreshold: 0` so the gate
   never closed) and that 113 of 120 outputs were the bare `INSUFFICIENT_EVIDENCE` token —
@@ -3187,11 +3219,11 @@ whose inputs are about the cognitive layer rather than about the reference pipel
 
 Two guards came out of the failure, both in `tools/__tests__/test_dispatch_inputs.py`:
 
-* every dispatch script is pinned to the workflow that declares **its** inputs, so
+- every dispatch script is pinned to the workflow that declares **its** inputs, so
   `dispatch-cortex-memory-ab.py` is no longer checked against a file that has nothing to do
   with it — and the pinning is itself asserted, so an unmapped script fails rather than
   skips;
-* **no `workflow_dispatch` in this repository may hold 25 inputs.** A workflow at the maximum
+- **no `workflow_dispatch` in this repository may hold 25 inputs.** A workflow at the maximum
   is one registration away from being un-dispatchable, and the failure that produces is a
   `422` at dispatch time rather than a red test. `benchmark.yml` now declares fifteen and the
   arm's own workflow seventeen, so both have room for the next registration.
@@ -3209,14 +3241,14 @@ more useful one.
 
 ### 13.18.1 The headline, and it is not noise
 
-| Metric | `38142407062` (no signal) | `38250133116` (retrieval @ 64) |
-| --- | --- | --- |
-| baseline / feature | 44.90% / 6.40% | 44.00% / **54.30%** |
-| **Δ** | **−38.50pp** | **+10.30pp** |
-| McNemar p | — | **2.724e-3** (significant) |
-| discordant `b✓f✗` / `b✗f✓` | 192 / **0** | 130 / **184** |
-| feature abstention rate | 95.40% | **38.00%** |
-| per-run `llm` / `answered` | — | 195.5 / 304.5 |
+| Metric                     | `38142407062` (no signal) | `38250133116` (retrieval @ 64) |
+| -------------------------- | ------------------------- | ------------------------------ |
+| baseline / feature         | 44.90% / 6.40%            | 44.00% / **54.30%**            |
+| **Δ**                      | **−38.50pp**              | **+10.30pp**                   |
+| McNemar p                  | —                         | **2.724e-3** (significant)     |
+| discordant `b✓f✗` / `b✗f✓` | 192 / **0**               | 130 / **184**                  |
+| feature abstention rate    | 95.40%                    | **38.00%**                     |
+| per-run `llm` / `answered` | —                         | 195.5 / 304.5                  |
 
 `b✗f✓ = 184` is the first non-zero repair count this arm has produced. Every earlier artifact
 had `b✗f✓ = 0` on every capability, which is what made the pre-§13 line dead rather than
@@ -3235,16 +3267,16 @@ record's `groundTruth` appears as a substring of any carried turn, and the first
 **Those numbers are not usable, and the artifact says why in three lines.** The predicate is
 short-answer-blind:
 
-| question id | `groundTruth` | the "match" it found |
-| --- | --- | --- |
-| `3a704032` | `3` | `3. **Humidity:** Peace lilies prefer a humid environment…` |
-| `b46e15ed` | `2` | `2. What are your short-term and long-term goals for the product?` |
-| `0a995998` | `3` | `3. store reusable produce bags in a cool, dry place…` |
+| question id | `groundTruth` | the "match" it found                                               |
+| ----------- | ------------- | ------------------------------------------------------------------ |
+| `3a704032`  | `3`           | `3. **Humidity:** Peace lilies prefer a humid environment…`        |
+| `b46e15ed`  | `2`           | `2. What are your short-term and long-term goals for the product?` |
+| `0a995998`  | `3`           | `3. store reusable produce bags in a cool, dry place…`             |
 
 A list marker is not an answer, and on a dataset where a large share of answers are small
 cardinalities the predicate is dominated by them. Tightening it — word boundaries, skipping
 list-item lines — removes these three and leaves the rest unverifiable, because "3 items" and
-"3 days" are the same token and only the *question* says which one is the answer.
+"3 days" are the same token and only the _question_ says which one is the answer.
 
 So P1 is **not falsified and not confirmed**. What can be said is the part that does not need
 the predicate: the feature side went from repairing nothing to repairing 184 questions, and the
@@ -3266,28 +3298,28 @@ whose outcome is unmeasurable is the §7.3 defect pointed at the pre-registratio
 
 ### 13.18.4 The deliverable readings, which need no predicate
 
-| Quantity | `38142407062` | `38250133116` |
-| --- | --- | --- |
-| offer, lines per question | — | mean **3,510.3** |
-| delivery, turns per question | median 141 | mean **152.3**, median 148, max 257 |
-| `promptChars` | 23,499–23,632 | mean **22,814**, median 23,076 |
-| evidence bound engaged | — | 7 records (256-turn guard) |
+| Quantity                     | `38142407062` | `38250133116`                       |
+| ---------------------------- | ------------- | ----------------------------------- |
+| offer, lines per question    | —             | mean **3,510.3**                    |
+| delivery, turns per question | median 141    | mean **152.3**, median 148, max 257 |
+| `promptChars`                | 23,499–23,632 | mean **22,814**, median 23,076      |
+| evidence bound engaged       | —             | 7 records (256-turn guard)          |
 
 The offer is now reported beside the delivery for the first time, which is what `§13.16.4`
 repaired: the artifact can say how much evidence existed and how much of it the model read.
 The delivery ratio is `152.3 / 3510.3 = 4.34%`, against §13.13's 4.69% — **the budget buys
 almost exactly as many turns as before**, and it buys different ones. That is the cleanest
-statement this run supports: the change is in *which* turns, not in how many.
+statement this run supports: the change is in _which_ turns, not in how many.
 
 ### 13.18.5 The capability split, and what it says about the next question
 
-| Capability | baseline | feature | `b✓f✗` | `b✗f✓` |
-| --- | --- | --- | --- | --- |
-| IE | 0.67% | **84.67%** | 0 | 126 |
-| KU | 0.00% | **73.61%** | 0 | 53 |
-| ABS | 100.00% | 93.33% | 2 | 0 |
-| MR | 85.95% | 31.40% | 67 | 1 |
-| TR | 66.93% | 22.05% | 61 | 4 |
+| Capability | baseline | feature    | `b✓f✗` | `b✗f✓` |
+| ---------- | -------- | ---------- | ------ | ------ |
+| IE         | 0.67%    | **84.67%** | 0      | 126    |
+| KU         | 0.00%    | **73.61%** | 0      | 53     |
+| ABS        | 100.00%  | 93.33%     | 2      | 0      |
+| MR         | 85.95%   | 31.40%     | 67     | 1      |
+| TR         | 66.93%   | 22.05%     | 61     | 4      |
 
 Two systems that are near-complementary, and the net is `+10.30pp`. The reference pipeline's
 IE and KU figures are the surprise — `0.67%` and `0.00%` against a 44% overall — and they say
@@ -3307,13 +3339,13 @@ below are one item.
 exit 0, `test:tools` 302 passed + 29 subtests, cortex-eval 1,811 tests, cortex-memory 269
 tests, 100% on all four coverage dimensions in both, census clean.
 
-| Priority | Item |
-| --- | --- |
-| **P0** | **Put the gold turn in the artifact.** Read the dataset's answer-turn annotation into `QuestionRecord` as the carried indices it matches, so `gold-in-carried` becomes a number this repository computes rather than one it approximates. This is §13.11.5's measurement, §13.16.3's rule replaced by a turn-level one, and the precondition for reading P1 at all |
-| **P0** | Re-read P1 with that field, and split MR/TR's 46.3% / 66.9% decline rate by whether the gold turn was carried — the per-turn attribution that decides retrieval-side from model-side |
-| P1 | Repair the line/turn unit (§13.16.6) |
-| P2 | The in-band marker's ambiguity; `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded |
-| P3 | `PATH` ordering, which waits on a rebuilt image |
+| Priority | Item                                                                                                                                                                                                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **P0**   | **Put the gold turn in the artifact.** Read the dataset's answer-turn annotation into `QuestionRecord` as the carried indices it matches, so `gold-in-carried` becomes a number this repository computes rather than one it approximates. This is §13.11.5's measurement, §13.16.3's rule replaced by a turn-level one, and the precondition for reading P1 at all |
+| **P0**   | Re-read P1 with that field, and split MR/TR's 46.3% / 66.9% decline rate by whether the gold turn was carried — the per-turn attribution that decides retrieval-side from model-side                                                                                                                                                                               |
+| P1       | Repair the line/turn unit (§13.16.6)                                                                                                                                                                                                                                                                                                                               |
+| P2       | The in-band marker's ambiguity; `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded                                                                                                                                                                                                                                              |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                                                                                                                                                    |
 
 ## 13.19 The gold turn reaches the artifact, and the number stops being a guess
 
@@ -3412,14 +3444,14 @@ central prediction could be read as a number.
 
 ### 13.20.1 The headline holds under a second sample
 
-| Metric | `38250133116` | `38394103193` |
-| --- | --- | --- |
-| baseline / feature | 44.00% / 54.30% | 44.40% / **54.60%** |
-| **Δ** | **+10.30pp** | **+9.25pp** |
-| McNemar p | 2.724e-3 | **5.179e-3** |
-| discordant `b✓f✗` / `b✗f✓` | 130 / 184 | 135 / **186** |
-| abstention rate | 38.00% | 39.20% |
-| per-run `llm` / `answered` | 195.5 / 304.5 | 196.8 / 303.3 |
+| Metric                     | `38250133116`   | `38394103193`       |
+| -------------------------- | --------------- | ------------------- |
+| baseline / feature         | 44.00% / 54.30% | 44.40% / **54.60%** |
+| **Δ**                      | **+10.30pp**    | **+9.25pp**         |
+| McNemar p                  | 2.724e-3        | **5.179e-3**        |
+| discordant `b✓f✗` / `b✗f✓` | 130 / 184       | 135 / **186**       |
+| abstention rate            | 38.00%          | 39.20%              |
+| per-run `llm` / `answered` | 195.5 / 304.5   | 196.8 / 303.3       |
 
 Two independent runs of the same arming, agreeing to within a point. The selection
 hypothesis is not a single-sample result.
@@ -3429,25 +3461,25 @@ hypothesis is not a single-sample result.
 The registered prediction was `gold-in-carried ≥ 0.80`. `goldOverlap` now measures it
 directly, and the answer depends on which of two readings "carried" means:
 
-| Reading | IE | MR | KU | TR | ABS | ALL |
-| --- | --- | --- | --- | --- | --- | --- |
+| Reading                            | IE      | MR          | KU    | TR      | ABS   | ALL                 |
+| ---------------------------------- | ------- | ----------- | ----- | ------- | ----- | ------------------- |
 | **at least one** gold turn carried | 149/150 | **121/121** | 72/72 | 126/127 | 30/30 | **498/500 = 99.6%** |
-| **every** gold turn carried | 51/150 | 1/121 | 0/72 | 2/127 | 0/30 | 54/500 = 10.8% |
-| mean `carried / total` | 76.2% | 48.9% | 62.1% | 46.3% | 48.4% | — |
+| **every** gold turn carried        | 51/150  | 1/121       | 0/72  | 2/127   | 0/30  | 54/500 = 10.8%      |
+| mean `carried / total`             | 76.2%   | 48.9%       | 62.1% | 46.3%   | 48.4% | —                   |
 
 **P1 holds under the reading its own mechanism argued for.** §13.17.4's prediction was
-`P(gold inside the index's top 64)` -- a statement about *a* gold turn being present, not
+`P(gold inside the index's top 64)` -- a statement about _a_ gold turn being present, not
 about every turn of the gold session fitting in a budget that holds roughly 167 turns.
 Under that reading the figure is **99.6%** (MR **121/121, up from §13.16's 14/121 = 11.6%**
 on the same 121 questions), against a registered floor of 0.80.
 
 Two things are registered rather than glossed:
 
-* **the definition was fixed after the fact, and that is a defect in how P1 was written.**
+- **the definition was fixed after the fact, and that is a defect in how P1 was written.**
   Both readings were computable from the start and only one was named; a prediction whose
   outcome depends on an unspecified term is not falsifiable, which is the same complaint
   §13.18 raised about the metric one layer up.
-* **there is no same-definition control.** §13.16's 11.6% used a session-index rule on a run
+- **there is no same-definition control.** §13.16's 11.6% used a session-index rule on a run
   without a signal, so the comparison `11.6% → 100%` is across two rules even though it is
   across the same 121 questions. The reading that needs no comparison is `carried == 0`:
   **2 of 500 questions**. Under the arrival-order prefix of `38142407062`, where the gold
@@ -3464,12 +3496,12 @@ would hide the difference between carrying one gold turn of two and one of forty
 This is the reading §13.18.5 asked for and could not perform. Splitting the abstentions by
 whether the gold turn was carried:
 
-| Capability | abstained | of those, gold carried ≥ 1 | gold carried 0 |
-| --- | --- | --- | --- |
-| MR | 56/121 (46.3%) | **56** | 0 |
-| TR | 88/127 (69.3%) | **87** | 1 |
-| IE | 20/150 (13.3%) | 19 | 1 |
-| KU | 3/72 (4.2%) | 3 | 0 |
+| Capability | abstained      | of those, gold carried ≥ 1 | gold carried 0 |
+| ---------- | -------------- | -------------------------- | -------------- |
+| MR         | 56/121 (46.3%) | **56**                     | 0              |
+| TR         | 88/127 (69.3%) | **87**                     | 1              |
+| IE         | 20/150 (13.3%) | 19                         | 1              |
+| KU         | 3/72 (4.2%)    | 3                          | 0              |
 
 **Every MR abstention and 87 of 88 TR abstentions had the gold evidence in front of the
 model.** A retrieval-side repair cannot reach them: there is nothing left to retrieve.
@@ -3488,14 +3520,14 @@ reference pipeline's two-line one:
     Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.
 
 That block is not merely more abstention-flavoured than each route's own -- it is
-**shorter**, and what it removes is each route's *reasoning* instruction. Two of them are
+**shorter**, and what it removes is each route's _reasoning_ instruction. Two of them are
 the ones the losing capabilities need:
 
-* `temporal`: *"resolve every relative expression ('last week', 'two months ago') against
-  that date"* and *"show the resolved date in your answer"* -- TR is 127 relative-time
+- `temporal`: _"resolve every relative expression ('last week', 'two months ago') against
+  that date"_ and _"show the resolved date in your answer"_ -- TR is 127 relative-time
   questions;
-* `knowledge-update`: *"distinguish the earlier value from the later one"* and *"use the
-  evidence with the latest date"* -- KU is 72 of them.
+- `knowledge-update`: _"distinguish the earlier value from the later one"_ and _"use the
+  evidence with the latest date"_ -- KU is 72 of them.
 
 So the ask is not a wording preference. On this reading the feature side is being told, on
 69% of its temporal questions, to answer a question whose reasoning instruction has been
@@ -3508,11 +3540,11 @@ value -- `relevanceSignal: retrieval` at `relevanceTopK: 64`, the same rendering
 gates -- so a movement in MR or TR is attributable to the instruction block and nothing
 else. §10.3 is amended in place, and the dispatch carries the value.
 
-| Prediction | Reading | Falsified if |
-| --- | --- | --- |
-| **P1'** | TR's abstention rate falls **below 50%** (from 69.3%). Restoring the date-resolution instruction is the registered mechanism, and TR is where it is absent on 127 questions | TR stays above 60%, which would say the block was not what the model was reacting to |
-| **P2'** | MR's abstention rate falls **below 35%** (from 46.3%). MR's own ask already *was* `extractive`, so this route is the control for "the ask changed nothing there" -- a movement here would mean something else moved with it | MR rises above 50% |
-| **P3'** | ABS does **not** regress (93.33% currently). The abstention route keeps its own block under `route`, and ABS's gold *is* abstention, so a fall here would mean the reverted ask leaked into the one route where declining is correct | ABS falls below 85% |
+| Prediction | Reading                                                                                                                                                                                                                              | Falsified if                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| **P1'**    | TR's abstention rate falls **below 50%** (from 69.3%). Restoring the date-resolution instruction is the registered mechanism, and TR is where it is absent on 127 questions                                                          | TR stays above 60%, which would say the block was not what the model was reacting to |
+| **P2'**    | MR's abstention rate falls **below 35%** (from 46.3%). MR's own ask already _was_ `extractive`, so this route is the control for "the ask changed nothing there" -- a movement here would mean something else moved with it          | MR rises above 50%                                                                   |
+| **P3'**    | ABS does **not** regress (93.33% currently). The abstention route keeps its own block under `route`, and ABS's gold _is_ abstention, so a fall here would mean the reverted ask leaked into the one route where declining is correct | ABS falls below 85%                                                                  |
 
 **What P2' is for.** MR is the internal control: `ask: 'extractive'` left MR byte-identical
 before the signal existed (§13.2), and it should leave it near-identical now. If MR moves as
@@ -3533,27 +3565,27 @@ previous run had replaced.
 
 ### 13.21.1 The headline
 
-| Metric | `38394103193` (ask: `extractive`) | `38439899858` (ask: `route`) |
-| --- | --- | --- |
-| baseline / feature | 44.40% / 54.60% | 44.85% / **63.05%** |
-| **Δ** | +9.25pp | **+18.20pp** |
-| McNemar p | 5.179e-3 | **2.737e-7** |
-| discordant `b✓f✗` / `b✗f✓` | 135 / 186 | **107 / 197** |
-| abstention rate | 39.20% | **30.40%** |
+| Metric                     | `38394103193` (ask: `extractive`) | `38439899858` (ask: `route`) |
+| -------------------------- | --------------------------------- | ---------------------------- |
+| baseline / feature         | 44.40% / 54.60%                   | 44.85% / **63.05%**          |
+| **Δ**                      | +9.25pp                           | **+18.20pp**                 |
+| McNemar p                  | 5.179e-3                          | **2.737e-7**                 |
+| discordant `b✓f✗` / `b✗f✓` | 135 / 186                         | **107 / 197**                |
+| abstention rate            | 39.20%                            | **30.40%**                   |
 
 The feature side is now **18.20 points above the reference pipeline** and 10.55 points
-above the *unmeasured* ceiling §13.20 left it at, with the p-value falling four orders of
+above the _unmeasured_ ceiling §13.20 left it at, with the p-value falling four orders of
 magnitude. `b✗f✓ = 197` is the highest repair count this arm has recorded.
 
 ### 13.21.2 The per-route reading is the mechanism, and it is exact
 
-| Capability | `38394103193` acc | `38439899858` acc | Δ | abstention (before → after) | whose block changed |
-| --- | --- | --- | --- | --- | --- |
-| TR | 22.05% | **49.61%** | **+27.56pp** | 69.3% → **35.4%** | `temporal` — restored |
-| KU | 73.61% | **86.11%** | **+12.50pp** | — → **1.4%** | `knowledge-update` — restored |
-| ABS | 93.33% | **100.00%** | **+6.67pp** | 100% (correct) | `abstention` — restored |
-| IE | 84.67% | 84.00% | −0.67pp | — → 13.3% | `extractive` — **unchanged** |
-| MR | 31.40% | 27.27% | −4.13pp | 46.3% → **46.3%** | `extractive` — **unchanged** |
+| Capability | `38394103193` acc | `38439899858` acc | Δ            | abstention (before → after) | whose block changed           |
+| ---------- | ----------------- | ----------------- | ------------ | --------------------------- | ----------------------------- |
+| TR         | 22.05%            | **49.61%**        | **+27.56pp** | 69.3% → **35.4%**           | `temporal` — restored         |
+| KU         | 73.61%            | **86.11%**        | **+12.50pp** | — → **1.4%**                | `knowledge-update` — restored |
+| ABS        | 93.33%            | **100.00%**       | **+6.67pp**  | 100% (correct)              | `abstention` — restored       |
+| IE         | 84.67%            | 84.00%            | −0.67pp      | — → 13.3%                   | `extractive` — **unchanged**  |
+| MR         | 31.40%            | 27.27%            | −4.13pp      | 46.3% → **46.3%**           | `extractive` — **unchanged**  |
 
 **The three capabilities that moved are the three whose blocks were restored, and the two
 that did not move are the two whose blocks `route` leaves alone.** IE and MR both use the
@@ -3566,11 +3598,11 @@ MR's abstention count is the sharpest single number in the run: **56 of 121 befo
 
 ### 13.21.3 P1' and P3' hold; P2' holds as a control and fails as a prediction
 
-| Prediction | Registered | Measured | Verdict |
-| --- | --- | --- | --- |
-| **P1'** TR abstention < 50% | from 69.3% | **35.4%** | **holds**, by 14.6 points of margin |
-| **P2'** MR abstention < 35% | from 46.3% | **46.3%** | **fails as a prediction, holds as a control** |
-| **P3'** ABS does not regress | ≥ 85% | **100.00%** | **holds**, and improved |
+| Prediction                   | Registered | Measured    | Verdict                                       |
+| ---------------------------- | ---------- | ----------- | --------------------------------------------- |
+| **P1'** TR abstention < 50%  | from 69.3% | **35.4%**   | **holds**, by 14.6 points of margin           |
+| **P2'** MR abstention < 35%  | from 46.3% | **46.3%**   | **fails as a prediction, holds as a control** |
+| **P3'** ABS does not regress | ≥ 85%      | **100.00%** | **holds**, and improved                       |
 
 P2' was written with its own interpretation attached -- "MR is the internal control; a
 movement here would mean something else moved with it" -- and the reading is that it did
@@ -3580,9 +3612,9 @@ scored as a success.
 
 ### 13.21.4 MR is the whole of what remains, and it is not a retrieval problem
 
-| Capability | feature acc | baseline acc | `b✓f✗` |
-| --- | --- | --- | --- |
-| MR | 27.27% | **86.78%** | the bulk of the 107 |
+| Capability | feature acc | baseline acc | `b✓f✗`              |
+| ---------- | ----------- | ------------ | ------------------- |
+| MR         | 27.27%      | **86.78%**   | the bulk of the 107 |
 
 MR's 56 abstentions all had at least one gold turn carried (`121/121` questions carry one),
 and all 56 are the bare `INSUFFICIENT_EVIDENCE` token. Under the `route` ask MR keeps the
@@ -3597,21 +3629,21 @@ answer, reply exactly ..." -- is literally true on those questions, and the mode
 
 ### 13.21.5 What this registers
 
-**One variable: `ask: aggregate`**, the extractive block plus one sentence -- *"the answer
+**One variable: `ask: aggregate`**, the extractive block plus one sentence -- _"the answer
 may require combining evidence from more than one turn or session: gather every relevant
 piece first, then compute the answer. Do not reply INSUFFICIENT_EVIDENCE merely because no
-single piece states the answer outright."*
+single piece states the answer outright."_
 
 It reaches exactly two routes (`multi-session`, `flat`) because those are the two whose
 contract IS `extractive`; the other four keep their own block and are the control. That
 targeting is the point: §13.20's lesson is that a global instruction moves four routes at
 once, and three of the four are now working.
 
-| Prediction | Reading | Falsified if |
-| --- | --- | --- |
-| **P1''** | MR's abstention rate falls **below 30%** (from 46.3%) and its accuracy rises **above 40%** (from 27.27%) | MR stays above 40% abstention, which would say the model's difficulty on these questions is not about the instruction |
-| **P2''** | the four untouched routes **do not move** beyond the measured run-to-run spread: TR within ±3pp, KU within ±3pp, ABS ≥ 93%, IE within ±3pp | any of the four moves more than 3pp, which would mean the ask leaked past `ASK_ROUTES` |
-| **P3''** | the aggregate delta rises **above +20pp** | the delta falls below +15pp, which would mean MR's repair was bought at a cost elsewhere |
+| Prediction | Reading                                                                                                                                    | Falsified if                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| **P1''**   | MR's abstention rate falls **below 30%** (from 46.3%) and its accuracy rises **above 40%** (from 27.27%)                                   | MR stays above 40% abstention, which would say the model's difficulty on these questions is not about the instruction |
+| **P2''**   | the four untouched routes **do not move** beyond the measured run-to-run spread: TR within ±3pp, KU within ±3pp, ABS ≥ 93%, IE within ±3pp | any of the four moves more than 3pp, which would mean the ask leaked past `ASK_ROUTES`                                |
+| **P3''**   | the aggregate delta rises **above +20pp**                                                                                                  | the delta falls below +15pp, which would mean MR's repair was bought at a cost elsewhere                              |
 
 **What P2'' is for.** §13.20 could not measure leakage because it changed every block; this
 registration can, and the four routes are the instrument. A movement there is a defect in
@@ -3620,8 +3652,9 @@ registration can, and the four routes are the instrument. A movement there is a 
 ### 13.21.6 Status
 
 **Implemented, tested, and dispatched.** Gate: `pnpm check` exit 0, `test:tools` 303 passed
-+ 31 subtests, cortex-eval 1,832 tests, cortex-memory **277** tests (8 new on the ask's
-reach), 100% on all four coverage dimensions in both, census clean.
+
+- 31 subtests, cortex-eval 1,832 tests, cortex-memory **277** tests (8 new on the ask's
+  reach), 100% on all four coverage dimensions in both, census clean.
 
 ## 13.22 What run 38487229554 read, and the two defects in how it was read
 
@@ -3633,14 +3666,14 @@ tool rather than a paragraph.
 
 ### 13.22.1 The headline, and the three runs it stands on
 
-| Metric | `38394103193` | `38439899858` | `38487229554` |
-| --- | --- | --- | --- |
-| ask | `extractive` | `route` | `aggregate` |
-| baseline / feature | 44.40% / 54.60% | 44.85% / 63.05% | 44.10% / **67.35%** |
-| **Δ** | +9.25pp | +18.20pp | **+23.25pp** |
-| McNemar p | 5.179e-3 | 2.737e-7 | **6.479e-12** |
-| discordant `b✓f✗` / `b✗f✓` | 135 / 186 | 107 / 197 | **88 / 205** |
-| abstention rate | 39.20% | 30.40% | **24.20%** |
+| Metric                     | `38394103193`   | `38439899858`   | `38487229554`       |
+| -------------------------- | --------------- | --------------- | ------------------- |
+| ask                        | `extractive`    | `route`         | `aggregate`         |
+| baseline / feature         | 44.40% / 54.60% | 44.85% / 63.05% | 44.10% / **67.35%** |
+| **Δ**                      | +9.25pp         | +18.20pp        | **+23.25pp**        |
+| McNemar p                  | 5.179e-3        | 2.737e-7        | **6.479e-12**       |
+| discordant `b✓f✗` / `b✗f✓` | 135 / 186       | 107 / 197       | **88 / 205**        |
+| abstention rate            | 39.20%          | 30.40%          | **24.20%**          |
 
 The feature side now abstains on 121 of 500 and repairs 205 questions the reference
 pipeline misses. Feature range across the four runs is 66.60% to 68.40%, so the point
@@ -3648,18 +3681,18 @@ estimate is 67.35% +/- 0.9pp and the Wilson interval is `[62.97%, 71.17%]`.
 
 ### 13.22.2 P1'' holds, P3'' holds, and P2'' fails for a reason that is mine
 
-| Capability | feature acc | baseline acc | Δ | feature abstentions | gold carried ≥ 1 |
-| --- | --- | --- | --- | --- | --- |
-| IE | 88.00% | 0.67% | +87.33pp | 15 / 150 (10.0%) | 149 / 150 |
-| MR | 44.63% | 87.60% | −42.98pp | **24 / 121 (19.8%)** | 121 / 121 |
-| KU | 81.94% | 0.00% | +81.94pp | 2 / 72 (2.8%) | 72 / 72 |
-| TR | 48.82% | 64.57% | −15.75pp | **51 / 127 (40.2%)** | 126 / 127 |
-| ABS | 96.67% | 100.00% | −3.33pp | 29 / 30 (correct) | 30 / 30 |
+| Capability | feature acc | baseline acc | Δ        | feature abstentions  | gold carried ≥ 1 |
+| ---------- | ----------- | ------------ | -------- | -------------------- | ---------------- |
+| IE         | 88.00%      | 0.67%        | +87.33pp | 15 / 150 (10.0%)     | 149 / 150        |
+| MR         | 44.63%      | 87.60%       | −42.98pp | **24 / 121 (19.8%)** | 121 / 121        |
+| KU         | 81.94%      | 0.00%        | +81.94pp | 2 / 72 (2.8%)        | 72 / 72          |
+| TR         | 48.82%      | 64.57%       | −15.75pp | **51 / 127 (40.2%)** | 126 / 127        |
+| ABS        | 96.67%      | 100.00%      | −3.33pp  | 29 / 30 (correct)    | 30 / 30          |
 
-* **P1'' holds.** MR's abstention rate fell from 46.3% to **19.8%** (registered: below 30%)
+- **P1'' holds.** MR's abstention rate fell from 46.3% to **19.8%** (registered: below 30%)
   and its accuracy rose from 27.27% to **44.63%** (registered: above 40%).
-* **P3'' holds.** The delta is **+23.25pp**, above the registered +20pp.
-* **P2'' fails as written.** It registered `±3pp` for four named routes; KU moved
+- **P3'' holds.** The delta is **+23.25pp**, above the registered +20pp.
+- **P2'' fails as written.** It registered `±3pp` for four named routes; KU moved
   −4.17pp and IE moved +4.00pp. That is a defect in the threshold, and §13.22.4 derives
   it properly.
 
@@ -3692,11 +3725,11 @@ the prediction could not have held.
 
 This is the third instance of one defect class:
 
-| Registration | The term that was not derived | What it cost |
-| --- | --- | --- |
-| §13.17 P1 | `carried` undefined | two readings of one artifact, 99.6% and 10.8%, neither wrong |
-| §13.20 P2' | a prediction registered as a control | outcome not scoreable in either direction |
-| §13.21 P2'' | a band asserted, not derived | 0.68 sd on KU, so the prediction had to fail |
+| Registration | The term that was not derived        | What it cost                                                 |
+| ------------ | ------------------------------------ | ------------------------------------------------------------ |
+| §13.17 P1    | `carried` undefined                  | two readings of one artifact, 99.6% and 10.8%, neither wrong |
+| §13.20 P2'   | a prediction registered as a control | outcome not scoreable in either direction                    |
+| §13.21 P2''  | a band asserted, not derived         | 0.68 sd on KU, so the prediction had to fail                 |
 
 `tools/registration-power.mjs` is the repair: given `n` and the observed proportion it
 prints the one-question granularity, the binomial sd, and the band at a chosen multiple,
@@ -3711,24 +3744,24 @@ of that rule is that a model which writes a trace and then concludes is read by 
 conclusion. `**INSUFFICIENT_EVIDENCE**` on that line is such a conclusion, and it was read
 as an **answer**, because the comparison was against the raw line after only a label strip.
 Run `38487229554` records five of them, all on the temporal route -- which is not an
-accident: the temporal block is the one that asks the model to *show its work*, and a trace
+accident: the temporal block is the one that asks the model to _show its work_, and a trace
 followed by an emphasised conclusion is what that produces. Four were scored as wrong
 answers and one as a correct answer.
 
 The counterfactual is exact, because it is a property of stored outputs and needs no run:
 
-| Reading | as measured | with the corrected parser |
-| --- | --- | --- |
-| abstentions | 121 / 500 = 24.2% | **126 / 500 = 25.2%** |
-| accuracy | 336 / 500 = 67.20% | **335 / 500 = 67.00%** |
-| TR abstentions | 51 / 127 = 40.2% | **56 / 127 = 44.1%** |
-| delta | +23.25pp | **+22.90pp** |
+| Reading        | as measured        | with the corrected parser |
+| -------------- | ------------------ | ------------------------- |
+| abstentions    | 121 / 500 = 24.2%  | **126 / 500 = 25.2%**     |
+| accuracy       | 336 / 500 = 67.20% | **335 / 500 = 67.00%**    |
+| TR abstentions | 51 / 127 = 40.2%   | **56 / 127 = 44.1%**      |
+| delta          | +23.25pp           | **+22.90pp**              |
 
 The one-question cost is real and is registered rather than absorbed: `gpt4_76048e76`
 answers `bike` correctly and then declines on its last line, and under a rule where the last
 line decides it is a decline. The alternative -- reading a decorated token as a mention --
 is the same defect from the other side, and the predicate's tests keep a decorated line that
-is *not* the token (`**INSUFFICIENT_EVIDENCE** was the wrong call here`) as an answer.
+is _not_ the token (`**INSUFFICIENT_EVIDENCE** was the wrong call here`) as an answer.
 
 The repair is a fixpoint reduction in `parse.ts`: a symmetric wrapper (`**`, `__`, `*`,
 `_`, backticks, four quote shapes) and the label may nest either way round, so one ordered
@@ -3739,10 +3772,10 @@ the counterfactual moves the feature side alone.
 
 ### 13.22.6 TR is the whole of what remains, and the declines say why
 
-| Capability | feature | baseline | gap | abstentions | of those, bare token | trace then token |
-| --- | --- | --- | --- | --- | --- | --- |
-| TR | 48.82% | 64.57% | −15.75pp | 51 | 36 | **15** |
-| MR | 44.63% | 87.60% | −42.98pp | 24 | 21 | 3 |
+| Capability | feature | baseline | gap      | abstentions | of those, bare token | trace then token |
+| ---------- | ------- | -------- | -------- | ----------- | -------------------- | ---------------- |
+| TR         | 48.82%  | 64.57%   | −15.75pp | 51          | 36                   | **15**           |
+| MR         | 44.63%  | 87.60%   | −42.98pp | 24          | 21                   | 3                |
 
 Fifty of TR's 51 abstentions had the gold turn carried, so this is not retrieval. And the
 fifteen trace-then-token declines are diagnostic in a way a bare token is not -- they show
@@ -3782,12 +3815,12 @@ attributable to the ask; the derivation of every band is the output of
 questions, `±6.11pp` on 72 and `±3.98pp` on 150 -- all far below the 27.56-point movement
 this arm would have to leak to be mistaken for a result.
 
-| Prediction | Baseline (corrected) | Target | Falsified if |
-| --- | --- | --- | --- |
-| **P1'''** | TR's declined count falls to **≤ 36 of 127** and its accuracy rises **above 58%** | 56 / 127 (44.1%); 48.82% | TR stays above 45 declines, which would say the instruction is not the lever for computed answers |
-| **P2'''** | MR's declined count falls to **≤ 20 of 121** and its accuracy rises **above 48%** | 24 / 121 (19.8%); 44.63% | MR stays above 24 declines, which would say the sentence's reach has been exhausted |
-| **P3'''** | the controls stay inside their derived bands: **KU ≥ 75.83%**, **ABS ≥ 91.76%**, **IE ≥ 84.02%** | 81.94%, 96.67%, 88.00% | any control falls outside its band, which is a defect in `instructionsFor` rather than a result about the model |
-| **P4'''** | the delta rises **above +25pp** | +22.90pp | the delta falls below +20pp, which would mean TR's repair was bought elsewhere |
+| Prediction | Baseline (corrected)                                                                             | Target                   | Falsified if                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| **P1'''**  | TR's declined count falls to **≤ 36 of 127** and its accuracy rises **above 58%**                | 56 / 127 (44.1%); 48.82% | TR stays above 45 declines, which would say the instruction is not the lever for computed answers               |
+| **P2'''**  | MR's declined count falls to **≤ 20 of 121** and its accuracy rises **above 48%**                | 24 / 121 (19.8%); 44.63% | MR stays above 24 declines, which would say the sentence's reach has been exhausted                             |
+| **P3'''**  | the controls stay inside their derived bands: **KU ≥ 75.83%**, **ABS ≥ 91.76%**, **IE ≥ 84.02%** | 81.94%, 96.67%, 88.00%   | any control falls outside its band, which is a defect in `instructionsFor` rather than a result about the model |
+| **P4'''**  | the delta rises **above +25pp**                                                                  | +22.90pp                 | the delta falls below +20pp, which would mean TR's repair was bought elsewhere                                  |
 
 **What P1''' can still not distinguish.** TR's gold sessions span 22 to 72 turns and its
 mean `carried / total` is 46.03% -- the lowest of the five capabilities -- so a TR
@@ -3802,13 +3835,13 @@ a name rather than a finding.
 
 ### 13.22.8 What would still not be known afterwards
 
-* **The sentence's placement** is an argument, not a measurement: it sits immediately above
+- **The sentence's placement** is an argument, not a measurement: it sits immediately above
   the line that licenses declining because that is where an exception belongs, and nothing
   here has been run against the alternative.
-* **TR's selection** is not varied, so a TR movement cannot be separated from the
+- **TR's selection** is not varied, so a TR movement cannot be separated from the
   selection until a no-signal control arm is run at this ask -- the P0 item §13.20.6 left
   open and this registration still leaves open.
-* The standing items are unchanged and still registered: the line/turn unit (§13.16.6),
+- The standing items are unchanged and still registered: the line/turn unit (§13.16.6),
   `grounded` hard-coded `false`, the writer's reduced manifest not reaching the artifact,
   and the in-band marker's ambiguity.
 
@@ -3866,8 +3899,8 @@ states that repetitions `0..i-1` completed on both sides and the vectors are rep
 **And the no-measurement rule changes with it.** `attachPartial` refuses to attach a
 partial whose two vectors are empty, because such a partial is byte-identical to a broken
 capture. That is an argument about repetition **0**, the only repetition with nothing before
-it: at `run: i > 0` an empty pair is a statement -- *repetition i died before it measured
-anything* -- and discarding it would lose the only durable record that the earlier
+it: at `run: i > 0` an empty pair is a statement -- _repetition i died before it measured
+anything_ -- and discarding it would lose the only durable record that the earlier
 repetitions happened. The predicate now includes `run === 0`, and the boundary is asserted
 in both polarities.
 
@@ -3881,8 +3914,8 @@ for the only reading they are ever consulted for.
 
 The second half is what the error carried. `TypeError: terminated` names no endpoint, no
 provider and no attempt count, so the question that decides the response to an
-infrastructure failure -- *transient and survived six attempts, or one abort from somewhere
-the loop does not wrap* -- had no answer anywhere in the record. Three runs have now been
+infrastructure failure -- _transient and survived six attempts, or one abort from somewhere
+the loop does not wrap_ -- had no answer anywhere in the record. Three runs have now been
 destroyed by this class (`37942775447`, `38003036421`, `38520676669`) and each time the log
 was sufficient to name the error and insufficient to act on it.
 
@@ -3891,12 +3924,12 @@ attached to the error rather than wrapped around it, because the stack that name
 `Fetch.onAborted` is the only evidence that a loss was infrastructure rather than a defect
 in the arm (`§13.11.7`).
 
-* **`RetryExhaustion`** -- the url, the attempts issued, the retries performed, the 429s
+- **`RetryExhaustion`** -- the url, the attempts issued, the retries performed, the 429s
   among them, the elapsed time and the transport message -- attached as `retryExhausted`.
   The parameter is an `Error` and there is no guard, because the loop converts a primitive
   throw one line above, so an `unknown` arm would be unreachable code that reads as a safety
   net; branch coverage would have been the thing to find it.
-* **`RetryStatsAggregate.recordExhausted`**, so an exhausted call is counted. That needs a
+- **`RetryStatsAggregate.recordExhausted`**, so an exhausted call is counted. That needs a
   field: an exhausted call that never retried is **not clean** -- it did not complete -- and
   counting it as clean would let a run whose traffic was failing outright report a higher
   share of untroubled calls than a healthy one. Hence `exhaustedCalls`, and the identity
@@ -3962,7 +3995,7 @@ nothing at all.
 `TypeError: terminated` after three hours and eight minutes, in the middle of repetition 2.
 A socket abort and a billing refusal are different events with different remedies; what the
 two have in common is that both runs needed the embedding provider, and both produced no
-number. Whether the first was *caused* by the second cannot be settled from the record, and
+number. Whether the first was _caused_ by the second cannot be settled from the record, and
 this section does not claim it.
 
 ### 13.24.2 Three repairs, and the one measurement each is for
@@ -3975,11 +4008,11 @@ Requests` alone reads as a rate limit — something you wait out — and this co
 opposite of that. `ok` also requires the returned vector to be the declared dimension,
 because reachable and usable are different claims.
 
-*What it cannot do, stated because the honest scope matters more than the feature: it
+_What it cannot do, stated because the honest scope matters more than the feature: it
 cannot prevent a balance running out mid-run. In `38566578567` about nine thousand five
 hundred requests were served before the provider began refusing, so an account funded at
 `t=0` was empty at `t=30m`. The claim is narrow — every dispatch learns for one request
-what the run would otherwise learn for a run.*
+what the run would otherwise learn for a run._
 
 **The artifact now says which backend produced its numbers.** `MemoryArmConfig.embedding`
 carries `provider`, `model`, `dimensions` and whether the preflight was run, rendered on
@@ -4021,15 +4054,15 @@ is the verification:
 
 Four things, each of which was a defect an hour earlier:
 
-* **`calls: 1`.** The same condition that cost nine thousand five hundred and eighty-nine
+- **`calls: 1`.** The same condition that cost nine thousand five hundred and eighty-nine
   provider calls and thirty minutes now costs **one**. The attempts counter reads `6`
   because one call retried five times, and `rateLimited: 6` says all six attempts were
   refused — which is the accounting read correctly rather than approximately.
-* **`cleanCalls: 0`.** The call is not reported as untroubled. This is the field §13.23
+- **`cleanCalls: 0`.** The call is not reported as untroubled. This is the field §13.23
   added, doing the job it was added for.
-* **The stack names the preflight**, so a reader can tell "the check refused" from "the run
+- **The stack names the preflight**, so a reader can tell "the check refused" from "the run
   died in the middle of its work".
-* **`Save embedding cache` succeeded**, under the run-unique key
+- **`Save embedding cache` succeeded**, under the run-unique key
   `longmemeval-embedding-<hash>-38582212737`. The two runs before it both failed that step.
 
 ### 13.24.4 Status: blocked, and on what
@@ -4051,7 +4084,7 @@ Three facts bound the options, and all three are measured rather than assumed:
    secret plus three `env:` lines in the workflow. It is **not** wired here, because a
    backend switch re-embeds both sides of every comparison and is therefore a
    registration rather than a knob: the four archived runs would stop being comparable
-   with anything that follows, while the *delta within* a run stays valid because both
+   with anything that follows, while the _delta within_ a run stays valid because both
    sides share one vector set.
 3. **The archived numbers are intact.** `38250133116`, `38394103193`, `38439899858` and
    `38487229554` were all produced against Zhipu `embedding-3` at 1024 dimensions before the
@@ -4063,7 +4096,7 @@ Three facts bound the options, and all three are measured rather than assumed:
 Two items on the standing list need no provider at all, and they are the ones this
 iteration's remaining effort goes to: the **line/turn unit defect** (`§13.16.6`), which is
 an instrument defect in the artifact every future run will produce, and the **no-signal
-control** (`§13.22.8`), whose *dispatch* is blocked but whose design is not.
+control** (`§13.22.8`), whose _dispatch_ is blocked but whose design is not.
 
 ## 13.25 The capture counts the turns the reader was shown, and §13.16.6 is closed
 
@@ -4102,9 +4135,9 @@ characters to call `.length`.
 `QuestionRecordInput.retrieved` is a list of the units its producer reports. Two producers
 write records, and after this change they do not report the same unit:
 
-| Producer | Unit | Why |
-| --- | --- | --- |
-| `bench-memory-arm` | **turn** | The capture is `AssembledPrompt.carried`, a turn list |
+| Producer                  | Unit     | Why                                                                                                                            |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `bench-memory-arm`        | **turn** | The capture is `AssembledPrompt.carried`, a turn list                                                                          |
 | `buildRecordsFromDataset` | **line** | `DecisionTrace.retrieved` is a rendered string: `expandContextWindow*` returns text and the same text feeds the answer prompts |
 
 The second is stated rather than hidden, because it was already the case and `respondWith`
@@ -4162,13 +4195,13 @@ The four archived runs are not re-read here, because the numbers their verdicts 
 
 ### 13.25.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `38595325261` (`ask: computed`) against §13.21's predictions | no (in flight) |
-| P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
-| P1 | Design the **no-signal control** (§13.22.8) separating the merging sentence from the selection | no (dispatch later) |
-| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                      | Needs provider      |
+| -------- | --------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**   | Read run `38595325261` (`ask: computed`) against §13.21's predictions                                     | no (in flight)      |
+| P1       | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no                  |
+| P1       | Design the **no-signal control** (§13.22.8) separating the merging sentence from the selection            | no (dispatch later) |
+| P2       | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded                     | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                           | no                  |
 
 ## 13.26 `computed` returns +25.75pp, and TR stops being a significant loss
 
@@ -4178,12 +4211,12 @@ Run `38595325261`, dispatched at `5ac30ee0` (before the §13.16.6 repair), 500 q
 
 ### 13.26.1 The judgement, against the registration §13.21 wrote before the number existed
 
-| Registered | Required | Measured | Verdict |
-| --- | --- | --- | --- |
-| Point estimate beats the same dispatch's baseline | Δ > 0 | **+25.75pp** | holds |
-| McNemar, two-sided, overall | p < 0.05 | **1.064e-13** | holds |
-| Full N, four runs, temperature 0 | 500 × 4 | 500 × 4 | holds |
-| One dispatch, no peeking | — | one dispatch | holds |
+| Registered                                        | Required | Measured      | Verdict |
+| ------------------------------------------------- | -------- | ------------- | ------- |
+| Point estimate beats the same dispatch's baseline | Δ > 0    | **+25.75pp**  | holds   |
+| McNemar, two-sided, overall                       | p < 0.05 | **1.064e-13** | holds   |
+| Full N, four runs, temperature 0                  | 500 × 4  | 500 × 4       | holds   |
+| One dispatch, no peeking                          | —        | one dispatch  | holds   |
 
 `ask: computed` reaches **3 routes** (`multi-session`, `flat`, `temporal`) against
 `aggregate`'s 2, which is the design: it composes the merging sentence into each reached
@@ -4198,14 +4231,14 @@ Only the temporal route's instruction changed. `multi-session`, `flat`, `knowled
 IE, MR, KU and ABS between the two runs is noise by construction. That makes them a control
 band, which is the thing §13.22 lacked:
 
-| Capability | Route touched | aggregate | computed | Δ questions |
-| --- | --- | --- | --- | --- |
-| IE | no | 132/150 | 133/150 | **+1** |
-| MR | no | 54/121 | 51/121 | **−3** |
-| KU | no | 59/72 | 62/72 | **+3** |
-| ABS | no | 29/30 | 29/30 | **0** |
-| **control total** | | **274/373** | **275/373** | **+1** |
-| **TR** | **yes** | 62/127 | **72/127** | **+10** |
+| Capability        | Route touched | aggregate   | computed    | Δ questions |
+| ----------------- | ------------- | ----------- | ----------- | ----------- |
+| IE                | no            | 132/150     | 133/150     | **+1**      |
+| MR                | no            | 54/121      | 51/121      | **−3**      |
+| KU                | no            | 59/72       | 62/72       | **+3**      |
+| ABS               | no            | 29/30       | 29/30       | **0**       |
+| **control total** |               | **274/373** | **275/373** | **+1**      |
+| **TR**            | **yes**       | 62/127      | **72/127**  | **+10**     |
 
 Two readings come out of this, and both are needed:
 
@@ -4220,11 +4253,11 @@ capability whose prompt changed, in the direction the instruction was written to
 
 ### 13.26.3 TR is no longer a significant loss
 
-| | aggregate `38487229554` | computed `38595325261` |
-| --- | --- | --- |
-| TR accuracy | 48.82% | **56.69%** |
-| TR b✓f✗ / b✗f✓ | 30 / 10 | 23 / 11 |
-| TR McNemar p | **2.221e-3** (significant) | **5.761e-2** (not significant) |
+|                | aggregate `38487229554`    | computed `38595325261`         |
+| -------------- | -------------------------- | ------------------------------ |
+| TR accuracy    | 48.82%                     | **56.69%**                     |
+| TR b✓f✗ / b✗f✓ | 30 / 10                    | 23 / 11                        |
+| TR McNemar p   | **2.221e-3** (significant) | **5.761e-2** (not significant) |
 
 §13.21 left TR as a **significant** net loss. It is now statistically indistinguishable from
 the reference pipeline on that capability — the first time that has been true in this
@@ -4233,23 +4266,23 @@ registered reading, and it is exactly the movement `computed` was registered to 
 
 The `ask` axis' full arc, on the feature side's abstention rate and delta:
 
-| run | ask | reached | Δ | abstention |
-| --- | --- | --- | --- | --- |
-| `38250133116` | extractive | 6 | +10.30pp | 38.00% |
-| `38394103193` | extractive | 6 | +9.25pp | 39.20% |
-| `38439899858` | route | 6 | +18.20pp | 30.40% |
-| `38487229554` | aggregate | 2 | +23.25pp | 24.20% |
-| **`38595325261`** | **computed** | **3** | **+25.75pp** | **20.60%** |
+| run               | ask          | reached | Δ            | abstention |
+| ----------------- | ------------ | ------- | ------------ | ---------- |
+| `38250133116`     | extractive   | 6       | +10.30pp     | 38.00%     |
+| `38394103193`     | extractive   | 6       | +9.25pp      | 39.20%     |
+| `38439899858`     | route        | 6       | +18.20pp     | 30.40%     |
+| `38487229554`     | aggregate    | 2       | +23.25pp     | 24.20%     |
+| **`38595325261`** | **computed** | **3**   | **+25.75pp** | **20.60%** |
 
 ### 13.26.4 Where the remaining loss is, and it is one capability
 
-| Capability | n | feature | baseline | b✓f✗ | b✗f✓ | net | McNemar p |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| IE | 150 | 88.67% | 1.33% | 0 | 131 | +131 | 7.347e-40 |
-| **MR** | **121** | **42.15%** | **86.78%** | **59** | **5** | **−54** | **9.003e-13** |
-| KU | 72 | 86.11% | 0.00% | 0 | 62 | +62 | 4.337e-19 |
-| TR | 127 | 56.69% | 66.14% | 23 | 11 | −12 | 5.761e-2 |
-| ABS | 30 | 96.67% | 100.00% | 1 | 0 | −1 | 1.000e+0 |
+| Capability | n       | feature    | baseline   | b✓f✗   | b✗f✓  | net     | McNemar p     |
+| ---------- | ------- | ---------- | ---------- | ------ | ----- | ------- | ------------- |
+| IE         | 150     | 88.67%     | 1.33%      | 0      | 131   | +131    | 7.347e-40     |
+| **MR**     | **121** | **42.15%** | **86.78%** | **59** | **5** | **−54** | **9.003e-13** |
+| KU         | 72      | 86.11%     | 0.00%      | 0      | 62    | +62     | 4.337e-19     |
+| TR         | 127     | 56.69%     | 66.14%     | 23     | 11    | −12     | 5.761e-2      |
+| ABS        | 30      | 96.67%     | 100.00%    | 1      | 0     | −1      | 1.000e+0      |
 
 **MR is now the only capability where the feature side loses significantly**, and it is a
 large loss: 54 net questions. The arm's aggregate win comes from IE and KU, where the
@@ -4257,14 +4290,14 @@ reference pipeline answers essentially nothing correctly (1.33% and 0.00%).
 
 The shape of MR's 70 non-correct questions, classified from the artifact:
 
-| Failure shape | Count | What it means |
-| --- | --- | --- |
-| `numeric_mismatch` — both sides carry a number and they differ | **31** | The model counted or compared and got a different value |
-| `other` | 7 | Neither numeric nor recognisably a refusal |
-| `plan_output` — output opens with "Let me gather…" / "Step 1" | 4 | The model narrated its plan instead of answering |
-| `soft_refusal` — "I don't have enough information" | 2 | The model declined in prose, so it is not counted as an abstention |
-| `long_prose` — answer is 200+ characters of reasoning | 2 | The answer, if present, is buried |
-| abstention (bare `INSUFFICIENT_EVIDENCE`) | 24 | Machine-readable decline |
+| Failure shape                                                  | Count  | What it means                                                      |
+| -------------------------------------------------------------- | ------ | ------------------------------------------------------------------ |
+| `numeric_mismatch` — both sides carry a number and they differ | **31** | The model counted or compared and got a different value            |
+| `other`                                                        | 7      | Neither numeric nor recognisably a refusal                         |
+| `plan_output` — output opens with "Let me gather…" / "Step 1"  | 4      | The model narrated its plan instead of answering                   |
+| `soft_refusal` — "I don't have enough information"             | 2      | The model declined in prose, so it is not counted as an abstention |
+| `long_prose` — answer is 200+ characters of reasoning          | 2      | The answer, if present, is buried                                  |
+| abstention (bare `INSUFFICIENT_EVIDENCE`)                      | 24     | Machine-readable decline                                           |
 
 ### 13.26.5 The mechanism, measured: coverage is the variable
 
@@ -4272,21 +4305,21 @@ The artifact carries `goldOverlap` per question, and this run is the first whose
 is not yet in the code — so the coverage number is the same measurement §13.16.6 registered,
 not a new one. Grouping by outcome:
 
-| Capability | correct | wrong | abstained |
-| --- | --- | --- | --- |
-| MR | **0.587** | 0.470 | 0.451 |
-| TR | **0.579** | 0.407 | 0.342 |
-| IE | **0.793** | — | 0.574 |
+| Capability | correct   | wrong | abstained |
+| ---------- | --------- | ----- | --------- |
+| MR         | **0.587** | 0.470 | 0.451     |
+| TR         | **0.579** | 0.407 | 0.342     |
+| IE         | **0.793** | —     | 0.574     |
 
 And for MR, bucketed:
 
-| gold coverage (carried/total) | n | correct | accuracy |
-| --- | --- | --- | --- |
-| [0.00, 0.25) | 14 | 2 | **14.3%** |
-| [0.25, 0.45) | 33 | 11 | 33.3% |
-| [0.45, 0.65) | 41 | 17 | 41.5% |
-| [0.65, 0.85) | 24 | 16 | **66.7%** |
-| [0.85, 1.01) | 9 | 5 | 55.6% |
+| gold coverage (carried/total) | n   | correct | accuracy  |
+| ----------------------------- | --- | ------- | --------- |
+| [0.00, 0.25)                  | 14  | 2       | **14.3%** |
+| [0.25, 0.45)                  | 33  | 11      | 33.3%     |
+| [0.45, 0.65)                  | 41  | 17      | 41.5%     |
+| [0.65, 0.85)                  | 24  | 16      | **66.7%** |
+| [0.85, 1.01)                  | 9   | 5       | 55.6%     |
 
 The relation is monotone across the four buckets that carry weight (the last has 9 questions
 and is the one inversion). **Accuracy tracks how much of the answer session the reader was
@@ -4321,14 +4354,14 @@ the current signal does not deliver it because it ranks turns.
 **Registered before dispatch**: one dispatch of the same configuration as `38595325261`, with
 a single variable changed — the relevance signal's **unit**.
 
-| Field | Value | Note |
-| --- | --- | --- |
-| `cortex_memory_ask` | `computed` | held at §13.26's value, so a movement is not the instruction |
-| `cortex_memory_relevance` | `retrieval` | held — **corrected by §13.31.4**: this row was written as `retrieval-session`, a value that was never implemented or dispatched, so the variable it described could not be read from the archive at all |
-| `cortex_memory_relevance_units` | **`session`** | the variable; the field the implementation and the artifact both carry |
-| `cortex_memory_relevance_top_k` | `64` | held |
-| `cortex_memory_evidence_turns` | `256` | held |
-| everything else | §13.26's values | held |
+| Field                           | Value           | Note                                                                                                                                                                                                    |
+| ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cortex_memory_ask`             | `computed`      | held at §13.26's value, so a movement is not the instruction                                                                                                                                            |
+| `cortex_memory_relevance`       | `retrieval`     | held — **corrected by §13.31.4**: this row was written as `retrieval-session`, a value that was never implemented or dispatched, so the variable it described could not be read from the archive at all |
+| `cortex_memory_relevance_units` | **`session`**   | the variable; the field the implementation and the artifact both carry                                                                                                                                  |
+| `cortex_memory_relevance_top_k` | `64`            | held                                                                                                                                                                                                    |
+| `cortex_memory_evidence_turns`  | `256`           | held                                                                                                                                                                                                    |
+| everything else                 | §13.26's values | held                                                                                                                                                                                                    |
 
 **What the new value does.** It ranks **sessions** by their best-scoring turn, and then admits
 the highest-ranked sessions **whole** — the same preference `expandContextWindowBySession`
@@ -4371,15 +4404,15 @@ commit with `cortex_memory_relevance_units: session` and every other input held 
 
 What landed, and where the decisions are stated once:
 
-| Piece | Where | Why it is there |
-| --- | --- | --- |
-| `RelevanceUnits`, `PromptOptions.relevanceUnits` | `cortex-memory/src/prompt.ts` | The unit is a second field rather than a second signal value, so a run that changed only the unit is not reportable as one that changed the scoring |
-| `EvidencePlan.sessionOf` | same | The selection needs the boundary; `render` does not, because it closes over the sessions and decides membership by identity |
-| `selectBySession` | same | Largest session **prefix**, no skipping: skipping would make the carried set depend on the sizes of sessions the signal did not choose |
-| `CortexMemoryOptions.relevanceUnits` | `cortex-memory/src/types.ts` | Reaches the multi-session route alone, which is what makes this dispatch single-variable |
-| `CORTEX_MEMORY_RELEVANCE_UNITS`, `relevanceUnits` | `cortex-eval/src/bench-memory-arm.ts` | Rejected rather than defaulted on an unknown value, so a run that did not apply the treatment cannot publish as one that did |
-| The artifact's config line | `cortex-eval/src/report.ts` | The field is what §13.27's artifact is compared against §13.26's by |
-| §10.3's registration of the value | this document, §10.3 | `test_preregistration_config.py` compares the dispatch against it, which is the guard that caught the omission when the key was first added |
+| Piece                                             | Where                                 | Why it is there                                                                                                                                     |
+| ------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RelevanceUnits`, `PromptOptions.relevanceUnits`  | `cortex-memory/src/prompt.ts`         | The unit is a second field rather than a second signal value, so a run that changed only the unit is not reportable as one that changed the scoring |
+| `EvidencePlan.sessionOf`                          | same                                  | The selection needs the boundary; `render` does not, because it closes over the sessions and decides membership by identity                         |
+| `selectBySession`                                 | same                                  | Largest session **prefix**, no skipping: skipping would make the carried set depend on the sizes of sessions the signal did not choose              |
+| `CortexMemoryOptions.relevanceUnits`              | `cortex-memory/src/types.ts`          | Reaches the multi-session route alone, which is what makes this dispatch single-variable                                                            |
+| `CORTEX_MEMORY_RELEVANCE_UNITS`, `relevanceUnits` | `cortex-eval/src/bench-memory-arm.ts` | Rejected rather than defaulted on an unknown value, so a run that did not apply the treatment cannot publish as one that did                        |
+| The artifact's config line                        | `cortex-eval/src/report.ts`           | The field is what §13.27's artifact is compared against §13.26's by                                                                                 |
+| §10.3's registration of the value                 | this document, §10.3                  | `test_preregistration_config.py` compares the dispatch against it, which is the guard that caught the omission when the key was first added         |
 
 Verification:
 
@@ -4410,10 +4443,10 @@ how far the pass got.
 
 ### 13.28.1 What the record could not say, and why each one matters
 
-| Missing fact | What a reader could conclude | What the two possibilities want |
-| --- | --- | --- |
-| How long the pass had been running | `q=1/500` is what a pass that died **immediately** would also print | a hang is retried or circuited; a slow pass is given a longer budget or a smaller sample |
-| Whether the retry ladder was exhausted | not printed anywhere on the failure path | an endpoint that was **down** and one that was **throttling** are different providers' problems |
+| Missing fact                           | What a reader could conclude                                        | What the two possibilities want                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| How long the pass had been running     | `q=1/500` is what a pass that died **immediately** would also print | a hang is retried or circuited; a slow pass is given a longer budget or a smaller sample        |
+| Whether the retry ladder was exhausted | not printed anywhere on the failure path                            | an endpoint that was **down** and one that was **throttling** are different providers' problems |
 
 The first had to be reconstructed from the workflow's `created_at`/`completed_at`, which is a
 fact about the runner rather than about the failure. The second existed -- the entry point
@@ -4470,13 +4503,13 @@ registration. The failure was the provider's and not the configuration's, so the
 experiment stands and no variable moves. What the new run has that the last one did not is a
 failure record that says how long it had been failing.
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read `38725510400` against §13.27's four predictions | no (in flight) |
-| P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
-| P1 | Design the **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is **98.64%** — the two branches its own suite could not reach are now covered, and the one that remains is v8's `finally` arm, a reporting convention rather than an uncovered path (see §13.29) | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                                                                                                                                                                                                                                   | Needs provider      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**   | Read `38725510400` against §13.27's four predictions                                                                                                                                                                                                                                                                   | no (in flight)      |
+| P1       | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap`                                                                                                                                                                                                              | no                  |
+| P1       | Design the **no-signal control** (§13.22.8)                                                                                                                                                                                                                                                                            | no (dispatch later) |
+| P2       | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is **98.64%** — the two branches its own suite could not reach are now covered, and the one that remains is v8's `finally` arm, a reporting convention rather than an uncovered path (see §13.29) | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                                                                                                        | no                  |
 
 ## 13.29 The one dimension below 100%, and why it is left there
 
@@ -4486,10 +4519,10 @@ not, and the argument for leaving it is the interesting part.
 
 ### 13.29.1 What was covered
 
-| Branch | Why it was uncovered | What the test asserts |
-| --- | --- | --- |
-| `query({ offset, limit })` | The SQLite adapter's suite reaches it; the Postgres one only ever queried without a page | **Parity**, not a branch count: the two adapters must agree on what a page is, or a system moved from one to the other reads different rows for the same query and the difference looks like a change in what was stored |
-| A transaction body that throws | Every transaction test in that suite succeeds | The **contract**: the error propagates and the connection returns to the pool — deliberately not the rollback's *effect*, because `pg-mem` does not implement ACID rollback (already recorded in that file), so asserting the effect would assert `pg-mem` rather than the adapter |
+| Branch                         | Why it was uncovered                                                                     | What the test asserts                                                                                                                                                                                                                                                              |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query({ offset, limit })`     | The SQLite adapter's suite reaches it; the Postgres one only ever queried without a page | **Parity**, not a branch count: the two adapters must agree on what a page is, or a system moved from one to the other reads different rows for the same query and the difference looks like a change in what was stored                                                           |
+| A transaction body that throws | Every transaction test in that suite succeeds                                            | The **contract**: the error propagates and the connection returns to the pool — deliberately not the rollback's _effect_, because `pg-mem` does not implement ACID rollback (already recorded in that file), so asserting the effect would assert `pg-mem` rather than the adapter |
 
 ### 13.29.2 What is left, and why
 
@@ -4515,10 +4548,10 @@ correcting one.
 Run `38725510400` never ended. It sat inside the **reference pipeline's first question** for
 **over five hours** and the workflow's job-level `timeout-minutes: 240` did not fire, so:
 
-| | run `38659495034` | run `38725510400` |
-| --- | --- | --- |
-| How it ended | `TimeoutError` after 1h49m | never |
-| Durable record | 362 bytes: progress + message | **none** |
+|                                  | run `38659495034`                    | run `38725510400`                      |
+| -------------------------------- | ------------------------------------ | -------------------------------------- |
+| How it ended                     | `TimeoutError` after 1h49m           | never                                  |
+| Durable record                   | 362 bytes: progress + message        | **none**                               |
 | What §13.28's repair contributes | the elapsed time and a `retry:` line | **nothing — `catch` is never reached** |
 
 That is the sequence worth recording: §13.28 made a **failure** say more, and the very next
@@ -4555,7 +4588,7 @@ reads as a healthy configuration.
   `1 NEW orphan(s)` the moment it was exported, and is why it is module-private: nothing
   outside needs to identify it, since the entry point's `catch` is generic.
 - **Defect injection, caught**: removing the budget check fails `abandons the pass when its
-  wall-clock budget is spent, and stops where it ran out`. A second test holds the
+wall-clock budget is spent, and stops where it ran out`. A second test holds the
   compatibility rule — with no budget the pass runs to completion, which is every archived
   run.
 - **§13.27 was re-dispatched once more** as run **`38753835652`**, still with no variable
@@ -4564,13 +4597,13 @@ reads as a healthy configuration.
 
 ### 13.30.3 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read the §13.32 dispatch against its five predictions (§13.31.3 says what to read first: MR's `promptChars`, then the roster, then coverage, then accuracy) | yes — dispatched |
-| P1 | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap` | no |
-| P1 | Design the **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is 98.64% (§13.29) | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                                                                        | Needs provider      |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**   | Read the §13.32 dispatch against its five predictions (§13.31.3 says what to read first: MR's `promptChars`, then the roster, then coverage, then accuracy) | yes — dispatched    |
+| P1       | Give `DecisionTrace` the turn list `respondWith` already receives, restoring that product's `goldOverlap`                                                   | no                  |
+| P1       | Design the **no-signal control** (§13.22.8)                                                                                                                 | no (dispatch later) |
+| P2       | `grounded` is still hard-coded `false`; the writer's reduced manifest is not uploaded; `cortex-node` branch coverage is 98.64% (§13.29)                     | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                                                                             | no                  |
 
 **Three failures, three different layers, each now closed.** `38659495034` failed and could not
 say how long it had been failing (§13.28). `38725510400` failed without failing — it hung, so
@@ -4579,23 +4612,23 @@ evidence unit: **the instrument was the defect**, and each repair was to make th
 was silent say something.
 
 So the number stays at 98.64%, above the 95% floor and explained rather than suppressed. What
-changed is that the two branches a test *could* reach now have one, and that the coverage
+changed is that the two branches a test _could_ reach now have one, and that the coverage
 digits are no longer the only statement about them.
 
 ## 13.31 `session` is refuted: the unit was right, the search stranded the room
 
 Run **`38753835652`** completed in `3h21m` and produced a full five-hundred-question artifact.
 It is the first dispatch since §13.25 to finish on the first attempt, and the first in four
-attempts to fail *in the measurement* rather than in the plumbing.
+attempts to fail _in the measurement_ rather than in the plumbing.
 
 ### 13.31.1 The judgement, against §13.27's four predictions
 
-| §13.27 prediction | Registered | Measured | Verdict |
-| --- | --- | --- | --- |
-| MR's median `carried/total` rises from 0.58 to **≥ 0.75** | primary | **0.455** (turn: 0.500) | **FALSIFIED** |
-| MR rises and the arm's delta exceeds **+25.75pp** | — | delta **+17.80pp**, MR **12.40%** (turn: 42.15%) | **FALSIFIED** |
-| TR does not fall back below its §13.26 level | — | TR **62.99%** (turn: 56.69%, +8 questions) | holds |
-| IE and KU do not move beyond the control band | — | IE **−4** questions, KU **−1** | holds, with a caveat below |
+| §13.27 prediction                                         | Registered | Measured                                         | Verdict                    |
+| --------------------------------------------------------- | ---------- | ------------------------------------------------ | -------------------------- |
+| MR's median `carried/total` rises from 0.58 to **≥ 0.75** | primary    | **0.455** (turn: 0.500)                          | **FALSIFIED**              |
+| MR rises and the arm's delta exceeds **+25.75pp**         | —          | delta **+17.80pp**, MR **12.40%** (turn: 42.15%) | **FALSIFIED**              |
+| TR does not fall back below its §13.26 level              | —          | TR **62.99%** (turn: 56.69%, +8 questions)       | holds                      |
+| IE and KU do not move beyond the control band             | —          | IE **−4** questions, KU **−1**                   | holds, with a caveat below |
 
 The registered falsifier **"coverage rises and accuracy falls"** did not fire. The one that
 fired is worse for the design: **neither rose**. Coverage moved the wrong way while accuracy
@@ -4604,16 +4637,16 @@ design at all.
 
 The headline numbers, side by side with the run they were compared against:
 
-| | §13.26 `turn` | §13.27 `session` | Δ |
-| --- | --- | --- | --- |
-| Δ accuracy | **+25.75pp** | **+17.80pp** | −7.95pp |
-| McNemar | 1.064e-13 | 1.787e-7 | — |
-| MR | 42.15% (51/121) | **12.40%** (15/121) | **−36** |
-| IE | 88.67% (133/150) | 86.00% (129/150) | −4 |
-| KU | 86.11% (62/72) | 84.72% (61/72) | −1 |
-| TR | 56.69% (72/127) | 62.99% (80/127) | +8 |
-| ABS | 96.67% (29/30) | 100.00% (30/30) | +1 |
-| Abstention rate | 20.60% | 28.40% | +7.80pp |
+|                 | §13.26 `turn`    | §13.27 `session`    | Δ       |
+| --------------- | ---------------- | ------------------- | ------- |
+| Δ accuracy      | **+25.75pp**     | **+17.80pp**        | −7.95pp |
+| McNemar         | 1.064e-13        | 1.787e-7            | —       |
+| MR              | 42.15% (51/121)  | **12.40%** (15/121) | **−36** |
+| IE              | 88.67% (133/150) | 86.00% (129/150)    | −4      |
+| KU              | 86.11% (62/72)   | 84.72% (61/72)      | −1      |
+| TR              | 56.69% (72/127)  | 62.99% (80/127)     | +8      |
+| ABS             | 96.67% (29/30)   | 100.00% (30/30)     | +1      |
+| Abstention rate | 20.60%           | 28.40%              | +7.80pp |
 
 MR's paired counts are the part that cannot be noise: **92** questions the baseline had right
 and this arm got wrong, against **zero** it gained. A rule that changes a capability from
@@ -4649,13 +4682,13 @@ A session is much larger than a turn, so the first session over the line ends th
 artifact measures the consequence directly, in a unit that does not depend on the code
 version: the prompt's own length.
 
-| MR, per question | `turn` | `session` |
-| --- | --- | --- |
-| room used, median | **0.940** | **0.673** |
-| room used, p10 | — | 0.503 |
-| room used, min | 0.843 | **0.205** |
-| questions using under 20,000 of 24,000 | **0 / 121** | **102 / 121** |
-| roster, median entries | 23 turns (149 lines, pre-§13.25 units) | 12 turns |
+| MR, per question                       | `turn`                                 | `session`     |
+| -------------------------------------- | -------------------------------------- | ------------- |
+| room used, median                      | **0.940**                              | **0.673**     |
+| room used, p10                         | —                                      | 0.503         |
+| room used, min                         | 0.843                                  | **0.205**     |
+| questions using under 20,000 of 24,000 | **0 / 121**                            | **102 / 121** |
+| roster, median entries                 | 23 turns (149 lines, pre-§13.25 units) | 12 turns      |
 
 The rule stranded a median of **6,439 characters — 28% of the room — on 102 of 121 MR
 questions**, and more than half the room on 48 of them. It is not the "cannot fit the top
@@ -4705,11 +4738,11 @@ question.
 
 **Rejected, with reasons, so neither is re-proposed as new**:
 
-| Alternative | Why not |
-| --- | --- |
-| Carry each session's **leading** turns up to a per-session quota | Re-introduces the "whole session" claim as a *partial* session, and needs a second ordering rule (where inside the session to start). One change at a time: the refuted rule's only fault that the artifact measures is the stopping rule, and this would move two things at once |
-| Give `session` the filling rule **in place** | A configuration line is the only record an artifact carries. Editing the rule under the same value would make `38753835652` ambiguous with its successor, and the refutation unreproducible. `session` is frozen exactly as measured, as a confirmed-negative configuration is kept elsewhere in this project |
-| Raise the room instead (`maxPromptChars`) | Not delegated: it changes the budget, and every number in this document is conditioned on 24,000. A budget sweep is a legitimate later experiment and a different one |
+| Alternative                                                      | Why not                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Carry each session's **leading** turns up to a per-session quota | Re-introduces the "whole session" claim as a _partial_ session, and needs a second ordering rule (where inside the session to start). One change at a time: the refuted rule's only fault that the artifact measures is the stopping rule, and this would move two things at once                             |
+| Give `session` the filling rule **in place**                     | A configuration line is the only record an artifact carries. Editing the rule under the same value would make `38753835652` ambiguous with its successor, and the refutation unreproducible. `session` is frozen exactly as measured, as a confirmed-negative configuration is kept elsewhere in this project |
+| Raise the room instead (`maxPromptChars`)                        | Not delegated: it changes the budget, and every number in this document is conditioned on 24,000. A budget sweep is a legitimate later experiment and a different one                                                                                                                                         |
 
 ### 13.31.6 Verification
 
@@ -4728,21 +4761,21 @@ question.
 **Registered before dispatch**: one dispatch of the same configuration as `38753835652`, with
 a single variable changed — the session rule's search.
 
-| Field | Value | Note |
-| --- | --- | --- |
-| `cortex_memory_relevance_units` | **`session-fill`** | the variable |
-| `cortex_memory_ask` | `computed` | held at §13.26's value |
-| `cortex_memory_relevance` | `retrieval` | held |
-| `cortex_memory_relevance_top_k` | `64` | held |
-| `cortex_memory_evidence_turns` | `256` | held |
-| `cortex_memory_budget_minutes` | `90` | held (§13.30) |
-| everything else | §13.26's values | held |
+| Field                           | Value              | Note                   |
+| ------------------------------- | ------------------ | ---------------------- |
+| `cortex_memory_relevance_units` | **`session-fill`** | the variable           |
+| `cortex_memory_ask`             | `computed`         | held at §13.26's value |
+| `cortex_memory_relevance`       | `retrieval`        | held                   |
+| `cortex_memory_relevance_top_k` | `64`               | held                   |
+| `cortex_memory_evidence_turns`  | `256`              | held                   |
+| `cortex_memory_budget_minutes`  | `90`               | held (§13.30)          |
+| everything else                 | §13.26's values    | held                   |
 
 **Predictions, in the order they would be read:**
 
 1. **MR's room usage returns to the turn unit's level.** Median `promptChars / 24000` moves
    from **0.673** to at least **0.90** — the same band the turn unit occupies (0.940 median,
-   0.843 minimum). This is the primary prediction and it is about the *repair*, not about the
+   0.843 minimum). This is the primary prediction and it is about the _repair_, not about the
    unit: if filling does not spend the room, the search was not what the artifact measured.
 2. **The MR roster grows past the turn unit's.** More than 23 turns on the median question,
    because a filling rule that skips can admit more sessions than a prefix that stops. If the
@@ -4752,7 +4785,7 @@ a single variable changed — the session rule's search.
 4. **MR accuracy rises above the turn unit's 42.15%** and the arm's delta exceeds **+25.75pp**.
    This is the claim that replaces §13.27's falsified one: the session unit with the room spent
    beats the turn unit, or the unit is not the lever.
-5. **TR stays at or above `session`'s 62.99%.** TR moved *up* under the session unit and there
+5. **TR stays at or above `session`'s 62.99%.** TR moved _up_ under the session unit and there
    is no registered reason for the repair to give that back; if it does, the TR gain came from
    the stranding rather than from completing sessions, which would be a finding about TR.
 
@@ -4803,11 +4836,11 @@ measurement, but a **constant** standing in for one.
 
 The repair is a call in the arm's roster, and three decisions about it are stated in code:
 
-| Decision | Where | Why |
-| --- | --- | --- |
-| The haystack is the **delivery** | `bench-memory-arm.ts` | Grounding asks what the reader had in hand, and the delivery is `retrievedContexts[i]` — the same vector `turns` is built from |
-| It is read **before the bound** | same | The bound is an artifact setting applied after the run, so a verdict taken from the post-bound turns would make a question's groundedness depend on how the JSON was written. `goldOverlap` sits on the same line for the same reason |
-| The arm supplies evidence and reads a verdict | `tr-failure-class.ts` | The arm does not decide what counts as a match. A test pins that a partial match is ungrounded, so an arm that recomputed or relaxed the rule would fail rather than quietly report the opposite |
+| Decision                                      | Where                 | Why                                                                                                                                                                                                                                   |
+| --------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The haystack is the **delivery**              | `bench-memory-arm.ts` | Grounding asks what the reader had in hand, and the delivery is `retrievedContexts[i]` — the same vector `turns` is built from                                                                                                        |
+| It is read **before the bound**               | same                  | The bound is an artifact setting applied after the run, so a verdict taken from the post-bound turns would make a question's groundedness depend on how the JSON was written. `goldOverlap` sits on the same line for the same reason |
+| The arm supplies evidence and reads a verdict | `tr-failure-class.ts` | The arm does not decide what counts as a match. A test pins that a partial match is ungrounded, so an arm that recomputed or relaxed the rule would fail rather than quietly report the opposite                                      |
 
 `TrFailureInput.questionDate` became optional in the same change. It is declared and **read by
 no verdict**; requiring it would have forced this new caller to fabricate a value for a field
@@ -4868,13 +4901,13 @@ implementing the partial version first.
 
 ### 13.33.5 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `38828538851` against §13.32 — MR's `promptChars` first, then the roster, then coverage, then accuracy | no (in flight) |
-| P1 | Restore the trace product's turn unit and its `goldOverlap`. **Narrowed by §13.33.3**: the multi-session path destroys the turn boundary twice, so this is a registered change to that path's rendering — a dispatch that invalidates archived comparability — and not a cleanup. Second to §13.32's question | no |
-| P1 | Design the **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering" | no (dispatch later) |
-| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                                                                                                                                                                                                                          | Needs provider      |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**   | Read run `38828538851` against §13.32 — MR's `promptChars` first, then the roster, then coverage, then accuracy                                                                                                                                                                                               | no (in flight)      |
+| P1       | Restore the trace product's turn unit and its `goldOverlap`. **Narrowed by §13.33.3**: the multi-session path destroys the turn boundary twice, so this is a registered change to that path's rendering — a dispatch that invalidates archived comparability — and not a cleanup. Second to §13.32's question | no                  |
+| P1       | Design the **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering"                                                                                                                                                                                                                  | no (dispatch later) |
+| P2       | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous                                                                                                                                                                                                                       | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                                                                                               | no                  |
 
 `grounded` is **closed** (§13.33.1) and drops off this list. `cortex-node`'s branch coverage stays
 at 98.64% by §13.29's decision, and no item above is blocked on it.
@@ -4886,16 +4919,16 @@ spending the room, and it did exactly that — and the measurement barely moved.
 
 ### 13.34.1 The judgement, against §13.32's five predictions
 
-| §13.32 prediction | Registered | Measured | Verdict |
-| --- | --- | --- | --- |
-| MR room usage returns to the turn unit's level | ≥ 0.90 | **0.941** (turn 0.940, p10 0.882, min 0.843 — identical) | **holds** |
-| MR roster grows past the turn unit's | > 23 turns | **26** (turn 23, prefix 12) | **holds** |
-| Coverage rises above 0.50 and the `[0.65,0.85)` band refills | — | median **0.500** (unchanged), band refilled (24 from 0) | half |
-| MR rises above 42.15% **and** the delta exceeds +25.75pp | — | MR **42.98%**, delta **+24.90pp** | half |
-| TR stays at or above `session`'s 62.99% | — | TR **55.91%** | **FALSIFIED** |
+| §13.32 prediction                                            | Registered | Measured                                                 | Verdict       |
+| ------------------------------------------------------------ | ---------- | -------------------------------------------------------- | ------------- |
+| MR room usage returns to the turn unit's level               | ≥ 0.90     | **0.941** (turn 0.940, p10 0.882, min 0.843 — identical) | **holds**     |
+| MR roster grows past the turn unit's                         | > 23 turns | **26** (turn 23, prefix 12)                              | **holds**     |
+| Coverage rises above 0.50 and the `[0.65,0.85)` band refills | —          | median **0.500** (unchanged), band refilled (24 from 0)  | half          |
+| MR rises above 42.15% **and** the delta exceeds +25.75pp     | —          | MR **42.98%**, delta **+24.90pp**                        | half          |
+| TR stays at or above `session`'s 62.99%                      | —          | TR **55.91%**                                            | **FALSIFIED** |
 
-The fifth was falsified exactly as written, including its stated meaning: *"if it does, the TR gain
-came from the stranding rather than from completing sessions, which would be a finding about TR."*
+The fifth was falsified exactly as written, including its stated meaning: _"if it does, the TR gain
+came from the stranding rather than from completing sessions, which would be a finding about TR."_
 TR went 62.99% → 55.91%, back to the turn unit's own level, so **§13.27's +8 TR questions were bought
 by the room the prefix rule failed to spend** — a shorter, thinner context helped TR, and completing
 sessions gave it back. That is a real finding about TR and it is now on the record rather than
@@ -4903,14 +4936,14 @@ absorbed into a delta.
 
 ### 13.34.2 The allocation axis is closed
 
-| | §13.26 `turn` | §13.27 `session` | §13.32 `session-fill` |
-| --- | --- | --- | --- |
-| delta | **+25.75pp** | +17.80pp | +24.90pp |
-| MR | 42.15% | 12.40% | 42.98% |
-| IE / KU / TR / ABS | 88.67 / 86.11 / 56.69 / 96.67 | 86.00 / 84.72 / 62.99 / 100.00 | 88.67 / 81.94 / 55.91 / 96.67 |
-| MR room used | 0.940 | 0.673 | 0.941 |
-| MR roster | 23 turns | 12 turns | 26 turns |
-| MR coverage bands `[0, .25)` … `[.85, 1]` | 14 / 33 / 41 / 24 / 9 | 23 / 35 / 51 / 0 / 12 | **14 / 33 / 41 / 24 / 9** |
+|                                           | §13.26 `turn`                 | §13.27 `session`               | §13.32 `session-fill`         |
+| ----------------------------------------- | ----------------------------- | ------------------------------ | ----------------------------- |
+| delta                                     | **+25.75pp**                  | +17.80pp                       | +24.90pp                      |
+| MR                                        | 42.15%                        | 12.40%                         | 42.98%                        |
+| IE / KU / TR / ABS                        | 88.67 / 86.11 / 56.69 / 96.67 | 86.00 / 84.72 / 62.99 / 100.00 | 88.67 / 81.94 / 55.91 / 96.67 |
+| MR room used                              | 0.940                         | 0.673                          | 0.941                         |
+| MR roster                                 | 23 turns                      | 12 turns                       | 26 turns                      |
+| MR coverage bands `[0, .25)` … `[.85, 1]` | 14 / 33 / 41 / 24 / 9         | 23 / 35 / 51 / 0 / 12          | **14 / 33 / 41 / 24 / 9**     |
 
 Against the turn unit, `session-fill` moves **+1 question on MR and −3 across the other four** — inside
 the ±3-question band this document has been using as noise since §13.26. And the coverage band counts
@@ -4921,16 +4954,16 @@ constraint**, and the axis that began at §13.27 is closed with three measuremen
 
 ### 13.34.3 The room is nearly sufficient, which is the part that redirects
 
-| MR, run `38828538851` | value |
-| --- | --- |
-| gold turns per question, median | **24** |
-| carried gold, median | **14** |
-| roster, median | **26** |
-| questions whose roster ≥ their gold total | **52 / 121** |
-| coverage a **perfect selector** would reach at this room, median | **0.917** |
+| MR, run `38828538851`                                            | value        |
+| ---------------------------------------------------------------- | ------------ |
+| gold turns per question, median                                  | **24**       |
+| carried gold, median                                             | **14**       |
+| roster, median                                                   | **26**       |
+| questions whose roster ≥ their gold total                        | **52 / 121** |
+| coverage a **perfect selector** would reach at this room, median | **0.917**    |
 
 The window already holds as many turns as the gold set contains, on the median question. A selector
-that could *find* the gold would carry essentially all of it. So the missing 10 of 24 are not missing
+that could _find_ the gold would carry essentially all of it. So the missing 10 of 24 are not missing
 for want of space — and the earlier plan for this iteration, a room sweep, was dropped once this table
 existed: buying more room would be compensation for a ranking that spends half the window on
 non-gold, and the reference pipeline scores 86.78% on MR with a **smaller** window (20,000 characters)
@@ -4938,14 +4971,14 @@ than this arm's 24,000.
 
 ### 13.34.4 Where the loss actually is: the answer contract, not the evidence
 
-| MR, 121 questions | count |
-| --- | --- |
-| correct | **52** |
-| wrong | **47**, of which **41 are numeric mismatches** |
-| abstained | **22**, carrying 14–20 gold turns each |
+| MR, 121 questions | count                                          |
+| ----------------- | ---------------------------------------------- |
+| correct           | **52**                                         |
+| wrong             | **47**, of which **41 are numeric mismatches** |
+| abstained         | **22**, carrying 14–20 gold turns each         |
 
 The reader holds the evidence and either miscounts it or declines with it in hand. Note the shape of the
-second row: these are not "the wrong fact" answers, they are *counts off by a little* on questions whose
+second row: these are not "the wrong fact" answers, they are _counts off by a little_ on questions whose
 gold is a small number (`3`, `8`, `15`). And the abstentions are not gates closing — `empty` and
 `threshold` are both 0 in this run — they are the model taking a licence the block grants it.
 
@@ -4964,31 +4997,31 @@ prompt, not a window.
 
 **Registered before dispatch**: one dispatch of §13.26's configuration, with a single variable changed.
 
-| Field | Value | Note |
-| --- | --- | --- |
-| `cortex_memory_ask` | **`enumerated`** | the variable |
-| `cortex_memory_relevance` | `retrieval`, `top_k` `64` | held |
-| `cortex_memory_relevance_units` | **`turn`** | held at the shipped default, so §13.26 is the comparison |
-| `cortex_memory_evidence_turns` | `256` | held |
-| `cortex_memory_budget_minutes` | `90` | held (§13.30) |
-| everything else | §13.26's values | held |
+| Field                           | Value                     | Note                                                     |
+| ------------------------------- | ------------------------- | -------------------------------------------------------- |
+| `cortex_memory_ask`             | **`enumerated`**          | the variable                                             |
+| `cortex_memory_relevance`       | `retrieval`, `top_k` `64` | held                                                     |
+| `cortex_memory_relevance_units` | **`turn`**                | held at the shipped default, so §13.26 is the comparison |
+| `cortex_memory_evidence_turns`  | `256`                     | held                                                     |
+| `cortex_memory_budget_minutes`  | `90`                      | held (§13.30)                                            |
+| everything else                 | §13.26's values           | held                                                     |
 
 **Predictions, in the order they would be read:**
 
 1. **MR's abstentions fall.** 22 → **≤ 12**. This is the primary prediction because it is the half of
    the contract with a mechanical reading: `Do not reply INSUFFICIENT_EVIDENCE without first writing the
-   Step 1 list` names the artefact it requires, and a question with 14 gold turns in the window has
+Step 1 list` names the artefact it requires, and a question with 14 gold turns in the window has
    something to list.
 2. **MR's wrong answers stop being numeric mismatches.** 41 of 47 → **≤ 25**, which is the counting half.
 3. **MR rises above §13.32's 42.98%** by more than the noise band: **≥ 48%** (58/121).
 4. **The arm's delta exceeds +25.75pp.**
-5. **IE, KU and TR do not move beyond the band.** Unlike §13.27's dispatch, these *are* controls and
+5. **IE, KU and TR do not move beyond the band.** Unlike §13.27's dispatch, these _are_ controls and
    the claim is structural rather than statistical: the flat path and the temporal route are asserted
    byte-identical to `computed` in `evidence-ask-reach.test.ts`, and KU's route is untouched by both asks.
 
 **Falsifiers, stated before the number exists:**
 
-- Abstentions fall to ≤ 12 and accuracy does not move → the abstentions were a *symptom* of an incomplete
+- Abstentions fall to ≤ 12 and accuracy does not move → the abstentions were a _symptom_ of an incomplete
   count rather than a cause, and the fix needs the evidence to be complete rather than the instruction to
   be structured. That would point back at the ranking, with the room already ruled out.
 - Numeric mismatches stay near 41 → the two-step contract is not what the reference prompt contributes,
@@ -5017,7 +5050,7 @@ error. The only thing that noticed was the dispatch, after the commit was pushed
 the failure was a run with **zero jobs** — also what a cancelled run looks like.
 
 `tools/__tests__/test_workflow_yaml.py` closes it: every workflow must parse, and every workflow a
-`dispatch-*.py` posts to must declare the trigger (a *valid* file without the trigger produces the same
+`dispatch-*.py` posts to must declare the trigger (a _valid_ file without the trigger produces the same
 422). Defect injection — the apostrophe put back — fails both assertions. The second attempt dispatched
 as run **`38908223281`** at `c1f3dcb9`.
 
@@ -5034,13 +5067,13 @@ as run **`38908223281`** at `c1f3dcb9`.
 
 ### 13.34.8 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `38908223281` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight) |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no |
-| P1 | The **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering" | no (dispatch later) |
-| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                       | Needs provider      |
+| -------- | ---------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**   | Read run `38908223281` against §13.34.5's five predictions — abstentions first, then the mismatch count    | no (in flight)      |
+| P1       | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no                  |
+| P1       | The **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering"                      | no (dispatch later) |
+| P2       | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous                    | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                            | no                  |
 
 **The selection axis is closed** (§13.34.2) and **the room is ruled out as the constraint on MR**
 (§13.34.3). What remains for MR is the answer contract, which this dispatch tests, and the ranking, which
@@ -5048,7 +5081,7 @@ the falsifiers above route to if the contract is not it.
 
 ## 13.35 The dispatch died at startup, and the parity it needed was claimed in a comment
 
-§13.34.6 records the *first* refusal (an apostrophe in YAML). The dispatch after that fix was
+§13.34.6 records the _first_ refusal (an apostrophe in YAML). The dispatch after that fix was
 **accepted and then died before question one**:
 
 ```
@@ -5062,18 +5095,18 @@ declaration of the same fact.
 
 ### 13.35.1 The defect: one decision, two declarations, no check between them
 
-| | Where | What it is |
-| --- | --- | --- |
-| the union and the reach table | `cortex-memory/src/prompt.ts` | decides what an instruction block actually says |
-| a second `ASK_ROUTES` | `cortex-eval/src/bench-memory-arm.ts` | what `readAsk` validates a dispatched value against, and what the artifact's `askRoutes` comes from |
+|                               | Where                                 | What it is                                                                                          |
+| ----------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| the union and the reach table | `cortex-memory/src/prompt.ts`         | decides what an instruction block actually says                                                     |
+| a second `ASK_ROUTES`         | `cortex-eval/src/bench-memory-arm.ts` | what `readAsk` validates a dispatched value against, and what the artifact's `askRoutes` comes from |
 
 The second copy has to exist: `cortex-eval` may not depend on `cortex-memory` — the arm adapts a
 system it does not own, and there is a test asserting the dependency is absent. But it was typed
 `Record<string, readonly string[]>`, so **adding a value to the union changed nothing here**, and
 a comment beside it stated the property that would have caught the omission:
 
-> *"§13.21's ask, restated for the same reason as the two above: the artifact reports the reach
-> from this table, and **the product's own table is asserted equal to it**."*
+> _"§13.21's ask, restated for the same reason as the two above: the artifact reports the reach
+> from this table, and **the product's own table is asserted equal to it**."_
 
 Nothing asserted it. That sentence is the same defect class as §13.24's docstring describing code
 that did not exist and as the workflow guard two hours earlier: **a claim and a check have to be
@@ -5117,8 +5150,8 @@ so on a clean runner it failed **at collection** and `Verify library` went red a
 `4317c70c`. Locally it passed, because the development environment has PyYAML for other reasons —
 which is exactly the story that file already tells once:
 
-> *"Not a test dependency: `fetch-artifact.py` imports it at module scope ... Its absence on a
-> clean runner is what the first CI run of `pnpm check` failed on."*
+> _"Not a test dependency: `fetch-artifact.py` imports it at module scope ... Its absence on a
+> clean runner is what the first CI run of `pnpm check` failed on."_
 
 The guard raises `AssertionError` rather than skipping when the import fails, on the argument that a
 control which skips is a control that is not there — so the omission failed the gate instead of
@@ -5142,13 +5175,13 @@ collection, reproducing the runner's failure exactly.
 
 ### 13.35.6 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `38910134192` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight) |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous; **and a general parity rule** — every duplicated declaration across the `cortex-eval`/`cortex-memory` boundary needs a source-level guard, of which §13.35 is one instance and not the last | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                                                                                                                                                                                                 | Needs provider      |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| **P0**   | Read run `38910134192` against §13.34.5's five predictions — abstentions first, then the mismatch count                                                                                                                                                                              | no (in flight)      |
+| P1       | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                                                                                                                                               | no                  |
+| P1       | The **no-signal control** (§13.22.8)                                                                                                                                                                                                                                                 | no (dispatch later) |
+| P2       | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous; **and a general parity rule** — every duplicated declaration across the `cortex-eval`/`cortex-memory` boundary needs a source-level guard, of which §13.35 is one instance and not the last | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                                                                      | no                  |
 
 ## 13.36 One rule for every table the arm restates, and the census that found four
 
@@ -5162,12 +5195,12 @@ comment claiming a check.
 The boundary is real and cannot be removed: `cortex-eval` measures `cortex-memory` and may not depend
 on it, so every shared vocabulary is restated in the arm. What existed beside each restatement:
 
-| Vocabulary | Product side | Arm side | Check before this section |
-| --- | --- | --- | --- |
-| ask names | `EvidenceAsk`, `ASK_ROUTES` | `ASK_ROUTES` | **none** — the comment said "the product's own table is asserted equal to it" |
-| relevance units | `RelevanceUnits` | `RELEVANCE_UNITS` | **none** — `session-fill` was hand-added to both in §13.31 and nothing would have noticed if it had not been |
-| prompt contracts | `PROMPT_CONTRACTS` | `PROMPT_CONTRACTS` | guarded, and the only one whose guard was real |
-| rendering reach | `RENDERING_BY_CONTRACT` | `RENDERING_ROUTES` | guarded, but **weaker than its own comment**: the product's source was read only to assert the constant *exists*, and the route list was compared against a literal, so a route added on the product side could not fail it |
+| Vocabulary       | Product side                | Arm side           | Check before this section                                                                                                                                                                                                   |
+| ---------------- | --------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ask names        | `EvidenceAsk`, `ASK_ROUTES` | `ASK_ROUTES`       | **none** — the comment said "the product's own table is asserted equal to it"                                                                                                                                               |
+| relevance units  | `RelevanceUnits`            | `RELEVANCE_UNITS`  | **none** — `session-fill` was hand-added to both in §13.31 and nothing would have noticed if it had not been                                                                                                                |
+| prompt contracts | `PROMPT_CONTRACTS`          | `PROMPT_CONTRACTS` | guarded, and the only one whose guard was real                                                                                                                                                                              |
+| rendering reach  | `RENDERING_BY_CONTRACT`     | `RENDERING_ROUTES` | guarded, but **weaker than its own comment**: the product's source was read only to assert the constant _exists_, and the route list was compared against a literal, so a route added on the product side could not fail it |
 
 Four instances of the same defect in one iteration is not a run of bad luck; it is a missing rule. It is
 also the same defect the campaign keeps meeting one layer over — §13.24's docstring describing code that
@@ -5185,12 +5218,12 @@ Three properties make it stronger than the guards it replaces:
 
 1. **It drives the option parser the dispatch uses.** The arm's accepted set is not read from its table
    but from the **error message it raises on a bad value**, because every reader in that file enumerates
-   its own keys into the message. That asserts the set the arm *behaves* on, which is what a dispatch
+   its own keys into the message. That asserts the set the arm _behaves_ on, which is what a dispatch
    meets — and the helper throws rather than comparing an empty set if a reader ever stops listing.
 2. **The route vocabulary comes from the product**, parsed out of its `ASK_ROUTES`, so a route name that
    exists only in the arm fails; and every ask that reaches anything must report a non-empty reach.
 3. **It supersedes §13.35's `tools/` guard, which is deleted.** That guard was correct, and it was in the
-   wrong place: the pattern already existed in this file, which can read the product's source *and* drive
+   wrong place: the pattern already existed in this file, which can read the product's source _and_ drive
    the parser, and one fact should have one check rather than two. §13.35's guard was correct for the
    reason it gave (it has to be written where both copies are visible); it just was not the only such
    place, and not the better one.
@@ -5215,13 +5248,13 @@ against a table. Replacing a false claim with an honest boundary is the whole of
 
 ### 13.36.5 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `38910134192` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight) |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority | Item                                                                                                    | Needs provider      |
+| -------- | ------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**   | Read run `38910134192` against §13.34.5's five predictions — abstentions first, then the mismatch count | no (in flight)      |
+| P1       | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                  | no                  |
+| P1       | The **no-signal control** (§13.22.8)                                                                    | no (dispatch later) |
+| P2       | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous                 | no                  |
+| P3       | `PATH` ordering, which waits on a rebuilt image                                                         | no                  |
 
 The parity rule closes the last item that the instrumentation defects of this iteration had left open. The
 remaining P2 pair is about what an artifact records about its own reductions, and neither blocks the
@@ -5274,17 +5307,17 @@ a quota, and it is what this section is about.
 matter — `created_at`, `last_accessed_at`, and size — and they answer the question the workflow's comment had
 settled by assertion:
 
-| cache id | size | created | last accessed | key suffix |
-| --- | --- | --- | --- | --- |
-| `7119462708` | 691,302,445 B | 2026-08-29T15:04:45Z | **2026-10-16T13:44:41Z** | *(none — the bare dataset hash)* |
-| `9054925741` | 1,001,342,784 B | 2026-10-16T15:02:12Z | 2026-10-16T15:02:12Z | `-38910134192` |
-| `9030207266` | 1,100,096,763 B | 2026-10-16T03:57:12Z | 2026-10-16T03:57:12Z | `-38828538851` |
-| `9009810001` | 1,099,782,579 B | 2026-10-15T18:04:12Z | 2026-10-15T18:04:12Z | `-38753835652` |
-| `8999392707` | 691,302,483 B | 2026-10-15T14:25:27Z | 2026-10-15T14:25:27Z | `-38725510400` |
-| `8971398298` | 1,094,577,381 B | 2026-10-15T02:09:32Z | 2026-10-15T02:09:32Z | `-38659495034` |
-| `8957778187` | 1,099,711,460 B | 2026-10-14T19:38:50Z | 2026-10-14T19:38:50Z | `-38595325261` |
-| `9050669935` | 216 B | 2026-10-16T13:30:00Z | 2026-10-16T13:30:00Z | `-38908223281` |
-| `8943694690` | 212 B | 2026-10-14T14:39:01Z | 2026-10-14T14:39:01Z | `-38582212737` |
+| cache id     | size            | created              | last accessed            | key suffix                       |
+| ------------ | --------------- | -------------------- | ------------------------ | -------------------------------- |
+| `7119462708` | 691,302,445 B   | 2026-08-29T15:04:45Z | **2026-10-16T13:44:41Z** | _(none — the bare dataset hash)_ |
+| `9054925741` | 1,001,342,784 B | 2026-10-16T15:02:12Z | 2026-10-16T15:02:12Z     | `-38910134192`                   |
+| `9030207266` | 1,100,096,763 B | 2026-10-16T03:57:12Z | 2026-10-16T03:57:12Z     | `-38828538851`                   |
+| `9009810001` | 1,099,782,579 B | 2026-10-15T18:04:12Z | 2026-10-15T18:04:12Z     | `-38753835652`                   |
+| `8999392707` | 691,302,483 B   | 2026-10-15T14:25:27Z | 2026-10-15T14:25:27Z     | `-38725510400`                   |
+| `8971398298` | 1,094,577,381 B | 2026-10-15T02:09:32Z | 2026-10-15T02:09:32Z     | `-38659495034`                   |
+| `8957778187` | 1,099,711,460 B | 2026-10-14T19:38:50Z | 2026-10-14T19:38:50Z     | `-38595325261`                   |
+| `9050669935` | 216 B           | 2026-10-16T13:30:00Z | 2026-10-16T13:30:00Z     | `-38908223281`                   |
+| `8943694690` | 212 B           | 2026-10-14T14:39:01Z | 2026-10-14T14:39:01Z     | `-38582212737`                   |
 
 `last_accessed_at == created_at` on **every** run-keyed entry. The one entry with a later `last_accessed_at`
 is the bare dataset hash, created on **29 August** and last read at `13:44:41Z` on 16 October — by every run
@@ -5309,8 +5342,8 @@ The bare key was a **stale name from before the save learned to append a run id*
 primary key hit, `restore-keys` were never reached, and the `-<run_id>` entries — the only ones the workflow
 could still write — were read by nothing.
 
-§13.24.2 made that change and stated its effect: *"the save key now carries `github.run_id` and the restore
-matches on the dataset-hash prefix, so the cache is written by every run and read by the next."* The first
+§13.24.2 made that change and stated its effect: _"the save key now carries `github.run_id` and the restore
+matches on the dataset-hash prefix, so the cache is written by every run and read by the next."_ The first
 half is true. The second half is what the `last_accessed_at` column above measures, and it is false — **the
 repair left the old key in the slot that decides**, and that slot is the primary key: a primary key that hits
 is a primary key that ends the search.
@@ -5319,11 +5352,11 @@ is a primary key that ends the search.
 
 Three consecutive runs, from their logs:
 
-| run | restored | saved | `Relevance index` built in | job |
-| --- | --- | --- | --- | --- |
-| `38753835652` | **170,095 vectors** (659 MB) | 1,099,782,579 B | 1h37m42s | 3h21m27s |
-| `38828538851` | **170,095 vectors** (659 MB) | 1,100,096,763 B | 1h49m23s | 3h40m48s |
-| `38910134192` | **170,095 vectors** (659 MB) | 1,001,342,784 B *(died inside the build)* | — | 1h17m33s |
+| run           | restored                     | saved                                     | `Relevance index` built in | job      |
+| ------------- | ---------------------------- | ----------------------------------------- | -------------------------- | -------- |
+| `38753835652` | **170,095 vectors** (659 MB) | 1,099,782,579 B                           | 1h37m42s                   | 3h21m27s |
+| `38828538851` | **170,095 vectors** (659 MB) | 1,100,096,763 B                           | 1h49m23s                   | 3h40m48s |
+| `38910134192` | **170,095 vectors** (659 MB) | 1,001,342,784 B _(died inside the build)_ | —                          | 1h17m33s |
 
 The same 170,095 every time, and a save 1.59x larger than the restore each time. The delta is the turns the
 run re-embedded because the entry holding them was under a key the restore did not ask for.
@@ -5332,7 +5365,7 @@ run re-embedded because the entry holding them was under a key the restore did n
 loop, over all 500 questions' haystacks (`Relevance index: 32000 scored (question, turn) pairs over 500
 questions at topK=64` is its completion line, and the failed run never reached it). **1h38m–1h49m of a
 ~3h20m job, half the wall clock, spent re-deriving vectors the previous run had already computed and saved.**
-It also sits *outside* the §13.30 wall-clock ceiling, which bounds the question loop: the budget could not
+It also sits _outside_ the §13.30 wall-clock ceiling, which bounds the question loop: the budget could not
 have ended a pass that was spending its time here even if it had been reached.
 
 And this is what drained the account. 11,476 requests × 3 paid runs of the same ~100k texts.
@@ -5343,12 +5376,12 @@ Repairing the key alone makes the **newest** entry the one every run reads. Two 
 were **216 and 212 bytes**, and their size is not an accident: `serializeEmbeddingCache` emits a 13-byte header
 for an empty map, and a compressed copy of that header is ~216 bytes.
 
-| run | size published | what the run did |
-| --- | --- | --- |
-| `38908223281` | 216 B | threw in `cortextMemoryArmOptions` (`run-ablation.ts:189`) — **before** the restore merged |
-| `38582212737` | 212 B | hung before its first embed |
+| run           | size published | what the run did                                                                           |
+| ------------- | -------------- | ------------------------------------------------------------------------------------------ |
+| `38908223281` | 216 B          | threw in `cortextMemoryArmOptions` (`run-ablation.ts:189`) — **before** the restore merged |
+| `38582212737` | 212 B          | hung before its first embed                                                                |
 
-Both reached the failure path, which calls `persistArmEmbeddingCache` on the way out *deliberately* — "a run
+Both reached the failure path, which calls `persistArmEmbeddingCache` on the way out _deliberately_ — "a run
 that dies at question 300 of 500 has still paid for its embeddings" — and both wrote an **empty** file over the
 691 MB file the workflow had just restored into the same directory. That call also destroyed the workspace
 copy, not merely the published one.
@@ -5360,7 +5393,7 @@ already dry**.
 `persistEmbeddingCache` now refuses to write an empty snapshot, and `bench/run.ts` — which had the same
 unconditional `writeFileSync` at two sites, in the other workflow that shares this cache — routes through the
 same function. **This reverses a previously documented decision**, and the reversal is on the record: the
-docstring that argued for writing the empty cache reasoned about the file *in the workspace*, and the file in
+docstring that argued for writing the empty cache reasoned about the file _in the workspace_, and the file in
 the workspace is not the copy that gets published. The dataset worry it raised is answered by the cache key
 rather than by the file — `hashFiles` is in the key, so a file embedded from an older dataset cannot be
 restored under a newer dataset's key, and a cross-dataset prefix restore only ever returns vectors for turn
@@ -5400,7 +5433,7 @@ comment is not a check.**
 - Both new guards were run against the **unfixed** tree first and failed with the message they were written to
   produce — the Python rule on `benchmark-cortex-memory.yml`, and the TypeScript rule on 8 tests including the
   one that used to assert the old behaviour (`persists an empty cache as a valid file rather than skipping the
-  write`), which is now its reverse.
+write`), which is now its reverse.
 - The new tests use real files in a temp directory and the real `serialize`/`deserialize` pair; no mocks, and
   the empty-snapshot rule is asserted from **bytes on disk** (`readFileSync(...).equals(before)`) rather than
   from a flag.
@@ -5414,14 +5447,14 @@ Run **`38939122161`** on `63c5ce9e`, dispatched **on purpose** against the accou
 §13.24.3's method: a run that is expected to fail is still the only way to observe which cache the restore
 resolves to, and either outcome is informative. Job `17:22:05Z` to `17:23:23Z` — **78 seconds**, `failure`.
 
-| acceptance criterion | what the log says |
-| --- | --- |
-| the prefix path fires at all | `Cache hit for restore-key: longmemeval-embedding-fc18…-38910134192` |
-| it resolves to the most recent entry | `Cache restored from key: …-38910134192`, `Cache Size: ~955 MB (1001342784 B)` |
-| the new save key is written | `Cache saved with key: …-38939122161-1` — `run_id` **and** `run_attempt` |
-| an empty snapshot is refused | `Embedding cache: nothing to persist, …/embedding-cache.bin left as restored` |
+| acceptance criterion                 | what the log says                                                                                              |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| the prefix path fires at all         | `Cache hit for restore-key: longmemeval-embedding-fc18…-38910134192`                                           |
+| it resolves to the most recent entry | `Cache restored from key: …-38910134192`, `Cache Size: ~955 MB (1001342784 B)`                                 |
+| the new save key is written          | `Cache saved with key: …-38939122161-1` — `run_id` **and** `run_attempt`                                       |
+| an empty snapshot is refused         | `Embedding cache: nothing to persist, …/embedding-cache.bin left as restored`                                  |
 | a dry account is named, not inferred | `embedding preflight failed against openai-compatible (model=embedding-3): … 429 … {"error":{"code":"1113"…}}` |
-| the failure record again | `progress: no question was started before the failure` |
+| the failure record again             | `progress: no question was started before the failure`                                                         |
 
 `Cache hit for **restore-key**` is the action's own wording for "the primary key missed and a prefix matched",
 which is the sentence this repository had never produced. Before the repair the same delivery was
@@ -5430,21 +5463,21 @@ which is the sentence this repository had never produced. Before the repair the 
 **78 seconds against 1h17m33s** for the same dry account before the repair. The difference is that the run no
 longer spends 77 minutes re-embedding before it discovers it cannot embed at all.
 
-**One residual, measured rather than hidden.** A run that dies at the preflight still has the *restored* file
+**One residual, measured rather than hidden.** A run that dies at the preflight still has the _restored_ file
 on disk, so the save step re-publishes ~1.0 GB under a fresh key. That is the new rule behaving as specified —
 "left as restored" — and it costs store churn rather than correctness: the re-published bytes are the ones the
 restore just read, the store is bounded by the 10 GB LRU budget, and a run does this at most once.
 
 ### 13.37.8 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The `ask: enumerated` reading. **Not produced**: §13.34.5's five predictions remain unadjudicated, and the account must be topped up before any dispatch can start | **yes** |
-| **P0 (done)** | The cache coupling: the restore's primary key now names the entry this run writes, and an empty snapshot is never published | no |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                               | Needs provider      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| **P0**        | The `ask: enumerated` reading. **Not produced**: §13.34.5's five predictions remain unadjudicated, and the account must be topped up before any dispatch can start | **yes**             |
+| **P0 (done)** | The cache coupling: the restore's primary key now names the entry this run writes, and an empty snapshot is never published                                        | no                  |
+| P1            | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                             | no                  |
+| P1            | The **no-signal control** (§13.22.8)                                                                                                                               | no (dispatch later) |
+| P2            | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous                                                                            | no                  |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                    | no                  |
 
 The experiment is where it was: `ask: enumerated` has not been measured, because the run that was to measure it
 died before question 1 of 500. What changed is that the run no longer has to re-derive half its inputs to get
@@ -5484,10 +5517,10 @@ the per-question records they are built from now are:
 The definitions were **recovered by requiring them to reproduce the published tables**, and the result is that
 **no single rule reproduces both**:
 
-| published table | numbers | reproduced exactly by |
-| --- | --- | --- |
+| published table             | numbers                                                           | reproduced exactly by                                                                               |
+| --------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | §13.26.4, run `38595325261` | `abstention 24 / plan 4 / soft 2 / numeric 31 / long 2 / other 7` | plan bucket applied, `numeric_mismatch` = **first** number on each side differs → **all six exact** |
-| §13.34.4, run `38828538851` | `wrong 47, of which 41 are numeric` | `plan_output` **folded into** `numeric_mismatch`; the taxonomy's own precedence gives **39** |
+| §13.34.4, run `38828538851` | `wrong 47, of which 41 are numeric`                               | `plan_output` **folded into** `numeric_mismatch`; the taxonomy's own precedence gives **39**        |
 
 The two records that separate them are the whole of the disagreement: a counting question answered with
 `Let me gather all mentions ... **Session 6**`. Its gold and its prose both carry numbers, so a rule without
@@ -5496,15 +5529,15 @@ the plan bucket scores it as a numeric mismatch; the taxonomy scores it as `plan
 The numeric rule itself is also pinned by calibration rather than by preference. Seven readings of "the numbers
 disagree" were tried against the detailed table:
 
-| reading | `numeric_mismatch` on run `38595325261` |
-| --- | --- |
-| **first number on each side differs** | **31** |
-| multisets differ (§13.26.4's literal wording) | 32 |
-| the answer's numbers are not a subset of the gold's | 32 |
-| the last numbers differ | 32 |
-| first differs or the counts differ | 32 |
-| no number appears on both sides | 28 |
-| the gold's numbers are not a subset of the answer's | 28 |
+| reading                                             | `numeric_mismatch` on run `38595325261` |
+| --------------------------------------------------- | --------------------------------------- |
+| **first number on each side differs**               | **31**                                  |
+| multisets differ (§13.26.4's literal wording)       | 32                                      |
+| the answer's numbers are not a subset of the gold's | 32                                      |
+| the last numbers differ                             | 32                                      |
+| first differs or the counts differ                  | 32                                      |
+| no number appears on both sides                     | 28                                      |
+| the gold's numbers are not a subset of the answer's | 28                                      |
 
 One reading out of seven gives 31, and it is the one adopted. The semantic story offered for it — a counting
 question leads with the quantity it asks about, on both sides — is a **plausibility and not the evidence**;
@@ -5516,10 +5549,10 @@ definition justified by a story would be indistinguishable from one that fits.
 The prediction is **not** amended. It was written against 41, 41 is reproducible, and the readout will report
 it. What changes is that the readout reports **both** and names which is which:
 
-| reading | run `38828538851` | what it is |
-| --- | --- | --- |
-| `numeric_mismatch`, `plan_output` folded in | **41** | §13.34.4's number, and the one prediction 2 is stated against |
-| `numeric_mismatch`, taxonomy precedence | **39** | the number whose rows define the vocabulary |
+| reading                                     | run `38828538851` | what it is                                                    |
+| ------------------------------------------- | ----------------- | ------------------------------------------------------------- |
+| `numeric_mismatch`, `plan_output` folded in | **41**            | §13.34.4's number, and the one prediction 2 is stated against |
+| `numeric_mismatch`, taxonomy precedence     | **39**            | the number whose rows define the vocabulary                   |
 
 Registering a second definition of a word the same document already uses is the risk this creates, so the
 tool prints both on every run rather than leaving the fold to a reader's memory. A prediction re-read against a
@@ -5551,21 +5584,21 @@ number it was not written against would be a redraw, which §4 forbids.
   of §13.26.4's row and the 41/39 pair of §13.34.4 from committed fixtures, so a later edit to any rule fails
   in CI instead of quietly producing a different number under the same name.
 - **One test of mine was wrong and is corrected rather than worked around.** I asserted `{groundTruth: '3',
-  answer: '2'}` with no `rawOutput` classifies as `other`; it is a numeric mismatch, because the rule that
+answer: '2'}` with no `rawOutput` classifies as `other`; it is a numeric mismatch, because the rule that
   reads it does not consult the raw output at all. The test now asserts what it was for — a missing raw output
   is not an abstention — and separately that a missing raw output does not suppress the rules that do not
   read it.
 
 ### 13.38.6 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `38941095220` (`ask: enumerated`, in flight since `17:37:56Z`) against §13.34.5 — abstentions first, then the mismatch count, **now with a committed classifier** | no (in flight) |
-| **P0 (done)** | The cache coupling (§13.37), and the taxonomy behind prediction 2 (§13.38) | no |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no |
-| P1 | The **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering". Its mechanism already exists (`cortex_memory_relevance: none`); what it needs is a registered dispatch | no (dispatch later) |
-| P2 | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                          | Needs provider      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**        | Read run `38941095220` (`ask: enumerated`, in flight since `17:37:56Z`) against §13.34.5 — abstentions first, then the mismatch count, **now with a committed classifier**                    | no (in flight)      |
+| **P0 (done)** | The cache coupling (§13.37), and the taxonomy behind prediction 2 (§13.38)                                                                                                                    | no                  |
+| P1            | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup)                                                                                    | no                  |
+| P1            | The **no-signal control** (§13.22.8): separates "the extra turns" from "the ordering". Its mechanism already exists (`cortex_memory_relevance: none`); what it needs is a registered dispatch | no (dispatch later) |
+| P2            | The writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous                                                                                                       | no                  |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                               | no                  |
 
 The prediction's instrument now exists, so the readout is executable the moment the run lands. Nothing else in
 the P0 row was blocked by the provider, which is why this section was writable while the run was in flight.
@@ -5578,15 +5611,15 @@ the P0 row was blocked by the provider, which is why this section was writable w
 
 The `ask: enumerated` dispatch ran `79m14s` and ended `failure`. Its artifact is 4,820 bytes.
 
-| time | event |
-| --- | --- |
-| `17:37:59` | embedding preflight `ok` — the balance is live |
-| `17:38:06` | **`Restored 239456 embedding vectors`** — the §13.37 repair reading a run-keyed key |
+| time       | event                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| `17:37:59` | embedding preflight `ok` — the balance is live                                            |
+| `17:38:06` | **`Restored 239456 embedding vectors`** — the §13.37 repair reading a run-keyed key       |
 | `18:04:57` | `Relevance index: 32000 scored …` — **26m51s**, after which 21,709 vectors had been added |
-| `18:28:47` | reference-pipeline `run=0` complete, 500/500 |
-| `18:44:07` | cortex-memory `run=0` complete, 500/500 |
-| `18:56:58` | reference-pipeline `run=1` **died at q=391** on `TimeoutError` |
-| `18:57:09` | `Embedding cache: persisted 261165 vectors` |
+| `18:28:47` | reference-pipeline `run=0` complete, 500/500                                              |
+| `18:44:07` | cortex-memory `run=0` complete, 500/500                                                   |
+| `18:56:58` | reference-pipeline `run=1` **died at q=391** on `TimeoutError`                            |
+| `18:57:09` | `Embedding cache: persisted 261165 vectors`                                               |
 
 **No prediction of §13.34.5 can be adjudicated**: the report is written only on success, and this run produced
 none. What it did produce is two defects and the first measurement of what the §13.37 repair actually bought.
@@ -5595,8 +5628,8 @@ none. What it did produce is two defects and the first measurement of what the �
 
 `239456` restored, `261165` persisted. The repair works — a run-keyed key was read for the first time — and the
 residual §13.37.7 recorded as "store churn rather than correctness" is **larger than that sentence implied**:
-the 21,709 missing vectors cost **26m51s** of the 79-minute run, because the entry restored was the *955 MB*
-one rather than the *1.10 GB* one.
+the 21,709 missing vectors cost **26m51s** of the 79-minute run, because the entry restored was the _955 MB_
+one rather than the _1.10 GB_ one.
 
 The mechanism is worth stating because it is a direct consequence of the other half of the repair: the
 acceptance run `38939122161` died at the preflight, left the restored file on disk, and republished it under a
@@ -5613,7 +5646,7 @@ restored can delay the cache's convergence by one full index build.**
 `benchmark-cortex-memory-partial.json`, written by the failure path exactly as §13.31 specifies:
 
 ```json
-{"reached": 390, "total": 500, "run": 1, "baselineAnswers": [390], "featureAnswers": []}
+{ "reached": 390, "total": 500, "run": 1, "baselineAnswers": [390], "featureAnswers": [] }
 ```
 
 **Repetition 0 had completed both sides at 500 of 500 each.** A complete, paired, N=500 measurement was in
@@ -5622,7 +5655,7 @@ memory when the failure path ran, and `featureAnswers` is an empty list.
 §13.31 closed the same loss one repetition earlier: run `38520676669` "completed repetitions 0 and 1 on both
 sides — two thousand graded answers — and died on `TypeError: terminated` at the start of repetition 2", and
 the repair gave the **dying** repetition a sink and a catch. The rule it wrote down was broader than the
-repair: *"a repetition is a measurement, and losing one silently is the defect that file exists to prevent."*
+repair: _"a repetition is a measurement, and losing one silently is the defect that file exists to prevent."_
 Only the dying one was ever durable.
 
 `PartialAblation` now carries `completed: CompletedPass[]` — every repetition that finished, both sides, in
@@ -5648,14 +5681,14 @@ response. The deadline is therefore still armed when the **caller** reads the bo
 when it fires rejects at the caller's `res.json()`, one frame above the retry loop, where the call has already
 been counted `clean` and no attempt is open to retry.
 
-§13.31's comment named this possibility verbatim — *"a single abort from somewhere the retry loop does not
-wrap"* — and listed it as the question that decides whether the right response is a re-dispatch or a code
+§13.31's comment named this possibility verbatim — _"a single abort from somewhere the retry loop does not
+wrap"_ — and listed it as the question that decides whether the right response is a re-dispatch or a code
 change. It is now answered, and it is a code change.
 
 **The repair**: an attempt is the complete exchange. The body is read inside the same `try` that issues the
 request (`withBufferedBody`), so a body-level abort is a transport failure like any other and takes the
 ordinary backoff and retry path; the response handed back is rebuilt from those bytes, so no caller changes.
-What is *not* changed: the deadline's value, the retry count, the backoff, and the status classification.
+What is _not_ changed: the deadline's value, the retry count, the backoff, and the status classification.
 
 ### 13.39.5 Verification
 
@@ -5676,14 +5709,14 @@ What is *not* changed: the deadline's value, the retry count, the backoff, and t
 
 ### 13.39.6 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Re-dispatch `ask: enumerated`. §13.34.5's five predictions are still unadjudicated; the instrument for prediction 2 exists (§13.38), and two of the three ways this dispatch could lose its work are now closed | **yes** (balance live) |
-| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); a finished repetition is durable (§13.39.3); the deadline covers the body (§13.39.4) | no |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup) | no |
-| P1 | The **no-signal control** (§13.22.8): the mechanism exists as `cortex_memory_relevance: none`; it needs a registered dispatch | no (dispatch later) |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                                            | Needs provider         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| **P0**        | Re-dispatch `ask: enumerated`. §13.34.5's five predictions are still unadjudicated; the instrument for prediction 2 exists (§13.38), and two of the three ways this dispatch could lose its work are now closed | **yes** (balance live) |
+| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); a finished repetition is durable (§13.39.3); the deadline covers the body (§13.39.4)                                                    | no                     |
+| P1            | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3: a registered change, not a cleanup)                                                                                                      | no                     |
+| P1            | The **no-signal control** (§13.22.8): the mechanism exists as `cortex_memory_relevance: none`; it needs a registered dispatch                                                                                   | no (dispatch later)    |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded; the inline reduction marker is ambiguous             | no                     |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                 | no                     |
 
 The three ways this run could have kept its work were: the cache (fixed in §13.37 — and it did keep it: `261165`
 vectors), the completed repetitions (fixed here), and the abort (fixed here). The next dispatch is the same
@@ -5698,25 +5731,25 @@ request with strictly more of its own work protected, which is the whole of what
 `ask: enumerated`, `19:12:17Z` → `21:05:50Z`, **1h53m33s**, `success`, artifact 6,917,136 bytes. The §13.37
 cache repair delivered what §13.39 predicted it would:
 
-| line | value |
-| --- | --- |
-| `Cache hit for restore-key` | `…-38941095220-1` — the previous run's entry, resolved by prefix ✓ |
-| `Restored` | **261,165** vectors |
+| line                              | value                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `Cache hit for restore-key`       | `…-38941095220-1` — the previous run's entry, resolved by prefix ✓       |
+| `Restored`                        | **261,165** vectors                                                      |
 | `Relevance index: 32000 scored …` | built in **26 seconds** — against **26m51s** in §13.39, a **62x** change |
-| `Embedding cache: persisted` | 261,354 (189 new) |
+| `Embedding cache: persisted`      | 261,354 (189 new)                                                        |
 
 **The index build is now effectively free.** The 79-minute run of §13.39 and this 114-minute run differ by a
 factor of 62 on the pass that used to dominate, and the difference is one repaired key.
 
 ### 13.40.2 The five predictions
 
-| # | registered | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR abstentions **22 → ≤ 12** | **33** | **falsified**, and with the opposite sign to the prediction |
-| **2** | MR numeric mismatches **41 of 47 → ≤ 25** | **not adjudicable** | the bucket names a population that no longer exists — see §13.40.3 |
-| **3** | MR **≥ 48%** (58/121) | **58/121 = 47.93%** | **met by the count spelling, missed by 0.07pp on the percentage spelling** — and not attributable to the contract (below) |
-| **4** | arm delta **> +25.75pp** | **+26.75pp** (0.7000 vs 0.4460; McNemar p = 3.911e-14; 207 won / 80 lost; over four repetitions min 0.700, max 0.728, median 0.711) | **met — the arm's best delta** |
-| **5** | IE, KU, TR within **±3 questions** of §13.26 | IE 133→132 (−1), KU 62→61 (−1), TR 72→70 (−2), ABS 29→29 (0) | **met, and clean** — §13.40.4 |
+| #     | registered                                   | observed                                                                                                                            | verdict                                                                                                                   |
+| ----- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **1** | MR abstentions **22 → ≤ 12**                 | **33**                                                                                                                              | **falsified**, and with the opposite sign to the prediction                                                               |
+| **2** | MR numeric mismatches **41 of 47 → ≤ 25**    | **not adjudicable**                                                                                                                 | the bucket names a population that no longer exists — see §13.40.3                                                        |
+| **3** | MR **≥ 48%** (58/121)                        | **58/121 = 47.93%**                                                                                                                 | **met by the count spelling, missed by 0.07pp on the percentage spelling** — and not attributable to the contract (below) |
+| **4** | arm delta **> +25.75pp**                     | **+26.75pp** (0.7000 vs 0.4460; McNemar p = 3.911e-14; 207 won / 80 lost; over four repetitions min 0.700, max 0.728, median 0.711) | **met — the arm's best delta**                                                                                            |
+| **5** | IE, KU, TR within **±3 questions** of §13.26 | IE 133→132 (−1), KU 62→61 (−1), TR 72→70 (−2), ABS 29→29 (0)                                                                        | **met, and clean** — §13.40.4                                                                                             |
 
 The register's own arithmetic is worth a line because it decided a verdict: it wrote **both** "≥ 48%" and
 "(58/121)", and those disagree by a rounding step — 58/121 is **47.934%**. One spelling is met and the other is
@@ -5728,7 +5761,7 @@ what happened, so the prediction was falsified by a direction the register had n
 
 ### 13.40.3 Why prediction 2 cannot be read, and it is not a formality
 
-`numeric_mismatch` requires the *answer* to carry a number. Under `enumerated` the arm's answer for MR is a
+`numeric_mismatch` requires the _answer_ to carry a number. Under `enumerated` the arm's answer for MR is a
 **349-character transcript** (§13.40.5), so the taxonomy classifies transcript shapes, not the model's
 arithmetic: `plan_output` 30, `numeric_mismatch` **0**, abstention 33. The §13.38 instrument is doing exactly
 what it is specified to do; the field it reads stopped meaning what the register assumed it means.
@@ -5741,21 +5774,21 @@ field is §13.40.5; re-reading this run through the fix is §13.40.7.
 
 This is the finding the register did not name, and it bounds every MR number above.
 
-| run | MR correct | gate-decided | gate-true | judge-decided | median answer length |
-| --- | --- | --- | --- | --- | --- |
-| `38595325261` `computed` | 51 | 86 | **37** | 35 | **3** |
-| `38828538851` `session-fill` | 52 | 89 | **36** | 32 | **2** |
-| **`38953157688` `enumerated`** | **58** | **33** | **0** | **88** | **349** |
+| run                            | MR correct | gate-decided | gate-true | judge-decided | median answer length |
+| ------------------------------ | ---------- | ------------ | --------- | ------------- | -------------------- |
+| `38595325261` `computed`       | 51         | 86           | **37**    | 35            | **3**                |
+| `38828538851` `session-fill`   | 52         | 89           | **36**    | 32            | **2**                |
+| **`38953157688` `enumerated`** | **58**     | **33**       | **0**     | **88**        | **349**              |
 
 Per capability, `computed` → `enumerated`:
 
-| capability | correct | gate (true) | judge | step headings in the raw |
-| --- | --- | --- | --- | --- |
-| ABS | 29 → 29 | 30 (29) → 30 (29) | 0 → 0 | 0 → 0 |
-| IE | 133 → 132 | 90 (75) → 88 (73) | 60 → 62 | 0 → 0 |
-| KU | 62 → 61 | 28 (26) → 27 (23) | 44 → 45 | 0 → 0 |
-| **MR** | **51 → 58** | **86 (37) → 33 (0)** | **35 → 88** | **0 → 117** |
-| TR | 72 → 70 | 35 (0) → 42 (0) | 92 → 85 | 0 → 0 |
+| capability | correct     | gate (true)          | judge       | step headings in the raw |
+| ---------- | ----------- | -------------------- | ----------- | ------------------------ |
+| ABS        | 29 → 29     | 30 (29) → 30 (29)    | 0 → 0       | 0 → 0                    |
+| IE         | 133 → 132   | 90 (75) → 88 (73)    | 60 → 62     | 0 → 0                    |
+| KU         | 62 → 61     | 28 (26) → 27 (23)    | 44 → 45     | 0 → 0                    |
+| **MR**     | **51 → 58** | **86 (37) → 33 (0)** | **35 → 88** | **0 → 117**              |
+| TR         | 72 → 70     | 35 (0) → 42 (0)      | 92 → 85     | 0 → 0                    |
 
 The gates are the mechanical channels -- normalized equality and the numeric gate -- and they decide **every
 verdict they can**. Under `enumerated` they decided 27% of MR's verdicts against 71% before, and **not one of
@@ -5806,13 +5839,13 @@ is answered conservatively, because the alternative is the defect this repair ex
 Applying the repaired parser to this run's raw outputs, offline, and re-running the real scorer with the judge
 stubbed so that only the gates can decide:
 
-| | gate-decided | gate-true | judge-decided | median answer |
-| --- | --- | --- | --- | --- |
-| as run | 33 | 0 | 88 | 349 |
-| **repaired parser** | **74** | **6** | **47** | **23** |
+|                     | gate-decided | gate-true | judge-decided | median answer |
+| ------------------- | ------------ | --------- | ------------- | ------------- |
+| as run              | 33           | 0         | 88            | 349           |
+| **repaired parser** | **74**       | **6**     | **47**        | **23**        |
 
 So the repair moves 41 verdicts back to the gates, and the gates verify **6** of them. `computed`'s gates
-verified 37 of 86, so the contract's own answer *format* -- "3 days" where the gold is "3", "the total is 45
+verified 37 of 86, so the contract's own answer _format_ -- "3 days" where the gold is "3", "the total is 45
 minutes" where it is "45" -- is also less mechanically checkable than a bare value. The repair recovers the
 structure; it does not restore like-for-like, and §13.40.7 says so before the number exists.
 
@@ -5820,13 +5853,13 @@ structure; it does not restore like-for-like, and §13.40.7 says so before the n
 
 Dispatched before this section was written, one variable against §13.40's configuration: the arm's parser.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| 1 | **The abstention count is unchanged at 33.** The abstention rule is read before the heading rule, so the repair cannot move it; a movement means the precedence is not what §13.40.5 says it is | outside 30–36 |
-| 2 | **The gate-decided share of MR rises to about 74 of 121** and the judge-decided share falls to about 47 | gate below 60 |
-| 3 | **MR's accuracy falls below 47.93%.** The judge stops being asked to accept a transcript; the offline bound is 6 gate-true, so unless the judge accepts almost all of the 47 it still sees, MR lands far below 58 correct | MR stays at or above 58 |
-| 4 | **The delta falls below +26.75pp**, most of the movement being MR's | delta stays at or above +26.75pp |
-| 5 | **IE, KU, TR and ABS are unchanged** — the repair is inert on them: 0 step headings each | any of them moves by more than 3 questions |
+| #   | prediction                                                                                                                                                                                                                | falsified if                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 1   | **The abstention count is unchanged at 33.** The abstention rule is read before the heading rule, so the repair cannot move it; a movement means the precedence is not what §13.40.5 says it is                           | outside 30–36                              |
+| 2   | **The gate-decided share of MR rises to about 74 of 121** and the judge-decided share falls to about 47                                                                                                                   | gate below 60                              |
+| 3   | **MR's accuracy falls below 47.93%.** The judge stops being asked to accept a transcript; the offline bound is 6 gate-true, so unless the judge accepts almost all of the 47 it still sees, MR lands far below 58 correct | MR stays at or above 58                    |
+| 4   | **The delta falls below +26.75pp**, most of the movement being MR's                                                                                                                                                       | delta stays at or above +26.75pp           |
+| 5   | **IE, KU, TR and ABS are unchanged** — the repair is inert on them: 0 step headings each                                                                                                                                  | any of them moves by more than 3 questions |
 
 **The reading rule, registered with the predictions.** If MR falls, then §13.34's contract did not improve MR:
 its 47.93% was a transcript being judged, and the honest comparison for `enumerated` becomes the repaired number
@@ -5849,15 +5882,15 @@ structure.
 
 ### 13.40.9 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The repaired-parse dispatch is **in flight**; §13.40.7's five predictions are registered | no (in flight) |
-| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); the finished-repetition loss (§13.39.3); the body-deadline hole (§13.39.4); the transcript answer (§13.40.5) | no |
-| **P1** | **The register's comparison discipline**: `ask` changes the answer's *shape*, which changes *which scorer decides*. Every future ask registration must state the expected gate/judge split, or its accuracy number cannot be attributed | no |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                                                                    | Needs provider      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**        | The repaired-parse dispatch is **in flight**; §13.40.7's five predictions are registered                                                                                                                                                | no (in flight)      |
+| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); the finished-repetition loss (§13.39.3); the body-deadline hole (§13.39.4); the transcript answer (§13.40.5)                                                    | no                  |
+| **P1**        | **The register's comparison discipline**: `ask` changes the answer's _shape_, which changes _which scorer decides_. Every future ask registration must state the expected gate/judge split, or its accuracy number cannot be attributed | no                  |
+| P1            | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                                                                                                  | no                  |
+| P1            | The **no-signal control** (§13.22.8)                                                                                                                                                                                                    | no (dispatch later) |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded                                                                               | no                  |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                         | no                  |
 
 **The first honest reading of `ask: enumerated` is that it is not yet a reading of `ask: enumerated`.** Two of
 its five predictions were answered (4 and 5, both met, one of them cleanly), one was falsified (1), one could
@@ -5873,27 +5906,27 @@ is the one that removes the channel from MR.
 `38985220145` on `40c753ed`, `00:12:19Z` → `01:56:18Z`, **1h44m48s**, `success`, artifact 6,906,159 bytes.
 §13.40.7's dispatch: the same `ask: enumerated` with one variable changed — the arm's parser.
 
-| line | value |
-| --- | --- |
-| `Cache hit for restore-key` | `…-38953157688-1` (the previous run's own entry) |
-| `Restored` | **261,354** vectors |
-| `Relevance index: 32000 scored …` | **23 seconds** — §13.40 was 26, §13.39 26m51s |
-| `Embedding cache: persisted` | 261,738 (**384 new**) |
+| line                              | value                                            |
+| --------------------------------- | ------------------------------------------------ |
+| `Cache hit for restore-key`       | `…-38953157688-1` (the previous run's own entry) |
+| `Restored`                        | **261,354** vectors                              |
+| `Relevance index: 32000 scored …` | **23 seconds** — §13.40 was 26, §13.39 26m51s    |
+| `Embedding cache: persisted`      | 261,738 (**384 new**)                            |
 
 The index build is now a fixed cost of half a minute, and the cache converges on its own: each run adds only the
 turns the previous one had not embedded (`261,165 → 261,354 → 261,738`).
 
 ### 13.41.2 All five predictions were met
 
-| # | registered in §13.40.7 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | abstentions unchanged at **33** | **35** | **met** (inside 30–36) — the precedence is what §13.40.5 says it is |
-| **2** | gate-decided ≈ **74**, judge ≈ **47**; falsified below 60 | gate **77**, judge **44** | **met** |
-| **3** | MR falls below **47.93%**; falsified if it stays ≥ 58 correct | **29/121 = 23.97%** | **met** |
-| **4** | delta falls below **+26.75pp** | **+23.25pp** | **met** |
-| **5** | ABS, IE, KU, TR unchanged within ±3 | ABS +1, IE −1, KU −1, TR **+3** | **met** |
+| #     | registered in §13.40.7                                        | observed                        | verdict                                                             |
+| ----- | ------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| **1** | abstentions unchanged at **33**                               | **35**                          | **met** (inside 30–36) — the precedence is what §13.40.5 says it is |
+| **2** | gate-decided ≈ **74**, judge ≈ **47**; falsified below 60     | gate **77**, judge **44**       | **met**                                                             |
+| **3** | MR falls below **47.93%**; falsified if it stays ≥ 58 correct | **29/121 = 23.97%**             | **met**                                                             |
+| **4** | delta falls below **+26.75pp**                                | **+23.25pp**                    | **met**                                                             |
+| **5** | ABS, IE, KU, TR unchanged within ±3                           | ABS +1, IE −1, KU −1, TR **+3** | **met**                                                             |
 
-Every prediction in a register of five was met, including the two that were predictions of a *fall*. The TR movement
+Every prediction in a register of five was met, including the two that were predictions of a _fall_. The TR movement
 of exactly +3 sits on the boundary of prediction 5's tolerance and is recorded as such rather than as a pass.
 
 **And the fall is real.** MR went 58 → 29 because the transcript stopped being judged: the gate-decided share rose
@@ -5905,13 +5938,13 @@ regression on the counting half of the benchmark.
 
 ### 13.41.3 The second defect, and it is older than the contract
 
-That conclusion was wrong, and what made it wrong was found by looking at *which* 92 records failed.
+That conclusion was wrong, and what made it wrong was found by looking at _which_ 92 records failed.
 
-| | count |
-| --- | --- |
-| MR non-correct | 92 |
-| of those, the answer is `null` (a decline) | 35 |
-| of those, answered and wrong | 57 |
+|                                                       | count  |
+| ----------------------------------------------------- | ------ |
+| MR non-correct                                        | 92     |
+| of those, the answer is `null` (a decline)            | 35     |
+| of those, answered and wrong                          | 57     |
 | of those, the answer's numbers differ from the gold's | **52** |
 
 Reading the 52, the largest group was not arithmetic errors at all:
@@ -5928,50 +5961,50 @@ it with the gold's total, and returned `false`.
 
 `numericAnswerVerdict` compares `extractLeadingNumber(predicted)` with `extractLeadingNumber(expected)`. That rule
 was correct for every run before this one, because every run before this one had bare answers: `computed`'s MR
-answers have a median length of **3 characters**, so the leading number *was* the answer. §13.40.5's repair made the
+answers have a median length of **3 characters**, so the leading number _was_ the answer. §13.40.5's repair made the
 answers ledgers, and a ledger leads with an operand.
 
 So the crash of MR from 58 to 29 was **two events with opposite signs**, not one:
 
-| | MR correct |
-| --- | --- |
-| run `38953157688`, transcript scored | 58 *(not a measurement of the contract)* |
-| run `38985220145`, repaired parser, unrepaired gate | 29 |
-| …the 28 records whose arithmetic is right but whose leading number is an operand | +28 |
-| **the same run re-graded under the repaired gate** | **57** |
+|                                                                                  | MR correct                               |
+| -------------------------------------------------------------------------------- | ---------------------------------------- |
+| run `38953157688`, transcript scored                                             | 58 _(not a measurement of the contract)_ |
+| run `38985220145`, repaired parser, unrepaired gate                              | 29                                       |
+| …the 28 records whose arithmetic is right but whose leading number is an operand | +28                                      |
+| **the same run re-graded under the repaired gate**                               | **57**                                   |
 
 ### 13.41.4 The rule, and why it is a widening rather than a trade
 
 An answer is accepted when **the gold's value is any number the answer states**:
 
 ```ts
-const p = extractLeadingNumber(predicted);   // still the deferral gate
+const p = extractLeadingNumber(predicted); // still the deferral gate
 const e = extractLeadingNumber(expected);
 if (p === undefined || e === undefined) return undefined;
 return statedNumbers(predicted).includes(e);
 ```
 
-For a bare answer this is *exactly* the old comparison — its leading number is one of the numbers it states — so it
+For a bare answer this is _exactly_ the old comparison — its leading number is one of the numbers it states — so it
 cannot reject anything the old rule accepted. It only ever accepts more. And the deferral is untouched: an answer
 that does not **lead** with a number still returns `undefined` and still reaches the judge, which is what keeps the
 archived runs comparable.
 
 **Measured, on all four archived rosters, offline:**
 
-| run | verdicts the rule changes | of which were recorded wrong |
-| --- | --- | --- |
-| `38595325261` `computed` | **0** | 0 |
-| `38828538851` `session-fill` | **0** | 0 |
-| `38953157688` `enum`, transcript scored | **0** | 0 |
-| `38985220145` `enum`, repaired parser | **28** | 28 — all false → true, all with correct arithmetic |
+| run                                     | verdicts the rule changes | of which were recorded wrong                       |
+| --------------------------------------- | ------------------------- | -------------------------------------------------- |
+| `38595325261` `computed`                | **0**                     | 0                                                  |
+| `38828538851` `session-fill`            | **0**                     | 0                                                  |
+| `38953157688` `enum`, transcript scored | **0**                     | 0                                                  |
+| `38985220145` `enum`, repaired parser   | **28**                    | 28 — all false → true, all with correct arithmetic |
 
 Three of the four are **byte-identical**, which is the property that makes the fourth readable rather than a redraw.
 The two rules that were tried and **rejected** are recorded because they failed a test rather than an argument:
 
-- *"the gold equals the first or the last number"* — rejected: it rejects `3 items out of 5` against a gold of `3`,
+- _"the gold equals the first or the last number"_ — rejected: it rejects `3 items out of 5` against a gold of `3`,
   and on run `38595325261` it turns 7 records from correct to incorrect (TR 6, KU 1). A rule that can reject is not
   a widening.
-- *"the gold appears among the numbers"* with the deferral dropped — rejected: it turns 1 further record per run
+- _"the gold appears among the numbers"_ with the deferral dropped — rejected: it turns 1 further record per run
   from correct to incorrect, because `extractLeadingNumber` is anchored to the start on purpose and an answer whose
   only number is mid-prose is not this gate's to decide.
 
@@ -5980,14 +6013,14 @@ The two rules that were tried and **rejected** are recorded because they failed 
 Re-grading run `38985220145` under the repaired gate, offline, with the judge's verdicts held fixed (the 28 records
 the gate now decides never reached the judge in the first place, so no judge verdict can move):
 
-| | recorded | re-graded |
-| --- | --- | --- |
-| ABS | 30/30 | 30/30 |
-| IE | 132/150 | 132/150 |
-| KU | 61/72 | 61/72 |
-| **MR** | **29/121 = 23.97%** | **57/121 = 47.11%** |
-| TR | 75/127 | 75/127 |
-| total | 327/500 | **355/500 = 0.7100** |
+|        | recorded            | re-graded            |
+| ------ | ------------------- | -------------------- |
+| ABS    | 30/30               | 30/30                |
+| IE     | 132/150             | 132/150              |
+| KU     | 61/72               | 61/72                |
+| **MR** | **29/121 = 23.97%** | **57/121 = 47.11%**  |
+| TR     | 75/127              | 75/127               |
+| total  | 327/500             | **355/500 = 0.7100** |
 
 **MR at 47.11% is +4.96pp over `computed`'s 42.15%**, and unlike the 58 of §13.40 it is a figure the mechanical
 channels verify: gate-true rises 3 → 31 of 77 gate-decided, so 40% of the gate's MR verdicts are provably correct
@@ -6005,13 +6038,13 @@ instrument's reading, not the contract's.
 
 Dispatched before this section was written, one variable against §13.41's configuration: the numeric gate.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| 1 | **MR lands at about 57 of 121 (47%)** — the 28 records the gate now accepts plus the 29 it already accepted | outside 51–63 |
-| 2 | **Gate-decided MR rises to about 77 of 121 and gate-true to about 31**, i.e. the channel split returns to roughly `computed`'s | gate below 60, or gate-true below 20 |
-| 3 | **The delta lands above +25.75pp** — the interval of §13.41.5 is `[+24.65, +28.85]` and `computed` is the number to beat | at or below +25.75pp |
-| 4 | **The other four capabilities are unchanged**: the rule changes 0 verdicts in any of them | any moves by more than 2 questions |
-| 5 | **Abstentions stay at about 35** (the parser is unchanged, so the decline rate cannot move) | outside 32–38 |
+| #   | prediction                                                                                                                     | falsified if                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| 1   | **MR lands at about 57 of 121 (47%)** — the 28 records the gate now accepts plus the 29 it already accepted                    | outside 51–63                        |
+| 2   | **Gate-decided MR rises to about 77 of 121 and gate-true to about 31**, i.e. the channel split returns to roughly `computed`'s | gate below 60, or gate-true below 20 |
+| 3   | **The delta lands above +25.75pp** — the interval of §13.41.5 is `[+24.65, +28.85]` and `computed` is the number to beat       | at or below +25.75pp                 |
+| 4   | **The other four capabilities are unchanged**: the rule changes 0 verdicts in any of them                                      | any moves by more than 2 questions   |
+| 5   | **Abstentions stay at about 35** (the parser is unchanged, so the decline rate cannot move)                                    | outside 32–38                        |
 
 **The reading rule, registered with the predictions.** Prediction 3 is the one that decides the configuration. If
 the delta lands above `+25.75pp`, `enumerated` with the repaired parser and gate becomes the arm's best measured
@@ -6034,19 +6067,19 @@ keep repairing it.
   cannot exist. The first `pnpm check` after the change reported `metrics.ts 99.31%` and the fix was the arm, not
   the threshold.
 - The inertness claim is a **test**, not a sentence: `is a no-op for an answer whose leading number is its only
-  number` compares the new verdict against the leading-number comparison on the shapes the archived runs contain.
+number` compares the new verdict against the leading-number comparison on the shapes the archived runs contain.
 
 ### 13.41.8 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The repaired-gate dispatch is **in flight**; §13.41.6's five predictions are registered, and prediction 3 decides the configuration | no (in flight) |
-| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); the finished-repetition loss (§13.39.3); the body-deadline hole (§13.39.4); the transcript answer (§13.40.5); the numeric gate's operand (§13.41.4) | no |
-| **P1** | **The register's comparison discipline** (§13.40.9): `ask` changes the answer's *shape*, which changes *which scorer decides*. It now has a second instance — the shape also changes which *number* the gate reads — so every ask registration must state both the expected channel split and the answer's form | no |
-| P1 | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P1 | The **no-signal control** (§13.22.8) | no (dispatch later) |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                                                                                                                                            | Needs provider      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**        | The repaired-gate dispatch is **in flight**; §13.41.6's five predictions are registered, and prediction 3 decides the configuration                                                                                                                                                                             | no (in flight)      |
+| **P0 (done)** | The cache coupling (§13.37); the taxonomy behind prediction 2 (§13.38); the finished-repetition loss (§13.39.3); the body-deadline hole (§13.39.4); the transcript answer (§13.40.5); the numeric gate's operand (§13.41.4)                                                                                     | no                  |
+| **P1**        | **The register's comparison discipline** (§13.40.9): `ask` changes the answer's _shape_, which changes _which scorer decides_. It now has a second instance — the shape also changes which _number_ the gate reads — so every ask registration must state both the expected channel split and the answer's form | no                  |
+| P1            | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                                                                                                                                                                          | no                  |
+| P1            | The **no-signal control** (§13.22.8)                                                                                                                                                                                                                                                                            | no (dispatch later) |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded                                                                                                                                                       | no                  |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                                                                                                 | no                  |
 
 The iteration's shape is worth stating plainly: a register of five predictions was met in full, and its central
 number was still wrong — because the instrument that produced it was reading an operand. **A prediction can be met
@@ -6063,10 +6096,10 @@ records the number was computed from.
 number did not come from `tools/classify-raw-outputs.py`. It came from an inline analysis of `answer`, because the
 committed tool reports something else on the same run:
 
-| | `numeric_mismatch` | `plan_output` |
-| --- | --- | --- |
-| run `38985220145`, as the tool reports it | **0** | **57** |
-| the same run, read from `answer` | **52** | **0** |
+|                                           | `numeric_mismatch` | `plan_output` |
+| ----------------------------------------- | ------------------ | ------------- |
+| run `38985220145`, as the tool reports it | **0**              | **57**        |
+| the same run, read from `answer`          | **52**             | **0**         |
 
 **A document and its instrument disagreeing about the central number of a section is the defect this campaign keeps
 meeting**, and §13.38 is the section that built the instrument. It calibrated six rules against two rosters and
@@ -6081,12 +6114,12 @@ rosters the answer and the raw output are the same string, so the question could
 - **plan_output**, via `PLAN_OUTPUT.match(rawOutput)`, which recognises "Let me gather" / "Step 1" at the start.
 
 Both are statements about **what the model wrote**, and both were right while the arm returned what the model wrote.
-§13.40.5 changed that: `parseAnswer` now returns the model's *answer*, and under `ask: enumerated` the raw output
+§13.40.5 changed that: `parseAnswer` now returns the model's _answer_, and under `ask: enumerated` the raw output
 is a transcript that opens with the contract's own Step 1 line. So `PLAN_OUTPUT` matched every response that echoed
 the contract — **57 of 92** — and the plan bucket swallowed the arithmetic before `numeric_mismatch` could see it.
 
-That is the same failure as §13.40.4 one layer down. There, the *ask* changed the answer's shape and thereby which
-**scorer** decided; here, the *parser* changed the answer's shape and thereby which **field** the taxonomy read.
+That is the same failure as §13.40.4 one layer down. There, the _ask_ changed the answer's shape and thereby which
+**scorer** decided; here, the _parser_ changed the answer's shape and thereby which **field** the taxonomy read.
 Both are statements about a measurement whose instrument was calibrated on a different shape.
 
 ### 13.42.3 The repair, and the shape of the guarantee
@@ -6105,12 +6138,12 @@ defect in the report and says so.
 
 ### 13.42.4 The invariant, measured on all four rosters
 
-| run | `answer` vs `rawOutput` | census before | census after |
-| --- | --- | --- | --- |
-| `38595325261` `computed` | identical, or `answer` null | 24/4/2/31/2/7 | **24/4/2/31/2/7** |
-| `38828538851` `session-fill` | identical, or `answer` null | 22/2/0/39/0/6 | **22/2/0/39/0/6** |
-| `38953157688` `enum`, transcript scored | identical | 33/30/0/0/0/0 | **33/30/0/0/0/0** |
-| `38985220145` `enum`, repaired parser | **differ** | 35/57/0/0/0/0 | **35/0/0/52/1/4** |
+| run                                     | `answer` vs `rawOutput`     | census before | census after      |
+| --------------------------------------- | --------------------------- | ------------- | ----------------- |
+| `38595325261` `computed`                | identical, or `answer` null | 24/4/2/31/2/7 | **24/4/2/31/2/7** |
+| `38828538851` `session-fill`            | identical, or `answer` null | 22/2/0/39/0/6 | **22/2/0/39/0/6** |
+| `38953157688` `enum`, transcript scored | identical                   | 33/30/0/0/0/0 | **33/30/0/0/0/0** |
+| `38985220145` `enum`, repaired parser   | **differ**                  | 35/57/0/0/0/0 | **35/0/0/52/1/4** |
 
 On the first three the two fields are the same value (or the answer is null), which is why the field change is a
 **no-op** for every published table. On the fourth the fields differ, which is why the change is a repair there.
@@ -6126,7 +6159,7 @@ Three tests from §13.38 failed against the repair, and every one of them failed
 coincidence**:
 
 - `test_every_abstention_shape_is_the_abstention_shape` passed `answer: '2'` with a raw output ending in the
-  sentinel — asserting that a sentinel in the text *is* a decline regardless of what the arm returned. It now passes
+  sentinel — asserting that a sentinel in the text _is_ a decline regardless of what the arm returned. It now passes
   `answer: None`, which is what a decline is.
 - `test_a_plan_output_is_its_own_shape` and `test_step_1_is_a_plan_output` passed `answer: '4'` and `answer: '2'`
   alongside a plan-shaped raw output — asserting that a plan in the text outranks an answer that is a number. They
@@ -6164,15 +6197,15 @@ opposite of what happened.
 
 After §13.42 the tool has two reports that classify **two different strings**:
 
-| invocation | field | run `38985220145`, MR |
-| --- | --- | --- |
-| default | `rawOutput` — the text the model wrote | `bare 2 / prose-then-token 33 / other 86` |
+| invocation   | field                                   | run `38985220145`, MR                                                          |
+| ------------ | --------------------------------------- | ------------------------------------------------------------------------------ |
+| default      | `rawOutput` — the text the model wrote  | `bare 2 / prose-then-token 33 / other 86`                                      |
 | `--failures` | `answer` — the string the scorer graded | `abstention 35 / plan_output 0 / numeric_mismatch 52 / long_prose 1 / other 4` |
 
 On every roster published before §13.40 those two strings are the same value, so the tables agree and the
 distinction is invisible. On an enumerated run they disagree about **86 of 121** records — and neither report said
 which string it had counted. A reader who took the first table for the second would conclude that 71% of MR's
-answers are neither numeric nor prose, when the truth is that 71% of its *raw outputs* are transcripts.
+answers are neither numeric nor prose, when the truth is that 71% of its _raw outputs_ are transcripts.
 
 **This is the fifth instance of one class in this campaign and the cheapest to close**: §13.24's docstring, §13.34.6's
 text-grep, §13.36's rendering comment, §13.37's workflow comment, and §13.40–13.42's field confusion. A report is a
@@ -6190,10 +6223,10 @@ field: answer -- the string the scorer graded (null where the arm declined)
 And the `--failures` definitions block, which still described the rules as reading `rawOutput`, now describes them
 as they are:
 
-| shape | was | is |
-| --- | --- | --- |
-| `abstention` | "the last non-empty line of rawOutput is INSUFFICIENT_EVIDENCE" | "the arm returned no answer (`answer` is null)" |
-| `plan_output` | "rawOutput opens with 'Let me gather' or 'Step 1'" | "the answer opens with …" |
+| shape          | was                                                               | is                                              |
+| -------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| `abstention`   | "the last non-empty line of rawOutput is INSUFFICIENT_EVIDENCE"   | "the arm returned no answer (`answer` is null)" |
+| `plan_output`  | "rawOutput opens with 'Let me gather' or 'Step 1'"                | "the answer opens with …"                       |
 | `soft_refusal` | "a refusal written out in prose, in the answer or the raw output" | "a refusal written out in prose, in the answer" |
 
 **The definitions block is what a reader uses to decide whether a table means what they need**, and it was the one
@@ -6222,14 +6255,14 @@ failure this campaign keeps finding.
 
 Four consecutive sections quoted numbers from a run through a script written for that section and not committed:
 
-| section | the script | what it produced |
-| --- | --- | --- |
-| §13.38 | ad-hoc, never committed | the `41 of 47` behind §13.34.5's prediction 2 — **the prediction could not be re-derived** |
-| §13.41 | inline, `python3 - <<'PY'` | the `52` numeric mismatches, and the transition matrix across four rosters |
-| §13.42 | inline | the same 52, computed a second time |
-| §13.43 | inline | the two fields' disagreement counts |
+| section | the script                 | what it produced                                                                           |
+| ------- | -------------------------- | ------------------------------------------------------------------------------------------ |
+| §13.38  | ad-hoc, never committed    | the `41 of 47` behind §13.34.5's prediction 2 — **the prediction could not be re-derived** |
+| §13.41  | inline, `python3 - <<'PY'` | the `52` numeric mismatches, and the transition matrix across four rosters                 |
+| §13.42  | inline                     | the same 52, computed a second time                                                        |
+| §13.43  | inline                     | the two fields' disagreement counts                                                        |
 
-§13.38 is the section that repaired the *first* of these, and its own repair was reproduced by a script with the
+§13.38 is the section that repaired the _first_ of these, and its own repair was reproduced by a script with the
 same defect. **A number is only as durable as the code that produced it**, and the pattern also means that every
 section re-derives the same quantities from scratch — the `total`, the per-capability counts, the taxonomy — with a
 different chance of getting them right each time.
@@ -6304,26 +6337,26 @@ reading is reproducible by anyone who has the artifact, which is what §13.38 wa
 `3df6a7d7`, `05:21:25Z` → `07:07:48Z`, **1h46m23s**, `success`, artifact 6,902,025 bytes. One variable against
 §13.41's dispatch: the numeric gate.
 
-| line | value |
-| --- | --- |
-| `Cache hit for restore-key` | `…-38985220145-1` |
-| `Restored` | **261,738** vectors |
-| `Relevance index: 32000 scored …` | **18 seconds** |
-| `Embedding cache: persisted` | 262,318 (**580 new**) |
-| **`scorer channels`** | `structural 1444, exact 791, numeric 340, judge 1425/4000 = 35.6%` |
+| line                              | value                                                              |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `Cache hit for restore-key`       | `…-38985220145-1`                                                  |
+| `Restored`                        | **261,738** vectors                                                |
+| `Relevance index: 32000 scored …` | **18 seconds**                                                     |
+| `Embedding cache: persisted`      | 262,318 (**580 new**)                                              |
+| **`scorer channels`**             | `structural 1444, exact 791, numeric 340, judge 1425/4000 = 35.6%` |
 
 The last line is §13.40.9's instrument **reporting itself for the first time**. Until this run the channel split
 had to be reconstructed offline from the artifact with a stubbed judge, twice; now the run says it.
 
 ### 13.45.2 The five predictions
 
-| # | registered in §13.41.6 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR ≈ 57 of 121 (falsified outside 51–63) | **62** | **met** |
-| **2** | gate ≈ 77 decided, ≈ 31 true (falsified below 60 / 20) | gate **68**, gate-true **31** | **met** |
-| **3** | delta **above +25.75pp** — the number `computed` must be beaten by | **+26.95pp** | **met** |
-| **4** | the other four capabilities within 2 questions | ABS +0, IE **+2**, KU −1, TR **−2** | **met**, two on the boundary |
-| **5** | abstentions ≈ 35, falsified outside 32–38 | **28** | **falsified** |
+| #     | registered in §13.41.6                                             | observed                            | verdict                      |
+| ----- | ------------------------------------------------------------------ | ----------------------------------- | ---------------------------- |
+| **1** | MR ≈ 57 of 121 (falsified outside 51–63)                           | **62**                              | **met**                      |
+| **2** | gate ≈ 77 decided, ≈ 31 true (falsified below 60 / 20)             | gate **68**, gate-true **31**       | **met**                      |
+| **3** | delta **above +25.75pp** — the number `computed` must be beaten by | **+26.95pp**                        | **met**                      |
+| **4** | the other four capabilities within 2 questions                     | ABS +0, IE **+2**, KU −1, TR **−2** | **met**, two on the boundary |
+| **5** | abstentions ≈ 35, falsified outside 32–38                          | **28**                              | **falsified**                |
 
 **Prediction 3 is the one that decides the configuration, and it is met.** The registered statistic reads
 `+26.95pp` (baseline avg 0.4495, feature avg 0.719 over four repetitions spanning 0.714–0.726; McNemar
@@ -6332,26 +6365,26 @@ repaired parser and the repaired gate, is the arm's best measured configuration.
 
 ### 13.45.3 The table the whole iteration was for
 
-| capability | `computed` §13.26 | `enumerated` transcript §13.40 | `enumerated` + parser §13.41 | **`enumerated` + parser + gate §13.45** |
-| --- | --- | --- | --- | --- |
-| ABS | 29/30 | 29/30 | 30/30 | 29/30 |
-| IE | 133/150 | 132/150 | 132/150 | **135/150** |
-| KU | 62/72 | 61/72 | 61/72 | 61/72 |
-| **MR** | **51/121 = 42.15%** | 58/121 = 47.93% ✗ | 29/121 = 23.97% | **62/121 = 51.24%** |
-| TR | 72/127 | 70/127 | 75/127 | 70/127 |
-| total | 347/500 | 350/500 | 327/500 | **357/500 = 71.40%** |
-| **delta** | **+25.75pp** | +26.75pp ✗ | +23.25pp | **+26.95pp** |
+| capability | `computed` §13.26   | `enumerated` transcript §13.40 | `enumerated` + parser §13.41 | **`enumerated` + parser + gate §13.45** |
+| ---------- | ------------------- | ------------------------------ | ---------------------------- | --------------------------------------- |
+| ABS        | 29/30               | 29/30                          | 30/30                        | 29/30                                   |
+| IE         | 133/150             | 132/150                        | 132/150                      | **135/150**                             |
+| KU         | 62/72               | 61/72                          | 61/72                        | 61/72                                   |
+| **MR**     | **51/121 = 42.15%** | 58/121 = 47.93% ✗              | 29/121 = 23.97%              | **62/121 = 51.24%**                     |
+| TR         | 72/127              | 70/127                         | 75/127                       | 70/127                                  |
+| total      | 347/500             | 350/500                        | 327/500                      | **357/500 = 71.40%**                    |
+| **delta**  | **+25.75pp**        | +26.75pp ✗                     | +23.25pp                     | **+26.95pp**                            |
 
 The ✗ marks the reading that was not a measurement: §13.40's 58 was a transcript being accepted by a judge, and
 §13.41.2's decision to treat it as evidence was the iteration's first mistake. **MR is now 51.24%, +9.09pp over
 `computed`**, and it is a figure the mechanical channels verify rather than a judge's tolerance:
 
-| configuration | MR correct | gate decided | gate **true** | judge decided | judge true |
-| --- | --- | --- | --- | --- | --- |
-| `computed` | 51 | 86 | **37** | 35 | 14 |
-| `enumerated`, transcript | 58 | 33 | **0** | 88 | 58 |
-| `enumerated` + parser | 29 | 77 | **31** | 44 | 26 |
-| **`enumerated` + parser + gate** | **62** | **68** | **31** | **53** | **31** |
+| configuration                    | MR correct | gate decided | gate **true** | judge decided | judge true |
+| -------------------------------- | ---------- | ------------ | ------------- | ------------- | ---------- |
+| `computed`                       | 51         | 86           | **37**        | 35            | 14         |
+| `enumerated`, transcript         | 58         | 33           | **0**         | 88            | 58         |
+| `enumerated` + parser            | 29         | 77           | **31**        | 44            | 26         |
+| **`enumerated` + parser + gate** | **62**     | **68**       | **31**        | **53**        | **31**     |
 
 The transcript row is the one that reads as a success and is not: `gate true 0` means **not one** of MR's verdicts
 was decided by a mechanical comparison. The last row is the configuration: 31 provable verdicts from the gate and
@@ -6377,16 +6410,16 @@ from one roster.
 
 ### 13.45.5 What the arm now is
 
-| | value |
-| --- | --- |
-| `ask` | `enumerated` — `computed` plus a two-step contract on the multi-session route alone |
-| `relevanceSignal` | `retrieval` |
-| `relevanceUnits` | `turn` |
-| `relevanceTopK` | 64 |
-| `promptContract` | `abstention-evidence-blocks` |
-| registered delta | **+26.95pp**, McNemar p = 6.053e-15, N = 500, 4 repetitions |
-| per capability | ABS 96.67%, IE 90.00%, KU 84.72%, **MR 51.24%**, TR 55.12% |
-| cost | 1h46m per run, of which 18s is the relevance index and 580 embeddings |
+|                   | value                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `ask`             | `enumerated` — `computed` plus a two-step contract on the multi-session route alone |
+| `relevanceSignal` | `retrieval`                                                                         |
+| `relevanceUnits`  | `turn`                                                                              |
+| `relevanceTopK`   | 64                                                                                  |
+| `promptContract`  | `abstention-evidence-blocks`                                                        |
+| registered delta  | **+26.95pp**, McNemar p = 6.053e-15, N = 500, 4 repetitions                         |
+| per capability    | ABS 96.67%, IE 90.00%, KU 84.72%, **MR 51.24%**, TR 55.12%                          |
+| cost              | 1h46m per run, of which 18s is the relevance index and 580 embeddings               |
 
 Compared with §13.26's run (`+25.75pp`, 3h21m, 170,095 re-embedded vectors every time), the arm is **+1.20pp more
 accurate and roughly twice as cheap per run** — the second of which is §13.37's repair, and it is what makes four
@@ -6407,14 +6440,14 @@ repetitions of a single-variable dispatch affordable at all.
 
 ### 13.45.7 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0 (done)** | The configuration is **decided**: `enumerated` + repaired parser + repaired gate, `+26.95pp`, MR 51.24%. §10.3's provisional marker is lifted | no |
-| **P1** | The **no-signal control** (§13.22.8): `relevanceSignal: none` against this configuration separates "the ranking" from "the room". Its mechanism exists and is the arm's default, so this is a one-variable dispatch | yes |
-| **P1** | **Register tolerances from repetition spread, not from one observation** (§13.45.4). A prediction whose range is narrower than the configuration's own variance cannot be falsified by a mechanism | no |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3 — a registered dispatch, not a cleanup) | no |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                                                | Needs provider |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| **P0 (done)** | The configuration is **decided**: `enumerated` + repaired parser + repaired gate, `+26.95pp`, MR 51.24%. §10.3's provisional marker is lifted                                                                       | no             |
+| **P1**        | The **no-signal control** (§13.22.8): `relevanceSignal: none` against this configuration separates "the ranking" from "the room". Its mechanism exists and is the arm's default, so this is a one-variable dispatch | yes            |
+| **P1**        | **Register tolerances from repetition spread, not from one observation** (§13.45.4). A prediction whose range is narrower than the configuration's own variance cannot be falsified by a mechanism                  | no             |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3 — a registered dispatch, not a cleanup)                                                                                                       | no             |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build (§13.39.2); the writer's reduced manifest is not uploaded                                                           | no             |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                     | no             |
 
 **Three readings of one configuration, and only the third is a measurement.** `+26.75pp` was a judge accepting
 transcripts; `+23.25pp` was a gate reading operands; `+26.95pp` is both instruments reading what they were built to
@@ -6435,21 +6468,21 @@ whose contribution has never been isolated.
 The mechanism is the arm's **default**, so this is a one-variable dispatch with nothing to implement:
 
 ```yaml
-cortex_memory_relevance: ''     # empty == none == the arrival-order prefix
+cortex_memory_relevance: '' # empty == none == the arrival-order prefix
 ```
 
 ### 13.46.2 What the arm is spending on, and what it is not known to be spending on
 
-| input | value | isolated by |
-| --- | --- | --- |
-| `ask` | `enumerated` | §13.45: `+26.95pp`, MR 51.24% |
-| `relevanceUnits` | `turn` | §13.32–13.34: `session-fill` and `session` both lost |
-| `relevanceSignal` | `retrieval` | **never isolated** |
-| `relevanceTopK` | 64 | §13.26's recall measurement, not an ablation |
-| `promptContract` | `abstention-evidence-blocks` | §12.5, held |
+| input             | value                        | isolated by                                          |
+| ----------------- | ---------------------------- | ---------------------------------------------------- |
+| `ask`             | `enumerated`                 | §13.45: `+26.95pp`, MR 51.24%                        |
+| `relevanceUnits`  | `turn`                       | §13.32–13.34: `session-fill` and `session` both lost |
+| `relevanceSignal` | `retrieval`                  | **never isolated**                                   |
+| `relevanceTopK`   | 64                           | §13.26's recall measurement, not an ablation         |
+| `promptContract`  | `abstention-evidence-blocks` | §12.5, held                                          |
 
 `retrieval` costs a relevance index over 32,000 (question, turn) pairs per run. §13.37's cache repair cut that
-from 1h38m to 18 seconds, which makes the *cost* irrelevant and leaves the *question*: does ranking the turns beat
+from 1h38m to 18 seconds, which makes the _cost_ irrelevant and leaves the _question_: does ranking the turns beat
 taking the ones that arrived first?
 
 ### 13.46.3 Registration
@@ -6458,11 +6491,11 @@ taking the ones that arrived first?
 including `ablation_runs: 4` and `temperature: 0`, so the comparison is against `+26.95pp` and not against a
 single repetition.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **The ranking's contribution is measurable**: the delta differs from **+26.95pp** by more than **3pp** | within ±3pp of +26.95pp |
-| **2** | **If it is measurable, MR is where it shows**: MR differs from 62/121 by at least 5 questions | a delta outside ±3pp with MR within 4 of 62 |
-| **3** | **`none` is not catastrophically worse.** A collapse to the arrival-order prefix would mean the ranking is doing the arm's whole job, and the configuration would then be a retrieval system with a prompt contract bolted on | delta below **+15pp** |
+| #     | prediction                                                                                                                                                                                                                    | falsified if                                |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **1** | **The ranking's contribution is measurable**: the delta differs from **+26.95pp** by more than **3pp**                                                                                                                        | within ±3pp of +26.95pp                     |
+| **2** | **If it is measurable, MR is where it shows**: MR differs from 62/121 by at least 5 questions                                                                                                                                 | a delta outside ±3pp with MR within 4 of 62 |
+| **3** | **`none` is not catastrophically worse.** A collapse to the arrival-order prefix would mean the ranking is doing the arm's whole job, and the configuration would then be a retrieval system with a prompt contract bolted on | delta below **+15pp**                       |
 
 **The tolerance is 3pp because it is six times the configuration's own variance**, which is the lesson §13.45.4
 records: `retrieval`'s four repetitions span `0.714–0.726`, so one repetition's standard deviation is about
@@ -6478,7 +6511,7 @@ what the arm is buying.
 carrying the arm, and the honest configuration drops it: 18 seconds per run and an embedding dependency for the
 index, in exchange for nothing measurable. If it is met and `none` is lower, the redundancy of ranking to the
 two-step contract is the next question. If it is met and `none` is **higher**, then similarity ranking is
-*costing* the arm accuracy — which would be the most consequential result of the campaign, because the whole
+_costing_ the arm accuracy — which would be the most consequential result of the campaign, because the whole
 retrieval stack would be the thing to reconsider rather than the thing to lean on.
 
 ### 13.46.4 The dispatch script can now say what it changed
@@ -6490,17 +6523,17 @@ eleven at §13.45's values **in the record**, which editing the table would eras
 `tools/dispatch-cortex-memory-ab.py` gains `--set KEY=VALUE`, and the property that matters is that a **typo fails
 loudly**:
 
-| input | result |
-| --- | --- |
-| `--set cortex_memory_relevance=none` | applied; the log marks the line with `*` |
-| `--set cortex_memory_relevance=` | applied as the empty string — a real value, not a missing one |
-| `--set cortex_memory_releavnce=none` | **`SystemExit`** naming the typo and listing the keys that exist |
-| `--set cortex_memory_relevance` | **`SystemExit`** naming the required `KEY=VALUE` shape |
-| `--set a=1 --set a=2` | **`SystemExit`**: with last-wins the argument order would decide the experiment |
+| input                                | result                                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------- |
+| `--set cortex_memory_relevance=none` | applied; the log marks the line with `*`                                        |
+| `--set cortex_memory_relevance=`     | applied as the empty string — a real value, not a missing one                   |
+| `--set cortex_memory_releavnce=none` | **`SystemExit`** naming the typo and listing the keys that exist                |
+| `--set cortex_memory_relevance`      | **`SystemExit`** naming the required `KEY=VALUE` shape                          |
+| `--set a=1 --set a=2`                | **`SystemExit`**: with last-wins the argument order would decide the experiment |
 
 A silently-ignored override would dispatch the **previous** configuration while the commit message described the
 new one, and the run would then be evidence for an experiment nobody ran. That is §13.34.6's defect class — a
-check that is not a check — applied to the thing that decides what an experiment *is*.
+check that is not a check — applied to the thing that decides what an experiment _is_.
 
 One further test holds the other direction: **every key in `INPUTS` must be declared by the workflow**, parsed
 from the workflow file rather than from a copy. A key renamed on one side and not the other would otherwise fail at
@@ -6516,14 +6549,14 @@ dispatch, where GitHub answers with a 422 whose message names nothing useful.
 
 ### 13.46.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The no-signal control is **dispatched**; §13.46.3's three predictions are registered | yes (in flight) |
-| **P0 (done)** | The configuration (§13.45): `enumerated` + repaired parser + repaired gate, `+26.95pp` | no |
-| **P1** | Tolerances from repetition spread rather than from one observation (§13.45.4) — **applied** here | no |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                           | Needs provider  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | The no-signal control is **dispatched**; §13.46.3's three predictions are registered                                                           | yes (in flight) |
+| **P0 (done)** | The configuration (§13.45): `enumerated` + repaired parser + repaired gate, `+26.95pp`                                                         | no              |
+| **P1**        | Tolerances from repetition spread rather than from one observation (§13.45.4) — **applied** here                                               | no              |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                         | no              |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no              |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                | no              |
 
 ---
 
@@ -6555,17 +6588,17 @@ Three other test files reference this script and all of them pass. Two of them �
 `apply_overrides` and `parse_argv` are pure functions and importing them is how you test a pure function.
 
 **So the defect had been in the file since it was written and was invisible to a test suite that had
-never imported it.** The suite covered the script's *contents* and never its *module*.
+never imported it.** The suite covered the script's _contents_ and never its _module_.
 
 ### 13.47.3 The repair
 
 The read moves to first use, behind the accessor, with the value cached:
 
-| operation | before | after |
-| --- | --- | --- |
-| `import` the script from anywhere | **required a token** | succeeds; `_TOKEN is None` |
-| `apply_overrides(INPUTS, [...])` | unreachable without a token | works |
-| `token()` | read at import | reads on first call, caches, exits with a sentence |
+| operation                         | before                      | after                                              |
+| --------------------------------- | --------------------------- | -------------------------------------------------- |
+| `import` the script from anywhere | **required a token**        | succeeds; `_TOKEN is None`                         |
+| `apply_overrides(INPUTS, [...])`  | unreachable without a token | works                                              |
+| `token()`                         | read at import              | reads on first call, caches, exits with a sentence |
 
 Only `req` needs a credential, so only `req` pays for one. And the accessor now distinguishes two problems
 it used to conflate:
@@ -6617,10 +6650,10 @@ is not a checkout.
 
 Two of those are the **same defect** as §13.47 and one is an artefact:
 
-| file | what the top level did | verdict |
-| --- | --- | --- |
-| `dispatch-b7-ab.py` | `TOKEN = token()` — reads `.git/config` | **real** |
-| `push-via-api.py` | `REPO, BRANCH = _origin()` — runs `git remote get-url origin`, and `TOKEN = token()` | **real** |
+| file                  | what the top level did                                                                                               | verdict                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `dispatch-b7-ab.py`   | `TOKEN = token()` — reads `.git/config`                                                                              | **real**                 |
+| `push-via-api.py`     | `REPO, BRANCH = _origin()` — runs `git remote get-url origin`, and `TOKEN = token()`                                 | **real**                 |
 | `inject-b7-cohort.py` | nothing; the `AttributeError` is `@dataclass` looking itself up in `sys.modules`, which the loader had not populated | **artefact of the test** |
 
 Neither of the two real ones had failed, and the reason is the same as §13.47's: **no test imported them.**
@@ -6633,11 +6666,11 @@ Both files move their reads behind cached accessors. `push-via-api.py` gains `or
 keeps `token()`; `dispatch-b7-ab.py` gains `token()`. And all three accessors now **distinguish the problems they
 used to conflate**, because each needs a different fix:
 
-| situation | before | after |
-| --- | --- | --- |
-| no `.git` directory | `FileNotFoundError` about a path | "run this from the repository root" |
+| situation              | before                                  | after                                                                                              |
+| ---------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| no `.git` directory    | `FileNotFoundError` about a path        | "run this from the repository root"                                                                |
 | `.git` but no `origin` | `CalledProcessError` about a subprocess | "run this from the repository root, in a checkout whose origin is the repository you mean to push" |
-| `origin` but no token | `SystemExit` (already correct) | unchanged |
+| `origin` but no token  | `SystemExit` (already correct)          | unchanged                                                                                          |
 
 The middle one is the newly-named case, and it matters because `_origin`'s docstring already records a near-miss:
 a push from the wrong checkout would have pushed cortex-docs content into the cortex repository. **"Which
@@ -6689,11 +6722,11 @@ is to ask the question in a place where the answer is not prearranged.
 
 ### 13.49.1 The sequence
 
-| commit | what failed | what it was |
-| --- | --- | --- |
-| (`c1f3dcb9`, `4317c70c`) | PyYAML not declared | a test's **dependency** was not in the requirements |
-| `9fcb7fe1` (§13.47) | `SystemExit: no oauth2 token` on ten tests | the **code** read a credential at import |
-| `c980a5d8` (§13.48) | the same message on **two of the four tests I had just added** | the **tests** read a credential |
+| commit                   | what failed                                                    | what it was                                         |
+| ------------------------ | -------------------------------------------------------------- | --------------------------------------------------- |
+| (`c1f3dcb9`, `4317c70c`) | PyYAML not declared                                            | a test's **dependency** was not in the requirements |
+| `9fcb7fe1` (§13.47)      | `SystemExit: no oauth2 token` on ten tests                     | the **code** read a credential at import            |
+| `c980a5d8` (§13.48)      | the same message on **two of the four tests I had just added** | the **tests** read a credential                     |
 
 The third one is the one worth recording, because of what it was: four tests asserting the accessors still work,
 three of them written to say `len(module.token()) > 20` and `module.repo() == 'AgentiX-E/cortex'` against **this**
@@ -6707,7 +6740,7 @@ credential can only run on a developer's machine.
 
 A user token is the most available thing in this environment and its absence is invisible from inside it. The
 question "would this pass without the token" is not one that occurs while writing an assertion that starts
-`assert module.token()` — the assertion *looks* like a test of the code, and it is a test of the machine.
+`assert module.token()` — the assertion _looks_ like a test of the code, and it is a test of the machine.
 
 The same is true of every environment fact: a working directory, a git remote, a running server, a populated
 cache. **A test that reads one of them describes the environment and calls it a property.**
@@ -6756,28 +6789,28 @@ recorded reason to be run before a push rather than after a red CI.
 `9fcb7fe1`, `07:24:20Z` → `08:56:32Z`, **1h32m12s**, `success`, artifact 6,718,654 bytes. One variable against
 §13.45's configuration: `cortex_memory_relevance` from `retrieval` to `none`.
 
-| line | value |
-| --- | --- |
-| `Cache hit for restore-key` | `…-39005914398-1` |
-| `Restored` | 262,318 vectors |
-| `Embedding cache: persisted` | 262,456 (**138 new**) |
-| `scorer channels` | `structural 2884, exact 348, numeric 220, judge 548/4000 = 13.7%` |
+| line                         | value                                                             |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `Cache hit for restore-key`  | `…-39005914398-1`                                                 |
+| `Restored`                   | 262,318 vectors                                                   |
+| `Embedding cache: persisted` | 262,456 (**138 new**)                                             |
+| `scorer channels`            | `structural 2884, exact 348, numeric 220, judge 548/4000 = 13.7%` |
 
 The channel line said it before the accuracy did: `structural` **doubled** against §13.45's 1444, and `structural`
 is the door an absent answer leaves by.
 
 ### 13.50.2 The result
 
-| | `retrieval` §13.45 | `none` §13.50 | difference |
-| --- | --- | --- | --- |
-| delta | **+26.95pp** | **−37.35pp** | **−64.30pp** |
-| feature accuracy | 0.719 | **0.0635** | |
-| ABS | 29/30 | 30/30 | +1 |
-| IE | 135/150 | **1/150** | −134 |
-| KU | 61/72 | **0/72** | −62 |
-| MR | 62/121 | **1/121** | −61 |
-| TR | 70/127 | **0/127** | −70 |
-| MR abstentions | 28 | **113** | +85 |
+|                  | `retrieval` §13.45 | `none` §13.50 | difference   |
+| ---------------- | ------------------ | ------------- | ------------ |
+| delta            | **+26.95pp**       | **−37.35pp**  | **−64.30pp** |
+| feature accuracy | 0.719              | **0.0635**    |              |
+| ABS              | 29/30              | 30/30         | +1           |
+| IE               | 135/150            | **1/150**     | −134         |
+| KU               | 61/72              | **0/72**      | −62          |
+| MR               | 62/121             | **1/121**     | −61          |
+| TR               | 70/127             | **0/127**     | −70          |
+| MR abstentions   | 28                 | **113**       | +85          |
 
 **The arm scores 6.35%.** Its non-ABS capabilities are 2 of 470 questions. It does not degrade — it stops
 answering: 113 of MR's 121 questions decline, and the declines are correct declines to make, because the evidence
@@ -6785,11 +6818,11 @@ the question is about is not in the window.
 
 ### 13.50.3 The three predictions
 
-| # | registered | observed | verdict |
-| --- | --- | --- | --- |
+| #     | registered                                                            | observed     | verdict                                       |
+| ----- | --------------------------------------------------------------------- | ------------ | --------------------------------------------- |
 | **1** | the ranking's contribution is measurable, `\|delta − 26.95pp\| > 3pp` | **−64.30pp** | **met**, by a factor of 21 over the tolerance |
-| **2** | if measurable, MR is where it shows: ≥ 5 questions | MR −61 | **met literally, and the framing was wrong** |
-| **3** | `none` is not catastrophically worse: delta not below +15pp | **−37.35pp** | **falsified** |
+| **2** | if measurable, MR is where it shows: ≥ 5 questions                    | MR −61       | **met literally, and the framing was wrong**  |
+| **3** | `none` is not catastrophically worse: delta not below +15pp           | **−37.35pp** | **falsified**                                 |
 
 Prediction 3 was written as the guard against exactly this and it is the one that failed, which is the register
 working: I thought a collapse was unlikely enough to be worth naming, and it happened.
@@ -6811,7 +6844,7 @@ a good alternative**. Those are different questions and the difference matters:
 
 - as evidence that `retrieval` is load-bearing, **−64.30pp is conclusive**: nothing else in the configuration
   changed, and the arm stopped working.
-- as a **measurement of the ranking's contribution**, it is an **upper bound**. A control that put *random* turns
+- as a **measurement of the ranking's contribution**, it is an **upper bound**. A control that put _random_ turns
   in the window, or one that deliberately included the gold session, would land between `none` and `retrieval`, and
   the ranking's contribution against those is smaller than 64.30pp by an amount this run cannot tell us.
 
@@ -6825,18 +6858,18 @@ answers** on this benchmark, and that a similarity ranking is what makes the arm
 18 seconds per run and an embedding dependency for nothing measurable — does not apply, because prediction 1 was
 met in the opposite direction from the one that rule anticipated.
 
-| input | status after this run |
-| --- | --- |
-| `ask: enumerated` | held; §13.45 |
+| input                        | status after this run                                               |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `ask: enumerated`            | held; §13.45                                                        |
 | `relevanceSignal: retrieval` | **load-bearing**, established here: without it the arm scores 6.35% |
-| `relevanceUnits: turn` | held; §13.32–13.34 |
-| `relevanceTopK: 64` | **the next thing worth isolating**, and see below |
-| `promptContract` | held |
+| `relevanceUnits: turn`       | held; §13.32–13.34                                                  |
+| `relevanceTopK: 64`          | **the next thing worth isolating**, and see below                   |
+| `promptContract`             | held                                                                |
 
 **`relevanceTopK: 64` is the natural follow-on and this run says why.** If arrival order fails because 64
 chronological turns do not contain the evidence, then the width is doing real work alongside the ranking, and the
 interesting question is where the knee is: §13.26 measured `recall = 0.921` at `k = 50` with a flattened curve, but
-that was recall over the *index*, not accuracy over the *arm*. A `k = 16` run against this configuration would say
+that was recall over the _index_, not accuracy over the _arm_. A `k = 16` run against this configuration would say
 whether the ranking's value depends on being able to choose from a wide field or whether a narrow ranked window is
 as good — and it is one variable.
 
@@ -6852,14 +6885,14 @@ as good — and it is one variable.
 
 ### 13.50.7 Status after this section
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0 (done)** | The configuration (§13.45) and its load-bearing input (§13.50): `enumerated` + `retrieval` + `turn`, `+26.95pp`, MR 51.24% | no |
-| **P1** | **`relevanceTopK`**: a `k = 16` run against this configuration, to separate "the ranking chooses well" from "the ranking needs a wide field to choose from" (§13.50.5) | yes |
-| **P1** | A **better no-signal control**: random turns, or a window that includes the gold session, to turn §13.50.4's upper bound into a contribution | yes |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                   | Needs provider |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| **P0 (done)** | The configuration (§13.45) and its load-bearing input (§13.50): `enumerated` + `retrieval` + `turn`, `+26.95pp`, MR 51.24%                                             | no             |
+| **P1**        | **`relevanceTopK`**: a `k = 16` run against this configuration, to separate "the ranking chooses well" from "the ranking needs a wide field to choose from" (§13.50.5) | yes            |
+| **P1**        | A **better no-signal control**: random turns, or a window that includes the gold session, to turn §13.50.4's upper bound into a contribution                           | yes            |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                                 | no             |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded                         | no             |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                        | no             |
 
 **The campaign's oldest open question is answered, and the answer is bigger than the question.** §13.22.8 asked
 whether the arm's gain came from the extra turns or from the ordering. It came from the ordering — so completely
@@ -6874,13 +6907,13 @@ that without it there is no arm left to measure: 6.35%, two correct answers outs
 Run `39005914398`'s roster, classified by `tools/classify-raw-outputs.py --failures` (§13.42's field — the graded
 answer, not the transcript):
 
-| capability | correct | abstention | numeric | long_prose | other | plan |
-| --- | --- | --- | --- | --- | --- | --- |
-| ABS | 29/30 | — | — | — | 1 | — |
-| IE | 135/150 | **13** | — | 2 | — | — |
-| KU | 61/72 | — | 7 | 1 | 3 | — |
-| **MR** | **62/121** | **28** | **24** | 1 | 6 | — |
-| **TR** | **70/127** | **41** | 5 | 9 | 1 | 1 |
+| capability | correct    | abstention | numeric | long_prose | other | plan |
+| ---------- | ---------- | ---------- | ------- | ---------- | ----- | ---- |
+| ABS        | 29/30      | —          | —       | —          | 1     | —    |
+| IE         | 135/150    | **13**     | —       | 2          | —     | —    |
+| KU         | 61/72      | —          | 7       | 1          | 3     | —    |
+| **MR**     | **62/121** | **28**     | **24**  | 1          | 6     | —    |
+| **TR**     | **70/127** | **41**     | 5       | 9          | 1     | 1    |
 
 **82 of the 143 failures are declines**, and they are not evenly spread: TR declines on 41 of its 57 failures
 (72%), MR on 28 of 59 (47%), IE on 13 of 15 (87%). The campaign has spent six sections on MR's arithmetic and the
@@ -6891,14 +6924,14 @@ largest single failure mode is a model that says it cannot answer.
 Every record carries `goldOverlap: {carried, total}` — the share of the question's gold turns that were in the
 window the reader was shown. Across all 500 questions:
 
-| gold coverage | n | correct | declined |
-| --- | --- | --- | --- |
-| 0% | 2 | 0.0% | **100.0%** |
-| 1–24% | 43 | 37.2% | 46.5% |
-| 25–49% | 120 | 55.0% | 20.0% |
-| 50–74% | 183 | 77.0% | 13.1% |
-| 75–99% | 99 | 82.8% | 12.1% |
-| **100%** | 53 | **98.1%** | **0.0%** |
+| gold coverage | n   | correct   | declined   |
+| ------------- | --- | --------- | ---------- |
+| 0%            | 2   | 0.0%      | **100.0%** |
+| 1–24%         | 43  | 37.2%     | 46.5%      |
+| 25–49%        | 120 | 55.0%     | 20.0%      |
+| 50–74%        | 183 | 77.0%     | 13.1%      |
+| 75–99%        | 99  | 82.8%     | 12.1%      |
+| **100%**      | 53  | **98.1%** | **0.0%**   |
 
 **Coverage predicts accuracy monotonically, from 0% to 98.1%, and at full coverage there are no declines at all.**
 That is the strongest single relationship this campaign has measured, and it says the arm's ceiling is set by what
@@ -6906,11 +6939,11 @@ reaches the window.
 
 Split by outcome:
 
-| | MR median coverage | TR median coverage |
-| --- | --- | --- |
-| correct | 54.2% | 58.3% |
-| **declined** | **52.8%** | **39.7%** |
-| answered wrong | 37.0% | 45.8% |
+|                | MR median coverage | TR median coverage |
+| -------------- | ------------------ | ------------------ |
+| correct        | 54.2%              | 58.3%              |
+| **declined**   | **52.8%**          | **39.7%**          |
+| answered wrong | 37.0%              | 45.8%              |
 
 **The two capabilities' declines have different causes, and that is the finding:**
 
@@ -6939,13 +6972,13 @@ turns are among the candidates at all, and 100% coverage is worth 98.1% accuracy
 
 **One variable**: `cortex_memory_relevance_top_k` from **64** to **256**. Every other input held at §13.45's values.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **Median gold coverage rises.** MR from 52.8% (declines) / 54.2% (correct) to at least **60%**, and TR's declines from 39.7% to at least **50%** | MR median below 56%, or TR's decline median below 45% |
-| **2** | **The delta rises above +26.95pp**, because coverage is the mechanism and the table is monotone | at or below +26.95pp |
-| **3** | **The declines fall**, most of the drop in TR: TR's 41 declines fall to at most **30**, MR's 28 to at most **24** | either unchanged or higher |
-| **4** | **The other capabilities do not regress beyond 3 questions**: widening a pool should not take anything away | any of ABS, IE, KU falls by more than 3 |
-| **5** | **The index build stays under 5 minutes.** It was 18s at `k = 64`; `k = 256` is four times the per-question candidates and the same 32,000 scored pairs | over 5 minutes |
+| #     | prediction                                                                                                                                              | falsified if                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **1** | **Median gold coverage rises.** MR from 52.8% (declines) / 54.2% (correct) to at least **60%**, and TR's declines from 39.7% to at least **50%**        | MR median below 56%, or TR's decline median below 45% |
+| **2** | **The delta rises above +26.95pp**, because coverage is the mechanism and the table is monotone                                                         | at or below +26.95pp                                  |
+| **3** | **The declines fall**, most of the drop in TR: TR's 41 declines fall to at most **30**, MR's 28 to at most **24**                                       | either unchanged or higher                            |
+| **4** | **The other capabilities do not regress beyond 3 questions**: widening a pool should not take anything away                                             | any of ABS, IE, KU falls by more than 3               |
+| **5** | **The index build stays under 5 minutes.** It was 18s at `k = 64`; `k = 256` is four times the per-question candidates and the same 32,000 scored pairs | over 5 minutes                                        |
 
 **Prediction 5 is a guard rather than a hypothesis**, and it is registered because the alternative is discovering a
 20-minute index in the run's timing rather than in advance. The embedding cache is converged (`262,456` vectors,
@@ -6967,15 +7000,15 @@ monotonicity has some other cause that this dispatch cannot see.
 
 ### 13.51.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | `relevanceTopK: 256` is **dispatched**; §13.51.4's five predictions are registered | yes (in flight) |
-| **P0 (done)** | The configuration (§13.45), its load-bearing signal (§13.50), and now the measured reason `k` is the constraint (§13.51.2) | no |
-| **P1** | **MR's declines are not a coverage problem** (§13.51.2): 52.8% coverage against 54.2% on correct answers. Once `k` is settled, the next question is why a model shown the same amount of evidence declines on some questions and answers on others — a contract question, and the same shape as §13.40's | yes |
-| **P1** | A better no-signal control (§13.50.4): random turns, to turn −64.30pp from an upper bound into a contribution | yes |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                                                                                                                                     | Needs provider  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | `relevanceTopK: 256` is **dispatched**; §13.51.4's five predictions are registered                                                                                                                                                                                                                       | yes (in flight) |
+| **P0 (done)** | The configuration (§13.45), its load-bearing signal (§13.50), and now the measured reason `k` is the constraint (§13.51.2)                                                                                                                                                                               | no              |
+| **P1**        | **MR's declines are not a coverage problem** (§13.51.2): 52.8% coverage against 54.2% on correct answers. Once `k` is settled, the next question is why a model shown the same amount of evidence declines on some questions and answers on others — a contract question, and the same shape as §13.40's | yes             |
+| **P1**        | A better no-signal control (§13.50.4): random turns, to turn −64.30pp from an upper bound into a contribution                                                                                                                                                                                            | yes             |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                                                                                                                                                                   | no              |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded                                                                                                                                                           | no              |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                                                                                                          | no              |
 
 **The uncomfortable part, stated plainly:** §13.50.5 named the wrong next variable, one section ago, on a theory
 rather than a measurement. The coverage table took twenty minutes to produce and would have saved a dispatch.
@@ -7016,11 +7049,11 @@ by capability and outcome, median coverage
 §13.51.2 compared MR and TR, because those are the two capabilities the campaign has been working on. The tool
 prints every capability, and **IE's gap is twice TR's**:
 
-| capability | correct | declined | gap |
-| --- | --- | --- | --- |
-| **IE** | 83.3% | **42.9%** | **40.4 points** |
-| TR | 58.3% | 39.7% | 18.6 points |
-| MR | 54.2% | 52.8% | 1.4 points |
+| capability | correct | declined  | gap             |
+| ---------- | ------- | --------- | --------------- |
+| **IE**     | 83.3%   | **42.9%** | **40.4 points** |
+| TR         | 58.3%   | 39.7%     | 18.6 points     |
+| MR         | 54.2%   | 52.8%     | 1.4 points      |
 
 **Thirteen of IE's fifteen failures are declines, and their median coverage is 42.9% against 83.3% on the
 questions IE answers.** So IE's declines are the same phenomenon as TR's, at twice the magnitude:
@@ -7067,12 +7100,12 @@ comparison is right and the conclusion drawn from it was too strong. Two further
 
 **But the same coverage is worth 67% elsewhere in the same capability.** MR's correct rate by coverage band:
 
-| coverage | MR | TR | IE | KU |
-| --- | --- | --- | --- | --- |
-| 1–24% | 2/14 = 14% | 3/18 = 17% | 3/5 = 60% | 2/2 |
-| 25–49% | 20/46 = 43% | 19/40 = 48% | 9/15 = 60% | 11/12 = 92% |
+| coverage   | MR              | TR          | IE              | KU          |
+| ---------- | --------------- | ----------- | --------------- | ----------- |
+| 1–24%      | 2/14 = 14%      | 3/18 = 17%  | 3/5 = 60%       | 2/2         |
+| 25–49%     | 20/46 = 43%     | 19/40 = 48% | 9/15 = 60%      | 11/12 = 92% |
 | **50–74%** | **28/42 = 67%** | 37/54 = 69% | **30/32 = 94%** | 35/43 = 81% |
-| 75–99% | 12/19 = 63% | 9/13 = 69% | 43/47 = 91% | 13/15 = 87% |
+| 75–99%     | 12/19 = 63%     | 9/13 = 69%  | 43/47 = 91%     | 13/15 = 87% |
 
 **MR's declines sit at a 52.8% median — inside the band where MR answers 67% correctly.** If the 28 declines
 behaved like the rest of their band, **19 of them would be right**. They are not a coverage story; they are a
@@ -7080,26 +7113,26 @@ behaved like the rest of their band, **19 of them would be right**. They are not
 
 The same arithmetic prices the other two:
 
-| capability | declines | median coverage | its band's rate | expected recoverable |
-| --- | --- | --- | --- | --- |
-| MR | 28 | 52.8% | 67% | **≈ 19** |
-| TR | 41 | 39.7% | 48% | **≈ 20** |
-| IE | 13 | 42.9% | 60% | **≈ 8** |
-| **total** | **82** | | | **≈ 47 questions ≈ +9.4pp** |
+| capability | declines | median coverage | its band's rate | expected recoverable        |
+| ---------- | -------- | --------------- | --------------- | --------------------------- |
+| MR         | 28       | 52.8%           | 67%             | **≈ 19**                    |
+| TR         | 41       | 39.7%           | 48%             | **≈ 20**                    |
+| IE         | 13       | 42.9%           | 60%             | **≈ 8**                     |
+| **total**  | **82**   |                 |                 | **≈ 47 questions ≈ +9.4pp** |
 
 **So the largest recoverable loss in the configuration is not retrieval and not arithmetic — it is 82 declines
 whose evidence is worth roughly 47 correct answers at the rate the same coverage already achieves.**
 
 ### 13.53.2 What this does not license
 
-It does not license "tell the model to answer more". The declines are *correct* decisions on the questions whose
+It does not license "tell the model to answer more". The declines are _correct_ decisions on the questions whose
 evidence really is missing — §13.51.2's 0-coverage band declines 100% of the time and is right to. A contract that
 pushes the model to answer would convert those into wrong answers, and the 47 above is an **upper bound** computed
 by assuming every decline behaves like its band's average, which includes questions far better covered than they
 are.
 
 The distinction that would make this actionable is the one §13.40's contract already draws — **decline only when the
-enumerated list is empty** — against what it currently permits, which is declining when the list is *incomplete*.
+enumerated list is empty** — against what it currently permits, which is declining when the list is _incomplete_.
 Those are different instructions and the run cannot tell them apart from the outside.
 
 ### 13.53.3 Why this is written now and not dispatched now
@@ -7119,7 +7152,7 @@ that is already in flight.
 ### 13.53.4 Verification
 
 - Every number comes from the roster of run `39005914398` read two ways: `python3 tools/readout-arm-run.py
-  --coverage` for the band and median tables, and `failure_census` for the decline counts. No inline arithmetic is
+--coverage` for the band and median tables, and `failure_census` for the decline counts. No inline arithmetic is
   quoted that the tool does not reproduce.
 - The "expected recoverable" column multiplies a count by a rate from the same band of the same capability. It is
   labelled an **upper bound** because it assumes each decline would have behaved like its band's average, which is
@@ -7134,25 +7167,25 @@ that is already in flight.
 `795077a9`, `11:05:26Z` → `12:56:27Z`, **1h51m01s**, `success`, artifact 6,911,452 bytes. One variable against
 §13.45's configuration: `relevanceTopK` from 64 to 256.
 
-| line | value |
-| --- | --- |
-| `Restored` | 262,456 vectors |
-| `Relevance index: 128000 scored …` | **21 seconds**, at `topK=256` — four times the pairs, three seconds more than `k = 64` |
-| `Embedding cache: persisted` | 262,607 (151 new) |
-| `scorer channels` | `structural 1433, exact 789, numeric 362, judge 1416/4000 = 35.4%` — against `k = 64`'s `1444 / 791 / 340 / 1425` |
+| line                               | value                                                                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `Restored`                         | 262,456 vectors                                                                                                   |
+| `Relevance index: 128000 scored …` | **21 seconds**, at `topK=256` — four times the pairs, three seconds more than `k = 64`                            |
+| `Embedding cache: persisted`       | 262,607 (151 new)                                                                                                 |
+| `scorer channels`                  | `structural 1433, exact 789, numeric 362, judge 1416/4000 = 35.4%` — against `k = 64`'s `1444 / 791 / 340 / 1425` |
 
 The channel line is almost unchanged, and that was the first sign: **`structural` is the door an absent answer
 leaves by, and it did not move.**
 
 ### 13.54.2 The five predictions
 
-| # | registered in §13.51.4 | observed | verdict |
-| --- | --- | --- | --- |
+| #     | registered in §13.51.4                               | observed                              | verdict                                   |
+| ----- | ---------------------------------------------------- | ------------------------------------- | ----------------------------------------- |
 | **1** | median coverage rises: MR ≥ 60%, TR's declines ≥ 50% | MR **54.5%**, TR's declines **32.8%** | **falsified, and TR moved the wrong way** |
-| **2** | the delta rises above +26.95pp | **+28.15pp** | **met**, by +1.20pp |
-| **3** | the declines fall: TR ≤ 30, MR ≤ 24 | TR **37**, MR **32** | **falsified** — MR *rose* by 4 |
-| **4** | ABS, IE, KU do not regress beyond 3 | ABS 0, IE **−2**, KU **−1** | **met** |
-| **5** | the index build stays under 5 minutes | **21 seconds** | **met** |
+| **2** | the delta rises above +26.95pp                       | **+28.15pp**                          | **met**, by +1.20pp                       |
+| **3** | the declines fall: TR ≤ 30, MR ≤ 24                  | TR **37**, MR **32**                  | **falsified** — MR _rose_ by 4            |
+| **4** | ABS, IE, KU do not regress beyond 3                  | ABS 0, IE **−2**, KU **−1**           | **met**                                   |
+| **5** | the index build stays under 5 minutes                | **21 seconds**                        | **met**                                   |
 
 ### 13.54.3 What the falsification means: the pool was not the constraint
 
@@ -7188,8 +7221,8 @@ This is the campaign's own rule applied to a number that went the right way — 
 
 ### 13.54.5 What it settles, and the decision rule it triggers
 
-§13.53.3 registered a decision rule rather than a prediction: *"if the declines barely move, the evidence for a
-contract change is this table, and it is strong."*
+§13.53.3 registered a decision rule rather than a prediction: _"if the declines barely move, the evidence for a
+contract change is this table, and it is strong."_
 
 **The declines barely moved, and in the wrong directions.** Total declines 82 → 83 (MR 28 → 32, TR 41 → 37, IE 13
 → 13, KU 0 → 1). §13.53 priced 82 declines at roughly 47 recoverable questions; nothing in `k = 256` recovered any
@@ -7242,22 +7275,22 @@ The sentence is inserted into `ENUMERATION_CONTRACT`, which reaches **the multi-
 property §13.34 established and `evidence-ask-reach.test.ts` asserts byte-for-byte: on `flat` and `temporal`,
 `enumerated` and `computed` build the same prompt. So:
 
-| route | affected | why |
-| --- | --- | --- |
-| multi-session (MR) | **yes** | the only route that receives the two-step contract |
-| flat, temporal (IE, KU, TR) | no | byte-identical to `computed` |
-| abstention (ABS) | no | its own block, and §13.34 deliberately keeps `abstention` out of reach |
+| route                       | affected | why                                                                    |
+| --------------------------- | -------- | ---------------------------------------------------------------------- |
+| multi-session (MR)          | **yes**  | the only route that receives the two-step contract                     |
+| flat, temporal (IE, KU, TR) | no       | byte-identical to `computed`                                           |
+| abstention (ABS)            | no       | its own block, and §13.34 deliberately keeps `abstention` out of reach |
 
 ### 13.55.4 Registration
 
 **One variable**: the contract sentence. Every input held at §13.45's values, `k = 64` (§13.54 declined `k = 256`).
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **MR's declines fall by at least a third**: 28 → **≤ 18** | above 22 |
-| **2** | **The delta rises above +26.95pp** — the net of declines recovered against answers newly wrong | at or below +26.95pp |
-| **3** | **Some declines become wrong answers**, and the taxonomy shows it: MR's `numeric_mismatch` rises above **24** | `numeric_mismatch` does not rise |
-| **4** | **Nothing outside MR moves**: ABS, IE, KU, TR within 2 questions | any moves by more than 2 |
+| #     | prediction                                                                                                                                 | falsified if                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| **1** | **MR's declines fall by at least a third**: 28 → **≤ 18**                                                                                  | above 22                                  |
+| **2** | **The delta rises above +26.95pp** — the net of declines recovered against answers newly wrong                                             | at or below +26.95pp                      |
+| **3** | **Some declines become wrong answers**, and the taxonomy shows it: MR's `numeric_mismatch` rises above **24**                              | `numeric_mismatch` does not rise          |
+| **4** | **Nothing outside MR moves**: ABS, IE, KU, TR within 2 questions                                                                           | any moves by more than 2                  |
 | **5** | **MR's median coverage on its declines does not fall.** A forced answer should be computed from the same evidence, not from worse evidence | declines' median coverage drops below 50% |
 
 **Predictions 1 and 3 are a pair and that is the point.** §13.53 priced the declines at ≈47 recoverable questions
@@ -7286,15 +7319,15 @@ way the `numeric_mismatch` movement is the number that says what the trade cost.
 
 ### 13.55.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The contract change is **dispatched**; §13.55.4's five predictions are registered | yes (in flight) |
-| **P0 (done)** | Configuration (§13.45), its load-bearing signal (§13.50), `k` excluded as the lever (§13.54), the declines priced (§13.53) | no |
-| **P1** | If the contract holds: the same question for **TR**, whose 41 declines are the largest block and whose block is not the enumerated one | yes |
-| **P1** | A better no-signal control (§13.50.4): random turns, turning −64.30pp from an upper bound into a contribution | yes |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P2 | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                           | Needs provider  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | The contract change is **dispatched**; §13.55.4's five predictions are registered                                                              | yes (in flight) |
+| **P0 (done)** | Configuration (§13.45), its load-bearing signal (§13.50), `k` excluded as the lever (§13.54), the declines priced (§13.53)                     | no              |
+| **P1**        | If the contract holds: the same question for **TR**, whose 41 declines are the largest block and whose block is not the enumerated one         | yes             |
+| **P1**        | A better no-signal control (§13.50.4): random turns, turning −64.30pp from an upper bound into a contribution                                  | yes             |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                         | no              |
+| P2            | A run that publishes only what it restored can delay the cache's convergence by one index build; the writer's reduced manifest is not uploaded | no              |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                | no              |
 
 ## 13.56 The five predictions of §13.55.4, read against run `39035438120`
 
@@ -7303,12 +7336,12 @@ way the `numeric_mismatch` movement is the number that says what the trade cost.
 `39035438120`, `13:10:00Z` → `15:03:44Z`, **1h53m44s**, `success`, artifact `12104633586`, 6,901,835 bytes. One
 variable against §13.45's configuration: the §13.55 sentence, in the multi-session block.
 
-| line | value |
-| --- | --- |
-| `Restored` | 262,607 vectors — the cache converged (§13.37's repair held for a third run) |
-| `Relevance index: 32000 scored …` | 17 seconds at `topK=64` |
-| `Embedding cache: persisted` | 262,703 (**96** new) |
-| `scorer channels` | `structural 1424, exact 773, numeric 373, judge 1430/4000 = 35.8%` |
+| line                              | value                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `Restored`                        | 262,607 vectors — the cache converged (§13.37's repair held for a third run) |
+| `Relevance index: 32000 scored …` | 17 seconds at `topK=64`                                                      |
+| `Embedding cache: persisted`      | 262,703 (**96** new)                                                         |
+| `scorer channels`                 | `structural 1424, exact 773, numeric 373, judge 1430/4000 = 35.8%`           |
 
 The channel line is the contract's fingerprint and it moved in the right direction: against §13.45's
 `1444 / 791 / 340 / 1425`, the **numeric** gate decided 33 more questions and `structural` — the door an absent
@@ -7316,13 +7349,13 @@ answer leaves by — decided 20 fewer. More responses ended in a number, and tha
 
 ### 13.56.2 The five predictions
 
-| # | registered in §13.55.4 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR's declines fall by at least a third: 28 → **≤ 18** | **23** | **falsified** — 5 fewer, 17.9%, and above the 22 that falsifies it |
-| **2** | delta rises above **+26.95pp** | **+26.90pp** | **falsified** — at the threshold |
-| **3** | MR's `numeric_mismatch` rises above **24** | **27** | **met** (+3) |
-| **4** | ABS, IE, KU, TR within 2 questions | ABS 0, IE 0, KU **−3**, TR +1 | **falsified** by KU |
-| **5** | MR's declines' median coverage does not fall below 50% | **50.0%** (from 52.8%) | **met**, by 0.0pp of margin and in the wrong direction |
+| #     | registered in §13.55.4                                 | observed                      | verdict                                                            |
+| ----- | ------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------ |
+| **1** | MR's declines fall by at least a third: 28 → **≤ 18**  | **23**                        | **falsified** — 5 fewer, 17.9%, and above the 22 that falsifies it |
+| **2** | delta rises above **+26.95pp**                         | **+26.90pp**                  | **falsified** — at the threshold                                   |
+| **3** | MR's `numeric_mismatch` rises above **24**             | **27**                        | **met** (+3)                                                       |
+| **4** | ABS, IE, KU, TR within 2 questions                     | ABS 0, IE 0, KU **−3**, TR +1 | **falsified** by KU                                                |
+| **5** | MR's declines' median coverage does not fall below 50% | **50.0%** (from 52.8%)        | **met**, by 0.0pp of margin and in the wrong direction             |
 
 Predictions 1 and 3 were registered as a pair — a contract that pushes the model to answer converts correct
 declines into wrong answers — and **that is exactly what the roster shows**: 3 of the declines it moved became
@@ -7333,16 +7366,16 @@ correct, 2 became `numeric_mismatch`, 2 became prose. The mechanism is confirmed
 The roster has both runs' questions, so the 28 declines of run `39005914398` can be followed into
 `39035438120` one at a time:
 
-| what happened to a §13.45 decline | n |
-| --- | --- |
-| declined again | **21** |
-| became correct | 3 |
-| became `numeric_mismatch` | 2 |
-| became prose | 2 |
+| what happened to a §13.45 decline | n      |
+| --------------------------------- | ------ |
+| declined again                    | **21** |
+| became correct                    | 3      |
+| became `numeric_mismatch`         | 2      |
+| became prose                      | 2      |
 
 **The 21 that declined again are the finding.** Read with `--declines`, 12 of them carried a **non-empty Step 1
-list**, one carried a list with no number, and 8 carried an honest empty list. The sentence said *decline only
-when the list is empty*, the model wrote the list, and then declined anyway — because **the block's closing line
+list**, one carried a list with no number, and 8 carried an honest empty list. The sentence said _decline only
+when the list is empty_, the model wrote the list, and then declined anyway — because **the block's closing line
 is the last thing it reads**:
 
 ```text
@@ -7386,12 +7419,12 @@ change leaked. Both halves of that sentence belong in the record; the second doe
 **The 6.1% is an average, and that is the second half of the correction.** `--paired` prints the rate per
 capability, and the four untouched capabilities do not share one:
 
-| capability | questions | changed state | rate |
-| --- | --- | --- | --- |
-| ABS | 30 | **0** | 0.0% |
-| IE | 150 | 2 | 1.3% |
-| KU | 72 | 6 | 8.3% |
-| TR | 127 | 15 | **11.8%** |
+| capability | questions | changed state | rate      |
+| ---------- | --------- | ------------- | --------- |
+| ABS        | 30        | **0**         | 0.0%      |
+| IE         | 150       | 2             | 1.3%      |
+| KU         | 72        | 6             | 8.3%      |
+| TR         | 127       | 15            | **11.8%** |
 
 So "two questions" is far below resolution for TR (15 expected) and KU (6), and it is **above** it for ABS and
 IE. A single number would have been a better instrument than a guess and a worse one than four, and it is worth
@@ -7401,8 +7434,8 @@ registered as a direction rather than a count.
 
 ### 13.56.5 Prediction 2 fails, so the sentence is retired — and the replacement is not a second guess
 
-The registered reading rule was: *"If 2 fails while 1 and 3 hold, the trade is real and negative: the right
-response is to revert the sentence and record that the declines were largely correct."*
+The registered reading rule was: _"If 2 fails while 1 and 3 hold, the trade is real and negative: the right
+response is to revert the sentence and record that the declines were largely correct."_
 
 Prediction 2 failed. Prediction 1 failed too, so the rule's premise is not met exactly — but the conclusion is
 the same and stronger: **the sentence changed the right population and moved nothing**, because its position
@@ -7410,12 +7443,12 @@ made it advisory. It is retired.
 
 **What is not retired is the defect it named.** The census is a measurement, not a hypothesis:
 
-| | §13.45 | §13.55 | what it means |
-| --- | --- | --- | --- |
-| MR declines | 28 | 23 | — |
-| …with a non-empty list and a number in Step 2 | 19 | **12** | the contract forbids this state and it persists |
-| …with an empty list | 6 | 9 | honest, and no wording repairs them |
-| …with no Step 1 at all | 1 | 1 | the older sentence forbids this outright |
+|                                               | §13.45 | §13.55 | what it means                                   |
+| --------------------------------------------- | ------ | ------ | ----------------------------------------------- |
+| MR declines                                   | 28     | 23     | —                                               |
+| …with a non-empty list and a number in Step 2 | 19     | **12** | the contract forbids this state and it persists |
+| …with an empty list                           | 6      | 9      | honest, and no wording repairs them             |
+| …with no Step 1 at all                        | 1      | 1      | the older sentence forbids this outright        |
 
 Twelve records where the model listed items, computed a number, and declined. Priced at **MR's own accuracy on
 the questions it does answer in the same coverage band** — 68.3% at 50–74%, 38.3% at 25–49% — those twelve are
@@ -7450,16 +7483,16 @@ cheap repair is cheap because it does almost nothing.
 
 The multi-session block's **last line** is replaced. Nothing else in the prompt moves.
 
-| | line |
-| --- | --- |
-| §13.45–§13.55 | `Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.` |
-| §13.57 | `Reply with the Step 2 number alone. If the Step 1 list is empty because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.` |
+|               | line                                                                                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §13.45–§13.55 | `Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.`                                         |
+| §13.57        | `Reply with the Step 2 number alone. If the Step 1 list is empty because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE.` |
 
 ### 13.57.2 Why replacement rather than another sentence
 
 §13.55 treated the block as a place to put a rule and lost to position. A rule that has to decide cannot be a
 second statement placed near the first; it has to **be** the first. The new line carries both halves the control
-line carried — *reply with the answer alone* and *reply with the token when there is no answer* — with the
+line carried — _reply with the answer alone_ and _reply with the token when there is no answer_ — with the
 condition for the second moved from the evidence to the list.
 
 That is also why `withReplacedClose` takes no `old` argument. "The closing line" is a position, not a string; a
@@ -7482,13 +7515,13 @@ an edit that lets the two closing lines agree again fails.
 abstention-evidence-blocks`. The control is run `39035438120`, because this run differs from it by exactly one
 line.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **The state the contract forbids collapses**: MR declines with a non-empty list and a number in Step 2 fall from **12 to ≤ 4** | ≥ 9 |
-| **2** | **MR's declines fall from 23 to ≤ 15** | ≥ 20 |
-| **3** | **MR's correct count rises from 61 to ≥ 66** — the 12 convert at more than half of 8.5, because a converted decline still has to be counted right | ≤ 63 |
-| **4** | **The four untouched capabilities hold**: ABS+IE+KU+TR combined correct stays within ±6 of **293** | outside ±6 |
-| **5** | **MR's declines' median coverage does not fall below 50%** | below 50% |
+| #     | prediction                                                                                                                                        | falsified if |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **1** | **The state the contract forbids collapses**: MR declines with a non-empty list and a number in Step 2 fall from **12 to ≤ 4**                    | ≥ 9          |
+| **2** | **MR's declines fall from 23 to ≤ 15**                                                                                                            | ≥ 20         |
+| **3** | **MR's correct count rises from 61 to ≥ 66** — the 12 convert at more than half of 8.5, because a converted decline still has to be counted right | ≤ 63         |
+| **4** | **The four untouched capabilities hold**: ABS+IE+KU+TR combined correct stays within ±6 of **293**                                                | outside ±6   |
+| **5** | **MR's declines' median coverage does not fall below 50%**                                                                                        | below 50%    |
 
 **Prediction 1 is the mechanism and 3 is the money**, and they are registered together for the reason §13.55.4
 gives: a run that showed 1 without 3 would mean the converted declines were answered from worse evidence than the
@@ -7508,7 +7541,7 @@ thing to measure. Both outcomes are informative, which is why the run is worth i
 ### 13.57.5 Verification
 
 - **Red first, on the three assertions that state the change**: with `prompt.ts` at `6d13ab5`, `ends the
-  multi-session block with the conditional line`, `no longer contains the unconditional licence anywhere` and
+multi-session block with the conditional line`, `no longer contains the unconditional licence anywhere` and
   `differs from the control by additions and exactly one replaced line` all fail; the two invariant tests —
   `computed` is byte-identical, a bare decline is still refused — pass before and after, which is what makes them
   invariants rather than restatements.
@@ -7522,16 +7555,16 @@ thing to measure. Both outcomes are informative, which is why the run is worth i
 
 ### 13.57.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The closing-line change is **dispatched**; §13.57.4's five predictions are registered | yes (in flight) |
-| **P0 (done)** | §13.55.4 read in full: 1 and 2 falsified, 3 and 5 met, 4 falsified by a threshold finer than the instrument; the sentence retired; the defect located in the closing line | no |
-| **P0 (done)** | `--declines`, the census that chose this variable, with 14 tests | no |
-| **P1** | If 1 holds: **TR's 42 declines**, all bare, at 39.7% median coverage, on a route the contract does not reach — the same two-step treatment, and the first experiment where coverage says the evidence is *not* there | yes |
-| **P1** | A better no-signal control (§13.50.4): random turns, turning −64.30pp from an upper bound into a contribution | yes |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P2 | The §13.55 sentence, now redundant, as its own variable once the closing line is settled | yes |
-| P3 | `PATH` ordering, which waits on a rebuilt image | no |
+| Priority      | Item                                                                                                                                                                                                                 | Needs provider  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | The closing-line change is **dispatched**; §13.57.4's five predictions are registered                                                                                                                                | yes (in flight) |
+| **P0 (done)** | §13.55.4 read in full: 1 and 2 falsified, 3 and 5 met, 4 falsified by a threshold finer than the instrument; the sentence retired; the defect located in the closing line                                            | no              |
+| **P0 (done)** | `--declines`, the census that chose this variable, with 14 tests                                                                                                                                                     | no              |
+| **P1**        | If 1 holds: **TR's 42 declines**, all bare, at 39.7% median coverage, on a route the contract does not reach — the same two-step treatment, and the first experiment where coverage says the evidence is _not_ there | yes             |
+| **P1**        | A better no-signal control (§13.50.4): random turns, turning −64.30pp from an upper bound into a contribution                                                                                                        | yes             |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                                                                                                                                               | no              |
+| P2            | The §13.55 sentence, now redundant, as its own variable once the closing line is settled                                                                                                                             | yes             |
+| P3            | `PATH` ordering, which waits on a rebuilt image                                                                                                                                                                      | no              |
 
 ---
 
@@ -7551,17 +7584,17 @@ is better than the reference's.**
 ### 13.58.2 The number that does say where work is worth doing
 
 For each question, ask whether **either** side answered it correctly. That set is proof the information was
-available to *some* pipeline on this exact input, which makes it recoverable in a way that "the reference is
+available to _some_ pipeline on this exact input, which makes it recoverable in a way that "the reference is
 better" is not.
 
-| capability | n | reference | feature | **union** | gap |
-| --- | --- | --- | --- | --- | --- |
-| ABS | 30 | 30 | 29 | **30** | 1 |
-| IE | 150 | 2 | 135 | **136** | 1 |
-| KU | 72 | 0 | 58 | **58** | 0 |
-| MR | 121 | 102 | 61 | **108** | **47** |
-| TR | 127 | 88 | 71 | **99** | **28** |
-| **total** | 500 | 222 | 354 | **431 = 86.20%** | **77** |
+| capability | n   | reference | feature | **union**        | gap    |
+| ---------- | --- | --------- | ------- | ---------------- | ------ |
+| ABS        | 30  | 30        | 29      | **30**           | 1      |
+| IE         | 150 | 2         | 135     | **136**          | 1      |
+| KU         | 72  | 0         | 58      | **58**           | 0      |
+| MR         | 121 | 102       | 61      | **108**          | **47** |
+| TR         | 127 | 88        | 71      | **99**           | **28** |
+| **total**  | 500 | 222       | 354     | **431 = 86.20%** | **77** |
 
 **75 of the 77 recoverable questions are in MR and TR.** The other three capabilities are 2 questions from
 closed. So "make the union into one system" and "fix MR and TR" are the same sentence, and that is a much stronger
@@ -7599,16 +7632,16 @@ re-derive is a target nobody can dispute.
 
 ### 13.58.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Run `39076055833` (the closing line) is **in flight**; §13.57.4's five predictions stand | yes (in flight) |
-| **P0 (done)** | The target line exists and is re-derivable; the roadmap's §11 is rewritten around it | no |
-| **P1** | MR's arithmetic — 27 `numeric_mismatch`, and no variable has yet pointed at it | yes |
-| **P1** | TR's evidence gap — 42 declines at 39.7% median coverage, measured before any prompt change | yes |
-| **P1** | A better no-signal control (§13.50.4) | yes |
-| **P1** | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3) | no |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                        | Needs provider  |
+| ------------- | ------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | Run `39076055833` (the closing line) is **in flight**; §13.57.4's five predictions stand    | yes (in flight) |
+| **P0 (done)** | The target line exists and is re-derivable; the roadmap's §11 is rewritten around it        | no              |
+| **P1**        | MR's arithmetic — 27 `numeric_mismatch`, and no variable has yet pointed at it              | yes             |
+| **P1**        | TR's evidence gap — 42 declines at 39.7% median coverage, measured before any prompt change | yes             |
+| **P1**        | A better no-signal control (§13.50.4)                                                       | yes             |
+| **P1**        | Restore the trace product's turn unit and its `goldOverlap` (§13.33.3)                      | no              |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                     | yes             |
+| P3            | `PATH` ordering                                                                             | no              |
 
 ---
 
@@ -7616,7 +7649,7 @@ re-derive is a target nobody can dispute.
 
 ### 13.59.1 What §13.58.4 said, and why it was one reading too early
 
-§13.58.4 ranked MR's arithmetic first: *"27 `numeric_mismatch`, and no variable has pointed at it."* That
+§13.58.4 ranked MR's arithmetic first: _"27 `numeric_mismatch`, and no variable has pointed at it."_ That
 statement is true about the count and wrong about the mechanism, and the artifact settles it. This section
 records the correction before the next dispatch rather than after it.
 
@@ -7647,7 +7680,7 @@ faithfully; the list was short. Nine of the ten have a positive difference, and 
 exactly one**. Their coverage is 0.17–0.59 — the two lowest bands, where this run's MR answers correctly 28.6%
 and 38.3% of the time.
 
-(The tenth, `gpt4_7fce9456`, is a parse artifact rather than a data point: its gold is a sentence naming *four*
+(The tenth, `gpt4_7fce9456`, is a parse artifact rather than a data point: its gold is a sentence naming _four_
 properties and `numbers_in` reads the `1` in `1-bedroom`. The counter is faithful there too; the ground truth is
 not a number. Recorded rather than silently excluded, because it is one of the ten.)
 
@@ -7657,9 +7690,9 @@ not a number. Recorded rather than silently excluded, because it is one of the t
 input to it is short. So "ask the model to count more carefully" is aimed at a defect that is not occurring, and
 the two candidate repairs are now distinguishable:
 
-| defect | evidence | repair |
-| --- | --- | --- |
-| the model counts wrongly | **17 of 27** — answer differs from the listed count | arithmetic, a prompt or a verifier |
+| defect                                 | evidence                                                 | repair                                  |
+| -------------------------------------- | -------------------------------------------------------- | --------------------------------------- |
+| the model counts wrongly               | **17 of 27** — answer differs from the listed count      | arithmetic, a prompt or a verifier      |
 | the model is shown too little to count | **10 of 27** — answer = listed count, and gold is higher | enumeration recall, a selection problem |
 
 And §13.34.3 already measured the second one's shape: **the room holds a median of 26 turns against a median
@@ -7685,18 +7718,18 @@ the model behaves, and every correction came from measuring what it was given.**
 
 ### 13.59.5 The same measure on the previous artifact, because one draw is not a mechanism
 
-§13.56.4 measured this instrument's cross-draw resolution at 6.1%, so a claim about a *mechanism* has to be
+§13.56.4 measured this instrument's cross-draw resolution at 6.1%, so a claim about a _mechanism_ has to be
 checked on a second draw or it is a claim about one sample. The same tool, run on `39005914398`'s artifact:
 
-| run | MR numeric failures | counted its list | off by exactly one |
-| --- | --- | --- | --- |
-| `39005914398` (§13.45) | 24 | 6 | **9** (37.5%) |
-| `39035438120` (§13.55) | 27 | 10 | **10** (37.0%) |
+| run                    | MR numeric failures | counted its list | off by exactly one |
+| ---------------------- | ------------------- | ---------------- | ------------------ |
+| `39005914398` (§13.45) | 24                  | 6                | **9** (37.5%)      |
+| `39035438120` (§13.55) | 27                  | 10               | **10** (37.0%)     |
 
 The **off-by-one rate is stable at 37%** of MR's numeric failures across two independent draws, which is what
 makes it a mechanism rather than a sample. The "counted its list" rate is less stable (25% → 37%), and the
-difference between the two rows is the honest statement of what one draw can support: the *sign and size* of the
-shortfall replicates, the *attribution* to faithful counting does not replicate as tightly.
+difference between the two rows is the honest statement of what one draw can support: the _sign and size_ of the
+shortfall replicates, the _attribution_ to faithful counting does not replicate as tightly.
 
 ### 13.59.6 Verification
 
@@ -7709,15 +7742,15 @@ shortfall replicates, the *attribution* to faithful counting does not replicate 
 
 ### 13.59.7 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Run `39076055833` (the closing line) — read when it lands; §13.57.4's five predictions are unchanged | yes (in flight) |
-| **P1** | **The selector's signal**, now the largest open question: pool, unit and room are excluded and the room is sufficient | no, to design; yes, to measure |
-| **P1** | MR's 17 arithmetic errors — real, downstream | yes |
-| **P1** | TR's 42 declines at 39.7% coverage — the same coverage story in a capability the contract does not reach | yes |
-| **P1** | A better no-signal control (§13.50.4) | yes |
-| P2 | The §13.55 sentence as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority | Item                                                                                                                  | Needs provider                 |
+| -------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **P0**   | Run `39076055833` (the closing line) — read when it lands; §13.57.4's five predictions are unchanged                  | yes (in flight)                |
+| **P1**   | **The selector's signal**, now the largest open question: pool, unit and room are excluded and the room is sufficient | no, to design; yes, to measure |
+| **P1**   | MR's 17 arithmetic errors — real, downstream                                                                          | yes                            |
+| **P1**   | TR's 42 declines at 39.7% coverage — the same coverage story in a capability the contract does not reach              | yes                            |
+| **P1**   | A better no-signal control (§13.50.4)                                                                                 | yes                            |
+| P2       | The §13.55 sentence as its own variable                                                                               | yes                            |
+| P3       | `PATH` ordering                                                                                                       | no                             |
 
 ---
 
@@ -7730,13 +7763,13 @@ One variable against `39035438120`: the block's closing line.
 
 ### 13.60.2 The five predictions
 
-| # | registered in §13.57.4 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR declines with a non-empty list and a number in Step 2: 12 → **≤ 4** | **9** | **falsified** (at the line) |
-| **2** | MR's declines fall from 23 to **≤ 15** | **20** | **falsified** (at the line) |
-| **3** | MR's correct count rises from 61 to **≥ 66** | **55** | **falsified**, by 6 in the wrong direction |
-| **4** | ABS+IE+KU+TR combined within ±6 of 293 | **298** (29+134+62+73) | **met** |
-| **5** | MR's declines' median coverage ≥ 50% | **50.0%** | **met** |
+| #     | registered in §13.57.4                                                 | observed               | verdict                                    |
+| ----- | ---------------------------------------------------------------------- | ---------------------- | ------------------------------------------ |
+| **1** | MR declines with a non-empty list and a number in Step 2: 12 → **≤ 4** | **9**                  | **falsified** (at the line)                |
+| **2** | MR's declines fall from 23 to **≤ 15**                                 | **20**                 | **falsified** (at the line)                |
+| **3** | MR's correct count rises from 61 to **≥ 66**                           | **55**                 | **falsified**, by 6 in the wrong direction |
+| **4** | ABS+IE+KU+TR combined within ±6 of 293                                 | **298** (29+134+62+73) | **met**                                    |
+| **5** | MR's declines' median coverage ≥ 50%                                   | **50.0%**              | **met**                                    |
 
 **And those verdicts are not the run's verdict on the closing line**, which is the rest of this section.
 
@@ -7744,16 +7777,16 @@ One variable against `39035438120`: the block's closing line.
 
 The transition table (`--paired` against `39035438120`) had one row nobody predicted:
 
-| MR transition | n |
-| --- | --- |
-| **correct → other** | **11** |
-| numeric_mismatch → other | 6 |
-| abstention → correct | 3 |
-| abstention → numeric_mismatch | 3 |
-| other → correct | 3 |
-| … | … |
+| MR transition                 | n      |
+| ----------------------------- | ------ |
+| **correct → other**           | **11** |
+| numeric_mismatch → other      | 6      |
+| abstention → correct          | 3      |
+| abstention → numeric_mismatch | 3      |
+| other → correct               | 3      |
+| …                             | …      |
 
-Eleven *previously correct* MR answers became "other". Reading them is decisive: **nine of the eleven have an
+Eleven _previously correct_ MR answers became "other". Reading them is decisive: **nine of the eleven have an
 empty answer** (`''`), and the raw output that produced them is not empty:
 
 ```text
@@ -7769,8 +7802,8 @@ The answer is `2`, on the heading's line. The parser returned `''`.
 **The defect.** `afterLastStepHeading` sliced from `offset + line.length + 1` — after the heading **line**,
 because that is what skips an echoed instruction. The `+ 1` is the newline that ends the line. When the heading
 line is the **last** line there is no such newline, `slice` starts past the end of the text, and every answer
-written *beside* the heading reads as blank. The rule's own comment recorded the shape as unobserved — *"118 put
-the answer on its own line after the last heading, and 0 put it on the heading line itself"* — so `''` was a
+written _beside_ the heading reads as blank. The rule's own comment recorded the shape as unobserved — _"118 put
+the answer on its own line after the last heading, and 0 put it on the heading line itself"_ — so `''` was a
 conservative answer rather than an error. **It is now observed, and it is the shape the closing line produces.**
 
 ### 13.60.4 The measurement, which is why this is not a bug report but a verdict
@@ -7779,16 +7812,16 @@ conservative answer rather than an error. **It is now observed, and it is the sh
 **the same model outputs** — it is not a re-run, and it cannot re-derive the headline (the roster carries one
 repetition and the registered statistic is a mean over four). What it does measure is exact:
 
-| run | answers whose parse changes | of which were scored correct | gold number matches the new answer |
-| --- | --- | --- | --- |
-| `39005914398` (§13.45, the decided config) | 2 | 0 | 0 |
-| `39035438120` (§13.55) | 8 | 0 | **1** |
-| `39076055833` (§13.57) | **18** | 0 | **7** |
+| run                                        | answers whose parse changes | of which were scored correct | gold number matches the new answer |
+| ------------------------------------------ | --------------------------- | ---------------------------- | ---------------------------------- |
+| `39005914398` (§13.45, the decided config) | 2                           | 0                            | 0                                  |
+| `39035438120` (§13.55)                     | 8                           | 0                            | **1**                              |
+| `39076055833` (§13.57)                     | **18**                      | 0                            | **7**                              |
 
 Three things follow, and the first is the verdict:
 
 1. **The closing line worked.** The shape "the number beside the Step 2 heading" goes **2 → 8 → 18** across the
-   three runs, and the closing line is what asks for it: *reply with the Step 2 number alone*. §13.57 asked the
+   three runs, and the closing line is what asks for it: _reply with the Step 2 number alone_. §13.57 asked the
    model to put the number there and it did. The reader then deleted it.
 2. **The run's prediction 3 was measured through a broken instrument.** MR's observed 55 carries 7 questions the
    numeric gate would have accepted and 18 blanks that should not exist. So the honest reading of 55 is
@@ -7832,7 +7865,7 @@ before and after, which is what makes them the invariants and the first one the 
 
 - `cortex-memory` **352 tests** (+2 net); `pnpm check` **exit 0**; four coverage dimensions **100%**.
 - **The new rule is a command, not a note.** `bench/reparse-report.ts` (run by `pnpm --filter
-  @agentix-e/cortex-memory drift <report>`) prints every record whose stored `answer` differs from what today's
+@agentix-e/cortex-memory drift <report>`) prints every record whose stored `answer` differs from what today's
   parser produces, how many of those the gold's first number matches, and **exits 1**. On this run's artifact it
   reads 18 drifted records, 7 gold matches, and one example is enough to see the defect:
   `3a704032 stored "" -> today "2"` against a raw output that ends `Step 2 — 2`.
@@ -7844,15 +7877,15 @@ before and after, which is what makes them the invariants and the first one the 
 
 ### 13.60.8 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | **Re-dispatch the closing line** on the repaired parser; the five predictions of §13.57.4 stand unchanged, because they were never read | yes |
-| **P0 (done)** | The reader defect is fixed with three pinned shapes, and the two earlier runs are priced against it (0 and ≤1 question) | no |
-| **P1** | The selector's signal (§13.59.4) — unchanged and still the largest open question | no, to design |
-| **P1** | TR's 36 declines at 39.7% coverage — unchanged by this run, whose TR movement was inside its own 11.8% | yes |
-| **P1 (done)** | The re-parse step: `pnpm --filter @agentix-e/cortex-memory drift <report>` compares every stored `answer` against today's parser and **exits 1 on any drift**, so a run cannot be read through a reader that no longer agrees with it | no |
-| P2 | The §13.55 sentence as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                                                                                                                                                  | Needs provider |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| **P0**        | **Re-dispatch the closing line** on the repaired parser; the five predictions of §13.57.4 stand unchanged, because they were never read                                                                                               | yes            |
+| **P0 (done)** | The reader defect is fixed with three pinned shapes, and the two earlier runs are priced against it (0 and ≤1 question)                                                                                                               | no             |
+| **P1**        | The selector's signal (§13.59.4) — unchanged and still the largest open question                                                                                                                                                      | no, to design  |
+| **P1**        | TR's 36 declines at 39.7% coverage — unchanged by this run, whose TR movement was inside its own 11.8%                                                                                                                                | yes            |
+| **P1 (done)** | The re-parse step: `pnpm --filter @agentix-e/cortex-memory drift <report>` compares every stored `answer` against today's parser and **exits 1 on any drift**, so a run cannot be read through a reader that no longer agrees with it | no             |
+| P2            | The §13.55 sentence as its own variable                                                                                                                                                                                               | yes            |
+| P3            | `PATH` ordering                                                                                                                                                                                                                       | no             |
 
 ---
 
@@ -7869,12 +7902,12 @@ closing line replaced.
 0 answers differ from today's parser**. So the roster this section reads is the roster today's reader produces,
 which is the check that was missing last time.
 
-| log line | value |
-| --- | --- |
-| `Restored` | 262,841 vectors |
-| `Relevance index: 32000 scored …` | `topK=64`, 500 questions |
-| `Embedding cache: persisted` | 263,098 (257 new) |
-| `scorer channels` | `structural 1394, exact 833, numeric 405, judge 1368/4000 = **34.2%**` |
+| log line                          | value                                                                  |
+| --------------------------------- | ---------------------------------------------------------------------- |
+| `Restored`                        | 262,841 vectors                                                        |
+| `Relevance index: 32000 scored …` | `topK=64`, 500 questions                                               |
+| `Embedding cache: persisted`      | 263,098 (257 new)                                                      |
+| `scorer channels`                 | `structural 1394, exact 833, numeric 405, judge 1368/4000 = **34.2%**` |
 
 Against `39035438120`'s `1424 / 773 / 373 / 1430 = 35.8%`: **structural fell 30, numeric rose 32, judge fell
 62**. Fewer declines, more answers decided by a number, and less work for the judge — the three moves the line was
@@ -7882,32 +7915,32 @@ written to produce, in one line of log.
 
 ### 13.61.2 The headline
 
-| | `39035438120` control | `39083274990` | Δ |
-| --- | --- | --- | --- |
-| registered delta | +26.90pp | **+29.45pp** | **+2.55pp** |
-| feature avg (4 reps) | 0.7115 | **0.7330** (0.724–0.740) | +2.15pp |
-| baseline avg | 0.4425 | 0.4385 | −0.40pp |
-| roster total | 354/500 | **365/500 = 73.00%** | +11 |
-| ABS | 29 | **30/30** | +1 |
-| IE | 135 | 134 | −1 |
-| KU | 58 | 61 | +3 |
-| **MR** | 61 | **64** | **+3** |
-| TR | 71 | 76 | +5 |
-| declines | 80 | **66** | −14 |
-| McNemar | 3.0e-15 | **2.3e-18** | — |
+|                      | `39035438120` control | `39083274990`            | Δ           |
+| -------------------- | --------------------- | ------------------------ | ----------- |
+| registered delta     | +26.90pp              | **+29.45pp**             | **+2.55pp** |
+| feature avg (4 reps) | 0.7115                | **0.7330** (0.724–0.740) | +2.15pp     |
+| baseline avg         | 0.4425                | 0.4385                   | −0.40pp     |
+| roster total         | 354/500               | **365/500 = 73.00%**     | +11         |
+| ABS                  | 29                    | **30/30**                | +1          |
+| IE                   | 135                   | 134                      | −1          |
+| KU                   | 58                    | 61                       | +3          |
+| **MR**               | 61                    | **64**                   | **+3**      |
+| TR                   | 71                    | 76                       | +5          |
+| declines             | 80                    | **66**                   | −14         |
+| McNemar              | 3.0e-15               | **2.3e-18**              | —           |
 
 **Every number in the table is the campaign's best except IE**, and the delta is 2.55pp above the configuration
 §13.45 adopted. That is exactly the situation §13.54 was written for, and it is not enough.
 
 ### 13.61.3 The five predictions, including the band I failed to close
 
-| # | registered in §13.57.4 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | forbidden state 12 → **≤ 4**; falsified if ≥ 9 | **7** | **neither** — fell 42%, missed the target, cleared the falsifier |
-| **2** | MR declines 23 → **≤ 15**; falsified if ≥ 20 | **20** | **falsified**, at the line |
-| **3** | MR correct 61 → **≥ 66**; falsified if ≤ 63 | **64** | **neither** — the band 64–65 decides nothing |
-| **4** | ABS+IE+KU+TR within **±6** of 293 | **301** | **falsified** (+8) |
-| **5** | MR declines' median coverage **≥ 50%** | **50.0%** | **met** |
+| #     | registered in §13.57.4                         | observed  | verdict                                                          |
+| ----- | ---------------------------------------------- | --------- | ---------------------------------------------------------------- |
+| **1** | forbidden state 12 → **≤ 4**; falsified if ≥ 9 | **7**     | **neither** — fell 42%, missed the target, cleared the falsifier |
+| **2** | MR declines 23 → **≤ 15**; falsified if ≥ 20   | **20**    | **falsified**, at the line                                       |
+| **3** | MR correct 61 → **≥ 66**; falsified if ≤ 63    | **64**    | **neither** — the band 64–65 decides nothing                     |
+| **4** | ABS+IE+KU+TR within **±6** of 293              | **301**   | **falsified** (+8)                                               |
+| **5** | MR declines' median coverage **≥ 50%**         | **50.0%** | **met**                                                          |
 
 **Two of these are defects in the registration rather than findings, and both are mine.**
 
@@ -7916,8 +7949,8 @@ written to produce, in one line of log.
   partition the integers is not a prediction; it is a wish with a tripwire. The rule going forward is the one
   §13.56.4 already stated for tolerances and this section states for targets: **the falsifier is the negation of
   the prediction**, not a second, looser number.
-- **Prediction 4 contradicted the rule I had just written.** §13.56.4 concluded that *"every future tolerance is
-  registered per capability with that capability's own rate beside it"*, and the very next registration pooled
+- **Prediction 4 contradicted the rule I had just written.** §13.56.4 concluded that _"every future tolerance is
+  registered per capability with that capability's own rate beside it"_, and the very next registration pooled
   four capabilities into a ±6 band. TR's own cross-draw rate is **17.3%** this run (22 of 127 changed state), so
   TR +5 was inside its instrument before the run started; pooling made a noise floor look like a fence. The
   prediction is falsified as written and **it should not have been written that way.**
@@ -7932,22 +7965,22 @@ That is the whole argument against reading the delta. Its rise is real as a numb
 effect**: the same 8 questions would have arrived from a run of the unchanged configuration, and TR's 17.3%
 churn rate says so before any inference is attempted.
 
-What *is* attributable is MR, and the paired transitions say how it got there:
+What _is_ attributable is MR, and the paired transitions say how it got there:
 
-| MR, `39035438120` → `39083274990` | n |
-| --- | --- |
-| numeric_mismatch → correct | **4** |
-| other → correct | **3** |
-| abstention → correct | **3** |
-| **correct → numeric_mismatch** | **4** |
-| correct → other | 2 |
-| correct → abstention | 1 |
-| other → numeric_mismatch | 2 |
-| other → abstention | 2 |
-| abstention → numeric_mismatch | 3 |
+| MR, `39035438120` → `39083274990` | n     |
+| --------------------------------- | ----- |
+| numeric_mismatch → correct        | **4** |
+| other → correct                   | **3** |
+| abstention → correct              | **3** |
+| **correct → numeric_mismatch**    | **4** |
+| correct → other                   | 2     |
+| correct → abstention              | 1     |
+| other → numeric_mismatch          | 2     |
+| other → abstention                | 2     |
+| abstention → numeric_mismatch     | 3     |
 
 **Ten questions became correct and seven stopped being correct.** The seven are the cost §13.57.4 predicted —
-*"some declines become wrong answers"* — and it is larger than a strict reading of the sentence would suggest,
+_"some declines become wrong answers"_ — and it is larger than a strict reading of the sentence would suggest,
 because four of them were **already correct** and became wrong. Making the model commit to a bare number costs it
 the answers that were right inside a longer sentence.
 
@@ -7958,17 +7991,17 @@ And `numeric_mismatch` rose **27 → 32**, which is that cost counted.
 **The closing line is adopted.** Not on `+29.45pp`, which §13.61.4 disassembles, but on three facts about MR that
 all moved the way the registration said they would:
 
-| the registration said | before | after |
-| --- | --- | --- |
-| the forbidden state collapses | 12 | **7** (−42%) |
-| the declines fall | 23 | **20** |
-| the cost appears as wrong answers | 27 `numeric_mismatch` | **32** |
+| the registration said             | before                | after        |
+| --------------------------------- | --------------------- | ------------ |
+| the forbidden state collapses     | 12                    | **7** (−42%) |
+| the declines fall                 | 23                    | **20**       |
+| the cost appears as wrong answers | 27 `numeric_mismatch` | **32**       |
 
 Plus: the capability is +3 correct, no capability regressed beyond its own instrument, and the prompt is the same
 length as the line it replaced.
 
 **The caveat is part of the adoption.** +3 of 121 is inside a single draw's resolution — MR moved 24 questions
-between two draws of *unchanged* configuration (§13.56.4). So this is a decision on mechanism, taken because three
+between two draws of _unchanged_ configuration (§13.56.4). So this is a decision on mechanism, taken because three
 independent predictions of the same intervention came true together, and it is deliberately **not** a claim that
 MR is now 52.89%. If a later run of this configuration reads 61 again, that is consistent with everything here and
 the mechanism numbers are what would disagree.
@@ -7978,14 +8011,14 @@ attribution is refused, and the reason is in §13.61.4.
 
 ### 13.61.6 The union, which moves the roadmap's target again
 
-| capability | n | reference | feature | union | gap |
-| --- | --- | --- | --- | --- | --- |
-| ABS | 30 | 30 | **30** | 30 | **0** |
-| IE | 150 | 1 | 134 | 134 | **0** |
-| KU | 72 | 0 | 61 | 61 | **0** |
-| MR | 121 | 101 | 64 | 109 | **45** |
-| TR | 127 | 87 | 76 | 102 | **26** |
-| **total** | 500 | 219 | 365 | **436 = 87.20%** | **71** |
+| capability | n   | reference | feature | union            | gap    |
+| ---------- | --- | --------- | ------- | ---------------- | ------ |
+| ABS        | 30  | 30        | **30**  | 30               | **0**  |
+| IE         | 150 | 1         | 134     | 134              | **0**  |
+| KU         | 72  | 0         | 61      | 61               | **0**  |
+| MR         | 121 | 101       | 64      | 109              | **45** |
+| TR         | 127 | 87        | 76      | 102              | **26** |
+| **total**  | 500 | 219       | 365     | **436 = 87.20%** | **71** |
 
 **Three of five capabilities now have a gap of zero** — the feature matches or beats the reference on ABS, IE and
 KU, which it did not do in §13.58. The remaining 71 questions are **MR 45 and TR 26**, and nothing else. The
@@ -8017,15 +8050,15 @@ not carry the evidence. Both are cheap to fix and expensive to discover late.
 
 ### 13.61.9 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0 (done)** | The closing line is **adopted** on mechanism; run `39076055833` is retired as a measurement; drift is a command | no |
-| **P0** | **Record the candidate pool** with gold membership, so "budget or ranking" becomes answerable | no, to build |
-| **P1** | MR's 45 + TR's 26 (the whole of the remaining gap) — blocked on the pool measurement | yes, to measure |
-| **P1** | A no-signal control with random turns (§13.50.4) | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P2 | Register targets whose falsifier is the negation of the prediction, and tolerances per capability (§13.61.3) | no |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                            | Needs provider  |
+| ------------- | --------------------------------------------------------------------------------------------------------------- | --------------- |
+| **P0 (done)** | The closing line is **adopted** on mechanism; run `39076055833` is retired as a measurement; drift is a command | no              |
+| **P0**        | **Record the candidate pool** with gold membership, so "budget or ranking" becomes answerable                   | no, to build    |
+| **P1**        | MR's 45 + TR's 26 (the whole of the remaining gap) — blocked on the pool measurement                            | yes, to measure |
+| **P1**        | A no-signal control with random turns (§13.50.4)                                                                | yes             |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                         | yes             |
+| P2            | Register targets whose falsifier is the negation of the prediction, and tolerances per capability (§13.61.3)    | no              |
+| P3            | `PATH` ordering                                                                                                 | no              |
 
 ---
 
@@ -8037,10 +8070,10 @@ not carry the evidence. Both are cheap to fix and expensive to discover late.
 **received**, out of how many the dataset names. §13.61.7 is where the campaign noticed what those two cannot
 say — **where the rest went** — and that the two destinations need opposite repairs:
 
-| destination | what it means | what fixes it |
-| --- | --- | --- |
-| the ranking never surfaced it | the signal does not rank this turn for this question | a different signal |
-| the ranking held it and the budget cut it | the order is wrong above the cut | a different order, or a bigger room |
+| destination                               | what it means                                        | what fixes it                       |
+| ----------------------------------------- | ---------------------------------------------------- | ----------------------------------- |
+| the ranking never surfaced it             | the signal does not rank this turn for this question | a different signal                  |
+| the ranking held it and the budget cut it | the order is wrong above the cut                     | a different order, or a bigger room |
 
 `k = 64` and `k = 256` were both dispatched and both read without this distinction (§13.54 declined the second
 on a coverage argument that could not name which of the two it had failed to move). So the instrument comes before
@@ -8058,8 +8091,8 @@ carried           it reached the reader
 
 Three seams, each with its reason for being where it is:
 
-- **`RelevanceIndex.candidatesFor(question)`** returns the turns the index holds a score for. It is the *keys of
-  the map `relevanceFor` reads*, not a second structure, so "in the pool" and "scored above the floor" cannot
+- **`RelevanceIndex.candidatesFor(question)`** returns the turns the index holds a score for. It is the _keys of
+  the map `relevanceFor` reads_, not a second structure, so "in the pool" and "scored above the floor" cannot
   disagree — the equivalence is asserted in `relevance-index.test.ts` rather than left to two implementations.
   A `Set` and not a ranked list, because the order belongs to the selection and this module deliberately discards
   the ranking `retrieveTopKByQueries` returns.
@@ -8088,11 +8121,11 @@ row that reads as a finding — the failure mode this package refuses everywhere
 §13.61's adopted configuration. Because it touches no prompt and no selection, the predictions are about the
 instrument and about the question it makes askable, not about accuracy.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
+| #     | prediction                                                                                                                                       | falsified if                                     |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | **1** | **The instrument is inert**: the roster total stays within **±11** of 365, and `pool` is present on every record whose question names gold turns | outside ±11, or a record with gold and no `pool` |
-| **2** | **The partition is well formed**: `carried ≤ pool ≤ total` on **every** record | any record violates it |
-| **3** | **The loss is in the order, not the ranking's reach**: summed over MR, `pool − carried` **>** `total − pool` | the reverse |
+| **2** | **The partition is well formed**: `carried ≤ pool ≤ total` on **every** record                                                                   | any record violates it                           |
+| **3** | **The loss is in the order, not the ranking's reach**: summed over MR, `pool − carried` **>** `total − pool`                                     | the reverse                                      |
 
 **Prediction 1's tolerance is ±11 for a stated reason**, and it is the rule §13.61.3 said I would follow: the four
 capabilities this change cannot reach have measured cross-draw rates of 0%, 1.3%, 8.3% and 11.8%, which over
@@ -8122,15 +8155,15 @@ variable would be the signal rather than the order.
 
 ### 13.62.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The diagnostic run is **dispatched**; §13.62.4's three predictions are registered | yes (in flight) |
-| **P0 (done)** | The third count exists, with the absence and the no-clamp rules pinned by tests | no |
-| **P1** | The order between pool and room — what prediction 3 decides, and the largest open question in the campaign | depends on the read |
-| **P1** | MR's 32 `numeric_mismatch`, of which 21 differ from the model's own listed count (§13.59) | yes |
-| **P1** | A no-signal control with random turns (§13.50.4) | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                       | Needs provider      |
+| ------------- | ---------------------------------------------------------------------------------------------------------- | ------------------- |
+| **P0**        | The diagnostic run is **dispatched**; §13.62.4's three predictions are registered                          | yes (in flight)     |
+| **P0 (done)** | The third count exists, with the absence and the no-clamp rules pinned by tests                            | no                  |
+| **P1**        | The order between pool and room — what prediction 3 decides, and the largest open question in the campaign | depends on the read |
+| **P1**        | MR's 32 `numeric_mismatch`, of which 21 differ from the model's own listed count (§13.59)                  | yes                 |
+| **P1**        | A no-signal control with random turns (§13.50.4)                                                           | yes                 |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                    | yes                 |
+| P3            | `PATH` ordering                                                                                            | no                  |
 
 ### 13.62.7 The readout, which had to exist before the run landed
 
@@ -8157,22 +8190,22 @@ A diagnostic: the configuration §13.61 adopted, plus the pool capture. Drift ch
 
 `--pool`, on the run's own records:
 
-| capability | n | gold | never surfaced | cut by the budget | delivered |
-| --- | --- | --- | --- | --- | --- |
-| ABS | 30 | 672 | 253 (37.6%) | 95 (14.1%) | 324 (48.2%) |
-| IE | 150 | 1709 | 266 (15.6%) | 141 (8.3%) | 1302 (76.2%) |
-| KU | 72 | 1688 | 360 (21.3%) | 284 (16.8%) | 1044 (61.8%) |
-| **MR** | 121 | 3663 | **1026 (28.0%)** | **903 (24.7%)** | 1734 (47.3%) |
-| **TR** | 127 | 3228 | **1056 (32.7%)** | **694 (21.5%)** | 1478 (45.8%) |
-| **total** | 500 | 10960 | **2961 (27.0%)** | **2117 (19.3%)** | 5882 (53.7%) |
+| capability | n   | gold  | never surfaced   | cut by the budget | delivered    |
+| ---------- | --- | ----- | ---------------- | ----------------- | ------------ |
+| ABS        | 30  | 672   | 253 (37.6%)      | 95 (14.1%)        | 324 (48.2%)  |
+| IE         | 150 | 1709  | 266 (15.6%)      | 141 (8.3%)        | 1302 (76.2%) |
+| KU         | 72  | 1688  | 360 (21.3%)      | 284 (16.8%)       | 1044 (61.8%) |
+| **MR**     | 121 | 3663  | **1026 (28.0%)** | **903 (24.7%)**   | 1734 (47.3%) |
+| **TR**     | 127 | 3228  | **1056 (32.7%)** | **694 (21.5%)**   | 1478 (45.8%) |
+| **total**  | 500 | 10960 | **2961 (27.0%)** | **2117 (19.3%)**  | 5882 (53.7%) |
 
 ### 13.63.3 The five predictions of §13.62.4
 
-| # | registered | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | the roster stays within **±11** of 365, and `pool` is on every record with gold | **357**, `pool` on all 500, none missing | **met** |
-| **2** | `carried ≤ pool ≤ total` on every record | **no violations reported** | **met** |
-| **3** | on MR, `pool − carried` > `total − pool` | **903 against 1026** | **falsified** |
+| #     | registered                                                                      | observed                                 | verdict       |
+| ----- | ------------------------------------------------------------------------------- | ---------------------------------------- | ------------- |
+| **1** | the roster stays within **±11** of 365, and `pool` is on every record with gold | **357**, `pool` on all 500, none missing | **met**       |
+| **2** | `carried ≤ pool ≤ total` on every record                                        | **no violations reported**               | **met**       |
+| **3** | on MR, `pool − carried` > `total − pool`                                        | **903 against 1026**                     | **falsified** |
 
 Prediction 1's −8 is inside the tolerance §13.62.4 built from the four untouched capabilities' own rates, and
 the per-capability counts — ABS 29, IE 136, KU 60, MR 64, TR 68 — are all inside the rates the last two paired
@@ -8181,9 +8214,9 @@ diagnostic run has to establish before its measurement means anything.
 
 ### 13.63.4 What the falsification says, and it is not a disappointment
 
-§13.62.5 wrote: *"Falsifying 3 would be the more interesting outcome … it would mean the 0.921 curve does not hold
+§13.62.5 wrote: _"Falsifying 3 would be the more interesting outcome … it would mean the 0.921 curve does not hold
 at this width on this configuration, the ranking's reach is the constraint after all, and the next variable would
-be the signal rather than the order."*
+be the signal rather than the order."_
 
 That is what happened, and it holds for **every** capability, not only MR — the never-surfaced column is the
 larger one in all five rows. Two consequences, and they agree with measurements this campaign already had:
@@ -8192,7 +8225,7 @@ larger one in all five rows. Two consequences, and they agree with measurements 
   pool from 64 to 256 does nothing when the missing turns are not merely below the cut but far below it. §13.54
   concluded "the pool is not the lever" from coverage that did not move; this says **why**.
 - **The loss is roughly 27% of gold never seen, 19% seen and cut, 54% delivered.** Both channels matter, the
-  first more, and the first is the ranking's *recall* rather than its ordering.
+  first more, and the first is the ranking's _recall_ rather than its ordering.
 
 So the next variable is **how a candidate is retrieved**, and the campaign already contains the mechanism:
 `retrieveTopKByQueriesHybrid` in `retrieval.ts` fuses the dense ranking with a **rare-keyword channel** by
@@ -8202,12 +8235,12 @@ been the arm's ranking**.
 
 ### 13.63.5 The change: the index takes a mechanism instead of hardwiring one
 
-| seam | before | after |
-| --- | --- | --- |
-| `RelevanceIndexOptions` | `topK` | `topK`, and an optional `retrieve` of type `Retrieval` |
-| `buildRetrievalRelevanceIndex` | calls `retrieveTopKByQueries` inside the loop | resolves the retriever **once**, outside the loop |
-| `RELEVANCE_SIGNALS` | `none`, `retrieval` | `none`, `retrieval`, **`retrieval-hybrid`** |
-| the artifact | `relevanceSignal=retrieval` | says which mechanism ranked |
+| seam                           | before                                        | after                                                  |
+| ------------------------------ | --------------------------------------------- | ------------------------------------------------------ |
+| `RelevanceIndexOptions`        | `topK`                                        | `topK`, and an optional `retrieve` of type `Retrieval` |
+| `buildRetrievalRelevanceIndex` | calls `retrieveTopKByQueries` inside the loop | resolves the retriever **once**, outside the loop      |
+| `RELEVANCE_SIGNALS`            | `none`, `retrieval`                           | `none`, `retrieval`, **`retrieval-hybrid`**            |
+| the artifact                   | `relevanceSignal=retrieval`                   | says which mechanism ranked                            |
 
 **Why a new value rather than editing `retrieval`.** A value whose meaning changes between two runs makes both
 artifacts ambiguous, which is the rule `RELEVANCE_UNITS` already states for `session`. The name is what the
@@ -8223,11 +8256,11 @@ config is a function. Each layer keeps the representation it can honestly record
 adopted configuration. The control is `39098246215` — the same tree, the same configuration, only the ranking
 differs — and every prediction is read on the two instruments §13.62 built.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **MR's pool reach improves**: `total − pool` falls from 1026 to **≤ 820** (−20%) | ≥ 1026 |
-| **2** | **MR's correct count rises from 64 to ≥ 68** | ≤ 64 |
-| **3** | **MR's median coverage rises from 54.2% to ≥ 58%** | ≤ 54.2% |
+| #     | prediction                                                                                             | falsified if            |
+| ----- | ------------------------------------------------------------------------------------------------------ | ----------------------- |
+| **1** | **MR's pool reach improves**: `total − pool` falls from 1026 to **≤ 820** (−20%)                       | ≥ 1026                  |
+| **2** | **MR's correct count rises from 64 to ≥ 68**                                                           | ≤ 64                    |
+| **3** | **MR's median coverage rises from 54.2% to ≥ 58%**                                                     | ≤ 54.2%                 |
 | **4** | **No capability loses more than its own measured cross-draw rate**: ABS 1, IE 5, KU 7, TR 22 questions | outside any of the four |
 
 **Prediction 1 is the mechanism, 2 is the money, 3 is the channel.** They are separated because the hybrid can
@@ -8254,19 +8287,19 @@ would make the next variable a different embedding, not a different fusion.
 - `pnpm check` **exit 0**; `cortex-eval` **1908 tests** (+1).
 - `retrieveTopKByQueriesHybrid` is **not new code**: it has shipped since the reference pipeline's recall work,
   with its own tests, and this run is the first time the arm's ranking has used it. That is worth stating plainly
-  because it changes what the run can fail for: a null result indicts the *fusion*, not an untested kernel.
+  because it changes what the run can fail for: a null result indicts the _fusion_, not an untested kernel.
 
 ### 13.63.8 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The hybrid run is **dispatched**; §13.63.6's four predictions are registered | yes (in flight) |
-| **P0 (done)** | The partition is measured on all five capabilities; prediction 3 falsified; the signal is the variable | no |
-| **P1** | If reach rises and accuracy does not: which keywords, and what the non-gold surfaced turns cost | yes |
-| **P1** | If reach does not rise: the never-surfaced turns are semantically distant, and the variable is the embedding | yes |
-| **P1** | MR's 33 `numeric_mismatch` — still real, still downstream | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                         | Needs provider  |
+| ------------- | ------------------------------------------------------------------------------------------------------------ | --------------- |
+| **P0**        | The hybrid run is **dispatched**; §13.63.6's four predictions are registered                                 | yes (in flight) |
+| **P0 (done)** | The partition is measured on all five capabilities; prediction 3 falsified; the signal is the variable       | no              |
+| **P1**        | If reach rises and accuracy does not: which keywords, and what the non-gold surfaced turns cost              | yes             |
+| **P1**        | If reach does not rise: the never-surfaced turns are semantically distant, and the variable is the embedding | yes             |
+| **P1**        | MR's 33 `numeric_mismatch` — still real, still downstream                                                    | yes             |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                      | yes             |
+| P3            | `PATH` ordering                                                                                              | no              |
 
 ---
 
@@ -8282,12 +8315,12 @@ Config line confirms the dispatch took: **`relevanceSignal=retrieval-hybrid`**.
 
 ### 13.64.2 The four predictions
 
-| # | registered in §13.63.6 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR's `total − pool` falls from 1026 to **≤ 820** | **1031** | **falsified**, and it rose |
-| **2** | MR's correct count rises from 64 to **≥ 68** | **64** | **falsified** |
-| **3** | MR's median coverage rises from 54.2% to **≥ 58%** | **54.2%** | **falsified** |
-| **4** | no capability loses more than its own rate (ABS 1, IE 5, KU 7, TR 22) | ABS 0, IE 0, KU +1, TR **+17** | **met** — nothing lost |
+| #     | registered in §13.63.6                                                | observed                       | verdict                    |
+| ----- | --------------------------------------------------------------------- | ------------------------------ | -------------------------- |
+| **1** | MR's `total − pool` falls from 1026 to **≤ 820**                      | **1031**                       | **falsified**, and it rose |
+| **2** | MR's correct count rises from 64 to **≥ 68**                          | **64**                         | **falsified**              |
+| **3** | MR's median coverage rises from 54.2% to **≥ 58%**                    | **54.2%**                      | **falsified**              |
+| **4** | no capability loses more than its own rate (ABS 1, IE 5, KU 7, TR 22) | ABS 0, IE 0, KU +1, TR **+17** | **met** — nothing lost     |
 
 **All three of the mechanism's predictions failed and the accuracy rose.** That is the finding, and it is worth
 stating before the numbers that follow: the campaign registered "reach" as the channel and the effect came through
@@ -8295,35 +8328,35 @@ a different one.
 
 ### 13.64.3 What moved
 
-| | dense control (`39098246215`) | hybrid | Δ |
-| --- | --- | --- | --- |
-| registered delta | +28.75pp | **+29.60pp** | +0.85pp |
-| roster | 357/500 | **375/500 = 75.00%** | **+18** |
-| ABS | 29 | 29 | 0 |
-| IE | 136 | 136 | 0 |
-| KU | 60 | 61 | +1 |
-| MR | 64 | **64** | **0** |
-| **TR** | 68 | **85** | **+17** |
-| declines | 66 | **59** | −7 |
-| union | 436 = 87.20% | **442 = 88.40%** | +6 |
+|                  | dense control (`39098246215`) | hybrid               | Δ       |
+| ---------------- | ----------------------------- | -------------------- | ------- |
+| registered delta | +28.75pp                      | **+29.60pp**         | +0.85pp |
+| roster           | 357/500                       | **375/500 = 75.00%** | **+18** |
+| ABS              | 29                            | 29                   | 0       |
+| IE               | 136                           | 136                  | 0       |
+| KU               | 60                            | 61                   | +1      |
+| MR               | 64                            | **64**               | **0**   |
+| **TR**           | 68                            | **85**               | **+17** |
+| declines         | 66                            | **59**               | −7      |
+| union            | 436 = 87.20%                  | **442 = 88.40%**     | +6      |
 
 **TR is the whole of the gain**, and its mechanism is in the transitions: **abstention → correct 18**, against
 five correct answers lost. Not a reshuffle — eighteen questions TR used to decline are now answered.
 
 ### 13.64.4 The partition says the reach did not move, and the partition is right
 
-| | dense | hybrid |
-| --- | --- | --- |
-| never surfaced | 2961 | **2942** (−19) |
-| cut by the budget | 2117 | **2565** (+448) |
-| delivered | 5882 | **5453** (−429) |
+|                   | dense | hybrid          |
+| ----------------- | ----- | --------------- |
+| never surfaced    | 2961  | **2942** (−19)  |
+| cut by the budget | 2117  | **2565** (+448) |
+| delivered         | 5882  | **5453** (−429) |
 
 The keyword channel did not find more gold — it **reordered** what was already reachable, and the budget then cut
 more of it. TR's correct answers arrive with a **lower** median coverage than before (58.3% → 50.0%) and fewer
 delivered gold turns. So the effect is not "more evidence"; it is **more decisive evidence at lower coverage**.
 
 **That is a defect in the instrument, not in the run.** `carried` counts gold turns, and a temporal question needs
-*one specific* turn: carrying two of four rather than three of four is worth less than carrying the one that
+_one specific_ turn: carrying two of four rather than three of four is worth less than carrying the one that
 states the date. The partition measures **quantity** and the mechanism moved **which**, so the campaign now has a
 measurement that can be right and irrelevant at the same time — recorded here because it will happen again.
 
@@ -8331,7 +8364,7 @@ measurement that can be right and irrelevant at the same time — recorded here 
 
 Eighteen recovered answers, of which **ten are grounded** — and the question is whether that is normal. It is:
 among TR's correct answers, the grounded share is **51.5%** in the dense run and **55.3%** in the hybrid, and the
-recovered eighteen sit at 10/18 = 55.6%. MR's grounded share *rose* (56.2% → 67.2%). So the gain is not the judge
+recovered eighteen sit at 10/18 = 55.6%. MR's grounded share _rose_ (56.2% → 67.2%). So the gain is not the judge
 accepting unsupported text: **the hybrid's correct answers are more grounded than the dense run's, not less.**
 
 The median coverage of the eighteen recovered answers is **36.9%** — the model usually answers TR from a minority
@@ -8358,12 +8391,12 @@ window more volatile on the capability that matters most and does not help it.
 
 ### 13.64.7 What the falsification leaves as the next question
 
-§13.63.6's reading rule said: *"if 1 fails, the never-surfaced turns are not reachable by a keyword channel
+§13.63.6's reading rule said: _"if 1 fails, the never-surfaced turns are not reachable by a keyword channel
 either, and the reading is that they are semantically distant — which would make the next variable a different
-embedding."*
+embedding."_
 
 That rule was written before this run showed its own incompleteness. What is now measurable is a **second split**
-the partition cannot make: of MR's gold turns the ranker *did* find in the dense control — 2637 of 3663 —
+the partition cannot make: of MR's gold turns the ranker _did_ find in the dense control — 2637 of 3663 —
 **903 are cut by the budget, which is 34% of what was found**. If those are cut because they rank 30th against a
 room of 26 turns, the order is the lever; if they rank 500th, no order helps and the room is the lever. **Neither can be read from a count** — it needs the gold turn's
 **rank**, and the index discards the ranking today (`candidatesFor` returns a set, deliberately).
@@ -8384,14 +8417,14 @@ comparison.
 
 ### 13.64.9 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0 (done)** | `retrieval-hybrid` **adopted**; its three mechanism predictions recorded as falsified; the coverage instrument's blind spot recorded | no |
-| **P0** | **The gold-rank curve** (top 8/16/32), the instrument that separates order from room for MR's 49 | no, to build |
-| **P1** | MR is now **49 of the 67** remaining gap; nothing else is close | yes |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                                                 | Needs provider |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| **P0 (done)** | `retrieval-hybrid` **adopted**; its three mechanism predictions recorded as falsified; the coverage instrument's blind spot recorded | no             |
+| **P0**        | **The gold-rank curve** (top 8/16/32), the instrument that separates order from room for MR's 49                                     | no, to build   |
+| **P1**        | MR is now **49 of the 67** remaining gap; nothing else is close                                                                      | yes            |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list                                                                   | yes            |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                                              | yes            |
+| P3            | `PATH` ordering                                                                                                                      | no             |
 
 ---
 
@@ -8402,14 +8435,14 @@ comparison.
 `--pool` established where MR's gold goes: 1031 never surfaced, 1075 surfaced and cut, 1557 delivered. The middle
 number is the one that matters for the next decision and it is **ambiguous by construction**:
 
-| if the cut gold sits at | then the lever is | and the cost is |
-| --- | --- | --- |
-| rank 28 against a room of 26 | **the order** | one prompt-shaped change |
-| rank 500 | **nothing an order can reach** | a different embedding, and every archived comparison |
+| if the cut gold sits at      | then the lever is              | and the cost is                                      |
+| ---------------------------- | ------------------------------ | ---------------------------------------------------- |
+| rank 28 against a room of 26 | **the order**                  | one prompt-shaped change                             |
+| rank 500                     | **nothing an order can reach** | a different embedding, and every archived comparison |
 
 A count cannot tell them apart. **A rank can**, and the campaign had thrown the rank away: `buildRetrievalRelevanceIndex`
-kept `Map<turn, score>` and the design note said the ranking is discarded *because the consumer's own selection
-is the only thing that should be ordering turns*. That argument is right about **selection** and was never about
+kept `Map<turn, score>` and the design note said the ranking is discarded _because the consumer's own selection
+is the only thing that should be ordering turns_. That argument is right about **selection** and was never about
 **measurement**, which is the distinction this section adds.
 
 ### 13.65.2 The change
@@ -8432,11 +8465,11 @@ records and nothing about what the model reads.
 **One variable**: the rank capture, on §13.64's adopted configuration (`retrieval-hybrid`). A diagnostic, so the
 predictions are about the instrument and about the question it makes askable.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **The instrument is inert**: the roster stays within **±11** of 375 | outside |
-| **2** | **The two encodings agree**: `pool` equals the count of non-negative `goldRanks` on every record | any record disagrees |
-| **3** | **The curve is shallow at the head and steep after it**: across the whole run, top 32 captures **less than 85%** of the gold the ranking surfaced | top 32 ≥ 85% |
+| #     | prediction                                                                                                                                        | falsified if         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **1** | **The instrument is inert**: the roster stays within **±11** of 375                                                                               | outside              |
+| **2** | **The two encodings agree**: `pool` equals the count of non-negative `goldRanks` on every record                                                  | any record disagrees |
+| **3** | **The curve is shallow at the head and steep after it**: across the whole run, top 32 captures **less than 85%** of the gold the ranking surfaced | top 32 ≥ 85%         |
 
 **Prediction 3 is a real bet and it is the one that decides the next variable.** If the head of the ranking is
 already dense with gold — top 32 capturing nearly everything surfaced — then what the budget cuts is a long tail
@@ -8474,14 +8507,14 @@ works on a real file before it is needed.
 
 ### 13.65.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The rank diagnostic is **dispatched**; §13.65.3's three predictions and the decision rule are registered | yes (in flight) |
-| **P0 (done)** | The rank is recorded, the two encodings are asserted equal, and `--ranks` refuses an artifact that predates it | no |
-| **P1** | The order-or-embedding decision, which is the whole of MR's 49 | yes |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                           | Needs provider  |
+| ------------- | -------------------------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | The rank diagnostic is **dispatched**; §13.65.3's three predictions and the decision rule are registered       | yes (in flight) |
+| **P0 (done)** | The rank is recorded, the two encodings are asserted equal, and `--ranks` refuses an artifact that predates it | no              |
+| **P1**        | The order-or-embedding decision, which is the whole of MR's 49                                                 | yes             |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list                                             | yes             |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                        | yes             |
+| P3            | `PATH` ordering                                                                                                | no              |
 
 ---
 
@@ -8494,30 +8527,30 @@ The configuration §13.64 adopted, plus the rank capture. Drift check: **500 of 
 
 ### 13.66.2 The three predictions
 
-| # | registered in §13.65.3 | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | the roster stays within **±11** of 375 | **371** (−4) | **met** |
+| #     | registered in §13.65.3                                              | observed            | verdict |
+| ----- | ------------------------------------------------------------------- | ------------------- | ------- |
+| **1** | the roster stays within **±11** of 375                              | **371** (−4)        | **met** |
 | **2** | `pool` equals the count of non-negative `goldRanks` on every record | no record disagrees | **met** |
-| **3** | top 32 captures **< 85%** of the surfaced gold | **79.7%** | **met** |
+| **3** | top 32 captures **< 85%** of the surfaced gold                      | **79.7%**           | **met** |
 
 ### 13.66.3 The curve
 
-| capability | gold | top 8 | top 16 | top 32 | surfaced |
-| --- | --- | --- | --- | --- | --- |
-| ABS | 672 | 121 (18.0%) | 213 (31.7%) | 322 (47.9%) | 420 (62.5%) |
-| IE | 1709 | 685 (40.1%) | 1037 (60.7%) | 1294 (75.7%) | 1444 (84.5%) |
-| KU | 1688 | 455 (27.0%) | 774 (45.9%) | 1099 (65.1%) | 1327 (78.6%) |
-| **MR** | 3663 | 664 (18.1%) | 1225 (33.4%) | **1984 (54.2%)** | 2632 (71.9%) |
-| **TR** | 3228 | 659 (20.4%) | 1135 (35.2%) | 1694 (52.5%) | 2195 (68.0%) |
-| **total** | 10960 | **2584 (23.6%)** | **4384 (40.0%)** | **6393 (58.3%)** | **8018 (73.2%)** |
+| capability | gold  | top 8            | top 16           | top 32           | surfaced         |
+| ---------- | ----- | ---------------- | ---------------- | ---------------- | ---------------- |
+| ABS        | 672   | 121 (18.0%)      | 213 (31.7%)      | 322 (47.9%)      | 420 (62.5%)      |
+| IE         | 1709  | 685 (40.1%)      | 1037 (60.7%)     | 1294 (75.7%)     | 1444 (84.5%)     |
+| KU         | 1688  | 455 (27.0%)      | 774 (45.9%)      | 1099 (65.1%)     | 1327 (78.6%)     |
+| **MR**     | 3663  | 664 (18.1%)      | 1225 (33.4%)     | **1984 (54.2%)** | 2632 (71.9%)     |
+| **TR**     | 3228  | 659 (20.4%)      | 1135 (35.2%)     | 1694 (52.5%)     | 2195 (68.0%)     |
+| **total**  | 10960 | **2584 (23.6%)** | **4384 (40.0%)** | **6393 (58.3%)** | **8018 (73.2%)** |
 
-**The head is shallow.** A third of the gold the ranker *can* find sits between rank 32 and the cut, and the first
+**The head is shallow.** A third of the gold the ranker _can_ find sits between rank 32 and the cut, and the first
 eight turns of a 64-wide pool carry under a quarter of it. So the campaign's oldest suspicion — that the ranking is
 the constraint — is now measurable in the currency the argument needs.
 
 ### 13.66.4 The decision, by the rule §13.65.3 registered before the number existed
 
-The rule: *if the median rank of the surfaced-but-cut gold is below 2× the room (≈52), the lever is the order.*
+The rule: _if the median rank of the surfaced-but-cut gold is below 2× the room (≈52), the lever is the order._
 
 MR's cut gold occupies ranks 26–63 with a median near **45**, and the run-wide picture is the same shape: top 32
 holds 58.3% of the gold, the cut band holds another 14.9%, and the room is ~26 turns. **45 < 52. The lever is the
@@ -8542,7 +8575,7 @@ sharper: the hybrid's +18 could not have been evidence variance, because there w
 - **Not the embedding.** The rule decided.
 - **Not the room.** §13.34.3 measured the room holding 26 turns against a median gold set of 24; with a perfect
   order the room is sufficient, and top 32 already holds more gold than the room can buy.
-- **Not `k`.** §13.54, and now for a second reason: the cut band is *inside* the pool.
+- **Not `k`.** §13.54, and now for a second reason: the cut band is _inside_ the pool.
 - **The order.** A function that decides which 26 of the 64 scored candidates the model reads. The campaign has
   the artifact to argue about it — `goldRanks` says how far off each choice was — but the ordering signal itself
   is a design question that deserves its own registration rather than a reuse of `relevanceUnits`, which is
@@ -8558,13 +8591,13 @@ sharper: the hybrid's +18 could not have been evidence variance, because there w
 
 ### 13.66.8 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0 (done)** | The rank curve exists and decided: **the order**, not the embedding | no |
-| **P0** | **Design the ordering function** and register it — the whole of MR's 49 and TR's 17 | no, to design |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                | Needs provider |
+| ------------- | ----------------------------------------------------------------------------------- | -------------- |
+| **P0 (done)** | The rank curve exists and decided: **the order**, not the embedding                 | no             |
+| **P0**        | **Design the ordering function** and register it — the whole of MR's 49 and TR's 17 | no, to design  |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list                  | yes            |
+| P2            | The §13.55 sentence, now redundant, as its own variable                             | yes            |
+| P3            | `PATH` ordering                                                                     | no             |
 
 ---
 
@@ -8576,14 +8609,14 @@ sharper: the hybrid's +18 could not have been evidence variance, because there w
 gold set of **24**, so a perfect selector would reach 0.917 coverage. That argument is about **counts**, and
 `--turns` on the adopted run's artifact shows the other half of the room's arithmetic:
 
-| | value |
-| --- | --- |
+|                 | value                       |
+| --------------- | --------------------------- |
 | delivered turns | 14,115 across 500 questions |
-| **median turn** | **272 characters** |
-| mean | 743 |
-| p90 | 2,305 |
-| max | 15,369 |
-| roster median | **26 turns per question** |
+| **median turn** | **272 characters**          |
+| mean            | 743                         |
+| p90             | 2,305                       |
+| max             | 15,369                      |
+| roster median   | **26 turns per question**   |
 
 Twenty-six turns of median size are **7,072 characters**. The room is 24,000. So the room is **not** being spent
 on turns of typical size — it is being spent on a tail, and the median turn is carrying a seventh of the space
@@ -8591,12 +8624,12 @@ its count suggests.
 
 ### 13.67.2 What a per-turn cap would buy, in arithmetic rather than in hope
 
-| cap | characters saved | share | turns that would fit in the same room |
-| --- | --- | --- | --- |
-| 200 | 8,015,463 | 76.5% | **4.25×** |
-| **400** | 6,682,968 | **63.7%** | **2.76×** |
-| 600 | 5,753,658 | 54.9% | 2.22× |
-| 900 | 4,516,877 | 43.1% | 1.76× |
+| cap     | characters saved | share     | turns that would fit in the same room |
+| ------- | ---------------- | --------- | ------------------------------------- |
+| 200     | 8,015,463        | 76.5%     | **4.25×**                             |
+| **400** | 6,682,968        | **63.7%** | **2.76×**                             |
+| 600     | 5,753,658        | 54.9%     | 2.22×                                 |
+| 900     | 4,516,877        | 43.1%     | 1.76×                                 |
 
 At a 400-character cap the same room holds **2.76 times as many turns** — 26 becomes 72, which is more than the
 64-wide pool contains. And §13.66 measured exactly what that would buy: the pool holds **73.2%** of the gold while
@@ -8617,7 +8650,7 @@ Capping a turn's contribution moves the cut, which is the one thing the rank cur
 ### 13.67.4 What it costs, stated before the run
 
 A cap cuts each turn at that length. For a counting question the gold turn is usually a short statement
-(*"I went to Lisbon in May"*), so cutting at 400 characters loses little. For a turn whose decisive fact sits deep
+(_"I went to Lisbon in May"_), so cutting at 400 characters loses little. For a turn whose decisive fact sits deep
 in a long narrative, the cap destroys it. **That is the trade, and the prediction below prices it**: coverage and
 counts should rise, and any capability whose answers live in long text should lose more than it gains.
 
@@ -8626,12 +8659,12 @@ counts should rise, and any capability whose answers live in long text should lo
 **One variable**: a per-turn character cap of **400**, applied where the prompt renders each turn, with
 `undefined` meaning no cap so every archived run stays byte-identical.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **Coverage rises**: MR's delivered gold share rises from **42.5%** to **≥ 50.2%** of its total — **corrected by §13.71**, which found the original `54.2%` was a median over the answered subset of a *different* configuration rather than an aggregate share. The original target (`≥ 62%` against `54.2%`) is kept as a secondary check in §13.71.2 | ≤ 42.5% |
-| **2** | **MR's correct count rises from 62 to ≥ 66** | ≤ 62 |
-| **3** | **The roster rises from 371 to ≥ 379** | ≤ 371 |
-| **4** | **The long-text capabilities hold**: IE and KU stay within their own measured rates (IE 5, KU 7 questions) | outside either |
+| #     | prediction                                                                                                                                                                                                                                                                                                                                             | falsified if   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| **1** | **Coverage rises**: MR's delivered gold share rises from **42.5%** to **≥ 50.2%** of its total — **corrected by §13.71**, which found the original `54.2%` was a median over the answered subset of a _different_ configuration rather than an aggregate share. The original target (`≥ 62%` against `54.2%`) is kept as a secondary check in §13.71.2 | ≤ 42.5%        |
+| **2** | **MR's correct count rises from 62 to ≥ 66**                                                                                                                                                                                                                                                                                                           | ≤ 62           |
+| **3** | **The roster rises from 371 to ≥ 379**                                                                                                                                                                                                                                                                                                                 | ≤ 371          |
+| **4** | **The long-text capabilities hold**: IE and KU stay within their own measured rates (IE 5, KU 7 questions)                                                                                                                                                                                                                                             | outside either |
 
 **Prediction 1 is the mechanism, 2 and 3 are the money, 4 is the price.** They are separated because a cap that
 raises coverage but loses IE would be a capability trade rather than an improvement, and the campaign has
@@ -8661,13 +8694,13 @@ more than an unregistered change that has**, which is the order this campaign ha
 
 ### 13.67.8 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | **Implement the 400-character per-turn cap** and dispatch it under §13.67.5's four predictions | no, to build; yes, to measure |
-| **P0 (done)** | The room's arithmetic is measured: median turn 272 against a 24,000-character room, and the cap table | no |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                  | Needs provider                |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **P0**        | **Implement the 400-character per-turn cap** and dispatch it under §13.67.5's four predictions        | no, to build; yes, to measure |
+| **P0 (done)** | The room's arithmetic is measured: median turn 272 against a 24,000-character room, and the cap table | no                            |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list                                    | yes                           |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                               | yes                           |
+| P3            | `PATH` ordering                                                                                       | no                            |
 
 ## 13.68 The per-turn cap is implemented, four layers deep, and one line of it no test reaches
 
@@ -8680,12 +8713,12 @@ prediction is not amended by the section that implements it.
 
 The variable is a per-turn character cap of **400**, and it is one option threaded through four layers:
 
-| layer | file | what would break without it |
-| --- | --- | --- |
-| renderer | `prompt.ts` `contentFor` + `formatEvidence` | nothing caps, and the option is a comment |
-| forwarding | `memory.ts` `#promptOptions` | the system accepts the number and the prompt ignores it |
-| reader | `bench-memory-arm.ts` `readMaxTurnChars` | the arm runs no cap while the artifact config claims one |
-| projection | `report.ts` config line | two artifacts differ only in a JSON key most readers never open |
+| layer      | file                                        | what would break without it                                     |
+| ---------- | ------------------------------------------- | --------------------------------------------------------------- |
+| renderer   | `prompt.ts` `contentFor` + `formatEvidence` | nothing caps, and the option is a comment                       |
+| forwarding | `memory.ts` `#promptOptions`                | the system accepts the number and the prompt ignores it         |
+| reader     | `bench-memory-arm.ts` `readMaxTurnChars`    | the arm runs no cap while the artifact config claims one        |
+| projection | `report.ts` config line                     | two artifacts differ only in a JSON key most readers never open |
 
 ### 13.68.2 The cap is on the content, not on the rendered block
 
@@ -8748,11 +8781,11 @@ by exactly one run. Stated here rather than left for a reader to discover.
 
 ### 13.68.6 Predictions, unchanged from §13.67.5
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its total | ≤ 54.2% |
-| **2** | **MR's correct count rises from 62 to ≥ 66** | ≤ 62 |
-| **3** | **The roster rises from 371 to ≥ 379** | ≤ 371 |
+| #     | prediction                                                                                                 | falsified if   |
+| ----- | ---------------------------------------------------------------------------------------------------------- | -------------- |
+| **1** | **Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its total               | ≤ 54.2%        |
+| **2** | **MR's correct count rises from 62 to ≥ 66**                                                               | ≤ 62           |
+| **3** | **The roster rises from 371 to ≥ 379**                                                                     | ≤ 371          |
 | **4** | **The long-text capabilities hold**: IE and KU stay within their own measured rates (IE 5, KU 7 questions) | outside either |
 
 Prediction 3 is safe against cross-run noise on this arm because §13.66 measured **retrieval to be
@@ -8766,14 +8799,14 @@ the only noise this variable meets is model sampling (±4 on the roster).
 - **1 holds and 2 does not**: more gold arrives and the model still miscounts it — which would move the ordering
   of the remaining work rather than its content.
 - **1 fails**: the turns the cap buys back are not the turns that decide, i.e. the cut band from rank 26 to 64
-  is *below* the gold that matters and §13.66's rule was reading the median rather than the mass.
+  is _below_ the gold that matters and §13.66's rule was reading the median rather than the mass.
 - **4 fails while 1–3 hold**: a capability trade. Adoption would then need its own argument, and this section
   does not pre-authorise one.
 
 ### 13.68.8 Verification
 
 - **Red first**: three renderer tests failed before the implementation (`renders each turn at the cap`, `fits
-  more turns in the same room`, `applies on the session route`), and four eval tests failed before the reader
+more turns in the same room`, `applies on the session route`), and four eval tests failed before the reader
   existed. The six inert renderer tests passed from the start, which is the correct reading of "an
   unimplemented option is inert".
 - **End to end**: `prompt-turn-cap.test.ts` drives a real `CortexMemory` with a recording `LLM` and asserts on
@@ -8786,14 +8819,14 @@ the only noise this variable meets is model sampling (±4 on the roster).
 
 ### 13.68.9 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read the 400-character cap's run against §13.68.6's four predictions | yes, dispatched |
-| **P0 (done)** | The cap is implemented through the renderer, the forwarding, the reader and the config line | no |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
-| P1 | The order function §13.66 left as the lever, now measurable per selection via `goldRanks` | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                        | Needs provider  |
+| ------------- | ------------------------------------------------------------------------------------------- | --------------- |
+| **P0**        | Read the 400-character cap's run against §13.68.6's four predictions                        | yes, dispatched |
+| **P0 (done)** | The cap is implemented through the renderer, the forwarding, the reader and the config line | no              |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list                          | yes             |
+| P1            | The order function §13.66 left as the lever, now measurable per selection via `goldRanks`   | yes             |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                     | yes             |
+| P3            | `PATH` ordering                                                                             | no              |
 
 ## 13.69 The registration held two answers to one question, and a dispatch printed the wrong one
 
@@ -8818,10 +8851,10 @@ it.
 §13.64 appended an adoption bullet near the **top** of §10.3 and left §13.17's original bullet near the
 **bottom**. After that section the document named `relevanceSignal` twice:
 
-| position | statement |
-| --- | --- |
-| top | `relevanceSignal: retrieval-hybrid` — adopted by §13.64 |
-| bottom | `relevanceSignal: retrieval` — added by §13.17 |
+| position | statement                                               |
+| -------- | ------------------------------------------------------- |
+| top      | `relevanceSignal: retrieval-hybrid` — adopted by §13.64 |
+| bottom   | `relevanceSignal: retrieval` — added by §13.17          |
 
 `test_preregistration_config.py` parsed the block with `found[concept] = value` in a loop, so **last wins** and
 the stale bullet won. The dispatch table also said `retrieval`. So the test compared the dispatch against the
@@ -8882,14 +8915,14 @@ The artifact has carried both halves since §13.11 without anyone putting them s
 the assembled prompt spent) and `turns` (what it held). `--window` prints them together, per capability, as
 medians:
 
-| capability | n | turns | chars | chars/turn | budget |
-| --- | --- | --- | --- | --- | --- |
-| ABS | 30 | 33.5 | 22,768 | 687 | 94.9% |
-| IE | 150 | 29.5 | 23,050 | 763 | 96.0% |
-| KU | 72 | 27.0 | 22,638 | 822 | 94.3% |
-| **MR** | 121 | **23.0** | **21,657** | **947** | **90.2%** |
-| TR | 127 | 26.0 | 22,540 | 855 | 93.9% |
-| **TOTAL** | 500 | **26.0** | **22,406** | **842** | **93.4%** |
+| capability | n   | turns    | chars      | chars/turn | budget    |
+| ---------- | --- | -------- | ---------- | ---------- | --------- |
+| ABS        | 30  | 33.5     | 22,768     | 687        | 94.9%     |
+| IE         | 150 | 29.5     | 23,050     | 763        | 96.0%     |
+| KU         | 72  | 27.0     | 22,638     | 822        | 94.3%     |
+| **MR**     | 121 | **23.0** | **21,657** | **947**    | **90.2%** |
+| TR         | 127 | 26.0     | 22,540     | 855        | 93.9%     |
+| **TOTAL**  | 500 | **26.0** | **22,406** | **842**    | **93.4%** |
 
 Run `39116387165`, the control this variable is measured against.
 
@@ -8934,28 +8967,28 @@ spread.
 
 ### 13.70.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Read run `39180819474` (cap 400 on the adopted hybrid baseline) against §13.68.6, with `--window` beside `--coverage` | yes, in flight |
-| **P0 (done)** | The window instrument, and the diagnostic expectation it makes checkable | no |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list | yes |
-| P1 | The order function, now measurable per selection through `goldRanks` | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                                  | Needs provider |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- | -------------- |
+| **P0**        | Read run `39180819474` (cap 400 on the adopted hybrid baseline) against §13.68.6, with `--window` beside `--coverage` | yes, in flight |
+| **P0 (done)** | The window instrument, and the diagnostic expectation it makes checkable                                              | no             |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list                                                    | yes            |
+| P1            | The order function, now measurable per selection through `goldRanks`                                                  | yes            |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                               | yes            |
+| P3            | `PATH` ordering                                                                                                       | no             |
 
 ### 13.70.7 The exposure, measured before the run rather than assumed
 
 A cap is only a variable if it binds, and its cost is only real if the turns it cuts are the ones carrying the
 facts. Both are answerable from the control artifact, per **turn** rather than per question:
 
-| capability | carried turns | longer than 400 | share | characters removed |
-| --- | --- | --- | --- | --- |
-| ABS | 991 | 321 | 32.4% | 386,719 |
-| IE | 4,639 | 1,555 | 33.5% | 2,002,633 |
-| KU | 2,097 | 730 | 34.8% | 960,842 |
-| **MR** | 2,909 | **1,202** | **41.3%** | **1,609,132** |
-| TR | 3,479 | 1,301 | 37.4% | 1,723,642 |
-| **TOTAL** | 14,115 | **5,109** | **36.2%** | **6,682,968** |
+| capability | carried turns | longer than 400 | share     | characters removed |
+| ---------- | ------------- | --------------- | --------- | ------------------ |
+| ABS        | 991           | 321             | 32.4%     | 386,719            |
+| IE         | 4,639         | 1,555           | 33.5%     | 2,002,633          |
+| KU         | 2,097         | 730             | 34.8%     | 960,842            |
+| **MR**     | 2,909         | **1,202**       | **41.3%** | **1,609,132**      |
+| TR         | 3,479         | 1,301           | 37.4%     | 1,723,642          |
+| **TOTAL**  | 14,115        | **5,109**       | **36.2%** | **6,682,968**      |
 
 So the cap binds on **36.2%** of the turns the model currently reads, and on **41.3%** of MR's. Two consequences
 stated before the numbers arrive:
@@ -8963,7 +8996,7 @@ stated before the numbers arrive:
 - **The variable is not inert by construction.** A cap that touched 2% of turns could not move coverage and a
   null result would say nothing; this one removes 6.68 million characters from the delivered evidence.
 - **The cost is not hypothetical either.** Four in ten of MR's turns will lose text, so §13.67.4's stated trade —
-  *a turn whose decisive fact sits deep in a long narrative loses it* — is being tested on a large minority of the
+  _a turn whose decisive fact sits deep in a long narrative loses it_ — is being tested on a large minority of the
   population rather than on an edge case. Prediction 4 is what keeps that honest: if IE or KU falls outside its
   own measured rate while MR rises, the run has bought coverage with capability, and §13.68.7 says that needs its
   own argument rather than an adoption.
@@ -8979,7 +9012,7 @@ number of items they listed, 10 of those off by exactly one.
 Two consequences, both stated before the numbers:
 
 - **Prediction 1 and prediction 2 can dissociate in a way that is not a failure of either.** Coverage is about
-  what arrived; the correct count is about what the model did with it. A run reading *coverage 62%, correct 63*
+  what arrived; the correct count is about what the model did with it. A run reading _coverage 62%, correct 63_
   would say the window grew and the reader did not improve — which is §13.59's finding restated on a bigger
   window, and would move the next variable to the arithmetic without contradicting anything here.
 - **A rise in `numeric_mismatch` is therefore not evidence against the cap.** It is the expected companion of a
@@ -8993,19 +9026,19 @@ explanation available only after the fact is not a measurement.
 
 ### 13.71.1 What §13.67.5 said, and what the number actually was
 
-Prediction 1 reads: *"**Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its
-total."*
+Prediction 1 reads: _"**Coverage rises**: MR's delivered gold share rises from **54.2%** to **≥ 62%** of its
+total."_
 
 `54.2%` is **not** a delivered gold share. On the control artifact the three candidate numbers are:
 
-| statistic | value |
-| --- | --- |
-| MR **aggregate** delivered share (`Σcarried / Σtotal`) | **42.5%** |
-| MR median per-question coverage, all 121 questions | 44.4% |
-| MR median per-question coverage **among correct answers** (n = 62) | 53.1% |
+| statistic                                                          | value     |
+| ------------------------------------------------------------------ | --------- |
+| MR **aggregate** delivered share (`Σcarried / Σtotal`)             | **42.5%** |
+| MR median per-question coverage, all 121 questions                 | 44.4%     |
+| MR median per-question coverage **among correct answers** (n = 62) | 53.1%     |
 
 The 54.2% is the third statistic, read from run `39083274990` — a **different configuration** (`relevanceSignal:
-retrieval`, pre-§13.64) — and it appears in §13.51.2's table as *"MR: correct 54.2% (n= 62)"*. So the
+retrieval`, pre-§13.64) — and it appears in §13.51.2's table as _"MR: correct 54.2% (n= 62)"_. So the
 registration
 took a **median over the answered subset of one run** and used it as the **aggregate baseline of another**. Three
 errors in one number, and every one of them is the class this campaign keeps finding: the instrument read a field
@@ -9014,7 +9047,7 @@ that was not the field the sentence named.
 ### 13.71.2 Why this has to be fixed now rather than explained later
 
 The run is in flight (`39180819474`, dispatched before this section was written). If it lands at **56%**, the
-original prediction is *falsified* (56 < 62) while the honest reading is **+13.5 points** — a large success
+original prediction is _falsified_ (56 < 62) while the honest reading is **+13.5 points** — a large success
 reported as a failure. If it lands at **61%**, the original is falsified by one point while being a near-doubling
 of the effect the registration intended. Either way, evaluating the original number would produce a conclusion
 about the arithmetic of a wrong baseline rather than about the cap.
@@ -9023,10 +9056,10 @@ Correcting it **before** the artifact exists is the only version of this that is
 correction is stated with the error, the corrected baseline is measured rather than assumed, and the original
 target is retained as a secondary check so that neither form can be quietly forgotten:
 
-| | baseline | target | meaning |
-| --- | --- | --- | --- |
-| original (wrong statistic) | 54.2% | ≥ 62% | a median-among-correct from another run |
-| **corrected** | **42.5%** | **≥ 50.2%** | the same **+7.7 points** the original implied |
+|                            | baseline  | target      | meaning                                       |
+| -------------------------- | --------- | ----------- | --------------------------------------------- |
+| original (wrong statistic) | 54.2%     | ≥ 62%       | a median-among-correct from another run       |
+| **corrected**              | **42.5%** | **≥ 50.2%** | the same **+7.7 points** the original implied |
 
 Both are reported. A run reading between 50.2% and 62% satisfies the corrected prediction and fails the
 original; §13.71.4 says how that is to be read — as the corrected form holding, with the original recorded as
@@ -9035,14 +9068,14 @@ mis-specified rather than as a near miss.
 ### 13.71.3 The geometry `goldRanks` now permits, computed on the control before the result
 
 `goldRanks` records each gold turn's position in the ranked pool, so the delivered share at any window width is
-computable **without a model**. On the control artifact, MR's in-pool gold captured by the top *k* of the pool:
+computable **without a model**. On the control artifact, MR's in-pool gold captured by the top _k_ of the pool:
 
-| k | 23 | 26 | 40 | 53 | 64 |
-| --- | --- | --- | --- | --- | --- |
+| k                        | 23    | 26    | 40    | 53        | 64    |
+| ------------------------ | ----- | ----- | ----- | --------- | ----- |
 | MR in-pool gold captured | 44.9% | 48.3% | 60.9% | **67.8%** | 71.9% |
 
 The control's measured aggregate is **42.5%** against **44.9%** at k = 23 — a **−2.4 point** offset between
-geometry and measurement, which is what a room of *characters* rather than *turns* does: the median MR prompt
+geometry and measurement, which is what a room of _characters_ rather than _turns_ does: the median MR prompt
 holds 23 turns (§13.70.1), the pool's tail is longer than the median, so the room lands near rank 21 or 22 rather
 than 23.
 
@@ -9072,7 +9105,7 @@ no-redraw rule forbids changing a target to fit a result; it cannot require keep
 wrong number, because that would make the registration a record of arithmetic rather than of intent.
 
 The cost is recorded: **five sections** (§13.63, §13.64, §13.66, §13.67, and the docs sections that quote them)
-carry the sentence *"the pool holds 73.2% of the gold and the delivery 54.2%"*, and every one of them pairs an
+carry the sentence _"the pool holds 73.2% of the gold and the delivery 54.2%"_, and every one of them pairs an
 **all-capabilities** pool figure with a **median-among-correct** MR figure. The correct pairing, on the hybrid
 control, is **pool 73.2% all-capabilities against delivered 49.8% all-capabilities**, and **MR pool 71.9%
 against MR delivered 42.5%**. Both are stated here so the earlier sentences have a correction in the record
@@ -9112,13 +9145,13 @@ Run `39180819474`, 1h37m43s, `drift` 500/500 with zero answers differing, config
 `relevanceSignal=retrieval-hybrid relevanceTopK=64 relevanceUnits=turn`, and `maxTurnChars=400` in both the log
 and the artifact.
 
-| # | registered | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR's delivered share 42.5% → **≥ 50.2%** (corrected, §13.71) | **72.2%** (2644/3663) | **met**, by 22 points |
-| 1′ | the original form: 54.2% → ≥ 62% | 72.2% | met — but the original baseline was the wrong statistic |
-| **2** | MR correct 62 → **≥ 66** | **75** | **met**, +13 |
-| **3** | roster 371 → **≥ 379** | **357** | **falsified**, −14 |
-| **4** | IE and KU inside their own measured rates (5 / 7) | IE **−30**, KU −4 | **falsified** on IE, met on KU |
+| #     | registered                                                   | observed              | verdict                                                 |
+| ----- | ------------------------------------------------------------ | --------------------- | ------------------------------------------------------- |
+| **1** | MR's delivered share 42.5% → **≥ 50.2%** (corrected, §13.71) | **72.2%** (2644/3663) | **met**, by 22 points                                   |
+| 1′    | the original form: 54.2% → ≥ 62%                             | 72.2%                 | met — but the original baseline was the wrong statistic |
+| **2** | MR correct 62 → **≥ 66**                                     | **75**                | **met**, +13                                            |
+| **3** | roster 371 → **≥ 379**                                       | **357**               | **falsified**, −14                                      |
+| **4** | IE and KU inside their own measured rates (5 / 7)            | IE **−30**, KU −4     | **falsified** on IE, met on KU                          |
 
 The precondition held and must be read first: MR's median turns went **23 → 68** and `promptChars` stayed at
 22,149 of 24,000. The cap bound, the window nearly tripled, and the diagnostic band §13.71.3 registered
@@ -9126,16 +9159,16 @@ The precondition held and must be read first: MR's median turns went **23 → 68
 
 Per capability, against the control (`39116387165`):
 
-| capability | control | cap 400 | Δ |
-| --- | --- | --- | --- |
-| ABS | 30 | 30 | 0 |
-| IE | 133 | **103** | **−30** |
-| KU | 61 | 57 | −4 |
-| **MR** | 62 | **75** | **+13** |
-| TR | 85 | **92** | +7 |
-| **roster** | **371** | **357** | **−14** |
-| registered delta | +30.45pp | +26.80pp | −3.65pp |
-| union | 437/500 = 87.40% | 401/500 = **80.20%** | **−36** |
+| capability       | control          | cap 400              | Δ       |
+| ---------------- | ---------------- | -------------------- | ------- |
+| ABS              | 30               | 30                   | 0       |
+| IE               | 133              | **103**              | **−30** |
+| KU               | 61               | 57                   | −4      |
+| **MR**           | 62               | **75**               | **+13** |
+| TR               | 85               | **92**               | +7      |
+| **roster**       | **371**          | **357**              | **−14** |
+| registered delta | +30.45pp         | +26.80pp             | −3.65pp |
+| union            | 437/500 = 87.40% | 401/500 = **80.20%** | **−36** |
 
 ### 13.72.2 The mechanism worked better than it was predicted to, and the reason is new
 
@@ -9155,16 +9188,16 @@ IE's loss is not diffuse. Of its 150 questions, **30 went `correct → abstentio
 
 So the model was given complete evidence and withdrew. This is not the §13.51 "declining with the evidence in
 hand" defect returning by accident: IE is on the **flat** route, which never received §13.57's conditional closing
-line, so its block still ends with the unconditional *"If the evidence does not contain the answer, reply exactly
-INSUFFICIENT_EVIDENCE."* Seventy-three turns of mostly-irrelevant text give that sentence more opportunities to be
+line, so its block still ends with the unconditional _"If the evidence does not contain the answer, reply exactly
+INSUFFICIENT_EVIDENCE."_ Seventy-three turns of mostly-irrelevant text give that sentence more opportunities to be
 true, and the model takes them.
 
 The contrast inside one run makes the point better than any aggregate:
 
-| | declines | coverage among declines | correct |
-| --- | --- | --- | --- |
-| **MR** (multi-session, conditional close) | 18 → **10** | 21% → **54%** | 62 → **75** |
-| **IE** (flat, unconditional close) | 15 → **42** | 43% → **100%** | 133 → **103** |
+|                                           | declines    | coverage among declines | correct       |
+| ----------------------------------------- | ----------- | ----------------------- | ------------- |
+| **MR** (multi-session, conditional close) | 18 → **10** | 21% → **54%**           | 62 → **75**   |
+| **IE** (flat, unconditional close)        | 15 → **42** | 43% → **100%**          | 133 → **103** |
 
 **The same intervention moved abstention in opposite directions on two capabilities**, and the difference tracks
 the closing line rather than the coverage.
@@ -9177,7 +9210,7 @@ because the delivery is a prefix of the ranked pool. With the room wider than th
 **negative** "cut by the budget" and called fourteen records a caller defect.
 
 Both were fixed in this iteration, with tests, and the honest reading of the failure is that the invariant was a
-property of the *regime* rather than of the data: it held for every run while the window was smaller than the
+property of the _regime_ rather than of the data: it held for every run while the window was smaller than the
 pool, and it stopped holding the first time a variable made the window larger. The table now carries both
 directions as separate columns clamped at zero, and only `pool > total` / `carried > total` remain defects.
 
@@ -9200,7 +9233,7 @@ named transitions the other way. Neither is noise, and a single switch cannot ex
 - **The evidence room is not one number.** §13.34.3's count argument and §13.67's character argument were both
   right, and both were answering for the arm as a whole. This run says the optimum is per route.
 - **Abstention is a function of list length as well as of coverage.** IE declines at 100% coverage, 42 times.
-  That is §13.51's question — *why does a model with the evidence decline?* — answered for a second capability in
+  That is §13.51's question — _why does a model with the evidence decline?_ — answered for a second capability in
   a different direction.
 - **MR's remaining gap is now 32, not 49.** Union 107 on MR against a baseline of 102: the feature answers 75
   where the reference answers 102. The cap moved the coverage constraint a long way and left the counting
@@ -9213,20 +9246,20 @@ named transitions the other way. Neither is noise, and a single switch cannot ex
   encoded; `tools` **454 passed + 42 subtests**; one pre-existing fixture was rewritten rather than kept green.
 - `pnpm check` is re-run before this section is committed.
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | The **route-scoped cap**: register and measure a window that widens where it helps and not where it hurts (§13.73) | yes |
-| **P0 (done)** | The global cap's reading: 1 and 2 met, 3 and 4 falsified, mechanism confirmed and rejected as a default | — |
-| **P1** | MR's 31 `numeric_mismatch`, of which 11 count their own short list — unchanged by the cap, as §13.70.8 predicted | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                               | Needs provider |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ | -------------- |
+| **P0**        | The **route-scoped cap**: register and measure a window that widens where it helps and not where it hurts (§13.73) | yes            |
+| **P0 (done)** | The global cap's reading: 1 and 2 met, 3 and 4 falsified, mechanism confirmed and rejected as a default            | —              |
+| **P1**        | MR's 31 `numeric_mismatch`, of which 11 count their own short list — unchanged by the cap, as §13.70.8 predicted   | yes            |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                            | yes            |
+| P3            | `PATH` ordering                                                                                                    | no             |
 
 ## 13.73 The next variable is the cap's reach, and it is one variable
 
 ### 13.73.1 Why reach rather than a different width
 
 §13.72 measured the cap at one width (400) over every route and found both a large gain and a large loss. The
-obvious next question is whether some *other* width is better for everyone, and the run already answers it: the
+obvious next question is whether some _other_ width is better for everyone, and the run already answers it: the
 loss is not a matter of degree. IE's thirty questions went `correct → abstention` with **100%** coverage — the
 evidence was complete and the model withdrew. No smaller cap turns a complete window into a partial one on a
 capability whose questions need one turn; it only changes how many distractors surround it. So a sweep would
@@ -9239,13 +9272,13 @@ byte-identical.
 
 ### 13.73.2 Which routes, and the evidence for each
 
-| route | capability whose questions land there | evidence |
-| --- | --- | --- |
-| **multi-session** | MR | +13 correct, declines 18 → 10, coverage 21% → 54% among declines. The only move in this run far outside any capability's own noise |
-| **temporal** | TR | +7 correct, declines flat at 25 → 26 while their coverage rose 40% → 62%. Low-risk, plausibly real, and **inside** TR's own 15-question churn — so it is included for its *shape*, not its count |
-| flat | IE | **−30**, all as `correct → abstention` at 100% coverage. Excluded because of this |
-| knowledge-update | KU | −4, inside its own rate, on a route with its own block. Excluded as the conservative reading of a move the instrument cannot separate from noise |
-| abstention | ABS | 0 in both runs. Excluded because nothing moved |
+| route             | capability whose questions land there | evidence                                                                                                                                                                                         |
+| ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **multi-session** | MR                                    | +13 correct, declines 18 → 10, coverage 21% → 54% among declines. The only move in this run far outside any capability's own noise                                                               |
+| **temporal**      | TR                                    | +7 correct, declines flat at 25 → 26 while their coverage rose 40% → 62%. Low-risk, plausibly real, and **inside** TR's own 15-question churn — so it is included for its _shape_, not its count |
+| flat              | IE                                    | **−30**, all as `correct → abstention` at 100% coverage. Excluded because of this                                                                                                                |
+| knowledge-update  | KU                                    | −4, inside its own rate, on a route with its own block. Excluded as the conservative reading of a move the instrument cannot separate from noise                                                 |
+| abstention        | ABS                                   | 0 in both runs. Excluded because nothing moved                                                                                                                                                   |
 
 **TR's inclusion is the one judgement in this table**, and the registration says so: its own cross-draw rate is
 15 of 127, so +7 is not evidence. What justifies including it is that the temporal route's block also ends with
@@ -9259,13 +9292,13 @@ finding is narrower than this section's argument.
 Everything else is held: `ask: enumerated`, `relevanceSignal: retrieval-hybrid`, `relevanceTopK: 64`,
 `relevanceUnits: turn`, both thresholds `0`, `sourceTrust 0.5`, `promptContract abstention-evidence-blocks`.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **IE returns**: ≥ **130** of 150 (control 133; the cap run 103; IE's own rate ±2) | ≤ 129 |
-| **2** | **MR keeps the gain**: ≥ **70** (control 62; cap run 75; MR's rate ±4) | ≤ 69 |
-| **3** | **KU holds**: ≥ **58** (control 61; KU's rate ±7) | ≤ 57 |
-| **4** | **TR holds**: ≥ **80** (control 85; cap run 92; TR's rate ±15) | ≤ 79 |
-| **5** | **the roster rises**: ≥ **378** (control 371, dispatched on §13.66's deterministic retrieval) | ≤ 377 |
+| #     | prediction                                                                                    | falsified if |
+| ----- | --------------------------------------------------------------------------------------------- | ------------ |
+| **1** | **IE returns**: ≥ **130** of 150 (control 133; the cap run 103; IE's own rate ±2)             | ≤ 129        |
+| **2** | **MR keeps the gain**: ≥ **70** (control 62; cap run 75; MR's rate ±4)                        | ≤ 69         |
+| **3** | **KU holds**: ≥ **58** (control 61; KU's rate ±7)                                             | ≤ 57         |
+| **4** | **TR holds**: ≥ **80** (control 85; cap run 92; TR's rate ±15)                                | ≤ 79         |
+| **5** | **the roster rises**: ≥ **378** (control 371, dispatched on §13.66's deterministic retrieval) | ≤ 377        |
 
 Prediction 1 is the **price restored** and prediction 2 is the **mechanism kept**; they are the two that carry the
 argument, and 3–5 exist so that a total cannot hide a trade the instrument is fine enough to see — §13.64.6's
@@ -9291,13 +9324,13 @@ and the byte-identity here is what keeps the three unchanged routes comparable t
 
 ### 13.73.5 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Implement the route-scoped cap and dispatch it under §13.73.3's five predictions | yes |
-| **P0 (done)** | The global cap read in full: mechanism confirmed, default rejected, instrument corrected | — |
-| **P1** | MR's 31 `numeric_mismatch` (11 counting their own short list) — the constraint the cap did not move | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                | Needs provider |
+| ------------- | --------------------------------------------------------------------------------------------------- | -------------- |
+| **P0**        | Implement the route-scoped cap and dispatch it under §13.73.3's five predictions                    | yes            |
+| **P0 (done)** | The global cap read in full: mechanism confirmed, default rejected, instrument corrected            | —              |
+| **P1**        | MR's 31 `numeric_mismatch` (11 counting their own short list) — the constraint the cap did not move | yes            |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                             | yes            |
+| P3            | `PATH` ordering                                                                                     | no             |
 
 ## 13.74 The reach is implemented, and the compiler is what enforces it
 
@@ -9316,7 +9349,14 @@ from the product side by making the omission a type error rather than a missing 
 The six names live in **one** place per package, and in the product they are one declaration:
 
 ```ts
-export const TURN_CAP_ROUTES = ['multi-session', 'temporal', 'flat', 'knowledge-update', 'abstention', 'assistant'] as const;
+export const TURN_CAP_ROUTES = [
+  'multi-session',
+  'temporal',
+  'flat',
+  'knowledge-update',
+  'abstention',
+  'assistant',
+] as const;
 export type TurnCapRoute = (typeof TURN_CAP_ROUTES)[number];
 ```
 
@@ -9326,11 +9366,11 @@ without the other.
 
 ### 13.74.2 Three spellings, and why `none` is not `absent`
 
-| spelling | meaning | why it exists |
-| --- | --- | --- |
-| absent or `all` | every route | the shipped state; `all` so a dispatch can send what §10.3 registers |
-| `none` | no route | a run that configures a cap it does not apply — a different claim from absence |
-| `a,b,c` | those routes | the experiment |
+| spelling        | meaning      | why it exists                                                                  |
+| --------------- | ------------ | ------------------------------------------------------------------------------ |
+| absent or `all` | every route  | the shipped state; `all` so a dispatch can send what §10.3 registers           |
+| `none`          | no route     | a run that configures a cap it does not apply — a different claim from absence |
+| `a,b,c`         | those routes | the experiment                                                                 |
 
 The config line renders all three distinctly (`all` / `none` / `multi-session+temporal`), joined with `+`
 because the line already separates fields with commas. A renderer that collapsed `none` into `all` would
@@ -9374,13 +9414,13 @@ capability's own rate beside its bound. The dispatch overrides two inputs and ho
 
 ### 13.74.6 Status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | Run `3918…`'s successor: cap 400 on multi-session + temporal, against §13.73.3's five predictions | yes, dispatched |
-| **P0 (done)** | The reach: six routes named by argument, three spellings, a guarded vocabulary | no |
-| **P1** | MR's 31 `numeric_mismatch` (11 counting their own short list) — untouched by the cap, as §13.70.8 said | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                                   | Needs provider  |
+| ------------- | ------------------------------------------------------------------------------------------------------ | --------------- |
+| **P0**        | Run `3918…`'s successor: cap 400 on multi-session + temporal, against §13.73.3's five predictions      | yes, dispatched |
+| **P0 (done)** | The reach: six routes named by argument, three spellings, a guarded vocabulary                         | no              |
+| **P1**        | MR's 31 `numeric_mismatch` (11 counting their own short list) — untouched by the cap, as §13.70.8 said | yes             |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                                | yes             |
+| P3            | `PATH` ordering                                                                                        | no              |
 
 ## 13.75 What the window table has to show for the reach to be what the run claims
 
@@ -9393,13 +9433,13 @@ one of those claims was wrong while every assertion passed.
 The reach is falsifiable from the artifact without any new instrument, because `--window` reports turns carried
 and characters spent **per capability**, and the four uncapped capabilities must reproduce their control:
 
-| capability | route | expected under the reach |
-| --- | --- | --- |
-| MR | multi-session | turns 23 → ~53–68, coverage 42.5% → rising |
-| TR | temporal | turns 26 → ~53–68, coverage 43.6% → rising |
-| IE | flat | **unchanged**: 29.5 turns, 23,050 chars |
-| KU | knowledge-update | **unchanged**: 27.0 turns, 22,638 chars |
-| ABS | abstention | **unchanged**: 33.5 turns, 22,768 chars |
+| capability | route            | expected under the reach                   |
+| ---------- | ---------------- | ------------------------------------------ |
+| MR         | multi-session    | turns 23 → ~53–68, coverage 42.5% → rising |
+| TR         | temporal         | turns 26 → ~53–68, coverage 43.6% → rising |
+| IE         | flat             | **unchanged**: 29.5 turns, 23,050 chars    |
+| KU         | knowledge-update | **unchanged**: 27.0 turns, 22,638 chars    |
+| ABS        | abstention       | **unchanged**: 33.5 turns, 22,768 chars    |
 
 A reach that leaked would show up as a moved turn count on IE, KU or ABS, and would do so **before** any accuracy
 number moved — the window is a property of the prompt, not of the model. That makes it the cheapest check in the
@@ -9407,14 +9447,14 @@ run and the first one to perform.
 
 ### 13.75.2 The geometry, computed on the control before the result
 
-From the control artifact's `goldRanks`, the in-pool gold captured by the top *k* of the pool:
+From the control artifact's `goldRanks`, the in-pool gold captured by the top _k_ of the pool:
 
-| k | MR | TR |
-| --- | --- | --- |
+| k                       | MR    | TR    |
+| ----------------------- | ----- | ----- |
 | 23 / 26 (control rooms) | 44.9% | 47.1% |
-| 40 | 60.9% | 57.5% |
-| 53 | 67.8% | 63.8% |
-| 64 | 71.9% | 68.0% |
+| 40                      | 60.9% | 57.5% |
+| 53                      | 67.8% | 63.8% |
+| 64                      | 71.9% | 68.0% |
 
 The control's measured delivered shares are MR **42.5%** and TR **43.6%**, each a couple of points under its
 k-figure because the room is characters rather than turns (§13.71.3). At a 400-character cap the same rooms hold
@@ -9435,13 +9475,13 @@ is §13.69's failure mode, caught this time before publication rather than after
 Run `39205060432`, 1h49m29s, `drift` 500/500 with zero answers differing, config line
 `maxTurnChars=400 maxTurnCharsRoutes=multi-session+temporal`, everything else at §10.3.
 
-| # | registered (§13.73.3) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | IE ≥ **130** of 150 | **135** | **met** — and above the control's 133 |
-| **2** | MR ≥ **70** | **72** | **met** |
-| **3** | KU ≥ **58** | **59** | **met** |
-| **4** | TR ≥ **80** | **94** | **met**, +9 over the control |
-| **5** | roster ≥ **378** | **389** | **met**, +18 over the control |
+| #     | registered (§13.73.3) | observed | verdict                               |
+| ----- | --------------------- | -------- | ------------------------------------- |
+| **1** | IE ≥ **130** of 150   | **135**  | **met** — and above the control's 133 |
+| **2** | MR ≥ **70**           | **72**   | **met**                               |
+| **3** | KU ≥ **58**           | **59**   | **met**                               |
+| **4** | TR ≥ **80**           | **94**   | **met**, +9 over the control          |
+| **5** | roster ≥ **378**      | **389**  | **met**, +18 over the control         |
 
 **Roster 389/500 = 77.80%**, the campaign's best by 14 questions; registered delta **+32.95pp**, also the best;
 union **439/500 = 87.80%**, above the previous high of 437.
@@ -9451,13 +9491,13 @@ union **439/500 = 87.80%**, above the previous high of 437.
 §13.75 registered the reach's cheapest falsifier: the three untouched capabilities must reproduce their control
 **to the turn**, because the window is a property of the prompt and not of the model.
 
-| capability | control turns / chars | this run | |
-| --- | --- | --- | --- |
-| IE | 29.5 / 23,050 | **29.5 / 23,050** | identical |
-| KU | 27.0 / 22,638 | **27.0 / 22,638** | identical |
-| ABS | 33.5 / 22,768 | **33.5 / 22,768** | identical |
-| MR | 23.0 / 21,657 | 68.0 / 22,149 | capped |
-| TR | 26.0 / 22,540 | 72.0 / 23,112 | capped |
+| capability | control turns / chars | this run          |           |
+| ---------- | --------------------- | ----------------- | --------- |
+| IE         | 29.5 / 23,050         | **29.5 / 23,050** | identical |
+| KU         | 27.0 / 22,638         | **27.0 / 22,638** | identical |
+| ABS        | 33.5 / 22,768         | **33.5 / 22,768** | identical |
+| MR         | 23.0 / 21,657         | 68.0 / 22,149     | capped    |
+| TR         | 26.0 / 22,540         | 72.0 / 23,112     | capped    |
 
 Three identical windows is the strongest statement available that the reach did what its name says, and it was
 made before any accuracy number was read.
@@ -9468,17 +9508,17 @@ made before any accuracy number was read.
 `correct → abstention` at a median coverage of 100%. This run removes the flat route from the reach and IE's
 declines go **15 → 13**, with its accuracy **133 → 135**.
 
-| | control | cap on all six | cap on two |
-| --- | --- | --- | --- |
-| IE correct | 133 | **103** | **135** |
-| IE declines | 15 | **42** | **13** |
-| MR correct | 62 | 75 | **72** |
-| MR declines | 18 | 10 | **11** |
-| TR correct | 85 | 92 | **94** |
-| TR declines | 25 | 26 | **24** |
-| KU correct | 61 | 57 | **59** |
-| ABS correct | 30 | 30 | 29 |
-| **roster** | **371** | **357** | **389** |
+|             | control | cap on all six | cap on two |
+| ----------- | ------- | -------------- | ---------- |
+| IE correct  | 133     | **103**        | **135**    |
+| IE declines | 15      | **42**         | **13**     |
+| MR correct  | 62      | 75             | **72**     |
+| MR declines | 18      | 10             | **11**     |
+| TR correct  | 85      | 92             | **94**     |
+| TR declines | 25      | 26             | **24**     |
+| KU correct  | 61      | 57             | **59**     |
+| ABS correct | 30      | 30             | 29         |
+| **roster**  | **371** | **357**        | **389**    |
 
 A correlation can be explained by a third variable; a **reversal** of the same quantity in the same direction
 twice cannot. The cap on the flat route caused the decline spike, and taking it off removed it.
@@ -9487,10 +9527,10 @@ twice cannot. The cap on the flat route caused the decline spike, and taking it 
 
 MR and TR have each been measured at this cap twice — once with every route capped, once with two:
 
-| | control | cap, all routes | cap, two routes |
-| --- | --- | --- | --- |
-| MR | 62 | 75 | 72 |
-| TR | 85 | 92 | 94 |
+|     | control | cap, all routes | cap, two routes |
+| --- | ------- | --------------- | --------------- |
+| MR  | 62      | 75              | 72              |
+| TR  | 85      | 92              | 94              |
 
 Both are above the control in **both** draws, and the two draws bracket each other within their noise. That is
 2-of-2 on each route, which is the strongest claim this campaign can make without repetitions on the same
@@ -9505,7 +9545,7 @@ the dispatch table, so a future run that forgets the reach would be caught by
 
 Not claimed:
 
-- **Not** that the numbers are the *best* setting. 400 was registered by §13.67 from the turn-length
+- **Not** that the numbers are the _best_ setting. 400 was registered by §13.67 from the turn-length
   distribution and has now been measured twice; nothing here says 300 or 600 is worse.
 - **Not** that TR is settled. Its own cross-draw rate is 15 questions of 127, and two draws above the control is
   evidence of a sign, not of a magnitude.
@@ -9522,9 +9562,9 @@ The remaining gap is **50 questions**: MR 35, TR 14, and ABS 1. MR is 70% of it,
 `numeric_mismatch 33`, `abstention 11`, `long_prose 1` — 45 wrong answers of which three quarters are a number
 that is not the gold number.
 
-That is §13.59's finding, on the largest window the arm has ever had, and §13.70.8 predicted it in advance: *the
+That is §13.59's finding, on the largest window the arm has ever had, and §13.70.8 predicted it in advance: _the
 same change that puts more gold in the window also makes the counting task harder, and a rise in
-`numeric_mismatch` is the expected companion of a longer list rather than evidence against the cap*. It rose
+`numeric_mismatch` is the expected companion of a longer list rather than evidence against the cap_. It rose
 31 → 33 while coverage rose 42.5% → 72.2%, exactly as registered.
 
 So the next variable is **MR's arithmetic**, and for the first time it is not competing with a retrieval
@@ -9533,28 +9573,28 @@ pool. There is nothing left to retrieve that the ranking could find.
 
 ### 13.76.7 Verification and status
 
-| Priority | Item | Needs provider |
-| --- | --- | --- |
-| **P0** | MR's 33 `numeric_mismatch` on a 72.2%-coverage window (§13.59's 11 short-list counts, re-measured) | yes |
-| **P0 (done)** | The reach: five predictions met, IE's collapse reversed, adopted into §10.3 | — |
-| **P1** | The 11 MR abstentions that remain — with 72.2% coverage, why does the model still decline on ten? | yes |
-| P2 | The §13.55 sentence, now redundant, as its own variable | yes |
-| P3 | `PATH` ordering | no |
+| Priority      | Item                                                                                               | Needs provider |
+| ------------- | -------------------------------------------------------------------------------------------------- | -------------- |
+| **P0**        | MR's 33 `numeric_mismatch` on a 72.2%-coverage window (§13.59's 11 short-list counts, re-measured) | yes            |
+| **P0 (done)** | The reach: five predictions met, IE's collapse reversed, adopted into §10.3                        | —              |
+| **P1**        | The 11 MR abstentions that remain — with 72.2% coverage, why does the model still decline on ten?  | yes            |
+| P2            | The §13.55 sentence, now redundant, as its own variable                                            | yes            |
+| P3            | `PATH` ordering                                                                                    | no             |
 
 ## 13.77 "MR's arithmetic" was the wrong name: three explanations tested and three eliminated
 
 ### 13.77.1 What §13.76.6 said, and what the measurement says instead
 
-§13.76.6 named the next variable *MR's arithmetic*, reading the taxonomy — `numeric_mismatch 33` of 45 wrong
+§13.76.6 named the next variable _MR's arithmetic_, reading the taxonomy — `numeric_mismatch 33` of 45 wrong
 answers, three quarters of them a number that is not the gold number. `--lists` (this section's instrument) puts
 four candidate explanations against the artifact, and **three of them fail**:
 
-| # | explanation | what would have to be true | measured | verdict |
-| --- | --- | --- | --- | --- |
-| 1 | **the list is short** | lists shorter for failures than for correct answers | median **2.0** items in both groups | **eliminated** |
-| 2 | **the cap cut the item away** | failures carry more truncated turns | 39.1% of turns truncated in failures against **40.8%** in correct answers | **eliminated** |
-| 3 | **the room cut the gold turn** | gold turns at rank ≥ room | **69 of 72** correct and **31 of 33** numeric failures have **no** excluded gold at all | **eliminated** |
-| 4 | **coverage** | failures show less of the gold | correct **86.8%** median, numeric **70.8%**, abstention **50.0%** | **survives** |
+| #   | explanation                    | what would have to be true                          | measured                                                                                | verdict        |
+| --- | ------------------------------ | --------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------- |
+| 1   | **the list is short**          | lists shorter for failures than for correct answers | median **2.0** items in both groups                                                     | **eliminated** |
+| 2   | **the cap cut the item away**  | failures carry more truncated turns                 | 39.1% of turns truncated in failures against **40.8%** in correct answers               | **eliminated** |
+| 3   | **the room cut the gold turn** | gold turns at rank ≥ room                           | **69 of 72** correct and **31 of 33** numeric failures have **no** excluded gold at all | **eliminated** |
+| 4   | **coverage**                   | failures show less of the gold                      | correct **86.8%** median, numeric **70.8%**, abstention **50.0%**                       | **survives**   |
 
 So the model is not miscounting a list it built, the cap is not eating the deciding fact, and the window is not
 cutting gold — it is **showing less gold on the questions it fails**, and the list it writes from what it sees is
@@ -9577,14 +9617,14 @@ is their difference); the distinction between a statement that equals its own li
 (§13.59's split, which is what separates "faithful count of a short list" from "aggregation"); and the
 truncation share **per outcome**, because a table that reported only list lengths would leave explanation 2
 standing. The exclusion-language column exists for the same reason — it is what identified
-`3a704032`'s snake plant as a *judgement* about the date range rather than a missed turn, and it comes out
+`3a704032`'s snake plant as a _judgement_ about the date range rather than a missed turn, and it comes out
 **2 of 33**, so "the model decided not to count it" is not the general shape either.
 
 ### 13.77.4 The one number the campaign still cannot read
 
 `goldRanks` records `-1` for a gold turn the ranking did not surface, and **-1 does not say how far away it
 was**. A gold turn at rank 65 of a 64-wide pool is a near miss that a wider pool would fix; one at rank 900 is a
-ranking failure that no width reaches. §13.66 answered that question for the *aggregate* (the median rank of
+ranking failure that no width reaches. §13.66 answered that question for the _aggregate_ (the median rank of
 surfaced-but-cut gold was ≈ 45 against a room of 26); it cannot be asked of the 28% that never surfaced, because
 their ranks were never computed.
 
@@ -9608,7 +9648,7 @@ That mechanism is gone. The room now holds **68** turns (§13.76.2) and the pool
   turn is a statement about the pool's width, not about the room.
 
 So the same input value is a different experiment, and §4's no-redraw rule is about not re-running a hypothesis
-that was refuted *under the configuration it was refuted in*. The configuration changed by measurement, not by
+that was refuted _under the configuration it was refuted in_. The configuration changed by measurement, not by
 argument.
 
 ### 13.78.2 What the run is actually for
@@ -9616,10 +9656,10 @@ argument.
 `goldRanks` records `-1` for a gold turn the ranking never surfaced, and **`-1` is not a distance**. The two
 readings it conflates need opposite repairs:
 
-| if the missing gold sits at rank … | the repair is |
-| --- | --- |
-| 65–90 | a wider pool — a knob |
-| 300–900 | a better ranker — a research problem |
+| if the missing gold sits at rank … | the repair is                        |
+| ---------------------------------- | ------------------------------------ |
+| 65–90                              | a wider pool — a knob                |
+| 300–900                            | a better ranker — a research problem |
 
 At `k = 64` the artifact cannot tell them apart for the 28% of MR's gold that never surfaces. At `k = 256` every
 gold turn up to rank 255 gets a **number**, which means the question "how far away is the gold we cannot reach"
@@ -9630,12 +9670,12 @@ becomes answerable once, for the whole arm, instead of being argued from medians
 **One variable**: `relevanceTopK: 256`, everything else at §10.3 — including the adopted `maxTurnChars: 400` with
 `maxTurnCharsRoutes: multi-session,temporal`, `relevanceSignal: retrieval-hybrid`, and both thresholds at 0.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **`never surfaced` falls**: MR's share of gold the ranker does not surface drops from **28.1%** to **≤ 22%** | > 28.1% |
-| **2** | **Delivery barely moves**: MR's delivered share changes by **≤ 5 points** in either direction (the room holds 68 of 256, so a wider pool mostly re-orders the same 68) | outside ±5 |
-| **3** | **The instrument is otherwise inert**: roster within **±6** of 389 | outside |
-| **4** | **The measurement, not a prediction**: the median true rank of the gold turns that `k = 64` could not surface — reported as a number for the first time | n/a |
+| #     | prediction                                                                                                                                                             | falsified if |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **1** | **`never surfaced` falls**: MR's share of gold the ranker does not surface drops from **28.1%** to **≤ 22%**                                                           | > 28.1%      |
+| **2** | **Delivery barely moves**: MR's delivered share changes by **≤ 5 points** in either direction (the room holds 68 of 256, so a wider pool mostly re-orders the same 68) | outside ±5   |
+| **3** | **The instrument is otherwise inert**: roster within **±6** of 389                                                                                                     | outside      |
+| **4** | **The measurement, not a prediction**: the median true rank of the gold turns that `k = 64` could not surface — reported as a number for the first time                | n/a          |
 
 Prediction 1 is the mechanism ("a wider pool surfaces more"), prediction 2 is its **ceiling** and is why this is
 not expected to be an accuracy win, 3 is the instrument's neutrality, and 4 is the point of the run.
@@ -9665,12 +9705,12 @@ silently.
 Run `39228533156`, 1h43m12s, `drift` 500/500 with zero answers differing, config line
 `relevanceTopK=256` with `maxTurnChars=400 maxTurnCharsRoutes=multi-session+temporal`.
 
-| # | registered (§13.78.3) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR's never-surfaced ≤ **22%** | **5.0%** (182 of 3663) | **met**, by 23 points |
-| **2** | MR's delivered share within **±5** of 72.2% | **72.9%** (2670 of 3663) | **met** |
-| **3** | roster within **±6** of 389 | **394** | **met** |
-| **4** | the median true rank beyond the old width | **114** (MR), 119 (all) | the number the run existed for |
+| #     | registered (§13.78.3)                       | observed                 | verdict                        |
+| ----- | ------------------------------------------- | ------------------------ | ------------------------------ |
+| **1** | MR's never-surfaced ≤ **22%**               | **5.0%** (182 of 3663)   | **met**, by 23 points          |
+| **2** | MR's delivered share within **±5** of 72.2% | **72.9%** (2670 of 3663) | **met**                        |
+| **3** | roster within **±6** of 389                 | **394**                  | **met**                        |
+| **4** | the median true rank beyond the old width   | **114** (MR), 119 (all)  | the number the run existed for |
 
 Per capability: **ABS 30, IE 136, KU 61, MR 78, TR 89** — roster **394/500 = 78.80%**, the campaign's best;
 registered delta **+33.50pp**, also the best; and `beyond the pool` is **0** on every capability, which is
@@ -9678,13 +9718,13 @@ prediction 3 of §13.72 finally satisfied by construction: the room is smaller t
 
 ### 13.79.2 The rank table, which is why the run was dispatched
 
-| rank band | ABS | IE | KU | MR | TR | all | share |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 0–63 | 420 | 1444 | 1327 | 2632 | 2195 | 8018 | 73.2% |
-| **64–127** | 110 | 104 | 188 | **484** | 417 | 1303 | **11.9%** |
-| **128–255** | 88 | 93 | 119 | **365** | 399 | 1064 | **9.7%** |
-| ≥ 256 | 54 | 68 | 54 | 182 | 217 | 575 | 5.2% |
-| median beyond 64 | 114 | 116 | 112 | **114** | 127 | **119** | |
+| rank band        | ABS | IE   | KU   | MR      | TR   | all     | share     |
+| ---------------- | --- | ---- | ---- | ------- | ---- | ------- | --------- |
+| 0–63             | 420 | 1444 | 1327 | 2632    | 2195 | 8018    | 73.2%     |
+| **64–127**       | 110 | 104  | 188  | **484** | 417  | 1303    | **11.9%** |
+| **128–255**      | 88  | 93   | 119  | **365** | 399  | 1064    | **9.7%**  |
+| ≥ 256            | 54  | 68   | 54   | 182     | 217  | 575     | 5.2%      |
+| median beyond 64 | 114 | 116  | 112  | **114** | 127  | **119** |           |
 
 So the gold the campaign could not reach is **not** at rank 900. Its median is **114**, a quarter of it sits
 between 64 and 127, and only 5.2% is beyond 256. §13.78.4's decision rule had two branches — "65–90 means a knob,
@@ -9694,17 +9734,17 @@ name: **the pool is wide enough to hold the median unreachable gold, and the roo
 The room holds 68 turns. The median unreachable gold is at 114. So the next variable is the **room**, and the
 arithmetic that sets it is already known: at 400 characters the room is 68, and the character budget is fixed.
 
-### 13.79.3 What the coverage bands say about *how* the room buys anything
+### 13.79.3 What the coverage bands say about _how_ the room buys anything
 
 MR's accuracy by coverage band on this run:
 
-| coverage | n | correct | rate |
-| --- | --- | --- | --- |
-| 0–50% | 18 | 9 | 50.0% |
-| 50–70% | 26 | 13 | 50.0% |
-| 70–85% | 26 | 13 | 50.0% |
-| **85–95%** | 21 | 17 | **81.0%** |
-| **95–100%** | 30 | 26 | **86.7%** |
+| coverage    | n   | correct | rate      |
+| ----------- | --- | ------- | --------- |
+| 0–50%       | 18  | 9       | 50.0%     |
+| 50–70%      | 26  | 13      | 50.0%     |
+| 70–85%      | 26  | 13      | 50.0%     |
+| **85–95%**  | 21  | 17      | **81.0%** |
+| **95–100%** | 30  | 26      | **86.7%** |
 
 **Flat at 50% for everything below 85%, then a step.** That is a different shape from every earlier reading in
 this campaign — §13.26 saw a smooth climb across bands — and it changes what a room has to do: not raise coverage
@@ -9720,12 +9760,12 @@ a 22,000-character evidence room holds **≈ 121 turns** — just past the media
 from `goldRanks` at that room gives MR **84.4%** delivered before calibration; the same model over-predicts the
 current run (79 turns against 68 measured), so the calibrated expectation is **≈ 81%**.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **MR's delivered share rises from 72.9% to ≥ 79%** | < 79% |
-| **2** | **MR's correct count rises from 78 to ≥ 81**, by the band arithmetic above (25 questions cross 85%) | ≤ 78 |
-| **3** | **The roster rises from 394 to ≥ 397** | ≤ 394 |
-| **4** | **TR holds at ≥ 84** (it is 89; its own cross-draw rate is ±15, so this is a floor rather than a prediction) | ≤ 83 |
+| #     | prediction                                                                                                   | falsified if |
+| ----- | ------------------------------------------------------------------------------------------------------------ | ------------ |
+| **1** | **MR's delivered share rises from 72.9% to ≥ 79%**                                                           | < 79%        |
+| **2** | **MR's correct count rises from 78 to ≥ 81**, by the band arithmetic above (25 questions cross 85%)          | ≤ 78         |
+| **3** | **The roster rises from 394 to ≥ 397**                                                                       | ≤ 394        |
+| **4** | **TR holds at ≥ 84** (it is 89; its own cross-draw rate is ±15, so this is a floor rather than a prediction) | ≤ 83         |
 
 **The price, stated first**: at 200 characters **65.5%** of MR's turns are truncated, against 38.9% at 400, and
 the characters removed rise from 4.49M to 5.31M in the same 121 questions. A fact that sits past the 200th
@@ -9754,12 +9794,12 @@ next experiment expressible at all — a room of 121 turns is only meaningful wi
 
 Run `39243030337`, 1h56m02s, `drift` 500/500, `maxTurnChars=200` on the two routes with the rest at §10.3.
 
-| # | registered (§13.79.4) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR's delivered share 72.9% → **≥ 79%** | **80.9%** (2963 of 3663) | **met** |
-| **2** | MR's correct 78 → **≥ 81** | **29** | **falsified**, by 52 |
-| **3** | roster 394 → **≥ 397** | **302** | **falsified** |
-| **4** | TR ≥ 84 | **48** | **falsified** |
+| #     | registered (§13.79.4)                  | observed                 | verdict              |
+| ----- | -------------------------------------- | ------------------------ | -------------------- |
+| **1** | MR's delivered share 72.9% → **≥ 79%** | **80.9%** (2963 of 3663) | **met**              |
+| **2** | MR's correct 78 → **≥ 81**             | **29**                   | **falsified**, by 52 |
+| **3** | roster 394 → **≥ 397**                 | **302**                  | **falsified**        |
+| **4** | TR ≥ 84                                | **48**                   | **falsified**        |
 
 The room grew exactly as the arithmetic said: **68 → 100 turns** for MR, 72 → 106 for TR, `promptChars` still
 22,248 of 24,000. Coverage rose 8 points. And accuracy collapsed.
@@ -9772,12 +9812,12 @@ declines' median coverage is **86.1%**: the evidence is in the window and the mo
 More decisive is what happened to §13.79.3's step:
 
 | coverage band | §13.79 (cap 400) | §13.80 (cap 200) |
-| --- | --- | --- |
-| 0–50% | 50.0% | **18.2%** |
-| 50–70% | 50.0% | **17.6%** |
-| 70–85% | 50.0% | **15.0%** |
-| 85–95% | 81.0% | **25.0%** |
-| 95–100% | 86.7% | **31.7%** |
+| ------------- | ---------------- | ---------------- |
+| 0–50%         | 50.0%            | **18.2%**        |
+| 50–70%        | 50.0%            | **17.6%**        |
+| 70–85%        | 50.0%            | **15.0%**        |
+| 85–95%        | 81.0%            | **25.0%**        |
+| 95–100%       | 86.7%            | **31.7%**        |
 
 The step **is gone at every band**, including the top one where coverage is complete. So the previous section's
 reading was right about the shape and wrong about what it was made of: the step is a property of turns that are
@@ -9791,14 +9831,14 @@ turn is 223 characters — a fragment — and the model does not answer from fra
 - **A step function is conditional on evidence quality.** §13.79.3's 50% → 81% step was measured at 400
   characters and does not survive a change to the text. Repeating the band table on a new run is now a required
   step rather than an optional one, because the same numbers mean different things at different widths.
-- **Prediction 1 was met while the run was a disaster.** Coverage is a property of the *selection*; accuracy is a
+- **Prediction 1 was met while the run was a disaster.** Coverage is a property of the _selection_; accuracy is a
   property of what the selection was worth. The registration separated them (§13.79.4 said "1 is the mechanism,
   2 and 3 are the money") and the separation is what made the failure legible in one reading.
 
 ### 13.80.4 The knob that has never been touched
 
 The evidence room is **24,000 characters** because `DEFAULT_MAX_PROMPT_CHARS` says so, and no run in this
-campaign has moved it — every experiment has traded truncation against room *inside* that budget. §13.80 shows
+campaign has moved it — every experiment has traded truncation against room _inside_ that budget. §13.80 shows
 the trade has a floor at 400; the only way past it is to **raise the budget**.
 
 At 400 characters a 48,000-character room holds ≈ 136 turns, which is past the median unreachable rank of 114
@@ -9818,11 +9858,11 @@ and past the 128 band's midpoint — with **no additional truncation at all**. T
 
 §13.80 closed two of the three ways to grow the room:
 
-| lever | measured outcome |
-| --- | --- |
+| lever                | measured outcome                                                                          |
+| -------------------- | ----------------------------------------------------------------------------------------- |
 | lower the cap to 200 | room 68 → 100, coverage 80.9%, accuracy **29/121**, 42 abstentions at 86% median coverage |
-| widen the pool | 64 → 256 done (§13.79); `never surfaced` 5.0%, delivery unchanged at 72.9% |
-| **raise the budget** | **never tried — the arm had no input for it until this section** |
+| widen the pool       | 64 → 256 done (§13.79); `never surfaced` 5.0%, delivery unchanged at 72.9%                |
+| **raise the budget** | **never tried — the arm had no input for it until this section**                          |
 
 And the third is the one that does not touch a single turn. At 400 characters the delivered turns pack at
 **327 characters each** (§13.80's room of 68 in 22,248 characters), so a 48,000-character budget holds
@@ -9837,12 +9877,12 @@ Geometry from this campaign's own rank table: gold at rank < 146 is 73.2% + 11.9
 the same estimator over-predicted the last two runs by 2–3 points, so the calibrated expectation is **≈ 83–84%**
 delivered on MR.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | **MR's delivered share rises from 72.9% to ≥ 83%** | < 83% |
-| **2** | **MR's correct count rises from 78 to ≥ 86** — §13.79.3's step says the questions pushed past 85% coverage are worth 31 points each, and ~40 cross it | ≤ 85 |
-| **3** | **The roster rises from 394 to ≥ 402** | ≤ 394 |
-| **4** | **TR rises from 89 to ≥ 94** | ≤ 89 |
+| #     | prediction                                                                                                                                            | falsified if |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **1** | **MR's delivered share rises from 72.9% to ≥ 83%**                                                                                                    | < 83%        |
+| **2** | **MR's correct count rises from 78 to ≥ 86** — §13.79.3's step says the questions pushed past 85% coverage are worth 31 points each, and ~40 cross it | ≤ 85         |
+| **3** | **The roster rises from 394 to ≥ 402**                                                                                                                | ≤ 394        |
+| **4** | **TR rises from 89 to ≥ 94**                                                                                                                          | ≤ 89         |
 
 **The price, in the unit that actually pays it**: the prompt roughly doubles in characters, so each pass costs
 about twice the input tokens and takes longer. The per-pass ceiling is 90 minutes and the last four runs used
@@ -9855,7 +9895,7 @@ not a falsification of any prediction above.
 - **1 and 2 hold**: the room is the lever and the budget is how to buy it; the next question is how much further
   it goes before the model's attention degrades — the same shape as §13.80 but from the other side.
 - **1 holds and 2 does not**: coverage crosses the step and accuracy does not, which would mean §13.79.3's step
-  was a property of *that* run's evidence rather than of coverage — and the band table would have to be rebuilt
+  was a property of _that_ run's evidence rather than of coverage — and the band table would have to be rebuilt
   on the new run before anything else is concluded.
 - **1 fails**: the room does not grow as the character arithmetic says, which would point at the allocator rather
   than at the data — `fitToBudget` spends the budget in priority order and a doubled budget is the first case
@@ -9883,8 +9923,8 @@ the share of the budget they filled, and §13.81's prediction 1 is decided partl
 The claim was true about the **default** and false about the **budget**. The input added in §13.81 is what makes
 the two different values, and the tool had no way to read it. On this run's artifact the table would have printed
 a median of ~47,000 characters against 24,000 — **a fill of about 200%** — and the note beneath it would have said
-that a prompt near 100% is at the cut. §13.81.3 lists exactly that reading as the failure branch: *"the room does
-not grow as the character arithmetic says, which would point at the allocator rather than at the data."* The
+that a prompt near 100% is at the cut. §13.81.3 lists exactly that reading as the failure branch: _"the room does
+not grow as the character arithmetic says, which would point at the allocator rather than at the data."_ The
 allocator would have been fine and the reader would have been wrong, with the artifact's own config line
 (`maxPromptChars=48000`) stating the correction on the same page.
 
@@ -9895,9 +9935,9 @@ value is **refused** rather than clamped — the arm rejects those at startup (`
 artifact is corrupt, and dividing by it would print an infinite fill.
 
 **And the check that would have caught it, stated as a measurement.** `promptChars` is the evidence the prompt
-carried *after* the budget cut, so it cannot exceed the run's budget. The table now counts records over budget and
+carried _after_ the budget cut, so it cannot exceed the run's budget. The table now counts records over budget and
 names the two causes — a divisor that is not the run's budget, or a producer reporting the offer (`evidenceChars`)
-instead of the delivery (`promptChars`) — with the sentence *"a fill above 100% is not a measurement."* Four tests
+instead of the delivery (`promptChars`) — with the sentence _"a fill above 100% is not a measurement."_ Four tests
 pin the configured, default, over-budget and refused states (`test_readout_arm_run.py`, class
 `TestHowMuchTheWindowActuallyHeld`), and the
 two archived artifacts still read as before: 24,000 with no over-budget record, MR at 92.4% (k=256) and 92.7%
@@ -9924,17 +9964,17 @@ That matters for attribution and not for the predictions:
 
 The estimator this section uses was calibrated on the previous artifact rather than asserted. Two readings:
 
-| capability | measured delivered | predicted at its own window width | difference |
-| --- | --- | --- | --- |
-| MR (68 turns, capped) | 72.89% | **73.08%** at 68 | +0.19pp |
-| IE (29.5 turns, uncapped) | 69.22% | **74.25%** at 29 | +5.03pp |
-| KU (27.0 turns, uncapped) | 59.60% | **61.48%** at 27 | +1.88pp |
-| ABS (33.5 turns, uncapped) | 44.35% | **48.86%** at 33 | +4.51pp |
+| capability                 | measured delivered | predicted at its own window width | difference |
+| -------------------------- | ------------------ | --------------------------------- | ---------- |
+| MR (68 turns, capped)      | 72.89%             | **73.08%** at 68                  | +0.19pp    |
+| IE (29.5 turns, uncapped)  | 69.22%             | **74.25%** at 29                  | +5.03pp    |
+| KU (27.0 turns, uncapped)  | 59.60%             | **61.48%** at 27                  | +1.88pp    |
+| ABS (33.5 turns, uncapped) | 44.35%             | **48.86%** at 33                  | +4.51pp    |
 
 So the estimator is near-exact for the route whose turns are all the same size and **over-predicts the uncapped
 routes by 2–5 points**, for a reason the same arithmetic explains: with 400-character turns the window ends at
-almost exactly rank *W* on every question, while with variable turns the cut is ragged and lands earlier per
-question, so a single *W* is an upper bound on what those routes delivered. The number to compare against this
+almost exactly rank _W_ on every question, while with variable turns the cut is ragged and lands earlier per
+question, so a single _W_ is an upper bound on what those routes delivered. The number to compare against this
 run's MR prediction is therefore the capped-route calibration, and the uncapped rows are the reason the same table
 cannot be reused there without a per-question width.
 
@@ -9948,14 +9988,14 @@ number is read.
 
 Prediction 3 is also not independent of 2 and 4, and saying so now makes it more useful than it reads:
 
-| if | MR | TR | roster | prediction 3 |
-| --- | --- | --- | --- | --- |
-| 2 and 4 hold exactly at their thresholds | 86 | 94 | 394 + 8 + 5 = **407** | holds with 5 to spare |
-| 2 holds, 4 misses by one | 86 | 93 | 406 | still holds |
-| **3 fails while 2 and 4 hold** | 86 | 94 | ≤ 394 | the other three lost ≥ 13 together |
+| if                                       | MR  | TR  | roster                | prediction 3                       |
+| ---------------------------------------- | --- | --- | --------------------- | ---------------------------------- |
+| 2 and 4 hold exactly at their thresholds | 86  | 94  | 394 + 8 + 5 = **407** | holds with 5 to spare              |
+| 2 holds, 4 misses by one                 | 86  | 93  | 406                   | still holds                        |
+| **3 fails while 2 and 4 hold**           | 86  | 94  | ≤ 394                 | the other three lost ≥ 13 together |
 
 So a 3-failure beside 2- and 4-successes is not noise: it would mean IE, KU and ABS together gave back more
-than the two repaired routes gained, on a change that only ever *added* evidence to them. That is the reading
+than the two repaired routes gained, on a change that only ever _added_ evidence to them. That is the reading
 that would make §13.81.6's attribution limit load-bearing rather than a caveat, and it is why prediction 3 is
 left as registered instead of being restated as "MR + TR net".
 
@@ -9963,11 +10003,11 @@ left as registered instead of being restated as "MR + TR net".
 coverage at a 146-turn window can be computed exactly (gold at rank < 146 over the question's gold), which
 partitions the 121 MR questions without any modelling:
 
-| partition | questions | correct now | what the room can do |
-| --- | --- | --- | --- |
-| already ≥ 85% at 68 turns | 50 | **41 (82.0%)** | nothing — the room is not their constraint |
-| crosses 85% only at 146 turns | **35** | 17 (48.6%) | this is prediction 2's whole subject |
-| never reaches 85% at 146 turns | 36 | 20 (55.6%) | needs a better ranker, not a bigger room |
+| partition                      | questions | correct now    | what the room can do                       |
+| ------------------------------ | --------- | -------------- | ------------------------------------------ |
+| already ≥ 85% at 68 turns      | 50        | **41 (82.0%)** | nothing — the room is not their constraint |
+| crosses 85% only at 146 turns  | **35**    | 17 (48.6%)     | this is prediction 2's whole subject       |
+| never reaches 85% at 146 turns | 36        | 20 (55.6%)     | needs a better ranker, not a bigger room   |
 
 So prediction 2 (**78 → ≥ 86**) needs **at least 8 of the 35 crossers** to be repaired, and the 85–95% band's
 measured rate (81.0% on §13.79's run) implies about **28 of 35** — a prediction of 89 rather than 86. The
@@ -9982,12 +10022,12 @@ survives this experiment, and it is comparable to the 29-question gap to the ref
 
 ### 13.82.1 The readings (`39260774611`, 2h02m36s, drift 500/500)
 
-| # | prediction (§13.81.2) | observed | verdict |
-| --- | --- | --- | --- |
+| #     | prediction (§13.81.2)                  | observed   | verdict                                         |
+| ----- | -------------------------------------- | ---------- | ----------------------------------------------- |
 | **1** | MR's delivered share 72.9% → **≥ 83%** | **86.92%** | **holds** (estimator said 87.11%, error 0.19pp) |
-| **2** | MR's correct count 78 → **≥ 86** | **83** | **falsified**, short by 3 |
-| **3** | roster 394 → **≥ 402** | **403** | **holds** |
-| **4** | TR 89 → **≥ 94** | **93** | **falsified**, short by 1 |
+| **2** | MR's correct count 78 → **≥ 86**       | **83**     | **falsified**, short by 3                       |
+| **3** | roster 394 → **≥ 402**                 | **403**    | **holds**                                       |
+| **4** | TR 89 → **≥ 94**                       | **93**     | **falsified**, short by 1                       |
 
 Registered statistic **+35.10pp** (was +33.50pp), McNemar p = 1.79e-31. Union **444/500 = 88.80%**, the
 campaign's best (was 438, best 439). Per capability: ABS 29, IE 135, KU 63, MR 83, TR 93.
@@ -9998,11 +10038,11 @@ campaign's best (was 438, best 439). Per capability: ABS 29, IE 135, KU 63, MR 8
 against 22,180 and 23,150 — a 2.1× room spending 2.0× the characters, with no over-budget record. The partition
 §13.81.6 wrote down before the run, scored after it:
 
-| group | n | was | now | delta |
-| --- | --- | --- | --- | --- |
-| already ≥ 85% at 68 turns | 50 | 41 | **40** | **−1** |
-| crosses 85% only at 146 turns | 35 | 17 | **22** | **+5** |
-| never reaches 85% at 146 turns | 36 | 20 | **21** | **+1** |
+| group                          | n   | was | now    | delta  |
+| ------------------------------ | --- | --- | ------ | ------ |
+| already ≥ 85% at 68 turns      | 50  | 41  | **40** | **−1** |
+| crosses 85% only at 146 turns  | 35  | 17  | **22** | **+5** |
+| never reaches 85% at 146 turns | 36  | 20  | **21** | **+1** |
 
 The whole MR gain is the middle row, which is the row §13.81.6 said prediction 2 was about. The crossers
 converted at **62.9%** (22 of 35) against the 48.6% they converted at before — a +14.3pp lift — while the
@@ -10013,14 +10053,14 @@ more noise, and the two effects are within one question of cancelling outside th
 
 MR's accuracy by coverage band, this run against §13.79's:
 
-| band | §13.79 (68 turns) | §13.82 (144 turns) |
-| --- | --- | --- |
-| 25–50% | 50.0% | 20.0% |
-| 50–75% | 50.0% | 55.6% |
-| 75–85% | 50.0% | 75.0% |
-| **85–95%** | **81.0%** | **64.0%** |
-| **95–100%** | **86.7%** | **77.0%** |
-| exactly 100% | — | **88.6%** (31 of 35) |
+| band         | §13.79 (68 turns) | §13.82 (144 turns)   |
+| ------------ | ----------------- | -------------------- |
+| 25–50%       | 50.0%             | 20.0%                |
+| 50–75%       | 50.0%             | 55.6%                |
+| 75–85%       | 50.0%             | 75.0%                |
+| **85–95%**   | **81.0%**         | **64.0%**            |
+| **95–100%**  | **86.7%**         | **77.0%**            |
+| exactly 100% | —                 | **88.6%** (31 of 35) |
 
 **The step does not replicate.** §13.81.3's second branch is the one that happened: coverage crossed and the count
 did not follow. What replaces it is a slope — 20%, 56%, 75%, 64%, 77% — with a jump only at **exactly complete**
@@ -10064,10 +10104,10 @@ three questions for another 70% of evidence. The room's marginal return has fall
 What the budget cannot fix is visible in the same table: **182 gold turns never surface at all**, and the 38 MR
 errors are not dominated by "the gold was one rank away":
 
-| missing gold turns | 0 | 1 | 2 | 3 | ≥4 |
-| --- | --- | --- | --- | --- | --- |
-| wrong MR questions (38) | **4** | 9 | 3 | 2 | 20 |
-| correct MR questions (83) | 31 | 15 | 8 | 7 | 22 |
+| missing gold turns        | 0     | 1   | 2   | 3   | ≥4  |
+| ------------------------- | ----- | --- | --- | --- | --- |
+| wrong MR questions (38)   | **4** | 9   | 3   | 2   | 20  |
+| correct MR questions (83) | 31    | 15  | 8   | 7   | 22  |
 
 Four questions are wrong with **complete** evidence, and "missing one" is as common among the correct as among the
 wrong — so the deficit is not a missing neighbour. It is that **the window's 144 slots are not all worth having**.
@@ -10080,17 +10120,17 @@ The window is now 144 turns on MR and it spends 46,165 characters. Reading the r
 the `[date] role:` prefix the dataset's haystack carries — gives the composition of the room:
 
 | capability | rendered characters from user turns | from assistant turns | cap in force |
-| --- | --- | --- | --- |
-| **MR** | **48.1%** | **51.9%** | 400 |
-| **TR** | **49.9%** | **50.1%** | 400 |
-| IE | 22.7% | 77.3% | none |
-| KU | 22.7% | 77.3% | none |
-| ABS | 24.2% | 75.8% | none |
+| ---------- | ----------------------------------- | -------------------- | ------------ |
+| **MR**     | **48.1%**                           | **51.9%**            | 400          |
+| **TR**     | **49.9%**                           | **50.1%**            | 400          |
+| IE         | 22.7%                               | 77.3%                | none         |
+| KU         | 22.7%                               | 77.3%                | none         |
+| ABS        | 24.2%                               | 75.8%                | none         |
 
 **On the two routes that decide the SOTA gap, half the evidence room is the assistant's own prose.** The
-reference pipeline does not have this problem, and its source says why in one sentence: retrieval is *"restricted
+reference pipeline does not have this problem, and its source says why in one sentence: retrieval is _"restricted
 to user turns because the facts live in the user's statements; assistant turns are verbose generated chatter that
-dilutes the answer signal (and for temporal questions, drown the date-bearing turns)"*
+dilutes the answer signal (and for temporal questions, drown the date-bearing turns)"_
 (`natural-language-memory.ts`, `answer`). That pipeline reaches 85.1% on MR with a **24,000**-character budget,
 against this arm's 68.6% with 48,000.
 
@@ -10104,22 +10144,22 @@ as the table above.
 `multi-session,temporal`. Everything else is §10.3's adopted configuration, including the 48,000 budget.
 
 The reach is scoped rather than global for a measured reason: IE, KU and ABS are at 135, 63 and 29 of 150, 72 and
-30, and a global filter would move three capabilities the experiment is not asking about — with 77% of *their*
+30, and a global filter would move three capabilities the experiment is not asking about — with 77% of _their_
 characters coming from assistant turns, that is not a neutral change for them. The scoping also gives this
 section its internal control: the three untouched capabilities must reproduce **61.0, 62.0 and 72.0 turns** and
 their `promptChars` to the character, exactly as §13.75 required of the previous reach.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
+| #     | prediction                                                                                   | falsified if   |
+| ----- | -------------------------------------------------------------------------------------------- | -------------- |
 | **1** | MR's rendered user share rises 48.1% → **≥ 95%**, and its window grows 144 → **≥ 170** turns | < 95% or < 170 |
-| **2** | MR's delivered share rises 86.92% → **≥ 92%** | < 92% |
-| **3** | MR's correct count rises 83 → **≥ 90** | ≤ 89 |
-| **4** | TR 93 → **≥ 96** | ≤ 95 |
-| **5** | IE, KU and ABS reproduce 135/63/29, 61.0/62.0/72.0 turns and their `promptChars` | any changes |
-| **6** | The roster rises 403 → **≥ 410** | ≤ 409 |
+| **2** | MR's delivered share rises 86.92% → **≥ 92%**                                                | < 92%          |
+| **3** | MR's correct count rises 83 → **≥ 90**                                                       | ≤ 89           |
+| **4** | TR 93 → **≥ 96**                                                                             | ≤ 95           |
+| **5** | IE, KU and ABS reproduce 135/63/29, 61.0/62.0/72.0 turns and their `promptChars`             | any changes    |
+| **6** | The roster rises 403 → **≥ 410**                                                             | ≤ 409          |
 
 Prediction 2 is derived, not guessed: the filtered ranking puts user turns at 242 characters each against the
-400-character cap, so 48,000 characters hold about **190** user turns, and the 95%-coverage rank in a *user-only*
+400-character cap, so 48,000 characters hold about **190** user turns, and the 95%-coverage rank in a _user-only_
 ranking is not computable from this artifact's ranks — which is why the prediction is stated as a threshold and
 its mechanism (prediction 1) is measured separately.
 
@@ -10129,7 +10169,7 @@ its mechanism (prediction 1) is measured separately.
   whether the assistant turns carry anything the user turns do not — which is measurable by adding back only the
   assistant turns that share a session with a retrieved user turn.
 - **1 holds, 3 does not**: the filter moved the room as designed and the reader still misses, which would locate
-  the deficit in the ranking *within* user turns and make the expansion channel the next experiment.
+  the deficit in the ranking _within_ user turns and make the expansion channel the next experiment.
 - **1 fails**: the filter did not do what the arithmetic says, which would point at the selection's interaction
   with the cap rather than at the roles — the same failure mode §13.81.5 was written to catch, and `--window` is
   again the first thing to read.
@@ -10141,15 +10181,15 @@ its mechanism (prediction 1) is measured separately.
 `roleOf` is a callback. That boundary is the whole point: a parser in `cortex-memory` would make the product's
 behaviour a fact about one dataset, and the next dataset would be either unsupported or silently unfiltered. The
 arm supplies `roleOfTurn`, whose regex is anchored at the start with a non-empty bracketed stamp so a turn that
-merely *mentions* `assistant:` is not mislabelled.
+merely _mentions_ `assistant:` is not mislabelled.
 
 **Three states, each refused or kept for a stated reason.**
 
-| state | behaviour | why |
-| --- | --- | --- |
-| `evidenceRoles` absent | no filter runs; the prompt is byte-identical to the archived one | every prior artifact has to stay reproducible |
-| `roleOf` returns `undefined` | the turn is **kept** | a classifier failure must not read as an empty dataset |
-| `evidenceRoles: []` | **refused at construction** | it admits nothing on every reached route: a decline every time |
+| state                        | behaviour                                                        | why                                                            |
+| ---------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| `evidenceRoles` absent       | no filter runs; the prompt is byte-identical to the archived one | every prior artifact has to stay reproducible                  |
+| `roleOf` returns `undefined` | the turn is **kept**                                             | a classifier failure must not read as an empty dataset         |
+| `evidenceRoles: []`          | **refused at construction**                                      | it admits nothing on every reached route: a decline every time |
 
 A filter without a classifier is refused at construction as well, which is §10.10's class — a value the artifact
 records and the run does not apply. The check is at the seam where the two arrive together, so the state is
@@ -10186,14 +10226,14 @@ refusal on a roster without turns.
 
 ### 13.84.1 The readings (`39298662801`, 1h44m27s, drift 500/500)
 
-| # | prediction (§13.83.2) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR's user share 48.1% → **≥ 95%**, window 144 → **≥ 170** turns | **100.0%**, **174** | **holds** |
-| **2** | MR's delivered share 86.92% → **≥ 92%** | **48.35%** | **falsified** — see §13.84.3, and not by the filter |
-| **3** | MR's correct count 83 → **≥ 90** | **90** | **holds**, at the line |
-| **4** | TR 93 → **≥ 96** | **98** | **holds** |
-| **5** | IE/KU/ABS reproduce 135/63/29 and their windows | 135/**67**/29; windows **identical to the character** | **falsified on one count**, mechanism holds |
-| **6** | roster 403 → **≥ 410** | **419** | **holds** |
+| #     | prediction (§13.83.2)                                           | observed                                              | verdict                                             |
+| ----- | --------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| **1** | MR's user share 48.1% → **≥ 95%**, window 144 → **≥ 170** turns | **100.0%**, **174**                                   | **holds**                                           |
+| **2** | MR's delivered share 86.92% → **≥ 92%**                         | **48.35%**                                            | **falsified** — see §13.84.3, and not by the filter |
+| **3** | MR's correct count 83 → **≥ 90**                                | **90**                                                | **holds**, at the line                              |
+| **4** | TR 93 → **≥ 96**                                                | **98**                                                | **holds**                                           |
+| **5** | IE/KU/ABS reproduce 135/63/29 and their windows                 | 135/**67**/29; windows **identical to the character** | **falsified on one count**, mechanism holds         |
+| **6** | roster 403 → **≥ 410**                                          | **419**                                               | **holds**                                           |
 
 Registered statistic **+36.80pp** (was +35.10pp), McNemar p = **4.92e-37**. Union **452/500 = 90.40%**, the
 campaign's best by eight questions. Per capability: ABS 29, IE 135, KU 67, MR **90**, TR **98**.
@@ -10215,18 +10255,18 @@ both directions.
 
 ### 13.84.3 Prediction 2 failed because the metric stopped meaning what it meant
 
-MR's delivered share reads **48.35%**, and nothing about the room explains it: the window is 20 turns *wider* and
+MR's delivered share reads **48.35%**, and nothing about the room explains it: the window is 20 turns _wider_ and
 the ranking is untouched. The reason is in the denominator. `goldOverlap` compares the turns the record carries
 against the dataset's gold turns **by text**, and the record now carries only the turns the policy admits — so a
 gold turn in an excluded role can never be counted, whatever the prompt did.
 
 Two independent readings of the same artifact say so:
 
-| reading | previous run | this run |
-| --- | --- | --- |
-| MR delivered gold | 3,180 of 3,663 = **86.92%** | 1,771 of 3,663 = **48.35%** |
-| MR "cut by the budget" (`--pool`) | 301 | **1,710** |
-| MR questions above 75% coverage | 86 | **0** |
+| reading                           | previous run                | this run                    |
+| --------------------------------- | --------------------------- | --------------------------- |
+| MR delivered gold                 | 3,180 of 3,663 = **86.92%** | 1,771 of 3,663 = **48.35%** |
+| MR "cut by the budget" (`--pool`) | 301                         | **1,710**                   |
+| MR questions above 75% coverage   | 86                          | **0**                       |
 
 The budget did not change — 46,165 characters then, 46,186 now — and the second row's increase is entirely gold
 in the excluded role, which `pool - carried` cannot tell apart from gold the room refused. `--pool` now prints a
@@ -10307,11 +10347,11 @@ the second sample of an adopted configuration, and the premise for §13.87's com
 Configuration: §10.3 exactly — `evidenceRoles: user` reaching `multi-session,temporal`, 48,000 characters,
 cap 400 on the same two routes, `retrieval-hybrid` at k=256. Dispatched from the corrected code.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | `totalAll` appears on **MR and TR** records whose gold the policy narrowed, and on **no** IE/KU/ABS record | any record outside those two capabilities carries it, or MR/TR carry none |
-| **2** | the roster reproduces **419 ± 4**, and no capability moves by more than 4 | any capability moves further |
-| **3** | among the ten MR questions that turned wrong in `39298662801`, **at least five** carry assistant-role gold (`totalAll > total`) | fewer than five |
+| #     | prediction                                                                                                                      | falsified if                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **1** | `totalAll` appears on **MR and TR** records whose gold the policy narrowed, and on **no** IE/KU/ABS record                      | any record outside those two capabilities carries it, or MR/TR carry none |
+| **2** | the roster reproduces **419 ± 4**, and no capability moves by more than 4                                                       | any capability moves further                                              |
+| **3** | among the ten MR questions that turned wrong in `39298662801`, **at least five** carry assistant-role gold (`totalAll > total`) | fewer than five                                                           |
 
 Prediction 1 is the instrument's own acceptance, run on real data rather than a fixture. Prediction 2 is the noise
 floor applied to a run that changed nothing — if the roster does not reproduce, the ±4 the campaign has been using
@@ -10323,7 +10363,7 @@ companion policy is worth building at all.
 - **3 holds**: assistant turns carry gold on most of the questions the filter damaged, so a middle policy — keep an
   assistant turn when its session also contributes a kept user turn — has something to recover, and §13.87
   registers it against that set of questions.
-- **3 fails**: the ten flips were the reader reacting to a different evidence *order*, not to missing texts. The
+- **3 fails**: the ten flips were the reader reacting to a different evidence _order_, not to missing texts. The
   next lever is then the window's ordering rather than its composition, and the companion policy is not built.
 - **2 fails**: the campaign's per-capability resolution is not 6.1% and the last three sections' count readings have
   to be restated with the measured one.
@@ -10332,11 +10372,11 @@ companion policy is worth building at all.
 
 ### 13.87.1 The readings (`39347010711`, 1h49m41s, drift 500/500)
 
-| # | prediction (§13.86.2) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | `totalAll` on MR and TR records only | **121 MR + 127 TR**, zero on IE/KU/ABS | **holds** |
-| **2** | roster **419 ± 4**, no capability moving more than 4 | **407**; MR 90 → **83**, KU 67 → **63**, TR 98 → **97** | **falsified** |
-| **3** | ≥ 5 of the ten flipped-wrong MR questions carry assistant-role gold | **10 of 10** | **holds** |
+| #     | prediction (§13.86.2)                                               | observed                                                | verdict       |
+| ----- | ------------------------------------------------------------------- | ------------------------------------------------------- | ------------- |
+| **1** | `totalAll` on MR and TR records only                                | **121 MR + 127 TR**, zero on IE/KU/ABS                  | **holds**     |
+| **2** | roster **419 ± 4**, no capability moving more than 4                | **407**; MR 90 → **83**, KU 67 → **63**, TR 98 → **97** | **falsified** |
+| **3** | ≥ 5 of the ten flipped-wrong MR questions carry assistant-role gold | **10 of 10**                                            | **holds**     |
 
 Registered statistic +35.75pp (was +36.80), McNemar p = 1.98e-33. Per capability: ABS 29, IE 135, KU 63,
 MR 83, TR 97 — roster **407**.
@@ -10350,11 +10390,11 @@ section earlier.
 The artifact already recorded the answer and the campaign was not reading it. `featureAggregate` is the spread over
 the **four repetitions** of one run:
 
-| run | configuration | roster per repetition | mean |
-| --- | --- | --- | --- |
-| `39260774611` | every role | 394 – 403 | **398.0** |
-| `39298662801` | user only | 397 – 419 | **406.0** |
-| `39347010711` | user only | 398 – 407 | **402.0** |
+| run           | configuration | roster per repetition | mean      |
+| ------------- | ------------- | --------------------- | --------- |
+| `39260774611` | every role    | 394 – 403             | **398.0** |
+| `39298662801` | user only     | 397 – 419             | **406.0** |
+| `39347010711` | user only     | 398 – 407             | **402.0** |
 
 Two runs of one configuration have means four questions apart and ranges nineteen questions wide. The headline
 "+16" in §13.84 compared **two single repetitions** — one run's best against another run's best — while the
@@ -10442,11 +10482,11 @@ repetition per capability.
 
 Configuration: §10.3 exactly. No variable.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | the artifact carries `featureByCapability`, `baselineByCapability` and `questionsByCapability`, and `--caps` renders them | any is absent |
-| **2** | the roster's mean lands in **398 – 406** and no capability's mean departs its two earlier single readings by more than 7 | outside either bound |
-| **3** | MR's mean sits between its two single readings, **83 ≤ mean ≤ 90** | outside |
+| #     | prediction                                                                                                                | falsified if         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **1** | the artifact carries `featureByCapability`, `baselineByCapability` and `questionsByCapability`, and `--caps` renders them | any is absent        |
+| **2** | the roster's mean lands in **398 – 406** and no capability's mean departs its two earlier single readings by more than 7  | outside either bound |
+| **3** | MR's mean sits between its two single readings, **83 ≤ mean ≤ 90**                                                        | outside              |
 
 Prediction 2's upper bound is the highest mean measured so far and its lower bound the control's; a run outside
 that band would say the configuration's own spread is wider than three samples suggest, which would make every
@@ -10456,22 +10496,22 @@ threshold in §13.89 need restating before that experiment is registered.
 
 ### 13.91.1 The readings (`39367801501`, 1h56m35s, drift 500/500, §10.3 unchanged)
 
-| # | prediction (§13.90.2) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | the three fields are present and `--caps` renders them | all three present; the table renders | **holds** |
+| #     | prediction (§13.90.2)                                                                          | observed                                   | verdict   |
+| ----- | ---------------------------------------------------------------------------------------------- | ------------------------------------------ | --------- |
+| **1** | the three fields are present and `--caps` renders them                                         | all three present; the table renders       | **holds** |
 | **2** | roster mean **398 – 406**, no capability mean more than 7 from its two earlier single readings | **405.0**; largest departure **5.75** (MR) | **holds** |
-| **3** | MR mean **83 – 90** | **84.25** | **holds** |
+| **3** | MR mean **83 – 90**                                                                            | **84.25**                                  | **holds** |
 
 `--caps` on a real artifact, for the first time:
 
-| capability | total | min | **mean** | max |
-| --- | --- | --- | --- | --- |
-| ABS | 30 | 29 | **29.25** | 30 |
-| IE | 150 | 133 | **134.25** | 135 |
-| KU | 72 | 60 | **62.5** | 64 |
-| **MR** | 121 | 81 | **84.25** | 88 |
-| **TR** | 127 | 94 | **94.75** | 95 |
-| **roster** | 500 | 397 | **405.0** | 412 |
+| capability | total | min | **mean**   | max |
+| ---------- | ----- | --- | ---------- | --- |
+| ABS        | 30    | 29  | **29.25**  | 30  |
+| IE         | 150   | 133 | **134.25** | 135 |
+| KU         | 72    | 60  | **62.5**   | 64  |
+| **MR**     | 121   | 81  | **84.25**  | 88  |
+| **TR**     | 127   | 94  | **94.75**  | 95  |
+| **roster** | 500   | 397 | **405.0**  | 412 |
 
 Registered statistic +36.55pp (p = 2.86e-32); the first-repetition roster is 407 and the union is 446.
 
@@ -10483,10 +10523,10 @@ defend.
 
 Two headlines have to be restated and both move in the same direction, down:
 
-| claim | as published | with the mean |
-| --- | --- | --- |
-| MR | 90 (§13.84) / 83 (§13.87) | **84.25**, range 81–88 |
-| TR | 98 (§13.84) / 97 (§13.87) | **94.75**, range 94–95 |
+| claim | as published              | with the mean          |
+| ----- | ------------------------- | ---------------------- |
+| MR    | 90 (§13.84) / 83 (§13.87) | **84.25**, range 81–88 |
+| TR    | 98 (§13.84) / 97 (§13.87) | **94.75**, range 94–95 |
 
 **TR is the sharper correction: both single readings sit above the mean.** The treatment's TR is not 97–98; it is
 94.75, and the reference pipeline reads 87–88 in the same three runs. The lead is real and smaller: **+7 to +8**,
@@ -10519,22 +10559,22 @@ across all 121 MR records, against a window that carries **174 turns in roughly 
 response is not enumerating the document; it is enumerating what it happened to notice.
 
 Restricted to questions where that comparison is meaningful — the **thirty** whose gold is an integer
-from 2 to 10, since a list's length can only be held against the gold *number* when the gold is a count:
+from 2 to 10, since a list's length can only be held against the gold _number_ when the gold is a count:
 
-| partition | n | list shorter than gold | equal | longer |
-| --- | --- | --- | --- | --- |
-| correct | 20 | 4 | **7** | 9 |
-| **wrong** | **10** | **6** | **0** | 4 |
+| partition | n      | list shorter than gold | equal | longer |
+| --------- | ------ | ---------------------- | ----- | ------ |
+| correct   | 20     | 4                      | **7** | 9      |
+| **wrong** | **10** | **6**                  | **0** | 4      |
 
 **Not one wrong counting answer lists the gold number of items.** Six list fewer, and the shape is
-stated by a record in its own words: two mentions of one boots exchange, then *"These two turns refer to
-the same exchange/pickup event, so they count as one item"*, then `1` against a gold of `3`. The
-contract's existing rule — *"do not merge two items into one"* — was read and overruled, which is the
+stated by a record in its own words: two mentions of one boots exchange, then _"These two turns refer to
+the same exchange/pickup event, so they count as one item"_, then `1` against a gold of `3`. The
+contract's existing rule — _"do not merge two items into one"_ — was read and overruled, which is the
 point: **a rule about merging cannot supply an item that was never listed.**
 
 **And §13.86.2's prediction 3 was vacuous.** It required that at least five of the ten MR questions that
 turned wrong under the role filter carry assistant-role gold, and it observed ten of ten. §13.87.3 then
-measured why: `totalAll / total` is exactly 2.0 on **120 of 121** MR questions, so *essentially every* MR
+measured why: `totalAll / total` is exactly 2.0 on **120 of 121** MR questions, so _essentially every_ MR
 question carries assistant-role gold and the prediction could not have failed. The 10/10 was a base rate
 dressed as a finding. Recorded here because it was quoted as the premise for a companion-assistant policy
 that §13.87 then set aside; the premise was measured, and it was a tautology.
@@ -10551,14 +10591,14 @@ The reach is **the multi-session route alone**, and unlike `enumerated` the othe
 `computed` — they fall through to their shipped blocks. That makes IE, KU, ABS and TR an internal
 control rather than four more subjects.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | median **session lines** per MR response ≥ **12**, and ≥ 90% of MR records write at least one | median < 8, or < 90% |
-| **2** | on the thirty counting questions, median **item-bearing lines** rises from **4.0** (correct 4.0, wrong **2.5**) to **≥ 6** | < 5 |
-| **3** | MR's mean rises **84.25 → ≥ 88** | ≤ 86 |
-| **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct | ≤ 1 |
-| **5** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly | any change |
-| **6** | MR's window stays **≥ 168 turns** and MR's first-repetition abstentions stay **≤ 10** | < 165 turns, or ≥ 13 abstentions |
+| #     | prediction                                                                                                                                | falsified if                     |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **1** | median **session lines** per MR response ≥ **12**, and ≥ 90% of MR records write at least one                                             | median < 8, or < 90%             |
+| **2** | on the thirty counting questions, median **item-bearing lines** rises from **4.0** (correct 4.0, wrong **2.5**) to **≥ 6**                | < 5                              |
+| **3** | MR's mean rises **84.25 → ≥ 88**                                                                                                          | ≤ 86                             |
+| **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct | ≤ 1                              |
+| **5** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly                                      | any change                       |
+| **6** | MR's window stays **≥ 168 turns** and MR's first-repetition abstentions stay **≤ 10**                                                     | < 165 turns, or ≥ 13 abstentions |
 
 The baseline in prediction 2 is read by `--counting`, which is the table that produced the counts in
 §13.92.1; it reports 4.0 for the correct answers and **2.5** for the wrong ones. Saying "3–4" here
@@ -10574,14 +10614,14 @@ capability cannot be claimed from six question ids alone.
 **The ceiling, computed before the run.** A sweep cannot fix more than the questions that are counts.
 Classifying MR's 37 wrong answers in `39367801501` by the shape of the gold:
 
-| gold | wrong | correct |
-| --- | --- | --- |
-| count, 2 – 10 | **10** | 20 |
-| count, above 10 | 6 | 9 |
-| prose | 9 | 14 |
-| duration | 6 | 14 |
-| money | 4 | 23 |
-| percent / decimal | 2 | 4 |
+| gold              | wrong  | correct |
+| ----------------- | ------ | ------- |
+| count, 2 – 10     | **10** | 20      |
+| count, above 10   | 6      | 9       |
+| prose             | 9      | 14      |
+| duration          | 6      | 14      |
+| money             | 4      | 23      |
+| percent / decimal | 2      | 4       |
 
 So the ask axis's ceiling on MR is **84.25 + 16 = 100.25** — every counting question repaired and
 nothing else moved — and the registered threshold of 88 asks for a quarter of that. The other 21 wrong
@@ -10626,14 +10666,14 @@ key sets by source, which is the check that caught §13.35's startup rejection.
 
 ### 13.93.1 The readings (`39389557774`, 2h03m38s, drift 500/500)
 
-| # | prediction (§13.92.2) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | median session lines ≥ 12, ≥ 90% of records write one | **44.0**, **121 of 121** | **holds** |
-| **2** | median item-bearing lines 4.0 → **≥ 6** | **2.0** | **falsified** |
-| **3** | MR mean 84.25 → **≥ 88** | **58.25** (54–60) | **falsified** |
-| **4** | ≥ 3 of the six under-listing questions correct | **2** | **neither** — see §13.93.3 |
+| #     | prediction (§13.92.2)                                 | observed                              | verdict                                                       |
+| ----- | ----------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------- |
+| **1** | median session lines ≥ 12, ≥ 90% of records write one | **44.0**, **121 of 121**              | **holds**                                                     |
+| **2** | median item-bearing lines 4.0 → **≥ 6**               | **2.0**                               | **falsified**                                                 |
+| **3** | MR mean 84.25 → **≥ 88**                              | **58.25** (54–60)                     | **falsified**                                                 |
+| **4** | ≥ 3 of the six under-listing questions correct        | **2**                                 | **neither** — see §13.93.3                                    |
 | **5** | IE/KU/ABS/TR reproduce `promptChars` to the character | ABS and KU identical; IE and TR moved | **falsified**, and the reason is a defect in the registration |
-| **6** | MR window ≥ 168 turns, abstentions ≤ 10 | 174 turns, **14** abstentions | window holds, abstentions **falsified** |
+| **6** | MR window ≥ 168 turns, abstentions ≤ 10               | 174 turns, **14** abstentions         | window holds, abstentions **falsified**                       |
 
 Registered statistic **+25.35pp** (was +36.55), roster mean **347.8** (was 405.0). Per capability, mean over
 four repetitions: ABS 29.25, IE **126.75**, KU 63.0, MR **58.25**, TR **70.50**.
@@ -10648,7 +10688,7 @@ forty-two lines of `none` and found the same two items.
 
 That is the finding, and it is a negative one worth more than the accuracy number: **the reader's enumeration is
 not limited by how much of the document it looks at.** It is limited by what it recognises as an instance of the
-question's action. `0a995998` states it: the question asks about items to *pick up or return from a store*; the
+question's action. `0a995998` states it: the question asks about items to _pick up or return from a store_; the
 window contains a blazer at the dry cleaner and two mentions of boots at Zara, and the response lists the two boots
 mentions, merges them, and answers `1`. The blazer is in a session the sweep printed as `none`.
 
@@ -10665,7 +10705,7 @@ one thing a registration cannot survive.
 ### 13.93.4 Prediction 5 could not have held, and the reason is structural
 
 The registration asked IE, KU, ABS and TR to reproduce their `promptChars` to the character. **ABS and KU did**
-(46,737 and 46,841, byte-identical). IE and TR did not, and the cause is not a leak: the *previous* run's ask was
+(46,737 and 46,841, byte-identical). IE and TR did not, and the cause is not a leak: the _previous_ run's ask was
 `enumerated`, whose reach is `multi-session, flat, temporal` — so the flat and temporal routes were reading
 `computed`'s merged block, and switching to `sweep` removed it from them. Their blocks lost ~1,250 characters and
 their windows grew by 115 and 246 characters.
@@ -10693,10 +10733,10 @@ And it exposed something the campaign had never measured: **the last scoring cha
 `--final` audits the correct answers to questions whose gold **is** a number, and asks whether the response's
 closing line states it:
 
-| run | MR correct on numeric golds | closing line states the gold |
-| --- | --- | --- |
-| `39367801501` (adopted, `enumerated`) | 31 | **30** |
-| `39389557774` (`sweep`) | 22 | **18** |
+| run                                   | MR correct on numeric golds | closing line states the gold |
+| ------------------------------------- | --------------------------- | ---------------------------- |
+| `39367801501` (adopted, `enumerated`) | 31                          | **30**                       |
+| `39389557774` (`sweep`)               | 22                          | **18**                       |
 
 So on this run **4 of 22** correct answers end on a different number than the one they were scored against — the
 transcript contained the gold somewhere — while the adopted configuration has **one** such record in 31. The
@@ -10709,10 +10749,10 @@ measurement.
 
 What the run bought:
 
-- the ask axis is closed for *structure*: a reader that walks 44 sessions still names two items, so the deficit is
+- the ask axis is closed for _structure_: a reader that walks 44 sessions still names two items, so the deficit is
   what it counts as an instance, not how much it reads;
 - one hypothesis is now pointed: the gold turn and the question use **different words** (a blazer at the dry
-  cleaner for *pick up or return from a store*), and the reference pipeline — 20 questions ahead on MR at half the
+  cleaner for _pick up or return from a store_), and the reference pipeline — 20 questions ahead on MR at half the
   budget — carries `expansionQueries` in its own trace for exactly this reason, retrieving with phrases the
   question does not contain;
 - a scoring audit that did not exist, and an answer-format rule that the next list-shaped ask must obey.
@@ -10750,14 +10790,14 @@ the multi-session route by construction and no other route can be configured int
 direct answer to §13.93.4, where the ask's reach moved three routes and the run could not separate the
 treatment from the cost.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly | any change |
-| **2** | the audit changes the answer on **≥ 20** of 121 MR questions relative to `39367801501`, and the flips are net positive | < 12 changed, or net negative |
-| **3** | MR's mean rises **84.25 → ≥ 88** | ≤ 86 |
-| **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct | ≤ 2 |
-| **5** | MR's `promptChars` falls to **40,000 – 44,500** (the audit's instruction quotes the first pass, so it buys less evidence with the same budget) | outside |
-| **6** | MR's first-repetition abstentions stay **≤ 12**, and every capability's window turns are unchanged | ≥ 13 |
+| #     | prediction                                                                                                                                     | falsified if                  |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **1** | IE, KU, ABS and TR reproduce their `promptChars` **to the character** and their window turns exactly                                           | any change                    |
+| **2** | the audit changes the answer on **≥ 20** of 121 MR questions relative to `39367801501`, and the flips are net positive                         | < 12 changed, or net negative |
+| **3** | MR's mean rises **84.25 → ≥ 88**                                                                                                               | ≤ 86                          |
+| **4** | of the six under-listing counting questions (`0a995998`, `6d550036`, `88432d0a`, `c18a7dc8`, `8e91e7d9`, `21d02d0d`), **≥ 3** are correct      | ≤ 2                           |
+| **5** | MR's `promptChars` falls to **40,000 – 44,500** (the audit's instruction quotes the first pass, so it buys less evidence with the same budget) | outside                       |
+| **6** | MR's first-repetition abstentions stay **≤ 12**, and every capability's window turns are unchanged                                             | ≥ 13                          |
 
 Prediction 4 is drawn **contiguously** this time — §13.93.3 recorded the gapped falsifier as a defect
 rather than reinterpreting it — and prediction 2 is the mechanism read on the artifact rather than
@@ -10770,8 +10810,8 @@ asserted: an audit that never changes an answer has measured nothing, which is t
 differ — per question. It is **not in the artifact**: the roster has no field for it, and adding one
 means threading a per-question value through `runBenchmark` → `scoreEvaluation` → `QuestionRecord`.
 
-So prediction 2 is read from `--paired` (the answer a question *had* in `39367801501` against the
-answer it *has* now), which measures the same thing from outside at the price of comparing two runs
+So prediction 2 is read from `--paired` (the answer a question _had_ in `39367801501` against the
+answer it _has_ now), which measures the same thing from outside at the price of comparing two runs
 rather than one. The per-question capture is §13.95, and it comes before any future pass whose
 mechanism is "the second look changed something specific".
 
@@ -10789,14 +10829,14 @@ The order is therefore: fix what the reader does with what it has, then widen wh
 
 ### 13.96.1 The readings (`39416366870`, 2h12m50s, drift 500/500)
 
-| # | prediction (§13.94.2) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | IE, KU, ABS and TR reproduce `promptChars` to the character and their window turns | **all four identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds** |
-| **2** | ≥ 20 MR answers change, and the flips are net positive | **73 changed**, 7 repaired, **21 damaged** | changed holds, **net −14** → **falsified** |
-| **3** | MR mean 84.25 → ≥ 88 | **70.00** (69–72) | **falsified** |
-| **4** | ≥ 3 of the six under-listing questions correct | **1** | **falsified** |
-| **5** | MR's `promptChars` in 40,000 – 44,500 | **46,417** | **falsified** (the audit re-selects to nearly the same room) |
-| **6** | MR abstentions ≤ 12 and every window unchanged | 10 abstentions; four controls unchanged, **MR 174 → 175 turns** | abstentions hold, MR's own window moved by one |
+| #     | prediction (§13.94.2)                                                              | observed                                                                       | verdict                                                      |
+| ----- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| **1** | IE, KU, ABS and TR reproduce `promptChars` to the character and their window turns | **all four identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds**                                                    |
+| **2** | ≥ 20 MR answers change, and the flips are net positive                             | **73 changed**, 7 repaired, **21 damaged**                                     | changed holds, **net −14** → **falsified**                   |
+| **3** | MR mean 84.25 → ≥ 88                                                               | **70.00** (69–72)                                                              | **falsified**                                                |
+| **4** | ≥ 3 of the six under-listing questions correct                                     | **1**                                                                          | **falsified**                                                |
+| **5** | MR's `promptChars` in 40,000 – 44,500                                              | **46,417**                                                                     | **falsified** (the audit re-selects to nearly the same room) |
+| **6** | MR abstentions ≤ 12 and every window unchanged                                     | 10 abstentions; four controls unchanged, **MR 174 → 175 turns**                | abstentions hold, MR's own window moved by one               |
 
 Registered statistic **+34.20pp** (was +36.55); roster mean **394.0** (was 405.0). Per capability: ABS 29.50,
 IE **136.25**, KU 63.25, MR **70.00**, TR **95.00**.
@@ -10821,20 +10861,20 @@ the median item-bearing count on the counting questions is **6.0** for the wrong
 
 So the thing §13.92 could not buy — a longer list — this pass bought. And the accuracy fell anyway:
 
-| | `39367801501` (one pass) | `39416366870` (audit) |
-| --- | --- | --- |
-| MR median items, wrong counting answers | 2.5 | **6.0** |
-| MR correct | 84 of 121 | **70** |
-| repaired / damaged | — | **7 / 21** |
+|                                         | `39367801501` (one pass) | `39416366870` (audit) |
+| --------------------------------------- | ------------------------ | --------------------- |
+| MR median items, wrong counting answers | 2.5                      | **6.0**               |
+| MR correct                              | 84 of 121                | **70**                |
+| repaired / damaged                      | —                        | **7 / 21**            |
 
 **The revision is right 7 times in 73 (9.6%)** on the questions it touches, while the first pass was
 already right on 84 of 121. A second look whose precision is one in ten, applied to sixty percent of
 the answers, is a net loss by arithmetic — and that is what the mean shows.
 
 The mechanism behind it is visible in one record. `gpt4_194be4b3` asks how many musical instruments
-the user owns; the gold is 4; the first pass answered 4. The audit's own review line reads *"the only
+the user owns; the gold is 4; the first pass answered 4. The audit's own review line reads _"the only
 'new' item (ukulele) is aspirational, not owned, so it should not be added. The first pass's five are
-all supported. No missing owned instruments."* — and then it answers **5**. The review and the number
+all supported. No missing owned instruments."_ — and then it answers **5**. The review and the number
 disagree inside one response, which is the failure this pass was built to prevent, now happening in
 the pass itself.
 
@@ -10842,7 +10882,7 @@ the pass itself.
 
 **The membership review is retired as an instruction.** The measurement says the reader's second
 judgement is worse than its first on this workload, and no rewording of the three checks can change
-that: the pass already *wrote* the correct review and answered against it.
+that: the pass already _wrote_ the correct review and answered against it.
 
 What survives is the diagnosis, and it sharpens: the deficit is not list length (`enumerated` gets 2
 items, `sweep` gets 44 lines and 2 items, `audit` gets 6 items and fewer correct answers), and it is
@@ -10868,14 +10908,14 @@ frozen `session` unit.
 Three prompt-side attempts have now been measured on the multi-session route, and each one moved the
 thing it was designed to move while accuracy fell or failed to rise:
 
-| attempt | mechanism it bought | reading |
-| --- | --- | --- |
-| `enumerated` (§13.34) | a two-step contract, list then compute | adopted, MR 70 at its best |
-| `sweep` (§13.93) | a walk over all 44 sessions, 44 ledger lines | median items 2.0, unchanged |
-| `audit` (§13.94) | a membership review of the first pass | median items 6.0, **MR 84 → 70** |
+| attempt               | mechanism it bought                          | reading                          |
+| --------------------- | -------------------------------------------- | -------------------------------- |
+| `enumerated` (§13.34) | a two-step contract, list then compute       | adopted, MR 70 at its best       |
+| `sweep` (§13.93)      | a walk over all 44 sessions, 44 ledger lines | median items 2.0, unchanged      |
+| `audit` (§13.94)      | a membership review of the first pass        | median items 6.0, **MR 84 → 70** |
 
-The third one is the decisive one because the mechanism was *visible in the response and did not
-control the answer*: `gpt4_194be4b3` wrote "the only 'new' item (ukulele) is aspirational, not
+The third one is the decisive one because the mechanism was _visible in the response and did not
+control the answer_: `gpt4_194be4b3` wrote "the only 'new' item (ukulele) is aspirational, not
 owned, so it should not be added" and then answered 5 against a gold of 4. A reader whose own
 review says the item is not there, and whose count includes it, is not failing to look and is not
 failing to write a list. It is deciding **which mentions count as instances** — and that decision is
@@ -10902,24 +10942,24 @@ fuses several rankings.
 
 Five design decisions, each with the alternative it rules out:
 
-* **Activity phrases, not synonyms.** The failing questions count past activities; the evidence is
+- **Activity phrases, not synonyms.** The failing questions count past activities; the evidence is
   written as the activity ("led a consumer-research project") while the question names the category
   ("how many projects"). A synonym of the category retrieves every session that mentions the
   category, which is what the bare question already did.
-* **Four phrases, folded and bounded.** The queries are fused by reciprocal rank, so two copies of
+- **Four phrases, folded and bounded.** The queries are fused by reciprocal rank, so two copies of
   one phrase are a weight rather than a phrase; duplicates are folded before the bound is applied,
   and a bound of zero returns nothing rather than one phrase.
-* **A refusal is dropped whole.** The reference pipeline's own trace records an expansion call that
+- **A refusal is dropped whole.** The reference pipeline's own trace records an expansion call that
   answered `"I don't have access to your past conversations or evidence sessions"`, whose three
   sentences were then carried into retrieval as phrases. Here the head is tested for refusal
   markers, the whole response is discarded when it declines, and the artifact counts the questions
   that happened to.
-* **The phrases are produced before the index, not during the answer.** `CortexMemory`'s
+- **The phrases are produced before the index, not during the answer.** `CortexMemory`'s
   `relevanceFor` is a synchronous table lookup; a phrase written at answer time would read the
   index's floor score (-2, below every cosine) and the treatment would be reported while measuring
   nothing. This is why the call sits in the arm beside the index construction rather than in the
   product.
-* **Throwing, not degrading.** A transport failure propagates and the run fails. A run dispatched
+- **Throwing, not degrading.** A transport failure propagates and the run fails. A run dispatched
   with `llm` that silently answered from the bare question would publish the control's reading under
   the treatment's name — the §10.10 shape.
 
@@ -10947,14 +10987,14 @@ as an input costs a registration, which the ceiling guard will demand be traded 
 The dispatch is `--set cortex_memory_query_expansion=llm` on §10.3's configuration, which is
 `39367801501`'s configuration with `reviewPass` back at `none`, N = 500, four repetitions.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
+| #     | prediction                                                                                                                              | falsified if                                                                      |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | **1** | the mechanism runs: config line reads `queryExpansion=llm` and `expansion=121q/…p/0r`, with at least **242** phrases (two per question) | `questions` is 0 (wiring), or `refused` exceeds 12 (a model that will not expand) |
-| **2** | the four untouched capabilities reproduce `39367801501`'s `promptChars` **to the character** and their window turns **to the turn** | any of the four moves |
-| **3** | MR mean **≥ 78** (against 70.00 in `39416366870` and 84.25 in `39367801501`) | MR ≤ 74 |
-| **4** | the wrong answers whose gold digit is absent fall from **12 to ≤ 8** | 9 or more remain absent |
-| **5** | MR abstentions stay **≤ 10**, and `soft_refusal` / `plan_output` do not rise above 0 | either counts positive |
-| **6** | MR's `promptChars` stays within **46,417 ± 3,000** (expansion moves the order, not the room) | outside that band |
+| **2** | the four untouched capabilities reproduce `39367801501`'s `promptChars` **to the character** and their window turns **to the turn**     | any of the four moves                                                             |
+| **3** | MR mean **≥ 78** (against 70.00 in `39416366870` and 84.25 in `39367801501`)                                                            | MR ≤ 74                                                                           |
+| **4** | the wrong answers whose gold digit is absent fall from **12 to ≤ 8**                                                                    | 9 or more remain absent                                                           |
+| **5** | MR abstentions stay **≤ 10**, and `soft_refusal` / `plan_output` do not rise above 0                                                    | either counts positive                                                            |
+| **6** | MR's `promptChars` stays within **46,417 ± 3,000** (expansion moves the order, not the room)                                            | outside that band                                                                 |
 
 Prediction 3 is stated against **both** prior runs on purpose: 84.25 is what this configuration
 scored before the audit pass doubled its consultations, so "expansion recovers what the audit lost"
@@ -10965,32 +11005,32 @@ and "expansion beats the one-pass control" are different claims and only the sec
 Even if every absent-digit question is repaired, MR moves 70 → 82 at most, and the reference
 pipeline's MR is 103 of 121 (85.1%). The remaining 32 wrong answers already had the digits in the
 window. So the honest reading of a positive result is "retrieval is worth N questions", not "the
-route is closed", and a null result does not retire expansion in general — it retires *this*
-prompt, on *this* workload, at *this* pool width.
+route is closed", and a null result does not retire expansion in general — it retires _this_
+prompt, on _this_ workload, at _this_ pool width.
 
 ### 13.97.6 Verification before dispatch
 
-* `pnpm check` **exit 0**; `cortex-eval` **1985 tests**, `cortex-memory` **402**, `tools` **509
+- `pnpm check` **exit 0**; `cortex-eval` **1985 tests**, `cortex-memory` **402**, `tools` **509
   passed + 1 skipped + 50 subtests**; four coverage dimensions **100%**.
-* New guards: `query-expansion.test.ts` (22 tests, every parser refusal asserted by the input that
+- New guards: `query-expansion.test.ts` (22 tests, every parser refusal asserted by the input that
   triggers it), three index tests for `queries`, five arm tests for the option and both artifact
   renderings, and `test_query_expansion_wiring.py` (7 source-level links, mutation-checked: replacing
   `[entry.question, ...(entry.queries ?? [])]` with `[entry.question]` fails the suite).
-* The parser's prompt and its bound are asserted as literals (`at most 4`), because a test that read
+- The parser's prompt and its bound are asserted as literals (`at most 4`), because a test that read
   the constant would pass on any default.
 
 ## 13.98 The expansion reached the ranking and moved nothing
 
 ### 13.98.1 The readings (`39449569048`, 1h52m)
 
-| # | prediction (§13.97.4) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | `queryExpansion=llm`, `expansion=121q/…p/0r`, ≥ 242 phrases | **`121q/347p/0r`** — 2.87 phrases per question, no refusal | **holds** |
-| **2** | the four untouched capabilities reproduce to the character and to the turn | **all four identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds** |
-| **3** | MR mean ≥ 78 | **84.75** (83–87) | **holds, and it means nothing** — see §13.98.2 |
-| **4** | absent gold digits 12 → ≤ 8 | **6** | **holds on a wrong baseline** — see §13.98.3 |
-| **5** | MR abstentions ≤ 10 | **12** | **falsified** |
-| **6** | MR `promptChars` 46,417 ± 3,000 | **46,204** | **holds** |
+| #     | prediction (§13.97.4)                                                      | observed                                                                       | verdict                                        |
+| ----- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------- |
+| **1** | `queryExpansion=llm`, `expansion=121q/…p/0r`, ≥ 242 phrases                | **`121q/347p/0r`** — 2.87 phrases per question, no refusal                     | **holds**                                      |
+| **2** | the four untouched capabilities reproduce to the character and to the turn | **all four identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds**                                      |
+| **3** | MR mean ≥ 78                                                               | **84.75** (83–87)                                                              | **holds, and it means nothing** — see §13.98.2 |
+| **4** | absent gold digits 12 → ≤ 8                                                | **6**                                                                          | **holds on a wrong baseline** — see §13.98.3   |
+| **5** | MR abstentions ≤ 10                                                        | **12**                                                                         | **falsified**                                  |
+| **6** | MR `promptChars` 46,417 ± 3,000                                            | **46,204**                                                                     | **holds**                                      |
 
 Registered statistic **+37.20pp** (was +36.55); roster mean **407.0** (was 405.0). Per capability:
 ABS 29.0 (29–29), IE **136.25** (135–138), KU 62.75 (61–66), MR **84.75** (83–87), TR 94.25 (87–99).
@@ -11004,15 +11044,14 @@ effect is zero.
 
 The per-question transitions say the same thing at the resolution where it hurts:
 
-| route | changed | repaired | damaged | net |
-| --- | --- | --- | --- | --- |
-| **MR** (treated) | 27 of 121 (22.3%) | 12 | 12 | **0** |
-| **TR** (untreated, window identical to the character) | 24 of 127 (18.9%) | 12 | 9 | **+3** |
+| route                                                 | changed           | repaired | damaged | net    |
+| ----------------------------------------------------- | ----------------- | -------- | ------- | ------ |
+| **MR** (treated)                                      | 27 of 121 (22.3%) | 12       | 12      | **0**  |
+| **TR** (untreated, window identical to the character) | 24 of 127 (18.9%) | 12       | 9       | **+3** |
 
 A route that received **no treatment at all** moved nineteen per cent of its answers. That is the
 noise floor of this instrument, and MR's zero is indistinguishable from it. The audit pass (§13.96)
-looked worse than the control at 7 repaired against 21 damaged; expansion looks level at 12 against
-12. Neither is a measurement of the treatment, because the untreated route moves by the same order.
+looked worse than the control at 7 repaired against 21 damaged; expansion looks level at 12 against 12. Neither is a measurement of the treatment, because the untreated route moves by the same order.
 
 ### 13.98.3 The mechanism ran; the window it changed was not where the loss was
 
@@ -11058,8 +11097,8 @@ nobody has measured. No threshold is stated in this section for that reason.
 ### 13.98.5 Adoption
 
 None. `queryExpansion` stays `none` in §10.3 and in the dispatch table; `llm` remains dispatchable so
-a later run can reproduce this refutation, and the implementation stays because the *mechanism* was
-verified even though the *effect* was not.
+a later run can reproduce this refutation, and the implementation stays because the _mechanism_ was
+verified even though the _effect_ was not.
 
 ## 13.99 The next variable is the instrument, not the arm
 
@@ -11076,13 +11115,13 @@ used. Its product is a **noise floor per capability**, not an accuracy claim.
 
 ### 13.99.2 Predictions
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | MR agreement between two runs of one configuration is **75–85%** (i.e. 18–30 of 121 answers differ) | outside that band |
-| **2** | TR agreement is **75–85%**, the same band, because §13.98.2 measured 19% on a route no treatment touched | outside |
-| **3** | ABS agreement is **≥ 93%**, because its answers are a token or a short phrase and its state is nearly binary | below 93% |
-| **4** | the roster mean of the re-run is within **±6** of 405.0 | outside |
-| **5** | the four window medians reproduce `39367801501` **to the character** | any moves |
+| #     | prediction                                                                                                   | falsified if      |
+| ----- | ------------------------------------------------------------------------------------------------------------ | ----------------- |
+| **1** | MR agreement between two runs of one configuration is **75–85%** (i.e. 18–30 of 121 answers differ)          | outside that band |
+| **2** | TR agreement is **75–85%**, the same band, because §13.98.2 measured 19% on a route no treatment touched     | outside           |
+| **3** | ABS agreement is **≥ 93%**, because its answers are a token or a short phrase and its state is nearly binary | below 93%         |
+| **4** | the roster mean of the re-run is within **±6** of 405.0                                                      | outside           |
+| **5** | the four window medians reproduce `39367801501` **to the character**                                         | any moves         |
 
 If predictions 1 and 2 hold, the campaign's resolution is stated as a number, and every later
 registration must name an effect **larger than twice that band** to be detectable. If they fail —
@@ -11109,23 +11148,23 @@ capability split is the floor §13.99.2 is registered against.
 
 ### 13.100.1 The readings (`39509698041`, 1h45m, the adopting configuration twice)
 
-| capability | `39367801501` | `39509698041` | net |
-| --- | --- | --- | --- |
-| ABS | 29.25 (29–30) | 29.5 (29–30) | +0.25 |
-| IE | 134.25 (133–135) | 134.5 (134–136) | +0.25 |
-| KU | 62.5 (60–64) | 60.5 (59–63) | −2.0 |
-| **MR** | 84.25 (81–88) | **85.2** (83–87) | **+0.95** |
-| **TR** | 94.75 (94–95) | **97.0** (95–99) | **+2.25** |
-| **roster** | 405.0 (397–412) | **406.8** (400–415) | **+1.8** |
+| capability | `39367801501`    | `39509698041`       | net       |
+| ---------- | ---------------- | ------------------- | --------- |
+| ABS        | 29.25 (29–30)    | 29.5 (29–30)        | +0.25     |
+| IE         | 134.25 (133–135) | 134.5 (134–136)     | +0.25     |
+| KU         | 62.5 (60–64)     | 60.5 (59–63)        | −2.0      |
+| **MR**     | 84.25 (81–88)    | **85.2** (83–87)    | **+0.95** |
+| **TR**     | 94.75 (94–95)    | **97.0** (95–99)    | **+2.25** |
+| **roster** | 405.0 (397–412)  | **406.8** (400–415) | **+1.8**  |
 
 Registered statistic **+36.15pp** against +36.55. Five predictions, all of them held:
 
-| # | prediction (§13.99.2) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | MR agreement 75–85% | **80.2%** (24 of 121 changed) | **holds** |
-| **2** | TR agreement 75–85% | **81.1%** (24 of 127) | **holds** |
-| **3** | ABS agreement ≥ 93% | **100%** (0 of 30) | **holds** |
-| **4** | roster within 405.0 ± 6 | **406.8** | **holds** |
+| #     | prediction (§13.99.2)                   | observed                                      | verdict   |
+| ----- | --------------------------------------- | --------------------------------------------- | --------- |
+| **1** | MR agreement 75–85%                     | **80.2%** (24 of 121 changed)                 | **holds** |
+| **2** | TR agreement 75–85%                     | **81.1%** (24 of 127)                         | **holds** |
+| **3** | ABS agreement ≥ 93%                     | **100%** (0 of 30)                            | **holds** |
+| **4** | roster within 405.0 ± 6                 | **406.8**                                     | **holds** |
 | **5** | four windows reproduce to the character | identical (46,694 / 46,864 / 46,827 / 47,137) | **holds** |
 
 ### 13.100.2 The number every later registration has to clear
@@ -11133,12 +11172,12 @@ Registered statistic **+36.15pp** against +36.55. Five predictions, all of them 
 The net difference between two runs of one configuration, by capability:
 
 | capability | repaired | damaged | **net** |
-| --- | --- | --- | --- |
-| ABS | 0 | 0 | 0 |
-| IE | 3 | 3 | 0 |
-| KU | 2 | 3 | −1 |
-| MR | 11 | 13 | **−2** |
-| TR | 8 | 12 | **−4** |
+| ---------- | -------- | ------- | ------- |
+| ABS        | 0        | 0       | 0       |
+| IE         | 3        | 3       | 0       |
+| KU         | 2        | 3       | −1      |
+| MR         | 11       | 13      | **−2**  |
+| TR         | 8        | 12      | **−4**  |
 
 **A four-question net movement happens with no treatment at all.** So a single run cannot support a
 claim smaller than five questions on any route, and the two runs' means differ by 1.8 questions on the
@@ -11165,7 +11204,7 @@ something.
 
 ### 13.100.4 Adoption
 
-The configuration is unchanged; the *reading* is what changed. §10.3 keeps `queryExpansion: none`, and
+The configuration is unchanged; the _reading_ is what changed. §10.3 keeps `queryExpansion: none`, and
 the roster's registered point estimate stays with `39367801501` until a run beats **406.8 ± 4** by more
 than the noise.
 
@@ -11199,13 +11238,13 @@ lives in `#promptSessionAware`, which only `answerSessions` reaches.
 
 Three decisions worth stating:
 
-* **`null` is a candidate.** A majority of declines is a decline. Excluding it would let two wrong
+- **`null` is a candidate.** A majority of declines is a decline. Excluding it would let two wrong
   answers outvote one abstention on a question the evidence cannot answer, which is the failure mode
   §13.34's closing line was written to prevent.
-* **The first pass is the fallback, not the longest or the most confident.** With three distinct
+- **The first pass is the fallback, not the longest or the most confident.** With three distinct
   answers there is no majority to take, and inventing a tie-break would make the mechanism's behaviour
   depend on a string heuristic nothing measured.
-* **The artifact records the agreement.** `vote=<unanimous>/<majority>/<split>` per run, so a null
+- **The artifact records the agreement.** `vote=<unanimous>/<majority>/<split>` per run, so a null
   result can be read as "voting never disagreed" (the mechanism did not fire) rather than as "voting
   did not help".
 
@@ -11225,14 +11264,14 @@ actually exercise.
 
 ### 13.101.4 Predictions, registered before the dispatch
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | the mechanism runs: config reads `selfConsistency=3`, and `vote` is not `0/0/121` | `unanimous + majority + split` is not 121 |
-| **2** | votes disagree often enough to matter: **split > 0** and unanimous ≤ **75%** | unanimous = 100% (the endpoint is deterministic after all, and §13.100.2's movement has another cause) |
-| **3** | MR mean **≥ 89** (85.2 + 4, i.e. above the measured floor) | MR ≤ 87 |
-| **4** | the four untouched capabilities reproduce `39509698041` to the character and to the turn | any moves |
-| **5** | MR abstentions ≤ 10 and MR `promptChars` unchanged | either moves |
-| **6** | wall clock ≤ 3h | longer |
+| #     | prediction                                                                               | falsified if                                                                                           |
+| ----- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **1** | the mechanism runs: config reads `selfConsistency=3`, and `vote` is not `0/0/121`        | `unanimous + majority + split` is not 121                                                              |
+| **2** | votes disagree often enough to matter: **split > 0** and unanimous ≤ **75%**             | unanimous = 100% (the endpoint is deterministic after all, and §13.100.2's movement has another cause) |
+| **3** | MR mean **≥ 89** (85.2 + 4, i.e. above the measured floor)                               | MR ≤ 87                                                                                                |
+| **4** | the four untouched capabilities reproduce `39509698041` to the character and to the turn | any moves                                                                                              |
+| **5** | MR abstentions ≤ 10 and MR `promptChars` unchanged                                       | either moves                                                                                           |
+| **6** | wall clock ≤ 3h                                                                          | longer                                                                                                 |
 
 Prediction 3 is the one that decides adoption, and it is set at the floor rather than at a hoped-for
 effect: four questions is the largest net movement two identical runs have produced, so a result at or
@@ -11250,14 +11289,14 @@ has.
 
 ### 13.102.1 The readings (`39529234665`, 2h17m)
 
-| # | prediction (§13.101.4) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | config reads `selfConsistency=3`, `vote` sums to 121 | **`vote=120/192/172`** — sums to **484**, four repetitions of 121 | **falsified as written** — the registration forgot the repetitions |
-| **2** | `split > 0` and unanimous ≤ 75% | unanimous **24.8%**, majority 39.7%, split **35.5%** | **holds**, far past the expectation |
-| **3** | MR mean ≥ 89 | **86.2** (82–91) | **falsified** |
-| **4** | four untouched capabilities reproduce to the character | identical (46,694 / 46,864 / 46,827 / 47,137) | **holds** |
-| **5** | MR abstentions ≤ 10 and `promptChars` unchanged | **10**; 46,186 | **holds** |
-| **6** | wall clock ≤ 3h | **2h17m** | **holds** |
+| #     | prediction (§13.101.4)                                 | observed                                                          | verdict                                                            |
+| ----- | ------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **1** | config reads `selfConsistency=3`, `vote` sums to 121   | **`vote=120/192/172`** — sums to **484**, four repetitions of 121 | **falsified as written** — the registration forgot the repetitions |
+| **2** | `split > 0` and unanimous ≤ 75%                        | unanimous **24.8%**, majority 39.7%, split **35.5%**              | **holds**, far past the expectation                                |
+| **3** | MR mean ≥ 89                                           | **86.2** (82–91)                                                  | **falsified**                                                      |
+| **4** | four untouched capabilities reproduce to the character | identical (46,694 / 46,864 / 46,827 / 47,137)                     | **holds**                                                          |
+| **5** | MR abstentions ≤ 10 and `promptChars` unchanged        | **10**; 46,186                                                    | **holds**                                                          |
+| **6** | wall clock ≤ 3h                                        | **2h17m**                                                         | **holds**                                                          |
 
 Registered statistic **+37.70pp** (was +36.55); roster **408.8** (399–421). Per capability: ABS 29.2
 (29–30), IE 136.2 (136–137), KU 62.8 (59–67), **MR 86.2** (82–91), TR 94.2 (93–96).
@@ -11283,13 +11322,13 @@ Classified by arithmetic direction against the gold (`39529234665`, first repeti
 `tools/readout-arm-run.py --arithmetic`, not an inline script — §13.38's rule, and the reason
 §13.103's fourth prediction can be re-derived by a reader:
 
-| direction | count | share |
-| --- | --- | --- |
-| **under** (stated less than gold) | **15** | 41% |
-| abstention | 10 | 27% |
-| over | 6 | 16% |
-| non-numeric gold | 5 | 14% |
-| no number stated | 1 | 3% |
+| direction                         | count  | share |
+| --------------------------------- | ------ | ----- |
+| **under** (stated less than gold) | **15** | 41%   |
+| abstention                        | 10     | 27%   |
+| over                              | 6      | 16%   |
+| non-numeric gold                  | 5      | 14%   |
+| no number stated                  | 1      | 3%    |
 
 Twelve of the fifteen under-counts are **off by exactly one** (`3→2` six times, `2→1` three times,
 `5→4`, `4→3`, `23→22`). A constant offset is a membership decision, not a sampling one: one item is
@@ -11297,15 +11336,15 @@ systematically excluded.
 
 Two candidate explanations were tested against the questions and **both are weak**:
 
-* **Conjoined operands** ("led *or* am currently leading", "pick up *or* return") — 5 of the 15
+- **Conjoined operands** ("led _or_ am currently leading", "pick up _or_ return") — 5 of the 15
   under-counts, and 3 of the 6 overs. Not the driver.
-* **Time-window qualifiers** ("in the last month", "in April", "since I started") — common in the
+- **Time-window qualifiers** ("in the last month", "in April", "since I started") — common in the
   under-counts but present in the correctly answered ones too; the campaign has no measurement that
   separates them.
 
 What the record does show, in the responses themselves, is the two failures the reference pipeline's
-aggregation prompt names explicitly: an exchange counted once instead of twice (`0a995998` says *"the
-same exchange/pickup event"* and answers 1 against 3), and a decline taken on a question whose
+aggregation prompt names explicitly: an exchange counted once instead of twice (`0a995998` says _"the
+same exchange/pickup event"_ and answers 1 against 3), and a decline taken on a question whose
 operands are present (`a1cc6108` has Alex's age and declines the user's age at his birth).
 
 ### 13.102.4 What this retires
@@ -11327,15 +11366,15 @@ and the vote census stays in the artifact because it is what makes the refutatio
 ### 13.103.1 Why this is not a fifth prompt attempt
 
 Four attempts have been measured — structure, membership, retrieval, voting — and all four added
-instructions to a contract whose *shape* this arm invented. The reference pipeline answers **102 of
+instructions to a contract whose _shape_ this arm invented. The reference pipeline answers **102 of
 121** on the same capability, with the same model, the same dataset and a **smaller** window, and its
 multi-session prompt differs from this arm's in three decisions that are not wording:
 
-| decision | this arm's `enumerated` | the reference pipeline | the record it explains |
-| --- | --- | --- | --- |
-| What an exchange is | "do not merge two items into one" | **an exchange is two items** | `0a995998` merges a drop-off and a collection and answers 1 against 3; `bf659f65` does the same with purchase and download |
-| How Step 2 decides | "compute exactly as the question asks" | **four form→operation lines** (distinct → count; hours/days in total → sum durations; how much money → sum amounts; what time/which → that value, not a count) | `a4996e51` asked for hours in total declines; `73d42213` asked for a time declines |
-| When declining is allowed | a bare decline is forbidden, a non-empty list may still end in one | **only when the evidence says nothing**; deriving is not a reason | 7 of the 10 MR declines are questions whose operands the evidence states |
+| decision                  | this arm's `enumerated`                                            | the reference pipeline                                                                                                                                         | the record it explains                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| What an exchange is       | "do not merge two items into one"                                  | **an exchange is two items**                                                                                                                                   | `0a995998` merges a drop-off and a collection and answers 1 against 3; `bf659f65` does the same with purchase and download |
+| How Step 2 decides        | "compute exactly as the question asks"                             | **four form→operation lines** (distinct → count; hours/days in total → sum durations; how much money → sum amounts; what time/which → that value, not a count) | `a4996e51` asked for hours in total declines; `73d42213` asked for a time declines                                         |
+| When declining is allowed | a bare decline is forbidden, a non-empty list may still end in one | **only when the evidence says nothing**; deriving is not a reason                                                                                              | 7 of the 10 MR declines are questions whose operands the evidence states                                                   |
 
 That is the whole change: the shape, not the tone. It is also the first candidate in this campaign
 derived from a system that **demonstrably solves the capability**, rather than from a hypothesis about
@@ -11356,14 +11395,14 @@ Dispatch: `--set cortex_memory_ask=aggregation` on §10.3's configuration (so `s
 `queryExpansion` are both `none`), N = 500, four repetitions. The control is **`39509698041`** — the
 same configuration without the ask — not the voting run.
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | mechanism: config reads `ask=aggregation`, `askRoutes=multi-session` | either differs |
-| **2** | five controls reproduce `39509698041` to the character and to the turn | any moves |
-| **3** | MR mean **≥ 91** (86.2 + 5, i.e. past the floor, measured against 85.2) | MR ≤ 87 |
-| **4** | the under-counts fall from **15 to ≤ 10** | 11 or more remain |
-| **5** | MR abstentions fall from 10 to **≤ 7** | 8 or more |
-| **6** | MR `promptChars` unchanged at **46,186 ± 500** | outside |
+| #     | prediction                                                              | falsified if      |
+| ----- | ----------------------------------------------------------------------- | ----------------- |
+| **1** | mechanism: config reads `ask=aggregation`, `askRoutes=multi-session`    | either differs    |
+| **2** | five controls reproduce `39509698041` to the character and to the turn  | any moves         |
+| **3** | MR mean **≥ 91** (86.2 + 5, i.e. past the floor, measured against 85.2) | MR ≤ 87           |
+| **4** | the under-counts fall from **15 to ≤ 10**                               | 11 or more remain |
+| **5** | MR abstentions fall from 10 to **≤ 7**                                  | 8 or more         |
+| **6** | MR `promptChars` unchanged at **46,186 ± 500**                          | outside           |
 
 Prediction 3 is set at five questions because that is the floor §13.100.2 published; prediction 4 is
 the mechanism check, because the contract's first and third rules are both about a missing item.
@@ -11380,14 +11419,14 @@ pass, none of which this run changes.
 
 ### 13.104.1 The readings (`39641088296`, 1h45m)
 
-| # | prediction (§13.103.3) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | `ask=aggregation`, `askRoutes=multi-session` | both as registered | **holds** — and the registration was wrong |
-| **2** | five controls reproduce `39509698041` to the character | **IE 46,864 → 46,980; TR 47,137 → 47,383** | **falsified** |
-| **3** | MR mean ≥ 91 | **87.5** (82–91); first repetition **82** | **falsified** |
-| **4** | under-counts 15 → ≤ 10 | **14** | **falsified** |
-| **5** | MR abstentions 10 → ≤ 7 | **16** | **falsified** |
-| **6** | MR `promptChars` 46,186 ± 500 | **45,964** | holds |
+| #     | prediction (§13.103.3)                                 | observed                                   | verdict                                    |
+| ----- | ------------------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
+| **1** | `ask=aggregation`, `askRoutes=multi-session`           | both as registered                         | **holds** — and the registration was wrong |
+| **2** | five controls reproduce `39509698041` to the character | **IE 46,864 → 46,980; TR 47,137 → 47,383** | **falsified**                              |
+| **3** | MR mean ≥ 91                                           | **87.5** (82–91); first repetition **82**  | **falsified**                              |
+| **4** | under-counts 15 → ≤ 10                                 | **14**                                     | **falsified**                              |
+| **5** | MR abstentions 10 → ≤ 7                                | **16**                                     | **falsified**                              |
+| **6** | MR `promptChars` 46,186 ± 500                          | **45,964**                                 | holds                                      |
 
 Roster **380.5** (367–391) against 406.8; delta +31.30pp against +36.15. The capability table is the
 reason this run cannot be used: **TR 94.2 → 72.8** and **IE 136.2 → 127.5**, on a run registered as a
@@ -11419,11 +11458,11 @@ cap. It also explains why every ask since §13.34 composed onto `computed` rathe
 
 Two defects were found by reading the artifact rather than by a test:
 
-* **`vote=0/0/0` on a run that never voted.** The product always exposes `voteCounts()`, so a control
+- **`vote=0/0/0` on a run that never voted.** The product always exposes `voteCounts()`, so a control
   run published a census of three zeros — claiming a mechanism that never ran, which is exactly the
   reading §13.101.2 says the census exists to prevent. `voteCountsOf` now treats a sum of zero as
   absent, and a test holds it.
-* **A reach table that disagreed with its own fallthrough** (§13.104.2).
+- **A reach table that disagreed with its own fallthrough** (§13.104.2).
 
 ### 13.104.4 Verdict on `aggregation`: retired
 
@@ -11451,13 +11490,13 @@ the budget is charged to the evidence. That is now on the record for the next on
 `relevanceUnits: session` and `session-fill` were refused by §13.32–13.34. Every condition that
 produced that verdict has changed:
 
-| | when the unit lost | now |
-| --- | --- | --- |
-| evidence budget | 24,000 characters | **48,000** |
-| pool width | 64 | **256** |
-| role filter | none (52% assistant characters) | **user only** |
-| cap | none | **400 on MR and TR** |
-| MR | 51% | **86–87%** |
+|                 | when the unit lost              | now                  |
+| --------------- | ------------------------------- | -------------------- |
+| evidence budget | 24,000 characters               | **48,000**           |
+| pool width      | 64                              | **256**              |
+| role filter     | none (52% assistant characters) | **user only**        |
+| cap             | none                            | **400 on MR and TR** |
+| MR              | 51%                             | **86–87%**           |
 
 A turn unit scatters a session across the window; a session unit completes it. At 24,000 characters
 and a 64-wide pool a completed session displaced too much, and the verdict was correct for that
@@ -11486,14 +11525,14 @@ inert by construction.
 Dispatch: `--set cortex_memory_relevance_units=session` on §10.3's configuration. Control:
 **`39509698041`** (`enumerated`, `turn`, 48,000, k=256, user roles, cap 400).
 
-| # | prediction | falsified if |
-| --- | --- | --- |
-| **1** | mechanism: config reads `relevanceUnits=session` | it does not |
-| **2** | the four untouched capabilities reproduce `39509698041` to the character | any moves |
-| **3** | MR mean **≥ 91** | MR ≤ 87 |
-| **4** | MR abstentions **≤ 10** | 11 or more |
-| **5** | the under-counts fall from **15 to ≤ 10** (`--arithmetic`) | 11 or more |
-| **6** | MR `promptChars` within **46,186 ± 1,000** | outside |
+| #     | prediction                                                               | falsified if |
+| ----- | ------------------------------------------------------------------------ | ------------ |
+| **1** | mechanism: config reads `relevanceUnits=session`                         | it does not  |
+| **2** | the four untouched capabilities reproduce `39509698041` to the character | any moves    |
+| **3** | MR mean **≥ 91**                                                         | MR ≤ 87      |
+| **4** | MR abstentions **≤ 10**                                                  | 11 or more   |
+| **5** | the under-counts fall from **15 to ≤ 10** (`--arithmetic`)               | 11 or more   |
+| **6** | MR `promptChars` within **46,186 ± 1,000**                               | outside      |
 
 Prediction 3 is the floor. Prediction 5 is the mechanism: a completed session is what supplies the
 item a turn-scattered window leaves out, and a constant offset of one is what §13.102.3 measured.
@@ -11526,13 +11565,13 @@ names. Eight asks × six routes, one assertion, no per-ask prose.
 
 Three properties make it a real check rather than a restatement:
 
-* **It drives the routes.** The block is read out of the prompt the model would receive, not out of
+- **It drives the routes.** The block is read out of the prompt the model would receive, not out of
   the source. A table and a fallthrough can agree in text and disagree in code — that is precisely
   what §13.104 was.
-* **It compares against the shipped ask.** `askRoutes` in an artifact means "routes this dispatch
+- **It compares against the shipped ask.** `askRoutes` in an artifact means "routes this dispatch
   changes, relative to no ask". Any comparison between two asks answers a different question and would
   have passed on the run that broke.
-* **It checks the names.** A route name in the table that no scope produces is invisible otherwise:
+- **It checks the names.** A route name in the table that no scope produces is invisible otherwise:
   the artifact would publish a reach for a route nothing can move, and the claim would be untestable
   rather than wrong.
 
@@ -11580,21 +11619,21 @@ the first pass must not be counted. Four tests hold it, and three of them failed
 
 `tools/readout-arm-run.py --audit <report.json>` prints PASS/FAIL per check and exits 1 on any failure:
 
-| check | invariant |
-| --- | --- |
-| `roster` | the roster is as long as `questionCount` says |
-| `census-unit` | `abstentionReasons` sums to `questionCount × runs` |
-| `budget` | no prompt exceeds the `maxPromptChars` it declares |
-| `reach` | `askRoutes ⊆ renderingRoutes`, and empty exactly when `ask` is the shipped ask |
-| `vote` | the census exists exactly when the run voted, and sums to `MR × runs` |
-| `expansion` | the counts exist exactly when the run expanded, and name every distinct MR question |
-| `roles` | a route in `evidenceRolesRoutes` carries no assistant turn when the roles are `user` |
+| check         | invariant                                                                            |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `roster`      | the roster is as long as `questionCount` says                                        |
+| `census-unit` | `abstentionReasons` sums to `questionCount × runs`                                   |
+| `budget`      | no prompt exceeds the `maxPromptChars` it declares                                   |
+| `reach`       | `askRoutes ⊆ renderingRoutes`, and empty exactly when `ask` is the shipped ask       |
+| `vote`        | the census exists exactly when the run voted, and sums to `MR × runs`                |
+| `expansion`   | the counts exist exactly when the run expanded, and name every distinct MR question  |
+| `roles`       | a route in `evidenceRolesRoutes` carries no assistant turn when the roles are `user` |
 
 Two candidate checks were **refused**, and the refusals are the design:
 
-* **`evidenceTurns` above `relevanceTopK`.** Thousands of windows "violate" it, and none is broken: the
+- **`evidenceTurns` above `relevanceTopK`.** Thousands of windows "violate" it, and none is broken: the
   pool is counted in records and a record expands to its turns.
-* **Turns longer than `maxTurnChars`.** 1,912 MR windows carry a turn longer than 400 characters, and
+- **Turns longer than `maxTurnChars`.** 1,912 MR windows carry a turn longer than 400 characters, and
   none is broken: the cap is applied when the prompt is rendered (`contentFor`), while the roster keeps
   what was selected.
 
@@ -11624,14 +11663,14 @@ that division is a step in the pipeline, and a run that contradicts itself is re
 
 ### 13.108.1 The readings (`39699987781`, 1h55m)
 
-| # | prediction (§13.105.3) | observed | verdict |
-| --- | --- | --- | --- |
-| **1** | config reads `relevanceUnits=session` | it does | **holds** |
-| **2** | four untouched capabilities reproduce `39509698041` to the character | **identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds** |
-| **3** | MR mean **≥ 91** | **82.5** (76–87), first repetition **76** | **falsified** |
-| **4** | MR abstentions **≤ 10** | **9** | holds |
-| **5** | under-counts fall from **15 to ≤ 10** | **19** | **falsified**, and in the wrong direction |
-| **6** | MR `promptChars` 46,186 ± 1,000 | **45,546** | holds |
+| #     | prediction (§13.105.3)                                               | observed                                                              | verdict                                   |
+| ----- | -------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- |
+| **1** | config reads `relevanceUnits=session`                                | it does                                                               | **holds**                                 |
+| **2** | four untouched capabilities reproduce `39509698041` to the character | **identical** (46,694 / 46,864 / 46,827 / 47,137; 72 / 61 / 62 / 179) | **holds**                                 |
+| **3** | MR mean **≥ 91**                                                     | **82.5** (76–87), first repetition **76**                             | **falsified**                             |
+| **4** | MR abstentions **≤ 10**                                              | **9**                                                                 | holds                                     |
+| **5** | under-counts fall from **15 to ≤ 10**                                | **19**                                                                | **falsified**, and in the wrong direction |
+| **6** | MR `promptChars` 46,186 ± 1,000                                      | **45,546**                                                            | holds                                     |
 
 Per capability: ABS 29.5 (29–30), IE 134.8 (134–136), KU 63.0 (61–64), **MR 82.5 (76–87)**, TR **92.0**
 (91–93). Roster **401.8** (391–410) against 406.8; delta +36.10pp against +36.15.
@@ -11641,10 +11680,10 @@ first confirmation that the census fix holds at 500 × 4.
 
 ### 13.108.2 The unit barely moved the window, so it could not move the score
 
-| | turns | chars | chars/turn |
-| --- | --- | --- | --- |
-| MR, `turn` units (control) | **174** | 46,186 | 265 |
-| MR, `session` units | **168** | 45,546 | 271 |
+|                            | turns   | chars  | chars/turn |
+| -------------------------- | ------- | ------ | ---------- |
+| MR, `turn` units (control) | **174** | 46,186 | 265        |
+| MR, `session` units        | **168** | 45,546 | 271        |
 
 A completed session at 48,000 characters, a 256-wide pool and a user-only role filter changes the
 multi-session window by **six turns and 640 characters** — 3.4% and 1.4%. §13.32–13.34 retired the session
@@ -11665,18 +11704,18 @@ layer moves by more than any effect this arm can produce.
 
 ### 13.108.4 What this closes
 
-§13.105.4 pre-committed to the reading: *"if a completed session at 48,000 characters and a 256-wide pool
-does not move MR, then the unit of retrieval is not the lever at any configuration this arm can express."*
+§13.105.4 pre-committed to the reading: _"if a completed session at 48,000 characters and a 256-wide pool
+does not move MR, then the unit of retrieval is not the lever at any configuration this arm can express."_
 It did not move MR; it moved it the wrong way by less than the untreated route moved. **The unit hypothesis
 closes**, and with it every remaining "how the evidence is packed" candidate:
 
-| layer | status |
-| --- | --- |
-| pool width, room, roles | adopted, and they carried the arm |
-| unit (turn / session) | **closed here** |
-| prompt shape (structure, membership, retrieval queries, aggregation) | closed, four attempts |
-| sampling (self-consistency) | closed, error is bias not variance |
-| **what remains** | per-session truncation (`maxSessionChars`) and **the reader itself** |
+| layer                                                                | status                                                               |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| pool width, room, roles                                              | adopted, and they carried the arm                                    |
+| unit (turn / session)                                                | **closed here**                                                      |
+| prompt shape (structure, membership, retrieval queries, aggregation) | closed, four attempts                                                |
+| sampling (self-consistency)                                          | closed, error is bias not variance                                   |
+| **what remains**                                                     | per-session truncation (`maxSessionChars`) and **the reader itself** |
 
 ### 13.108.5 Adoption
 
@@ -11715,18 +11754,18 @@ axis is `40698883428`, one dispatch of the adopted configuration with exactly on
 `40698867439`'s on every field, including `reviewPass: bare`, `maxPromptChars: 48000`,
 `relevanceSignal: retrieval-hybrid`, `relevanceTopK: 256` and `evidenceRoles: user`.
 
-| capability | `deepseek-chat` (`40698867439`) | `deepseek-v4-pro` (`40698883428`) | Δ |
-| --- | --- | --- | --- |
-| IE | 141/150 | 129/150 | **−12** (−8.0 pp) |
-| MR | 83/121 | 80/121 | −3 (−2.5 pp) |
-| KU | 64/72 | 56/72 | **−8** (−11.1 pp) |
-| TR | 100/127 | 86/127 | **−14** (−11.0 pp) |
-| ABS | 29/30 | 30/30 | +1 (+3.3 pp) |
-| **total** | **417/500 (83.40%)** | **381/500 (76.20%)** | **−36 (−7.20 pp)** |
+| capability | `deepseek-chat` (`40698867439`) | `deepseek-v4-pro` (`40698883428`) | Δ                  |
+| ---------- | ------------------------------- | --------------------------------- | ------------------ |
+| IE         | 141/150                         | 129/150                           | **−12** (−8.0 pp)  |
+| MR         | 83/121                          | 80/121                            | −3 (−2.5 pp)       |
+| KU         | 64/72                           | 56/72                             | **−8** (−11.1 pp)  |
+| TR         | 100/127                         | 86/127                            | **−14** (−11.0 pp) |
+| ABS        | 29/30                           | 30/30                             | +1 (+3.3 pp)       |
+| **total**  | **417/500 (83.40%)**            | **381/500 (76.20%)**              | **−36 (−7.20 pp)** |
 
 **The reading order §13.109 fixed, answered in that order.**
 
-1. **Model identity in the artifact.** Present, but the artifact names it in the *environment*, not in
+1. **Model identity in the artifact.** Present, but the artifact names it in the _environment_, not in
    `memoryArmConfig`: the report's `featureConfig`/`memoryArmConfig` block carries no reader field, and the
    model id is only recoverable from the job log's `DEEPSEEK_MODEL:` line. That is condition 1 not yet
    met — the identity exists but not where a reader of the artifact looks. Recorded as debt rather than
@@ -11744,7 +11783,7 @@ axis is `40698883428`, one dispatch of the adopted configuration with exactly on
 **unverified**: the artifacts carry `featureRetrievedContexts` but no per-question retrieval index, so
 "same candidates" cannot be asserted, only assumed from an identical config line. R3 (`ABS` moves by at
 most one question) **met** at +1. R4 (any gain concentrated in MR and TR) **falsified twice over** — there
-is no gain, and the largest movements are losses in TR and IE with MR the *least* moved capability. The
+is no gain, and the largest movements are losses in TR and IE with MR the _least_ moved capability. The
 registration assumed the axis could only help; the falsification is that reader strength and reader
 compliance are different quantities and the second dominates here.
 
@@ -11755,14 +11794,14 @@ compliance are different quantities and the second dominates here.
   reader obeys it; this reader does not, and the answer carries its own arithmetic.
 - **Decline shape.** 53 declines, of which **7** were the bare token. The control has 51 declines, of
   which 23 were. So the difference between the two readers is not how often they decline — it is how they
-  spell it. §13.111 takes this apart, because it changes what the retry *is*.
+  spell it. §13.111 takes this apart, because it changes what the retry _is_.
 - **Failure content.** On the discordant questions read by hand, the failures are enumeration and
   arithmetic, not retrieval: a charity total answered `8,750` against a gold of `$3,750`; a rollercoaster
   count answered `7` against `10` after dropping one event from its own list; a kit count answered `6`
   after listing three items. The evidence reached the reader in each case.
 
 **What this does not claim.** It does not claim `deepseek-chat` is the better model — it claims
-`deepseek-chat` is the better reader *for this prompt contract*, which is a narrower and more useful
+`deepseek-chat` is the better reader _for this prompt contract_, which is a narrower and more useful
 statement. It does not claim the reader axis is closed for other model families: a reader that obeys the
 contract and reasons better is still the most plausible way past §13.108.3's 5–6-question floor, and this
 run only says that model size is not a proxy for that property. And it does not claim the −7.20 is
@@ -11771,7 +11810,7 @@ reproducible to the tenth of a point: it is one run per side.
 ## 13.111 The retry's population is a property of the reader
 
 §13.94 built the bare-decline retry on a shape: `isBareDecline` matches a reply that is the abstention
-token and nothing else. That predicate was derived from a measurement of *one* reader — "of 45 wrong
+token and nothing else. That predicate was derived from a measurement of _one_ reader — "of 45 wrong
 declines on the shipped arm 30 are that bare token" — and the five adopted readings (22/19/25/22/23) are
 all that reader's.
 
@@ -11780,16 +11819,16 @@ sees 23**, on the same 500 questions, the same routes, and a nearly identical de
 51). Fourteen of the treatment's consultations simply do not exist for this reader, not because it
 declines less but because it declines in prose:
 
-| reader | declines | bare-token declines | retry consultations |
-| --- | --- | --- | --- |
-| `deepseek-chat` | 51 | 23 (45.1%) | **23** |
-| `deepseek-v4-pro` | 53 | 7 (13.2%) | **7** |
+| reader            | declines | bare-token declines | retry consultations |
+| ----------------- | -------- | ------------------- | ------------------- |
+| `deepseek-chat`   | 51       | 23 (45.1%)          | **23**              |
+| `deepseek-v4-pro` | 53       | 7 (13.2%)           | **7**               |
 
 **The rule this hands the next increment.** A retry keyed on an exact token measures the reader's
 formatting, not its uncertainty. Two consequences, both actionable and neither implemented:
 
 1. **The population is not the phenomenon.** 22 of 51 declines on the shipped reader, and 46 of 53 on this
-   one, are declines *with content* — prose that says the evidence does not answer the question. Whether
+   one, are declines _with content_ — prose that says the evidence does not answer the question. Whether
    those are also recoverable is unmeasured, and it is the larger population on both readers.
 2. **A predicate on content is portable; a predicate on shape is not.** "The reply asserts nothing about
    the question" is checkable against either reader; "the reply is exactly `INSUFFICIENT_EVIDENCE`" is a
@@ -11825,13 +11864,13 @@ set back to `none` the guard fails and names both values.
 **Generalised, this is the fifth form of the §7.3 side channel**, and it completes the table §4 of that
 test file started:
 
-| form | wrong where | caught by |
-| --- | --- | --- |
-| 1 | input not declared in the workflow | `test_dispatch_inputs.py` |
-| 2 | declared but not forwarded into `env` | `test_dispatch_inputs.py` |
-| 3 | forwarded but never read by the arm | `bench-memory-arm.test.ts` |
-| 4 | read correctly, dispatch never sends the registered value | `test_preregistration_config.py` |
-| 5 | **the workflow's own default disagrees with the registration** | **the new class in that file** |
+| form | wrong where                                                    | caught by                        |
+| ---- | -------------------------------------------------------------- | -------------------------------- |
+| 1    | input not declared in the workflow                             | `test_dispatch_inputs.py`        |
+| 2    | declared but not forwarded into `env`                          | `test_dispatch_inputs.py`        |
+| 3    | forwarded but never read by the arm                            | `bench-memory-arm.test.ts`       |
+| 4    | read correctly, dispatch never sends the registered value      | `test_preregistration_config.py` |
+| 5    | **the workflow's own default disagrees with the registration** | **the new class in that file**   |
 
 ## 13.113 Every question sits at the budget, and 48,000 was never measured as a ceiling
 
@@ -11840,12 +11879,12 @@ delivered gold rose 72.9% → 86.9% and the roster rose 394 → 403. §13.81 reg
 that buys room without truncating a turn, and the option's own documentation says the quiet part out loud:
 "only the second has no measured floor".
 
-The artifact of `40698867439` says how binding that lever is, and the answer is *completely*:
+The artifact of `40698867439` says how binding that lever is, and the answer is _completely_:
 
-| statistic over 500 questions | value |
-| --- | --- |
-| `featurePromptEvidenceChars` median | **46,851.5** |
-| p90 | 47,311 |
+| statistic over 500 questions                      | value          |
+| ------------------------------------------------- | -------------- |
+| `featurePromptEvidenceChars` median               | **46,851.5**   |
+| p90                                               | 47,311         |
 | questions whose room is within one turn of 48,000 | **500 of 500** |
 
 Not one question leaves room on the table. The prefix-fit allocator fills every prompt to within the next
@@ -11942,3 +11981,178 @@ a fact and a missing field must not be the same bytes.
 
 Until that run exists, every sentence in `cortex-docs` that says "temperature 0" is corrected to say
 what the artifact now says: **no temperature was sent**.
+
+### 13.115 The reranking stage: the one RAW-RAG part this arm does not have
+
+§13.110 priced the reader and the price was negative; §13.113 measured the budget and every question
+sits against it. Both closed a road. This section registers the increment those two leave standing, and
+it is the only mechanism in `SOTA-LANDSCAPE.md` §4.9 that this arm has never had **at all**.
+
+**The mechanism, in one causal sentence.** Retrieval here is bi-encoder: the question and each turn are
+embedded independently and compared by cosine, then the recall channels are fused by reciprocal rank.
+Neither representation can see the other, so "this turn answers _this_ question" is expressed as a
+distance between two independently chosen vectors. A cross-encoder scores the `(question, turn)` pair
+**jointly** — the interaction is the model's input rather than a by-product of two encodings — and it is
+the standard last stage of a retrieval pipeline for exactly that reason. RAW-RAG runs it over the whole
+retrieved pool and reads a prefix of the result; this arm reads a prefix of the _fusion_.
+
+**Why it is not an optional refinement.** RAW-RAG's own ablation is single-variable on 20,000 bootstrap
+samples with Holm correction, and removing the reranker costs them **−3.92** (48.32 → 44.40) — more than
+any mechanism they _added_ (atomic facts −19.62 and summaries −5.81 are additions that hurt; the graph
+−5.78 the same). §4.6's reading was "adding mechanism is the hypothesis, not the default"; this is the
+one case where the mechanism is **already in the strongest published pipeline** and simply absent here.
+
+**The instrument, and the state it has to make visible.** `memoryArmConfig.rerank` carries the identity
+(`provider`, `model`, `host`), the declared wire limits, and a census:
+
+| counter     | what it answers                                         | why it is not optional                                               |
+| ----------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
+| `calls`     | scoring invocations (one per question on this arm)      | pairs with `fallbacks`; `calls = 0` is a stage that never ran        |
+| `pairs`     | `(question, passage)` pairs scored                      | the cost, and the only number that says how much text was judged     |
+| `fallbacks` | invocations whose reply could not be trusted            | **`> 0` is an assembly failure**, not a null result                  |
+| `changed`   | questions whose order moved                             | `0` with `fallbacks: 0` is a reranker that ran and agreed — a result |
+| `clipped`   | passages shortened to the endpoint's per-document limit | says how often the ordering judged a prefix                          |
+
+`cortex-core`'s `rerankHits` degrades to the retrieved order on a thrown request, a short reply or a
+non-finite score — the right behaviour for the ranking and the wrong one for the measurement. Without
+these counters, an arm whose endpoint answered `401` five hundred times produces **the same accuracy**
+as one whose cross-encoder agreed with the retriever every time. The report prints that sentence beside
+the counters rather than leaving a reader to work it out from a `0.00pp` delta. This is §13.107's
+`reviewPass` lesson applied before the run instead of after it.
+
+**Two endpoint facts that became part of the design, not of the deployment.** The Runner's rerank
+provider is Zhipu, whose `/rerank` is the OpenAI-compatible shape `cortex-ai` already speaks — and its
+published limits are **128 documents** per call and **4,096 characters** per document, with the whole
+call refused above either bound. Two consequences:
+
+1. **The pool must fit one call**, so the reranking experiment is registered as a **pair of runs at
+   `relevanceTopK` 128**: with the stage on, and with it off. That is one variable plus one
+   re-registration of the pool width — the control for the treatment is the same width, so the only
+   thing that moves between them is the stage. 128 is also RAW-RAG's own `K`, which makes the eventual
+   same-reader comparison closer than it would be at 256.
+   Batching a wider pool was **refused rather than implemented**: `relevance_score` is normalised per
+   call, so a batch-local winner can outrank a true winner from another batch while every number still
+   looks plausible. The index therefore rejects a pool wider than the declared limit at construction,
+   before a single retrieval, rather than discovering it as `fallbacks: 500` after forty minutes.
+2. **Long turns are clipped at the boundary.** This corpus carries turns up to 15,369 characters
+   (§13.67: median 272, p90 2,305), and one over-length document rejects the whole call — not itself.
+   Clipping keeps a technicality out of `fallbacks`, and `clipped` says how often the ordering judged a
+   prefix. The **reader still sees whole turns**: this is the ranking's input, not the prompt's.
+
+**Set and control.** LongMemEval-500, paired within one invocation, same reader (`deepseek-chat`), same
+judge, same embedding cache. Control = the same run at `relevanceTopK 128` with `rerank: none`. Nothing
+else moves: `retrieval-hybrid`, `evidenceRoles: user`, `maxPromptChars: 48000`, `reviewPass: bare`.
+
+**Criterion, written before the number exists.**
+
+- **Met** if MR ≥ **+3 questions** and no capability falls by more than **2**, with `fallbacks = 0`.
+- **Assembly failure, not a result**, if `fallbacks > 0`: the run cannot be read at all until the
+  endpoint answers every one of the 500 questions. §13.110's precedent — a condition stated before the
+  run, checked after it, and reported as debt rather than argued away.
+- **No room, delete it**, if `fallbacks = 0` and `changed = 0`: the cross-encoder agreed with the retriever
+  on all 500 questions. That is a real outcome and it means the reranking question is settled negatively
+  for this corpus, not that the stage is broken.
+- **Delete the stage** if `fallbacks = 0`, `changed > 0` and MR moves ≤ 0. §4.6's rule applies in the
+  direction that costs us: a mechanism that the strongest competitor needs and we do not is either a
+  difference in the corpus or a difference in what it is reranking, and both are findings.
+
+**Three predictions**, so the run can be wrong in a specific way:
+
+1. `changed` is **substantial** — at least 60% of questions reordered. A large pool of turns that a
+   bi-encoder could not separate is exactly where a joint scorer moves the order; a small `changed`
+   would say the fusion ranking already agrees with the cross-encoder, which contradicts §13.64's
+   finding that the fusion's reach did not improve.
+2. The movement is **concentrated in MR and TR**, and `ABS` stays 30/30 — the same shape §13.110 saw for
+   the reader, but in the opposite direction.
+3. `fallbacks = 0` and `clipped` non-zero: at least one question in five hundred carries a turn over
+   4,096 characters, given p90 = 2,305.
+
+**Cost.** One HTTP call per question (500), 128 documents each, about 4.4k input tokens per call on this
+corpus's median turn (~2.2M tokens for the run), and a serialized build phase in front of the ablation —
+so the run is longer than a control run by the time the endpoint takes, not by the ablation's own work.
+No new secret: `RERANK_API_KEY` is the Zhipu key the Runner already holds.
+
+**What this section does not claim.** It does not claim the 4.08pp to RAW-RAG is the reranker. It claims
+that the reranker is the one component of their published pipeline this arm lacks, that their own
+ablation prices it highest, and that 4.08 points is the budget for finding out whether that transfers.
+If this increment lands and the gap does not close, the remaining explanations are their reader, their
+window unit (256/32 token windows against our 272-character turns), and their `k = 15` — each of which
+is a measurable question rather than an inference.
+
+**A plumbing fact this registration created, recorded because it will bind the next one.** The arm's
+dispatch surface was at **24 of GitHub's 25 inputs** and this registration needed a slot. Rather than
+sit at the ceiling — which `test_dispatch_inputs.py` refuses, because the next registration then could
+not be dispatched at all — the per-pass wall-clock ceiling (§13.30's `budgetMinutes: 90`) moved out of
+the dispatch surface and into the workflow's job environment. It is a hang detector rather than a
+treatment, its value is unchanged, and the precedent is `evidenceTurnsPerRecord` (§13.94), moved for the
+same reason one registration earlier. The surface is back at 24, with the margin the guard asks for.
+
+### 13.116 The abstention line: what _kind_ of change a flip is
+
+**The instrument this registers, and the one it refuses to register.** The plan for this step said "build a
+per-question ledger: `bought`, `sold`, `kept`". Halfway through, the ledger turned out to exist. `runAblation`
+already publishes the two flip **counts**, the **ids** of every flipped question (`discordantQuestions`), a
+**per-capability** table with its own McNemar p-value, and Wilson intervals on both sides — and
+`formatAblationReport` already renders all of it. A `ledger.ts` computing `{bought, sold, kept}` would have
+been a second definition of numbers that already had one, which is the defect this register spends its length
+removing. So the module was not built.
+
+What was missing is one bit per flip that no existing field carries: **which side of the abstention line the
+question was on.** `correct` is a boolean, `answers` is `string | null`, and the report reads only `correct`.
+So "this question went from declining to answering" and "this question went from answering wrongly to
+answering rightly" arrive downstream as the same event — a bought question — and a net of **+3** built from
+four recovered and one lost belongs to a completely different mechanism than a +3 built from four corrected and
+one broken. §13.110 priced the reader, §13.113 measured the window, §13.115 registers the reranker: all three
+are increments whose _shape_ of gain is the finding, and the artifact could not express the shape.
+
+**The mechanism, in one table.** A decline is `answer === null`, which is the predicate `metrics.ts` already
+uses when it counts abstentions — there is deliberately no second definition of the word, because a private
+predicate could disagree with the scorer about the same answer and neither would fail.
+
+|                       | treatment answered     | treatment declined |
+| --------------------- | ---------------------- | ------------------ |
+| **baseline answered** | `corrected` / `missed` | `declined`         |
+| **baseline declined** | `recovered`            | — (concordant)     |
+
+`recovered` + `declined` is the **decline flow** — questions that crossed the line in either direction, which
+is a change in _whether_ the system speaks. `corrected` + `missed` is the **content flow** — questions that
+stayed on the answering side and changed verdict, which is a change in _what_ it says. Concordant questions
+(right in both, wrong in both) are not counted at all: they carry no information about a change, which is the
+same reason McNemar conditions on the discordant pairs.
+
+**The identity that keeps it a refinement.** `recovered + corrected` must equal the bought count and
+`declined + missed` must equal the sold count. `answer-transition.test.ts` asserts both against a real
+`runAblation` rather than against a fixture, so the split cannot drift into a rival count: if a future edit
+double-counts a flip, the build fails naming the disagreement rather than publishing two numbers that differ
+by one. Both sums are also printed in the report beside the table, so a reader checks the refinement without
+opening the JSON.
+
+**The reading rule, computed and not written.** The report prints one sentence under the four cells, and the
+sentence comes from `dominantFlow` rather than from the author of the run:
+
+- `decline` — every flipped question crossed the line: the increment changed **whether** the system speaks.
+- `content` — no flipped question crossed it: the increment changed **what** it says.
+- `both` — both happened, so the net is the **sum of a response-shape effect and a knowledge effect** and must
+  not be reported as either one alone.
+- `none` — no question changed verdict. A null result, printed as a sentence rather than as four zeroes.
+
+**What it binds, before those runs happen.** §13.115's second prediction is "the movement is concentrated in
+MR and TR, and `ABS` stays 30/30". `ABS` moving is now a statement about `recovered` and `declined` on thirty
+questions, which is exactly the quantity this split reports and exactly the quantity a per-capability accuracy
+column cannot distinguish from a content change. The same holds for §13.113's budget: a 96,000-character
+window is a prompt change, so a gain it buys should be overwhelmingly `recovered` — turns that used to be cut
+now fit, the reader stops declining, and if it instead shows up as `corrected` then the window bought
+_evidence_, not _room_. Those are different findings about the same +3 and the run is dispatched once.
+
+**Cost: nothing.** The two answer vectors and the two verdict vectors are already in hand on the two
+`ScoredEvaluation`s `runAblation` owns; no extra API call, no extra pass, no change to any dispatch input.
+
+**What this section does not claim.** It does not say **why** a decline appeared or vanished. An over-length
+prompt, a stricter parse, a different system prompt and a genuine refusal all arrive as `null`, and `rawOutput`
+— captured on the feature side only — is the field that separates them. This registers the question "did the
+decline line move", which is what decides whether the raw output is worth reading at all; it does not answer
+"what ended the decline", which is a per-question question and needs the text.
+
+**An artifact written before this field existed** renders one sentence saying the split was not recorded, not
+four zeroes. Four zeroes would be a measurement — "nothing crossed either line" — and a missing field that
+renders as a null result is how a null result gets claimed by accident.

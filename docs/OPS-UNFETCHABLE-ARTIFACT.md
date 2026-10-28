@@ -47,13 +47,13 @@ signature is bound to the host.
 
 A probe of the candidate hosts separates "account missing" from "not allowed":
 
-| Host | Response to `GET /?comp=list` | Meaning |
-| --- | --- | --- |
-| `productionresultssa1` | (used successfully for run `35498421148`) | exists |
-| `productionresultssa3` | `409` | exists (`409` = a real front-end reply) |
-| `productionresultssa15` | `409` | exists |
-| **`productionresultssa16`** | **`404`** | **does not exist** |
-| `productionresultssa17..20`, `productionresults` | `000` | do not resolve |
+| Host                                             | Response to `GET /?comp=list`             | Meaning                                 |
+| ------------------------------------------------ | ----------------------------------------- | --------------------------------------- |
+| `productionresultssa1`                           | (used successfully for run `35498421148`) | exists                                  |
+| `productionresultssa3`                           | `409`                                     | exists (`409` = a real front-end reply) |
+| `productionresultssa15`                          | `409`                                     | exists                                  |
+| **`productionresultssa16`**                      | **`404`**                                 | **does not exist**                      |
+| `productionresultssa17..20`, `productionresults` | `000`                                     | do not resolve                          |
 
 `404 AccountNotFound` is the answer for a hostname with no storage account behind
 it; `409` is what an existing account returns to a malformed request. So the
@@ -62,11 +62,11 @@ addressable.
 
 ### 2.1 The correlation, with a control
 
-| Run | Artifact host | Fetch |
-| --- | --- | --- |
-| `35498421148` | `productionresultssa1` | works |
-| `35502712132` | `productionresultssa3` | **`http=200`, 538,501 bytes, valid zip** |
-| `35510619912` | `productionresultssa16` | `http=404 AccountNotFound` |
+| Run                                  | Artifact host           | Fetch                                      |
+| ------------------------------------ | ----------------------- | ------------------------------------------ |
+| `35498421148`                        | `productionresultssa1`  | works                                      |
+| `35502712132`                        | `productionresultssa3`  | **`http=200`, 538,501 bytes, valid zip**   |
+| `35510619912`                        | `productionresultssa16` | `http=404 AccountNotFound`                 |
 | `35510619912` (**re-checked later**) | `productionresultssa16` | `http=404`, same `Code`, fresh `RequestId` |
 
 The control matters: an older artifact fetched from `sa3` **during this
@@ -95,8 +95,8 @@ RequestId:3c5b2c9b-e01e-0065-5717-498e46000000</Message></Error>
 Three things follow, each of which narrows the diagnosis:
 
 1. **It is not a transient.** The run had been completed for over an hour and the
-   response is identical, with a new `RequestId`. A retry of the *download* will
-   never succeed; only a retry of the *run* can.
+   response is identical, with a new `RequestId`. A retry of the _download_ will
+   never succeed; only a retry of the _run_ can.
 2. **It is not an IP-pinning problem.** The same `404` comes back from all three
    known-good front-end IPs **and** from whatever the host resolves to natively.
    If the hostname mapped to a real account, pinning to any of those IPs would
@@ -108,10 +108,10 @@ Three things follow, each of which narrows the diagnosis:
    replayed against `sa3`:
 
    | Host substitution into the `sa16` signed URL | Response |
-   | --- | --- |
-   | `productionresultssa3` | `403` |
-   | `productionresultssa15` | `403` |
-   | `productionresultssa1` | `403` |
+   | -------------------------------------------- | -------- |
+   | `productionresultssa3`                       | `403`    |
+   | `productionresultssa15`                      | `403`    |
+   | `productionresultssa1`                       | `403`    |
 
 Point 3 is why §4's workaround is a **re-dispatch** rather than a cleverer
 download. There is no URL that both carries a valid signature and points at a
@@ -124,21 +124,21 @@ A later run (`35516794168`, completed **success**, all 15 steps green) was route
 4,063,291 bytes, unexpired) fails to download in a **different** way, and the
 distinction matters:
 
-| Host | DNS resolution | TCP 443 | TLS handshake | HTTP reply |
-| --- | --- | --- | --- | --- |
-| `productionresultssa3` | `57.150.27.1` (real) | ok (0.00s) | **ok** — genuine `*.blob.core.windows.net` cert, TLS 1.3 | `400` — ordinary Blob reply for a parameterless request |
-| `productionresultssa16` | `20.209.113.193` (real) | ok | ok | `404 AccountNotFound` |
-| **`productionresultssa18`** | **`198.18.0.53`** (RFC 2544 synthetic) | **ok (0.00s)** | **FAILS — closed during the handshake** | never reached |
+| Host                        | DNS resolution                         | TCP 443        | TLS handshake                                            | HTTP reply                                              |
+| --------------------------- | -------------------------------------- | -------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `productionresultssa3`      | `57.150.27.1` (real)                   | ok (0.00s)     | **ok** — genuine `*.blob.core.windows.net` cert, TLS 1.3 | `400` — ordinary Blob reply for a parameterless request |
+| `productionresultssa16`     | `20.209.113.193` (real)                | ok             | ok                                                       | `404 AccountNotFound`                                   |
+| **`productionresultssa18`** | **`198.18.0.53`** (RFC 2544 synthetic) | **ok (0.00s)** | **FAILS — closed during the handshake**                  | never reached                                           |
 
 **This table corrects the "`000`, timeout" I recorded first.** The measured failure on
 `sa18` is **not** a routing blackhole: the TCP connection **succeeds** (0.00s, identical
 to `sa3`), and the failure happens at the **handshake**. Two independent TLS stacks
 agree on the error:
 
-| Tool | Error | Elapsed |
-| --- | --- | --- |
-| Python `ssl` | `SSLZeroReturnError: TLS/SSL connection has been closed (EOF)` | immediate |
-| `curl` (OpenSSL) | `(35) SSL_ERROR_SYSCALL`, `http_code=000` | **exactly 5.001s** (hard timeout) |
+| Tool             | Error                                                          | Elapsed                           |
+| ---------------- | -------------------------------------------------------------- | --------------------------------- |
+| Python `ssl`     | `SSLZeroReturnError: TLS/SSL connection has been closed (EOF)` | immediate                         |
+| `curl` (OpenSSL) | `(35) SSL_ERROR_SYSCALL`, `http_code=000`                      | **exactly 5.001s** (hard timeout) |
 
 Both point at the same thing: **the connection is accepted and then TLS is not allowed to
 negotiate** — the signature of **sandbox egress interception**, not a DNS or an Azure-side
@@ -151,7 +151,7 @@ Two things are notable:
    into the benchmarking range. Only Azure's internal routing can reach it; the public
    internet cannot, and pinning to public IPs does not help (the three known-good IPs
    return `404 AccountNotFound`, and unrelated Azure IPs return `400`).
-2. **The control still holds.** `sa3` answered normally *during the same check*,
+2. **The control still holds.** `sa3` answered normally _during the same check_,
    so egress, credentials and the fetch path are all fine. As in §2.1, the
    variable is the host assignment — not anything on our side.
 
@@ -164,9 +164,9 @@ Two things are notable:
 So there are **two distinct failure modes** behind "the artifact will not
 download", and they must not be collapsed:
 
-| Mode | Host | Symptom | Layer that fails | Recoverable by |
-| --- | --- | --- | --- | --- |
-| Absent account | `sa16` | structured `404` + `RequestId` | application | re-dispatch only |
+| Mode             | Host   | Symptom                                    | Layer that fails      | Recoverable by   |
+| ---------------- | ------ | ------------------------------------------ | --------------------- | ---------------- |
+| Absent account   | `sa16` | structured `404` + `RequestId`             | application           | re-dispatch only |
 | TLS interception | `sa18` | `SSL_ERROR_SYSCALL` / `SSLZeroReturnError` | transport (handshake) | re-dispatch only |
 
 Both are unrecoverable from here, and both are silent in the place a reader looks:
@@ -241,11 +241,11 @@ new HEAD, so the re-runs are not purely retries.
   becomes "artifact retrieval for this repository is currently unreliable"
   rather than "one unlucky run".
 - **Not claimed:** that `sa16` is permanently absent. The evidence is that it is
-  absent *now*, on a public resolver, and returns the same answer from a pinned
+  absent _now_, on a public resolver, and returns the same answer from a pinned
   IP.
 
 **The durable fix is not in this document.** It is the observation that this
-class of loss is only possible because the artifacts are the *sole* record. A
+class of loss is only possible because the artifacts are the _sole_ record. A
 second, independent sink for the report set — for example having the benchmark
 step emit the report as a job summary, which is delivered through a different
 channel and survives artifact-routing failures — would convert "the run
@@ -255,12 +255,12 @@ succeeded and we have nothing" into "the run succeeded and we have less detail."
 
 The sink is implemented as of `cortex@98e4a3a`:
 
-| Item | Value |
-| --- | --- |
-| Implementation | `tools/benchmark-summary.py` |
-| Target | `$GITHUB_STEP_SUMMARY` — GitHub's own UI, **not** an Azure blob |
-| Wiring | `benchmark.yml`, final step, `if: always()` |
-| Tests | 13, running the real script as a subprocess |
+| Item           | Value                                                           |
+| -------------- | --------------------------------------------------------------- |
+| Implementation | `tools/benchmark-summary.py`                                    |
+| Target         | `$GITHUB_STEP_SUMMARY` — GitHub's own UI, **not** an Azure blob |
+| Wiring         | `benchmark.yml`, final step, `if: always()`                     |
+| Tests          | 13, running the real script as a subprocess                     |
 
 **But run `35516794168` was dispatched on `9eb6b7ee`, which predates `98e4a3a`.**
 Its job has **15 steps and no "Publish results to the job summary" step** — verified
@@ -271,8 +271,8 @@ not runs that were already in flight when it landed.
 
 This is the same error shape as the rest of this repository's defect log — a
 remediation assumed to apply retroactively. The correct statement is a
-**precondition**, not a reassurance: *a dispatch must be at a commit containing
-the sink for the sink to exist.*
+**precondition**, not a reassurance: _a dispatch must be at a commit containing
+the sink for the sink to exist._
 
 A re-dispatch on current master (`a7e846d1`, which contains the sink) is the way
 to actually exercise it; see §4.
@@ -318,10 +318,10 @@ written : /tmp/b1-artifact.zip
 
 Two competing explanations were on the table, and this separates them:
 
-| Explanation | Prediction | Observed |
-| --- | --- | --- |
-| Transport-level TLS interception cannot be worked around | fails even with the real address | **contradicted** — 200 with the real address |
-| The synthetic `198.18.0.53` answer was the problem | succeeds once the real address is supplied | **confirmed** |
+| Explanation                                              | Prediction                                 | Observed                                     |
+| -------------------------------------------------------- | ------------------------------------------ | -------------------------------------------- |
+| Transport-level TLS interception cannot be worked around | fails even with the real address           | **contradicted** — 200 with the real address |
+| The synthetic `198.18.0.53` answer was the problem       | succeeds once the real address is supplied | **confirmed**                                |
 
 The earlier measurement saw TCP connect in 0.00s and TLS die immediately, and
 read that as egress interception. It is consistent with interception, but it is
@@ -331,16 +331,16 @@ synthetic address. The second reading is the correct one: the failure was in
 it.
 
 This does **not** contradict §2.1.1's finding that the SAS is host-bound — that
-remains true, and substituting a *different* host still returns `403`. DoH
+remains true, and substituting a _different_ host still returns `403`. DoH
 supplies the right address for the **same** host, which is a categorically
 different operation from cross-host substitution.
 
 ### 6.1 Corrected remedy
 
-| Mode | Host | Recoverable? | Correct action |
-| --- | --- | --- | --- |
-| Absent account | `sa16` | **no** — the account does not exist behind the name | re-dispatch |
-| Name resolution | `sa18` | **yes** | `python3 tools/fetch-artifact.py <id> <repo> <dest.zip>` |
+| Mode            | Host   | Recoverable?                                        | Correct action                                           |
+| --------------- | ------ | --------------------------------------------------- | -------------------------------------------------------- |
+| Absent account  | `sa16` | **no** — the account does not exist behind the name | re-dispatch                                              |
+| Name resolution | `sa18` | **yes**                                             | `python3 tools/fetch-artifact.py <id> <repo> <dest.zip>` |
 
 **Try the DoH fetch first; re-dispatch only if `tools/fetch-artifact.py` reports
 that it resolved nothing.** The earlier document's advice to re-dispatch
@@ -349,6 +349,6 @@ immediately would have discarded a complete measurement set for no reason.
 > **Lesson, fifth instance, and the sharpest one.** The previous four lessons in
 > this file were about attributing a failure to the wrong cause. This one is
 > about a **diagnosis that was correct and still produced the wrong decision**:
-> "TLS interception" accurately described the *symptom*, and the remedy was
+> "TLS interception" accurately described the _symptom_, and the remedy was
 > derived from where the symptom appeared rather than from where the cause lived.
 > A symptom at the transport layer does not imply a cause at the transport layer.

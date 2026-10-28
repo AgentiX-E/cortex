@@ -21,6 +21,7 @@ import type {
   PartialAblation,
   PerCapabilityPairedStats,
 } from './types.js';
+import { classifyTransitions } from './answer-transition.js';
 import { evaluateWithScorerDetailed } from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import {
@@ -343,6 +344,20 @@ export async function runAblation(
     }
   }
 
+  // The two flip counts split by the abstention line, from the same two vectors the loop above walked.
+  //
+  // Computed here rather than in `report.ts` because the answers are in hand exactly once -- on the two
+  // `ScoredEvaluation`s this function owns -- and a reporter that recomputed them from the roster would be a
+  // second definition of the same classification, reading a field (`correct`) that cannot see a decline at
+  // all. `classifyTransitions` throws on a length mismatch, which is the one way this call can fail and the
+  // one way a wrong pairing would otherwise reach the artifact.
+  const transitions = classifyTransitions({
+    baselineAnswers: baseFirst.answers,
+    featureAnswers: featFirst.answers,
+    baselineCorrect: baseFirst.correct,
+    featureCorrect: featFirst.correct,
+  });
+
   for (const capability of ALL_CAPABILITIES) {
     const bucket = perCapability[capability]!;
     bucket.mcnemarPValue = mcnemarPValue(
@@ -507,6 +522,7 @@ export async function runAblation(
       baselineCorrectFeatureIncorrect: discordantRegression,
       baselineIncorrectFeatureCorrect: discordantGain,
     },
+    transitions,
     baselineMetrics: baseFirst.metrics,
     featureMetrics: featFirst.metrics,
     featureCorrect: featFirst.correct,

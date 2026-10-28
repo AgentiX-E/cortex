@@ -18,14 +18,14 @@ records what was measured, what was ruled out, and the four checks that would lo
 
 ## 1. What was run
 
-| | |
-| --- | --- |
-| workflow | `benchmark.yml`, `limit=0` (all 500), `runs=1`, `temperature=0` |
-| reader | `deepseek-chat`, thinking disabled |
-| judge | official per-type templates |
+|           |                                                                                   |
+| --------- | --------------------------------------------------------------------------------- |
+| workflow  | `benchmark.yml`, `limit=0` (all 500), `runs=1`, `temperature=0`                   |
+| reader    | `deepseek-chat`, thinking disabled                                                |
+| judge     | official per-type templates                                                       |
 | embedding | `openai-compatible`, `embedding-3`, 1024 dims, determinism check `max abs diff 0` |
-| switches | `ENTITY_IDENTITY_CLAUSE=1`, `CANDIDATE_DISCRIMINATION=0`, `RETRIEVAL_SIDES=0` |
-| arms | `AGGREGATION_CRITIQUE=1` with `MODE=recall`, and again with `MODE=per-item` |
+| switches  | `ENTITY_IDENTITY_CLAUSE=1`, `CANDIDATE_DISCRIMINATION=0`, `RETRIEVAL_SIDES=0`     |
+| arms      | `AGGREGATION_CRITIQUE=1` with `MODE=recall`, and again with `MODE=per-item`       |
 
 Both artifacts completed successfully. The environment was healthy by every counter the run reports:
 `Transport retries: calls=232, retried=0, rateLimited=0`, embedding determinism exact, embedding cache
@@ -33,14 +33,14 @@ restored.
 
 ## 2. What came back
 
-| capability | archived baseline | `recall` run | `per-item` run |
-| --- | --- | --- | --- |
-| IE | 89.5% (134/150) | **0.67%** (1/150) | **0.67%** (1/150) |
-| MR | ~69.6% | **85.95%** (104/121) | **85.95%** (104/121) |
-| KU | ~86.8% | **0.00%** (0/72) | **0.00%** (0/72) |
-| TR | 74.6% | 67.72% (86/127) | 67.72% (86/127) |
-| ABS | 97.5% | 100.00% (30/30) | 100.00% (30/30) |
-| **overall** | **81.0%** (405/500) | **44.20%** | **44.20%** |
+| capability  | archived baseline   | `recall` run         | `per-item` run       |
+| ----------- | ------------------- | -------------------- | -------------------- |
+| IE          | 89.5% (134/150)     | **0.67%** (1/150)    | **0.67%** (1/150)    |
+| MR          | ~69.6%              | **85.95%** (104/121) | **85.95%** (104/121) |
+| KU          | ~86.8%              | **0.00%** (0/72)     | **0.00%** (0/72)     |
+| TR          | 74.6%               | 67.72% (86/127)      | 67.72% (86/127)      |
+| ABS         | 97.5%               | 100.00% (30/30)      | 100.00% (30/30)      |
+| **overall** | **81.0%** (405/500) | **44.20%**           | **44.20%**           |
 
 Three facts, and the third is the one that makes this a blocker rather than a result.
 
@@ -52,7 +52,7 @@ Three facts, and the third is the one that makes this a blocker rather than a re
    system's decision reasons read `{"empty":0,"threshold":0,"llm":247,"answered":253}`, so 247 questions
    were declined **by the model**, with zero by an empty store and zero by the score threshold. The
    failure census agrees: `IE 149 failed of 150 (answered 14, refused 135)`, `KU 72 of 72 (answered 14,
-   refused 58)`. A capability that is *answered* 16 times out of 150 is not being judged wrongly; it is
+refused 58)`. A capability that is _answered_ 16 times out of 150 is not being judged wrongly; it is
    not being answered.
 3. **The control arm failed the same way.** The ablation's baseline side reads `IE 0.67%`, `KU 0.00%`
    too. That arm receives no feature option at all — `enableAggregationCritique` and its mode are spread
@@ -60,15 +60,15 @@ Three facts, and the third is the one that makes this a blocker rather than a re
 
 ## 3. What was ruled out
 
-| hypothesis | how it was checked | verdict |
-| --- | --- | --- |
-| this round's code | `git diff` of the whole round against `natural-language-memory.ts` deletes **two lines**, both the intended critique dispatch, and adds nothing outside the critique path | ruled out |
-| the critique itself | the control arm collapsed identically, and the control never receives the option | ruled out |
-| the embedding backend | determinism `max abs diff 0` at 1024 dims, retries 0, rate-limited 0, cache restored | ruled out |
-| retrieval returning nothing | `{"empty": 0}` — the store always returned something; the model then declined | ruled out |
-| the judge | the failures are refusals, and refusals are counted before grading | ruled out |
-| a limit/sample mix-up | the log states `Running benchmark on 500 instance(s) (limit=all, ...)` | ruled out |
-| a degenerate embedding | not checked. `determinism 0` proves the same text embeds the same way twice; it says nothing about whether the vectors are informative | **open** |
+| hypothesis                  | how it was checked                                                                                                                                                        | verdict   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| this round's code           | `git diff` of the whole round against `natural-language-memory.ts` deletes **two lines**, both the intended critique dispatch, and adds nothing outside the critique path | ruled out |
+| the critique itself         | the control arm collapsed identically, and the control never receives the option                                                                                          | ruled out |
+| the embedding backend       | determinism `max abs diff 0` at 1024 dims, retries 0, rate-limited 0, cache restored                                                                                      | ruled out |
+| retrieval returning nothing | `{"empty": 0}` — the store always returned something; the model then declined                                                                                             | ruled out |
+| the judge                   | the failures are refusals, and refusals are counted before grading                                                                                                        | ruled out |
+| a limit/sample mix-up       | the log states `Running benchmark on 500 instance(s) (limit=all, ...)`                                                                                                    | ruled out |
+| a degenerate embedding      | not checked. `determinism 0` proves the same text embeds the same way twice; it says nothing about whether the vectors are informative                                    | **open**  |
 
 The one quantity that does not fit the "everything is broken" story: `recall@1 = 0.408` and
 `recall@5 = 0.776` on the 100-question diagnostic sample. Retrieval is not destroyed. It is mediocre at
@@ -159,10 +159,10 @@ The 12 MB job log carries one record per single-session question — `question`,
 For each question, count the ground-truth words (length ≥ 4) that appear in the retrieved context:
 
 | capability | abstained | of which the context covers ≥50% of the gold | answered | of which the context covers ≥50% |
-| --- | --- | --- | --- | --- |
-| IE | 135 | **16** | 15 | 4 |
-| KU | 58 | **4** | 14 | 4 |
-| TR | 22 | 6 | 105 | **76** |
+| ---------- | --------- | -------------------------------------------- | -------- | -------------------------------- |
+| IE         | 135       | **16**                                       | 15       | 4                                |
+| KU         | 58        | **4**                                        | 14       | 4                                |
+| TR         | 22        | 6                                            | 105      | **76**                           |
 
 The reader is not malfunctioning. On IE it declined 135 questions and only 16 of them had the answer in front of it;
 on TR it answered 105 and 76 of those had the answer in front of it. **The refusal rate tracks the retrieval rate.**
@@ -171,12 +171,12 @@ is answerable from the same artifact.
 
 ### 7.2 Four technical causes eliminated with the artifact's own numbers
 
-| cause | measurement | verdict |
-| --- | --- | --- |
-| context window truncated | median retrieved length: IE 11,198 chars, KU 4,361, TR 10,512, max 28,462 | eliminated — nothing is being cut to a few hundred characters |
-| degenerate embeddings | 162 hit scores spanning **0.408–0.987**, median 0.664, p10 0.585 / p90 0.765 | eliminated — a collapsed embedding produces a flat or NaN distribution, not this one |
-| assistant turns filtered out | IE contexts carry 31% assistant turns; KU and TR carry **0%**; and gold words found *only* in assistant turns: **5 of 117** IE abstentions | eliminated — the answers are not on the assistant side |
-| embedding cache mismatched | the cache is a `Map<text, vector>` serialized with text keys, magic and dimension | eliminated — a cache hit cannot return another text's vector |
+| cause                        | measurement                                                                                                                                | verdict                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| context window truncated     | median retrieved length: IE 11,198 chars, KU 4,361, TR 10,512, max 28,462                                                                  | eliminated — nothing is being cut to a few hundred characters                        |
+| degenerate embeddings        | 162 hit scores spanning **0.408–0.987**, median 0.664, p10 0.585 / p90 0.765                                                               | eliminated — a collapsed embedding produces a flat or NaN distribution, not this one |
+| assistant turns filtered out | IE contexts carry 31% assistant turns; KU and TR carry **0%**; and gold words found _only_ in assistant turns: **5 of 117** IE abstentions | eliminated — the answers are not on the assistant side                               |
+| embedding cache mismatched   | the cache is a `Map<text, vector>` serialized with text keys, magic and dimension                                                          | eliminated — a cache hit cannot return another text's vector                         |
 
 So the embedding is informative, the window is large enough, the turns are present, and the cache cannot lie. What
 remains is **the query side, the session segmentation, or the corpus**.
@@ -222,21 +222,21 @@ read under two different titles.
 Run **`40088479628`** (`benchmark-cortex-memory.yml`, 2026-10-24) evaluates **both** systems in one
 invocation, on one reader, one embedding model and one judge. Its ablation table:
 
-| | accuracy | IE | MR | KU | TR | ABS |
-| --- | --- | --- | --- | --- | --- | --- |
-| `reference-pipeline` (baseline) | **43.40%** | 0.67% | 84.30% | 0.00% | 66.14% | 100% |
-| `cortex-memory` (feature) | **80.80%** | 89.33% | 69.42% | 86.11% | 74.02% | 100% |
+|                                 | accuracy   | IE     | MR     | KU     | TR     | ABS  |
+| ------------------------------- | ---------- | ------ | ------ | ------ | ------ | ---- |
+| `reference-pipeline` (baseline) | **43.40%** | 0.67%  | 84.30% | 0.00%  | 66.14% | 100% |
+| `cortex-memory` (feature)       | **80.80%** | 89.33% | 69.42% | 86.11% | 74.02% | 100% |
 
 Set that beside `40378588466`'s feature arm:
 
-| | `40378588466` (`benchmark.yml`) | `40088479628` baseline | `40088479628` feature |
-| --- | --- | --- | --- |
-| head-line | 43.80% | 43.40% | 80.80% |
-| IE | 0.67% | 0.67% | 89.33% |
-| MR | 84.30% | 84.30% | 69.42% |
-| KU | 1.39% | 0.00% | 86.11% |
-| TR | 66.93% | 66.14% | 74.02% |
-| ABS | 100% | 100% | 100% |
+|           | `40378588466` (`benchmark.yml`) | `40088479628` baseline | `40088479628` feature |
+| --------- | ------------------------------- | ---------------------- | --------------------- |
+| head-line | 43.80%                          | 43.40%                 | 80.80%                |
+| IE        | 0.67%                           | 0.67%                  | 89.33%                |
+| MR        | 84.30%                          | 84.30%                 | 69.42%                |
+| KU        | 1.39%                           | 0.00%                  | 86.11%                |
+| TR        | 66.93%                          | 66.14%                 | 74.02%                |
+| ABS       | 100%                            | 100%                   | 100%                  |
 
 `40378588466` reproduces `40088479628`'s baseline to **4 questions of 500** (219 against 217 as absolute
 counts; 43.80% against 43.40%), and its five capability rows match within `runs=1` sampling on KU and
@@ -250,17 +250,17 @@ Two numbers, two systems, and the distinction matters more than the 4 questions:
 share the retrieval path and the reader, not because they are the same arm — §8.7 records what happens
 when that closeness is written as identity.
 
-### 8.3 The mechanism is the configuration, and it explains the *direction* of every capability
+### 8.3 The mechanism is the configuration, and it explains the _direction_ of every capability
 
 The two arms do not differ by a prompt. They differ by how evidence is selected:
 
-| | `benchmark.yml` (`nl-*`) | `benchmark-cortex-memory.yml` (`cortex-memory`) |
-| --- | --- | --- |
-| retrieval | `retrieveTopKByQueriesHybrid`, `topK` 15, radius 1 | relevance index over the full haystack, `relevanceTopK=256` |
-| evidence room | product default 24,000 characters, **applied to what retrieval returned** | `maxPromptChars=48000`, applied to a 256-wide pool |
-| role filter | none | `user` on `multi-session,temporal` |
-| turn cap | none | 400 characters on those two routes |
-| ask | `abstention-evidence-blocks` | `enumerated` |
+|               | `benchmark.yml` (`nl-*`)                                                  | `benchmark-cortex-memory.yml` (`cortex-memory`)             |
+| ------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| retrieval     | `retrieveTopKByQueriesHybrid`, `topK` 15, radius 1                        | relevance index over the full haystack, `relevanceTopK=256` |
+| evidence room | product default 24,000 characters, **applied to what retrieval returned** | `maxPromptChars=48000`, applied to a 256-wide pool          |
+| role filter   | none                                                                      | `user` on `multi-session,temporal`                          |
+| turn cap      | none                                                                      | 400 characters on those two routes                          |
+| ask           | `abstention-evidence-blocks`                                              | `enumerated`                                                |
 
 The direction of every capability follows from that table and from nothing else:
 
@@ -302,7 +302,7 @@ with `{"empty":0,"threshold":0,"llm":247,"answered":253}`, matching `40088479628
 2. **The critique counters.** Two arms producing 500 identical verdicts is still a fact about a run
    that a run must be able to explain.
 3. **§7's four eliminations.** They are eliminations for the reference pipeline, correctly performed,
-   and they tell us where *its* 56.6 points go. That is the number this repository can now improve
+   and they tell us where _its_ 56.6 points go. That is the number this repository can now improve
    without touching the cognitive arm at all.
 
 **And the round's own experiment survives, at the workflow it already ran on.** The first draft of this
@@ -320,9 +320,9 @@ packages/cortex-eval/src/natural-language-memory.ts:52
 `grep` returns nothing for `memory.ts`. `enableAggregationCritique`, `critiqueAggregationLedger` and
 `aggregationCritiqueMode` exist only in the reference pipeline, so `benchmark.yml` is the **only**
 workflow that can measure them, and §2's two runs were on the right system. What they lack is not
-placement but *observability*: they predate `critiqueStats`, which landed afterwards, so "the two arms
-are identical" still cannot be separated into *never reached*, *reached and found nothing*, and
-*reached and changed nothing*. **The experiment needs one re-dispatch with the counters, not a move.**
+placement but _observability_: they predate `critiqueStats`, which landed afterwards, so "the two arms
+are identical" still cannot be separated into _never reached_, _reached and found nothing_, and
+_reached and changed nothing_. **The experiment needs one re-dispatch with the counters, not a move.**
 
 That correction is the same failure at one remove — an assertion about which system a mechanism lives in,
 made from the shape of the configuration rather than from the code. It cost ten minutes here and a round
@@ -368,29 +368,29 @@ reached the same conclusion as §8 and added four claims this document had not m
 checked one at a time rather than adopted, and the result is mixed in a way that is worth recording:
 **the two that survived are the two that were verifiable from a file in the repository.**
 
-| # | claim | verdict | evidence |
-| --- | --- | --- | --- |
-| 1 | 81.0% and 44.2% are two arms | **agreed, and it sharpens §8** | it pairs 44.20% with the **archived reference pipeline** at 224/500 (`04 §1.2`) rather than with `40088479628`'s baseline at 217/500. That pairing is right and the arithmetic needs stating more carefully than either of us first wrote it — see below |
-| 2 | the embedding cache carries no model identity | **confirmed, and worse than stated** | `retrieval.ts` wrote `magic + version + count + dim` and its docstring claimed it threw "so a stale cache is never silently trusted". Fixed: `MEASURE-CACHE-PROVENANCE.md` |
-| 3 | the same arm regressed from 430/500 (Sept) to 221/500 (Oct) | **unproven** | the 430 reading is real (`MEASURE-FAILURE-CENSUS.md` §2–3: IE 145/150, KU 59/72, MR 106/121, TR 91/127, ABS 29/30), but the September run **predates `featureConfig` being written into the artifact**, so there is no record that its switches match October's. The claim compares two readings of unknown configuration, which is the same shape as the error this document is about |
-| 4 | extracting `packages/cortex-ai` changed the embedding defaults | **not checkable here** | the local `.git` is shallow, so the rename history cannot be diffed. It is also moot in the direction that matters: whatever the defaults are now, a cache stamped with them can no longer be silently reused by a run using others |
+| #   | claim                                                          | verdict                              | evidence                                                                                                                                                                                                                                                                                                                                                                               |
+| --- | -------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 81.0% and 44.2% are two arms                                   | **agreed, and it sharpens §8**       | it pairs 44.20% with the **archived reference pipeline** at 224/500 (`04 §1.2`) rather than with `40088479628`'s baseline at 217/500. That pairing is right and the arithmetic needs stating more carefully than either of us first wrote it — see below                                                                                                                               |
+| 2   | the embedding cache carries no model identity                  | **confirmed, and worse than stated** | `retrieval.ts` wrote `magic + version + count + dim` and its docstring claimed it threw "so a stale cache is never silently trusted". Fixed: `MEASURE-CACHE-PROVENANCE.md`                                                                                                                                                                                                             |
+| 3   | the same arm regressed from 430/500 (Sept) to 221/500 (Oct)    | **unproven**                         | the 430 reading is real (`MEASURE-FAILURE-CENSUS.md` §2–3: IE 145/150, KU 59/72, MR 106/121, TR 91/127, ABS 29/30), but the September run **predates `featureConfig` being written into the artifact**, so there is no record that its switches match October's. The claim compares two readings of unknown configuration, which is the same shape as the error this document is about |
+| 4   | extracting `packages/cortex-ai` changed the embedding defaults | **not checkable here**               | the local `.git` is shallow, so the rename history cannot be diffed. It is also moot in the direction that matters: whatever the defaults are now, a cache stamped with them can no longer be silently reused by a run using others                                                                                                                                                    |
 
 **The three readings are two systems, not one.** The first version of this table said "three
 readings of one system — 217, 221, 224 — put that arm's spread at ~1.4pp". That is wrong, and the
 error is small enough to be worth spelling out because it is the same class as the one this document
 is about. The rows pair up like this:
 
-| system | readings | spread | what the spread is |
-| --- | --- | --- | --- |
-| `reference-pipeline` (`run-ablation.ts`'s baseline: `enableAbstention`, every other option default) | **217** (`40088479628`) and **224** (archived, `04 §1.2`, "single run") | 7 questions, **1.4pp** | four days and several commits apart — this is the run-to-run spread of one system, and it is the number §8 did not have |
-| `nl-abstain-feature` (`enableAbstention` + `abstainThreshold` + `entityIdentityClause`) | **219** (`40378588466`, 43.80%) and **221** (the `recall` / `per-item` pair, 44.20%) | 2 questions, **0.4pp** | same week, and §2 already reports these two as identical to the digit at the capability level |
+| system                                                                                              | readings                                                                             | spread                 | what the spread is                                                                                                      |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `reference-pipeline` (`run-ablation.ts`'s baseline: `enableAbstention`, every other option default) | **217** (`40088479628`) and **224** (archived, `04 §1.2`, "single run")              | 7 questions, **1.4pp** | four days and several commits apart — this is the run-to-run spread of one system, and it is the number §8 did not have |
+| `nl-abstain-feature` (`enableAbstention` + `abstainThreshold` + `entityIdentityClause`)             | **219** (`40378588466`, 43.80%) and **221** (the `recall` / `per-item` pair, 44.20%) | 2 questions, **0.4pp** | same week, and §2 already reports these two as identical to the digit at the capability level                           |
 
 So `44.20%` sits 2 questions from one reading of its own arm and 4 from the other arm's baseline. Both
 are inside noise, which is why the conclusion holds — but the coincidences that make them all land
 between 217 and 224 are not one system's variance, and writing them as one would be a small copy of
 the failure under study.
 
-**What claim 3 gets right, and what it does not.** The *shape* of the September-to-October movement —
+**What claim 3 gets right, and what it does not.** The _shape_ of the September-to-October movement —
 the two single-session capabilities collapsing (IE 145 → 1, KU 59 → 0) while the two multi-session
 ones barely move (MR 106 → 104, TR 91 → 86) — is exactly what a foreign vector space predicts, because
 single-session questions are served by embedding similarity alone while multi-session questions also
@@ -419,12 +419,12 @@ Run `40408635007` carried 379 per-question records with the delivered context, s
 approximated can now be answered exactly: **does the gold phrase appear in the context the reader was
 shown?**
 
-| capability | n | gold phrase **verbatim** in context | correct | correct **and** in context | correct **without** it |
-| --- | --- | --- | --- | --- | --- |
-| IE | 150 | **4** | 1 | 1 | 0 |
-| KU | 72 | **10** | 0 | 0 | 0 |
-| TR | 127 | 27 | **87** | 23 | **64** |
-| ABS | 30 | 0 | 30 | 0 | 30 |
+| capability | n   | gold phrase **verbatim** in context | correct | correct **and** in context | correct **without** it |
+| ---------- | --- | ----------------------------------- | ------- | -------------------------- | ---------------------- |
+| IE         | 150 | **4**                               | 1       | 1                          | 0                      |
+| KU         | 72  | **10**                              | 0       | 0                          | 0                      |
+| TR         | 127 | 27                                  | **87**  | 23                         | **64**                 |
+| ABS        | 30  | 0                                   | 30      | 0                          | 30                     |
 
 **For IE and KU this is a ceiling, not a correlate.** Their gold is a short phrase — "Business
 Administration", "four" — and a reader that never receives that phrase cannot answer, whatever it does
@@ -439,13 +439,13 @@ the single most common way this table could be misread is to add its rows.
 
 ### 8.8.1 This is a sharper statistic than §8.3's, and it does not replace it
 
-§8.3 counted *any* distinguishing gold word appearing *anywhere* in the delivered text: 38.0% for IE,
+§8.3 counted _any_ distinguishing gold word appearing _anywhere_ in the delivered text: 38.0% for IE,
 22.5% for KU, 79.5% for TR. This one requires the **whole phrase, verbatim**. Both are true:
 
-| statistic | IE | what it says |
-| --- | --- | --- |
-| any gold word present (§8.3) | 38.0% | the context is *about* the right thing |
-| whole phrase verbatim (§8.8) | **2.7%** | the context contains the *answer* |
+| statistic                    | IE       | what it says                           |
+| ---------------------------- | -------- | -------------------------------------- |
+| any gold word present (§8.3) | 38.0%    | the context is _about_ the right thing |
+| whole phrase verbatim (§8.8) | **2.7%** | the context contains the _answer_      |
 
 A retrieval that returns the topic but not the sentence scores 38% on the first and 2.7% on the second.
 **The gap between them is the whole failure**, and §8.3 alone would have supported the wrong conclusion —

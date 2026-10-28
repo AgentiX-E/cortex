@@ -38,13 +38,13 @@ with `${...}` is at risk of being consumed by the outer one.
 
 There are two failure directions, and the dangerous one is the quiet one:
 
-| Direction | Result | Danger |
-| --- | --- | --- |
-| `Bad substitution` | command aborts | **loud** — nothing runs, nothing is believed |
-| Silent expansion | `${X}` becomes `""` or a shell variable's value | **quiet** — the command runs and reports a result computed from mangled input |
+| Direction          | Result                                          | Danger                                                                        |
+| ------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `Bad substitution` | command aborts                                  | **loud** — nothing runs, nothing is believed                                  |
+| Silent expansion   | `${X}` becomes `""` or a shell variable's value | **quiet** — the command runs and reports a result computed from mangled input |
 
 The quiet direction is why this is worth a document rather than a style note: a
-probe that silently interpolates an empty string produces a *plausible* number,
+probe that silently interpolates an empty string produces a _plausible_ number,
 and a plausible number is far more expensive than an error. This repository has
 recorded that shape four times already (a mock that agreed with itself, a
 coverage gate that measured noise, a denominator that could not move, a symptom
@@ -74,7 +74,7 @@ language's `${...}` appears inside unquoted shell quoting. It is wired into
 `pnpm test:tools`, so the class is checked rather than remembered.
 
 The scanned set is deliberately narrow: this is a guard against a mistake made
-while *authoring* commands, not a linter for arbitrary user shell. It looks for
+while _authoring_ commands, not a linter for arbitrary user shell. It looks for
 the specific collision — a `${` sequence whose contents are not a valid shell
 parameter expansion — inside a double-quoted or unquoted region.
 
@@ -82,7 +82,7 @@ parameter expansion — inside a double-quoted or unquoted region.
 
 The class recurred after the guard was in place, with
 `Bad substitution: lines[l-1].trim`. The guard was correct about
-*classification* and wrong about *coverage*, in two independent ways, and both
+_classification_ and wrong about _coverage_, in two independent ways, and both
 had to be fixed before the guard was worth anything.
 
 **One: the guard never ran on the thing that failed.** It scanned `tools/*.py`
@@ -93,21 +93,21 @@ the mistake at the moment it is made, which is the only moment it is cheap.
 
 **Two: it had a false negative even on the text it did scan.** The original
 quoting model handled a backslash-escaped `$` incorrectly, so `echo "\${X}"` —
-where the shell does *not* expand — was reported, while the real boundary was
+where the shell does _not_ expand — was reported, while the real boundary was
 unverified. The rule was re-derived against a real shell rather than reasoned
 about, and the five cases below are now pinned by tests:
 
-| Fragment | Shell prints | Expands? |
-| --- | --- | --- |
-| `echo \${X}` | `${X}` | no — backslash escapes the dollar |
-| `echo "\${X}"` | `${X}` | no — the escape works inside double quotes |
-| `echo ${X}` | value of `X` | **yes** |
-| `echo "${X}"` | value of `X` | **yes** |
-| `echo '${X}'` | `${X}` | no — single quotes |
+| Fragment       | Shell prints | Expands?                                   |
+| -------------- | ------------ | ------------------------------------------ |
+| `echo \${X}`   | `${X}`       | no — backslash escapes the dollar          |
+| `echo "\${X}"` | `${X}`       | no — the escape works inside double quotes |
+| `echo ${X}`    | value of `X` | **yes**                                    |
+| `echo "${X}"`  | value of `X` | **yes**                                    |
+| `echo '${X}'`  | `${X}`       | no — single quotes                         |
 
 The fix has two parts:
 
-1. **`--fragment` mode**, so a command can be checked *before it is run*, on the
+1. **`--fragment` mode**, so a command can be checked _before it is run_, on the
    text that actually failed. `pnpm guard:sh` reads the fragment on stdin.
 2. **A quoting model that matches the shell**, with the escaped-dollar case
    handled and each expectation taken from a real `sh` rather than from
@@ -122,13 +122,13 @@ with a wrong assertion would have made the guard confidently wrong.
 ## 4b. The third recurrence, and why the first two fixes could not have worked
 
 The class recurred twice more after §4a, with `Bad substitution: h.join`. The
-fixes in §4 and §4a were both *correct* and both *incapable of preventing it*, and
+fixes in §4 and §4a were both _correct_ and both _incapable of preventing it_, and
 the reason is worth stating plainly because it is a trap any guard of this kind
 falls into.
 
 **A guard that inspects the filesystem cannot see a command string.**
 
-Every tool call that failed was a program written *inside a shell command*. The
+Every tool call that failed was a program written _inside a shell command_. The
 guard scans `tools/*.py` and `docs/*.md` — files already on disk. The failing text
 was never on disk at the moment it mattered, so there was no step at which the
 guard could have run. Adding more file-scoped checks (as §4a did) does not change
@@ -149,7 +149,7 @@ rather than detect its consequences:
 
 1. **`tools/run-program.py`** runs a program from a file (or stdin) with the
    interpreter chosen by extension. The shell never sees the text. It also refuses
-   a program the interpolation guard rejects, so the rule is enforced at *run*
+   a program the interpolation guard rejects, so the rule is enforced at _run_
    time and the flag is a lint error rather than a lost invocation.
 2. **A stored-hazard rule**, in `check-shell-interpolation.py`, on top of the
    existing classifier: a string literal passed to `write_text` / `write` must not
@@ -180,11 +180,11 @@ The class recurred once more, as `Bad substitution: JSON.stringify`. Unlike §4b
 **no new mechanism was missing.** Both remedies §4b prescribes already existed and
 both were skipped:
 
-| §4b remedy | status at the time of the failure |
-| --- | --- |
-| `tools/run-program.py` — run the program from a file | existed, unused for this probe |
-| `pnpm guard:sh` — check a fragment before running it | existed, unused for this probe |
-| Stored-hazard rule in the classifier | existed, and passing |
+| §4b remedy                                           | status at the time of the failure |
+| ---------------------------------------------------- | --------------------------------- |
+| `tools/run-program.py` — run the program from a file | existed, unused for this probe    |
+| `pnpm guard:sh` — check a fragment before running it | existed, unused for this probe    |
+| Stored-hazard rule in the classifier                 | existed, and passing              |
 
 The failing call was a one-liner that embedded `JSON.stringify(...)` inside a
 double-quoted `node -e` argument, written inline while a probe fixture was being
@@ -210,7 +210,7 @@ identified from the other direction.
 
 The operative rule is therefore strengthened from "check before running" to:
 
-> A probe that computes anything the probe's *diagnosis* depends on is a
+> A probe that computes anything the probe's _diagnosis_ depends on is a
 > **program**, not a command. Write it to a file and run it with
 > `tools/run-program.py`. Consult `pnpm guard:sh` only for the residue — genuinely
 > single, static commands.
@@ -242,10 +242,10 @@ rule again" had already been tried and had already failed.
 Two candidate **push** mechanisms were tested rather than assumed, because §4b already
 established that a remedy nobody consults is documentation:
 
-| Candidate | Test | Result |
-| --- | --- | --- |
+| Candidate                      | Test                                                                           | Result                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | a `preexec` hook in `~/.zshrc` | installed a hook body that appends to a log, then ran `zsh -i -c 'echo hello'` | **no log written** — the hook does not fire for `-c`, which is how commands are actually run here |
-| git hooks | `ls .git/hooks/` | none installed, and hooks fire on git operations, not on arbitrary commands |
+| git hooks                      | `ls .git/hooks/`                                                               | none installed, and hooks fire on git operations, not on arbitrary commands                       |
 
 So **no mechanism can intercept a command before it runs in this environment.** That
 finding is what makes the response different from a sixth detector, and it should be
@@ -267,10 +267,10 @@ rc=1                                # refused, correct message, NOTHING executed
 Every recurrence is a case where the safe path existed and was not taken. The reason is
 not forgetfulness in the ordinary sense. It is that the two paths have different prices:
 
-| Path | Cost |
-| --- | --- |
-| inline one-liner carrying the hazard | **one** call |
-| write a probe file, then run it | **two** calls |
+| Path                                 | Cost          |
+| ------------------------------------ | ------------- |
+| inline one-liner carrying the hazard | **one** call  |
+| write a probe file, then run it      | **two** calls |
 
 Under improvisation the cheaper path wins, and it won five times. Detection cannot fix
 that — a detector the operator does not consult has no effect on which path is chosen.
@@ -283,9 +283,9 @@ that — a detector the operator does not consult has no effect on which path is
    writing — a kept hazard would put the exact bytes that break delivery onto disk, where
    the next edit inherits them, which is the loop §4b describes.
 2. **`pnpm probe`** as the short form: `python3 tools/run-program.py --lang mjs --keep
-   probe/latest.mjs -`.
+probe/latest.mjs -`.
 3. **`probe/` is git-ignored**, for the same reason the benchmark artifacts are: a probe
-   is evidence *for* a conclusion, not the conclusion, and a tracked probe would make a
+   is evidence _for_ a conclusion, not the conclusion, and a tracked probe would make a
    discarded line of investigation look like a supported claim.
 
 The change is deliberately small. Adding a fourth detector would have repeated §4b's
@@ -314,18 +314,18 @@ rather than incidental (releasing the recency pin still caps it at `0.5`), and t
 accessible boundary is `(0.5, 0.5000001]`. The rule in §3 turned a lost invocation into a
 deciding number for the third time.
 
-## 4e. The sixth recurrence: the safe path was cheap but not *reachable*
+## 4e. The sixth recurrence: the safe path was cheap but not _reachable_
 
 The class recurred once more, as `Bad substitution: typeof`, while a diagnostic probe was
 being improvised around `node -e`. §4d's conclusion still holds and is worth restating,
 because it is now the third consecutive time it has held:
 
-| §4d remedy | status at the time of the failure |
-| --- | --- |
-| `tools/run-program.py` — run the program from a file | existed, verified working |
-| `tools/run-program.py --keep FILE` — one call, write and run | existed, verified working |
-| `pnpm probe` — the short form | existed |
-| Refusal at run time, with the guard's message | existed; the exact fragment returns `rc=1` |
+| §4d remedy                                                   | status at the time of the failure          |
+| ------------------------------------------------------------ | ------------------------------------------ |
+| `tools/run-program.py` — run the program from a file         | existed, verified working                  |
+| `tools/run-program.py --keep FILE` — one call, write and run | existed, verified working                  |
+| `pnpm probe` — the short form                                | existed                                    |
+| Refusal at run time, with the guard's message                | existed; the exact fragment returns `rc=1` |
 
 So the mechanism was present and the guard caught the fragment. What was missing was
 **reachability, not cost**. §4d removed the two-call penalty, but `--keep FILE` still
@@ -334,8 +334,8 @@ improvised does not know its own extension in advance — that is what "improvis
 so at the moment of the failure the `--keep` form still had a decision in it that the
 inline form did not.
 
-The distinction is small and decides the response. §4d's diagnosis was *price*; this one is
-*preconditions*. A path can be cheaper than the hazard and still lose if it demands
+The distinction is small and decides the response. §4d's diagnosis was _price_; this one is
+_preconditions_. A path can be cheaper than the hazard and still lose if it demands
 something the hazard does not, because the hazard's requirements are always satisfiable:
 `node -e "<anything>"` has exactly one argument, and it is always writable.
 
@@ -352,7 +352,7 @@ something the hazard does not, because the hazard's requirements are always sati
    file hunting for a missing `--lang` that would not have helped.
 3. **The guard's refusal names its own remedy.** It now ends with
    `See docs/OPS-SHELL-INTERPOLATION.md. Write the program to a file and run the file, or
-   quote the here-doc delimiter.` A refusal that only says "this is wrong" leaves the
+quote the here-doc delimiter.` A refusal that only says "this is wrong" leaves the
    operator to rediscover the right form under exactly the time pressure that produced the
    mistake; naming the next action makes the refusal self-correcting.
 
@@ -389,8 +389,6 @@ recorded in the progress report; the tool failure cost one invocation and the fi
 one this document's rule exists to protect, since the whole question was what type the
 rejection's cause actually has.
 
-
-
 The probe above was measuring why a repair changed nothing. It was re-run from a
 file and gave the answer, which is recorded in
 [`PREREGISTRATION-CORTEX-MEMORY-ARM.md`](PREREGISTRATION-CORTEX-MEMORY-ARM.md) §7.5:
@@ -425,15 +423,15 @@ command itself: a `${...}` belonging to an inner language was written inside she
 quoting, and the outer shell expanded it before the interpreter was reached. Seven
 occurrences, seven bodies:
 
-| # | Body | Interpreter | Shell quoting |
-| --- | --- | --- | --- |
-| 1 | `String(t).padEnd(5)` | node | double |
-| 2 | `lines[l-1].trim` | python3 | double |
-| 3 | `h.join` | node | double |
-| 4 | `JSON.stringify(x)` | node | double |
-| 5 | `label.padEnd(5)` | node | double |
-| 6 | `p.includes(x)` | node | double |
-| 7 | `cut.toFixed(3)` | python3 | **single** |
+| #   | Body                  | Interpreter | Shell quoting |
+| --- | --------------------- | ----------- | ------------- |
+| 1   | `String(t).padEnd(5)` | node        | double        |
+| 2   | `lines[l-1].trim`     | python3     | double        |
+| 3   | `h.join`              | node        | double        |
+| 4   | `JSON.stringify(x)`   | node        | double        |
+| 5   | `label.padEnd(5)`     | node        | double        |
+| 6   | `p.includes(x)`       | node        | double        |
+| 7   | `cut.toFixed(3)`      | python3     | **single**    |
 
 Rows 1–6 are loud: the shell aborts and nothing runs. Row 7 is the one that exposed
 the real gap, because it is **silent**. Measured against a real shell:
@@ -451,7 +449,7 @@ The guard was pointing at the shell when the shell was innocent.
 ### The three changes, each aimed at a different question
 
 1. **`scan_payload(text, origin, language)`** — a rule for a program whose shell has
-   already been resolved. `scan` derives a payload from a *command line* by anchoring
+   already been resolved. `scan` derives a payload from a _command line_ by anchoring
    on an `-c` token; a payload handed to a shim has no such token, so running `scan`
    over it reported `1 fragment(s) clean` about text Python then refused to parse.
    That false clean is why the function exists, and the first probe of the shim
@@ -469,24 +467,24 @@ The guard was pointing at the shell when the shell was innocent.
    The rule that holds is measured against three shells, and the measurement is the
    specification:
 
-   | body | bash | dash | zsh | verdict |
-   | --- | --- | --- | --- | --- |
-   | `${cut:.3f}` | syntax error | Bad substitution | bad math expression | **report** |
-   | `${v:2.3f}` | invalid arithmetic operand | Bad substitution | bad math expression | **report** |
-   | `${label:>5}` | syntax error | Bad substitution | bad math expression | **report** |
-   | `${d:%Y}` | syntax error | Bad substitution | bad math expression | **report** |
-   | `${x:offset}` | `yz` | Bad substitution | `yz` | quiet |
-   | `${a:1}` | `yz` | Bad substitution | `yz` | quiet |
-   | `${x:0:5}` | `abcde` | Bad substitution | `abcde` | quiet |
+   | body          | bash                       | dash             | zsh                 | verdict    |
+   | ------------- | -------------------------- | ---------------- | ------------------- | ---------- |
+   | `${cut:.3f}`  | syntax error               | Bad substitution | bad math expression | **report** |
+   | `${v:2.3f}`   | invalid arithmetic operand | Bad substitution | bad math expression | **report** |
+   | `${label:>5}` | syntax error               | Bad substitution | bad math expression | **report** |
+   | `${d:%Y}`     | syntax error               | Bad substitution | bad math expression | **report** |
+   | `${x:offset}` | `yz`                       | Bad substitution | `yz`                | quiet      |
+   | `${a:1}`      | `yz`                       | Bad substitution | `yz`                | quiet      |
+   | `${x:0:5}`    | `abcde`                    | Bad substitution | `abcde`             | quiet      |
 
    The split is not "valid vs invalid syntax" but **"does every shell fail on it"**.
    A format mini-language carries a `.`, `%`, `<`, `>`, `^` or `=` where arithmetic
    carries digits and signs, so the operand's indicator decides it. Note `${v:2.3f}`:
-   it *starts* with a digit and still fails everywhere, because a decimal point inside
+   it _starts_ with a digit and still fails everywhere, because a decimal point inside
    a substring operand is a precision, not a number.
 
 3. **The `python3` shim** — the first mechanism in this document that sits in the path
-   of a *typed command*. Every prior remedy was pull-shaped and lost to whichever path
+   of a _typed command_. Every prior remedy was pull-shaped and lost to whichever path
    was cheaper or more reachable; this one is push-shaped and runs whether or not the
    operator remembers. It is an **environment change**, so it is recorded here and
    asserted by `tools/__tests__/test_shim_guard.py` — an unrecorded environment fix
@@ -502,15 +500,15 @@ hazard necessarily quotes it.
 
 Running the corpus answered the question the counts had been hiding:
 
-| Source | Blocks | Command-like |
-| --- | --- | --- |
-| Python `"""..."""` literals | 101 | **0** |
-| Markdown ```` ```sh ```` fences | 6 | 6 |
+| Source                      | Blocks | Command-like |
+| --------------------------- | ------ | ------------ |
+| Python `"""..."""` literals | 101    | **0**        |
+| Markdown ` ```sh ` fences   | 6      | 6            |
 
 The `105 fragment(s) clean` figure reported at earlier milestones was therefore
 **measuring documentation**. The extraction now requires a string's first line to
 begin with a word the shell would actually run, and to not read as a sentence. Prose
-detection runs only over the words *after* the command name and needs **two or more**
+detection runs only over the words _after_ the command name and needs **two or more**
 matches, because a hazard body is full of short identifiers — `${a.b}` contains a
 standalone-looking `a`, and a one-match threshold rejected a real command.
 
@@ -592,7 +590,7 @@ same kind as the shim itself and is left recorded rather than applied silently.
 **The general lesson, which is the reason this is a subsection and not a footnote.** A guard
 whose reach depends on how a shell was started has a reach that cannot be predicted from
 reading the guard. Every one of the nine recurrences in this document has the same shape:
-the mechanism was present and something about *where it sat* decided whether it applied.
+the mechanism was present and something about _where it sat_ decided whether it applied.
 
 **Verification:** `python3 -m pytest tools/__tests__/test_shim_guard.py`. The tests
 assert the shim's presence, its interception of the seventh recurrence's exact shape, and —
@@ -632,13 +630,13 @@ targets and was simply not on this path.
 
 Ten distinct bodies across every recorded failure, not eight:
 
-| Body | Tagged variants | Shape |
-| --- | --- | --- |
-| `String` | `String]`, `String'` | identifier |
-| `min.toFixed` | `min.toFixed]` | dotted call |
-| `cut.toFixed` | `cut.toFixed]` | dotted call |
-| `q` | `q]` | **bare name** |
-| `"` | — | a quote character |
+| Body          | Tagged variants      | Shape             |
+| ------------- | -------------------- | ----------------- |
+| `String`      | `String]`, `String'` | identifier        |
+| `min.toFixed` | `min.toFixed]`       | dotted call       |
+| `cut.toFixed` | `cut.toFixed]`       | dotted call       |
+| `q`           | `q]`                 | **bare name**     |
+| `"`           | —                    | a quote character |
 
 Two things follow.
 
@@ -647,9 +645,9 @@ Two things follow.
    reaching a character its grammar does not accept.
 2. **`q` is the end of the road for detection.** Measured in this image:
 
-   | Sequence | bash | dash | zsh |
-   | --- | --- | --- | --- |
-   | `${q}` | `x=` (rc 0) | `x=` (rc 0) | `x=` (rc 0) |
+   | Sequence      | bash             | dash                 | zsh              |
+   | ------------- | ---------------- | -------------------- | ---------------- |
+   | `${q}`        | `x=` (rc 0)      | `x=` (rc 0)          | `x=` (rc 0)      |
    | `${(s:...:)}` | bad substitution | **Bad substitution** | bad substitution |
 
    The aborting shape is a zsh-only construct. `${q}` is valid POSIX and expands to the
@@ -672,7 +670,7 @@ payload the message read:
 > `${q}` is not a shell parameter expansion; the inner language's interpolation would
 > be consumed by the shell
 
-The second clause is backwards. The shell *recognises* `${q}` perfectly and replaces it
+The second clause is backwards. The shell _recognises_ `${q}` perfectly and replaces it
 with an empty string; there is no expansion failure to find. A reader sent looking for a
 syntax error would find valid shell and conclude the guard was wrong — and a guard that
 can be shown wrong is one people stop running. The message now distinguishes the two
@@ -695,6 +693,7 @@ and inside one it says what actually happens.
    The heredoc delimiter must be **quoted**. It checks what it received and warns when
    the text looks like a body the shell already expanded, because `<<PROBE` and
    `<<'PROBE'` differ by two characters and the unquoted one is the default.
+
 2. **`--lang` is required and inference is refused.** A probe on stdin has no extension;
    `run-program.py` already owns inference for real files, and one question with two
    answers can disagree.
@@ -730,7 +729,7 @@ assembly. It was the guard's own subject matter leaking into the guard's own mes
 ### Where the expansion actually happened
 
 Constructing a fixture, I wrote a helper whose body assembled a literal for a
-*coverage* assertion. The line read, in intent:
+_coverage_ assertion. The line read, in intent:
 
 ```text
 expect(overlap.missMin).toBeCloseTo(0, 5);
@@ -746,11 +745,11 @@ falls through to one shared vector.
 
 ### Why the ninth is a different mechanism from the eighth
 
-| Section | Layer that failed | Evidence |
-| --- | --- | --- |
-| §4f | the shell, via an unquoted heredoc | the shell reported the substitution |
-| §4h | the harness's argument assembly | `functionCallItems count: 0`, nothing dispatched |
-| §4i | **the assertion was reading a saturated score** | `hits: [1, 1]`, `misses: []` |
+| Section | Layer that failed                               | Evidence                                         |
+| ------- | ----------------------------------------------- | ------------------------------------------------ |
+| §4f     | the shell, via an unquoted heredoc              | the shell reported the substitution              |
+| §4h     | the harness's argument assembly                 | `functionCallItems count: 0`, nothing dispatched |
+| §4i     | **the assertion was reading a saturated score** | `hits: [1, 1]`, `misses: []`                     |
 
 The `1` is the tell, and it generalises. **A cosine of exactly `1` in a retrieval fixture
 means two vectors are identical, and the usual cause is that the fixture's predicates
@@ -770,7 +769,7 @@ three wrong revisions.
 
 ### The second defect the ninth exposed, and it is the more valuable one
 
-The fixture also *asserted the name instead of the arithmetic*. Constants named `MIDDLE`
+The fixture also _asserted the name instead of the arithmetic_. Constants named `MIDDLE`
 and `HIGHER` were given the vectors `[0.8, 0.6]` and `[0.6, 0.8]`, and against a query on
 the x-axis those score `0.8` and `0.6` — the names assert an ordering the numbers
 contradict. An assertion of `missMax > hitMax` was then written from the names, and it
@@ -784,11 +783,9 @@ to their values is what shows the bit came from the intended data.
 
 This is the same failure as the whole `recommendedThreshold` episode the fixture was
 written for, in miniature: **a name was treated as evidence.** §12.6 records a reader
-taking the word *recommended* for a fitness claim the computation never made. Here a
-fixture author took the words *middle* and *higher* for an ordering the arithmetic never
+taking the word _recommended_ for a fitness claim the computation never made. Here a
+fixture author took the words _middle_ and _higher_ for an ordering the arithmetic never
 produced. The name is not the number, in an artifact or in a test.
-
-
 
 ## 4j. The tenth recurrence: the failing layer is not a shell at all
 
@@ -825,19 +822,19 @@ function parseEnvVar(){
 
 Measured, against the vendored module extracted from the bundle:
 
-| command | branch | reported body |
-| --- | --- | --- |
-| `echo ${q` | A | `q` |
-| `echo ${q,` | A | `q,` |
-| `echo ${min.toFixed` | A | `min.toFixed` |
-| `echo "${q"],"` | A | `q` |
-| `echo ${}` | B | `${}` |
-| `echo ${q}` | — | *no throw* |
+| command              | branch | reported body |
+| -------------------- | ------ | ------------- |
+| `echo ${q`           | A      | `q`           |
+| `echo ${q,`          | A      | `q,`          |
+| `echo ${min.toFixed` | A      | `min.toFixed` |
+| `echo "${q"],"`      | A      | `q`           |
+| `echo ${}`           | B      | `${}`         |
+| `echo ${q}`          | —      | _no throw_    |
 
 ### What this settles that nine sections did not
 
 **The reported body is not an identifier and never was.** Branch A throws
-`ec.slice(el)` — from the character after `{` to the end of the *token*. So the "body" is
+`ec.slice(el)` — from the character after `{` to the end of the _token_. So the "body" is
 a tail of whatever followed the unclosed brace. That is why the recorded bodies look
 arbitrary and why they kept changing while the underlying mistake did not:
 
@@ -858,10 +855,10 @@ in fact the bodies were never the signal at all.
 Section 4h's prohibition is sound about a **closed** expansion and it does not extend to
 an open one:
 
-* `${q}` is valid POSIX. It expands to the empty string silently in bash, dash and zsh,
+- `${q}` is valid POSIX. It expands to the empty string silently in bash, dash and zsh,
   and it is textually identical to correct shell. No rule can separate the harmful use
   from the harmless one, so attempting it costs precision and nothing else.
-* A bare `${` with no closer is a **different question**. There is no correct command
+- A bare `${` with no closer is a **different question**. There is no correct command
   containing one — the shell rejects it and so does the tokeniser. A rule against it
   makes no precision trade, because it has no true-positive/false-positive frontier.
 
@@ -871,7 +868,7 @@ stated here because 4h explicitly forbade the category.
 ### What was changed
 
 1. **`_unterminated_expansions`** in `tools/check-shell-interpolation.py`. It exists
-   because the existing pattern cannot see this case *by construction*: the loop matches
+   because the existing pattern cannot see this case _by construction_: the loop matches
    `\$\{([^}]*)\}`, and the closing brace is part of the match. **A scan built out of
    matches is blind to the input that has no match** — which is why eight fixes, each
    editing the body classifier and each leaving that pattern alone, could not catch it.
@@ -929,14 +926,14 @@ input** — payloads assembled from `chr(36)` and passed through `subprocess`, n
 typed into a command line. The reason for that discipline is the finding itself,
 and it is stated at the end.
 
-| Component | Input | Result | Correct? |
-| --- | --- | --- | --- |
-| `check-shell-interpolation.py --fragment` | an unclosed opener | 1 violation, exit 1 | yes |
-| `scan_payload(payload, …, 'python')` | `f"{cut:.3f}"` | 1 violation | yes |
-| `check-shell-interpolation.py --c-payload` | the same bytes | 1 violation, exit 1 | yes |
-| `/root/.pyenv/shims/python3 -c` | the same bytes | refuses, exit 1, prints the repair | yes |
-| `/root/.pyenv/shims/python3 -c` | `print(1+1)` | runs, exit 0 | yes |
-| `diagnose-bad-substitution.py --message` | `Bad substitution: bc` | decodes to branch A | new |
+| Component                                  | Input                  | Result                             | Correct? |
+| ------------------------------------------ | ---------------------- | ---------------------------------- | -------- |
+| `check-shell-interpolation.py --fragment`  | an unclosed opener     | 1 violation, exit 1                | yes      |
+| `scan_payload(payload, …, 'python')`       | `f"{cut:.3f}"`         | 1 violation                        | yes      |
+| `check-shell-interpolation.py --c-payload` | the same bytes         | 1 violation, exit 1                | yes      |
+| `/root/.pyenv/shims/python3 -c`            | the same bytes         | refuses, exit 1, prints the repair | yes      |
+| `/root/.pyenv/shims/python3 -c`            | `print(1+1)`           | runs, exit 0                       | yes      |
+| `diagnose-bad-substitution.py --message`   | `Bad substitution: bc` | decodes to branch A                | new      |
 
 Every mechanism the document describes, in the state the previous ten sections
 left it, **works**. The shim is installed (`/root/.pyenv/shims/python3`, 2680
@@ -991,7 +988,7 @@ again from the other end.
 Section 4e named this as a **cost asymmetry** and made the safe path cheap.
 Section 4g named the reach problem and installed the shim. Both were right and
 both hold. What neither could do is remove the requirement that the author's
-*first* command be safe, because the author does not yet know it is unsafe.
+_first_ command be safe, because the author does not yet know it is unsafe.
 
 Three things follow, and only the third is new work.
 
@@ -1007,7 +1004,7 @@ Three things follow, and only the third is new work.
 3. **The deliverable is a file, always.** The twelfth recurrence wrote a
    TypeScript program through a heredoc. §4b's first rule was already "write the
    program to a file"; what the eleventh recurrence shows is that the rule has to
-   apply to *the fixture being written*, not only to the program under study.
+   apply to _the fixture being written_, not only to the program under study.
    Every command in this section that succeeded got its payload from
    `subprocess`, a file, or a variable assigned without a brace.
 
@@ -1023,13 +1020,13 @@ the guard's verdict changes.
 eleventh is distinguished by having no defect to fix — which means the mechanism
 is not the remaining exposure. The remaining exposure is that a command must be
 written before it can be checked, and the checking tool is reached by writing a
-command. `diagnose-bad-substitution.py` lowers the cost of the *second* step
+command. `diagnose-bad-substitution.py` lowers the cost of the _second_ step
 (recovery); it does not remove the first.
 
 This is the same shape as the ninth recurrence's conclusion (§4i: "the hazard was
 never in the text I was editing") and it extends it. The ninth found the hazard
 was in the carrier rather than the payload. The eleventh finds the same is true
-of the *tool that inspects the carrier*, and that no arrangement of the tool
+of the _tool that inspects the carrier_, and that no arrangement of the tool
 changes this, because the tool is reached through the thing it inspects.
 
 ### The generalisation

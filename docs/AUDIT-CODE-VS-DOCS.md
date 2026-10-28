@@ -17,16 +17,16 @@ The engineering hygiene is genuinely excellent and the documented quality claims
 reproduction**. The problem is not discipline — it is that **three of the four root documents
 describe a different system from the one on `master`**.
 
-| Claim source | Claim | Reproduced? | Verdict |
-| --- | --- | --- | --- |
-| `CONTRIBUTING.md` | ≥95% coverage on all four dimensions | ✅ 98.29 / 97.32 / 100 / 98.29 (core) | **ACCURATE** |
-| `CONTRIBUTING.md` | No mocks, real SQLite / real HTTP | ✅ Verified in test sources | **ACCURATE** |
-| `CONTRIBUTING.md` | `pnpm check` green | ✅ lint + typecheck + test + format all pass | **ACCURATE** |
-| `README.md` | Six cognitive capabilities are the product | ⚠️ Implemented, but **unreachable from the benchmark** | **PARTIALLY MISLEADING** |
-| `ARCHITECTURE.md` | Layering, Float64, pluggable backends | ✅ Matches | **ACCURATE** |
-| `SOTA-BASELINE.md` | 83.55% on `master` | ❌ Measured at `a52628f`, **55 commits behind** | **STALE** |
-| `ARCHITECTURE.md` | Retrieval-as-consolidation = Hebbian + FSRS + TD(λ) | ❌ **No TD(λ) exists in the codebase** | **INACCURATE** |
-| `ARCHITECTURE.md` | Cross-layer distillation via optimal transport | ❌ `sinkhorn` is exported but **never called** | **INACCURATE** |
+| Claim source       | Claim                                               | Reproduced?                                            | Verdict                  |
+| ------------------ | --------------------------------------------------- | ------------------------------------------------------ | ------------------------ |
+| `CONTRIBUTING.md`  | ≥95% coverage on all four dimensions                | ✅ 98.29 / 97.32 / 100 / 98.29 (core)                  | **ACCURATE**             |
+| `CONTRIBUTING.md`  | No mocks, real SQLite / real HTTP                   | ✅ Verified in test sources                            | **ACCURATE**             |
+| `CONTRIBUTING.md`  | `pnpm check` green                                  | ✅ lint + typecheck + test + format all pass           | **ACCURATE**             |
+| `README.md`        | Six cognitive capabilities are the product          | ⚠️ Implemented, but **unreachable from the benchmark** | **PARTIALLY MISLEADING** |
+| `ARCHITECTURE.md`  | Layering, Float64, pluggable backends               | ✅ Matches                                             | **ACCURATE**             |
+| `SOTA-BASELINE.md` | 83.55% on `master`                                  | ❌ Measured at `a52628f`, **55 commits behind**        | **STALE**                |
+| `ARCHITECTURE.md`  | Retrieval-as-consolidation = Hebbian + FSRS + TD(λ) | ❌ **No TD(λ) exists in the codebase**                 | **INACCURATE**           |
+| `ARCHITECTURE.md`  | Cross-layer distillation via optimal transport      | ❌ `sinkhorn` is exported but **never called**         | **INACCURATE**           |
 
 Reproduced at `31a3371`:
 
@@ -80,17 +80,17 @@ binomialCdf · BruteForceVectorIndex · mean · stddev · variance · welchTTest
 Counted across all of `packages/`, the signature cognitive entry points have **zero call sites
 outside their own module, their own tests, and the barrel export**:
 
-| Exported capability | External call sites |
-| --- | --- |
-| `decideWrite` (value-driven write) | **0** |
-| `decideRetrieval` (abstention) | **0** |
-| `defaultValueFunction` | **0** |
-| `resolveContradiction` | **0** |
-| `currentFacts` (bitemporal query) | **0** |
-| `consolidate` (Hebbian + FSRS) | **0** |
-| `MemoryGraph` | **0** |
-| `sinkhorn` (optimal transport) | **0** |
-| `retrievability` / `review` (FSRS) | **0** |
+| Exported capability                | External call sites |
+| ---------------------------------- | ------------------- |
+| `decideWrite` (value-driven write) | **0**               |
+| `decideRetrieval` (abstention)     | **0**               |
+| `defaultValueFunction`             | **0**               |
+| `resolveContradiction`             | **0**               |
+| `currentFacts` (bitemporal query)  | **0**               |
+| `consolidate` (Hebbian + FSRS)     | **0**               |
+| `MemoryGraph`                      | **0**               |
+| `sinkhorn` (optimal transport)     | **0**               |
+| `retrievability` / `review` (FSRS) | **0**               |
 
 **Interpretation.** The 83.55% LongMemEval-S score is produced by
 `packages/cortex-eval/src/natural-language-memory.ts` (2,817 lines) plus `retrieval.ts`
@@ -115,12 +115,12 @@ under measurement.
 Stated up front, because they are the first objections a careful reader should raise:
 
 1. **The evaluation belongs in the evaluation package.** A measurement harness that imports the
-   system under test from a single source is *correct* — it keeps the instrument independent of
+   system under test from a single source is _correct_ — it keeps the instrument independent of
    the thing it measures. The defect is not the import graph; it is that no **product** path
    exists that composes `cortex-core`'s cognitive layer into a runnable system. `cortex-eval`
    therefore cannot measure it even in principle.
 2. **`cortex-core` is pure by design.** Its algorithms are contracts plus pure functions, so a
-   harness *could* drive them directly. It does not, which is precisely why "validated library"
+   harness _could_ drive them directly. It does not, which is precisely why "validated library"
    and "measured system" are different claims.
 
 Neither caveat rescues the documentation: both leave the gap between what `README.md` sells and
@@ -142,6 +142,7 @@ eval src churn (all 30 changed files): +8,326 / −227 lines
 ```
 
 Fifty-two of those commits touch `packages/cortex-eval/src`, including:
+
 - `feat(eval): add a date-range arm to TR recall`
 - `feat(eval): recall TR turns by occurrence date, not mention date`
 - `feat(eval): add zero-LLM entity-graph recall arm for TR questions` → **later reverted**
@@ -186,22 +187,23 @@ grep -rn "math/ot" packages/ → index.ts only (plus tests)
 
 `consolidation/consolidate.ts` — the module whose header comment claims "cross-layer
 distillation" — does not import it. The phrase in that file's docstring:
-> *"plus cross-layer distillation"*
+
+> _"plus cross-layer distillation"_
 
 describes an intention, not the code beneath it.
 
 ### 3.3 Other advertised-but-absent items
 
-| Advertised (`ARCHITECTURE.md` / whitepaper) | Reality |
-| --- | --- |
-| Platt / temperature calibration for abstention confidence | No `platt`, no `temperature scaling` anywhere |
-| IVF / HNSW vector indexes | Only `BruteForceVectorIndex`; `pgvector` appears once, in a type comment |
-| Browser backend (sql.js / IndexedDB) | No matches |
-| Multimodal memory | No matches |
-| `pgvector` scale-out path | Only `PgStorage` (JSONB) in `cortex-node` |
-| CRDT multi-agent merge | No matches |
-| Provenance-DAG / immutable audit log | Split, and the halves are not in the same state. The **log half is real** — `Fact` carries `source`, `sourceTrust` and both time axes, and `temporal/bitemporal.ts` implements `currentFacts` / `currentValue` / `findContradictions`, so origin and as-of reconstruction ship. The **DAG half is absent**: `ProvenanceNode` declared a `parents` edge that no code read, and has been deleted. See `DECISION-PROVENANCE-NODE.md` |
-| Memory-poisoning defence | `poison` appears only in a doc comment and an unrelated test |
+| Advertised (`ARCHITECTURE.md` / whitepaper)               | Reality                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platt / temperature calibration for abstention confidence | No `platt`, no `temperature scaling` anywhere                                                                                                                                                                                                                                                                                                                                                                                     |
+| IVF / HNSW vector indexes                                 | Only `BruteForceVectorIndex`; `pgvector` appears once, in a type comment                                                                                                                                                                                                                                                                                                                                                          |
+| Browser backend (sql.js / IndexedDB)                      | No matches                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Multimodal memory                                         | No matches                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `pgvector` scale-out path                                 | Only `PgStorage` (JSONB) in `cortex-node`                                                                                                                                                                                                                                                                                                                                                                                         |
+| CRDT multi-agent merge                                    | No matches                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Provenance-DAG / immutable audit log                      | Split, and the halves are not in the same state. The **log half is real** — `Fact` carries `source`, `sourceTrust` and both time axes, and `temporal/bitemporal.ts` implements `currentFacts` / `currentValue` / `findContradictions`, so origin and as-of reconstruction ship. The **DAG half is absent**: `ProvenanceNode` declared a `parents` edge that no code read, and has been deleted. See `DECISION-PROVENANCE-NODE.md` |
+| Memory-poisoning defence                                  | `poison` appears only in a doc comment and an unrelated test                                                                                                                                                                                                                                                                                                                                                                      |
 
 ---
 
@@ -225,21 +227,21 @@ These are real and verified — they are the project's actual assets:
 
 ## 5. Documentation gaps to close
 
-| # | Gap | Severity |
-| --- | --- | --- |
-| D1 | No document states what the benchmark path **is** (`natural-language-memory` + `retrieval`), nor how it relates to `cortex-core` | **P0** |
-| D2 | `SOTA-BASELINE.md` quotes a baseline 55 commits stale; no current-revision measurement exists | **P0** |
-| D3 | `ARCHITECTURE.md` / `README.md` advertise TD(λ) and OT distillation that are not wired | **P0** |
-| D4 | No coverage thresholds are enforced in any `vitest.config.ts` — the ≥95% rule is convention, not a gate | **P1** |
-| D5 | `longmemeval-sota-research.md` reports 83.50% / IE 94.83% / MR 76.65% / ABS 99.17%, contradicting `SOTA-BASELINE.md`'s 83.55% / 94.50% / 77.07% / 100% | **P1** |
-| D6 | `memory-benchmark-sota-landscape.md` still recommends wiring graph activation into MR/TR as P0/P1, though it was measured and **reverted** (`7780071`) | **P0** |
+| #   | Gap                                                                                                                                                    | Severity |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| D1  | No document states what the benchmark path **is** (`natural-language-memory` + `retrieval`), nor how it relates to `cortex-core`                       | **P0**   |
+| D2  | `SOTA-BASELINE.md` quotes a baseline 55 commits stale; no current-revision measurement exists                                                          | **P0**   |
+| D3  | `ARCHITECTURE.md` / `README.md` advertise TD(λ) and OT distillation that are not wired                                                                 | **P0**   |
+| D4  | No coverage thresholds are enforced in any `vitest.config.ts` — the ≥95% rule is convention, not a gate                                                | **P1**   |
+| D5  | `longmemeval-sota-research.md` reports 83.50% / IE 94.83% / MR 76.65% / ABS 99.17%, contradicting `SOTA-BASELINE.md`'s 83.55% / 94.50% / 77.07% / 100% | **P1**   |
+| D6  | `memory-benchmark-sota-landscape.md` still recommends wiring graph activation into MR/TR as P0/P1, though it was measured and **reverted** (`7780071`) | **P0**   |
 
 ---
 
 ## 6. Closing the gap: where the cognitive layer should be wired
 
 The fix is **not** to force `cortex-core` into `cortex-eval`. That would collapse the instrument
-into the system under test. The system that the benchmark *should* exercise belongs in the
+into the system under test. The system that the benchmark _should_ exercise belongs in the
 product layer.
 
 ### 6.1 Required seam: `cortex-memory`
@@ -248,13 +250,13 @@ product layer.
 is no package that composes the cognitive layer into a runnable memory system. That package is
 missing, and its absence is the root cause of §1.
 
-| Layer | Package | Responsibility | Status |
-| --- | --- | --- | --- |
-| Contracts + pure algorithms | `cortex-core` | `decideWrite`, `decideRetrieval`, `resolveContradiction`, `consolidate`, `MemoryGraph`, `sinkhorn`, FSRS, bitemporal | ✅ exists, ✅ tested, ❌ unused |
-| **Composition** | **`cortex-memory` (new)** | **Wire the above into one `MemorySystem` that satisfies `cortex-core`'s own contracts** | ❌ **missing** |
-| Backends | `cortex-node` | `SqliteStorage`, `PgStorage` | ✅ exists (storage only) |
-| Providers | `cortex-llm` | LLM + embedding adapters | ✅ exists |
-| Instrument | `cortex-eval` | Measure whatever satisfies `MemorySystem` | ✅ exists |
+| Layer                       | Package                   | Responsibility                                                                                                       | Status                          |
+| --------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Contracts + pure algorithms | `cortex-core`             | `decideWrite`, `decideRetrieval`, `resolveContradiction`, `consolidate`, `MemoryGraph`, `sinkhorn`, FSRS, bitemporal | ✅ exists, ✅ tested, ❌ unused |
+| **Composition**             | **`cortex-memory` (new)** | **Wire the above into one `MemorySystem` that satisfies `cortex-core`'s own contracts**                              | ❌ **missing**                  |
+| Backends                    | `cortex-node`             | `SqliteStorage`, `PgStorage`                                                                                         | ✅ exists (storage only)        |
+| Providers                   | `cortex-llm`              | LLM + embedding adapters                                                                                             | ✅ exists                       |
+| Instrument                  | `cortex-eval`             | Measure whatever satisfies `MemorySystem`                                                                            | ✅ exists                       |
 
 Dependency direction stays acyclic:
 
@@ -271,13 +273,13 @@ can report both the reference pipeline and the cognitive composition side by sid
 
 ### 6.2 Ordered work
 
-| # | Task | Why it is first | Verification |
-| --- | --- | --- | --- |
-| 1 | ~~Extract the reference pipeline's contracts into `S`-compatible form~~ | **Closed as already satisfied** — nothing was entangled and there was no `S` to bend into (`AUDIT-EVAL-CONTRACTS.md` §2, §4) | ~~`cortex-memory` passes the existing `MemorySystem` conformance tests~~ → **the suite did not exist; it does now** (`memory-system-conformance.test.ts`, 11 assertions over `runBenchmark`'s routing) |
-| 2 | ~~Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval`~~ | **Done** — the cognitive layer is reachable; whether it *helps* is step 3 | ✅ **Delivered: 129 tests, 100/100/100/100 coverage, `memory-system-conformance.test.ts` passes unmodified.** See [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) |
-| 3 | ~~Add a benchmark arm that supplies `cortex-memory` instead of the reference pipeline~~ | Produces the first honest number for the cognitive layer | **Arm assembled, pre-registered, and wired for dispatch.** Three defects in the dispatch path — a missing embedding-cache restore, a blank input read as a zero budget, and a hardcoded enable toggle — were found by reading the wiring back and closed with tests; see §7.3 of [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md). Running `python3 tools/dispatch-cortex-memory-ab.py` is the remaining step |
-| 4 | Enforce the ≥95% ceiling in `vitest.config.ts` (`thresholds`) | **Premise needs re-checking** — all five packages already carry `thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 }`, so the rule is *not* convention only. **Measured, and the gate is weaker than it reads**: vitest thresholds are checked against the **package average**, not per file, so an injected unreached export dropped `cortex-memory/src/prompt.ts` to 94.36/90.9 while the package averaged 97.88/97.43 and `vitest run --coverage` still exited 0. A `--coverage.thresholds.perFile=true` audit of the clean tree names four more files below the floor: `cortex-core/src/contradiction/resolve.ts` (branches 91.30%), `cortex-core/src/math/stats.ts` (lines/statements 93.29%), `cortex-llm/src/embedding/transformers.ts` (branches 87.50%) and `cortex-llm/src/rerank/llm-reranker.ts` (branches 94.87%). The gates are real but average-scoped, so **a single under-covered file cannot fail CI** — which is the exact question this row asked. `stats.ts` is a separate finding again: its 6 guard bodies carry `c8 ignore`, and the repo measures with v8 coverage | A deliberately under-covered commit must fail CI — **✅ answered: it does not, for a per-file regression. `perFile: true` closes it and is verified to catch the injected case**
-| 5 | Re-measure LongMemEval-S at current `master` | D2 — replaces a 55-commit-stale number. **Folded into step 3**: the arm's baseline side is this measurement, taken in the same dispatch under the same instrument, which is both cheaper and less confounded than a separate run | Full N=500, 4 runs, Wilson intervals published — from `benchmark-cortex-memory-ablation-report.json` |
+| #   | Task                                                                                    | Why it is first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Verification                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | ~~Extract the reference pipeline's contracts into `S`-compatible form~~                 | **Closed as already satisfied** — nothing was entangled and there was no `S` to bend into (`AUDIT-EVAL-CONTRACTS.md` §2, §4)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | ~~`cortex-memory` passes the existing `MemorySystem` conformance tests~~ → **the suite did not exist; it does now** (`memory-system-conformance.test.ts`, 11 assertions over `runBenchmark`'s routing)                                                                                                                                                                                                                                                |
+| 2   | ~~Implement `cortex-memory` composing `decideWrite` → storage → `decideRetrieval`~~     | **Done** — the cognitive layer is reachable; whether it _helps_ is step 3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | ✅ **Delivered: 129 tests, 100/100/100/100 coverage, `memory-system-conformance.test.ts` passes unmodified.** See [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md)                                                                                                                                                                                                                                                                      |
+| 3   | ~~Add a benchmark arm that supplies `cortex-memory` instead of the reference pipeline~~ | Produces the first honest number for the cognitive layer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Arm assembled, pre-registered, and wired for dispatch.** Three defects in the dispatch path — a missing embedding-cache restore, a blank input read as a zero budget, and a hardcoded enable toggle — were found by reading the wiring back and closed with tests; see §7.3 of [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md). Running `python3 tools/dispatch-cortex-memory-ab.py` is the remaining step |
+| 4   | Enforce the ≥95% ceiling in `vitest.config.ts` (`thresholds`)                           | **Premise needs re-checking** — all five packages already carry `thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 }`, so the rule is _not_ convention only. **Measured, and the gate is weaker than it reads**: vitest thresholds are checked against the **package average**, not per file, so an injected unreached export dropped `cortex-memory/src/prompt.ts` to 94.36/90.9 while the package averaged 97.88/97.43 and `vitest run --coverage` still exited 0. A `--coverage.thresholds.perFile=true` audit of the clean tree names four more files below the floor: `cortex-core/src/contradiction/resolve.ts` (branches 91.30%), `cortex-core/src/math/stats.ts` (lines/statements 93.29%), `cortex-llm/src/embedding/transformers.ts` (branches 87.50%) and `cortex-llm/src/rerank/llm-reranker.ts` (branches 94.87%). The gates are real but average-scoped, so **a single under-covered file cannot fail CI** — which is the exact question this row asked. `stats.ts` is a separate finding again: its 6 guard bodies carry `c8 ignore`, and the repo measures with v8 coverage | A deliberately under-covered commit must fail CI — **✅ answered: it does not, for a per-file regression. `perFile: true` closes it and is verified to catch the injected case**                                                                                                                                                                                                                                                                      |
+| 5   | Re-measure LongMemEval-S at current `master`                                            | D2 — replaces a 55-commit-stale number. **Folded into step 3**: the arm's baseline side is this measurement, taken in the same dispatch under the same instrument, which is both cheaper and less confounded than a separate run                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Full N=500, 4 runs, Wilson intervals published — from `benchmark-cortex-memory-ablation-report.json`                                                                                                                                                                                                                                                                                                                                                  |
 
 > **Step 3 required more than the row implied, and it changed step 5.** The row reads
 > like one arm added to a package that already has nine. It is the first arm whose two
@@ -290,7 +292,7 @@ can report both the reference pipeline and the cognitive composition side by sid
 >
 > The consequence for step 5 is that it **merges into step 3**. Step 5 wants a
 > re-measurement at current `master` with full N=500, 4 runs and Wilson intervals; the
-> arm's baseline side *is* that measurement, taken in the same dispatch under the same
+> arm's baseline side _is_ that measurement, taken in the same dispatch under the same
 > instrument. A separate dispatch for step 5 would spend the same guarded quota to
 > answer the same question with a staler revision. Step 5's row is therefore re-pointed
 > at the arm's baseline artifact rather than at a run of its own.
@@ -314,7 +316,7 @@ can report both the reference pipeline and the cognitive composition side by sid
 > `computeMetrics` is now `unreferenced`: it is an interface, kept. See
 > [`docs/AUDIT-EVAL-CONTRACTS.md`](docs/AUDIT-EVAL-CONTRACTS.md).
 
-> **Ordering is deliberate.** Steps 1–3 establish whether the cognitive layer *helps or hurts*
+> **Ordering is deliberate.** Steps 1–3 establish whether the cognitive layer _helps or hurts_
 > before any further capability is built on top of it. Building more cognition onto an unmeasured
 > base would repeat the error this audit documents.
 >
@@ -357,15 +359,15 @@ and drops the latter has the priority backwards.
 
 So an arm registered under §6.3 declares three artifact sets, and the third is not optional:
 
-| Set | Named | Written when |
-| --- | --- | --- |
-| Complete | `benchmark-cortex-memory-ablation-report.{md,json}` | the arm returns |
-| Diagnostic | `benchmark-error.log` | any throw, after the stack |
-| **Partial** | `benchmark-cortex-memory-partial.json` | any throw, **if the run measured anything** |
+| Set         | Named                                               | Written when                                |
+| ----------- | --------------------------------------------------- | ------------------------------------------- |
+| Complete    | `benchmark-cortex-memory-ablation-report.{md,json}` | the arm returns                             |
+| Diagnostic  | `benchmark-error.log`                               | any throw, after the stack                  |
+| **Partial** | `benchmark-cortex-memory-partial.json`              | any throw, **if the run measured anything** |
 
 **The partial set carries no `delta`, no aggregate and no per-capability table**, and that
-omission is the contract rather than a gap. Every one of those is a function of *both* sides
-over the *same* index vector; with one side short they are arithmetic over data that was never
+omission is the contract rather than a gap. Every one of those is a function of _both_ sides
+over the _same_ index vector; with one side short they are arithmetic over data that was never
 paired, and `0/0` renders in a table exactly like `0/121`. What the partial set carries is the
 answer vectors and their extent — `system`, `reached`, `total`, `run` — which is what a reader
 needs to decide whether the next attempt is a re-dispatch or a design change.
@@ -374,7 +376,7 @@ Two consequences worth stating, because both were live defects until fixed:
 
 - **The predicate for "measured anything" is not `reached === 0`.** `reached` counts only the
   side that was running, so a feature side dying at question 0 reports `reached: 0` while the
-  baseline vector is *complete* — and the first version of that predicate discarded it. The
+  baseline vector is _complete_ — and the first version of that predicate discarded it. The
   condition is `reached === 0 && baselineAnswers.length === 0`.
 - **The partial file must match the upload glob.** The workflow's `path:` captures
   `packages/cortex-memory/benchmark-*.{md,json}` by pattern rather than by an explicit filename
@@ -398,15 +400,15 @@ relying on the workflow default to land on the registered `threshold: 0`.
 Those are one defect in two shapes, and they extend §7.3's enumeration of the
 side-channel by one form:
 
-| Form | Wrong where | Caught by |
-| --- | --- | --- |
-| 1 | input not declared in the workflow | `test_dispatch_inputs.py` |
-| 2 | declared but not forwarded into `env` | `test_dispatch_inputs.py` |
-| 3 | forwarded but never read by the arm | `bench-memory-arm.test.ts` |
-| 4 | **read correctly, but the dispatch never sends the registered value** | `test_preregistration_config.py` |
+| Form | Wrong where                                                           | Caught by                        |
+| ---- | --------------------------------------------------------------------- | -------------------------------- |
+| 1    | input not declared in the workflow                                    | `test_dispatch_inputs.py`        |
+| 2    | declared but not forwarded into `env`                                 | `test_dispatch_inputs.py`        |
+| 3    | forwarded but never read by the arm                                   | `bench-memory-arm.test.ts`       |
+| 4    | **read correctly, but the dispatch never sends the registered value** | `test_preregistration_config.py` |
 
 Form 4 is the one that survives every layer working. The run succeeds, the log line
-prints, the artifact records a configuration — a *plausible* one, and not the
+prints, the artifact records a configuration — a _plausible_ one, and not the
 registered one. Form 2's symptom is an absent value; form 4's symptom is a wrong
 value, and a wrong value is harder to notice because it is not missing.
 
@@ -440,13 +442,13 @@ that was written into the roadmap as the next step, is that the gate was now usa
 It was not, and the distinction that was missing is worth naming because two rounds were
 spent on one half of it:
 
-| Property | Question | Was it true after §6.4's fix |
-| --- | --- | --- |
-| **reachable** | can some threshold close the gate? | yes — `0.9` closes at `0.5` and opens at `1` |
+| Property           | Question                                             | Was it true after §6.4's fix                  |
+| ------------------ | ---------------------------------------------------- | --------------------------------------------- |
+| **reachable**      | can some threshold close the gate?                   | yes — `0.9` closes at `0.5` and opens at `1`  |
 | **discriminating** | can the gate separate a strong turn from a weak one? | **no** — every turn still carried exactly `1` |
 
 The failure is not that the fix was wrong; it is that "the range is no longer a point" was
-read as "the gate now works". A gate whose *input* is constant is all-or-nothing at every
+read as "the gate now works". A gate whose _input_ is constant is all-or-nothing at every
 armament, so the whole reachable range can be a set and every cut inside it can still be
 useless. Widening a range and introducing a distribution are two different operations, and
 only the first was performed. See `DESIGN-CORTEX-MEMORY.md` §6.5 and
@@ -454,18 +456,18 @@ only the first was performed. See `DESIGN-CORTEX-MEMORY.md` §6.5 and
 
 **Why the earlier test could not see it.** `retrieval-reachable-range.test.ts` asserted the
 boundary, the constant at the boundary, and the widening — all four of its assertions were
-about the *range*. §49 added `retrieval-discrimination.test.ts`, whose assertions are about
-the *spread*, and that file is only a guard because it also asserts the property that was
+about the _range_. §49 added `retrieval-discrimination.test.ts`, whose assertions are about
+the _spread_, and that file is only a guard because it also asserts the property that was
 false. A suite that pins a range can be entirely green while the thing the range is for is
 absent.
 
 **The class of defect, stated so it is checkable.** §7.3's table enumerates side-channels
 where a value does not reach a decision. This one is adjacent and different:
 
-| Class | Shape | Detected by |
-| --- | --- | --- |
-| side-channel (four forms, §7.3 / §6.4) | a configured value never reaches the decision | comparing configuration against behaviour |
-| **under-specified remedy** (this section) | the configured value reaches the decision, and the decision still cannot use it | asking what the decision can *separate*, not what it can *reach* |
+| Class                                     | Shape                                                                           | Detected by                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| side-channel (four forms, §7.3 / §6.4)    | a configured value never reaches the decision                                   | comparing configuration against behaviour                        |
+| **under-specified remedy** (this section) | the configured value reaches the decision, and the decision still cannot use it | asking what the decision can _separate_, not what it can _reach_ |
 
 The second is harder to notice because every intervening layer is working. The value is
 parsed, forwarded, applied, recorded in the artifact and printed in the log; the only thing
@@ -481,7 +483,7 @@ signal is the caller's, what does the benchmark arm pass?
 An inline closure inside `bench/` would have been the smallest change and the wrong one.
 `bench/**` is excluded from coverage as an entry point, for the reason `bench-arm-options.ts`
 records — a decision written there is a decision no test can reach — so a variation supplied
-from there would be variation whose *correctness* nothing checks. The arm would then be
+from there would be variation whose _correctness_ nothing checks. The arm would then be
 comparing the baseline against a mechanism whose only evidence is that the run completed.
 
 So the signal is a module in `src/**`: `confidence.ts`, one function, `min(1, length / 2000)`.
@@ -512,7 +514,7 @@ satisfies every stated criterion and discriminates nothing. The general form:
 This cannot be checked from a formula, only from a context. `confidence.test.ts` therefore
 asserts the spread against a context shaped like the benchmark's — short conversational
 turns, medium statements, long evidence — and asserts the degenerate variant against a
-filtered context where it *is* the constant it stands for. The first draft of that test used
+filtered context where it _is_ the constant it stands for. The first draft of that test used
 `min(1, length / 10_000)` against the unfiltered context, produced eight distinct values, and
 failed; the correction was to make the variant's claim about a context rather than about its
 own formula.

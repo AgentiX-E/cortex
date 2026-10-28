@@ -167,3 +167,58 @@ describe('the table is well formed', () => {
     expect(CRITERIA.find((criterion) => criterion.id === 'R1')?.accepted).toBe(true);
   });
 });
+
+describe('the reranking rows, written before the run that fills them', () => {
+  const s6 = CRITERIA.find((criterion) => criterion.id === 'S6');
+  const s7 = CRITERIA.find((criterion) => criterion.id === 'S7');
+
+  it('gates the instrument and aims at the paired gain, which are two different numbers', () => {
+    // The instrument row is a gate because a discarded reply is not a small effect — it is an unreadable
+    // run. The gain row is an aim because the number does not exist yet. Collapsing the two into one row
+    // would make either the gate block on an unmeasured aim or the aim inherit a threshold of zero.
+    expect(s6?.kind).toBe('gate');
+    expect(s6?.comparator).toBe('at-most');
+    expect(s6?.threshold).toBe(0);
+    expect(s6?.unit).toBe('count');
+    expect(s7?.kind).toBe('aim');
+    expect(s7?.comparator).toBe('at-least');
+    expect(s7?.threshold).toBe(3);
+    expect(s7?.unit).toBe('count');
+  });
+
+  it('reads both rows out of one artifact, so a run cannot fill one and not the other', () => {
+    const first = s6?.source;
+    const second = s7?.source;
+    expect(first?.kind).toBe('artifact');
+    expect(second?.kind).toBe('artifact');
+    if (first?.kind !== 'artifact' || second?.kind !== 'artifact') return;
+    expect(first.path).toBe(second.path);
+    expect(first.key).not.toBe(second.key);
+  });
+
+  it('points at a file rather than at the word unrun, so the row starts reporting when the run lands', () => {
+    // `{ kind: 'unrun' }` is a row that can never become live without an edit, and an edit is exactly the
+    // moment somebody re-derives the threshold. An artifact path that does not exist yet resolves to `unrun`
+    // today and to a number tomorrow, with no change to this file.
+    for (const criterion of [s6, s7]) {
+      expect(criterion?.source.kind, criterion?.id).toBe('artifact');
+    }
+  });
+
+  it('says a discarded reply is an assembly failure rather than a null result', () => {
+    // The whole reason the census exists: `rerankHits` degrades to the retrieved order, so an endpoint
+    // answering 401 five hundred times and a cross-encoder that agreed every time produce the same accuracy.
+    expect(s6?.onMiss).toContain('assembly failure');
+    expect(s6?.onMiss).toContain('401');
+    expect(s7?.onMiss).toContain('delete the stage');
+  });
+
+  it('grades the only published price of this stage as C, because it is another corpus', () => {
+    const peer = s7?.competitors?.[0];
+    expect(peer?.grade).toBe('C');
+    expect(peer?.recipe).toContain('3.92');
+    // The grade is doing work: a C figure may motivate the increment and may price the mechanism, and it may
+    // not become the threshold. The threshold is 3 questions on our own 121, not 3.92 points on theirs.
+    expect(peer?.value).not.toBe(s7?.threshold);
+  });
+});

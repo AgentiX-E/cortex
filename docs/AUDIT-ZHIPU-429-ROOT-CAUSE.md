@@ -18,11 +18,11 @@ So the question is not "why is the quota gone" but **"why does a funded account
 still see 429, and why does the retry logic fail to absorb it"**. Three defects
 answer that, and they compound:
 
-| # | Defect                                                                        | Consequence                                                        |
-| - | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 1 | Retry budget (31s of sleep) is **shorter than the provider's 60s window**      | every retry lands inside the window that rejected the request       |
-| 2 | `Retry-After` is **never read**, so the server's own pacing hint is discarded  | the client cannot know how long to wait and guesses                  |
-| 3 | **No client-side pacing** between the 64-input batches                        | the run issues back-to-back maximum-size requests until throttled    |
+| #   | Defect                                                                        | Consequence                                                       |
+| --- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 1   | Retry budget (31s of sleep) is **shorter than the provider's 60s window**     | every retry lands inside the window that rejected the request     |
+| 2   | `Retry-After` is **never read**, so the server's own pacing hint is discarded | the client cannot know how long to wait and guesses               |
+| 3   | **No client-side pacing** between the 64-input batches                        | the run issues back-to-back maximum-size requests until throttled |
 
 None is a billing problem, and fixing none of them requires a top-up. The
 offline fallback recorded earlier as the remedy would have masked all three.
@@ -31,12 +31,12 @@ offline fallback recorded earlier as the remedy would have masked all three.
 
 From the `embedding-3` API reference at `docs.bigmodel.cn`, verbatim constraints:
 
-| Constraint                     | Value                                   | Cortex setting           | Verdict      |
-| ------------------------------ | --------------------------------------- | ------------------------ | ------------ |
-| entries per request            | **at most 64**                          | `EMBED_BATCH = 64`       | at the ceiling |
-| tokens per single request      | at most 3072                            | not enforced             | **unchecked** |
-| output dimensions              | 256 / 512 / 1024 / 2048 (default 2048)  | `1024`                   | valid        |
-| 429 error code                 | `1305`, "access volume too high"        | treated as generic retry | misread      |
+| Constraint                | Value                                  | Cortex setting           | Verdict        |
+| ------------------------- | -------------------------------------- | ------------------------ | -------------- |
+| entries per request       | **at most 64**                         | `EMBED_BATCH = 64`       | at the ceiling |
+| tokens per single request | at most 3072                           | not enforced             | **unchecked**  |
+| output dimensions         | 256 / 512 / 1024 / 2048 (default 2048) | `1024`                   | valid          |
+| 429 error code            | `1305`, "access volume too high"       | treated as generic retry | misread        |
 
 The batch ceiling being sat exactly is not itself a bug — 64 is the documented
 maximum and using it minimises request count, which is the right direction for a
@@ -125,8 +125,8 @@ because the status code is shared between the two causes.
 > Two consequences follow. First, a dependency that is only ever reached through
 > `await import()` must not be declared where the whole workspace must resolve
 > it; optionality is a property of the declaration, not of the import. Second,
-> when an atomic step fails, the step that *reports* the failure is not the step
-> that *caused* it — read the failing command's own output before editing the
+> when an atomic step fails, the step that _reports_ the failure is not the step
+> that _caused_ it — read the failing command's own output before editing the
 > code the error message points at.
 
 ## 6. Ranking signal
@@ -174,13 +174,13 @@ All five requirements are implemented. Each row names the code that carries it
 and the evidence that the fix is reachable from a real run, not only from a unit
 test.
 
-| # | Requirement              | Implementation                                                                 | Evidence                                                                                  |
-| - | ------------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| 1 | Read `Retry-After`       | `parseRetryAfterMs` in `packages/cortex-llm/src/retry.ts`; consulted ahead of the computed backoff | 5 parser tests (delta-seconds, HTTP-date, fractional, malformed rejection) + 6 `retryableFetch` tests |
-| 2 | Outlast a minute window  | `DEFAULT_RETRY_BUDGET_MS = 120_000`; the ceiling is a wall-clock budget, not an attempt count | `DEFAULT_RETRY_BUDGET_MS > 60_000` test + fake-timer test asserting the budget stops a 10-retry sequence at exactly 5 requests |
-| 3 | Pace the batch loop      | `EMBEDDING_BATCH_INTERVAL_MS` → `setEmbeddingBatchIntervalMs`, read by `embedManyCached` when no per-call value is given | pacing test over two 64-entry batches; the value is printed in the run log and recorded in the artifact |
-| 4 | Bound tokens per request | `EMBED_MAX_TOKENS = 3072` and `shapeBatches` in `packages/cortex-eval/src/retrieval.ts` | token-overflow split test, oversized-single-text test, and a small-text test proving the bound does not degenerate to one request per text |
-| 5 | Record provenance        | `createEmbeddingWithProvenanceFromEnv`, `EmbeddingSourceStats`, and the `embedding` block on every JSON artifact plus a header on every Markdown report | 9 embedding-provenance tests, 8 source-accounting tests, and an end-to-end run whose artifacts all carry the block |
+| #   | Requirement              | Implementation                                                                                                                                          | Evidence                                                                                                                                   |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Read `Retry-After`       | `parseRetryAfterMs` in `packages/cortex-llm/src/retry.ts`; consulted ahead of the computed backoff                                                      | 5 parser tests (delta-seconds, HTTP-date, fractional, malformed rejection) + 6 `retryableFetch` tests                                      |
+| 2   | Outlast a minute window  | `DEFAULT_RETRY_BUDGET_MS = 120_000`; the ceiling is a wall-clock budget, not an attempt count                                                           | `DEFAULT_RETRY_BUDGET_MS > 60_000` test + fake-timer test asserting the budget stops a 10-retry sequence at exactly 5 requests             |
+| 3   | Pace the batch loop      | `EMBEDDING_BATCH_INTERVAL_MS` → `setEmbeddingBatchIntervalMs`, read by `embedManyCached` when no per-call value is given                                | pacing test over two 64-entry batches; the value is printed in the run log and recorded in the artifact                                    |
+| 4   | Bound tokens per request | `EMBED_MAX_TOKENS = 3072` and `shapeBatches` in `packages/cortex-eval/src/retrieval.ts`                                                                 | token-overflow split test, oversized-single-text test, and a small-text test proving the bound does not degenerate to one request per text |
+| 5   | Record provenance        | `createEmbeddingWithProvenanceFromEnv`, `EmbeddingSourceStats`, and the `embedding` block on every JSON artifact plus a header on every Markdown report | 9 embedding-provenance tests, 8 source-accounting tests, and an end-to-end run whose artifacts all carry the block                         |
 
 **Why §3's pacing needed a process-wide setting rather than a parameter.** The
 retrieval functions that actually embed (`retrieveTopKByQueries`,
@@ -207,10 +207,10 @@ paced versus unpaced, compared on 429 rate and wall-clock. The workflow now
 carries `embedding_batch_interval_ms` as a dispatch input, and both arms are
 configured as follows.
 
-| Arm     | Input                          | Everything else                       |
-| ------- | ------------------------------ | ------------------------------------- |
+| Arm     | Input                              | Everything else                                                        |
+| ------- | ---------------------------------- | ---------------------------------------------------------------------- |
 | paced   | `embedding_batch_interval_ms: 250` | `limit=60`, `diagnostics_limit=100`, `rerank=off`, `thinking=disabled` |
-| control | `embedding_batch_interval_ms: 0`   | identical to the paced arm            |
+| control | `embedding_batch_interval_ms: 0`   | identical to the paced arm                                             |
 
 Zero is the control rather than a separate "before" commit: `0` means unpaced, so
 the two arms differ in exactly the one value under test and a third variable
@@ -218,11 +218,11 @@ cannot enter through a code delta.
 
 **Status: dispatched five times. The install and gate are now cleared; the 429 comparison is not yet made.** The honest sequence:
 
-| Attempt | Commit | Step reached | Outcome |
-| ------- | ------ | ------------ | ------- |
-| 1 (two arms) | `6863fa2f` | 5. Install dependencies | failure — `ERR_PNPM_OUTDATED_LOCKFILE` |
-| 2–4 (two arms, retried) | `42232bfe` | 7. Verify library | failure — `eslint: not found` |
-| 5 (two arms, no retries) | `ca40bf99` | 7. Verify library | **success, both arms** — entered the benchmark |
+| Attempt                  | Commit     | Step reached            | Outcome                                        |
+| ------------------------ | ---------- | ----------------------- | ---------------------------------------------- |
+| 1 (two arms)             | `6863fa2f` | 5. Install dependencies | failure — `ERR_PNPM_OUTDATED_LOCKFILE`         |
+| 2–4 (two arms, retried)  | `42232bfe` | 7. Verify library       | failure — `eslint: not found`                  |
+| 5 (two arms, no retries) | `ca40bf99` | 7. Verify library       | **success, both arms** — entered the benchmark |
 
 Attempt 5 settles the open question the previous attempt left: the `eslint` failure is not merely fixed in a sandbox copy, it is fixed **on a GitHub runner**, which is the only environment where `better-sqlite3` can build. That is the claim this record could not make locally, and it is now made by the environment that can test it.
 
@@ -232,10 +232,10 @@ The lockfile fix worked — `Install dependencies` went green and the failure mo
 
 The fix, in two parts, is a controlled experiment rather than a plausible edit:
 
-| Arm | Configuration | `sharp` script | `pnpm install` |
-| --- | ------------- | -------------- | -------------- |
-| A (fix) | `optionalDependencies` + `pnpm.onlyBuiltDependencies` | ignored | `Done in 2.1s` |
-| B (control) | root `devDependencies`, no allowlist | ran → `Failed` | exit 1 |
+| Arm         | Configuration                                         | `sharp` script | `pnpm install` |
+| ----------- | ----------------------------------------------------- | -------------- | -------------- |
+| A (fix)     | `optionalDependencies` + `pnpm.onlyBuiltDependencies` | ignored        | `Done in 2.1s` |
+| B (control) | root `devDependencies`, no allowlist                  | ran → `Failed` | exit 1         |
 
 Both arms were run under the pinned `pnpm@9.15.0`, the version CI uses, not the sandbox default.
 
@@ -247,19 +247,19 @@ Both arms were run under the pinned `pnpm@9.15.0`, the version CI uses, not the 
 
 **What was unproven locally, and how attempt 5 closed it.** The `eslint` failure is fixed, and that claim was verified two ways rather than one. Locally it was verified against a freshly materialised copy of the pushed tree under `pnpm@9.15.0` — the pinned version, not the sandbox default. What could **not** be verified locally was `better-sqlite3`, a required native dependency of `cortex-node` with a static import: its postinstall needs `nodejs.org` for headers and `github.com` for a prebuilt, and this sandbox blackholes both.
 
-That gap is why attempt 5 was treated as the experiment rather than as a formality, and it is now closed: on `ca40bf99` both arms report `Verify library = success` on a real runner. The lesson worth keeping is that the local environment reported the *opposite* of the truth for `better-sqlite3` — it failed there for reasons that do not exist on a runner — so a local red on a native build is not evidence of a repository defect. Distinguishing the two required reading the failing command's own output down to the fetch error, not inferring from the exit code.
+That gap is why attempt 5 was treated as the experiment rather than as a formality, and it is now closed: on `ca40bf99` both arms report `Verify library = success` on a real runner. The lesson worth keeping is that the local environment reported the _opposite_ of the truth for `better-sqlite3` — it failed there for reasons that do not exist on a runner — so a local red on a native build is not evidence of a repository defect. Distinguishing the two required reading the failing command's own output down to the fetch error, not inferring from the exit code.
 
 **Attempt 5 result: both arms succeeded, and the comparison it was meant to make cannot be made from these artifacts.** Stated first, because it is the finding:
 
-| | paced | control |
-| --- | --- | --- |
-| `batchIntervalMs` | **250** | **0** |
+|                               | paced                                      | control   |
+| ----------------------------- | ------------------------------------------ | --------- |
+| `batchIntervalMs`             | **250**                                    | **0**     |
 | provider / model / dimensions | `openai-compatible` / `embedding-3` / 1024 | identical |
-| `source.liveRequests` | 80 | 78 |
-| `source.batches` | 80 | 78 |
-| `source.cachedTexts` | 31947 | 31950 |
-| run wall-clock | 816s | 789s |
-| `Run benchmark` step | 746s | 725s |
+| `source.liveRequests`         | 80                                         | 78        |
+| `source.batches`              | 80                                         | 78        |
+| `source.cachedTexts`          | 31947                                      | 31950     |
+| run wall-clock                | 816s                                       | 789s      |
+| `Run benchmark` step          | 746s                                       | 725s      |
 
 The provenance block did exactly what §6 asked of it: it makes the two arms distinguishable, and it confirms both used the **real Zhipu backend** rather than the hash fallback. That is the block earning its place.
 
@@ -287,17 +287,17 @@ the pipeline recorded one. This section is the fix, and it is deliberately narro
 
 ### 10.1 What was added
 
-| Symbol | Package | Role |
-| ------ | ------- | ---- |
-| `RetryStats` | `cortex-llm` | per-call counters: `attempts`, `retried`, `rateLimited`, `retryAfterHonoured` |
-| `RetryOutcome` | `cortex-llm` | `RetryStats` plus the final `Response` |
-| `retryableFetchWithStats` | `cortex-llm` | the retry loop, now returning its own counters |
-| `retryableFetch` | `cortex-llm` | unchanged signature — a thin wrapper over the above |
-| `RetryStatsSnapshot` | `cortex-llm` | the same counters aggregated across calls, plus `retryRate` |
-| `RetryStatsAggregate` | `cortex-llm` | `record()` / `snapshot()` / `reset()` |
-| `retryStats()` / `resetRetryStats()` | `cortex-llm` | the process-level aggregate's only read path |
-| `transportRetryReport()` | `cortex-eval` | formats a snapshot for an artifact |
-| `embedding.transportRetry` | artifact field | where the counters land |
+| Symbol                               | Package        | Role                                                                          |
+| ------------------------------------ | -------------- | ----------------------------------------------------------------------------- |
+| `RetryStats`                         | `cortex-llm`   | per-call counters: `attempts`, `retried`, `rateLimited`, `retryAfterHonoured` |
+| `RetryOutcome`                       | `cortex-llm`   | `RetryStats` plus the final `Response`                                        |
+| `retryableFetchWithStats`            | `cortex-llm`   | the retry loop, now returning its own counters                                |
+| `retryableFetch`                     | `cortex-llm`   | unchanged signature — a thin wrapper over the above                           |
+| `RetryStatsSnapshot`                 | `cortex-llm`   | the same counters aggregated across calls, plus `retryRate`                   |
+| `RetryStatsAggregate`                | `cortex-llm`   | `record()` / `snapshot()` / `reset()`                                         |
+| `retryStats()` / `resetRetryStats()` | `cortex-llm`   | the process-level aggregate's only read path                                  |
+| `transportRetryReport()`             | `cortex-eval`  | formats a snapshot for an artifact                                            |
+| `embedding.transportRetry`           | artifact field | where the counters land                                                       |
 
 `retryableFetch`'s signature and behaviour are **unchanged**. Every existing
 caller — the embedding adapter, the OpenAI-compatible LLM — needed no edit, which
@@ -310,14 +310,14 @@ difference is the presence of new numbers.
 `retried / calls`. A test caught it: one call retrying 40 times reported a rate of
 **40**. That is not a rate. The numerator is `retriedCalls` — calls that retried at
 least once — so the metric answers "what share of calls had to retry", and the
-retry *volume* stays in `retried`, where a reader can still tell "many calls each
+retry _volume_ stays in `retried`, where a reader can still tell "many calls each
 retrying once" from "one call retrying many times". The two live side by side on
 purpose; collapsing them was the bug.
 
 **A refused retry is not counted.** When the wall-clock budget rejects a retry
 (§2), the branch returns early and increments nothing. Recording it would report a
 request the provider never received, which would inflate `retried` in exactly the
-scenario the budget exists to create. The one thing that branch *does* do is
+scenario the budget exists to create. The one thing that branch _does_ do is
 synthesise a `429` when there is no response to return — after a transport failure
 `resFromLastAttempt` is cleared, so without the fallback the caller receives
 `undefined` and reads `res.ok` off nothing. `rateLimited` stays zero on that path:
@@ -329,24 +329,24 @@ A counter that reports the wrong thing is worse than no counter, because it look
 authoritative. `tools/inject-retry-stats.py` injects 16 plausible accounting
 errors and requires the suite to catch each one.
 
-| Mutation | Caught by |
-| -------- | --------- |
-| `retry-not-counted` | retry accounting |
-| `rate-limited-counts-5xx` | retry accounting |
-| `budget-refusal-counted` | retry accounting (budget) |
-| `budget-refusal-status-shifted` | retry accounting (budget) |
-| `retry-rate-per-retry` | retry stats aggregation |
-| `transport-failure-counted` | retry accounting |
-| `retry-after-always-honoured` | retry accounting |
-| `retried-call-recorded-clean` | retry stats aggregation |
-| `clean-call-recorded-retried` | retry stats aggregation |
-| `snapshot-drops-retried-calls` | build (type) then tests |
-| `reset-leaves-retried-calls` | retry stats aggregation (reset) |
-| `reset-leaves-attempts` | retry stats aggregation (reset) |
-| `report-drops-rate-limited` | transport retry report |
-| `report-drops-retry-after` | transport retry report |
-| `report-relabels-scope` | transport retry report |
-| `report-drops-attempts` | transport retry report |
+| Mutation                        | Caught by                       |
+| ------------------------------- | ------------------------------- |
+| `retry-not-counted`             | retry accounting                |
+| `rate-limited-counts-5xx`       | retry accounting                |
+| `budget-refusal-counted`        | retry accounting (budget)       |
+| `budget-refusal-status-shifted` | retry accounting (budget)       |
+| `retry-rate-per-retry`          | retry stats aggregation         |
+| `transport-failure-counted`     | retry accounting                |
+| `retry-after-always-honoured`   | retry accounting                |
+| `retried-call-recorded-clean`   | retry stats aggregation         |
+| `clean-call-recorded-retried`   | retry stats aggregation         |
+| `snapshot-drops-retried-calls`  | build (type) then tests         |
+| `reset-leaves-retried-calls`    | retry stats aggregation (reset) |
+| `reset-leaves-attempts`         | retry stats aggregation (reset) |
+| `report-drops-rate-limited`     | transport retry report          |
+| `report-drops-retry-after`      | transport retry report          |
+| `report-relabels-scope`         | transport retry report          |
+| `report-drops-attempts`         | transport retry report          |
 
 **16 / 16 caught.** Each file is restored from memory and md5-verified after every
 mutation, so no mutation can survive in the tree even if the run aborts.
@@ -355,7 +355,7 @@ Three of the sixteen are worth calling out because the experiment found them:
 
 1. **Two mutations initially had no test at all.** `reset()` had no coverage — the
    existing test asserted only `calls` after a reset, leaving seven fields free to
-   leak. That matters here specifically because the retry *rate* is
+   leak. That matters here specifically because the retry _rate_ is
    `retriedCalls / calls`: a stale numerator over a fresh denominator reports a
    rate above 100%. A test asserting the whole snapshot now exists.
 2. **One mutation survived as a no-op.** `snapshot-not-a-copy` was written as
@@ -398,12 +398,12 @@ with a null".
 
 Gate: **1513 tests** across four packages, every dimension ≥95%.
 
-| Package | Tests | Stmts | Branch | Funcs | Lines |
-| ------- | ----- | ----- | ------ | ----- | ----- |
-| cortex-core | 127 | 98.48 | 98.34 | 100 | 98.48 |
-| cortex-node | 16 | 100 | 98.61 | 100 | 100 |
-| cortex-llm | 131 | 99.27 | 98.11 | 100 | 99.27 |
-| cortex-eval | 1239 | 99.87 | 99.03 | 100 | 99.87 |
+| Package     | Tests | Stmts | Branch | Funcs | Lines |
+| ----------- | ----- | ----- | ------ | ----- | ----- |
+| cortex-core | 127   | 98.48 | 98.34  | 100   | 98.48 |
+| cortex-node | 16    | 100   | 98.61  | 100   | 100   |
+| cortex-llm  | 131   | 99.27 | 98.11  | 100   | 99.27 |
+| cortex-eval | 1239  | 99.87 | 99.03  | 100   | 99.87 |
 
 `retry.ts` is at **100 / 100 / 100 / 100**. The branch that was uncovered before
 this section — the `??` fallback on the budget-refusal return — now has a test that
@@ -421,21 +421,21 @@ factor here — that was settled in §9 and it stayed settled.
 
 ### 11.1 The numbers
 
-| | paced (`250ms`) | control (`0ms`) |
-| --- | --- | --- |
-| `batchIntervalMs` | **250** | **0** |
-| provider / model / dimensions | `openai-compatible` / `embedding-3` / 1024 | identical |
-| `source.liveRequests` | 79 | 79 |
-| `source.liveTexts` | 212 | 206 |
-| `source.cachedTexts` | 31948 | 31951 |
-| `transportRetry.attempts` | **169** | **169** |
-| `transportRetry.calls` | 169 | 169 |
-| `transportRetry.retried` | **0** | **0** |
-| `transportRetry.rateLimited` | **0** | **0** |
-| `transportRetry.retryAfterHonoured` | 0 | 0 |
-| `transportRetry.retriedCalls` | 0 | 0 |
-| `transportRetry.cleanCalls` | 169 | 169 |
-| `transportRetry.retryRate` | **0.00%** | **0.00%** |
+|                                     | paced (`250ms`)                            | control (`0ms`) |
+| ----------------------------------- | ------------------------------------------ | --------------- |
+| `batchIntervalMs`                   | **250**                                    | **0**           |
+| provider / model / dimensions       | `openai-compatible` / `embedding-3` / 1024 | identical       |
+| `source.liveRequests`               | 79                                         | 79              |
+| `source.liveTexts`                  | 212                                        | 206             |
+| `source.cachedTexts`                | 31948                                      | 31951           |
+| `transportRetry.attempts`           | **169**                                    | **169**         |
+| `transportRetry.calls`              | 169                                        | 169             |
+| `transportRetry.retried`            | **0**                                      | **0**           |
+| `transportRetry.rateLimited`        | **0**                                      | **0**           |
+| `transportRetry.retryAfterHonoured` | 0                                          | 0               |
+| `transportRetry.retriedCalls`       | 0                                          | 0               |
+| `transportRetry.cleanCalls`         | 169                                        | 169             |
+| `transportRetry.retryRate`          | **0.00%**                                  | **0.00%**       |
 
 **Both arms: 169 calls, 169 attempts, zero retries, zero 429s.**
 

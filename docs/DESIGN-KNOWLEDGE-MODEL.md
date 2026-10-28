@@ -18,7 +18,7 @@ time it was precise:
 
 That is not a prompt problem. `grounding.ts` currently binds an atom to **one sentence** and
 forbids any word that sentence does not contain. A relation such as "so", "but", "then" is
-carried by a conjunction that belongs to *neither* half, so when the sentence is split the
+carried by a conjunction that belongs to _neither_ half, so when the sentence is split the
 conjunction has nowhere to live and is dropped — by construction, not by model error.
 
 The measurement in `docs/MEASURE-ATOM-FIDELITY.md` puts a number on it: of 20 reviewed pairs,
@@ -26,17 +26,17 @@ The measurement in `docs/MEASURE-ATOM-FIDELITY.md` puts a number on it: of 20 re
 in no atom at all or survives in one atom while its counterpart disappears — and in the whole
 20-pair set only **one** frame (`g04`) expresses the relation as a fact.
 
-| card | source | atoms after the split | what was lost |
-| --- | --- | --- | --- |
-| `g00` | "…finished an online course on data analysis **so** I'm interested in applying my new skills…" | 2 atoms, no link | the causal link itself |
-| `g05` | "Each had its own unique charm, **but** I think my favourite was the Fairmont Orchid." | "The Fairmont Orchid was my favorite." | the comparison; the other option vanished |
-| `g30` | "…make a classic California roll…, **and then** try out a new recipe…" | 2 independent plans | the order |
-| `g23` | "…a consistent morning routine, **but** it's tough **when** I have a lot on my plate" | keeps `when`, drops `but` | the concession |
+| card  | source                                                                                         | atoms after the split                  | what was lost                             |
+| ----- | ---------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------- |
+| `g00` | "…finished an online course on data analysis **so** I'm interested in applying my new skills…" | 2 atoms, no link                       | the causal link itself                    |
+| `g05` | "Each had its own unique charm, **but** I think my favourite was the Fairmont Orchid."         | "The Fairmont Orchid was my favorite." | the comparison; the other option vanished |
+| `g30` | "…make a classic California roll…, **and then** try out a new recipe…"                         | 2 independent plans                    | the order                                 |
+| `g23` | "…a consistent morning routine, **but** it's tough **when** I have a lot on my plate"          | keeps `when`, drops `but`              | the concession                            |
 
 And one pair shows the shape of the fix rather than the defect:
 
-| card | source | atoms | why it works |
-| --- | --- | --- | --- |
+| card  | source                                                                                    | atoms                                                  | why it works                            |
+| ----- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------- |
 | `g04` | "…the online communities I've joined have been super helpful in learning new techniques…" | "Online communities **help me learn** new techniques." | the atom is a **relation**, not a thing |
 
 `g04` is the existence proof. The model can express a relation as a proposition — it did, once,
@@ -49,18 +49,18 @@ facts and a typed link between them, which is the only form that survives a spli
 Read in the order that matters for the decision, not the order of publication. The last row is
 the one that constrains everything above it.
 
-| Work | Mechanism | What it changes here | What it does **not** license |
-| --- | --- | --- | --- |
-| **Hindsight** — *Hindsight is 20/20*, arXiv 2512.12818 (Dec 2025) | Four logical networks (world facts / experiences / observations / mental models); `retain`/`recall`/`reflect`; **TEMPR**: dense + BM25 + entity-graph + temporal, fused by RRF, cross-encoder rerank, **token budget instead of top-K**; conflicting facts keep both states with timestamps | The four-way read path and the budget-not-K rule are the two things we lack outright. Observations as *evidence-backed beliefs refined, not overwritten* is the shape our `supersedes` edge should take. | Its 94.6% is vendor-reported on conversational data with a stronger reader; the architecture claim ("blurring evidence and inference") is what transfers, not the number. |
-| **Zep / Graphiti** — arXiv 2501.13956 (Jan 2025) | `EntityEdge(source → relation → target)` with a natural-language `fact` label, **four timestamps** (`valid_at`/`invalid_at` bi-temporal + `created_at`/`expired_at`), edges **expired, never deleted**; hybrid embedding + BM25 + graph traversal, **no LLM in the read path** | This is the concrete edge schema. Copy it: an edge is a first-class row with provenance, not an adjacency weight. | Requires a graph store; we have OPFS and an in-memory index. Our edge set must be small and derived, not a general KG. |
-| **MAGMA** — arXiv 2601.03236 (Jan 2026, ACL 2026) | Each memory item lives simultaneously on four **orthogonal** graphs (semantic, temporal, causal, entity); retrieval is **policy-guided traversal**, decoupled from representation | Decoupling representation from retrieval is the architectural move: our `Edge[]` is the representation, a channel set is the policy. | It reports "consistently outperforms" without a per-channel ablation in the abstract; do not assume all four channels earn their keep. |
-| **Does Memory Need Graphs?** — arXiv 2601.01280 (Jan 2026, ACL 2026) | Controlled stage-wise comparison on LongMemEval/HaluMem. **SimGraph (similarity edges) is *worse* than flat.** KnowGraph (entity–relation triples) is **inconsistent**: better R@5 on S, worse on M. **DescGraph (entity *descriptions* as keys) wins everywhere** (R@5 .7661 vs flat .7064 on LongMemEval-M). With `Value=key`, graph methods *lose* to flat (.592 vs .620) because a description carries less than a `[summary+facts+keywords]` bundle. | **Two hard constraints.** (1) Never build similarity edges — they are measured noise. (2) The thing you hand the reader must stay rich; a typed graph may annotate the evidence but may not replace it. | "Add a graph" is not a win. The win is *typed* edges plus *dense* evidence. This paper is the reason the design below keeps the frame. |
-| **Dense-X Retrieval** — arXiv 2312.06648 | Proposition as retrieval unit: atomic, **self-contained with pronouns resolved**, "necessary context is incorporated" | Confirms that the atom is the right *unit*; and that self-containment requires resolving references the single sentence does not carry. | Its 10.1 Recall@20 gain is over Wikipedia passages, not over a memory stream; the gain direction is not the gain size. |
-| **Anthropic Contextual Retrieval** (Sep 2024) | Prepend a 50–100 token LLM-written context to each chunk before embedding **and** before BM25: top-20 failure 5.7% → 3.7% (−35%), → 2.9% (−49%) with contextual BM25, → 1.9% (−67%) with reranking | The cheapest way to stop an atom from being context-free is a header used **only at index time**. It costs no publication risk: the header never enters the card. | Measured on document corpora; ours is a conversation, where the "document" is the session. |
-| **A-MEM** — arXiv 2502.12110 | Zettelkasten notes with model-generated links; new memories **evolve** older notes | Memory evolution is the alternative to `supersedes` deletion; we take the edge, not the rewriting. | Free-form links reintroduce SimGraph's failure mode unless they are typed. |
-| **HippoRAG 2** — arXiv 2502.14802 (ICML 2025) | Phrase/passage dual-node KG, **Personalized PageRank** retrieval, MuSiQue F1 44.8 → 51.9 | PPR over a typed graph is the multi-hop mechanism worth stealing if 1-hop expansion proves insufficient. | Its graph is built over a corpus, not over a user's turns. |
-| **Mem0 / Mem0g** — arXiv 2504.19413 | ADD/UPDATE/DELETE/NOOP controller over extracted facts; graph variant stores entity–relation triples | The controller is the right shape for our `supersedes` derivation. | Its accuracy numbers are contested across readers; not used as a target. |
-| **Event Causality Identification survey** — ACM CSUR 2026 | **Causal hallucination**: models over-attribute causality, reading temporal succession (`A then B`) as causation. DECI lags SECI by 10–20 F1. | This is the guard we must build: a temporal marker may **never** produce a `causes` edge. | Do not attempt implicit causality. If no explicit marker exists, there is no edge. |
+| Work                                                                 | Mechanism                                                                                                                                                                                                                                                                                                                                                                                                                                                 | What it changes here                                                                                                                                                                                     | What it does **not** license                                                                                                                                              |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hindsight** — _Hindsight is 20/20_, arXiv 2512.12818 (Dec 2025)    | Four logical networks (world facts / experiences / observations / mental models); `retain`/`recall`/`reflect`; **TEMPR**: dense + BM25 + entity-graph + temporal, fused by RRF, cross-encoder rerank, **token budget instead of top-K**; conflicting facts keep both states with timestamps                                                                                                                                                               | The four-way read path and the budget-not-K rule are the two things we lack outright. Observations as _evidence-backed beliefs refined, not overwritten_ is the shape our `supersedes` edge should take. | Its 94.6% is vendor-reported on conversational data with a stronger reader; the architecture claim ("blurring evidence and inference") is what transfers, not the number. |
+| **Zep / Graphiti** — arXiv 2501.13956 (Jan 2025)                     | `EntityEdge(source → relation → target)` with a natural-language `fact` label, **four timestamps** (`valid_at`/`invalid_at` bi-temporal + `created_at`/`expired_at`), edges **expired, never deleted**; hybrid embedding + BM25 + graph traversal, **no LLM in the read path**                                                                                                                                                                            | This is the concrete edge schema. Copy it: an edge is a first-class row with provenance, not an adjacency weight.                                                                                        | Requires a graph store; we have OPFS and an in-memory index. Our edge set must be small and derived, not a general KG.                                                    |
+| **MAGMA** — arXiv 2601.03236 (Jan 2026, ACL 2026)                    | Each memory item lives simultaneously on four **orthogonal** graphs (semantic, temporal, causal, entity); retrieval is **policy-guided traversal**, decoupled from representation                                                                                                                                                                                                                                                                         | Decoupling representation from retrieval is the architectural move: our `Edge[]` is the representation, a channel set is the policy.                                                                     | It reports "consistently outperforms" without a per-channel ablation in the abstract; do not assume all four channels earn their keep.                                    |
+| **Does Memory Need Graphs?** — arXiv 2601.01280 (Jan 2026, ACL 2026) | Controlled stage-wise comparison on LongMemEval/HaluMem. **SimGraph (similarity edges) is _worse_ than flat.** KnowGraph (entity–relation triples) is **inconsistent**: better R@5 on S, worse on M. **DescGraph (entity _descriptions_ as keys) wins everywhere** (R@5 .7661 vs flat .7064 on LongMemEval-M). With `Value=key`, graph methods _lose_ to flat (.592 vs .620) because a description carries less than a `[summary+facts+keywords]` bundle. | **Two hard constraints.** (1) Never build similarity edges — they are measured noise. (2) The thing you hand the reader must stay rich; a typed graph may annotate the evidence but may not replace it.  | "Add a graph" is not a win. The win is _typed_ edges plus _dense_ evidence. This paper is the reason the design below keeps the frame.                                    |
+| **Dense-X Retrieval** — arXiv 2312.06648                             | Proposition as retrieval unit: atomic, **self-contained with pronouns resolved**, "necessary context is incorporated"                                                                                                                                                                                                                                                                                                                                     | Confirms that the atom is the right _unit_; and that self-containment requires resolving references the single sentence does not carry.                                                                  | Its 10.1 Recall@20 gain is over Wikipedia passages, not over a memory stream; the gain direction is not the gain size.                                                    |
+| **Anthropic Contextual Retrieval** (Sep 2024)                        | Prepend a 50–100 token LLM-written context to each chunk before embedding **and** before BM25: top-20 failure 5.7% → 3.7% (−35%), → 2.9% (−49%) with contextual BM25, → 1.9% (−67%) with reranking                                                                                                                                                                                                                                                        | The cheapest way to stop an atom from being context-free is a header used **only at index time**. It costs no publication risk: the header never enters the card.                                        | Measured on document corpora; ours is a conversation, where the "document" is the session.                                                                                |
+| **A-MEM** — arXiv 2502.12110                                         | Zettelkasten notes with model-generated links; new memories **evolve** older notes                                                                                                                                                                                                                                                                                                                                                                        | Memory evolution is the alternative to `supersedes` deletion; we take the edge, not the rewriting.                                                                                                       | Free-form links reintroduce SimGraph's failure mode unless they are typed.                                                                                                |
+| **HippoRAG 2** — arXiv 2502.14802 (ICML 2025)                        | Phrase/passage dual-node KG, **Personalized PageRank** retrieval, MuSiQue F1 44.8 → 51.9                                                                                                                                                                                                                                                                                                                                                                  | PPR over a typed graph is the multi-hop mechanism worth stealing if 1-hop expansion proves insufficient.                                                                                                 | Its graph is built over a corpus, not over a user's turns.                                                                                                                |
+| **Mem0 / Mem0g** — arXiv 2504.19413                                  | ADD/UPDATE/DELETE/NOOP controller over extracted facts; graph variant stores entity–relation triples                                                                                                                                                                                                                                                                                                                                                      | The controller is the right shape for our `supersedes` derivation.                                                                                                                                       | Its accuracy numbers are contested across readers; not used as a target.                                                                                                  |
+| **Event Causality Identification survey** — ACM CSUR 2026            | **Causal hallucination**: models over-attribute causality, reading temporal succession (`A then B`) as causation. DECI lags SECI by 10–20 F1.                                                                                                                                                                                                                                                                                                             | This is the guard we must build: a temporal marker may **never** produce a `causes` edge.                                                                                                                | Do not attempt implicit causality. If no explicit marker exists, there is no edge.                                                                                        |
 
 ### 2.1 The decision this evidence forces
 
@@ -69,7 +69,7 @@ Three temptations, each killed by a citation:
 1. **"Replace the atom with the original sentence."** Kills Dense-X's gain and the whole point
    of the card (a paragraph is not a decision unit). Rejected.
 2. **"Build a knowledge graph of everything, link by similarity."** Exactly SimGraph, measured
-   *worse than flat*. Rejected.
+   _worse than flat_. Rejected.
 3. **"Let the model emit relations freely."** Causal hallucination, plus the v5 precedent:
    a prompt-only fix was disproven once already (`proposer.ts`, v5 reverted, 45→48 proposals
    but verbatim 44.1%→52.6%). Relations must be **gated by markers**, not by model confidence.
@@ -94,24 +94,28 @@ Frame   (verbatim utterance — the value layer, never replaced)
 
 ```ts
 type FactType =
-  | 'event'        // something that happened, with a time
-  | 'state'        // a condition that holds over an interval
-  | 'preference'   // likes, dislikes, priorities
-  | 'constraint'   // must / cannot / deadline
-  | 'decision'     // a chosen course, with the alternatives it beat
-  | 'goal'         // intended future action
-  | 'attribute'    // a property of an entity (g13's "the project connects 100 villages")
-  | 'evaluation'   // a judgement the speaker made ("performing really well")
-  | 'relation';    // a fact *about* two facts (g04: "communities help me learn")
+  | 'event' // something that happened, with a time
+  | 'state' // a condition that holds over an interval
+  | 'preference' // likes, dislikes, priorities
+  | 'constraint' // must / cannot / deadline
+  | 'decision' // a chosen course, with the alternatives it beat
+  | 'goal' // intended future action
+  | 'attribute' // a property of an entity (g13's "the project connects 100 villages")
+  | 'evaluation' // a judgement the speaker made ("performing really well")
+  | 'relation'; // a fact *about* two facts (g04: "communities help me learn")
 
 type EdgeType =
-  | 'causes' | 'enables' | 'prevents'      // requires a causal marker
-  | 'before' | 'after' | 'during'          // requires a temporal marker
-  | 'condition'                            // requires if/unless/otherwise
-  | 'contrast'                             // requires but/although/instead
-  | 'elaborates'                           // same entity, added detail
-  | 'supersedes'                           // derived: same subject+predicate, later, different value
-  | 'same-entity';                         // derived: resolved coreference
+  | 'causes'
+  | 'enables'
+  | 'prevents' // requires a causal marker
+  | 'before'
+  | 'after'
+  | 'during' // requires a temporal marker
+  | 'condition' // requires if/unless/otherwise
+  | 'contrast' // requires but/although/instead
+  | 'elaborates' // same entity, added detail
+  | 'supersedes' // derived: same subject+predicate, later, different value
+  | 'same-entity'; // derived: resolved coreference
 ```
 
 Every `Fact` carries: `text`, `type`, `polarity` (`positive`/`negated`), `modality`
@@ -173,6 +177,7 @@ query ─┬─ dense(atom + header) ─────────┐
 
    This is the direct answer to "neither is good": the reader gets the atom's precision, the
    relation that the split destroyed, and the original wording if it needs to judge.
+
 5. **Superseded facts are labelled in place.** `[superseded 2026-03-11 by …]`. The KU failure
    already on record — the reader held both `25:50` and `27:12` and chose the older one
    (`SOTA-BASELINE.md` §5) — is a labelling failure, not a recall failure.
@@ -181,15 +186,15 @@ query ─┬─ dense(atom + header) ─────────┐
 
 Pre-registered before implementation. Each row is falsifiable by one command.
 
-| # | Endpoint | Threshold | Why this number |
-| --- | --- | --- | --- |
-| A1 | Marker survival: every explicit relation marker in the source lands in a fact or a licensed edge | **100%** on the 20-pair artifact, 0 regressions | It is a gate, not a score; a gate that passes 97% is a gate that is off. |
-| A2 | Causal-hallucination rate: edges of type `causes`/`enables`/`prevents` with only a temporal marker | **0** | ACL 2026 survey names this the dominant failure. |
-| A3 | Edge provenance: edges whose `evidenceSpan` cannot be located in the frame | **0** | An unlocatable edge is an invention. |
-| A4 | Referential closure: content words accepted that appear nowhere in frame ∪ context | **0** | The existing `invented:new-word` gate must not loosen. |
-| A5 | Atom verbatim share (the standing over-copying guard) | **≤ 35%**, must not rise | v5's lesson: a change that buys proposals by copying is not a gain. |
-| A6 | Four-dimension coverage of the new modules | **≥ 95%** each | Standing rule. |
-| A7 | LongMemEval-S MR / TR / KU, same-instant A/B | reported, not gated | One run is a direction; two is a conclusion. The endpoint that decides is A1–A4. |
+| #   | Endpoint                                                                                           | Threshold                                       | Why this number                                                                  |
+| --- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| A1  | Marker survival: every explicit relation marker in the source lands in a fact or a licensed edge   | **100%** on the 20-pair artifact, 0 regressions | It is a gate, not a score; a gate that passes 97% is a gate that is off.         |
+| A2  | Causal-hallucination rate: edges of type `causes`/`enables`/`prevents` with only a temporal marker | **0**                                           | ACL 2026 survey names this the dominant failure.                                 |
+| A3  | Edge provenance: edges whose `evidenceSpan` cannot be located in the frame                         | **0**                                           | An unlocatable edge is an invention.                                             |
+| A4  | Referential closure: content words accepted that appear nowhere in frame ∪ context                 | **0**                                           | The existing `invented:new-word` gate must not loosen.                           |
+| A5  | Atom verbatim share (the standing over-copying guard)                                              | **≤ 35%**, must not rise                        | v5's lesson: a change that buys proposals by copying is not a gain.              |
+| A6  | Four-dimension coverage of the new modules                                                         | **≥ 95%** each                                  | Standing rule.                                                                   |
+| A7  | LongMemEval-S MR / TR / KU, same-instant A/B                                                       | reported, not gated                             | One run is a direction; two is a conclusion. The endpoint that decides is A1–A4. |
 
 A1–A5 are offline and can be run without a model. A7 needs the runner.
 
@@ -221,16 +226,16 @@ A1–A5 are offline and can be run without a model. A7 needs the runner.
 
 Built in this step, all of it pure and all of it tested without a model:
 
-| Module | Contract it owns | Tests |
-| --- | --- | --- |
-| `knowledge/taxonomy.ts` | nine fact types, eleven edge types, and the licence table that decides which marker may create which edge | 6 |
-| `knowledge/markers.ts` | the connective table and the eleven-phrase exclusion table, with positions | 19 |
-| `knowledge/frame.ts` | the frame, the fact, the computed span, and the three closed vocabularies checked at runtime | 8 |
-| `knowledge/edge.ts` | edge validation (licence, locatable marker, covering span) and `supersedes` from slots | 30 |
-| `knowledge/unit.ts` | assembly, the unresolved-marker gate, and the census | 18 |
-| `retrieval/fuse.ts` | RRF and a token budget | 9 |
-| `retrieval/typed.ts` | typed one-hop expansion and the grouped block | 33 |
-| `triage/grounding.ts` (extended) | grounding against a frame plus a declared context, with a receipt per borrowed word | 12 |
+| Module                           | Contract it owns                                                                                          | Tests |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- | ----- |
+| `knowledge/taxonomy.ts`          | nine fact types, eleven edge types, and the licence table that decides which marker may create which edge | 6     |
+| `knowledge/markers.ts`           | the connective table and the eleven-phrase exclusion table, with positions                                | 19    |
+| `knowledge/frame.ts`             | the frame, the fact, the computed span, and the three closed vocabularies checked at runtime              | 8     |
+| `knowledge/edge.ts`              | edge validation (licence, locatable marker, covering span) and `supersedes` from slots                    | 30    |
+| `knowledge/unit.ts`              | assembly, the unresolved-marker gate, and the census                                                      | 18    |
+| `retrieval/fuse.ts`              | RRF and a token budget                                                                                    | 9     |
+| `retrieval/typed.ts`             | typed one-hop expansion and the grouped block                                                             | 33    |
+| `triage/grounding.ts` (extended) | grounding against a frame plus a declared context, with a receipt per borrowed word                       | 12    |
 
 **Readings that are now measured** (`node tools/knowledge-probe.mjs --html <review page>`):
 

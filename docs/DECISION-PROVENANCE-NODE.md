@@ -18,16 +18,16 @@ Every claim below is a command result, not a reading of intent.
 
 ### 1.1 The symbol is isolated on all four axes
 
-| Axis | Finding | How |
-| --- | --- | --- |
-| No caller | Nothing in `packages/*/src` outside its own file mentions it | census `unreferenced` class |
-| No test | No test file imports or asserts on it | name search across `__tests__` |
-| No local use | Its own module does not consume it | module is the type declaration and nothing else |
-| No live sibling | No function, constant, or type in the repository operates on it | see §1.2 |
+| Axis            | Finding                                                         | How                                             |
+| --------------- | --------------------------------------------------------------- | ----------------------------------------------- |
+| No caller       | Nothing in `packages/*/src` outside its own file mentions it    | census `unreferenced` class                     |
+| No test         | No test file imports or asserts on it                           | name search across `__tests__`                  |
+| No local use    | Its own module does not consume it                              | module is the type declaration and nothing else |
+| No live sibling | No function, constant, or type in the repository operates on it | see §1.2                                        |
 
 ### 1.2 The DAG edge has exactly one occurrence in the repository
 
-The type's load-bearing field — the one that makes it a *node* in a DAG rather
+The type's load-bearing field — the one that makes it a _node_ in a DAG rather
 than a record — is `parents`:
 
 ```ts
@@ -48,8 +48,8 @@ a graph.
 type. It compiles to **zero statements**, which is why
 `AUDIT-COVERAGE-ANNOTATION-BLIND-SPOT.md` found the `istanbul ignore file`
 annotation on it was inert twice over. Two of this repository's audits have
-already had to touch this file to correct a claim made *about* it; neither
-corrected a claim made *by* it.
+already had to touch this file to correct a claim made _about_ it; neither
+corrected a claim made _by_ it.
 
 ---
 
@@ -72,19 +72,19 @@ reads it nowhere.
 
 ### 2.1 The overlap, field by field
 
-| `ProvenanceNode` field | What already carries it |
-| --- | --- |
-| `id` | `Fact.id`, `MemoryValue.id` |
-| `memoryId` | `Fact.subject` + `Fact.predicate` (the fact *is* about a memory) |
-| `kind: string` — `"user-message"`, `"llm-extraction"`, `"consolidation"` | `MemoryValue.source` / `Fact.source`, documented as *"Origin of the memory, used for provenance and poisoning defense"* |
-| `timestamp: number` — one clock | `Fact.validFrom` + `Fact.systemFrom` — **two** clocks |
-| `parents: string[]` — a DAG | **nothing** (the actual gap, §1.2) |
-| `metadata?: Record<string, unknown>` — untyped escape hatch | `Fact.confidence` + `Fact.sourceTrust` — **typed** [0,1] scales |
+| `ProvenanceNode` field                                                   | What already carries it                                                                                                 |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `id`                                                                     | `Fact.id`, `MemoryValue.id`                                                                                             |
+| `memoryId`                                                               | `Fact.subject` + `Fact.predicate` (the fact _is_ about a memory)                                                        |
+| `kind: string` — `"user-message"`, `"llm-extraction"`, `"consolidation"` | `MemoryValue.source` / `Fact.source`, documented as _"Origin of the memory, used for provenance and poisoning defense"_ |
+| `timestamp: number` — one clock                                          | `Fact.validFrom` + `Fact.systemFrom` — **two** clocks                                                                   |
+| `parents: string[]` — a DAG                                              | **nothing** (the actual gap, §1.2)                                                                                      |
+| `metadata?: Record<string, unknown>` — untyped escape hatch              | `Fact.confidence` + `Fact.sourceTrust` — **typed** [0,1] scales                                                         |
 
 The comparison is not close. Where `ProvenanceNode` is more general, it is more
 general by being **less typed**: an unconstrained `kind` string against a
 documented `source`; an untyped metadata bag against two calibrated numeric
-scales. And it is *strictly worse* on time, offering one timestamp where `Fact`
+scales. And it is _strictly worse_ on time, offering one timestamp where `Fact`
 offers the pair that makes as-of reconstruction possible at all.
 
 ### 2.2 The mechanism it would need already exists
@@ -99,9 +99,9 @@ findContradictions(facts)                      // conflicts on (subject, predica
 ```
 
 `isFactCurrentAt` uses `systemUntil` to mark supersession — the field whose
-docstring reads *"the system learned (or superseded) the fact"*. **That is an
+docstring reads _"the system learned (or superseded) the fact"_. **That is an
 immutable audit log with an as-of query.** `AUDIT-CODE-VS-DOCS.md` lists
-"Provenance-DAG / immutable audit log" as *advertised-but-absent* and cites
+"Provenance-DAG / immutable audit log" as _advertised-but-absent_ and cites
 `provenance.ts` as the evidence — but the evidence it should cite is that the
 **log half already shipped** under a different name, and only the DAG edge is
 missing.
@@ -131,7 +131,7 @@ other type points at.
 
 `ARCHITECTURE.md` line 12 lists `ProvenanceNode` in the `domain/` layer of a
 diagram that otherwise describes what ships. `README.md` line 30 advertises
-*"Provenance & trust — every memory records its source, trust, and derivation"*.
+_"Provenance & trust — every memory records its source, trust, and derivation"_.
 The **source and trust** halves are true (`MemoryValue.source`,
 `MemoryValue.sourceTrust`). The **derivation** half is the gap in §3.1.
 
@@ -143,15 +143,15 @@ recorded.
 
 ## 4. The change
 
-| # | Change | File |
-| --- | --- | --- |
-| 1 | Delete `packages/cortex-core/src/domain/provenance.ts` | domain/ |
-| 2 | Remove `export type { ProvenanceNode } from './domain/provenance.js';` from the barrel | `cortex-core/src/index.ts` |
-| 3 | Replace the `domain/` line so it names what ships | `ARCHITECTURE.md` |
-| 4 | Retarget the derivation claim at the recorded gap | `README.md` |
-| 5 | Record the gap in the status table, as the other inert capabilities are | `ARCHITECTURE.md` |
+| #   | Change                                                                                 | File                       |
+| --- | -------------------------------------------------------------------------------------- | -------------------------- |
+| 1   | Delete `packages/cortex-core/src/domain/provenance.ts`                                 | domain/                    |
+| 2   | Remove `export type { ProvenanceNode } from './domain/provenance.js';` from the barrel | `cortex-core/src/index.ts` |
+| 3   | Replace the `domain/` line so it names what ships                                      | `ARCHITECTURE.md`          |
+| 4   | Retarget the derivation claim at the recorded gap                                      | `README.md`                |
+| 5   | Record the gap in the status table, as the other inert capabilities are                | `ARCHITECTURE.md`          |
 
-Item 5 matters most: `ARCHITECTURE.md`'s *Implementation status* table already
+Item 5 matters most: `ARCHITECTURE.md`'s _Implementation status_ table already
 states plainly that TD(λ) is not implemented and that `sinkhorn` is implemented
 but inert. Fact derivation belongs in that table, in the same voice — not
 implied by a type that nothing reads.
@@ -229,7 +229,7 @@ document is guarding against, so it is the one the test checks.
 
 The deletion was verified by running `pnpm check`, which passed. It was then
 re-verified by a **clean** build — `rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo`
-— and that clean build **also** passed. But an *intermediate* state failed, and the
+— and that clean build **also** passed. But an _intermediate_ state failed, and the
 failure is worth recording because it is reachable from a plausible command:
 
 ```
@@ -240,7 +240,7 @@ pnpm build
 ```
 
 **Cause.** `cortex-node` resolves `StorageTransaction` through the project
-reference to `cortex-core`'s *emitted* `dist/*.d.ts`. When `cortex-core/dist` is
+reference to `cortex-core`'s _emitted_ `dist/*.d.ts`. When `cortex-core/dist` is
 absent but `cortex-node/tsconfig.tsbuildinfo` survives, `tsc` trusts the stale
 buildinfo, the import fails to resolve, and `StorageTransaction` degrades to
 `any`. The annotation `const tx: StorageTransaction = { ... }` then types nothing,
@@ -282,4 +282,4 @@ The rule: when a type is unreferenced, check whether it is **pending** or
 **superseded**. Pending types have consumers waiting for them. Superseded types
 have a live implementation of the same idea that the census does not connect them
 to, and no amount of searching for callers will reveal that — it requires asking
-what the symbol *means* and searching for the meaning, not the name.
+what the symbol _means_ and searching for the meaning, not the name.

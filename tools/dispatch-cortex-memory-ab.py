@@ -327,6 +327,22 @@ INPUTS = {
     # the script that reproduces it disagreeing, which is why
     # `tools/__tests__/test_preregistration_config.py` now pins this line to the workflow default.
     "cortex_memory_review_pass": "bare",
+    # §13.115's switch, held at the identity in the registered configuration: `none` is the
+    # retrieved order every archived artifact was produced under, so it is the control the
+    # reranking increment is measured against. The experiment overrides it with
+    # `--set cortex_memory_rerank=on`, which is the treatment; adoption would move this line and
+    # §10.3 together, and `test_preregistration_config.py` checks that pairing.
+    #
+    # Sent explicitly rather than left blank even though the workflow's default is empty and the
+    # product's default is `none`: the `''`-to-default path is where §38 and §13.112 both found
+    # defects, and a value a run depends on should not arrive by accident.
+    #
+    # The arm's pool must also fit the endpoint in ONE call. Zhipu's `/rerank` takes 128 documents,
+    # so the reranking dispatch runs `cortex_memory_relevance_top_k=128` as well -- which is NOT a
+    # second variable but the same one re-registered: the control for that run is 128 without the
+    # stage, and `PREREGISTRATION` §13.115 records the pair. The workflow declares the limit in job
+    # env, and the index refuses a wider pool rather than batching it.
+    "cortex_memory_rerank": "none",
     # §13.97's variable, held at the identity in the registered configuration. An experiment
     # overrides it with `--set cortex_memory_query_expansion=llm`; the marker in the log says
     # which dispatches departed from this table.
@@ -336,10 +352,12 @@ INPUTS = {
     "cortex_memory_self_consistency": "none",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
-    # §13.30's per-pass ceiling. 90 minutes is roughly three and a half times the longest
-    # pass any completed run has produced on this arm (a full run is about 3h32m for eight
-    # passes), so it is a hang detector rather than a slow-run detector.
-    "cortex_memory_budget_minutes": "90",
+    # §13.30's per-pass ceiling is no longer a dispatch input. It is a hang detector rather than a
+    # treatment -- 90 minutes against a longest observed pass of about 26 minutes -- and the input
+    # surface sat one below GitHub's 25-input ceiling when §13.115's `cortex_memory_rerank` needed a
+    # slot. The workflow now sets it as a constant, which is where a reader of a run looks for it
+    # anyway; §13.30's measurement and the value are unchanged. Same precedent as
+    # `evidenceTurnsPerRecord` (§13.94).
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

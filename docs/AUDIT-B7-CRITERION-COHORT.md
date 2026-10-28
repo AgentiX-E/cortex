@@ -24,23 +24,23 @@ The tempting implementation is a constant:
 
 ```ts
 // The 9 questions §2.5.10.2 separated. DO NOT EDIT.
-const TARGETS = ['gpt4_76048e76', 'gpt4_e414231f', /* … seven more */];
+const TARGETS = ['gpt4_76048e76', 'gpt4_e414231f' /* … seven more */];
 ```
 
 This is wrong, and the reason is not style. A transcribed roster is
 **unfalsifiable**: every later run is compared against a list that no artifact can
 contradict. If the clustering is revised, or the dataset build shifts, or the
-tokeniser changes, the constant keeps asserting *these 9 are targeted* while the
+tokeniser changes, the constant keeps asserting _these 9 are targeted_ while the
 pipeline targets a different 9 — and the check passes and means nothing.
 
 So the roster is **recomputed from the same inputs the intervention sees**:
 
-| Input | Why this input and not a convenient equivalent |
-| --- | --- |
-| `groundTruth` / `answer` | The two values whose separability defines the target set |
-| `turns` | The retrieved context — a roster computed against other turns is about a different question |
-| `grounded` | The upstream classifier's judgement, applied **before** clustering |
-| `questionId` | Ids, not indices: indices drift with the dataset build |
+| Input                    | Why this input and not a convenient equivalent                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| `groundTruth` / `answer` | The two values whose separability defines the target set                                    |
+| `turns`                  | The retrieved context — a roster computed against other turns is about a different question |
+| `grounded`               | The upstream classifier's judgement, applied **before** clustering                          |
+| `questionId`             | Ids, not indices: indices drift with the dataset build                                      |
 
 The consequence is deliberate: **this module can disagree with the published 9.**
 `verifyTargetCohort` reports that disagreement rather than reconciling it. A
@@ -54,10 +54,10 @@ The first draft of this module had one bucket for "not a target". Writing tests
 against real data split it, and the split is the more useful output of the whole
 exercise.
 
-| Observation | Bucket | What it is a fact about |
-| --- | --- | --- |
-| The reader produced the truth's value | `identical` | **The reader** |
-| Two values exist but no cluster could be formed for one | `unseparable` | **The instrument** |
+| Observation                                             | Bucket        | What it is a fact about |
+| ------------------------------------------------------- | ------------- | ----------------------- |
+| The reader produced the truth's value                   | `identical`   | **The reader**          |
+| Two values exist but no cluster could be formed for one | `unseparable` | **The instrument**      |
 
 Merging them is the same error the upstream record already corrected once: a
 reader that answered correctly is not a limitation of the method, and an
@@ -92,9 +92,9 @@ clusters -> [{"id":1,"terms":["chain"],"idx":[0]},{"id":2,"terms":["total"],"idx
 Two responses were possible, and the wrong one is attractive:
 
 - **Keep the bucket.** It compiles, it reads as a classification, and it is always
-  empty. This is the failure mode the record already names (§2.5.10.4): *they made
+  empty. This is the failure mode the record already names (§2.5.10.4): _they made
   a property look like it was carried by the code when it was always carried by
-  the input shape.*
+  the input shape._
 - **Assert the invariant instead.** The dependency's behaviour is now stated as
   `sidesLandInDistinctClusters`, exported and tested **against the real
   `clusterCandidates`**, so a change that started merging sides would fail a test
@@ -114,20 +114,20 @@ disabled, truth's cluster read off the answer's side, an unmatched id compared a
 Three survived the first run. Each was diagnosed by **reading the mutated
 output**, not by editing the test suite.
 
-| Mutation | Diagnosis | Action |
-| --- | --- | --- |
-| `identical-empty-value-counts-as-match` (`\|\|` → `&&`) | Genuine gap: both values empty is reachable and was untested | **Added a test** |
-| `identical-set-equality-dropped` | Behaviourally equivalent | **Removed, measured** |
-| `cluster-identity-by-reference` | Behaviourally equivalent | **Removed, measured** |
+| Mutation                                                | Diagnosis                                                    | Action                |
+| ------------------------------------------------------- | ------------------------------------------------------------ | --------------------- |
+| `identical-empty-value-counts-as-match` (`\|\|` → `&&`) | Genuine gap: both values empty is reachable and was untested | **Added a test**      |
+| `identical-set-equality-dropped`                        | Behaviourally equivalent                                     | **Removed, measured** |
+| `cluster-identity-by-reference`                         | Behaviourally equivalent                                     | **Removed, measured** |
 
 **Why the two are equivalent**, since "equivalent" is a claim and not an excuse:
 
-- *Set equality.* The early `a.length !== b.length` return already holds, and
+- _Set equality._ The early `a.length !== b.length` return already holds, and
   `contentTerms` de-duplicates, so a subset of `b` with equal length implies
   `a === b`. Measured: `contentTerms('bike bike bike')` is `['bike']`.
-- *Reference identity.* `clusterCandidates` builds `usable` with
+- _Reference identity._ `clusterCandidates` builds `usable` with
   `sides.filter(s => s.length > 0)` and stores `usable[i]` **directly**, so when no
-  side is empty the stored array *is* the side array. The lookup is reached only
+  side is empty the stored array _is_ the side array. The lookup is reached only
   after `sides.length >= 2`, and an empty side is dropped by the filter without
   changing which sides survive. Measured: byte-identical `computeTargetCohort`
   output across the corpus.

@@ -18,11 +18,11 @@ file. That is: no caller, and no local use either.
 Before treating these as deletions, three questions have to be answered for each
 one, because each has a different remedy:
 
-| Question                                     | If yes                                    | If no                            |
-| -------------------------------------------- | ----------------------------------------- | -------------------------------- |
-| Is it exercised by a test?                    | it is built and unwired — **a defect**     | it is dead weight                |
-| Is it publicly exported from a package barrel? | it is API surface — **a decision**        | it is an internal leftover       |
-| Does a live sibling in the same file call it?  | the module works without it — **grooming** | the file is a stranded island    |
+| Question                                       | If yes                                     | If no                         |
+| ---------------------------------------------- | ------------------------------------------ | ----------------------------- |
+| Is it exercised by a test?                     | it is built and unwired — **a defect**     | it is dead weight             |
+| Is it publicly exported from a package barrel? | it is API surface — **a decision**         | it is an internal leftover    |
+| Does a live sibling in the same file call it?  | the module works without it — **grooming** | the file is a stranded island |
 
 ## 2. The measurement
 
@@ -30,11 +30,11 @@ Re-runnable: `node tools/export-census.mjs --json`, then classify `unreferenced`
 against `packages/*/src/__tests__/*.ts`, the two repositories' `docs/`, and the
 other `export` lines of the same file.
 
-| Answer            | Count | Reading                                            |
-| ----------------- | ----- | -------------------------------------------------- |
-| exercised by tests | **29** | built and never wired — the B7 defect class         |
-| not exercised      | **2**  | genuinely unreferenced anywhere                     |
-| in a package barrel | **31** | every single one is public surface                  |
+| Answer              | Count  | Reading                                     |
+| ------------------- | ------ | ------------------------------------------- |
+| exercised by tests  | **29** | built and never wired — the B7 defect class |
+| not exercised       | **2**  | genuinely unreferenced anywhere             |
+| in a package barrel | **31** | every single one is public surface          |
 
 Re-measured after the fix in §3.2 closed one entry: **29 exercised, 1 not
 exercised, 30 total.**
@@ -102,11 +102,11 @@ decision recorded. **Requires a roadmap call, not a census call.**
 > call this paragraph defers was made, and the answer is a third option the two-way
 > phrasing above did not name: **superseded**. The capability it describes is already
 > delivered by the bitemporal `Fact` layer, which carries origin (`source`), trust,
-> and *two* time axes, with `bitemporal.ts` implementing as-of reconstruction. What
+> and _two_ time axes, with `bitemporal.ts` implementing as-of reconstruction. What
 > `ProvenanceNode` added beyond that was a `parents` DAG edge with **exactly one
 > occurrence in the repository — its own declaration**. The type is deleted; the real
-> gap it gestured at (a fact records *what* was concluded but not *from which prior
-> facts*) is recorded in `ARCHITECTURE.md`'s status table with the remedy attached to
+> gap it gestured at (a fact records _what_ was concluded but not _from which prior
+> facts_) is recorded in `ARCHITECTURE.md`'s status table with the remedy attached to
 > `Fact` rather than to a parallel node type. This entry's own hedge — "requires a
 > roadmap call" — was right, and the call turned out to be cheaper than the hedge
 > implied once the question changed from "who should call this?" to "what does this
@@ -165,41 +165,41 @@ Every one of these has at least one test file referencing it and no production
 call site. Grouped by module, with the live siblings that show the module itself
 is in use:
 
-| Symbol                            | Package      | Test files | Live siblings in the same file |
-| --------------------------------- | ------------ | ---------- | ------------------------------ |
-| `consolidate`                     | cortex-core  | 3          | —                              |
-| `createMemory`                    | cortex-core  | 4          | `MemoryValue`                  |
-| `currentFacts`                    | cortex-core  | 1          | —                              |
-| `currentValue`                    | cortex-core  | 3          | —                              |
-| `decideRetrieval`                 | cortex-core  | 2          | —                              |
-| `decideWrite`                     | cortex-core  | 2          | —                              |
-| `defaultValueFunction`            | cortex-core  | 1          | —                              |
-| `findContradictions`              | cortex-core  | 1          | —                              |
-| `initialFsrsState`                | cortex-core  | 1          | `FsrsState`, `retrievability`, `review` |
-| `l2Distance`                      | cortex-core  | 2          | `cosineSimilarity`, `norm`, `normalize` |
-| `resolveContradiction`            | cortex-core  | 4          | —                              |
-| `squaredEuclideanCostMatrix`      | cortex-core  | 1          | —                              |
-| `FactMemorySystem`                | cortex-eval  | 5          | `splitKeyValue`, `tokenize`    |
-| `candidateSpanCount`              | cortex-eval  | 1          | 8 live                         |
-| `clearJudgeCache`                 | cortex-eval  | 1          | `AnswerJudge`, `createLlmJudge` |
-| `createEmbeddingFromEnv`          | cortex-eval  | 2          | 2 live                         |
-| `createLongMemEvalMini`           | cortex-eval  | 3          | —                              |
-| `extractDate`                     | cortex-eval  | 1          | `daysBetween`                  |
-| `flattenSessions`                 | cortex-eval  | 1          | 7 live                         |
-| `flattenTurns`                    | cortex-eval  | 1          | 6 live                         |
-| `generateSyntheticBenchmark`      | cortex-eval  | 1          | —                              |
+| Symbol                             | Package     | Test files | Live siblings in the same file                                         |
+| ---------------------------------- | ----------- | ---------- | ---------------------------------------------------------------------- |
+| `consolidate`                      | cortex-core | 3          | —                                                                      |
+| `createMemory`                     | cortex-core | 4          | `MemoryValue`                                                          |
+| `currentFacts`                     | cortex-core | 1          | —                                                                      |
+| `currentValue`                     | cortex-core | 3          | —                                                                      |
+| `decideRetrieval`                  | cortex-core | 2          | —                                                                      |
+| `decideWrite`                      | cortex-core | 2          | —                                                                      |
+| `defaultValueFunction`             | cortex-core | 1          | —                                                                      |
+| `findContradictions`               | cortex-core | 1          | —                                                                      |
+| `initialFsrsState`                 | cortex-core | 1          | `FsrsState`, `retrievability`, `review`                                |
+| `l2Distance`                       | cortex-core | 2          | `cosineSimilarity`, `norm`, `normalize`                                |
+| `resolveContradiction`             | cortex-core | 4          | —                                                                      |
+| `squaredEuclideanCostMatrix`       | cortex-core | 1          | —                                                                      |
+| `FactMemorySystem`                 | cortex-eval | 5          | `splitKeyValue`, `tokenize`                                            |
+| `candidateSpanCount`               | cortex-eval | 1          | 8 live                                                                 |
+| `clearJudgeCache`                  | cortex-eval | 1          | `AnswerJudge`, `createLlmJudge`                                        |
+| `createEmbeddingFromEnv`           | cortex-eval | 2          | 2 live                                                                 |
+| `createLongMemEvalMini`            | cortex-eval | 3          | —                                                                      |
+| `extractDate`                      | cortex-eval | 1          | `daysBetween`                                                          |
+| `flattenSessions`                  | cortex-eval | 1          | 7 live                                                                 |
+| `flattenTurns`                     | cortex-eval | 1          | 6 live                                                                 |
+| `generateSyntheticBenchmark`       | cortex-eval | 1          | —                                                                      |
 | `isCandidateDiscriminationEnabled` | cortex-eval | 1          | 8 live — **deleted: an inert switch, §8 of `AUDIT-B7-DEAD-SWITCH.md`** |
-| `isTemporalQuestion`              | cortex-eval  | 1          | `daysBetween`                  |
-| `runEmbeddingBenchmark`           | cortex-eval  | 1          | 11 live                        |
-| `sidesLandInDistinctClusters`     | cortex-eval  | 1          | 5 live                         |
-| `createRetryStatsAggregate`       | cortex-llm   | 2          | 5 live                         |
-| `PgStorage`                       | cortex-node  | 1          | —                              |
-| `SqliteStorage`                   | cortex-node  | 1          | —                              |
-| `ensurePgSchema`                  | cortex-node  | 1          | —                              |
+| `isTemporalQuestion`               | cortex-eval | 1          | `daysBetween`                                                          |
+| `runEmbeddingBenchmark`            | cortex-eval | 1          | 11 live                                                                |
+| `sidesLandInDistinctClusters`      | cortex-eval | 1          | 5 live                                                                 |
+| `createRetryStatsAggregate`        | cortex-llm  | 2          | 5 live                                                                 |
+| `PgStorage`                        | cortex-node | 1          | —                                                                      |
+| `SqliteStorage`                    | cortex-node | 1          | —                                                                      |
+| `ensurePgSchema`                   | cortex-node | 1          | —                                                                      |
 
 **Reading:** this is not a deletion list. `PgStorage` and `SqliteStorage` are the
 storage adapters a library consumer would instantiate by name — they have no
-caller *in this repository* precisely because they are the entry points to it.
+caller _in this repository_ precisely because they are the entry points to it.
 `l2Distance`, `initialFsrsState` and `extractDate` sit beside live siblings and are
 the unused members of a coherent family. `runEmbeddingBenchmark` is one of 17
 exports in `runner.ts`, 11 of which are live.

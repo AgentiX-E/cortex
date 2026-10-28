@@ -8,6 +8,10 @@ import type { EvidenceReduction, QuestionRecord } from './question-record.js';
 import { runAblation, type AblationOptions } from './ablation.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
+import type { RerankCensus } from './rerank-census.js';
+import type { RerankBounds } from './rerank-factory.js';
+import { dominantFlow } from './answer-transition.js';
+import type { AnswerTransition } from './types.js';
 
 export type AblationReport = {
   dataset: string;
@@ -698,6 +702,44 @@ export type MemoryArmConfig = {
         readonly temperature: number | null;
       }
     | undefined;
+  /**
+   * The reranking stage this run carried, and what it did.
+   *
+   * ## Why the toggle is recorded even for the control
+   *
+   * `provider: 'none'` is a state a dispatch can name, so an artifact that spelled nothing would
+   * leave "ran the control" and "predates the field" as the same bytes — the rule `reviewPass`
+   * follows, and the reason §13.107 was unreadable for a whole round.
+   *
+   * ## Why the census is inside the same record rather than beside it
+   *
+   * The identity answers *which* scorer ran; the census answers *whether it ran*. Splitting them
+   * would allow an artifact to name a model it never consulted, which is precisely the failure the
+   * counters exist to expose: `cortex-core`'s `rerankHits` degrades to the retrieved order on a
+   * thrown request, a short reply or a non-finite score, so an arm whose endpoint answered `401` five
+   * hundred times produces the same accuracy as one whose cross-encoder agreed with the retriever
+   * every time. §13.115 registers `fallbacks > 0` as an **assembly failure**, not a null result.
+   *
+   * `census` is absent when the caller could not measure it — a replayed artifact, or an index built
+   * before the counter existed — and never zeroed, because `fallbacks: 0` is the single most
+   * reassuring number in the record and must not be fabricated.
+   */
+  readonly rerank?:
+    | {
+        readonly provider: 'none' | 'openai-compatible' | 'llm' | 'local';
+        readonly model?: string | undefined;
+        readonly host?: string | null | undefined;
+        /**
+         * The endpoint's declared wire limits, when the deployment named any.
+         *
+         * Recorded because they change what the counters mean: a `clipped` count is only interpretable
+         * beside the limit that produced it, and a `fallbacks: 0` on a run that declared 128 documents
+         * says something different from one that declared nothing and happened to fit.
+         */
+        readonly bounds?: RerankBounds | undefined;
+        readonly census?: RerankCensus | undefined;
+      }
+    | undefined;
 };
 
 /**
@@ -733,6 +775,40 @@ function renderReader(reader: {
     `/thinking=${reader.thinking}` +
     `/temp=${reader.temperature === null ? 'default' : String(reader.temperature)}`
   );
+}
+
+/**
+ * One field of the configuration line, for the reranking stage.
+ *
+ * `none` is spelled rather than omitted, for the reason `reviewPass` is: a run that dispatched the
+ * control and an artifact that predates the field must not read the same. `local` carries no host
+ * because a cross-encoder in the process talks to no service, and writing `@null` would look like a
+ * missing value rather than like the truth.
+ */
+function renderRerank(rerank: {
+  readonly provider: 'none' | 'openai-compatible' | 'llm' | 'local';
+  readonly model?: string | undefined;
+  readonly host?: string | null | undefined;
+  readonly bounds?:
+    { readonly maxDocuments: number | null; readonly maxDocumentChars: number | null } | undefined;
+}): string {
+  if (rerank.provider === 'none') {
+    return 'rerank=none';
+  }
+  const model = rerank.model ?? 'n/a';
+  const endpoint =
+    rerank.host === null || rerank.host === undefined
+      ? `rerank=${rerank.provider}:${model}`
+      : `rerank=${rerank.provider}:${model}@${rerank.host}`;
+  // The wire limits are part of the identity of the *treatment*: a stage clipped at 4,096 characters
+  // and one that was never clipped are different experiments, and `fallbacks` reads the same on both.
+  const bounds = rerank.bounds;
+  if (bounds === undefined || (bounds.maxDocuments === null && bounds.maxDocumentChars === null)) {
+    return endpoint;
+  }
+  const docs = bounds.maxDocuments === null ? '-' : String(bounds.maxDocuments);
+  const chars = bounds.maxDocumentChars === null ? '-' : String(bounds.maxDocumentChars);
+  return `${endpoint}/max=${docs}turns,${chars}chars`;
 }
 
 /**
@@ -1027,7 +1103,11 @@ export function formatAblationReport(report: AblationReport): string {
         // every run before §13.114 was in and is spelled rather than omitted, because "the
         // request carried no temperature" and "this artifact predates the field" are the same
         // bytes otherwise -- the distinction the `reviewPass` field exists to keep.
-        (memoryArm.reader === undefined ? '' : `, \`${renderReader(memoryArm.reader)}\``),
+        (memoryArm.reader === undefined ? '' : `, \`${renderReader(memoryArm.reader)}\``) +
+        // Which reranking stage the run carried. Appended only when the caller recorded one --
+        // the arm always does, so an artifact without the field predates §13.115 and must not be
+        // read as having run the control.
+        (memoryArm.rerank === undefined ? '' : `, \`${renderRerank(memoryArm.rerank)}\``),
     );
 
     // The reachable set, rendered beside the name and for the reason §12.8 gives: the
@@ -1200,6 +1280,10 @@ export function formatAblationReport(report: AblationReport): string {
     `- Baseline-correct/feature-wrong (${regression.length}): ${regression.length > 0 ? regression.join(', ') : '(none)'}`,
     `- Baseline-wrong/feature-correct (${gain.length}): ${gain.length > 0 ? gain.join(', ') : '(none)'}`,
   );
+  // The split of those same two counts along the abstention line. It goes here rather than beside the
+  // ablation table because it is a reading of the flips, and the flips are named on the two lines above --
+  // a reader who has just seen "5 moved" is the reader asking "moved how".
+  lines.push(...transitionLines(ab.transitions));
   // The retry-fire table goes BELOW the results, unlike the cohort banner. The
   // ordering is deliberate and the two are opposite for a reason: the banner
   // qualifies what the numbers below it mean, so it must come first; the fire
@@ -1226,6 +1310,10 @@ export function formatAblationReport(report: AblationReport): string {
   // neither, and a section that only appeared when `recovery` did would hide the bare pass on exactly the builds
   // that have it without the older one.
   lines.push(...bareRetryLines(report.bareRetry));
+  // Its own section and its own guard, like the two retry passes above: the stage is a property of
+  // the arm's ranking rather than of the abstention path, so it must not be nested under a census
+  // that a different layer produces.
+  lines.push(...rerankLines(report.memoryArmConfig?.rerank));
   lines.push('');
   return lines.join('\n');
 }
@@ -1294,6 +1382,87 @@ function recoveryLines(census: RecoveryCensus | undefined): string[] {
  * `attempted` is bounded by the decline count rather than by the question count -- and why a zero here is a
  * statement about the population, not about the switch.
  */
+/**
+ * The reranking stage's section, as lines.
+ *
+ * ## Why this section names an assembly failure rather than reporting a null result
+ *
+ * `rerankHits` degrades to the retrieved order on every scorer failure, so a `0.00pp` delta is
+ * consistent with two opposite worlds: a cross-encoder that agreed with the retriever on all five
+ * hundred questions, and one that never answered the phone. §13.115 pre-registers the distinction —
+ * `fallbacks > 0` means the arm did not administer its treatment — and a report that printed four
+ * bare numbers would leave a reader to work that out. The warning below is that sentence, in the one
+ * place a reader of the Markdown will see it.
+ *
+ * ## Why `changed` is rendered beside `fallbacks`
+ *
+ * They are the two halves of "did the stage do anything": `fallbacks: 0, changed: 0` is a reranker
+ * that ran and confirmed the retrieval order, which is a **result**, while `fallbacks: 500,
+ * changed: 0` is a stage that never executed. Printing either alone makes those two rows identical.
+ */
+function rerankLines(
+  rerank:
+    | {
+        readonly provider: 'none' | 'openai-compatible' | 'llm' | 'local';
+        readonly model?: string | undefined;
+        readonly host?: string | null | undefined;
+        readonly bounds?:
+          | { readonly maxDocuments: number | null; readonly maxDocumentChars: number | null }
+          | undefined;
+        readonly census?: RerankCensus | undefined;
+      }
+    | undefined,
+): string[] {
+  // No stage configured is not a section, and neither is an artifact that predates the field: both
+  // are stated on the configuration line, which is where "this run had none" belongs.
+  if (rerank === undefined || rerank.provider === 'none') return [];
+  const census = rerank.census;
+  if (census === undefined) {
+    return [
+      '',
+      '## Rerank stage',
+      '',
+      'Configured, but the index did not report what it did, so no count below is available. Treat the arm as',
+      'unmeasured: an unreported census cannot distinguish a stage that never fired from one that fired and',
+      'changed nothing.',
+    ];
+  }
+  const { calls, pairs, fallbacks, changed, clipped } = census;
+  const share = calls === 0 ? 'n/a' : `${((changed / calls) * 100).toFixed(1)}%`;
+  const lines = [
+    '',
+    '## Rerank stage',
+    '',
+    '| Calls | Pairs scored | Fallbacks | Questions reordered | Passages clipped |',
+    '|---|---|---|---|---|',
+    `| ${calls} | ${pairs} | ${fallbacks} | ${changed} (${share}) | ${clipped} |`,
+    '',
+    'Calls counts scoring invocations and pairs counts `(question, passage)` pairs, so the second number is the cost',
+    'and the first is the population. Fallbacks counts invocations whose reply could not be trusted — a thrown',
+    'request, a short reply, a non-finite score — after which the retrieved order stood. Clipped counts passages',
+    'shortened to the endpoint declared per-document limit before scoring; the reader still saw the whole turn, so',
+    'only the ordering judged a prefix.',
+  ];
+  if (fallbacks > 0) {
+    lines.push(
+      '',
+      `> **Assembly failure, not a null result.** ${fallbacks} of ${calls} invocations returned nothing usable, so`,
+      '> the questions behind them were ranked by the retriever and this arm did not administer its treatment.',
+      '> §13.115 registers that state as unreadable rather than negative: the delta it produces measures the',
+      '> provider, not the reranker.',
+    );
+  } else if (changed === 0) {
+    lines.push(
+      '',
+      '> **The stage ran and reordered nothing.** Every reply parsed and every question kept its retrieved order.',
+      '> That is a result rather than a failure — the cross-encoder agreeing with the ranking is what a zero',
+      '> delta has to mean before it can be read as one — but it also means the increment had no room to act on',
+      '> this corpus, which is the reading §13.115 asks for next.',
+    );
+  }
+  return lines;
+}
+
 function bareRetryLines(census: BareRetryCensus | undefined): string[] {
   if (census === undefined) return [];
   const { attempted, answered } = census;
@@ -1417,6 +1586,77 @@ function abstentionReasonLines(
   }
 
   return lines;
+}
+
+/**
+ * The abstention-line split of the discordant pairs, as lines.
+ *
+ * ## Why the four numbers are printed as a table with a named flow
+ *
+ * `recovered` and `corrected` both mean "this question was bought", and a reader who is shown them side by
+ * side without a label will read the larger one as the mechanism. The label is the sentence underneath, and
+ * it is computed by `dominantFlow` rather than written by hand so that the phrase and the counts cannot
+ * disagree — the failure mode of a report that names its own result is a report that names the wrong one.
+ *
+ * ## Why the identity is printed
+ *
+ * The two bought cells must sum to the bought count above and the two sold cells to the sold count. Printing
+ * the sums is what lets a reader check that this table is a refinement of those counts rather than a second
+ * measurement of something else — and it is the line that would show a future edit double-counting a flip.
+ *
+ * ## The absent branch
+ *
+ * An artifact written before this field existed has no split. That is printed as a sentence, not omitted:
+ * a section that silently disappears reads as a section that had nothing to say, and the difference between
+ * "nothing crossed the decline line" and "nobody recorded which side each question was on" is the whole
+ * reason this exists.
+ */
+function transitionLines(transition: AnswerTransition | undefined): string[] {
+  if (transition === undefined) {
+    return [
+      '',
+      '### What kind of change each flip was',
+      '',
+      'Not recorded in this artifact: it was written before this split existed. The two flip counts above ' +
+        'stand; what is missing is which side of the abstention line each flipped question was on, so ' +
+        '"started speaking" and "started being right" cannot be separated here.',
+    ];
+  }
+  const { recovered, corrected, declined, missed } = transition;
+  const bought = recovered + corrected;
+  const sold = declined + missed;
+  const flow = dominantFlow(transition);
+  const reading =
+    flow === 'none'
+      ? '**Nothing crossed either line**: no question changed verdict, which is a null result rather than a ' +
+        'table with four zeroes in it.'
+      : flow === 'decline'
+        ? '**The decline flow carried it**: every question that changed verdict crossed the abstention line ' +
+          'in one direction or the other, so this increment changed *whether* the system speaks.'
+        : flow === 'content'
+          ? '**The content flow carried it**: no flipped question crossed the abstention line, so this ' +
+            'increment changed *what* the system says, not whether it says anything.'
+          : '**Two mechanisms moved together**: flips crossed the abstention line and changed content, so ' +
+            'the net figure below is the sum of a response-shape effect and a knowledge effect and must not ' +
+            'be reported as one of them.';
+  const declineFlow = recovered + declined;
+  const contentFlow = corrected + missed;
+  return [
+    '',
+    '### What kind of change each flip was',
+    '',
+    '| flip | baseline | treatment | count |',
+    '|---|---|---|---|',
+    `| recovered | declined | answered correctly | ${recovered} |`,
+    `| corrected | answered wrongly | answered correctly | ${corrected} |`,
+    `| declined | answered correctly | declined | ${declined} |`,
+    `| missed | answered correctly | answered wrongly | ${missed} |`,
+    '',
+    `- ${reading}`,
+    `- Decline flow (recovered + declined) = ${declineFlow} against content flow (corrected + missed) = ${contentFlow}`,
+    `- Identity: recovered + corrected = ${bought} is the bought count above, declined + missed = ${sold} is ` +
+      'the sold count above — this table refines those two numbers and cannot disagree with them.',
+  ];
 }
 
 /**

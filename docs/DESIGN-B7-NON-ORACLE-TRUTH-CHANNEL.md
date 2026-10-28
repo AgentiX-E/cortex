@@ -35,11 +35,11 @@ export function discriminateContext(
 
 ## 16.2 三条候选通道
 
-| # | 通道 | 两侧来自 | oracle 性质 | 实测状态 |
-|---|---|---|---|---|
-| **A** | 把 `groundTruth`/`answer` 穿进 `answer()` | 数据集真值 + 基线答案 | **oracle-assisted** | 机制可用，但**测的不是可部署系统** |
-| **B** | 只用 `question`，走 `candidateSides` 的既有回退 | 问题自身的限定词 | **非 oracle** | **已实测：只产 1 侧 → 永不标注（§16.4）** |
-| **C** | 从**已检索的候选**里抽两侧 | 检索结果（阅读器可见之物） | **非 oracle** | 需新实现；本文档给出设计（§16.6） |
+| #     | 通道                                            | 两侧来自                   | oracle 性质         | 实测状态                                  |
+| ----- | ----------------------------------------------- | -------------------------- | ------------------- | ----------------------------------------- |
+| **A** | 把 `groundTruth`/`answer` 穿进 `answer()`       | 数据集真值 + 基线答案      | **oracle-assisted** | 机制可用，但**测的不是可部署系统**        |
+| **B** | 只用 `question`，走 `candidateSides` 的既有回退 | 问题自身的限定词           | **非 oracle**       | **已实测：只产 1 侧 → 永不标注（§16.4）** |
+| **C** | 从**已检索的候选**里抽两侧                      | 检索结果（阅读器可见之物） | **非 oracle**       | 需新实现；本文档给出设计（§16.6）         |
 
 ## 16.3 通道 A 为什么不能用
 
@@ -64,7 +64,7 @@ const truth = contentTerms(options.groundTruth);
 const answer = contentTerms(options.answer);
 if (truth.length === 0 && answer.length === 0) {
   const fromQuestion = discriminatingQuestionTerms(options.question);
-  return fromQuestion.length === 0 ? [] : [fromQuestion];   // ← 恒为一个元素
+  return fromQuestion.length === 0 ? [] : [fromQuestion]; // ← 恒为一个元素
 }
 ```
 
@@ -148,13 +148,13 @@ export function retrievalCandidateSides(input: {
 
 ### 16.6.1 位置
 
-| 内容 | 位置 | 理由 |
-|---|---|---|
-| `retrievalCandidateSides` | `packages/cortex-eval/src/candidate-context.ts` | 与 `candidateSides` 同文件：二者是同一决策的两个分支，分开放会让「哪条是 oracle 路径」需要跨文件读 |
-| 类型扩展 | 同上（`DiscriminatedContextOptions` 旁） | 不改动既有类型，新增窄类型 |
-| 数据通道穿线 | `packages/cortex-eval/src/natural-language-memory.ts` | §14.5 已确认「从不接收真值」就在这里 |
-| 开关转发 | `packages/cortex-eval/src/runner.ts` | §14 已修好的那条链，只需补新选项 |
-| 工具（如需要） | `tools/read-b7-nonoracle.mjs` | 与 `read-b7-criterion.mjs` 同形：判据的可执行形态 |
+| 内容                      | 位置                                                  | 理由                                                                                               |
+| ------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `retrievalCandidateSides` | `packages/cortex-eval/src/candidate-context.ts`       | 与 `candidateSides` 同文件：二者是同一决策的两个分支，分开放会让「哪条是 oracle 路径」需要跨文件读 |
+| 类型扩展                  | 同上（`DiscriminatedContextOptions` 旁）              | 不改动既有类型，新增窄类型                                                                         |
+| 数据通道穿线              | `packages/cortex-eval/src/natural-language-memory.ts` | §14.5 已确认「从不接收真值」就在这里                                                               |
+| 开关转发                  | `packages/cortex-eval/src/runner.ts`                  | §14 已修好的那条链，只需补新选项                                                                   |
+| 工具（如需要）            | `tools/read-b7-nonoracle.mjs`                         | 与 `read-b7-criterion.mjs` 同形：判据的可执行形态                                                  |
 
 ### 16.6.2 依赖分层（不新增任何跨包依赖）
 
@@ -220,11 +220,11 @@ cortex-eval     ┌ candidate-context.ts ── 新增 retrievalCandidateSides
 
 ## 16.9 下一步（按优先级）
 
-| # | 事项 | 判据 |
-|---|---|---|
-| C1 | 实现 `retrievalCandidateSides` | TDD；注入变异 100% 被捕获 |
-| C2 | 证明它在真实产物上产 **≥2** 侧 | 与 §16.4 的通道 B 对照实验：同为非 oracle，B 产 1 侧、C 须产 2 |
-| C3 | 穿线到 `natural-language-memory.ts` 与 `runner.ts` | 沿用 §14 的 4 个接线测试形态 |
-| C4 | 普查门禁须保持绿色 | 新函数必须有非测试调用者（§15 的门禁会强制这一点） |
-| C5 | A/B 重跑 | 先验证两臂**不再逐字节相同**——这是 §13 教训的直接应用 |
-| C6 | 按判据判决 | 复用 `tools/read-b7-criterion.mjs` |
+| #   | 事项                                               | 判据                                                           |
+| --- | -------------------------------------------------- | -------------------------------------------------------------- |
+| C1  | 实现 `retrievalCandidateSides`                     | TDD；注入变异 100% 被捕获                                      |
+| C2  | 证明它在真实产物上产 **≥2** 侧                     | 与 §16.4 的通道 B 对照实验：同为非 oracle，B 产 1 侧、C 须产 2 |
+| C3  | 穿线到 `natural-language-memory.ts` 与 `runner.ts` | 沿用 §14 的 4 个接线测试形态                                   |
+| C4  | 普查门禁须保持绿色                                 | 新函数必须有非测试调用者（§15 的门禁会强制这一点）             |
+| C5  | A/B 重跑                                           | 先验证两臂**不再逐字节相同**——这是 §13 教训的直接应用          |
+| C6  | 按判据判决                                         | 复用 `tools/read-b7-criterion.mjs`                             |

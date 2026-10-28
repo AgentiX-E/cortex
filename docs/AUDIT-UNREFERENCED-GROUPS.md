@@ -13,7 +13,7 @@ it teaches the wrong name for a live feature.
 ## 1. What `unreferenced` means, exactly
 
 The census defines the class precisely (`packages/cortex-core/src/export-census.ts`):
-a symbol is *unreferenced* when it has zero mentions from
+a symbol is _unreferenced_ when it has zero mentions from
 
 - any file other than the one that declares it,
 - test files,
@@ -25,21 +25,21 @@ barrels would make the class empty.
 
 Re-derived for this audit, independently of the census, on the 27:
 
-| Check | Result |
-| --- | --- |
+| Check                                           | Result           |
+| ----------------------------------------------- | ---------------- |
 | Non-test, non-barrel source files mentioning it | **0 for all 27** |
-| `tools/` consumers | **0 for all 27** |
-| `bench/` consumers | **0 for all 27** |
-| Days in a package barrel | **27 of 27** |
-| Test files importing it by name | **27 of 27** |
+| `tools/` consumers                              | **0 for all 27** |
+| `bench/` consumers                              | **0 for all 27** |
+| Days in a package barrel                        | **27 of 27**     |
+| Test files importing it by name                 | **27 of 27**     |
 
-The last two rows are the finding. Every member of the class is *simultaneously*
+The last two rows are the finding. Every member of the class is _simultaneously_
 published API and exercised by a named test import. That is a specific situation,
 and it is the opposite of the one the class name suggests.
 
 > **The class answers "does production code mention this?" It does not answer "is
-> this a problem?"** A symbol can be zero-referenced because no *code* needs it and a
-> *consumer outside the repository* does — which is what a library's public surface
+> this a problem?"** A symbol can be zero-referenced because no _code_ needs it and a
+> _consumer outside the repository_ does — which is what a library's public surface
 > is. That is not a defect; the absence of an internal caller is the definition of
 > an interface.
 
@@ -64,11 +64,11 @@ The second pass looked for `expect(` within four lines of a call site, to separa
 "a test drives this" from "a test calls this to move the counter". It flagged three
 symbols as never asserted. All three were false positives:
 
-| Symbol | What the heuristic missed |
-| --- | --- |
+| Symbol                       | What the heuristic missed                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
 | `squaredEuclideanCostMatrix` | Assertions at `math.test.ts:84-85`, six lines below the call, on the returned matrix |
-| `clearJudgeCache` | It **is** the behaviour under test — clear, then assert `calls === 1` |
-| `defaultValueFunction` | Passed as an argument to `decideWrite`; asserted through the decision it produces |
+| `clearJudgeCache`            | It **is** the behaviour under test — clear, then assert `calls === 1`                |
+| `defaultValueFunction`       | Passed as an argument to `decideWrite`; asserted through the decision it produces    |
 
 The third one is the instructive failure: it is never called by name at all, only
 passed, so no call-site heuristic can ever see it. **Assertion is not a property of
@@ -117,14 +117,14 @@ fully covered, so every conventional signal reads green.
 
 The candidate-discrimination feature **is** delivered end to end:
 
-| Link | Site |
-| --- | --- |
-| Environment | `CANDIDATE_DISCRIMINATION` |
-| Read at the entry point | `bench/run.ts:433` — `readToggle(process.env, 'CANDIDATE_DISCRIMINATION')` |
-| Runner option | `runner.ts:144` — `candidateDiscrimination?: boolean` |
-| Feature-config derivation | `runner.ts:260`, `351`, `1228` |
-| Prompt builders | `natural-language-memory.ts:1818`, `1899` — the instruction is appended |
-| Workflow input | `.github/workflows/benchmark.yml:188` |
+| Link                      | Site                                                                       |
+| ------------------------- | -------------------------------------------------------------------------- |
+| Environment               | `CANDIDATE_DISCRIMINATION`                                                 |
+| Read at the entry point   | `bench/run.ts:433` — `readToggle(process.env, 'CANDIDATE_DISCRIMINATION')` |
+| Runner option             | `runner.ts:144` — `candidateDiscrimination?: boolean`                      |
+| Feature-config derivation | `runner.ts:260`, `351`, `1228`                                             |
+| Prompt builders           | `natural-language-memory.ts:1818`, `1899` — the instruction is appended    |
+| Workflow input            | `.github/workflows/benchmark.yml:188`                                      |
 
 Two names for one concept. One is live and measurable; the other is inert and
 exported. **That is worse than dead code**, which is the whole of §3.3.
@@ -163,12 +163,12 @@ whether the live switch worked, and this one is not the live switch.
 
 Grouped by what they are, since the reason is the same within each group:
 
-| Group | Count | Members | Why `export` is load-bearing |
-| --- | --- | --- | --- |
-| `cortex-core` algorithm layer | 12 | `consolidate`, `createMemory`, `currentFacts`, `currentValue`, `decideRetrieval`, `decideWrite`, `defaultValueFunction`, `findContradictions`, `initialFsrsState`, `l2Distance`, `resolveContradiction`, `squaredEuclideanCostMatrix` | These are the package's stated product: "a validated library of cognitive contracts and pure algorithms" (`ARCHITECTURE.md`). Their value functions, bitemporal queries and FSRS state are exported for a consumer the repository does not contain — the missing `cortex-memory` seam specified in `AUDIT-CODE-VS-DOCS.md` §6 |
-| Storage backends | 3 | `PgStorage`, `SqliteStorage`, `ensurePgSchema` | `cortex-node`'s entire purpose. `ARCHITECTURE.md` names them as the two `Storage` implementations. A storage class with a caller inside the repository would be a coupling, not a feature |
-| Test infrastructure | 6 | `createLongMemEvalMini`, `generateSyntheticBenchmark`, `createEmbeddingFromEnv`, `FactMemorySystem`, `runEmbeddingBenchmark`, `flattenSessions` | Datasets and systems that suites construct directly. `createLongMemEvalMini` alone is used 11 times in `report-runner.test.ts` to build the dataset under test, and `index.test.ts:38` asserts it is reachable through the barrel |
-| Diagnostics & measurement | 5 | `flattenTurns`, `candidateSpanCount`, `clearJudgeCache`, `sidesLandInDistinctClusters`, `createRetryStatsAggregate` | Instruments that measure or isolate. `clearJudgeCache` is test isolation that is itself asserted; the rest feed reporting |
+| Group                         | Count | Members                                                                                                                                                                                                                               | Why `export` is load-bearing                                                                                                                                                                                                                                                                                                  |
+| ----------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cortex-core` algorithm layer | 12    | `consolidate`, `createMemory`, `currentFacts`, `currentValue`, `decideRetrieval`, `decideWrite`, `defaultValueFunction`, `findContradictions`, `initialFsrsState`, `l2Distance`, `resolveContradiction`, `squaredEuclideanCostMatrix` | These are the package's stated product: "a validated library of cognitive contracts and pure algorithms" (`ARCHITECTURE.md`). Their value functions, bitemporal queries and FSRS state are exported for a consumer the repository does not contain — the missing `cortex-memory` seam specified in `AUDIT-CODE-VS-DOCS.md` §6 |
+| Storage backends              | 3     | `PgStorage`, `SqliteStorage`, `ensurePgSchema`                                                                                                                                                                                        | `cortex-node`'s entire purpose. `ARCHITECTURE.md` names them as the two `Storage` implementations. A storage class with a caller inside the repository would be a coupling, not a feature                                                                                                                                     |
+| Test infrastructure           | 6     | `createLongMemEvalMini`, `generateSyntheticBenchmark`, `createEmbeddingFromEnv`, `FactMemorySystem`, `runEmbeddingBenchmark`, `flattenSessions`                                                                                       | Datasets and systems that suites construct directly. `createLongMemEvalMini` alone is used 11 times in `report-runner.test.ts` to build the dataset under test, and `index.test.ts:38` asserts it is reachable through the barrel                                                                                             |
+| Diagnostics & measurement     | 5     | `flattenTurns`, `candidateSpanCount`, `clearJudgeCache`, `sidesLandInDistinctClusters`, `createRetryStatsAggregate`                                                                                                                   | Instruments that measure or isolate. `clearJudgeCache` is test isolation that is itself asserted; the rest feed reporting                                                                                                                                                                                                     |
 
 Nothing here is wired to nothing. Their absence of internal callers is the definition
 of the interface they are.
@@ -192,12 +192,12 @@ and measured.
 
 ## 5. The change
 
-| # | Change | File |
-| --- | --- | --- |
-| 1 | Delete the reader and its field | `cortex-eval/src/candidate-context.ts` |
-| 2 | Remove the barrel entry | `cortex-eval/src/index.ts` |
-| 3 | Delete the two tests that drove it | `cortex-eval/src/__tests__/candidate-context.test.ts` |
-| 4 | Add a guard test for the shape | `cortex-eval/src/__tests__/candidate-switch.test.ts` |
+| #   | Change                             | File                                                  |
+| --- | ---------------------------------- | ----------------------------------------------------- |
+| 1   | Delete the reader and its field    | `cortex-eval/src/candidate-context.ts`                |
+| 2   | Remove the barrel entry            | `cortex-eval/src/index.ts`                            |
+| 3   | Delete the two tests that drove it | `cortex-eval/src/__tests__/candidate-context.test.ts` |
+| 4   | Add a guard test for the shape     | `cortex-eval/src/__tests__/candidate-switch.test.ts`  |
 
 Item 4 is the point. Deleting one switch reader does not stop the next one; the guard
 test asserts the property that made this one a defect:
@@ -221,7 +221,7 @@ checked perfectly.
 2. No environment or CLI binding: `ENABLE_CANDIDATE*` and `enableCandidate*` return
    **nothing** outside the declaration and its own tests.
 3. No docstring anywhere promises it (`docs/`, `ARCHITECTURE.md`, `README.md`,
-   `CONTRIBUTING.md` — the only two mentions in the repository are audits *listing*
+   `CONTRIBUTING.md` — the only two mentions in the repository are audits _listing_
    it as an orphan).
 4. No workflow input maps to it.
 5. The live switch is independently verifiable as the live one (§3.2).
@@ -241,13 +241,13 @@ Invariants hold: `knownOrphans = locations = sum(groups) = orphanClass = 213`, a
 
 ### 6.3 Three defect injections, each caught by a different assertion
 
-| Injection | Result |
-| --- | --- |
-| Re-declare the inert reader and its field | `1 failed \| 5 passed` — names the declaration |
-| Sever `options.candidateDiscrimination` from the 3 prompt-builder reads | `1 failed \| 5 passed` — **the B7 shape**, reported as `expected 0 to be greater than or equal to 2` |
-| Remove the `readToggle(process.env, 'CANDIDATE_DISCRIMINATION')` binding | `1 failed \| 5 passed` — reports the entry point lost its env route |
+| Injection                                                                | Result                                                                                               |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Re-declare the inert reader and its field                                | `1 failed \| 5 passed` — names the declaration                                                       |
+| Sever `options.candidateDiscrimination` from the 3 prompt-builder reads  | `1 failed \| 5 passed` — **the B7 shape**, reported as `expected 0 to be greater than or equal to 2` |
+| Remove the `readToggle(process.env, 'CANDIDATE_DISCRIMINATION')` binding | `1 failed \| 5 passed` — reports the entry point lost its env route                                  |
 
-The second is the one worth having: it reproduces the original defect's *shape*
+The second is the one worth having: it reproduces the original defect's _shape_
 rather than its symbol, so it fails for the reason B7 happened.
 
 ### 6.4 A hole this audit's own first draft had
@@ -270,7 +270,7 @@ constant, and the observation recorded here.
   wide is a product decision, as `AUDIT-REFERENCED-LOCALLY-CONVERGENCE.md` §2.1 states.
 - **It does not claim the class is now clean.** It is 26 public surface; that is a
   finding, not a resolution.
-- **It does not claim assertion is unmeasurable.** §2.2 rejects a *proximity* heuristic
+- **It does not claim assertion is unmeasurable.** §2.2 rejects a _proximity_ heuristic
   for it, not the question. Measuring it properly needs traces (which calls execute)
   rather than lines, and that instrument does not exist here.
 - **It does not claim `candidateDiscrimination`'s wiring is complete.** §3.2 shows it
@@ -284,10 +284,10 @@ constant, and the observation recorded here.
 classification. Neither is a work item, and the work item here was not the one the
 class name predicted.**
 
-Twenty-six of the 27 are unreferenced *because they are interfaces* — that is what
+Twenty-six of the 27 are unreferenced _because they are interfaces_ — that is what
 being an interface means inside a repository that contains no consumer. The
-twenty-seventh is unreferenced *because it gates a feature that is gated by a
-different name*, and that second kind is invisible to every reference-oriented
+twenty-seventh is unreferenced _because it gates a feature that is gated by a
+different name_, and that second kind is invisible to every reference-oriented
 measure this repository owns: it has a caller (its test), it has coverage (100%), it
 has a docstring, and it is exported.
 
@@ -300,8 +300,8 @@ code — it is a **false statement about the system**, published under a name a 
 will believe. Its cost is exactly the inference in §3.3, and it is paid by whoever
 next tries to turn the feature on.
 
-The rule: when a symbol is unreferenced, check whether it *is* the capability or
-whether it *gates* the capability. Capabilities export cleanly with no caller. Gates
+The rule: when a symbol is unreferenced, check whether it _is_ the capability or
+whether it _gates_ the capability. Capabilities export cleanly with no caller. Gates
 cannot — the absence of a caller for a gate means the thing it gates is unreachable,
 or that the gate is fiction. Ask which one, and if the feature demonstrably runs,
 the gate is fiction.

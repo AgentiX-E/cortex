@@ -27,14 +27,14 @@ its time kept when the sentence gives one, and nothing invented.
 
 ## The reading
 
-| | v2 | v4 |
-| --- | --- | --- |
-| atoms on the twenty cards | 39 | 34 |
-| of which verbatim runs of the sentence | **39 (100.0%)** | **15 (44.1%)** |
-| cards whose sentence named a time | 5 | 5 |
-| …of which an atom kept one | 5 | **4** |
-| A3 dosage (share of cards with ≥2 atoms) | 75.0% | 55.0% |
-| proposals on the sixty labelled sentences | 52/60 | **45/60** |
+|                                           | v2              | v4             |
+| ----------------------------------------- | --------------- | -------------- |
+| atoms on the twenty cards                 | 39              | 34             |
+| of which verbatim runs of the sentence    | **39 (100.0%)** | **15 (44.1%)** |
+| cards whose sentence named a time         | 5               | 5              |
+| …of which an atom kept one                | 5               | **4**          |
+| A3 dosage (share of cards with ≥2 atoms)  | 75.0%           | 55.0%          |
+| proposals on the sixty labelled sentences | 52/60           | **45/60**      |
 
 ### What the atoms look like
 
@@ -76,7 +76,7 @@ number is the one quoted, here and in `docs/04`.
 
 ## What 44.1% still means, honestly
 
-Half the atoms are still literal spans. Most of them are *good*: "My favorite was the Fairmont Orchid."
+Half the atoms are still literal spans. Most of them are _good_: "My favorite was the Fairmont Orchid."
 is a substring of its sentence and is exactly the fact a colleague could act on — the framing around
 it is what got dropped. **Verbatim share is a form measure, not a quality measure**, and it cannot
 distinguish "the sentence's own claim, stripped" from "the sentence cut in half". What the samples
@@ -86,7 +86,7 @@ That is the intended shape for this product — a card that paraphrases freely i
 
 ## Readings this does not establish
 
-- Whether the atoms are *better to a person*. That is A3, and the page has been rebuilt from the v4
+- Whether the atoms are _better to a person_. That is A3, and the page has been rebuilt from the v4
   cards (`evidence/a3-review/review-remote-v4.html`, new resume key because a different prompt is a
   different review). Nobody has clicked it.
 - Whether the 44.1% is stable. One run, one model, twenty cards, `temperature: 0`.
@@ -106,16 +106,16 @@ moved **44.1% → 52.6%** because every atom v5 added was a copy while one disti
 It was reverted, and the prompt is byte-identical to v4 again.
 
 **The refutation left a diagnostic behind**, and the diagnostic found the real defect in one line.
-`WithheldFact.token` recorded `inventedWords: [["take", 1]]`: the model wrote "I *take* a comedy writing
-workshop" for a sentence saying "I've been *taking* a comedy writing workshop", and the gate compared
+`WithheldFact.token` recorded `inventedWords: [["take", 1]]`: the model wrote "I _take_ a comedy writing
+workshop" for a sentence saying "I've been _taking_ a comedy writing workshop", and the gate compared
 `take` with `taki` and called a correct inflection an invention. The four-character test could not see
 through a vowel-changing inflection, so the gate was taxing the only legitimate rewrite the prompt had.
 
-| Configuration | atoms | verbatim | share | distilled | time kept | proposals /60 |
-| --- | --- | --- | --- | --- | --- | --- |
-| v4, four-character gate | 34 | 15 | 44.1% | 19 | 4/5 | 45 |
-| v5, four-character gate | 38 | 20 | 52.6% | 18 | 5/5 | 48 |
-| **v4, root-and-prefix gate** | 36 | 12 | **33.3%** | **24** | 4/5 | 43 |
+| Configuration                | atoms | verbatim | share     | distilled | time kept | proposals /60 |
+| ---------------------------- | ----- | -------- | --------- | --------- | --------- | ------------- |
+| v4, four-character gate      | 34    | 15       | 44.1%     | 19        | 4/5       | 45            |
+| v5, four-character gate      | 38    | 20       | 52.6%     | 18        | 5/5       | 48            |
+| **v4, root-and-prefix gate** | 36    | 12       | **33.3%** | **24**    | 4/5       | 43            |
 
 Same prompt, better gate: **distilled atoms 19 → 24, copied atoms 15 → 12.** One line of comparison did
 what a prompt rewrite could not, and did it in the direction the reviewer asked for.
@@ -124,14 +124,14 @@ what a prompt rewrite could not, and did it in the direction the reviewer asked 
 
 The identical v4 prompt produced **45** and **43** proposals on two different days (`temperature: 0`,
 same model, same fixture). So 45 → 43 is not a regression from the gate fix; it is inside a variance
-nobody has measured. What the table supports is the *within-batch* comparison — an 11 pp move in the
+nobody has measured. What the table supports is the _within-batch_ comparison — an 11 pp move in the
 verbatim share against a 2-question move in the proposal count. Until a repeat is run, the proposal
 column should not be used to compare configurations, and "two runs agree" moves from optional to
 prerequisite.
 
 ### One more arithmetic trap, found while rebuilding the page
 
-`prepare --limit 20` yields twenty *cards*, not twenty *pairs*. One card in this run (a sentence with
+`prepare --limit 20` yields twenty _cards_, not twenty _pairs_. One card in this run (a sentence with
 nothing in it) produced no atoms, so the page had **19 pairs** — below the pre-registered N, which would
 have scored as `underpowered`. Requesting 21 cards gives 20 pairs. The page in `evidence/a3-review/` was
 rebuilt from that run.

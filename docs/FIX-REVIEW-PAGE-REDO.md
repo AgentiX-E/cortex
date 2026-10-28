@@ -32,14 +32,14 @@ A person who wanted to start again at card seven had no route back except cleari
 
 ## The fix
 
-| Change | Reason |
-| --- | --- |
-| Removed `.done{display:none}` | The `hidden` attribute already hides it; a second rule that cannot be un-set is not a style, it is a trap |
-| `Undo last` and `Start over` moved into the sticky bar | A control that undoes a run has to be reachable **during** the run. `Undo` was not asked for and is the more useful of the two: a mis-click costs one card, not twenty |
-| `Undo` works for skips as well | A skip is a decision about the instrument, so it is counted and persisted; it must be reversible by the same button |
-| Skips are persisted, and reported when they shrink N | They are counted in the progress and **not** written to the JSONL (the scorer reads judgements; a skip is the absence of one). A count that shrinks silently is how twenty pairs becomes sixteen |
-| The saved shape is read in both versions | `{trials, skipped}` now; a bare array was the old format. Twelve existing judgements are unrepeatable, so a version bump must not drop them |
-| A `How to judge` panel on the page, with one example per button | The rubric has to travel with the instrument; nobody opens the README before clicking |
+| Change                                                          | Reason                                                                                                                                                                                           |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Removed `.done{display:none}`                                   | The `hidden` attribute already hides it; a second rule that cannot be un-set is not a style, it is a trap                                                                                        |
+| `Undo last` and `Start over` moved into the sticky bar          | A control that undoes a run has to be reachable **during** the run. `Undo` was not asked for and is the more useful of the two: a mis-click costs one card, not twenty                           |
+| `Undo` works for skips as well                                  | A skip is a decision about the instrument, so it is counted and persisted; it must be reversible by the same button                                                                              |
+| Skips are persisted, and reported when they shrink N            | They are counted in the progress and **not** written to the JSONL (the scorer reads judgements; a skip is the absence of one). A count that shrinks silently is how twenty pairs becomes sixteen |
+| The saved shape is read in both versions                        | `{trials, skipped}` now; a bare array was the old format. Twelve existing judgements are unrepeatable, so a version bump must not drop them                                                      |
+| A `How to judge` panel on the page, with one example per button | The rubric has to travel with the instrument; nobody opens the README before clicking                                                                                                            |
 
 The undo cursor needs no history array: the cursor only moves forward, so the last action is the
 recorded step with the highest index. Recomputed from what is stored, which means it is also correct

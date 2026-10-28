@@ -57,11 +57,11 @@ competing-candidate.
 Word-boundary matching, for the same reason as the containment classifier: `car`
 must not be satisfied by `cargo`.
 
-| verdict                 | meaning                                                            |
-| ----------------------- | ------------------------------------------------------------------ |
-| `competing-candidates`  | the truth and the reader's answer were both retrieved              |
-| `evidence-only`         | the truth was retrieved and the reader's answer was not             |
-| `unadjudicable`         | the token sets cannot separate the two sides                        |
+| verdict                | meaning                                                 |
+| ---------------------- | ------------------------------------------------------- |
+| `competing-candidates` | the truth and the reader's answer were both retrieved   |
+| `evidence-only`        | the truth was retrieved and the reader's answer was not |
+| `unadjudicable`        | the token sets cannot separate the two sides            |
 
 ## 3. Why it declines rather than guesses
 
@@ -85,11 +85,11 @@ report**.
 
 Over the 14 grounded TR failures of the A2 artifact:
 
-| adjudication            | count |
-| ----------------------- | ----- |
+| adjudication             | count  |
+| ------------------------ | ------ |
 | **competing-candidates** | **11** |
-| evidence-only           | 2     |
-| unadjudicable           | 1     |
+| evidence-only            | 2      |
+| unadjudicable            | 1      |
 
 **Four of the five weak-bucket questions resolve to `competing-candidates`** and
 the fifth (`gpt4_7abb270c`) is the `unadjudicable` list case. The hypothesis was
@@ -101,12 +101,12 @@ rather than being forced.
 Combining both instruments gives the TR failure population a shape it did not
 have:
 
-| mechanism                              | count | fix                                            |
-| -------------------------------------- | ----- | ---------------------------------------------- |
-| ungrounded — never retrieved           | **13** | retrieval, query expansion                     |
-| **competing-candidates**               | **11** | context must distinguish the right candidate    |
-| evidence-only — reader invented        | 2     | reader                                         |
-| unadjudicable — list, needs ordering   | 1     | a different instrument                          |
+| mechanism                            | count  | fix                                          |
+| ------------------------------------ | ------ | -------------------------------------------- |
+| ungrounded — never retrieved         | **13** | retrieval, query expansion                   |
+| **competing-candidates**             | **11** | context must distinguish the right candidate |
+| evidence-only — reader invented      | 2      | reader                                       |
+| unadjudicable — list, needs ordering | 1      | a different instrument                       |
 
 Three consequences:
 
@@ -125,18 +125,18 @@ Three consequences:
 
 ## 6. Verification
 
-| check                                          | result                                                          |
-| ---------------------------------------------- | --------------------------------------------------------------- |
-| unit tests                                     | 20 passing, 100% on all four coverage dimensions                  |
-| defect injection (11 mutations)                | **11 / 11 caught**, implementation restored byte-identical (md5)  |
-| shared token must not count as a candidate     | verified: `bike` shared does not make a competing candidate       |
-| one present token of a multi-token side        | enough for `competing-candidates`, not `evidence-only`            |
-| repeated token on one side                     | does not change the verdict                                       |
-| `car` inside `cargo`                           | not matched                                                        |
-| rejected position does not stop the scan       | verified on both sides                                            |
-| candidate at position zero / end of string     | found, verified on both                                            |
-| null reader answer                             | `unadjudicable`, not a literal `null` search                       |
-| real-data run                                  | 14 grounded failures adjudicated; 4 of the 5 weak cases resolve    |
+| check                                      | result                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| unit tests                                 | 20 passing, 100% on all four coverage dimensions                 |
+| defect injection (11 mutations)            | **11 / 11 caught**, implementation restored byte-identical (md5) |
+| shared token must not count as a candidate | verified: `bike` shared does not make a competing candidate      |
+| one present token of a multi-token side    | enough for `competing-candidates`, not `evidence-only`           |
+| repeated token on one side                 | does not change the verdict                                      |
+| `car` inside `cargo`                       | not matched                                                      |
+| rejected position does not stop the scan   | verified on both sides                                           |
+| candidate at position zero / end of string | found, verified on both                                          |
+| null reader answer                         | `unadjudicable`, not a literal `null` search                     |
+| real-data run                              | 14 grounded failures adjudicated; 4 of the 5 weak cases resolve  |
 
 Three injections were **missed on the first pass**, and each marked a place where
 the fixtures happened to be insensitive:
@@ -152,7 +152,7 @@ the fixtures happened to be insensitive:
   de-duplication now lives in exactly one place where a test can see it.
 
 > **Discipline:** a mutation that survives is a finding about the test suite, but
-> the third one above is a finding about the *implementation*: a guard that
+> the third one above is a finding about the _implementation_: a guard that
 > nothing can observe is not safety, it is a second copy of a check. Removing it
 > is what made the mutation meaningful.
 
@@ -165,16 +165,16 @@ and both disagreed with the data. The harness now carries the three defects that
 run exposed, so a green suite under any of them would reproduce the original
 failure inside the harness.
 
-| check                              | result                                                                 |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| unit tests                         | 84 passing                                                              |
-| coverage on `candidate-context.ts` | **100 / 100 / 100 / 100** (statements / branches / functions / lines)   |
-| defect injection (18 mutations)    | **18 / 18 caught**, restored byte-identical (md5 `a1b1bfa5bf98bbb271fd7e69805a7af1`) |
-| real-data annotation rate          | 13 of 17 competing-candidate questions annotated; 4 decline             |
-| truth and answer in different clusters | **9 of 17**, of which 10 questions report exactly two clusters       |
-| label placement                    | the reader's own dated-turn pattern still matches every labelled line    |
-| non-candidate turns                | never labelled; no turn deleted or reordered                            |
-| repo gate (`pnpm check`)           | green: 1423 tests across four packages, every dimension above 95%       |
+| check                                  | result                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| unit tests                             | 84 passing                                                                           |
+| coverage on `candidate-context.ts`     | **100 / 100 / 100 / 100** (statements / branches / functions / lines)                |
+| defect injection (18 mutations)        | **18 / 18 caught**, restored byte-identical (md5 `a1b1bfa5bf98bbb271fd7e69805a7af1`) |
+| real-data annotation rate              | 13 of 17 competing-candidate questions annotated; 4 decline                          |
+| truth and answer in different clusters | **9 of 17**, of which 10 questions report exactly two clusters                       |
+| label placement                        | the reader's own dated-turn pattern still matches every labelled line                |
+| non-candidate turns                    | never labelled; no turn deleted or reordered                                         |
+| repo gate (`pnpm check`)               | green: 1423 tests across four packages, every dimension above 95%                    |
 
 Seven mutations were missed across four passes, and the repairs split into three
 kinds. Only the first kind is about the tests.
@@ -203,7 +203,7 @@ kinds. Only the first kind is about the tests.
      the reader's role adjacency look like a property of the code, when the line
      shape was carrying it all along, and they concealed that by looking careful.
 
-> **Discipline (extended):** when a mutation survives, read the *mutated output*
+> **Discipline (extended):** when a mutation survives, read the _mutated output_
 > before touching the suite. Twice in this round the first instinct -- add a test
 > for the branch -- would have pinned behaviour that does not exist, and the
 > second instinct -- re-aim the mutation -- was needed for one case and wrong for

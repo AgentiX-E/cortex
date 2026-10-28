@@ -16,14 +16,14 @@ prose. That arrangement fails twice, and both failures are silent:
 
 So a criterion is a record with six fields that each do work:
 
-| Field | What it prevents |
-| --- | --- |
-| `metric` + `dataset` | a number whose measurement is not stated, which is a number nobody can reproduce |
-| `comparator` + `threshold` + `unit` | a gap written as a ratio, so 28 points reads as 0.28 |
-| `source` | a value typed into the table, which would be a second copy of a measurement |
-| `kind` (`gate` / `aim`) | a build that can never be green, or a project that cannot block a regression |
-| `onMiss` | a threshold that is decoration, because nothing was decided in advance about missing it |
-| `competitors` + `grade` | a comparison with a number that was measured differently |
+| Field                               | What it prevents                                                                        |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| `metric` + `dataset`                | a number whose measurement is not stated, which is a number nobody can reproduce        |
+| `comparator` + `threshold` + `unit` | a gap written as a ratio, so 28 points reads as 0.28                                    |
+| `source`                            | a value typed into the table, which would be a second copy of a measurement             |
+| `kind` (`gate` / `aim`)             | a build that can never be green, or a project that cannot block a regression            |
+| `onMiss`                            | a threshold that is decoration, because nothing was decided in advance about missing it |
+| `competitors` + `grade`             | a comparison with a number that was measured differently                                |
 
 ## 2. Three statuses, and the two axes that decide whether a miss blocks
 
@@ -44,25 +44,27 @@ unrun    no value could be computed — reported, never counted as a pass
 
 ## 3. The matrix
 
-| id | current | threshold | status | capability | measured on |
-| --- | --- | --- | --- | --- | --- |
-| G1 | <!-- reading:G1 -->75.0% | ≥ 70.0% | pass | relation-preserving split | the 20 pairs the reviewer judged |
-| G2 | <!-- reading:G2 -->5 | = 5 | pass | relation-preserving split | the same 20 pairs |
-| G3 | <!-- reading:G3 -->40.6% | ≥ 30.0% | pass | relation-preserving split | `g00`, grouped against self-contained |
-| K1 | <!-- reading:K1 -->64.7pp | ≥ 40.0pp | pass | assumption ledger | controlled set, `gated − flat` |
-| K2 | <!-- reading:K2 -->58.8% | ≤ 65.0% | pass | assumption ledger | controlled set, `−persistence` |
-| K3 | <!-- reading:K3 -->0 | = 0 | pass | assumption ledger | controlled set, `gated` |
-| T1 | <!-- reading:T1 -->88.2% | ≤ 90.0% | pass | settled fact versus plan | controlled set, `−temporality` |
-| T2 | <!-- reading:T2 -->94.1% | ≤ 95.0% | pass | settled fact versus plan | controlled set, `−immutability` |
-| T3 | <!-- reading:T3 -->94.1% | ≤ 95.0% | pass | settled fact versus plan | controlled set, `−fulfil` |
-| T4 | <!-- reading:T4 -->100.0% | = 100.0% | pass | settled fact versus plan | controlled set, `−lapse` |
-| D1 | — | ≤ 45.0% | unrun | extraction fidelity | A3 round 2, verbatim share |
-| R1 | <!-- reading:R1 -->-1 | ≥ 1 | accept | abstention recovery | LongMemEval-S, 500 questions |
-| S1 | <!-- reading:S1 -->83.5% | ≥ 85.0% | aim | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
-| S2 | <!-- reading:S2 -->87.2% | ≥ 85.0% | pass | knowledge update | LongMemEval-S, 72 questions |
-| S3 | <!-- reading:S3 -->71.7% | ≥ 85.0% | aim | multi-session reasoning | LongMemEval-S, 121 questions |
-| S4 | <!-- reading:S4 -->78.3% | ≥ 85.0% | aim | temporal reasoning | LongMemEval-S, 127 questions |
-| S5 | <!-- reading:S5 -->96.7% | ≥ 80.0% | pass | abstention | LongMemEval-S, 30 questions |
+| id  | current                   | threshold | status | capability                             | measured on                                                 |
+| --- | ------------------------- | --------- | ------ | -------------------------------------- | ----------------------------------------------------------- |
+| G1  | <!-- reading:G1 -->75.0%  | ≥ 70.0%   | pass   | relation-preserving split              | the 20 pairs the reviewer judged                            |
+| G2  | <!-- reading:G2 -->5      | = 5       | pass   | relation-preserving split              | the same 20 pairs                                           |
+| G3  | <!-- reading:G3 -->40.6%  | ≥ 30.0%   | pass   | relation-preserving split              | `g00`, grouped against self-contained                       |
+| K1  | <!-- reading:K1 -->64.7pp | ≥ 40.0pp  | pass   | assumption ledger                      | controlled set, `gated − flat`                              |
+| K2  | <!-- reading:K2 -->58.8%  | ≤ 65.0%   | pass   | assumption ledger                      | controlled set, `−persistence`                              |
+| K3  | <!-- reading:K3 -->0      | = 0       | pass   | assumption ledger                      | controlled set, `gated`                                     |
+| T1  | <!-- reading:T1 -->88.2%  | ≤ 90.0%   | pass   | settled fact versus plan               | controlled set, `−temporality`                              |
+| T2  | <!-- reading:T2 -->94.1%  | ≤ 95.0%   | pass   | settled fact versus plan               | controlled set, `−immutability`                             |
+| T3  | <!-- reading:T3 -->94.1%  | ≤ 95.0%   | pass   | settled fact versus plan               | controlled set, `−fulfil`                                   |
+| T4  | <!-- reading:T4 -->100.0% | = 100.0%  | pass   | settled fact versus plan               | controlled set, `−lapse`                                    |
+| D1  | —                         | ≤ 45.0%   | unrun  | extraction fidelity                    | A3 round 2, verbatim share                                  |
+| R1  | <!-- reading:R1 -->-1     | ≥ 1       | accept | abstention recovery                    | LongMemEval-S, 500 questions                                |
+| S1  | <!-- reading:S1 -->83.5%  | ≥ 85.0%   | aim    | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
+| S2  | <!-- reading:S2 -->87.2%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 questions                                 |
+| S3  | <!-- reading:S3 -->71.7%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 questions                                |
+| S4  | <!-- reading:S4 -->78.3%  | ≥ 85.0%   | aim    | temporal reasoning                     | LongMemEval-S, 127 questions                                |
+| S5  | <!-- reading:S5 -->96.7%  | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                                 |
+| S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
+| S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
@@ -72,17 +74,26 @@ the record of what happens when they are.
 `D1` is `unrun` and that is stated rather than hidden: the distillation reading needs an A3 run with a fresh
 prompt, and no such run exists. A row with no value is the honest form of "we have not measured this".
 
+`S6` and `S7` are `unrun` for the same reason and became rows before the run that fills them, which is the point
+of writing a criterion early: `S6` is a **gate on the instrument** rather than on accuracy — the number of
+questions whose rerank reply had to be discarded — and `S7` is the paired gain in the multi-session category.
+Neither can be evaluated from an artifact that does not exist, so both print as `unrun` and neither can pass by
+default. `S6`'s threshold is an invariant and not a measurement: `rerankHits` degrades to the retrieved order on
+a thrown request, a short reply or a non-finite score, so an endpoint answering `401` five hundred times and a
+cross-encoder that agreed every time produce the **same accuracy**. One fallback makes the pair unreadable, and
+the census carries `calls` beside `fallbacks` so that a stage which never ran cannot be mistaken for a clean one.
+
 ## 4. How each increment is tested, on four levels
 
 The user-facing question is "how do you know it works". The answer has to be four answers, because each level
 catches a different defect and none of them subsumes the others.
 
-| Level | What it catches | Where it lives | Threshold |
-| --- | --- | --- | --- |
-| **unit** | a rule that does not do what its comment says | `packages/*/src/**/__tests__` | 100% statements per file; ≥95% branch per package |
-| **controlled** | a mechanism that does not act where it claims | `assumption-ablation.ts`, 17 cases | each ablation moves only its targeted families |
-| **artifact** | a mechanism that works but is not wired | `tools/export-census.mjs`, `tools/acceptance-check.mjs` | every export has a caller or a recorded reason |
-| **end to end** | a mechanism that helps on a fixture and not on a corpus | LongMemEval-S, 500 questions | S1–S5 |
+| Level          | What it catches                                         | Where it lives                                                                 | Threshold                                         |
+| -------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------- |
+| **unit**       | a rule that does not do what its comment says           | `packages/*/src/**/__tests__`                                                  | 100% statements per file; ≥95% branch per package |
+| **controlled** | a mechanism that does not act where it claims           | `assumption-ablation.ts`, 17 cases; `answer-transition.ts` on every paired run | each ablation moves only its targeted families    |
+| **artifact**   | a mechanism that works but is not wired                 | `tools/export-census.mjs`, `tools/acceptance-check.mjs`                        | every export has a caller or a recorded reason    |
+| **end to end** | a mechanism that helps on a fixture and not on a corpus | LongMemEval-S, 500 questions                                                   | S1–S7                                             |
 
 The **artifact** level is the one that is usually missing, and it is the one that caught the largest defect in
 this line of work: `assumptionPenalty` and `planFactor` existed, were tested, and had **no caller outside
@@ -95,24 +106,25 @@ Six columns, because a mechanism can be correct, act where it claims, be wired, 
 aimed at an axis nobody else competes on. The last column names the axis and who else reports on it, so an
 increment that cannot be compared says so before it is built rather than after it is measured.
 
-| Increment | unit | controlled | artifact | end to end | axis, and who else reports on it |
-| --- | --- | --- | --- | --- | --- |
-| relation-preserving split (step 28) | `knowledge/*.test.ts`, 149 tests | G1/G2/G3 on 20 reviewed pairs | `knowledge-probe.mjs` | not measured yet | internal only — no competitor publishes a relation-split corpus |
-| assumption ledger (step 29) | `assumption`/`revision`, 39 tests | K1/K2/K3 | census: `assumptionPenalty` gained a caller | not measured yet | internal only |
-| temporality and plans (step 30) | `temporality`, 34 tests | T1–T4 | census: `planFactor` gained a caller | not measured yet | temporal reasoning; every published system reports it, and all of them collapse on it |
-| context assembler (step 33) | `assemble`, 42 tests | all arms now call it | census: `Penalty`, `assumptionPenalty` left the orphan list | not measured yet | context budget; agentmemory V4's per-capability token budgets are the public comparison |
-| abstention recovery (step 26) | `abstention-recovery`, 21 tests | — | `recovery` in the artifact | R1, net −1 | abstention; LongMemEval's 30 ABS questions are the only public axis |
-| date frame | pre-registered | — | — | A7, unrun | temporal; the paper's own time-aware index ablation (+7–11pp) |
-| **`reviewPass: 'bare'`** | `bare-decline-retry`, 12 tests | reach: `flat` + `temporal`, ABS excluded in code | `## Bare-decline retry` section, `bareRetry` in JSON | run `40522788515`, 80.80% — see §4.2 | response shape; no competitor publishes a decline-shape ablation |
-| **ingest completeness** | `test_competitor_sut.py`, 17 tests | partial loss survives, total loss aborts | `ingest: N of M session(s) stored, K refused` line | `40519523383` — see §4.2 | **all of them**: the benchd.ai 0.0%/20.0%/32.4% rows are unreconciled instrument results of this shape |
-| **store width declaration** | 3 parametrised tests | faiss 1024/256, qdrant 768 | `vector_store_dims` in the manifest | `40519523383` reproduced and fixed | **all of them**: any comparison whose store was built at a different width than its embedder |
+| Increment                           | unit                                           | controlled                                                                                                                                                                | artifact                                                                                           | end to end                           | axis, and who else reports on it                                                                          |
+| ----------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| relation-preserving split (step 28) | `knowledge/*.test.ts`, 149 tests               | G1/G2/G3 on 20 reviewed pairs                                                                                                                                             | `knowledge-probe.mjs`                                                                              | not measured yet                     | internal only — no competitor publishes a relation-split corpus                                           |
+| assumption ledger (step 29)         | `assumption`/`revision`, 39 tests              | K1/K2/K3                                                                                                                                                                  | census: `assumptionPenalty` gained a caller                                                        | not measured yet                     | internal only                                                                                             |
+| temporality and plans (step 30)     | `temporality`, 34 tests                        | T1–T4                                                                                                                                                                     | census: `planFactor` gained a caller                                                               | not measured yet                     | temporal reasoning; every published system reports it, and all of them collapse on it                     |
+| context assembler (step 33)         | `assemble`, 42 tests                           | all arms now call it                                                                                                                                                      | census: `Penalty`, `assumptionPenalty` left the orphan list                                        | not measured yet                     | context budget; agentmemory V4's per-capability token budgets are the public comparison                   |
+| abstention recovery (step 26)       | `abstention-recovery`, 21 tests                | —                                                                                                                                                                         | `recovery` in the artifact                                                                         | R1, net −1                           | abstention; LongMemEval's 30 ABS questions are the only public axis                                       |
+| date frame                          | pre-registered                                 | —                                                                                                                                                                         | —                                                                                                  | A7, unrun                            | temporal; the paper's own time-aware index ablation (+7–11pp)                                             |
+| **`reviewPass: 'bare'`**            | `bare-decline-retry`, 12 tests                 | reach: `flat` + `temporal`, ABS excluded in code                                                                                                                          | `## Bare-decline retry` section, `bareRetry` in JSON                                               | run `40522788515`, 80.80% — see §4.2 | response shape; no competitor publishes a decline-shape ablation                                          |
+| **ingest completeness**             | `test_competitor_sut.py`, 17 tests             | partial loss survives, total loss aborts                                                                                                                                  | `ingest: N of M session(s) stored, K refused` line                                                 | `40519523383` — see §4.2             | **all of them**: the benchd.ai 0.0%/20.0%/32.4% rows are unreconciled instrument results of this shape    |
+| **store width declaration**         | 3 parametrised tests                           | faiss 1024/256, qdrant 768                                                                                                                                                | `vector_store_dims` in the manifest                                                                | `40519523383` reproduced and fixed   | **all of them**: any comparison whose store was built at a different width than its embedder              |
+| **cross-encoder rerank** (§13.115)  | `rerank-census` / `relevance-rerank`, 24 tests | a pool wider than the endpoint's declared limit is rejected at construction, before one retrieval; a discarded reply keeps the original order **and** the original cosine | `## Rerank stage` section in the report, `rerank` in the arm config, five counters in the artifact | S6/S7, unrun — one dispatch pending  | reranking; RAW-RAG's own single-variable ablation (−3.92) is the only published price of this exact stage |
 
 ### 4.2 The two increments built this round, and what settling them requires
 
-| Increment | what would make it a result | what would not |
-| --- | --- | --- |
-| `reviewPass: 'bare'` | `attempted` > 0 and IE/TR each move by ≥3 questions, with ABS still 30/30 and MR unchanged | an unchanged total. `40522788515` returned 80.80% — the control's number exactly — and its artifact said the pass was *configured*, which is not the same statement as *fired* |
-| ingest completeness | a competitor run that either reports `N of M stored` or aborts, never a 0.0% row | a fixed driver that is only ever tested on a healthy corpus |
+| Increment            | what would make it a result                                                                | what would not                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reviewPass: 'bare'` | `attempted` > 0 and IE/TR each move by ≥3 questions, with ABS still 30/30 and MR unchanged | an unchanged total. `40522788515` returned 80.80% — the control's number exactly — and its artifact said the pass was _configured_, which is not the same statement as _fired_ |
+| ingest completeness  | a competitor run that either reports `N of M stored` or aborts, never a 0.0% row           | a fixed driver that is only ever tested on a healthy corpus                                                                                                                    |
 
 The first row is why the census was built: the prediction `attempted > 0` is unfalsifiable against an artifact
 that does not carry the count, and `40522788515` is exactly such an artifact. A mechanism whose firing is
@@ -130,31 +142,31 @@ The memory-benchmark literature has a comparability problem that is worse than t
 reports **four different LoCoMo scores** depending on judge, reader and subset, and vendor self-reports diverge
 from independent runs by **18–24 points**. So every competitor figure carries a grade.
 
-| Grade | Meaning | May be used for |
-| --- | --- | --- |
-| `A` | same dataset, judge, reader and metric | claiming a gap |
-| `B` | same dataset and metric, different reader or judge, or a proxy metric | noting a direction |
-| `C` | different dataset, different subset, or a vendor figure with no published recipe | motivation only |
+| Grade | Meaning                                                                          | May be used for    |
+| ----- | -------------------------------------------------------------------------------- | ------------------ |
+| `A`   | same dataset, judge, reader and metric                                           | claiming a gap     |
+| `B`   | same dataset and metric, different reader or judge, or a proxy metric            | noting a direction |
+| `C`   | different dataset, different subset, or a vendor figure with no published recipe | motivation only    |
 
 ### 5.1 LongMemEval-S, the only axis where a grade-A comparison exists
 
-| System | Score | Grade | Recipe |
-| --- | --- | --- | --- |
-| memoricai | 85.8% | A | 500 questions, official prompts, gpt-4o-2024-08-06 as reader and judge, ~11k-token contexts |
-| Supermemory | 81.6% | A | the published GPT-4o-reader configuration, per the same independent comparison |
-| oracle context, GPT-4o | 82.4% | B | one oracle configuration — **not a ceiling**, see consequence 3 |
-| **Raw-RAG (naive, GPT-4o-mini)** | **87.5%** | B | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting |
-| StateMem (DeepSeek reader) | 65.6% | B | state-tracking memory; the only published DeepSeek-reader figure on this benchmark |
-| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->83.5% | — | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256` |
-| Mastra OM, GPT-4o | 84.2% | B | vendor research page, observational memory, GPT-4o reader and judge |
-| Mem0 OSS, reproduced | 32.4% | B | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not |
-| no-memory baseline | 57.6% | B | benchd.ai: the whole history in the window, no memory system |
-| Zep | 71.2% | A | as reported in Zep's own LongMemEval paper, GPT-4o reader |
-| full-context GPT-4o | 60.2% | A | the paper baseline: the whole history in the window |
-| Hindsight (vendor) | 94.6% | C | vendor-reported; reader, judge and preprocessing not published reproducibly |
-| Mastra OM, GPT-5-mini | 94.9% | C | the strongest reader; the same memory system as the GPT-4o row, which is what makes the 10.6-point gap an experiment on the reader |
-| agentmemory V4 | 96.2% | C | single deterministic run, Claude Opus 4.6 reader, six-signal retrieval |
-| Graphonomous | 92.6% | C | keyword-recall proxy on an oracle split — not the official metric |
+| System                           | Score                    | Grade | Recipe                                                                                                                             |
+| -------------------------------- | ------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| memoricai                        | 85.8%                    | A     | 500 questions, official prompts, gpt-4o-2024-08-06 as reader and judge, ~11k-token contexts                                        |
+| Supermemory                      | 81.6%                    | A     | the published GPT-4o-reader configuration, per the same independent comparison                                                     |
+| oracle context, GPT-4o           | 82.4%                    | B     | one oracle configuration — **not a ceiling**, see consequence 3                                                                    |
+| **Raw-RAG (naive, GPT-4o-mini)** | **87.5%**                | B     | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting                                      |
+| StateMem (DeepSeek reader)       | 65.6%                    | B     | state-tracking memory; the only published DeepSeek-reader figure on this benchmark                                                 |
+| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->83.5% | —     | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256`                                   |
+| Mastra OM, GPT-4o                | 84.2%                    | B     | vendor research page, observational memory, GPT-4o reader and judge                                                                |
+| Mem0 OSS, reproduced             | 32.4%                    | B     | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not        |
+| no-memory baseline               | 57.6%                    | B     | benchd.ai: the whole history in the window, no memory system                                                                       |
+| Zep                              | 71.2%                    | A     | as reported in Zep's own LongMemEval paper, GPT-4o reader                                                                          |
+| full-context GPT-4o              | 60.2%                    | A     | the paper baseline: the whole history in the window                                                                                |
+| Hindsight (vendor)               | 94.6%                    | C     | vendor-reported; reader, judge and preprocessing not published reproducibly                                                        |
+| Mastra OM, GPT-5-mini            | 94.9%                    | C     | the strongest reader; the same memory system as the GPT-4o row, which is what makes the 10.6-point gap an experiment on the reader |
+| agentmemory V4                   | 96.2%                    | C     | single deterministic run, Claude Opus 4.6 reader, six-signal retrieval                                                             |
+| Graphonomous                     | 92.6%                    | C     | keyword-recall proxy on an oracle split — not the official metric                                                                  |
 
 Four consequences, and the last two are uncomfortable:
 
@@ -167,7 +179,7 @@ Four consequences, and the last two are uncomfortable:
 3. **A reading here is withdrawn rather than quietly corrected.** An earlier version of this section called the
    82.4% oracle the reader ceiling and inferred that 80.8% sitting 1.6 points under it meant retrieval had
    little left to buy. arXiv:2610.30755 retires that inference: a naive raw-RAG pipeline reads **87.53** with a
-   GPT-4o-mini reader, five points *above* the oracle. So 82.4 was one configuration and not a bound. The gap is
+   GPT-4o-mini reader, five points _above_ the oracle. So 82.4 was one configuration and not a bound. The gap is
    still not all retrieval, but the reason now has to come from a measurement — same hits, different reader,
    recall held constant — rather than from a seat under an oracle.
 4. **The reader axis is larger than the gap, and a second argument now agrees with it.** Mastra's own ablation
@@ -180,6 +192,7 @@ Four consequences, and the last two are uncomfortable:
 The category split is where the deficit is, and it is not uniform. Knowledge update is at
 <!-- reading:S2 -->87.2%, above the threshold and above the frontier's implied position; multi-session is at
 <!-- reading:S3 -->71.7% and temporal reasoning at <!-- reading:S4 -->78.3%, and those two categories hold
+
 essentially all of the gap.
 
 **How the current value was reached, because it changed this round.** The reading is now the mean of four runs
@@ -188,6 +201,17 @@ against the control's 404 / 399. No category is lower, `ABS` is 29/30 in all six
 — 415–421 against 399–404 — do not overlap. The previous configuration's numbers are kept under
 `previousConfiguration` in the evidence file rather than overwritten, so a reader can see what moved instead of
 only where it landed.
+
+### 5.2 The reranking axis, where no grade-A figure exists
+
+The one component of the strongest published pipeline this arm has never had at all is the cross-encoder rerank
+stage, and it is the axis where the literature is least comparable. Nobody publishes a cross-encoder ablation on
+LongMemEval-S, so there is no grade-A row to place beside ours and no grade-B row either. What exists is
+RAW-RAG's own ablation on **their** 20,000-sample set: removing the reranker takes them from 48.32 to 44.40,
+**−3.92 points**, more than any mechanism they _added_. Different corpus, different window unit, different
+`k` — so the figure is **grade `C`**: it may motivate the increment and it may price the mechanism, and it may
+not appear in a claim of the form "we are behind them by 3.92". The row is attached to `S7` with that grade
+rather than omitted, because a comparison that says what it cannot support is more useful than silence.
 
 ## 6. The methodology that produced these numbers
 

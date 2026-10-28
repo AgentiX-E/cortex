@@ -13,12 +13,12 @@ the closure is a script rather than a paragraph.
 ## 1. Why the last gap needed an instrument, not a pass
 
 The two previous rounds found three defects by re-reading real artifacts. That is
-how they were *detected*, but it is not a *method*: each was found only after it
+how they were _detected_, but it is not a _method_: each was found only after it
 had shipped, by a reader noticing something was missing. Repeating that once more
 would answer this gap and leave the next one open in exactly the same way.
 
-The gap asked a question about a class — *does any persisted artifact hold a
-value that was a real number in memory and is `null` on disk?* — so the answer
+The gap asked a question about a class — _does any persisted artifact hold a
+value that was a real number in memory and is `null` on disk?_ — so the answer
 had to be a check that runs against the class, not a reading of the four files
 that happened to exist.
 
@@ -32,11 +32,11 @@ way as an audit that flags none.
 
 The tool therefore discriminates on **explanation**, not on presence:
 
-| Case | Test | Verdict |
-| --- | --- | --- |
-| Nullable-by-design field | Is the null *consistent with the record's own state*? | explained or **finding** |
-| Numeric field, null | Is a renderer known to handle this path? | explained or **finding** |
-| Anything else | — | **finding** |
+| Case                     | Test                                                  | Verdict                  |
+| ------------------------ | ----------------------------------------------------- | ------------------------ |
+| Nullable-by-design field | Is the null _consistent with the record's own state_? | explained or **finding** |
+| Numeric field, null      | Is a renderer known to handle this path?              | explained or **finding** |
+| Anything else            | —                                                     | **finding**              |
 
 The first row is where the real discrimination lives, and it is worth stating
 exactly. `decision.answer: null` is explained when the record also says
@@ -51,14 +51,14 @@ co-occurrence does.
 All 24 archived `benchmark-*.json` artifacts across two runs (`/tmp/okout` and
 `/tmp/reportout`) were parsed and every leaf inspected:
 
-| Artifact group | Files | Nulls found | Verdict |
-| --- | --- | --- | --- |
-| `*-ablation-report.json` | 7 arms × 2 runs | `ablation.pValue` (7×2), `ablation.effectSize` (4×2) | JSON substitution, **handled by the renderer** |
-| `benchmark-single-session-diagnostics.json` | 2 | `decision.answer` (10 + 31) | **nullable by design**, every one a recorded decline |
-| `benchmark-diagnostics.json` | 2 | 0 | not affected |
-| `benchmark-mr-diagnostics.json` | 2 | 1 | nullable by design |
-| `benchmark-recall-curve.json` | 1 | 0 | not affected |
-| `benchmark-ablation-skipped.json` | 1 | 0 | not affected |
+| Artifact group                              | Files           | Nulls found                                          | Verdict                                              |
+| ------------------------------------------- | --------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| `*-ablation-report.json`                    | 7 arms × 2 runs | `ablation.pValue` (7×2), `ablation.effectSize` (4×2) | JSON substitution, **handled by the renderer**       |
+| `benchmark-single-session-diagnostics.json` | 2               | `decision.answer` (10 + 31)                          | **nullable by design**, every one a recorded decline |
+| `benchmark-diagnostics.json`                | 2               | 0                                                    | not affected                                         |
+| `benchmark-mr-diagnostics.json`             | 2               | 1                                                    | nullable by design                                   |
+| `benchmark-recall-curve.json`               | 1               | 0                                                    | not affected                                         |
+| `benchmark-ablation-skipped.json`           | 1               | 0                                                    | not affected                                         |
 
 **Explained: 100%. Unexplained: 0.**
 
@@ -78,7 +78,7 @@ not. Verified three ways rather than assumed:
    coupling is exact in both directions, which is what the schema predicts and
    the opposite of what a serialisation loss would produce.
 
-A loss would be *inconsistent* — some records claiming an answer with none
+A loss would be _inconsistent_ — some records claiming an answer with none
 attached. The data shows a perfect partition, which is the signature of a value.
 
 ### 3.2 The `pValue`/`effectSize` nulls are real substitutions, and already handled
@@ -91,7 +91,7 @@ mechanism**, and they are now read correctly by `formatPValue` /
 Confirmed by rendering, not by reading: **14/14 archived ablation reports render
 without throwing** (0 failures). The audit tool labels these paths as
 renderer-handled, which is why its exit code is 0 — but it labels them explicitly
-rather than silently passing them, so the day a *new* `ablation.*` field appears
+rather than silently passing them, so the day a _new_ `ablation.*` field appears
 that the renderer does not handle, the label will be wrong and visible.
 
 ## 4. What was made durable
@@ -123,32 +123,32 @@ crash is self-announcing, and a wrong number in a results table is not.
 
 ## 5. Acceptance
 
-| Criterion | Evidence |
-| --- | --- |
-| Every archived artifact audited, not sampled | 24 files across 2 runs |
-| Nulls discriminated, not blanket-flagged | 41 explained by co-occurrence; 23 labelled as handled substitutions |
-| Every archived report renders | 14/14, 0 throws, measured not asserted |
-| The catch-all case still fails | Non-`ablation.*` numeric null → finding, exit 1 |
-| The instrument is re-runnable | `python3 tools/audit-persisted-nulls.py <dir>` |
-| Renderer covers the arm space | 13 tests, 7 enumerated arm shapes + both-fields + idempotence |
-| The fix is specific, not lucky | Test: round-trip changes only the non-representable fields |
-| No wrong-number fallbacks | Tests: `n/a` not `0.000`, for both p-value and effect size |
-| No regression | All four packages ≥95% on all four dimensions |
+| Criterion                                    | Evidence                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| Every archived artifact audited, not sampled | 24 files across 2 runs                                              |
+| Nulls discriminated, not blanket-flagged     | 41 explained by co-occurrence; 23 labelled as handled substitutions |
+| Every archived report renders                | 14/14, 0 throws, measured not asserted                              |
+| The catch-all case still fails               | Non-`ablation.*` numeric null → finding, exit 1                     |
+| The instrument is re-runnable                | `python3 tools/audit-persisted-nulls.py <dir>`                      |
+| Renderer covers the arm space                | 13 tests, 7 enumerated arm shapes + both-fields + idempotence       |
+| The fix is specific, not lucky               | Test: round-trip changes only the non-representable fields          |
+| No wrong-number fallbacks                    | Tests: `n/a` not `0.000`, for both p-value and effect size          |
+| No regression                                | All four packages ≥95% on all four dimensions                       |
 
 ## 6. Declared gaps: 3 → 1 → 0
 
-| Round | Open gaps |
-| --- | --- |
-| After the round-trip fix | 3 |
-| After resolving the log-host and audit questions | 1 |
-| After the side-channel audit | 1 (other JSON writers) |
-| **After this audit** | **0** |
+| Round                                            | Open gaps              |
+| ------------------------------------------------ | ---------------------- |
+| After the round-trip fix                         | 3                      |
+| After resolving the log-host and audit questions | 1                      |
+| After the side-channel audit                     | 1 (other JSON writers) |
+| **After this audit**                             | **0**                  |
 
 The remaining item from the side-channel round — "other `benchmark-*.json`
 writers unchecked" — is the one this document closes.
 
 **What is NOT claimed:** that the class cannot recur. The tool checks the
-artifacts that exist and the renderer paths that are known; a *new* writer that
+artifacts that exist and the renderer paths that are known; a _new_ writer that
 persists a new numeric field would be caught only if the field appeared under a
 path the tool does not treat as handled. That is why §3.2 labels the handled
 paths explicitly instead of filtering them out — a visible label can be wrong in

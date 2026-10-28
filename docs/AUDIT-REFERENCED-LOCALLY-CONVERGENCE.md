@@ -17,14 +17,14 @@ Measured at revision `0f231f4`, so the counts in §1 and §2 are the **starting*
 `AUDIT-ORPHAN-CLASS-CONFLATION.md` split the orphan count into two classes so that "used only
 inside its own file" and "nothing refers to it anywhere" stop reading as one number:
 
-| Class | Count | Meaning |
-| --- | --- | --- |
-| `referenced-locally` | 206 | `export` present; every reference is inside the declaring file |
-| `unreferenced` | 28 | no reference anywhere |
+| Class                | Count | Meaning                                                        |
+| -------------------- | ----- | -------------------------------------------------------------- |
+| `referenced-locally` | 206   | `export` present; every reference is inside the declaring file |
+| `unreferenced`       | 28    | no reference anywhere                                          |
 
-The name of the first class invites one reading — *"an unnecessary `export` keyword"* — and §6
-of that document committed to acting on it: *"It is now mechanical: `listReferencedLocally`
-produces the worklist."*
+The name of the first class invites one reading — _"an unnecessary `export` keyword"_ — and §6
+of that document committed to acting on it: _"It is now mechanical: `listReferencedLocally`
+produces the worklist."_
 
 **That sentence was wrong, and this document corrects it.** `referenced-locally` says where the
 references are. It does not say whether the `export` is load-bearing, and for 187 of the 206 it
@@ -50,11 +50,11 @@ pat = re.compile(r'import\s*(?:type\s*)?\{[^}]*\b' + re.escape(name) + r'\b[^}]*
                  r'\s*from\s*[\'"][^\'"]*' + re.escape(basename) + r'\.js[\'"]')
 ```
 
-| Group | Count | Why the `export` is there | Action |
-| --- | --- | --- | --- |
-| Re-exported from a barrel | **182** | It **is** the package's published interface | **None.** Removing it shrinks the API. |
-| Test imports it by name | **5** | A test needs it reachable | **None.** Removing it breaks the suite. |
-| Neither | **19** | `export` advertises a consumer that does not exist | **Remove the keyword.** |
+| Group                     | Count   | Why the `export` is there                          | Action                                  |
+| ------------------------- | ------- | -------------------------------------------------- | --------------------------------------- |
+| Re-exported from a barrel | **182** | It **is** the package's published interface        | **None.** Removing it shrinks the API.  |
+| Test imports it by name   | **5**   | A test needs it reachable                          | **None.** Removing it breaks the suite. |
+| Neither                   | **19**  | `export` advertises a consumer that does not exist | **Remove the keyword.**                 |
 
 The grouping itself is the finding: **the worklist is 19 items, not 206.**
 
@@ -63,12 +63,12 @@ The grouping itself is the finding: **the worklist is 19 items, not 206.**
 A barrel entry is a promise to a consumer outside the repository. `packages/*/src/index.ts`
 declares roughly this much surface:
 
-| Package | Barrel lines | `export` statements |
-| --- | --- | --- |
-| `cortex-core` | 105 | 21 |
-| `cortex-eval` | 325 | 35 |
-| `cortex-llm` | 54 | 8 |
-| `cortex-node` | 3 | 2 |
+| Package       | Barrel lines | `export` statements |
+| ------------- | ------------ | ------------------- |
+| `cortex-core` | 105          | 21                  |
+| `cortex-eval` | 325          | 35                  |
+| `cortex-llm`  | 54           | 8                   |
+| `cortex-node` | 3            | 2                   |
 
 Converging these would change what the four packages publish. That is a decision about the
 product with a compatibility cost, and it belongs to a roadmap call in the shape of
@@ -77,7 +77,7 @@ is explicit**: the barrels are unchanged, and a test asserts that (§5).
 
 > **That roadmap call has since been made, and it is instructive for this boundary.**
 > `DECISION-PROVENANCE-NODE.md` resolved the `ProvenanceNode` decision by deleting the
-> symbol — and the 182 barrel entries above are *not* the same situation, which is why
+> symbol — and the 182 barrel entries above are _not_ the same situation, which is why
 > this paragraph keeps its own boundary. `ProvenanceNode` was one type in one file that
 > nothing read; the 182 are the published interface of four packages. The first was a
 > leftover with a duplicate mechanism behind it; the second is a surface with a
@@ -107,14 +107,14 @@ Every one has at least one reference inside its own module — that is what plac
 `referencedLocally` rather than `unreferenced` — so none is a deletion candidate,
 only a de-export candidate.
 
-| Module | Symbols | Kind |
-| --- | --- | --- |
-| `cortex-core/src/graph/memory-graph.ts` | `EdgeKind`, `EdgeAttributes` | Types used by the class in the same file |
-| `cortex-eval/src/rerank-factory.ts` | `DEFAULT_LOCAL_RERANK_MODEL`, `DEFAULT_LLM_RERANK_BASE_URL`, `DEFAULT_LLM_RERANK_MODEL`, `RERANK_PROVIDERS`, `RerankProvider` | Config defaults and their derived union |
-| `cortex-eval/src/llm-factory.ts` | `THINKING_TIMEOUT_MS` | Per-attempt deadline |
-| `cortex-eval/src/judge.ts` | `JudgeQuestionType` | Template selector union |
-| `cortex-eval/src/variance.ts` | `PairwiseMovement` | Between-run analysis record |
-| `cortex-eval/src/retrieval-diagnostics.ts` | `RetrievalDiagnosticOptions` | Options bag |
+| Module                                       | Symbols                                                                                                                                                                                                        | Kind                                           |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `cortex-core/src/graph/memory-graph.ts`      | `EdgeKind`, `EdgeAttributes`                                                                                                                                                                                   | Types used by the class in the same file       |
+| `cortex-eval/src/rerank-factory.ts`          | `DEFAULT_LOCAL_RERANK_MODEL`, `DEFAULT_LLM_RERANK_BASE_URL`, `DEFAULT_LLM_RERANK_MODEL`, `RERANK_PROVIDERS`, `RerankProvider`                                                                                  | Config defaults and their derived union        |
+| `cortex-eval/src/llm-factory.ts`             | `THINKING_TIMEOUT_MS`                                                                                                                                                                                          | Per-attempt deadline                           |
+| `cortex-eval/src/judge.ts`                   | `JudgeQuestionType`                                                                                                                                                                                            | Template selector union                        |
+| `cortex-eval/src/variance.ts`                | `PairwiseMovement`                                                                                                                                                                                             | Between-run analysis record                    |
+| `cortex-eval/src/retrieval-diagnostics.ts`   | `RetrievalDiagnosticOptions`                                                                                                                                                                                   | Options bag                                    |
 | `cortex-eval/src/natural-language-memory.ts` | `QaPromptOptions`, `ConservativeQaPromptOptions`, `buildAggregationCritiquePrompt`, `buildRevisedAggregationPrompt`, `extractAggregationLedger`, `AggregationKind`, `projectSessions`, `QueryExpansionOptions` | Options bags and internal prompt/parse helpers |
 
 ### 3.1 Verification performed before the edit
@@ -166,31 +166,31 @@ Test file: `packages/cortex-eval/src/__tests__/export-surface.test.ts` (6 assert
 
 It pins **both sides**, which is the point:
 
-| Assertion | Direction |
-| --- | --- |
-| the 19 carry no `export` | forward |
-| the 19 still declare their symbol | de-export ≠ deletion |
-| the 5 test-imported keep `export` | reverse |
-| the four barrels still re-export | scope boundary |
-| no barrel names a de-exported symbol | the two above cannot be gamed together |
-| every touched module carries the note | discoverability |
+| Assertion                             | Direction                              |
+| ------------------------------------- | -------------------------------------- |
+| the 19 carry no `export`              | forward                                |
+| the 19 still declare their symbol     | de-export ≠ deletion                   |
+| the 5 test-imported keep `export`     | reverse                                |
+| the four barrels still re-export      | scope boundary                         |
+| no barrel names a de-exported symbol  | the two above cannot be gamed together |
+| every touched module carries the note | discoverability                        |
 
 **Three defect injections, no assertion accepted on its passing alone:**
 
-| Injection | Result |
-| --- | --- |
-| Re-export `RERANK_PROVIDERS` in `rerank-factory.ts` | `1 failed \| 5 passed` — names the file, the symbol and the line |
-| De-export `overlapScore` (test-imported) in `fact-memory.ts` | `1 failed \| 5 passed` — the reverse direction fires |
-| (build) unused imports in the test file | `tsc` caught two, `vitest` had passed — see §6 |
+| Injection                                                    | Result                                                           |
+| ------------------------------------------------------------ | ---------------------------------------------------------------- |
+| Re-export `RERANK_PROVIDERS` in `rerank-factory.ts`          | `1 failed \| 5 passed` — names the file, the symbol and the line |
+| De-export `overlapScore` (test-imported) in `fact-memory.ts` | `1 failed \| 5 passed` — the reverse direction fires             |
+| (build) unused imports in the test file                      | `tsc` caught two, `vitest` had passed — see §6                   |
 
 ### 5.1 Measured result
 
-| | Before | After | Δ |
-| --- | --- | --- | --- |
-| Exports (`totalSymbols`) | 450 | **431** | **−19** |
-| Orphans | 234 | **215** | −19 |
-| `referencedLocally` | 206 | **187** | **−19** |
-| `unreferenced` | 28 | 28 | **0** ← must not move |
+|                          | Before | After   | Δ                     |
+| ------------------------ | ------ | ------- | --------------------- |
+| Exports (`totalSymbols`) | 450    | **431** | **−19**               |
+| Orphans                  | 234    | **215** | −19                   |
+| `referencedLocally`      | 206    | **187** | **−19**               |
+| `unreferenced`           | 28     | 28      | **0** ← must not move |
 
 All three of the first rows fall by exactly 19 and `unreferenced` does not move. The last row is
 the load-bearing one: de-exporting an internal symbol does not make it unreferenced, because its
@@ -206,12 +206,12 @@ Ledger invariants hold: `215 = 187 + 28`, and `knownOrphans` = `locations` = `su
 
 `pnpm check` exits 0. 1854 tests. Coverage **unchanged on every dimension**:
 
-| Package | Stmts | Branch | Funcs | Lines |
-| --- | --- | --- | --- | --- |
-| `cortex-core` | 98.74 | 98.67 | 100 | 98.74 |
-| `cortex-node` | 100 | 98.61 | 100 | 100 |
-| `cortex-llm` | 99.27 | 98.11 | 100 | 99.27 |
-| `cortex-eval` | 99.88 | 99.05 | 100 | 99.88 |
+| Package       | Stmts | Branch | Funcs | Lines |
+| ------------- | ----- | ------ | ----- | ----- |
+| `cortex-core` | 98.74 | 98.67  | 100   | 98.74 |
+| `cortex-node` | 100   | 98.61  | 100   | 100   |
+| `cortex-llm`  | 99.27 | 98.11  | 100   | 99.27 |
+| `cortex-eval` | 99.88 | 99.05  | 100   | 99.88 |
 
 ---
 

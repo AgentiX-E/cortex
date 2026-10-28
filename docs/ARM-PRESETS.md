@@ -9,16 +9,16 @@ Run `40614779756` was dispatched with one input — `cortex_memory_review_pass=b
 assumption that everything else would default to what the control run used. It did not. The workflow's
 defaults produced a different arm:
 
-| field | control `39509698041` | what the defaults gave |
-| --- | --- | --- |
-| questions | 500 | **60** (`limit` defaults to 60, and `limit` is the question count) |
-| `promptContract` | `abstention-evidence-blocks` | `abstention` |
-| `ask` | `enumerated` | `route` |
-| `relevanceSignal` | `retrieval-hybrid` | `none` |
-| `relevanceTopK` | 256 | default |
-| `maxTurnChars` / routes | 400 / `multi-session+temporal` | `none` / `all` |
-| `maxPromptChars` | 48000 | default |
-| `evidenceRoles` / routes | `user` / `multi-session+temporal` | `all` / `all` |
+| field                    | control `39509698041`             | what the defaults gave                                             |
+| ------------------------ | --------------------------------- | ------------------------------------------------------------------ |
+| questions                | 500                               | **60** (`limit` defaults to 60, and `limit` is the question count) |
+| `promptContract`         | `abstention-evidence-blocks`      | `abstention`                                                       |
+| `ask`                    | `enumerated`                      | `route`                                                            |
+| `relevanceSignal`        | `retrieval-hybrid`                | `none`                                                             |
+| `relevanceTopK`          | 256                               | default                                                            |
+| `maxTurnChars` / routes  | 400 / `multi-session+temporal`    | `none` / `all`                                                     |
+| `maxPromptChars`         | 48000                             | default                                                            |
+| `evidenceRoles` / routes | `user` / `multi-session+temporal` | `all` / `all`                                                      |
 
 The run completed and reported 75.00% on 60 questions with `bareRetry 41/41`. Every one of those numbers is
 about a system nobody has measured before, and none of them can be compared with the control. The census did
@@ -95,13 +95,13 @@ S-1 through S-5 change **one** field each when they exist: `cortex_memory_releva
 weight input is added at a non-zero value while everything else holds. Until then they are registered and
 unbuilt, and this section says so rather than describing a dispatch that has no field to set.
 
-| arm | input | state |
-| --- | --- | --- |
-| S-1 temporal | `cortex_memory_relevance=retrieval-temporal` (proposed) | module built, arm wiring **not** done — see `ACCEPTANCE-MATRIX.md` §4.1 |
-| S-2 activation | weight input, not yet named | registered, unbuilt |
-| S-3 graph | as above | registered, unbuilt |
-| S-4 importance | as above | registered, unbuilt |
-| S-5 rerank | `cortex_memory_rerank=cross-encoder` (proposed) | registered, unbuilt |
+| arm            | input                                                   | state                                                                   |
+| -------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| S-1 temporal   | `cortex_memory_relevance=retrieval-temporal` (proposed) | module built, arm wiring **not** done — see `ACCEPTANCE-MATRIX.md` §4.1 |
+| S-2 activation | weight input, not yet named                             | registered, unbuilt                                                     |
+| S-3 graph      | as above                                                | registered, unbuilt                                                     |
+| S-4 importance | as above                                                | registered, unbuilt                                                     |
+| S-5 rerank     | `cortex_memory_rerank=cross-encoder` (proposed)         | registered, unbuilt                                                     |
 
 ## 4. The competitor run
 

@@ -1,8 +1,8 @@
 # AUDIT-EVAL-CONTRACTS
 
-**Scope:** `AUDIT-CODE-VS-DOCS.md` §6.2 step 1 — *"Extract the reference pipeline's
-contracts into `S`-compatible form"* — whose stated verification is *"`cortex-memory`
-passes the existing `MemorySystem` conformance tests"*.
+**Scope:** `AUDIT-CODE-VS-DOCS.md` §6.2 step 1 — _"Extract the reference pipeline's
+contracts into `S`-compatible form"_ — whose stated verification is _"`cortex-memory`
+passes the existing `MemorySystem` conformance tests"_.
 **Verdict:** the step is **nearly done and the verification it names is already
 satisfied by construction**. The contract types were never entangling. What step 1
 actually still owes is not an extraction but a **conformance test and a second
@@ -20,9 +20,9 @@ instead** (§6), plus one dead export found and deleted (§5).
 
 §6.2's first row reads:
 
-| # | Task | Why it is first | Verification |
-| --- | --- | --- | --- |
-| 1 | Extract the reference pipeline's contracts into `S`-compatible form | The instrument must be able to receive the product system | `cortex-memory` passes the existing `MemorySystem` conformance tests |
+| #   | Task                                                                | Why it is first                                           | Verification                                                         |
+| --- | ------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1   | Extract the reference pipeline's contracts into `S`-compatible form | The instrument must be able to receive the product system | `cortex-memory` passes the existing `MemorySystem` conformance tests |
 
 Three presumptions are packed into that row, and each is checkable:
 
@@ -31,8 +31,8 @@ Three presumptions are packed into that row, and each is checkable:
 2. **An `S`-compatible form exists** as a target — some shape the contract must be
    bent into.
 3. **A `MemorySystem` conformance test suite already exists**, since the
-   verification says "the *existing*" tests and asks that a not-yet-written package
-   *pass* them.
+   verification says "the _existing_" tests and asks that a not-yet-written package
+   _pass_ them.
 
 The audit checks all three. Two are false, and the third is false in a way that
 changes what the step should be.
@@ -70,23 +70,23 @@ type-only edge and it is acyclic.
 **Independent recount** (not a census re-read) of every non-test, non-barrel,
 non-declaring mention of the eleven contract names re-exported from `types.js`:
 
-| Symbol | Non-test, non-barrel callers |
-| --- | --- |
-| `Capability` | 7 |
-| `Question` | 10 |
-| `BenchmarkDataset` | 6 |
-| `Answer` | 6 |
-| `MemorySystem` | **5** |
-| `SessionAwareMemorySystem` | 1 |
-| `PerCapabilityResult` | 1 |
-| `Metrics` | 3 |
-| `AggregateStats` | 1 |
-| `AblationResult` | 2 |
-| `PerCapabilityPairedStats` | 1 |
+| Symbol                     | Non-test, non-barrel callers |
+| -------------------------- | ---------------------------- |
+| `Capability`               | 7                            |
+| `Question`                 | 10                           |
+| `BenchmarkDataset`         | 6                            |
+| `Answer`                   | 6                            |
+| `MemorySystem`             | **5**                        |
+| `SessionAwareMemorySystem` | 1                            |
+| `PerCapabilityResult`      | 1                            |
+| `Metrics`                  | 3                            |
+| `AggregateStats`           | 1                            |
+| `AblationResult`           | 2                            |
+| `PerCapabilityPairedStats` | 1                            |
 
 Every one has at least one caller, so the census classifies all eleven as
 non-orphans and nothing here is dead. `MemorySystem` has five. The bottleneck in
-§6.1 was never the *shape* of the contract — it was that **no implementation of it
+§6.1 was never the _shape_ of the contract — it was that **no implementation of it
 exists in the product layer**, which is step 2's job, not step 1's.
 
 ## 3. Presumption 3 is false: there is no conformance suite
@@ -106,7 +106,7 @@ That is a larger hole than it looks. `runBenchmark` routes on
 `'answerSessions' in system` (`benchmark.ts:20-22`) and then on seven more optional
 members. The contract is therefore not "implement `answer`" — it is "implement
 `answer`, and every optional path you choose to declare will be called, with these
-argument shapes, and must return `Answer`". A system can satisfy the *type* and be
+argument shapes, and must return `Answer`". A system can satisfy the _type_ and be
 wrong about all of it:
 
 - declare `answerSessions` but return `undefined` for an empty session list;
@@ -114,14 +114,14 @@ wrong about all of it:
   catches this one, but **not** if the parameter types are compatible
   (`context: string[]` and `sessions?: string[][]` are not, but
   `questionDate?: string` vs `sessions?: string[][]` would be);
-- declare `answerAbstention` and have it return a *non-null* answer, which silently
+- declare `answerAbstention` and have it return a _non-null_ answer, which silently
   converts the abstention block into a wrong-answer block;
 - declare nothing optional and still be routed correctly (the fallback path).
 
 The last is the subtle one. **A system that implements only `name` + `answer` is
 fully conformant**, and that is the configuration `cortex-memory` will most likely
 start from. The suite that should exist has to assert **the routing contract**: for
-each of the seven optional members, *is the system called on it, and with what?* —
+each of the seven optional members, _is the system called on it, and with what?_ —
 because that is what decides whether declaring a member helps or hurts.
 
 **This is the actual content of step 1.** "Extract the contracts" presumed a
@@ -134,19 +134,19 @@ wrote.
 "An `S`-compatible form" implies an `S` the contract must be reshaped into. Since
 `MemorySystem` has one required method and no coupling, the transformation is the
 identity on the type and a **separate** question for the runtime: `cortex-memory`
-does not need an adapter, it needs a *decision* about which optional paths it
+does not need an adapter, it needs a _decision_ about which optional paths it
 declares.
 
 That decision is a real one, and it is not step 1's:
 
-| Optional member | Declaring it means | Cost for `cortex-memory` |
-| --- | --- | --- |
-| `answerSessions` | MR routes to it | Required to be session-aware at all; the CPU-side composition must group by session |
-| `answerTemporal?` | TR routes to it with `questionDate` | Without it, TR questions get the plain extractive path — measurably worse for relative time |
-| `answerAssistant?` | `single-session-assistant` includes assistant turns | Without it, the evidence turn for those questions is filtered out |
-| `answerAbstention?` | ABS routes to a conservative prompt | Without it, an abstention question is answered by choosing among candidates |
-| `answerPreference?` | preference/recommendation routes to a generative prompt | Without it, the extractive path abstains on a question that has an answer |
-| `answerKnowledgeUpdate?` | `knowledge-update` routes to a qualifier-aware prompt | Without it, "previous" vs "currently" is not made explicit |
+| Optional member          | Declaring it means                                      | Cost for `cortex-memory`                                                                    |
+| ------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `answerSessions`         | MR routes to it                                         | Required to be session-aware at all; the CPU-side composition must group by session         |
+| `answerTemporal?`        | TR routes to it with `questionDate`                     | Without it, TR questions get the plain extractive path — measurably worse for relative time |
+| `answerAssistant?`       | `single-session-assistant` includes assistant turns     | Without it, the evidence turn for those questions is filtered out                           |
+| `answerAbstention?`      | ABS routes to a conservative prompt                     | Without it, an abstention question is answered by choosing among candidates                 |
+| `answerPreference?`      | preference/recommendation routes to a generative prompt | Without it, the extractive path abstains on a question that has an answer                   |
+| `answerKnowledgeUpdate?` | `knowledge-update` routes to a qualifier-aware prompt   | Without it, "previous" vs "currently" is not made explicit                                  |
 
 Six decisions, each with a measured cost attached elsewhere in the repository. None
 of them is a contract extraction.
@@ -174,10 +174,10 @@ export async function evaluate(dataset: BenchmarkDataset, system: MemorySystem):
 
 Both have callers only in tests (`benchmark.test.ts` drives `runBenchmark` 15
 times; `synthetic-benchmark.test.ts` drives `evaluate` twice). Under §33's
-criterion — *is this symbol a description of a capability, or a gate on one?* —
+criterion — _is this symbol a description of a capability, or a gate on one?_ —
 these are **descriptions**: they are the harness's public entry points, and a test
 suite is a legitimate consumer of a public entry point in a repository whose only
-consumer *is* the test suite.
+consumer _is_ the test suite.
 
 **But `evaluate` is a different case from `runBenchmark`.** `runBenchmark` is the
 routing implementation — it holds §3's seven-branch dispatch and is the thing a
@@ -198,13 +198,13 @@ implementation is a call site, not an abstraction.**
 
 Deleting `evaluate` (§5) moved the census in a way that is itself a finding:
 
-| Total | Before | After | Cause |
-| --- | --- | --- | --- |
-| `exports` | 431 | **430** | `evaluate` deleted |
-| `withCaller` | 218 | **217** | `evaluate` had none in the counted set |
-| `orphaned` | 213 | 213 | unchanged |
-| `referencedLocally` | 189 | **188** | `evaluate` was one |
-| `unreferenced` | 24 | **25** | **`computeMetrics` entered the class** |
+| Total               | Before | After   | Cause                                  |
+| ------------------- | ------ | ------- | -------------------------------------- |
+| `exports`           | 431    | **430** | `evaluate` deleted                     |
+| `withCaller`        | 218    | **217** | `evaluate` had none in the counted set |
+| `orphaned`          | 213    | 213     | unchanged                              |
+| `referencedLocally` | 189    | **188** | `evaluate` was one                     |
+| `unreferenced`      | 24     | **25**  | **`computeMetrics` entered the class** |
 
 `computeMetrics` was not unreferenced before, and it is not dead now. It was
 **counted** before because `evaluate` — the function this audit deleted — called it.
@@ -221,7 +221,7 @@ TEST  packages/cortex-eval/src/__tests__/synthetic-benchmark.test.ts
 Two things follow, and the second is the interesting one.
 
 **`computeMetrics` is a legitimate `unreferenced` member, on §33's criterion.**
-It is a *description*: "score this answer vector against ground truth", the exact
+It is a _description_: "score this answer vector against ground truth", the exact
 computation the whole harness exists to perform, exported from a public barrel. A
 library whose only consumer is its own test suite is the normal condition of this
 repository — `AUDIT-UNREFERENCED-GROUPS.md` found 26 of 27 members of this class are
@@ -236,7 +236,7 @@ and §33's criterion (description vs. gate) is the thing that adjudicates it, no
 census.
 
 The `bench/` directory is worth stating explicitly here, because it is the natural
-objection: `packages/cortex-eval/bench/run.ts` *is* counted by the census — it
+objection: `packages/cortex-eval/bench/run.ts` _is_ counted by the census — it
 imports thirteen symbols from the barrel, and `tools/export-census.mjs`'s own
 docstring names it "the benchmark's actual entry point". `computeMetrics` is simply
 not one of the thirteen. The benchmark reaches scoring through
@@ -278,8 +278,8 @@ Writing a `MemorySystem` docstring that pointed at the conformance suite made
 in baseline not in census: ['cortex-eval: runBenchmark']
 ```
 
-The docstring names the function in prose — *"`runBenchmark` routes on the presence of
-the optional members"* — and the census counts a whole-word occurrence in a comment or
+The docstring names the function in prose — _"`runBenchmark` routes on the presence of
+the optional members"_ — and the census counts a whole-word occurrence in a comment or
 a string as a reference, deliberately and with a measured rationale:
 
 > This deliberately does not parse imports. A symbol referenced only in a comment or a
@@ -291,13 +291,13 @@ So the gate was working as designed, and the new prose is a **real** reference: 
 reader of `types.ts` can now find `runBenchmark` from it. Net ledger movement across
 this change:
 
-| Total | Before | After | Cause |
-| --- | --- | --- | --- |
-| `exports` | 431 | **430** | `evaluate` deleted |
-| `withCaller` | 218 | **218** | −1 for `evaluate`, +1 for `runBenchmark` |
-| `orphaned` | 213 | **212** | — |
-| `referencedLocally` | 189 | **187** | −1 `evaluate`, −1 `runBenchmark` |
-| `unreferenced` | 24 | **25** | +1 `computeMetrics` |
+| Total               | Before | After   | Cause                                    |
+| ------------------- | ------ | ------- | ---------------------------------------- |
+| `exports`           | 431    | **430** | `evaluate` deleted                       |
+| `withCaller`        | 218    | **218** | −1 for `evaluate`, +1 for `runBenchmark` |
+| `orphaned`          | 213    | **212** | —                                        |
+| `referencedLocally` | 189    | **187** | −1 `evaluate`, −1 `runBenchmark`         |
+| `unreferenced`      | 24     | **25**  | +1 `computeMetrics`                      |
 
 `runBenchmark` was `referenced-locally` (called inside `benchmark.ts`; the barrel and
 tests do not count). It is now non-orphaned, on the strength of documentation. **A
@@ -308,11 +308,11 @@ wiring it.
 
 ## 9. Step 1's closure, restated
 
-| §6.2's original wording | What the audit found | Replacement deliverable |
-| --- | --- | --- |
-| "Extract the reference pipeline's contracts into `S`-compatible form" | Nothing to extract; `MemorySystem` is already the target and already uncoupled (§2, §4) | **None.** Closed as already satisfied |
-| "`cortex-memory` passes the existing `MemorySystem` conformance tests" | **No such suite exists** (§3) | **Write the conformance suite**, in `cortex-eval`, driving `runBenchmark`'s routing over a minimal and a full implementation |
-| (not in the original row) | `evaluate` is an unabstracted wrapper reached only from tests (§5) | **Delete `evaluate`**; keep `runBenchmark` |
+| §6.2's original wording                                                | What the audit found                                                                    | Replacement deliverable                                                                                                      |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| "Extract the reference pipeline's contracts into `S`-compatible form"  | Nothing to extract; `MemorySystem` is already the target and already uncoupled (§2, §4) | **None.** Closed as already satisfied                                                                                        |
+| "`cortex-memory` passes the existing `MemorySystem` conformance tests" | **No such suite exists** (§3)                                                           | **Write the conformance suite**, in `cortex-eval`, driving `runBenchmark`'s routing over a minimal and a full implementation |
+| (not in the original row)                                              | `evaluate` is an unabstracted wrapper reached only from tests (§5)                      | **Delete `evaluate`**; keep `runBenchmark`                                                                                   |
 
 The ordering of §6.2 is unaffected: the conformance suite belongs before step 2,
 because it is the thing step 2 is verified against. It is also strictly more
@@ -327,7 +327,7 @@ optional paths is §4's table, decided by measurement, not by the contract.
 ## 10. What this audit did not establish
 
 - **Whether the routing is correct.** The suite §6 specifies does not exist yet,
-  so this document can say only what the routing *does*, not that it is right. The
+  so this document can say only what the routing _does_, not that it is right. The
   seven branches come from the LongMemEval question types and the comments cite
   measurements for each; none of that is re-derived here.
 - **Whether `cortex-memory` should declare each optional path.** §4 lists the
@@ -337,7 +337,7 @@ optional paths is §4's table, decided by measurement, not by the contract.
   import the instrument's types. The alternative — moving `MemorySystem` into
   `cortex-core` — is a larger change with its own migration cost, and §6.1's
   layering table deliberately puts contracts in `cortex-core` while putting the
-  *benchmark* contract in `cortex-eval`. That tension is unresolved and is recorded
+  _benchmark_ contract in `cortex-eval`. That tension is unresolved and is recorded
   here rather than silently resolved.
 - **The five `formatStructuredContext` / `buildQaPrompt` / `parseQaAnswer`-class
   exports.** They are `referenced-locally` orphans, i.e. used inside

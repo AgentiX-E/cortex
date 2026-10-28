@@ -462,6 +462,25 @@ export type CountSpread = {
   readonly max: number;
 };
 
+/**
+ * The four ways a discordant question can change verdict, split by the abstention line.
+ *
+ * Lives here rather than beside the classifier because `AblationResult` carries it and this file is where
+ * every report shape lives; the classifier in `answer-transition.ts` imports the type rather than declaring
+ * a second one. Read as two pairs: `recovered`/`declined` is the decline flow, `corrected`/`missed` the
+ * content flow.
+ */
+export type AnswerTransition = {
+  /** Baseline declined, treatment answered correctly: the treatment made it speak, and it was right. */
+  readonly recovered: number;
+  /** Baseline answered wrongly, treatment answered correctly: already speaking, now right. */
+  readonly corrected: number;
+  /** Baseline answered correctly, treatment declined: the treatment stopped it speaking. */
+  readonly declined: number;
+  /** Baseline answered correctly, treatment answered wrongly: still speaking, now wrong. */
+  readonly missed: number;
+};
+
 export type AblationResult = {
   feature: string;
   baselineAggregate: AggregateStats;
@@ -512,6 +531,24 @@ export type AblationResult = {
     /** Ids of questions the baseline got wrong and the feature got right. */
     readonly baselineIncorrectFeatureCorrect: readonly string[];
   };
+  /**
+   * The same two flip counts, split by which side of the abstention line each question was on.
+   *
+   * `discordant` above says how many questions changed verdict. It cannot say whether the change was the
+   * system **starting to speak** or **starting to be right**, because `correct` is a boolean and a decline is
+   * a value in `answers`, not in `correct`. A +3 net built from decline crossings is a response-shape change;
+   * a +3 net built from corrected answers is a knowledge change; the two sum to the same number and call for
+   * different work. `answer-transition.ts` holds the classification and the rule for reading it, and
+   * `recovered + corrected` must equal `discordant.baselineIncorrectFeatureCorrect` — an identity the tests
+   * assert against this very structure, so the refinement cannot drift into a rival count.
+   *
+   * Optional for the reason `featureAnswers` above is: this type is also the shape of a **report read back
+   * from disk**, and every artifact written before this field existed lacks it. `runAblation` — the only
+   * producer — sets it unconditionally, so a missing value means an old artifact and never a new run that
+   * skipped the work. The renderer prints that absence in words rather than omitting the section, because a
+   * silently shorter report is how a field goes missing for a year.
+   */
+  transitions?: AnswerTransition | undefined;
   /**
    * Per-capability correct counts across the repetitions: min, mean and max.
    *

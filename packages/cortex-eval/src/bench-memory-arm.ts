@@ -45,6 +45,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 import { readToggle } from './env-toggle.js';
+import type { RerankCensus } from './rerank-census.js';
+import type { RerankBounds, RerankIdentity } from './rerank-factory.js';
 import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
@@ -1552,6 +1554,71 @@ function readSourceTrust(raw: string | undefined): number {
  * precisely the ambiguity `37110579101` created when it reproduced `37094200823`'s
  * number without either artifact naming the ceiling.
  */
+/**
+ * Refuse a reranker that the arm's ranking cannot reach.
+ *
+ * ## Why this is a refusal and not a warning
+ *
+ * The stage reorders the retrieved pool, and the pool exists only when a relevance signal builds
+ * one: with `relevanceSignal: none` the budget spends arrival order, and with `retrieval-session` the
+ * score is a **session** constant projected onto its turns — neither has a pool for a cross-encoder
+ * to permute. Configuring `CORTEX_MEMORY_RERANK=on` in either state produces an arm whose artifact
+ * names a stage that provably never ran, and whose delta would then be read as the reranker's
+ * verdict. That is the inert-configuration defect `retrievalThreshold: 0.25` cost a round for
+ * (§10.10), and the test is cheap.
+ *
+ * Throwing rather than logging: a run that is provably incapable of administering its treatment must
+ * not produce a number at all. The dispatch is one line away from correct, and the message says which
+ * line.
+ */
+/**
+ * The reranking record the artifact carries, assembled from what the run actually built.
+ *
+ * ## Why this is here rather than at the call site
+ *
+ * The assembly is a decision, not plumbing: the control must be spelled `provider: 'none'` while the
+ * treatment must carry the identity **and** the census **and** the declared wire limits, and those
+ * three travel together because any two of them alone is the ambiguity §13.115 exists to remove. The
+ * CLI is excluded from coverage as an entry point, so a branch written there would be a branch no test
+ * could reach -- the defect `bench-arm-options.ts` was written about, where "deleting it, defaulting
+ * it on, or reading the wrong environment variable each left every test green".
+ *
+ * `census` is threaded only for a real stage: a control has nothing to count, and a zeroed census would
+ * claim the stage ran and found nothing.
+ */
+export function toRerankRecord(
+  identity: RerankIdentity,
+  bounds: RerankBounds,
+  census: RerankCensus | undefined,
+): NonNullable<MemoryArmConfig['rerank']> {
+  if (identity.provider === 'none') {
+    return { provider: 'none' };
+  }
+  return {
+    ...identity,
+    bounds,
+    ...(census === undefined ? {} : { census }),
+  };
+}
+
+export function assertRerankReachesRanking(
+  relevanceSignal: string,
+  rerank: MemoryArmConfig['rerank'] | undefined,
+): void {
+  if (rerank === undefined || rerank.provider === 'none') {
+    return;
+  }
+  if (relevanceSignal === 'retrieval' || relevanceSignal === 'retrieval-hybrid') {
+    return;
+  }
+  throw new Error(
+    `CORTEX_MEMORY_RERANK is enabled but relevanceSignal="${relevanceSignal}" builds no ranked pool ` +
+      'for the stage to reorder, so the reranker would never fire and the artifact would name a ' +
+      'treatment that did not run. Set CORTEX_MEMORY_RELEVANCE=retrieval or retrieval-hybrid, or ' +
+      'leave the reranker off.',
+  );
+}
+
 export function toMemoryArmConfig(
   options: CortexMemoryArmOptions,
   /**
@@ -1581,6 +1648,15 @@ export function toMemoryArmConfig(
    * the run that made it necessary -- two artifacts 7.20 points apart with identical blocks.
    */
   reader?: MemoryArmConfig['reader'],
+  /**
+   * The reranking stage the index was built with, and what it reported.
+   *
+   * A parameter for the reason `reader` and `embedding` are: this module never constructs a scorer,
+   * so only `bench/run-ablation.ts` can say which model answered or what the counters reached. It is
+   * a single record rather than two parameters because the identity without the census is the
+   * ambiguity §13.115 exists to remove -- an artifact naming a model it may never have consulted.
+   */
+  rerank?: MemoryArmConfig['rerank'],
 ): MemoryArmConfig {
   return {
     threshold: options.threshold,
@@ -1655,6 +1731,10 @@ export function toMemoryArmConfig(
     // Same rule and the same reason as `embedding`: a run that named no reader and an artifact
     // that predates the field are different facts, and only the conditional spread keeps them so.
     ...(reader === undefined ? {} : { reader }),
+    // Same rule again. The arm's producer always passes one (`provider: 'none'` for the control), so
+    // an artifact without this key is one written before §13.115 rather than a run that declined the
+    // stage -- which is why the field is not defaulted here.
+    ...(rerank === undefined ? {} : { rerank }),
   };
 }
 

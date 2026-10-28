@@ -26,10 +26,10 @@ Two things defeat that promise, and both were measured rather than suspected.
 The scan root was a single expression:
 
 ```ts
-const SRC = join(__dirname, '..');   // packages/cortex-core/src
+const SRC = join(__dirname, '..'); // packages/cortex-core/src
 ```
 
-So "the set" meant *the set inside `cortex-core`*. Two block suppressions live in
+So "the set" meant _the set inside `cortex-core`_. Two block suppressions live in
 `cortex-llm`:
 
 ```
@@ -82,8 +82,9 @@ The file contained this assertion:
 it('does not suppress a whole file or block', () => {
   for (const [file, matches] of scan()) {
     for (const annotation of matches) {
-      expect(annotation, `${file}: blanket suppression is not allowed: ${annotation}`)
-        .not.toMatch(/\bignore\s+(?:file|start)\b/);
+      expect(annotation, `${file}: blanket suppression is not allowed: ${annotation}`).not.toMatch(
+        /\bignore\s+(?:file|start)\b/,
+      );
     }
   }
 });
@@ -98,7 +99,7 @@ double negative that read as satisfied.
 
 ## 2. The second finding: the annotations had no effect at all
 
-Before deciding whether to *enumerate* or *delete* the six, the question worth answering was
+Before deciding whether to _enumerate_ or _delete_ the six, the question worth answering was
 what they actually did. The answer came from deleting them and re-running.
 
 **Experiment.** Strip the five `cortex-core` annotations, run `vitest run --coverage`,
@@ -139,8 +140,8 @@ Two independent reasons, and either one alone would have been enough:
    `istanbul` comment is not in its vocabulary.
 
 The consequence is what makes this worth a document. The annotation's effect on the measured
-number was **exactly zero**, while its effect on a reader was *"this was considered and
-exempted."* That is the same shape as
+number was **exactly zero**, while its effect on a reader was _"this was considered and
+exempted."_ That is the same shape as
 [`AUDIT-B7-DEAD-SWITCH.md`](AUDIT-B7-DEAD-SWITCH.md) — a mechanism that is set and never
 consumed — with the difference that here the inert mechanism is a **comment about the
 measurement**, in the one file whose job is to police comments about the measurement.
@@ -155,7 +156,7 @@ rejected, for two reasons that point the same way.
 **It would pin an empty set of consequences.** `EXPECTED` is a reviewed-change register: each
 entry says "this suppression exists, and here is why it is correct". For these six there is no
 "why it is correct" to state, because there is no suppression. The reason text would have to
-be *"this annotation does nothing"* — a register entry whose content is an admission that it
+be _"this annotation does nothing"_ — a register entry whose content is an admission that it
 should not be in the register.
 
 **It would leave the rule and its exceptions in contradiction.** The file asserts that blanket
@@ -164,7 +165,7 @@ deleting that assertion or adding a carve-out, and a carve-out for the specific 
 a rule that says "no blanket suppression, except where it is pointless".
 
 **Deletion also makes the rule honest.** With the six gone, the blanket-suppression ban is not
-weakened — it is *implemented*, and the two real block suppressions are held to a stronger
+weakened — it is _implemented_, and the two real block suppressions are held to a stronger
 standard than before (§4).
 
 ### 3.1 What replaces the exemption for those files
@@ -204,9 +205,7 @@ A dedicated assertion pins the scope itself:
 ```ts
 it('scans every workspace package, not only the one this file lives in', () => {
   const packages = new Set(sourceFiles().map(packageOf));
-  expect([...packages].sort()).toEqual([
-    'cortex-core', 'cortex-eval', 'cortex-llm', 'cortex-node',
-  ]);
+  expect([...packages].sort()).toEqual(['cortex-core', 'cortex-eval', 'cortex-llm', 'cortex-node']);
 });
 ```
 
@@ -237,10 +236,10 @@ make different claims. A `next` asserts one statement cannot execute. A `start` 
 an entire file's worth of statements cannot execute **in any configuration the suite runs
 under**. The second is far stronger and gets its own `EXPECTED_BLOCK`:
 
-| Site | Count | Reason |
-| --- | --- | --- |
-| `cortex-llm: embedding/transformers-pipeline.ts` | 1 | Optional-peer loading shim; dynamically imports `@xenova/transformers`, an `optionalDependency` absent in CI. The tested path is the injectable `pipelineFactory`. |
-| `cortex-llm: rerank/transformers-rerank-pipeline.ts` | 1 | Same peer, same reason. The tested path is the injectable `pipeline` on `CrossEncoderReranker`. |
+| Site                                                 | Count | Reason                                                                                                                                                             |
+| ---------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cortex-llm: embedding/transformers-pipeline.ts`     | 1     | Optional-peer loading shim; dynamically imports `@xenova/transformers`, an `optionalDependency` absent in CI. The tested path is the injectable `pipelineFactory`. |
+| `cortex-llm: rerank/transformers-rerank-pipeline.ts` | 1     | Same peer, same reason. The tested path is the injectable `pipeline` on `CrossEncoderReranker`.                                                                    |
 
 Both directions are asserted: an undeclared blanket site fails, and a declared site that no
 longer carries one also fails — because that means the file became testable, which is a change
@@ -251,10 +250,17 @@ worth reviewing rather than a number that quietly improved.
 The claim "these files have no runtime code" was previously a comment. It is now a parse:
 
 ```ts
-const source = ts.createSourceFile(path, readFileSync(path, 'utf8'),
-  ts.ScriptTarget.ESNext, /* setParentNodes */ false);
+const source = ts.createSourceFile(
+  path,
+  readFileSync(path, 'utf8'),
+  ts.ScriptTarget.ESNext,
+  /* setParentNodes */ false,
+);
 const runtime = source.statements.filter((node) => !isTypeLevelExport(node));
-expect(runtime.map((node) => ts.SyntaxKind[node.kind]), `...`).toEqual([]);
+expect(
+  runtime.map((node) => ts.SyntaxKind[node.kind]),
+  `...`,
+).toEqual([]);
 ```
 
 **This assertion was written the wrong way first, and the failure is instructive.** The
@@ -318,25 +324,25 @@ visited.
 
 ## 6. Result
 
-| | Before | After |
-| --- | --- | --- |
-| Packages scanned | 1 of 4 | 4 of 4 |
-| Prefixes matched | `c8`, `v8` | `c8`, `v8`, `istanbul` |
-| `istanbul` annotations | 6 (all invisible) | 0 |
-| Line-scoped annotations pinned | 8 | 8 |
-| Block suppressions pinned | 0 (unread) | 2 |
-| Type-only exemptions asserted by AST | no | yes |
-| `cortex-core` tests | 192 | **195** |
-| Repository tests | 1843 | **1846** |
+|                                      | Before            | After                  |
+| ------------------------------------ | ----------------- | ---------------------- |
+| Packages scanned                     | 1 of 4            | 4 of 4                 |
+| Prefixes matched                     | `c8`, `v8`        | `c8`, `v8`, `istanbul` |
+| `istanbul` annotations               | 6 (all invisible) | 0                      |
+| Line-scoped annotations pinned       | 8                 | 8                      |
+| Block suppressions pinned            | 0 (unread)        | 2                      |
+| Type-only exemptions asserted by AST | no                | yes                    |
+| `cortex-core` tests                  | 192               | **195**                |
+| Repository tests                     | 1843              | **1846**               |
 
 Coverage moved by **zero** on every dimension, which is the finding restated as a number:
 
-| Package | Stmts | Branch | Funcs | Lines | Threshold |
-| --- | --- | --- | --- | --- | --- |
-| `cortex-core` | 98.74 | 98.67 | 100 | 98.74 | 95 ✅ |
-| `cortex-node` | 100 | 98.61 | 100 | 100 | 95 ✅ |
-| `cortex-llm` | 99.27 | 98.11 | 100 | 99.27 | 95 ✅ |
-| `cortex-eval` | 99.88 | 99.05 | 100 | 99.88 | 95 ✅ |
+| Package       | Stmts | Branch | Funcs | Lines | Threshold |
+| ------------- | ----- | ------ | ----- | ----- | --------- |
+| `cortex-core` | 98.74 | 98.67  | 100   | 98.74 | 95 ✅     |
+| `cortex-node` | 100   | 98.61  | 100   | 100   | 95 ✅     |
+| `cortex-llm`  | 99.27 | 98.11  | 100   | 99.27 | 95 ✅     |
+| `cortex-eval` | 99.88 | 99.05  | 100   | 99.88 | 95 ✅     |
 
 `pnpm check` exits 0 (tools, build, lint, typecheck, census, tests, format).
 
@@ -344,12 +350,12 @@ Coverage moved by **zero** on every dimension, which is the finding restated as 
 
 ## 7. What this document does not claim
 
-**It does not claim the annotation set is now complete.** It claims the *scanner* is now
+**It does not claim the annotation set is now complete.** It claims the _scanner_ is now
 scoped and spelled so that a suppression cannot avoid it. Whether a given annotation's stated
 reason is **true** remains unverifiable by this test — the `math/stats.ts` history in the
 test's own docstring is the standing evidence, where six annotations carried a reason that was
 false when written and became true only because two unrelated defects were fixed. Reachability
-must be *measured*, by perturbing the code and observing it from outside; a pattern match
+must be _measured_, by perturbing the code and observing it from outside; a pattern match
 cannot do it.
 
 **It does not claim the six deletions changed coverage behaviour.** They did not, by
@@ -373,7 +379,7 @@ Two habits follow, and both are cheap:
 1. **Scope the scan to the container, not to the file's own location.** A test that says
    "the set is enumerated" and enumerates one directory is making a claim about the
    repository from evidence gathered in a fraction of it.
-2. **Match more than executes.** For a *policing* pattern, over-matching is the safe
+2. **Match more than executes.** For a _policing_ pattern, over-matching is the safe
    direction: a false positive reaches a human, a false negative reaches nobody.
 
 ---
@@ -388,7 +394,7 @@ belongs here is the mechanism, because it is the same lesson as §8 one level do
 
 ### 9.1 The report is a projection that loses the evidence
 
-`coverage-final.json` carries, per branch, a list of *locations*. Istanbul builds a branch
+`coverage-final.json` carries, per branch, a list of _locations_. Istanbul builds a branch
 by pairing the sub-ranges the v8 provider emits for a decision. When the provider emits
 **one** sub-range, the branch is built with **one** location — and a branch with one location
 has no second arm to take, so it can only ever read zero. The table renders that as a missing
@@ -396,18 +402,18 @@ branch. Nothing in the table says "this counter was constructed from a single ra
 
 Measured, by reading `NODE_V8_COVERAGE` directly on minimal subjects:
 
-| construct | sub-ranges emitted | branch locations | readable count |
-| --- | --- | --- | --- |
-| `a?.[i]`, `a?.m()`, `a?.b` | 1 | 1 | always `[0]` |
-| `c ? x : y` | 2 | 2 | both arms |
-| `cond instanceof E ? a : b` | 2 | 2 | both arms |
-| one-line `if (c) return v;` | 1 | 1 | always `[0]` |
-| `try { } catch { } finally { }` | 1 (the `finally` line) | 1 | always `[0]` |
-| the same function without `try/finally` | 0 on that line | — | — |
+| construct                               | sub-ranges emitted     | branch locations | readable count |
+| --------------------------------------- | ---------------------- | ---------------- | -------------- |
+| `a?.[i]`, `a?.m()`, `a?.b`              | 1                      | 1                | always `[0]`   |
+| `c ? x : y`                             | 2                      | 2                | both arms      |
+| `cond instanceof E ? a : b`             | 2                      | 2                | both arms      |
+| one-line `if (c) return v;`             | 1                      | 1                | always `[0]`   |
+| `try { } catch { } finally { }`         | 1 (the `finally` line) | 1                | always `[0]`   |
+| the same function without `try/finally` | 0 on that line         | —                | —              |
 
 The last two rows are the control. The `finally` line emits one range with `count = 0` while
 the block demonstrably executes — the statement on the same line counts 5. Remove the
-`try/finally` and the line emits nothing at all. So the range exists *because of* the clause,
+`try/finally` and the line emits nothing at all. So the range exists _because of_ the clause,
 and a one-location branch cannot be satisfied by any test.
 
 ### 9.2 Depth is not a factor, and that inference was falsified
@@ -432,7 +438,7 @@ independent evidence by reporting the flag as assigned and never read.
 
 The disposition was to delete the arm, not to test it. **Writing a test for a dead arm
 promotes a defect into a contract** — and three attempts were made and discarded before this
-was accepted, one of which *passed* while returning at the early exit.
+was accepted, one of which _passed_ while returning at the early exit.
 
 ### 9.4 What this adds to §8
 

@@ -14,10 +14,10 @@ this repository was between numbers of different sizes.
 
 Two allocation rules over the same admission and the same relevance signal:
 
-| arm | function | rule |
-| --- | --- | --- |
-| whole | `selectSessionBudget` | a session is admitted whole or not at all |
-| trim | `selectTurnsWithinBudget` | a session that does not fit is trimmed to its most relevant turns |
+| arm   | function                  | rule                                                              |
+| ----- | ------------------------- | ----------------------------------------------------------------- |
+| whole | `selectSessionBudget`     | a session is admitted whole or not at all                         |
+| trim  | `selectTurnsWithinBudget` | a session that does not fit is trimmed to its most relevant turns |
 
 Everything else is identical: same `admitSessions`, same `lexicalRelevance`, same hit ordering, same corpus,
 same top-k. That is what makes the two rows an ablation rather than two systems.
@@ -44,12 +44,12 @@ below are tokenizer-measured and ours is not.
 `whole-8t` and `trim-8t` receive the same budget, and they spend almost the same amount of text (2,709 vs 2,739
 tokens). They differ in one rule. The result:
 
-| metric | whole-8t | trim-8t | Δ |
-| --- | --- | --- | --- |
-| recall@k | 8.0% | 76.2% | **+68.2pp** |
-| MRR | 0.080 | 0.758 | **×9.5** |
-| all-gold | 6.6% | 6.2% | **−0.4pp** |
-| ~tokens | 2,709 | 2,739 | +1.1% |
+| metric   | whole-8t | trim-8t | Δ           |
+| -------- | -------- | ------- | ----------- |
+| recall@k | 8.0%     | 76.2%   | **+68.2pp** |
+| MRR      | 0.080    | 0.758   | **×9.5**    |
+| all-gold | 6.6%     | 6.2%    | **−0.4pp**  |
+| ~tokens  | 2,709    | 2,739   | +1.1%       |
 
 The gap is not "trim spends more". It is **the same budget covering more**: whole-session admission cannot fit a
 ten-turn session into an eight-turn budget, so it skips every session and its fallback returns exactly one —
@@ -65,12 +65,12 @@ because a future round that only watches `recall@k` would never see it.
 
 The unbounded rows are ten times more expensive than the published systems:
 
-| system | metric | value | context |
-| --- | --- | --- | --- |
-| Cortex (unbounded) | recall@k | 94.0% | **33,089 tokens** |
+| system                        | metric   | value | context           |
+| ----------------------------- | -------- | ----- | ----------------- |
+| Cortex (unbounded)            | recall@k | 94.0% | **33,089 tokens** |
 | lexical reference (unbounded) | recall@k | 93.6% | **34,277 tokens** |
-| Cortex (trim, 6.8k) | recall@k | 87.4% | 6,802 tokens |
-| Cortex (trim, 2.8k) | recall@k | 80.8% | 2,799 tokens |
+| Cortex (trim, 6.8k)           | recall@k | 87.4% | 6,802 tokens      |
+| Cortex (trim, 2.8k)           | recall@k | 80.8% | 2,799 tokens      |
 
 So `94.0% vs 93.6%` — the parity reported last round — was measured at 33k tokens, and the vendors report
 91.6% / 90.2% / 93.4% at 2,807 / 4,408 / 6,787. Subtracting across those is the mistake `comparability()`
@@ -81,13 +81,13 @@ gold evidence; at 4.4k, 83.8%; at 6.8k, 87.4%. Diminishing, and each step is mea
 
 ### 2.3 Per capability, at three budgets
 
-| capability | none (33k) | 6.8k | 4.4k | 2.8k | whole-8t (2.7k) |
-| --- | --- | --- | --- | --- | --- |
-| ABS | 28/30 | 24/30 | 23/30 | 22/30 | 2/30 |
-| IE | 133/150 | 123/150 | 119/150 | 116/150 | 33/150 |
-| KU | 72/72 | 71/72 | 71/72 | 71/72 | 0/72 |
-| MR | 117/121 | 105/121 | 98/121 | 94/121 | 2/121 |
-| TR | 120/127 | 114/127 | 108/127 | 101/127 | 3/127 |
+| capability | none (33k) | 6.8k    | 4.4k    | 2.8k    | whole-8t (2.7k) |
+| ---------- | ---------- | ------- | ------- | ------- | --------------- |
+| ABS        | 28/30      | 24/30   | 23/30   | 22/30   | 2/30            |
+| IE         | 133/150    | 123/150 | 119/150 | 116/150 | 33/150          |
+| KU         | 72/72      | 71/72   | 71/72   | 71/72   | 0/72            |
+| MR         | 117/121    | 105/121 | 98/121  | 94/121  | 2/121           |
+| TR         | 120/127    | 114/127 | 108/127 | 101/127 | 3/127           |
 
 Two things worth reading off this table.
 
@@ -111,13 +111,13 @@ made at all, and the retrieval curve above is the only honest claim available.
 
 ## 4. What was built
 
-| file | change |
-| --- | --- |
-| `cortex-memory/src/sessionize.ts` | `selectTurnsWithinBudget` — the turn arm, with `spent`/`trimmed`/`dropped` reported |
-| `cortex-memory/src/provider.ts` | `budgetUnit: 'turns' \| 'chars'`, `trim`, `label`; the arm read in one private method |
-| `cortex-eval/src/harness.ts` | `ProviderScore.meanContextChars` — cost is now a column |
-| `tools/competitor-harness.mjs` | four arms × one corpus; `--budget-tokens`; `~tok` column |
-| `.github/workflows/competitor-retrieval.yml` | budget sweep at 2.8k / 4.4k / 6.8k |
+| file                                         | change                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `cortex-memory/src/sessionize.ts`            | `selectTurnsWithinBudget` — the turn arm, with `spent`/`trimmed`/`dropped` reported   |
+| `cortex-memory/src/provider.ts`              | `budgetUnit: 'turns' \| 'chars'`, `trim`, `label`; the arm read in one private method |
+| `cortex-eval/src/harness.ts`                 | `ProviderScore.meanContextChars` — cost is now a column                               |
+| `tools/competitor-harness.mjs`               | four arms × one corpus; `--budget-tokens`; `~tok` column                              |
+| `.github/workflows/competitor-retrieval.yml` | budget sweep at 2.8k / 4.4k / 6.8k                                                    |
 
 Coverage: `sessionize.ts` and `provider.ts` both 100% on statements, branches, functions and lines. 560 memory
 tests, 11 harness tests, `pnpm check` exit 0.

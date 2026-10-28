@@ -45,11 +45,11 @@ So the fix completes the contract rather than retracting it.
 
 ## 3. The three parts
 
-| Part | Where | What it does |
-| ---- | ----- | ------------ |
-| the fact | `NaturalLanguageMemorySystem.annotateWithCandidateSides` | reports `{ context, applied }` from the point the decision is made |
-| the trace | `DecisionTrace.candidateAnnotationApplied` | carries it per question |
-| the report | `AblationReport.candidateAnnotationVersion` | records the revision, or `0` |
+| Part       | Where                                                    | What it does                                                       |
+| ---------- | -------------------------------------------------------- | ------------------------------------------------------------------ |
+| the fact   | `NaturalLanguageMemorySystem.annotateWithCandidateSides` | reports `{ context, applied }` from the point the decision is made |
+| the trace  | `DecisionTrace.candidateAnnotationApplied`               | carries it per question                                            |
+| the report | `AblationReport.candidateAnnotationVersion`              | records the revision, or `0`                                       |
 
 ### 3.1 The fact is reported where it is decided
 
@@ -86,11 +86,11 @@ function annotationVersionOf(traces: readonly DecisionTrace[]): number {
 The report field follows the rule `cohortCoverage`, `retryFires` and
 `featureConfig` already share, with one addition:
 
-| Value     | Claim                                              |
-| --------- | -------------------------------------------------- |
-| `1`       | the annotation rendered at revision 1 this run      |
-| `0`       | this run rendered no annotation                     |
-| *absent*  | this artifact was produced before the field existed |
+| Value    | Claim                                               |
+| -------- | --------------------------------------------------- |
+| `1`      | the annotation rendered at revision 1 this run      |
+| `0`      | this run rendered no annotation                     |
+| _absent_ | this artifact was produced before the field existed |
 
 Collapsing `0` and absent would let a report that predates the field pass for a
 report that states the annotation was off — a claim about a run, made by an
@@ -138,8 +138,8 @@ rather than a wiring fix.
 > `AUDIT-UNREFERENCED-EXPORTS.md` are resolved, and the class is at 27. The decision
 > was **not** to wire it: the bitemporal `Fact` layer already delivers what the type
 > described, and the one thing it added (`parents`) was read by nothing. The sentence
-> above still stands as written — this document closed a *wiring* question and
-> correctly left a *roadmap* question alone; the roadmap answer simply arrived later,
+> above still stands as written — this document closed a _wiring_ question and
+> correctly left a _roadmap_ question alone; the roadmap answer simply arrived later,
 > in a different document, with its own evidence.
 
 ## 6. What this does not claim

@@ -333,12 +333,18 @@ export {
   type LlmEnv,
 } from './llm-factory.js';
 export {
+  createMemoryArmReranker,
   createRerankerFromEnv,
   DEFAULT_RERANK_BASE_URL,
   DEFAULT_RERANK_MODEL,
+  resolveRerankBounds,
+  resolveRerankIdentity,
+  type RerankBounds,
   type RerankEnv,
   type RerankFactoryOptions,
+  type RerankIdentity,
 } from './rerank-factory.js';
+export { countedRerank, type CountedRerank, type RerankCensus } from './rerank-census.js';
 export {
   compareQuestionVectors,
   requiredEffectSize,
@@ -392,6 +398,7 @@ export {
 } from './bench-arm-options.js';
 
 export {
+  assertRerankReachesRanking,
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
   describeEmbeddingCachePersist,

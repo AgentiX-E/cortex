@@ -14,17 +14,17 @@ sixty hand-labelled utterances, 40 of which deferred.
 
 ## The reading
 
-| Quantity | Full artifact | Ten-window sample |
-| --- | --- | --- |
-| Evidence windows | 500 | 10 |
-| User turns | 54,313 | 1,087 |
-| Turns the rule layer defers | **47,543 (87.5%)** | 925 (85.1%) |
-| Cards before the gate (one per deferral) | **47,543 — 95.1 per window** | 925 — 92.5 |
-| Cards after the gate (one per deferral with a claim) | **35,264 — 70.5 per window** | 718 — 71.8 |
-| Median / max cards per window | 60 / 147 | 104 / 118 |
-| Claims kept inside those cards | 64,837 | 1,292 |
-| Turns that now open nothing | 12,279 (25.8% of deferrals) | 207 (22.4%) |
-| Claim fused into a question (blind spot) | 109 (0.2%) | 4 (0.4%) |
+| Quantity                                             | Full artifact                | Ten-window sample |
+| ---------------------------------------------------- | ---------------------------- | ----------------- |
+| Evidence windows                                     | 500                          | 10                |
+| User turns                                           | 54,313                       | 1,087             |
+| Turns the rule layer defers                          | **47,543 (87.5%)**           | 925 (85.1%)       |
+| Cards before the gate (one per deferral)             | **47,543 — 95.1 per window** | 925 — 92.5        |
+| Cards after the gate (one per deferral with a claim) | **35,264 — 70.5 per window** | 718 — 71.8        |
+| Median / max cards per window                        | 60 / 147                     | 104 / 118         |
+| Claims kept inside those cards                       | 64,837                       | 1,292             |
+| Turns that now open nothing                          | 12,279 (25.8% of deferrals)  | 207 (22.4%)       |
+| Claim fused into a question (blind spot)             | 109 (0.2%)                   | 4 (0.4%)          |
 
 The sample agrees with the full run to 1.3 cards per window, which is what a sample is for.
 

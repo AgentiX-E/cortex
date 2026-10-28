@@ -16,10 +16,10 @@ existing diagnostics report `recall@1` and `recall@5`, and that pair cannot
 answer the question, because two very different effects are indistinguishable
 at a single cutoff:
 
-| Effect | What actually happened | Which measure fixes it |
-| --- | --- | --- |
-| **Breadth** | The evidence turn was never retrieved | Widen the pool |
-| **Ordering** | The evidence was always in the pool, ranked too low | Rerank (measure B1) |
+| Effect       | What actually happened                              | Which measure fixes it |
+| ------------ | --------------------------------------------------- | ---------------------- |
+| **Breadth**  | The evidence turn was never retrieved               | Widen the pool         |
+| **Ordering** | The evidence was always in the pool, ranked too low | Rerank (measure B1)    |
 
 `recall@5` improves under either. Choosing a measure from it is a guess.
 
@@ -27,12 +27,12 @@ at a single cutoff:
 
 At each cutoff `k`, over answerable questions only:
 
-| Field | Meaning |
-| --- | --- |
-| `recalled` | Count whose first answer turn ranks below `k` |
-| `recall` | `recalled / total` — what the bi-encoder's own ordering achieves |
-| `ceiling` | Fraction whose answer is anywhere in the pool of width `poolWidth` |
-| `gain` | `ceiling - recall` — the recall a perfect reranker could add with **no new retrieval** |
+| Field      | Meaning                                                                                |
+| ---------- | -------------------------------------------------------------------------------------- |
+| `recalled` | Count whose first answer turn ranks below `k`                                          |
+| `recall`   | `recalled / total` — what the bi-encoder's own ordering achieves                       |
+| `ceiling`  | Fraction whose answer is anywhere in the pool of width `poolWidth`                     |
+| `gain`     | `ceiling - recall` — the recall a perfect reranker could add with **no new retrieval** |
 
 Two properties make this the right instrument:
 
@@ -90,11 +90,11 @@ of this document said it was.** The exclusion happens on one condition — no
 answer text — but three different situations produce it, and only the first is
 intended. `computeRecallCurve` now classifies each one and reports it:
 
-| Reason | Meaning | Excluding it is... |
-| --- | --- | --- |
-| `abstention` | Correct answer is to refuse; no evidence turn exists | Correct, and the point of the rule |
-| `derived` | Answerable, but its answer is a value *computed* from the evidence ("four", "25 minutes and 50 seconds", `$400,000`) so no single turn carries it verbatim | A real answerable question removed from the denominator, which caps how far the ceiling generalises |
-| `no-flag` | Answerable, but no turn was ever marked `has_answer` | A silent measurement loss and a data/loader problem |
+| Reason       | Meaning                                                                                                                                                    | Excluding it is...                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `abstention` | Correct answer is to refuse; no evidence turn exists                                                                                                       | Correct, and the point of the rule                                                                  |
+| `derived`    | Answerable, but its answer is a value _computed_ from the evidence ("four", "25 minutes and 50 seconds", `$400,000`) so no single turn carries it verbatim | A real answerable question removed from the denominator, which caps how far the ceiling generalises |
+| `no-flag`    | Answerable, but no turn was ever marked `has_answer`                                                                                                       | A silent measurement loss and a data/loader problem                                                 |
 
 The measurement that exposed this is in §4.1: a run over **500** questions
 produced a curve with a denominator of **428**. The missing 72 are answerable KU
@@ -121,11 +121,11 @@ describe a retrieval the pipeline does not perform.
 Fixed before the measurement runs, so the result cannot be reinterpreted after
 the fact.
 
-| Observation | Conclusion | Action |
-| --- | --- | --- |
-| `gain` large at the current pool, `ceiling` flat beyond it | Ordering is the bottleneck, breadth is not | Execute B1's A/B; do **not** widen the pool |
-| `ceiling` still climbing at the widest cutoff | Genuine recall headroom exists | Widen `rerankCandidatePool`; re-measure |
-| `gain ≈ 0` and `ceiling` flat everywhere | Neither breadth nor ordering is the bottleneck | Stop; the constraint is elsewhere (context admission, or the reader) — see `cortex-docs/docs/08-reader-parity-analysis.md` |
+| Observation                                                | Conclusion                                     | Action                                                                                                                     |
+| ---------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `gain` large at the current pool, `ceiling` flat beyond it | Ordering is the bottleneck, breadth is not     | Execute B1's A/B; do **not** widen the pool                                                                                |
+| `ceiling` still climbing at the widest cutoff              | Genuine recall headroom exists                 | Widen `rerankCandidatePool`; re-measure                                                                                    |
+| `gain ≈ 0` and `ceiling` flat everywhere                   | Neither breadth nor ordering is the bottleneck | Stop; the constraint is elsewhere (context admission, or the reader) — see `cortex-docs/docs/08-reader-parity-analysis.md` |
 
 **Falsification condition.** If widening the pool moves `ceiling` but not `gain`,
 the pool is not the constraint and the widening must not be kept. If `gain` is
@@ -134,17 +134,17 @@ retrieval ordering does not propagate to answers, and both directions close.
 
 ## 4. Status
 
-| Item | Status |
-| --- | --- |
-| `buildRecallCurve` (pure arithmetic) | Implemented, tested |
-| `rankOfFirstAnswer` | Implemented, tested |
-| `computeRecallCurve` (measurement) | Implemented, tested |
-| `classifyExclusion` (shortfall reporting) | Implemented, tested |
-| CLI emission (`benchmark-recall-curve.json`) | Wired, carries `considered` + `excluded[]` |
-| Job-summary rendering of the denominator | Wired |
-| Coverage, all four dimensions | 100 / 97.05 / 100 / 100 |
-| **Smoke measurement** | Run `35498421148`, `LIMIT=60`, `DIAGNOSTICS_LIMIT=100`, 43 answerable |
-| **Full measurement** | Run `35523328949`, `LIMIT=0`, `DIAGNOSTICS_LIMIT=0`, 428 answerable of 500 |
+| Item                                         | Status                                                                     |
+| -------------------------------------------- | -------------------------------------------------------------------------- |
+| `buildRecallCurve` (pure arithmetic)         | Implemented, tested                                                        |
+| `rankOfFirstAnswer`                          | Implemented, tested                                                        |
+| `computeRecallCurve` (measurement)           | Implemented, tested                                                        |
+| `classifyExclusion` (shortfall reporting)    | Implemented, tested                                                        |
+| CLI emission (`benchmark-recall-curve.json`) | Wired, carries `considered` + `excluded[]`                                 |
+| Job-summary rendering of the denominator     | Wired                                                                      |
+| Coverage, all four dimensions                | 100 / 97.05 / 100 / 100                                                    |
+| **Smoke measurement**                        | Run `35498421148`, `LIMIT=60`, `DIAGNOSTICS_LIMIT=100`, 43 answerable      |
+| **Full measurement**                         | Run `35523328949`, `LIMIT=0`, `DIAGNOSTICS_LIMIT=0`, 428 answerable of 500 |
 
 ### 4.1 The measurement
 
@@ -154,26 +154,26 @@ second is the full 500-question run that closed B2.
 **Smoke run `35498421148`** (commit `16ca1ea`), `LIMIT=60`,
 `DIAGNOSTICS_LIMIT=100`, 43 answerable questions:
 
-| k | recalled | recall | ceiling | gain |
-| --- | --- | --- | --- | --- |
-| 1 | 12 | 27.91% | 93.02% | 65.12% |
-| 3 | 24 | 55.81% | 93.02% | 37.21% |
-| 5 | 27 | 62.79% | 93.02% | 30.23% |
-| 10 | 33 | 76.74% | 93.02% | 16.28% |
-| 20 | 39 | 90.70% | 93.02% | 2.33% |
-| 50 | 40 | 93.02% | 93.02% | 0.00% |
+| k   | recalled | recall | ceiling | gain   |
+| --- | -------- | ------ | ------- | ------ |
+| 1   | 12       | 27.91% | 93.02%  | 65.12% |
+| 3   | 24       | 55.81% | 93.02%  | 37.21% |
+| 5   | 27       | 62.79% | 93.02%  | 30.23% |
+| 10  | 33       | 76.74% | 93.02%  | 16.28% |
+| 20  | 39       | 90.70% | 93.02%  | 2.33%  |
+| 50  | 40       | 93.02% | 93.02%  | 0.00%  |
 
 **Full run `35523328949`** (commit `a7e846d`), `LIMIT=0`, `DIAGNOSTICS_LIMIT=0`,
 DeepSeek + Zhipu GLM embedding-3, temperature 0. Denominator **428 of 500**:
 
-| k | recalled | recall | ceiling | gain |
-| --- | --- | --- | --- | --- |
-| 1 | 142 | 33.18% | 96.26% | 63.08% |
-| 3 | 242 | 56.54% | 96.26% | 39.72% |
-| 5 | 289 | 67.52% | 96.26% | 28.74% |
-| 10 | 340 | 79.44% | 96.26% | 16.82% |
-| 20 | 384 | 89.72% | 96.26% | 6.54% |
-| 50 | 412 | 96.26% | 96.26% | 0.00% |
+| k   | recalled | recall | ceiling | gain   |
+| --- | -------- | ------ | ------- | ------ |
+| 1   | 142      | 33.18% | 96.26%  | 63.08% |
+| 3   | 242      | 56.54% | 96.26%  | 39.72% |
+| 5   | 289      | 67.52% | 96.26%  | 28.74% |
+| 10  | 340      | 79.44% | 96.26%  | 16.82% |
+| 20  | 384      | 89.72% | 96.26%  | 6.54%  |
+| 50  | 412      | 96.26% | 96.26%  | 0.00%  |
 
 The denominator is confirmed by `benchmark-diagnostics.json`, which reports
 `totalQuestions: 500` and `answerableQuestions: 428` in the same run.
@@ -214,7 +214,7 @@ at the working width).
 > narrower caution: **the full-run ceiling is over 428, not the run's 500**, so
 > it is not directly comparable to `benchmark-report.json`'s accuracy. The 72
 > excluded are answerable KU questions with derived answers (§2.3), and the
-> ceiling therefore says nothing about whether *their* evidence would have been
+> ceiling therefore says nothing about whether _their_ evidence would have been
 > retrievable. Whether that gap is worth closing is open.
 
 ### 4.3 What remains unknown
@@ -223,7 +223,7 @@ at the working width).
   about what the reader does with the evidence. B1's A/B is the measurement that
   connects ordering to accuracy, and it is not yet run.
 - **The `k=1` headroom is an upper bound, not a forecast.** `gain = 63.08%` at
-  `k=1` is what a *perfect* reordering would reach. A real cross-encoder will
+  `k=1` is what a _perfect_ reordering would reach. A real cross-encoder will
   capture some fraction of it, and the A/B exists to measure that fraction rather
   than assume it.
 - **What the 72 excluded questions would have contributed.** They are answerable
@@ -236,7 +236,7 @@ at the working width).
 
 The existing diagnostics were built to pick an abstention threshold — a
 different question, answered by the score distribution of hits and misses. This
-instrument is built to choose between two *different* remedies for the same
+instrument is built to choose between two _different_ remedies for the same
 symptom, and its output is a decision, not a description. It was added because
 without it the roadmap's B1 and B2 measures could not be told apart: both were
 justified by "recall is not 100%", which is true of every retrieval pipeline

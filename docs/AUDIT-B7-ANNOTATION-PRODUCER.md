@@ -77,8 +77,8 @@ Three independent reasons, each sufficient on its own:
 ```ts
 export function discriminateContext(
   turns: readonly TurnLike[],
-  options: DiscriminatedContextOptions,   // { question, groundTruth?, answer? }
-): DiscriminatedContext
+  options: DiscriminatedContextOptions, // { question, groundTruth?, answer? }
+): DiscriminatedContext;
 ```
 
 Without `groundTruth` it returns `{ clusters: [], annotated: false }` — asserted
@@ -144,7 +144,7 @@ not make.
 
 ### Explicitly not claimable
 
-- **Not** "B7 has no effect." B7 has no *producer*. The distinction matters: the
+- **Not** "B7 has no effect." B7 has no _producer_. The distinction matters: the
   first is a claim about a method, the second about a missing component.
 - **Not** "the annotation implementation is broken." It is correct and tested;
   §3 shows it working.
@@ -159,7 +159,7 @@ no production caller", and it is mechanically detectable: for each exported symb
 in `src/**` excluding `index.ts`, require at least one non-test reference. Such a
 check would have caught this at the moment the option was first declared, and it
 would have caught the four functions the previous audit found uncalled, and the one
-those two audits did *not* find because they were looking at the switch rather than
+those two audits did _not_ find because they were looking at the switch rather than
 at its dependency.
 
 Until that exists, the census in §2 is a command a reader has to remember to run,

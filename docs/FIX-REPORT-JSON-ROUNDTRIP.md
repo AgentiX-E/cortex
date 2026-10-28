@@ -1,7 +1,7 @@
 # FIX — The Report Dies When It Is Re-Read From JSON
 
-**Status:** fixed in `report.ts`; 13 tests. Found by re-rendering a *real archived
-artifact*, not by reading code. Scope established afterwards by auditing all 13
+**Status:** fixed in `report.ts`; 13 tests. Found by re-rendering a _real archived
+artifact_, not by reading code. Scope established afterwards by auditing all 13
 archived reports: **100% were affected**.
 
 This is the third defect in the conjunction-guard sequence, and the first that is
@@ -27,10 +27,10 @@ unrenderable once written to disk and read back.
 `JSON.stringify` has no representation for `NaN` or `±Infinity`; it writes
 `null`. A single-run ablation produces exactly those values:
 
-| Field | Live value | Why | After `JSON.stringify` |
-| --- | --- | --- | --- |
-| `ablation.pValue` | `NaN` | Welch over-run t-test with `runs < 2` | `null` |
-| `ablation.effectSize` | `±Infinity` | the two arms never disagreed | `null` |
+| Field                 | Live value  | Why                                   | After `JSON.stringify` |
+| --------------------- | ----------- | ------------------------------------- | ---------------------- |
+| `ablation.pValue`     | `NaN`       | Welch over-run t-test with `runs < 2` | `null`                 |
+| `ablation.effectSize` | `±Infinity` | the two arms never disagreed          | `null`                 |
 
 The renderer guarded the p-value with `Number.isNaN(ab.pValue)`. That guard is
 **wrong for this input**: `Number.isNaN(null)` is `false`, because `null` is not
@@ -55,7 +55,7 @@ covers the render function itself.
 
 ## 4. Why this matters more than a crash
 
-The crash is the *loud* half. The quiet half is what the numbers would have said:
+The crash is the _loud_ half. The quiet half is what the numbers would have said:
 
 - A `null` effect size rendered by a naive `?? 0` or `Number(null)` fix becomes
   `0.000`, which reads as **"no effect"**. The truth is an infinite effect — the
@@ -97,7 +97,7 @@ Decisions worth stating:
    report type-checks. Typing it `number` and relying on a runtime guard would
    have kept the call sites misleading.
 4. **The t-test fallback string moved into the signature** (`'n/a
-   (deterministic)'` vs `'exact'`), because the McNemar p-value is an exact test
+(deterministic)'` vs `'exact'`), because the McNemar p-value is an exact test
    that is never `NaN` while the t-test legitimately is — the two need different
    words for the same absent number.
 
@@ -130,19 +130,19 @@ missing and the numbers it previously crashed on.
 
 ## 7. Acceptance criteria
 
-| Criterion | Evidence |
-| --- | --- |
-| A persisted report renders without throwing | Test: real archived payload |
-| A null p-value is labelled, not numbered | Test: `n/a (deterministic)` |
-| A null effect size is `n/a`, never `0.000` | Test: `Cohen's d: **n/a**` |
-| Real numeric values are unaffected | Test: `1.000e-3`, `0.420` |
-| The failure is reproduced through real `JSON.stringify`/`parse` | Test: asserts `null` before rendering |
-| The cohort banner survives persistence | Test: banner above `Δ accuracy` in a parsed report |
-| Every affected field shape has a named case | Test: 4 persisted-field cases + the in-memory NaN/±Infinity case |
-| A serialised infinity never becomes `0.000` | Test: asserts absence of `0.000` for an infinite effect |
-| The two p-value fallbacks stay distinguishable | Test: McNemar `1.000e+0` vs t-test `n/a (deterministic)` |
-| The whole artifact set is re-readable | Audit: 13/13 archived reports render, against 0/13 before |
-| No workspace regression | See `09-progress-and-delivery-report.md` for the current count |
+| Criterion                                                       | Evidence                                                         |
+| --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| A persisted report renders without throwing                     | Test: real archived payload                                      |
+| A null p-value is labelled, not numbered                        | Test: `n/a (deterministic)`                                      |
+| A null effect size is `n/a`, never `0.000`                      | Test: `Cohen's d: **n/a**`                                       |
+| Real numeric values are unaffected                              | Test: `1.000e-3`, `0.420`                                        |
+| The failure is reproduced through real `JSON.stringify`/`parse` | Test: asserts `null` before rendering                            |
+| The cohort banner survives persistence                          | Test: banner above `Δ accuracy` in a parsed report               |
+| Every affected field shape has a named case                     | Test: 4 persisted-field cases + the in-memory NaN/±Infinity case |
+| A serialised infinity never becomes `0.000`                     | Test: asserts absence of `0.000` for an infinite effect          |
+| The two p-value fallbacks stay distinguishable                  | Test: McNemar `1.000e+0` vs t-test `n/a (deterministic)`         |
+| The whole artifact set is re-readable                           | Audit: 13/13 archived reports render, against 0/13 before        |
+| No workspace regression                                         | See `09-progress-and-delivery-report.md` for the current count   |
 
 ## 8. Scope of the defect, and what remains unclaimed
 
@@ -153,12 +153,12 @@ Thirteen `benchmark-*-ablation-report.json` files from completed runs were check
 spanning the conjunction, MR, MR-retry, TR, TR-coverage, TR-window and
 KU-bitemporal arms:
 
-| | Result |
-| --- | --- |
-| Reports audited | 13 |
-| Reports containing a `null` numeric field | **13 (100%)** |
-| Reports renderable by the pre-fix expression | **0** |
-| Reports renderable after the fix | **13** |
+|                                              | Result        |
+| -------------------------------------------- | ------------- |
+| Reports audited                              | 13            |
+| Reports containing a `null` numeric field    | **13 (100%)** |
+| Reports renderable by the pre-fix expression | **0**         |
+| Reports renderable after the fix             | **13**        |
 
 The counterfactual was checked as well, because an audit that passes on both the
 old and the new code proves nothing: driving the pre-fix expression
@@ -192,21 +192,20 @@ rather than silently joining the same trap.
   artifacts were parsed leaf by leaf, and the diagnostics files contain **no
   substitutable nulls at all**. They do contain 41 `decision.answer: null` values,
   which are the interesting near-miss — the same field, the same literal, a
-  completely different provenance. Those are *values* (the recorded shape of a
-  decline, consistent in both directions with `abstained: true`), not *losses*.
+  completely different provenance. Those are _values_ (the recorded shape of a
+  decline, consistent in both directions with `abstained: true`), not _losses_.
   The distinction is now drawn by a re-runnable instrument
   (`tools/audit-persisted-nulls.py`) rather than by an argument in a document.
 - **`benchmark-error.log` is plain text** and out of scope.
 
 > **Note on why this item was originally left as a gap, and why that was right.**
-> The reasoning — "they are never re-rendered, so they cannot hit *this* defect" —
+> The reasoning — "they are never re-rendered, so they cannot hit _this_ defect" —
 > was correct about this defect and wrong about the class. A serialisation hazard
-> does not need a formatter to matter; it needs a *consumer*. The gap declaration
+> does not need a formatter to matter; it needs a _consumer_. The gap declaration
 > preserved that distinction instead of letting a narrow argument read as a clean
 > bill of health, and closing it produced the five-way classification in
 > `AUDIT-PERSISTED-NULLS.md` §2 that a blanket "no formatter, no risk" claim would
 > have skipped entirely.
-
 
 ## 9. Appendix — a resolved dead end: the job-log host
 
@@ -220,12 +219,12 @@ reads like a permissions or credential problem and invites a hunt for the right 
 
 It is not an IP problem. **The hostname is private while the job is running.**
 
-| Job | State | Log host | Publicly fetchable |
-| --- | --- | --- | --- |
-| `106057222316` | completed | `productionresultssa3` | yes |
-| `106045650999` | completed | `productionresultssa1` | yes |
-| `105795543701` | completed | `productionresultssa15` | yes |
-| `106077768627` | **in progress** | `productionresultssa16` | **no** |
+| Job            | State           | Log host                | Publicly fetchable |
+| -------------- | --------------- | ----------------------- | ------------------ |
+| `106057222316` | completed       | `productionresultssa3`  | yes                |
+| `106045650999` | completed       | `productionresultssa1`  | yes                |
+| `105795543701` | completed       | `productionresultssa15` | yes                |
+| `106077768627` | **in progress** | `productionresultssa16` | **no**             |
 
 The control that distinguishes a real Azure error from a stale hostname: `sa3`
 answers `InvalidQueryParameterValue` (a genuine front-end response for an existing

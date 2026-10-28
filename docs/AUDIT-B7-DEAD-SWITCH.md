@@ -13,11 +13,11 @@ unit tests green, and its functions exported.
 A pre-dispatch check of the switch that turns the feature on found three
 independent breaks, stacked:
 
-| # | Break | Evidence |
-|---|---|---|
-| 1 | No benchmark input could set it | no `bench/run.ts` wiring, no workflow input |
-| 2 | `NaturalLanguageMemorySystemOptions` had no such field | `grep candidateDiscrimination` returned two hits, both inside the file that *declared* it |
-| 3 | The prompt-builder closure dropped it | `respondWith` passed it; `(q, c, token) =>` accepted three arguments |
+| #   | Break                                                  | Evidence                                                                                  |
+| --- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 1   | No benchmark input could set it                        | no `bench/run.ts` wiring, no workflow input                                               |
+| 2   | `NaturalLanguageMemorySystemOptions` had no such field | `grep candidateDiscrimination` returned two hits, both inside the file that _declared_ it |
+| 3   | The prompt-builder closure dropped it                  | `respondWith` passed it; `(q, c, token) =>` accepted three arguments                      |
 
 Break 3 is the one that killed the feature, and it is the one a signature-blind
 review passes: a three-parameter arrow satisfies the three-parameter
@@ -39,7 +39,7 @@ Because no test could. The suite's observations were:
 
 - **the leaf module**, `candidate-discrimination.ts`, mutated by
   `tools/inject-candidate-discrimination.py`. Every mutation there was caught.
-  Every mutation there was also *irrelevant* to this defect: the arithmetic was
+  Every mutation there was also _irrelevant_ to this defect: the arithmetic was
   correct, and the arithmetic was never reached.
 - **the exported functions**, called directly by unit tests. Calling a function
   directly is the one way to use it that does not require it to be wired.
@@ -50,8 +50,8 @@ layer and says nothing about the edges.**
 
 ## 3. The judgement criterion was also unjudgeable
 
-B7's pre-registered criterion (§2.5.10.6, item 1) is *"the targeted 9 questions
-must move"*. `benchmark-gap-attribution.json` stored `rankingGapQuestions: 27` and
+B7's pre-registered criterion (§2.5.10.6, item 1) is _"the targeted 9 questions
+must move"_. `benchmark-gap-attribution.json` stored `rankingGapQuestions: 27` and
 nothing else — a **count**, with no question ids.
 
 So even with the switch wired, the artifact could not answer the criterion:
@@ -63,11 +63,11 @@ gap in a second place, and it was closed the same way.
 
 ### 4.1 The ids, so the population can be named
 
-| File | Change |
-|---|---|
-| `src/recall-curve.ts` | `QuestionRank.questionId?`; single shared predicate `isRecalled`; new `classifyCurveMembership`; `RecallCurveResult.membership` |
-| `src/retrieval-attribution.ts` | `membership` option (**required**); `rankingGapQuestionIds` / `retrievalGapQuestionIds` (**required**) |
-| `bench/run.ts` | passes `recallCurve.membership`; prints both id lists with the count |
+| File                           | Change                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/recall-curve.ts`          | `QuestionRank.questionId?`; single shared predicate `isRecalled`; new `classifyCurveMembership`; `RecallCurveResult.membership` |
+| `src/retrieval-attribution.ts` | `membership` option (**required**); `rankingGapQuestionIds` / `retrievalGapQuestionIds` (**required**)                          |
+| `bench/run.ts`                 | passes `recallCurve.membership`; prints both id lists with the count                                                            |
 
 Required rather than optional, on the `discordantQuestions` precedent: an optional
 field lets the three existing fixtures keep compiling while silently reporting no
@@ -82,20 +82,20 @@ that disagrees with the list beside it — worse than either alone, because a
 reader cannot tell which to believe.
 
 The membership is taken at `Math.min(...cutoffs)`, the strictest cutoff asked
-about. A question admitted at k=1 but not at k=2 *is* the ranking gap; taking the
+about. A question admitted at k=1 but not at k=2 _is_ the ranking gap; taking the
 largest cutoff would empty the gap by relabelling it admitted.
 
 ### 4.2 The switch, wired through all three layers
 
-| Layer | Change |
-|---|---|
-| `NaturalLanguageMemorySystemOptions` | new `candidateDiscrimination?: boolean` |
-| `PromptBuilder` | fourth parameter `options?: QaPromptOptions` |
-| `respondWith` | reads the option from `this.options` and passes it |
-| `ConservativeQaPromptOptions` | new `candidateDiscrimination?: boolean` (the rerank arm answers through this builder, not `buildQaPrompt`) |
-| the closure at the abstention path | forwards the fourth argument instead of dropping it |
-| `BenchmarkRunnerOptions` | new `candidateDiscrimination?: boolean`, forwarded to the **feature only** |
-| `benchmark.yml` | new `candidate_discrimination` input, default `0` |
+| Layer                                | Change                                                                                                     |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `NaturalLanguageMemorySystemOptions` | new `candidateDiscrimination?: boolean`                                                                    |
+| `PromptBuilder`                      | fourth parameter `options?: QaPromptOptions`                                                               |
+| `respondWith`                        | reads the option from `this.options` and passes it                                                         |
+| `ConservativeQaPromptOptions`        | new `candidateDiscrimination?: boolean` (the rerank arm answers through this builder, not `buildQaPrompt`) |
+| the closure at the abstention path   | forwards the fourth argument instead of dropping it                                                        |
+| `BenchmarkRunnerOptions`             | new `candidateDiscrimination?: boolean`, forwarded to the **feature only**                                 |
+| `benchmark.yml`                      | new `candidate_discrimination` input, default `0`                                                          |
 
 Feature-only, on the `reranker` precedent: an arm whose control side carries the
 feature measures nothing. The workflow default is `0` and the reader is strict
@@ -121,7 +121,7 @@ construction** and are marked as such in the harness rather than deleted:
 cannot be reached. Deleting them would have hidden which link has no test;
 reporting them as survivors alongside real findings would have made a known
 limitation look like a defect. The harness prints the two classes separately and
-will not return success while a *real* survivor exists.
+will not return success while a _real_ survivor exists.
 
 **`tools/inject-recall-curve.py` — the curve and its membership, 11 of 11 caught.**
 
@@ -168,7 +168,7 @@ assertion can see them.
   runs on import.
 - **The leak into the control arm is unobservable on the suite's fixture.** A
   mutation wiring the flag into the baseline as well produced `prompts=4,
-  instructed=1` — identical to the correct implementation. The defect is real and
+instructed=1` — identical to the correct implementation. The defect is real and
   would be real in production; on this fixture the baseline never reaches
   `buildConservativeQaPrompt`, so it changes nothing observable. Closed by
   removing the mutation with the measurement recorded, not by writing a test that
@@ -178,7 +178,7 @@ assertion can see them.
 
 ## 8. Amendment: the feature had a second switch, and it was fiction
 
-**Added by `AUDIT-UNREFERENCED-GROUPS.md`.** This audit fixed the *live* switch for
+**Added by `AUDIT-UNREFERENCED-GROUPS.md`.** This audit fixed the _live_ switch for
 candidate discrimination — the one this document's §1 table describes breaking in
 three places. It did not notice that the same feature carried a **second, inert
 switch**, and the reason is instructive about scope:
