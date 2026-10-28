@@ -230,9 +230,14 @@ if (asJson) {
     process.stdout.write('\ncompetitor figures, with the grade that limits what may be claimed\n');
     for (const criterion of withCompetitors) {
       process.stdout.write(`  ${criterion.id} ${criterion.metric}\n`);
+      // The name column is measured, not fixed. A fixed width was correct while every competitor had a short
+      // name; the first long one printed `...GPT-4o84.2%`, which reads as a name ending in a percentage. A column
+      // that silently loses its boundary is the smallest possible version of what this repository keeps finding:
+      // two values rendered into one field.
+      const nameWidth = Math.max(26, ...criterion.competitors.map((peer) => peer.name.length + 2));
       for (const peer of criterion.competitors) {
         process.stdout.write(
-          `    ${pad(`[${peer.grade}]`, 5)}${pad(peer.name, 26)}${pad(pct(peer.value), 8)}${peer.recipe}\n`,
+          `    ${pad(`[${peer.grade}]`, 5)}${pad(peer.name, nameWidth)}${pad(pct(peer.value), 8)}${peer.recipe}\n`,
         );
       }
     }

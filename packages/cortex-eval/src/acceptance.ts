@@ -364,11 +364,58 @@ export const CRITERIA: readonly Criterion[] = [
         recipe: 'the paper baseline: the whole history in the window',
       },
       {
+        // The row that decides what S1's threshold means. An oracle run is handed the gold evidence and asked
+        // only to read it, so its score is the ceiling for a GPT-4o-class reader on this benchmark. Cortex sits
+        // 1.6 points under it, which is why raising the reader is a separate question from improving retrieval:
+        // no retrieval change can move a score past the reader that reads it.
+        name: 'oracle context, GPT-4o',
+        value: 0.824,
+        grade: 'A',
+        recipe: 'the answer evidence handed over, GPT-4o reading it — the reader ceiling on this benchmark',
+      },
+      {
+        // The controlled half of Mastra's own reader ablation: same memory system at 84.23% (GPT-4o) and 94.87%
+        // (GPT-5-mini). Both are vendor-reported, so neither is grade A, but the *difference* between them is a
+        // single-variable experiment on the reader and it is larger than this project's entire gap.
+        name: 'Mastra OM, GPT-4o',
+        value: 0.8423,
+        grade: 'B',
+        recipe: 'vendor research page: observational memory, GPT-4o reader, GPT-4o judge',
+      },
+      {
+        name: 'Mem0 OSS, reproduced',
+        value: 0.324,
+        grade: 'B',
+        recipe:
+          'benchd.ai, six systems on 500 questions: open-source Mem0 at 32.4% against a 57.6% no-memory baseline — a reproduction of a vendor 94.4%, which configures LLM extraction this run does not',
+      },
+      {
+        name: 'no-memory baseline',
+        value: 0.576,
+        grade: 'B',
+        recipe:
+          'benchd.ai: the whole history in the window with no memory system — the bar a memory system has to clear before any leaderboard comparison is interesting',
+      },
+      {
         name: 'Hindsight (vendor)',
         value: 0.946,
         grade: 'C',
         recipe:
           'vendor-reported; reader, judge and preprocessing not published in a form that can be reproduced',
+      },
+      {
+        name: 'Mastra OM, GPT-5-mini',
+        value: 0.9487,
+        grade: 'C',
+        recipe:
+          'vendor research page, strongest reader — above the GPT-4o oracle ceiling, so not the same experiment as the row above',
+      },
+      {
+        name: 'agentmemory V4',
+        value: 0.962,
+        grade: 'C',
+        recipe:
+          'single deterministic run, Claude Opus 4.6 reader, GPT-4o judge seed 42, six-signal retrieval — the highest published figure and the least comparable',
       },
       {
         name: 'Graphonomous (QA proxy)',
@@ -379,7 +426,7 @@ export const CRITERIA: readonly Criterion[] = [
       },
     ],
     onMiss:
-      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader.',
+      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. The oracle row is the internal control on that sentence: a reader that cannot exceed 82.4% given the right evidence cannot be pushed past 85% by retrieval, and a seat 1.6 points under it has to be priced on the reader axis before it is priced on the retrieval axis.',
   },
   {
     id: 'S2',
