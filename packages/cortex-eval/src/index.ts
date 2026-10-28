@@ -407,6 +407,7 @@ export {
   roleOfTurn,
   runCortexMemoryArm,
   toMemoryArmConfig,
+  toRerankRecord,
   type CortexMemoryArmEnv,
   type CortexMemoryArmOptions,
   type CortexMemoryArmResult,

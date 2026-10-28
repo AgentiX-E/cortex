@@ -12156,3 +12156,46 @@ decline line move", which is what decides whether the raw output is worth readin
 **An artifact written before this field existed** renders one sentence saying the split was not recorded, not
 four zeroes. Four zeroes would be a measurement — "nothing crossed either line" — and a missing field that
 renders as a null result is how a null result gets claimed by accident.
+
+### 13.117 A missing re-export, and the gate that was bypassed by the transport
+
+**What broke.** `toRerankRecord` was written in `bench-memory-arm.ts`, called by the arm's bench and by its
+own test, and never added to the package entry (`index.ts`). `pnpm build` passed — each package's build
+compiles `src`, and `bench/` is excluded from it by design, because the bench is not part of the published
+artifact. CI went red on the first push: `pnpm typecheck` runs `pnpm -r typecheck`, and the memory package's
+`typecheck` script compiles **both** `tsconfig.json` and `tsconfig.bench.json`. `TS2305: has no exported
+member 'toRerankRecord'`.
+
+**Why the local gate said green, which is the part worth recording.** Every push from this sandbox goes
+through the Git Data API, because the proxy admits `api.github.com` and not the git transport. So `git push`
+never runs — and husky's `pre-push` hook, the thing built to catch exactly this, never runs either. The hook
+was not skipped with a flag; it was **bypassed by the transport**. What I ran before pushing was
+`pnpm -r build` plus the two packages' test suites and the census — a subset of `pnpm check` that happens to
+omit the one command that compiles `bench/`.
+
+**The rule this leaves.** Before an API push, the command is **`pnpm check`**, not a subset chosen by
+judgement about what the change touched. A subset is a hypothesis about blast radius, and this change's blast
+radius was a file the change did not touch: an export list. The cost of the full gate is about four minutes;
+the cost of the red run was a round trip plus this section.
+
+**Why no other instrument caught it, and why none is added.** `tools/export-census.mjs` asks "does this export
+have a caller", and `toRerankRecord` has one — the bench. It does not ask "is this symbol reachable from the
+package entry", which is the property that broke; and the instrument that does ask it is the typechecker.
+Adding a second test that parses the bench's import statements and checks them against the built entry would
+be a re-implementation of `tsc` for one file pattern, so it is not added: `pnpm typecheck` already covers it,
+which is precisely why CI caught it and the local subset did not.
+
+**A second finding the full gate produced, in the same run.** The census baseline was **stale by one**: it
+still listed `cortex-core: rerankHits` as an orphan, and `relevance-index.ts` had been calling it since the
+previous round. `export-census.mjs --check` did not notice, and that is not a defect in it — its contract is
+"fail on an orphan **absent** from the baseline", so the ledger can rot in the leaving direction forever. The
+`cortex-core` test that asserts the report matches the baseline **exactly** is what noticed, which means the
+stricter gate already existed and was on the other side of the same omission: the run that would have executed
+it is the run I had not been running. Baseline rebuilt with `tools/rebuild-export-census-baseline.py`; the diff
+over `knownOrphans` is one removal and no additions, verified as a set difference rather than by reading the
+patch, because the file's own totals and line numbers churn on every rebuild.
+
+**Relation to §13.47.** That section records the same shape one layer up: a module that reads its own
+configuration at import time, found by the first test that imported it. Both are "the symbol exists, the
+suite is green, and the boundary between two surfaces was never exercised". The boundary here is the package
+entry; there, it was the import.
