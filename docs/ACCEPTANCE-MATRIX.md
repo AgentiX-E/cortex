@@ -58,11 +58,11 @@ unrun    no value could be computed — reported, never counted as a pass
 | T4 | <!-- reading:T4 -->100.0% | = 100.0% | pass | settled fact versus plan | controlled set, `−lapse` |
 | D1 | — | ≤ 45.0% | unrun | extraction fidelity | A3 round 2, verbatim share |
 | R1 | <!-- reading:R1 -->-1 | ≥ 1 | accept | abstention recovery | LongMemEval-S, 500 questions |
-| S1 | <!-- reading:S1 -->81.0% | ≥ 85.0% | aim | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
-| S2 | <!-- reading:S2 -->86.8% | ≥ 85.0% | pass | knowledge update | LongMemEval-S, 72 questions |
-| S3 | <!-- reading:S3 -->69.6% | ≥ 85.0% | aim | multi-session reasoning | LongMemEval-S, 121 questions |
-| S4 | <!-- reading:S4 -->74.6% | ≥ 85.0% | aim | temporal reasoning | LongMemEval-S, 127 questions |
-| S5 | <!-- reading:S5 -->97.5% | ≥ 80.0% | pass | abstention | LongMemEval-S, 30 questions |
+| S1 | <!-- reading:S1 -->83.5% | ≥ 85.0% | aim | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
+| S2 | <!-- reading:S2 -->87.2% | ≥ 85.0% | pass | knowledge update | LongMemEval-S, 72 questions |
+| S3 | <!-- reading:S3 -->71.7% | ≥ 85.0% | aim | multi-session reasoning | LongMemEval-S, 121 questions |
+| S4 | <!-- reading:S4 -->78.3% | ≥ 85.0% | aim | temporal reasoning | LongMemEval-S, 127 questions |
+| S5 | <!-- reading:S5 -->96.7% | ≥ 80.0% | pass | abstention | LongMemEval-S, 30 questions |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
@@ -145,7 +145,7 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | oracle context, GPT-4o | 82.4% | B | one oracle configuration — **not a ceiling**, see consequence 3 |
 | **Raw-RAG (naive, GPT-4o-mini)** | **87.5%** | B | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting |
 | StateMem (DeepSeek reader) | 65.6% | B | state-tracking memory; the only published DeepSeek-reader figure on this benchmark |
-| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->81.0% | — | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256` |
+| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->83.5% | — | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256` |
 | Mastra OM, GPT-4o | 84.2% | B | vendor research page, observational memory, GPT-4o reader and judge |
 | Mem0 OSS, reproduced | 32.4% | B | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not |
 | no-memory baseline | 57.6% | B | benchd.ai: the whole history in the window, no memory system |
@@ -163,7 +163,7 @@ Four consequences, and the last two are uncomfortable:
    metric. Writing 96.2% into a target would be targeting a number nobody has reproduced.
 2. **Most open-source memory systems lose to having no memory at all.** The reproduced no-memory baseline is
    57.6%, and four of the six systems in the same harness scored below it. So the first acceptance question is
-   "beats full context", and only then "beats the leaderboard". Cortex's 81.0% clears that bar by 23.4 points.
+   "beats full context", and only then "beats the leaderboard". Cortex's 83.5% clears that bar by 25.9 points.
 3. **A reading here is withdrawn rather than quietly corrected.** An earlier version of this section called the
    82.4% oracle the reader ceiling and inferred that 80.8% sitting 1.6 points under it meant retrieval had
    little left to buy. arXiv:2610.30755 retires that inference: a naive raw-RAG pipeline reads **87.53** with a
@@ -178,9 +178,16 @@ Four consequences, and the last two are uncomfortable:
    the benchmark's own either way.
 
 The category split is where the deficit is, and it is not uniform. Knowledge update is at
-<!-- reading:S2 -->86.8%, above the threshold and above the frontier's implied position; multi-session is at
-<!-- reading:S3 -->69.6% and temporal reasoning at <!-- reading:S4 -->74.6%, and those two categories hold
+<!-- reading:S2 -->87.2%, above the threshold and above the frontier's implied position; multi-session is at
+<!-- reading:S3 -->71.7% and temporal reasoning at <!-- reading:S4 -->78.3%, and those two categories hold
 essentially all of the gap.
+
+**How the current value was reached, because it changed this round.** The reading is now the mean of four runs
+of one configuration (`reviewPass: bare`) rather than four runs of the previous one: 417 / 415 / 416 / 421
+against the control's 404 / 399. No category is lower, `ABS` is 29/30 in all six runs, and the two arms' ranges
+— 415–421 against 399–404 — do not overlap. The previous configuration's numbers are kept under
+`previousConfiguration` in the evidence file rather than overwritten, so a reader can see what moved instead of
+only where it landed.
 
 ## 6. The methodology that produced these numbers
 

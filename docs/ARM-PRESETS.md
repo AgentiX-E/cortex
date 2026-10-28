@@ -53,7 +53,7 @@ Fields **not** listed keep their defaults and those defaults are the control's: 
 `retrievalThreshold=0`, `sessionBudget` empty, `sourceTrust=0.5`, `confidenceSignal=none`,
 `reviewPass` empty, `queryExpansion` empty, `selfConsistency` empty.
 
-## 2. The bare-retry arm
+## 2. The bare-retry arm — now the recommended shipped configuration
 
 The control's inputs, plus one line. **Nothing else changes** — that is what makes it single-variable.
 
@@ -63,8 +63,18 @@ The control's inputs, plus one line. **Nothing else changes** — that is what m
 }
 ```
 
-Merged with §1. The check after dispatch is not "did it run" but "does the config line differ from the
-control in exactly one field":
+Merged with §1. Four runs against two controls: **417 / 415 / 416 / 421 against 404 / 399**, no category
+lower, `ABS` 29/30 in all six, and the two ranges do not overlap. That is +3.15 points at the means, so this
+is the configuration the project recommends and the one the `S1` evidence now records.
+
+**The code default is still `reviewPass: none`.** Turning the treatment on by default is a behaviour change
+that touches eighteen assertions across the arm's test file, so it is its own commit rather than a line edited
+during an analysis round. Until that commit lands, a run that wants the shipped configuration must name
+`review_pass: bare` — and §1's control arm must name `none` explicitly, or a future default change would
+silently turn the control into the treatment.
+
+The check after dispatch is not "did it run" but "does the config line differ from the control in exactly one
+field":
 
 ```
 cortex-memory gate: threshold=0, retrievalThreshold=0, sessionBudget=unbounded, sourceTrust=0.5,
@@ -110,3 +120,15 @@ Before reading any number from a dispatched run, compare its **config line** aga
 field, and name the fields that differ. If the answer is not "exactly the one the experiment changes", the run
 is a measurement of something — just not of the thing that was registered. That comparison costs one `grep`
 and it is the only defence against a run that is healthy, complete, and about the wrong system.
+
+## 6. The rule this leaves
+
+Before reading any number from a dispatched run, compare its **config line** against the control's, field by
+field, and name the fields that differ. If the answer is not "exactly the one the experiment changes", the run
+is a measurement of something — just not of the thing that was registered. That comparison costs one `grep`
+and it is the only defence against a run that is healthy, complete, and about the wrong system.
+
+**And the second rule, learned after the first**: one run on each side is not a comparison. The four-run bare
+arm and the two-run control give a within-arm spread of 6 and 5; a single pair gives neither, which is how a
++13 was first read as "inside a nine-question floor" and then, once repeats existed, as +3.15 points. **A floor
+estimated from one run is not a floor, it is another point.**

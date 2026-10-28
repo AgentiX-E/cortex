@@ -454,7 +454,7 @@ export const CRITERIA: readonly Criterion[] = [
       },
     ],
     onMiss:
-      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. **A retracted reading is recorded here rather than deleted**: an earlier version of this row called the 82.4% oracle a reader ceiling and inferred that 80.8% sitting 1.6 points under it meant retrieval had little left to buy. arXiv:2610.30755 retired that inference — a naive raw-RAG pipeline reads 87.53 with a GPT-4o-mini reader, above the oracle. So 82.4 was a configuration and not a bound, and the reader axis has to be priced by measurement (same hits, different reader, recall held constant) rather than inferred from a seat under an oracle.',
+      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. The value moved from 81.0% to 83.5% when the bare-decline retry was measured over four runs: 417/415/416/421 against a control of 404/399, no category lower, ABS identical at 29/30 in all six. **A retracted reading is recorded here rather than deleted**: an earlier version called the 82.4% oracle a reader ceiling and inferred that a seat 1.6 points under it meant retrieval had little left to buy. arXiv:2610.30755 retired that inference — a naive raw-RAG pipeline reads 87.53 with a GPT-4o-mini reader, above the oracle. So 82.4 was a configuration and not a bound, and the reader axis has to be priced by measurement rather than inferred from a seat under an oracle.',
   },
   {
     id: 'S2',
