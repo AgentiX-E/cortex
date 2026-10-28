@@ -403,6 +403,61 @@ P3 is the one that matters most: it is an internal control that the treatment di
 and nothing else. A run where `ABS` moves is a run where the guard failed, whatever the other columns
 say.
 
+### 7.2 The reading: the mechanism is confirmed, the net effect is not
+
+Run `40615882821`, 500 questions, arm differing from `39509698041` in exactly one field (`reviewPass`).
+
+| | control | bare | Δ |
+| --- | --- | --- | --- |
+| **overall** | 80.80% (404) | **83.40% (417)** | **+13** |
+| IE | 93.33% | 93.33% | 0 |
+| **MR** | 65.29% (79) | 72.73% (88) | **+9** |
+| KU | 83.33% (60) | 80.56% (58) | −2 |
+| TR | 75.59% (96) | 80.31% (102) | +6 |
+| ABS | 96.67% (29) | 96.67% (29) | 0 |
+| `llm` declines | 61 | **52** | −9 |
+| `bareRetry` | — | **22 / 22 / 100.0%** | — |
+
+**P1 is met and it is not ambiguous**: the pass fired 22 times and every one of the 22 produced an answer.
+This is the first time in this project's history that a treatment's firing is observable at all, and it is
+what the census from §7.1 was built for.
+
+**P3 is met on the half that is a guard and unsettled on the half that is a control.** `ABS` did not move
+(29/30, exactly the control), so the exclusion held. `MR` moved **+9**, and `MR` is not reachable by this
+pass: `answerSessions` calls `#promptSessionAware`, which consults directly and never enters
+`#answerWithBareRetry`. So the +9 is a column with **no treatment applied** and it is therefore a direct
+measurement of run-to-run noise on a 121-question column: **9 questions**.
+
+That number re-reads every other column:
+
+| column | Δ | within the untreated-column noise of 9? |
+| --- | --- | --- |
+| MR (untreated) | +9 | — this *is* the noise estimate |
+| TR (treated) | +6 | **yes** |
+| KU (treated) | −2 | yes |
+| IE (treated) | 0 | yes |
+| overall | +13 | **yes** |
+
+So the honest reading is: **the mechanism is confirmed, the net effect is not.** A +13 with a 9-question
+noise floor measured in the same run cannot be separated into "the pass converted 13" and "the pass
+converted N while sampling moved the rest".
+
+One fact argues the other way and has to be recorded rather than discarded: **417 is outside the arm's
+four-run band of 397–412.** A reading above the previous maximum is not nothing. But a band built from
+four control runs and exceeded once by a treated run is one observation of an excursion, not a
+distribution.
+
+**What would settle it**, in the order they should run:
+
+1. **A repeat of each arm** (control and bare), because two runs give a variance and one run gives a
+   point. `docs/ARM-PRESETS.md` §1 and §2 hold both input sets.
+2. **Paired discordant counts rather than a total**, because the total carries the noise and the pairs do
+   not: the question is how many questions flipped correct→correct, correct→wrong, wrong→correct,
+   wrong→wrong, and 22 conversions is the number to check against 22 attempts.
+3. **The decline ledger as the primary column**, not accuracy. 61 → 52 is −9 while 22 retries ran, so 13
+   questions that declined in the control did not decline here for a reason this pass cannot explain —
+   that gap is the thing to investigate before the accuracy is believed.
+
 **The bar is the discordant pair, not the marginal total.** `paired-test.ts` computes an exact McNemar
 over the same 500 questions, so a change that wins 12 and loses 5 is significant even though its
 +7 is inside the 15-question marginal spread. Every one of these has to be registered that way —
