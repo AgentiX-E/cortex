@@ -414,14 +414,16 @@ if (sut !== null) {
   for (const refusal of sut.refusals.slice(0, 5)) {
     process.stdout.write(`  — ${refusal.error}\n`);
   }
-  if (sut.ingestSkips.length > 0) {
-    process.stdout.write(
-      `ingest: ${String(sut.ingestedSessions)} of ${String(sut.offeredSessions)} session(s) stored, ` +
-        `${String(sut.ingestSkips.length)} refused.\n`,
-    );
-    for (const skip of sut.ingestSkips.slice(0, 5)) {
-      process.stdout.write(`  — ${skip}\n`);
-    }
+  // Printed whether or not anything was refused. The first version printed only when the skip count was
+  // non-zero, which made "every session was stored" and "ingest was never called" the same output — the
+  // collapse this whole section exists to prevent, one level down. Run 40614772262 (mem0, 100 questions,
+  // 0 refusals) is the counter-example: it is a good run and its log cannot say so.
+  process.stdout.write(
+    `ingest: ${String(sut.ingestedSessions)} of ${String(sut.offeredSessions)} session(s) stored, ` +
+      `${String(sut.ingestSkips.length)} refused.\n`,
+  );
+  for (const skip of sut.ingestSkips.slice(0, 5)) {
+    process.stdout.write(`  — ${skip}\n`);
   }
   await sut.close();
 }

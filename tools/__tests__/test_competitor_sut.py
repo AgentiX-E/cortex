@@ -424,3 +424,28 @@ def test_a_run_that_stored_nothing_aborts_instead_of_scoring_zero() -> None:
     assert not any(line.startswith("reference/lexical") for line in completed.stdout.splitlines()), (
         completed.stdout
     )
+
+
+def test_the_ingest_line_is_printed_when_nothing_was_refused() -> None:
+    """A good run has to be able to say so.
+
+    The first version printed the ingest line only when the refusal count was non-zero, which made "all
+    sessions stored" and "ingest was never called" the same output. That is the collapse the three verdicts
+    exist to prevent, one level down: an absent line cannot distinguish a clean ingest from a stage that did
+    not run. Run `40614772262` — mem0, 100 questions, zero refusals — is the case: a good run whose log could
+    not state it.
+    """
+    completed = subprocess.run(
+        ["node", str(REPO / "tools" / "competitor-harness.mjs"), "--sut", "reference", "--limit", "3"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env={key: value for key, value in os.environ.items() if key != "STUB_SKIP_FIRST"},
+    )
+    assert completed.returncode == 0, completed.stderr
+    stored = re.search(r"ingest: (\d+) of (\d+) session\(s\) stored, (\d+) refused", completed.stdout)
+    assert stored is not None, completed.stdout
+    kept, offered, refused = (int(group) for group in stored.groups())
+    assert refused == 0
+    assert kept == offered > 0

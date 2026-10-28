@@ -473,3 +473,57 @@ the decline population is 45, which is the only one of the three large enough to
 weaker — it is the better-evidenced of the two — but because it caps at 12 questions while the
 headline is 96 failures, and 45 of those are the same event: the reader declining on evidence the
 prompt contains.
+
+### 7.3 The repeats: the effect is real, and the size is 11 to 18 questions
+
+Two runs per arm, same input set from `docs/ARM-PRESETS.md`, one field apart.
+
+| arm | run | overall | IE | MR | KU | TR | ABS | retries |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| control | `39509698041` | 404 | 140 | 79 | 60 | 96 | 29 | — |
+| control | `40620469763` | **399** | 137 | 81 | 61 | 91 | 29 | 0 |
+| bare | `40615882821` | **417** | 140 | 88 | 58 | 102 | 29 | **22 / 22** |
+| bare | `40620480416` | **415** | 139 | 87 | 65 | 95 | 29 | **19 / 19** |
+
+**The §7.2 conclusion is withdrawn and replaced.** §7.2 read the untreated-column movement as a nine-question
+noise floor and put the +13 inside it. With two runs per arm that reading is no longer available, because the
+repeats separate the two things it was conflating:
+
+| quantity | value |
+| --- | --- |
+| spread **within** the control arm | **5** questions (404, 399) |
+| spread **within** the bare arm | **2** questions (417, 415) |
+| the four possible arm-to-arm differences | **+13, +18, +16, +11** |
+| smallest arm-to-arm difference | **11** |
+| largest within-arm spread | **5** |
+
+Eleven is more than twice five, and all four differences are positive. Under a null of no effect the signs are
+random, so four positives is p = 1/16 ≈ 0.06 — small-sample evidence, stated as such rather than dressed up.
+An effect of **+2.2 to +3.6 points** is what the data supports; the point estimate is **+14.5 questions
+(2.9pp)** at the arms' means (401.5 → 416.0).
+
+**What §7.2 got wrong, and why it is worth recording.** It used a single control run and a single treated run
+and asked whether the difference exceeded a floor measured from one untreated column inside one of them. That
+floor (9) was itself one draw from a distribution whose spread, once measured properly, is **5**. A floor
+estimated from n = 1 is not a floor; it is another point. The rule that follows is not "measure more" in
+general but this: **a difference of two points needs two points on each side, because the floor comes from the
+repeats and not from a column.**
+
+**Two things the repeats do not settle.**
+
+1. **MR moves, and MR is not reachable.** 79/88 and 81/87 — the bare arm is higher on both runs, so this is
+   not a single excursion. `answerSessions` calls `#promptSessionAware`, which consults directly and never
+   enters `#answerWithBareRetry`, and `#promptOptions` does not read `reviewBareDecline`. The two mechanisms
+   that could carry a cross-arm difference into MR are therefore both excluded by inspection, which leaves
+   LLM sampling: at the shipped temperature, a 121-question column moves 5–9 questions between runs. That is
+   consistent with the control arm's own -3 on MR across its two runs.
+2. **The conversion-to-gain ratio is not stable.** 13/22 = 0.59 on the first pair and 16/19 = 0.84 on the
+   second. Both are below 1, which is the only thing that must hold — a retry converts a decline into an
+   answer, and an answer can still be wrong — but a stable ratio would have been evidence for a mechanism and
+   this one is not.
+
+**The honest summary**: the pass works, it is worth 2–3 points, and the two categories that carry it (TR
++6/+4, IE +3/+2) are exactly the two its reach names. MR's movement is unexplained but cannot be the pass,
+and the next experiment is the one that closes it: a per-route split on the census, so "22 retries" becomes
+"22 retries, N from flat, N from temporal" and an MR number that moves without a single retry in the column
+becomes visible as the contradiction it is.

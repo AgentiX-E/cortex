@@ -225,3 +225,45 @@ competitor's internals are a black box behind `search`. The only diagnosis avail
 repository already performs on its own arms — which of the five capabilities moved, and by how much — and that is a
 ceiling on what a cross-system comparison can conclude. Stated here so a later round does not read a gap as an
 explanation.
+
+## 6.3 The first quotable competitor reading: mem0, 100 questions
+
+Run `40614772262`, `MEM0_INFER=0`, Zhipu `embedding-3` at 1024 dimensions, FAISS:
+
+```
+system under test: mem0 2.2.1 (build=embedding) — {"embedder": {... "dims": 1024, "model": "embedding-3"},
+  "infer": false, "llm": "unused", "timestamped_sessions": 0, "vector_store": "faiss",
+  "vector_store_dims": 1024}
+mem0    embedding  99.0%   4.0%   0.846   —   1942   0
+system under test: 0 refusal(s), 0 empty result(s) of 100 question(s).
+```
+
+Every condition this document's §6.1 added is satisfied: the store width is declared (`vector_store_dims:
+1024`), the run is 100 stratified LongMemEval questions, and the refusal count is zero rather than a hundred.
+
+| column | mem0 | `cortex-session` on the same 100 questions | what the difference is |
+| --- | --- | --- | --- |
+| recall@k | **99.0%** | 87.0% | mem0 finds the gold session **more** often than we do |
+| all-gold | **4.0%** | 73.0% | mem0's returned text almost never contains the gold turn |
+| MRR | 0.846 | 0.746 | its top hit is more often the right session |
+| ~tokens | **1,942** | 33,310 | it returns a fraction of the context |
+
+**The 99.0 against 4.0 is the finding, and it is not a defect in either number.** mem0 does not return the
+turns it was given; it returns the memories it wrote. A hit therefore scores as *recall* whenever its session
+contains the gold turn — the harness's own rule — but almost never scores as *all-gold*, which asks whether the
+returned **text** carries the gold turn verbatim.
+
+This is the mechanism the Raw-RAG paper measured as a 19.62-point loss when atomic facts are extracted: the
+evidence is replaced by a description of the evidence. A reader handed 1,942 tokens of mem0's prose is not
+reading the conversation, and on a question whose answer is a date inside a turn, the turn is what matters.
+
+**What this may be used for.** Grade **B**: same corpus, same 100 questions, same embedding space, no reader on
+either side — so it is a retrieval comparison and must never be written against an accuracy number. What it
+says, precisely: *in this configuration, mem0 retrieves the right session more often than this arm and returns
+the evidence itself far less often.* That is a real trade, it is the one its architecture makes, and it is the
+first competitor statement in this repository that is a measurement rather than a citation.
+
+**What it may not be used for.** It is not "mem0 scores 99%" — there is no reader in it. It is not the
+published 94.4% either, which configures LLM extraction (`infer=1`, ~275,000 model calls on this corpus) and a
+top-200 budget. The manifest says `infer: false`, and this document's rule is that a number carries its
+configuration or it is not quoted.
