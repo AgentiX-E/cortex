@@ -78,6 +78,28 @@ class TestTheReviewPassReachesTheProduct(unittest.TestCase):
             "and the run is a control whose artifact says otherwise",
         )
 
+    def test_the_shipped_default_is_the_treatment_and_the_control_is_named(self) -> None:
+        """The default decides what every future run measures, so it is asserted rather than assumed.
+
+        `bare` measured +3.15 points over four runs against two controls (417/415/416/421 against
+        404/399, no category lower, ABS 29/30 in all six), so it is the shipped configuration. The
+        control has to be *named*: a default that equals the treatment turns every later "control" run
+        into a second treatment unless the run says `none`, and that failure is silent -- the artifact
+        would carry a config line nobody re-read.
+
+        The default lives here rather than in the library on purpose. `readReviewPass` returns `none`
+        for an unset variable, which is the smallest assumption a library can make; the dispatch layer
+        is where a project decides what it ships.
+        """
+        source = WORKFLOW.read_text(encoding="utf-8")
+        start = source.index("      cortex_memory_review_pass:")
+        end = source.index("      cortex_memory_query_expansion:")
+        block = source[start:end]
+        self.assertIn("default: 'bare'", block)
+        # And the description says which value is the control, because a reader of the dispatch form
+        # has to know that `none` is the comparison rather than an absence.
+        self.assertIn("`none` is the control", block)
+
     def test_the_product_carries_the_field(self) -> None:
         source = TYPES.read_text(encoding="utf-8")
         self.assertRegex(source, r"reviewPass\?:\s*ReviewPass;")

@@ -67,11 +67,16 @@ Merged with §1. Four runs against two controls: **417 / 415 / 416 / 421 against
 lower, `ABS` 29/30 in all six, and the two ranges do not overlap. That is +3.15 points at the means, so this
 is the configuration the project recommends and the one the `S1` evidence now records.
 
-**The code default is still `reviewPass: none`.** Turning the treatment on by default is a behaviour change
-that touches eighteen assertions across the arm's test file, so it is its own commit rather than a line edited
-during an analysis round. Until that commit lands, a run that wants the shipped configuration must name
-`review_pass: bare` — and §1's control arm must name `none` explicitly, or a future default change would
-silently turn the control into the treatment.
+**It is now the dispatch default.** `benchmark-cortex-memory.yml` declares `default: 'bare'` for this input,
+so a dispatch that omits the field ships the treatment, and a run that wants the control must say `none`.
+`test_review_pass_wiring.py` asserts both halves and says why: a default equal to the treatment turns every
+later "control" run into a second treatment unless the run names its own value, and that failure is silent —
+the artifact would carry a config line nobody re-read.
+
+**The library default is still `none`, and that asymmetry is deliberate.** `readReviewPass` returns `none`
+for an unset variable, which is the smallest assumption a library can make; the dispatch layer is where a
+project decides what it ships. Moving the library default would also move eighteen assertions in the arm's
+tests, which is a change that deserves its own review rather than a line edited during an analysis round.
 
 The check after dispatch is not "did it run" but "does the config line differ from the control in exactly one
 field":
