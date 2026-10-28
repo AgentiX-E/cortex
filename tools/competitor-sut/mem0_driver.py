@@ -93,6 +93,11 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         "vector_store": {"provider": store, "config": {"collection_name": "longmemeval"}},
     }
     embedder_notes: dict[str, Any] = {"provider": embedder_provider}
+    # Resolved by whichever embedder branch below runs, then handed to the vector store. Mem0 keeps the two
+    # settings apart: the embedder is told what width it produces and the store is told what width its index is,
+    # and nothing checks that the two agree. Left alone, FAISS builds a 1536-dimension index (`FAISSConfig`'s
+    # default) and rejects every vector of another width with a bare `AssertionError` from inside faiss.
+    dimensions: int | None = None
     if embedder_provider == "deterministic":
         # No key, no network, no download. `provider: openai` because Mem0 validates its provider list against a
         # fixed table, so the only way to substitute the vectors without patching the package is to point its own
@@ -147,11 +152,26 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         # A local index rather than a server, so the run has no service to start and no port to collide on.
         config["vector_store"]["config"]["path"] = os.environ.get("MEM0_FAISS_PATH", "/tmp/mem0-faiss")
 
+    # The store has to be told the width explicitly, and refusing to guess is the point: every vector store in
+    # 2.x declares `embedding_model_dims` with a default of 1536, so a driver that leaves it alone is silently
+    # claiming a width no configured embedder produces unless that embedder happens to be `text-embedding-3-small`.
+    # `dimensions` is `None` only for an embedder this driver does not configure, and in that case the width came
+    # from somewhere the report cannot describe -- so the run stops here with a reason instead of scoring zero.
+    if dimensions is None:
+        raise ValueError(
+            f"embedder {embedder_provider!r} does not declare an embedding width; "
+            "set MEM0_EMBEDDING_DIMS so the vector store can be told the width it will receive"
+        )
+    config["vector_store"]["config"]["embedding_model_dims"] = dimensions
+
     notes = {
         "infer": infer,
         "llm": llm_provider if infer else "unused",
         "embedder": embedder_notes,
         "vector_store": store,
+        # Printed because the two numbers being equal is the whole fix: the manifest is the only place a reader
+        # can check that the index and the embedder were talking about the same vector space.
+        "vector_store_dims": dimensions,
     }
     return config, notes
 
@@ -260,6 +280,19 @@ class Driver:
             turns += len(messages)
         self.sessions += len(sessions) - len(skipped)
         self.turns += turns
+        if sessions and len(skipped) == len(sessions):
+            # Nothing was stored, so nothing can be retrieved, and a search over an empty index returns nothing
+            # for every question. Reported as a refusal rather than as a miss: the parent then prints a failed
+            # run instead of a `0.0%` row that reads as "this system retrieves nothing". The first reason
+            # travels because the class of the exception is the diagnosis -- an `AssertionError` from faiss is a
+            # width mismatch, a `ConnectionError` is a dead endpoint.
+            return {
+                "ok": False,
+                "error": f"every one of {len(sessions)} session(s) was refused; first: {skipped[0]}",
+                "sessions": 0,
+                "turns": 0,
+                "skipped": skipped,
+            }
         return {"ok": True, "sessions": len(sessions) - len(skipped), "turns": turns, "skipped": skipped}
 
     def search(self, query: str, limit: int) -> dict[str, Any]:

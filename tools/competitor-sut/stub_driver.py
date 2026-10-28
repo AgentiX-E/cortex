@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sys
 from typing import Any
@@ -57,8 +58,16 @@ class Store:
     def ingest(self, sessions: list[dict[str, Any]]) -> dict[str, Any]:
         turns = 0
         skipped: list[str] = []
-        for session in sessions:
+        # Deliberate loss, off by default, so that the parent's handling of a partial ingest is testable without
+        # corrupting a fixture. Nothing in a real comparison sets this; the test that does is
+        # `test_the_report_names_what_ingest_could_not_take`, which exists because a run scored `0.0%` while its
+        # ingest was failing on every session and the number carried none of that.
+        refuse_first = int(os.environ.get("STUB_SKIP_FIRST", "0") or "0")
+        for position, session in enumerate(sessions):
             content = session.get("turns") or []
+            if position < refuse_first:
+                skipped.append(f"session {session.get('id', '?')} was refused by STUB_SKIP_FIRST")
+                continue
             if not content:
                 # An empty session is not an error, but it is not silent either: a corpus whose sessions arrive
                 # empty is a parsing failure upstream and the count is the only place it shows.

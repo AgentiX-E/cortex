@@ -213,6 +213,17 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
   /** Per-question refusals, kept so the summary can separate them from empty results. */
   const refusals = [];
   let emptyResults = 0;
+  /**
+   * Sessions the system would not take, and how many it was offered.
+   *
+   * Separate from `refusals` because the two failures happen at different times and mean different things: a
+   * refusal is one question the system would not answer, an ingest skip is corpus that never entered the store.
+   * Run 40519523383 read `0.0%` while its ingest was refusing every session — the search then had an empty index
+   * to search, so the miss was a property of the plumbing and the row was read as a property of mem0.
+   */
+  const ingestSkips = [];
+  let ingestedSessions = 0;
+  let offeredSessions = 0;
 
   return {
     name: manifest.name,
@@ -223,15 +234,41 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
     get emptyResults() {
       return emptyResults;
     },
+    ingestSkips,
+    get ingestedSessions() {
+      return ingestedSessions;
+    },
+    get offeredSessions() {
+      return offeredSessions;
+    },
     async ingest(sessions) {
       const response = await channel.send({ op: 'ingest', sessions }, Math.max(budget, 1_800_000));
       if (!response.ok) {
-        throw new SutFailure(`ingest refused: ${String(response.error)}`);
+        // Both the driver's own words and its per-session list, because a run that stored nothing has to be
+        // diagnosable from the failure alone — there is no table afterwards to look at.
+        const detail = Array.isArray(response.skipped) ? response.skipped.slice(0, 3).join('; ') : '';
+        throw new SutFailure(
+          `ingest refused: ${String(response.error)}${detail === '' ? '' : ` [${detail}]`}`,
+        );
+      }
+      const skipped = Array.isArray(response.skipped) ? response.skipped.map(String) : [];
+      offeredSessions += sessions.length;
+      ingestedSessions += Number(response.sessions ?? 0);
+      ingestSkips.push(...skipped);
+      // The protocol's own rule, applied to every driver rather than to the ones that remembered to check. A
+      // driver may report this itself and the ones that do are clearer about why; this is what stops a driver
+      // that did not from turning an empty store into 500 misses and a `0.0%` row.
+      if (offeredSessions > 0 && ingestedSessions === 0) {
+        const first = skipped[0] ?? 'the driver reported no reason';
+        throw new SutFailure(
+          `ingest stored 0 of ${String(offeredSessions)} session(s); the store is empty and every search would ` +
+            `be a miss: ${first}`,
+        );
       }
       return {
         sessions: Number(response.sessions ?? 0),
         turns: Number(response.turns ?? 0),
-        skipped: Array.isArray(response.skipped) ? response.skipped.map(String) : [],
+        skipped,
       };
     },
     async search(query, options) {

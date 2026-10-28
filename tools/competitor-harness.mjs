@@ -400,6 +400,12 @@ process.stdout.write(
 // with nothing. Both are claims about the system and they point opposite ways — a run that collapsed them would
 // turn a broken driver into a retrieval failure, which is the defect this repository keeps finding in its own
 // instruments.
+//
+// `ingestSkips` is the third, and it is the one that produced a wrong number: on run 40519523383 mem0's vector
+// store was built 1536 dimensions wide and fed 1024-dimension vectors, so every `add` failed with an
+// `AssertionError`, every session was skipped, and the resulting empty index scored `0.0%` — a retrieval failure
+// printed where there had been no retrieval. It is printed whenever it is non-zero, and the row above means
+// nothing without it.
 if (sut !== null) {
   process.stdout.write(
     `\nsystem under test: ${String(sut.refusals.length)} refusal(s), ` +
@@ -407,6 +413,15 @@ if (sut !== null) {
   );
   for (const refusal of sut.refusals.slice(0, 5)) {
     process.stdout.write(`  — ${refusal.error}\n`);
+  }
+  if (sut.ingestSkips.length > 0) {
+    process.stdout.write(
+      `ingest: ${String(sut.ingestedSessions)} of ${String(sut.offeredSessions)} session(s) stored, ` +
+        `${String(sut.ingestSkips.length)} refused.\n`,
+    );
+    for (const skip of sut.ingestSkips.slice(0, 5)) {
+      process.stdout.write(`  — ${skip}\n`);
+    }
   }
   await sut.close();
 }
