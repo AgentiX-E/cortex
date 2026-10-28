@@ -184,8 +184,12 @@ First: **it validates the decision not to do LLM extraction at ingest.** That de
 arithmetic (§4.3); this paper says it would also have cost accuracy.
 
 Second: **Raw-RAG's shape is our shape** — raw turns, timestamps, hybrid retrieval, a budget, no rewriting.
-At 87.53 with a GPT-4o-mini reader it is the strongest evidence available that the distance from our 80.80 is
-mostly the reader and not the architecture. See §8.1 for the reading this retires.
+At 87.53 with a GPT-4o-mini reader it is the strongest evidence available that the architecture is not what
+separates us from the frontier. **The clause that used to follow — "and the distance is therefore mostly the
+reader" — is withdrawn as of `PREREGISTRATION` §13.110**, which swapped this arm's reader for a larger model
+of the same family and lost **7.20 points** (417 → 381 of 500) with four of five capabilities down. The
+architecture is not the gap and the reader is not a free lever; what is left is the one stage Raw-RAG has and
+this arm does not — the reranker, worth **−3.92** when removed from their own pipeline (§4.9).
 
 ### 4.7 State over retrieval, and a reader-side intervention that transfers
 
@@ -278,8 +282,11 @@ available.
    configuration of an oracle, not a bound, and the reader axis has to be priced by measurement rather than
    inferred from a seat under it. The `S1` row in `ACCEPTANCE-MATRIX.md` carries the same retraction rather
    than a quietly corrected claim.
-2. **The reader axis must be priced before any further memory work.** 84.23 → 94.87 from one swap is larger than
-   our entire gap, and our 80.80% sits 1.6 points under a GPT-4o oracle ceiling.
+3. **The reader axis has now been priced, and the price is negative.** 84.23 → 94.87 from one external swap is
+   larger than our entire gap, which is why the axis was worth a run; the run (§13.110) answered −7.20 for a
+   larger model of the same family, with the mechanism visible in the artifact as format non-compliance and
+   weaker enumeration. So "a better reader is out there" remains true and "a bigger reader is better" does not,
+   and the next reader run has to select on contract compliance rather than on size.
 4. **The retrieval gap is 6–9 points of recall@10**, and it is addressable with signals the public systems
    enumerate. That is a mechanism list, not a mystery — but §4.6 says to add them one at a time and measure,
    because three of the four mechanisms that paper tried made things worse.
@@ -290,3 +297,80 @@ available.
    the same way, and two of them are exactly what this project was about to build. That does not make them
    wrong here, but it does mean each one ships at weight zero, with a census, and with a pre-stated condition
    under which it is removed.
+
+### 4.9 What the two repositories give us that the papers do not
+
+Two of the systems above publish code, and reading it changes what this project can copy. The papers say
+*what* won; the repositories say *at which parameters*, which is the only form in which a result can be
+re-run here.
+
+**RAW-RAG** (`github.com/Litmeb/RAW-RAG`, MIT) is a four-stage pipeline with every number in the README:
+
+| stage | what the code does | what it means here |
+| --- | --- | --- |
+| build | serialize history with timestamps → overlapping windows of **L tokens with O overlap** (the LongMemEval profile uses the paper's 256/32) → one flat index | we already have raw turns with dates; our unit is a *turn*, not a window, and a turn is 272 characters at the median (§13.67) against their ~1,000 |
+| retrieve | top **K = 128** windows by cosine | we retrieve 256 turns through a hybrid channel (§13.64) and then spend the budget on a prefix |
+| rerank | cross-encoder over (question, window) → top **k = 15** | **we have no rerank stage in this arm at all.** `cortex-ai` implements both an OpenAI-compatible client and a local cross-encoder, and `bench-arm-options.ts` wires them — for a *different* benchmark |
+| read | reader sees 15 raw windows and the question | we hand the reader a relevance-ordered prefix of up to 240 turns at the adopted budget |
+
+Its ablations are the ones worth stealing because they are single-variable and paired on the same 20,000
+bootstrap samples with Holm correction:
+
+| ablation | Δ | what it says about us |
+| --- | --- | --- |
+| remove reranking | **−3.92** (48.32 → 44.40) | the rerank stage is the largest single component of their pipeline, and it is the one stage we do not have |
+| return only 1 evidence item | −11.73 | precision has a floor too; this is not an argument for k = 1 |
+| k = 5 … 60 | stable | a 15-item window is not a lucky choice |
+| k = 120 | **−14.57** | more evidence than the reader can use is worse than less, by a wide margin |
+| add atomic-fact extraction | −19.62 | already adopted here as a non-goal (§4.6) |
+| add summarisation / graph expansion | −5.81 / −5.78 | same |
+
+Two corrections to how this project had been reading that table. First, **the reranker is not an optional
+refinement** — removing it costs more than any mechanism they added, which makes it the first thing to
+port rather than the last. Second, **k = 120 losing 14.57 points is a statement about a 120-item window of
+~1,000-character chunks**, i.e. roughly 120,000 characters, twice our adopted 48,000 budget — so it does
+not predict what 96,000 does here, but it does say the direction is not free. `PREREGISTRATION` §13.113 is
+the run that measures our own curve.
+
+**MemoryTax** (`github.com/hexuan21/MemoryTax`, MIT) is not a system; it is a **measurement framework**,
+and it is the more valuable of the two because this project has no equivalent:
+
+```
+common/api/        OpenAI-compatible chat, embedding and reranker clients with token and call accounting
+common/qa_prompts/ one unified QA prompt per benchmark
+common/judge/      LLM-judge prompts and runner
+common/bench/      download + prepare + the evaluated subsets
+reproduction/_naive_rag/   1-round and 2-round naive RAG, as the reference every system is scored against
+reproduction/<baseline>/   setup.sh clones the official repo at a pinned commit, patches/, harness/
+```
+
+Three things in that layout are worth adopting outright:
+
+1. **Pinned-commit reproduction with patches as a first-class artefact.** `setup.sh` clones at a commit and
+   `patches/` holds the minimal changes needed to run under their harness. This is the discipline
+   `COMPETITOR-REPRODUCTION.md` §6.1 arrived at the hard way, after mem0's `0.0%` turned out to be a
+   dimension mismatch rather than a result — and here it is a directory convention instead of a lesson.
+2. **A per-question ledger rather than two aggregate scores.** Memory benefit is *questions only the memory
+   system answers correctly*; memory tax is *questions the memory system gets wrong that RAG gets right*;
+   net value is the difference. The aggregates this project reports (McNemar, discordant identity lists)
+   carry the same information in a form that has to be recomputed; the ledger form is what a reader can act
+   on, and it is what §13's `onMiss` fields have been approximating in prose.
+3. **Subsets declared in code, not in a paper.** LongMemEval-s is the full 500; PersonaMem-v2 is a 20%
+   persona subset (934 questions); MINT-Eval is a 10% corpus subset (1,557). `common/bench` owns the
+   definitions, so a number is always attached to the file that produced it.
+
+Its own headline is a *fix* rather than a finding — "search the raw history alongside the memory store and
+rerank jointly" — which is a recommendation this arm already satisfies by construction, since it has no
+memory store to search alongside. What it adds is the evidence that this is not a weakness of the design
+but the design.
+
+## 9. The three things this landscape says are still missing, in order
+
+1. **A rerank stage.** §4.9: the single largest component of the strongest reproducible competitor, absent
+   from this arm, implemented in this repository but wired to a different benchmark, and reachable through a
+   provider we already hold a key for.
+2. **A per-question ledger.** §4.9 item 2. Every increment so far has been judged on aggregate accuracy and
+   a paired test; none has been judged on *which questions it bought and which it cost*, which is the number
+   that decides whether two increments compose.
+3. **A second reader that obeys the contract.** §4.7's wrapper results and §13.110's −7.20 both say the
+   reader is a lever; only one of them says which direction is available.

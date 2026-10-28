@@ -727,8 +727,8 @@ forwarded into a step's `env`. Three injections were run against it:
   line had accumulated.** The bare-decline retry is what a dispatch now ships: a reply that is the
   abstention token and nothing else is asked once more with that token absent from the prompt, on the
   flat and temporal routes only. It was registered at the identity by §13.94 and adopted on the
-  measurement §13.107 records — six readings, 22/19/25/22/23 consultations and a four-run mean of
-  83.45% against the control's 81.0%, no capability lower, `ABS` 29/30 in every run. The identity is
+  measurement §13.107 records — five readings, 22/19/25/22/23 consultations, every one converted, and a
+  four-run mean of 83.45% against the control's 81.0%, no capability lower, `ABS` 29/30 in every run. The identity is
   still expressible and still matters: `none` is the control, it must be named explicitly by any run
   that wants it, and §13.112 states why the difference between "ships" and "is the control" has to be
   written in the same place as the number.
@@ -11703,3 +11703,179 @@ comparable, and that decision has now bought everything it can. Changing it need
 
 That third point is the one that is easy to skip and expensive to skip: without it, a new reader's first
 treatment run is unreadable, and the campaign would spend a run to learn nothing.
+
+---
+
+## 13.110 A stronger model id is a weaker reader at this contract
+
+§13.109 registered the reader axis and fixed three conditions before the run existed: a pinned model
+identity in the artifact, a per-route re-baseline, and a floor for the new reader. The first run of the
+axis is `40698883428`, one dispatch of the adopted configuration with exactly one value changed —
+`DEEPSEEK_MODEL: deepseek-v4-pro`. Nothing else moved: the artifact's `memoryArmConfig` compares equal to
+`40698867439`'s on every field, including `reviewPass: bare`, `maxPromptChars: 48000`,
+`relevanceSignal: retrieval-hybrid`, `relevanceTopK: 256` and `evidenceRoles: user`.
+
+| capability | `deepseek-chat` (`40698867439`) | `deepseek-v4-pro` (`40698883428`) | Δ |
+| --- | --- | --- | --- |
+| IE | 141/150 | 129/150 | **−12** (−8.0 pp) |
+| MR | 83/121 | 80/121 | −3 (−2.5 pp) |
+| KU | 64/72 | 56/72 | **−8** (−11.1 pp) |
+| TR | 100/127 | 86/127 | **−14** (−11.0 pp) |
+| ABS | 29/30 | 30/30 | +1 (+3.3 pp) |
+| **total** | **417/500 (83.40%)** | **381/500 (76.20%)** | **−36 (−7.20 pp)** |
+
+**The reading order §13.109 fixed, answered in that order.**
+
+1. **Model identity in the artifact.** Present, but the artifact names it in the *environment*, not in
+   `memoryArmConfig`: the report's `featureConfig`/`memoryArmConfig` block carries no reader field, and the
+   model id is only recoverable from the job log's `DEEPSEEK_MODEL:` line. That is condition 1 not yet
+   met — the identity exists but not where a reader of the artifact looks. Recorded as debt rather than
+   argued away, because the next reader run would inherit the same blind spot.
+2. **Per-route re-baseline.** Done above, and it is why the headline is readable: the movement is not
+   uniform. `ABS` improves, `MR` barely moves, and the three capabilities that need the reader to hold a
+   format lose 8 to 14 questions each.
+3. **The floor.** Unmeasured for this reader — §13.109.3 warned exactly this would happen and the run was
+   dispatched as a treatment anyway. What makes the conclusion survive it is the size: §13.100 measured
+   this arm's own movement at 5–6 questions per route, and −36 across four of five capabilities with a
+   consistent sign is six times that. A second run would turn `−7.20 ± unknown` into `−7.20 ± measured`,
+   and it is not worth 500 questions to learn that the sign does not move.
+
+**What the four pre-registered checks returned.** R1 (|Δ| ≥ 5 points) **met** at 7.20. R2 (逐题候选集相同)
+**unverified**: the artifacts carry `featureRetrievedContexts` but no per-question retrieval index, so
+"same candidates" cannot be asserted, only assumed from an identical config line. R3 (`ABS` moves by at
+most one question) **met** at +1. R4 (any gain concentrated in MR and TR) **falsified twice over** — there
+is no gain, and the largest movements are losses in TR and IE with MR the *least* moved capability. The
+registration assumed the axis could only help; the falsification is that reader strength and reader
+compliance are different quantities and the second dominates here.
+
+**What the artifact says about the mechanism.** Three facts, in decreasing order of how much they support:
+
+- **Answer shape.** Median answer length is **60 characters against 19** on the control (p90 513 against
+  715). The prompt's closing line for the enumerated ask is `Reply with the Step 2 number alone.` The chat
+  reader obeys it; this reader does not, and the answer carries its own arithmetic.
+- **Decline shape.** 53 declines, of which **7** were the bare token. The control has 51 declines, of
+  which 23 were. So the difference between the two readers is not how often they decline — it is how they
+  spell it. §13.111 takes this apart, because it changes what the retry *is*.
+- **Failure content.** On the discordant questions read by hand, the failures are enumeration and
+  arithmetic, not retrieval: a charity total answered `8,750` against a gold of `$3,750`; a rollercoaster
+  count answered `7` against `10` after dropping one event from its own list; a kit count answered `6`
+  after listing three items. The evidence reached the reader in each case.
+
+**What this does not claim.** It does not claim `deepseek-chat` is the better model — it claims
+`deepseek-chat` is the better reader *for this prompt contract*, which is a narrower and more useful
+statement. It does not claim the reader axis is closed for other model families: a reader that obeys the
+contract and reasons better is still the most plausible way past §13.108.3's 5–6-question floor, and this
+run only says that model size is not a proxy for that property. And it does not claim the −7.20 is
+reproducible to the tenth of a point: it is one run per side.
+
+## 13.111 The retry's population is a property of the reader
+
+§13.94 built the bare-decline retry on a shape: `isBareDecline` matches a reply that is the abstention
+token and nothing else. That predicate was derived from a measurement of *one* reader — "of 45 wrong
+declines on the shipped arm 30 are that bare token" — and the five adopted readings (22/19/25/22/23) are
+all that reader's.
+
+`40698883428` is the first time the predicate met a different reader, and it sees **7 where the control
+sees 23**, on the same 500 questions, the same routes, and a nearly identical decline count (53 against
+51). Fourteen of the treatment's consultations simply do not exist for this reader, not because it
+declines less but because it declines in prose:
+
+| reader | declines | bare-token declines | retry consultations |
+| --- | --- | --- | --- |
+| `deepseek-chat` | 51 | 23 (45.1%) | **23** |
+| `deepseek-v4-pro` | 53 | 7 (13.2%) | **7** |
+
+**The rule this hands the next increment.** A retry keyed on an exact token measures the reader's
+formatting, not its uncertainty. Two consequences, both actionable and neither implemented:
+
+1. **The population is not the phenomenon.** 22 of 51 declines on the shipped reader, and 46 of 53 on this
+   one, are declines *with content* — prose that says the evidence does not answer the question. Whether
+   those are also recoverable is unmeasured, and it is the larger population on both readers.
+2. **A predicate on content is portable; a predicate on shape is not.** "The reply asserts nothing about
+   the question" is checkable against either reader; "the reply is exactly `INSUFFICIENT_EVIDENCE`" is a
+   property of how one model was trained to close. §13.92's `recover` value already keys on structure (a
+   non-empty Step 1 list), which is why it is the closer analogue — and it is registered-but-unrun.
+
+This also retro-explains §6.0's open item in `cortex-docs`: MR moved +6.75 across the four treatment runs
+while the pass cannot reach MR at all. The pass's reach is a property of the reader and the route, and an
+effect on an unreached capability is sampling by construction, not a mechanism.
+
+## 13.112 The registration and the script that reproduces it were two runs
+
+The workflow's default for `cortex_memory_review_pass` moved to `bare` in the commit that adopted the
+pass. §10.3 and `tools/dispatch-cortex-memory-ab.py` did not move with it, and every guard in
+`tools/__tests__/test_preregistration_config.py` stayed green — because each of them compares §10.3 against
+the script, and both were consistently wrong.
+
+The cost is measurable, and `40698867439` is the run that measures it. It was dispatched with **no**
+`review_pass` input at all, so it landed on the workflow default, and it read **417/500 = 83.40%** with
+`reviewPass: bare` in its own artifact. A dispatch through the script would have sent `none` explicitly
+and read the control's 81.0%. Two procedures, both describable as "run the registered configuration",
+differing by 2.45 points, and no field in either artifact able to say which one produced it.
+
+**The repair is a guard, not a number.** Three values moved (`bare` in §10.3, `bare` in the script, and
+the §13.94 bullet's own wording); the thing that prevents the recurrence is
+`TestTheShippedDefaultAgreesWithTheRegistration`, which asserts the direction neither existing guard could
+see: a `workflow_dispatch` default is the only place in the repository that expresses **what a run gets
+when nobody chooses**, so it cannot disagree with the registration. `limit` and `ablation_runs` are
+exempted by name with their reason — they are the cheap button-run budgets and they answer a different
+question than §10.3 answers. Verified against the defect rather than assumed: with the workflow default
+set back to `none` the guard fails and names both values.
+
+**Generalised, this is the fifth form of the §7.3 side channel**, and it completes the table §4 of that
+test file started:
+
+| form | wrong where | caught by |
+| --- | --- | --- |
+| 1 | input not declared in the workflow | `test_dispatch_inputs.py` |
+| 2 | declared but not forwarded into `env` | `test_dispatch_inputs.py` |
+| 3 | forwarded but never read by the arm | `bench-memory-arm.test.ts` |
+| 4 | read correctly, dispatch never sends the registered value | `test_preregistration_config.py` |
+| 5 | **the workflow's own default disagrees with the registration** | **the new class in that file** |
+
+## 13.113 Every question sits at the budget, and 48,000 was never measured as a ceiling
+
+§13.82 raised the evidence budget from 24,000 to 48,000 characters and adopted it, on a run where MR's
+delivered gold rose 72.9% → 86.9% and the roster rose 394 → 403. §13.81 registered it as the one lever
+that buys room without truncating a turn, and the option's own documentation says the quiet part out loud:
+"only the second has no measured floor".
+
+The artifact of `40698867439` says how binding that lever is, and the answer is *completely*:
+
+| statistic over 500 questions | value |
+| --- | --- |
+| `featurePromptEvidenceChars` median | **46,851.5** |
+| p90 | 47,311 |
+| questions whose room is within one turn of 48,000 | **500 of 500** |
+
+Not one question leaves room on the table. The prefix-fit allocator fills every prompt to within the next
+turn's width, which means the budget — not the retriever's reach, not the pool's width, not the route
+composition — is the constraint that decides what the reader sees, on every single question this arm
+answers. Two earlier measurements bound the direction:
+
+- **Downward is refuted twice.** At 24,000 the room held 68 turns on MR and 74 on TR against 144 and 151
+  at 48,000 (§13.82), and buying room by truncating instead of by budget — a 200-character cap — reached
+  100 turns and lost MR to 29 of 121 (§13.80).
+- **Upward is unmeasured.** §13.82 is the last word on 48,000, and it was chosen by a run that compared
+  it against 24,000, not by a run that found it better than 96,000.
+
+**Registered: `cortex_memory_max_prompt_chars=96000`**, dispatched as `40722772896` on the commit
+carrying §13.112's repair, everything else at §10.3. One variable. The mechanism under test is
+**coverage against dilution**, and the literature makes it a live fork rather than a formality: RAW-RAG's
+ablation (`arXiv:2610.30755`) reports that retrieval depth is stable from k = 5 to k = 60 and **loses
+14.57 points at k = 120**, which is the only published measurement of what happens when a fixed reader is
+given more evidence than it can use.
+
+Predictions, each with a number:
+
+1. **MR gains ≥ 3 questions.** MR has the widest gold sets (a median gold session of 24 per §13.26), so
+   extra room is worth most there, and 96,000 holds roughly 240 turns of 400 characters against 144.
+2. **IE loses no more than 2 questions.** Dilution, if it exists, shows first on questions that need one
+   turn: a room twice as large holds twice as many places for the wrong turn to be.
+3. **`goldOverlap` rises on MR and TR.** The claim is not "the reader does better" but the narrower "the
+   right turn is in the window more often", and that is what this field measures.
+
+Stopping rule: one dispatch, read in the order above. If MR ≤ 0 and IE < −2, the budget has a ceiling at
+48,000, §13.82 is the last word, and no further sweep is run — the arm's remaining headroom is then
+precision (which turn), not volume (how many), and that is the rerank increment's question rather than
+this one's.
