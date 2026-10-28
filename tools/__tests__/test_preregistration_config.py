@@ -322,17 +322,23 @@ WORKFLOW = ROOT / ".github" / "workflows" / "benchmark-cortex-memory.yml"
 # Inputs whose `workflow_dispatch` default is deliberately NOT the registered value.
 #
 # Written out rather than inferred, because the difference has to be a decision somebody made
-# and can be asked about. `limit` and `ablation_runs` default to a cheap smoke run so that a
-# person opening the "Run workflow" page and pressing the button gets an answer in minutes
-# instead of hours; §10.3 registers the full 500-question, four-run experiment. Both are
-# correct, and they are correct *about different things*, which is exactly why the rule below
-# cannot be "the default must equal the registration".
+# and can be asked about. `limit` defaults to a cheap smoke run so that a person opening the
+# "Run workflow" page and pressing the button gets an answer in minutes instead of hours; §10.3
+# registers the full 500 questions. Both are correct, and they are correct *about different
+# things*, which is exactly why the rule below cannot be "the default must equal the registration".
 #
-# Anything else that disagrees is a shipped configuration that contradicts its own
-# registration — the defect this class was written for.
+# `ablation_runs` was on this list and has been **removed from it** — §13.118.5. The exemption's
+# justification was that extra repetitions replay a shared answer cache and produce a
+# byte-identical report, so a one-repetition button run was the same measurement for a quarter of
+# the wall clock. Run `40722772896` falsifies it: four repetitions of one configuration scored
+# 407 / 414.5 / 414.5 / 423 and spanned 81–88 on MR, at 2.87× the wall clock. The consequence was
+# not theoretical — §13.118's control came from a button run, so the treatment could not be read
+# against it. A default that produces an unreadable artifact is a shipped configuration that
+# contradicts its own registration, which is what this class exists to catch.
+#
+# Anything else that disagrees is the defect this class was written for.
 DEFAULT_MAY_DIFFER = {
     "limit": "the button-run budget is a smoke run; §10.3 registers the full N",
-    "ablation_runs": "the button-run budget is one repetition; §10.3 registers four",
 }
 
 

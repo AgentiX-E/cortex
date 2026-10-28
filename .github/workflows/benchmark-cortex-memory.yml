@@ -44,12 +44,12 @@ on:
         default: '60'
         type: string
       ablation_runs:
-        description: "Number of runs per ablation (keep at 1: shared answer caches make extra runs redundant). The pre-registration fixes 4 for the arm's own comparisons"
+        description: "Repetitions per ablation. 4 is the pre-registered scale and the default, because one repetition is a single sample: section 13.118.5 measured four repetitions of one configuration spread over 16 questions on the roster, which is what a one-repetition artifact cannot report"
         required: false
-        default: '1'
+        default: '4'
         type: string
       temperature:
-        description: 'Sampling temperature (0 = deterministic)'
+        description: "Sampling temperature. '0' pins deterministic sampling (the pre-registered value, and now actually sent); 'default' sends no temperature at all, which is what every run before section 13.119 did by accident"
         required: false
         default: '0'
         type: string
@@ -436,12 +436,18 @@ jobs:
           # read from the same dispatch inputs the job already carries, so a dispatch
           # that sets them at the workflow level cannot disagree with this step.
           #
-          # RUNS is deliberately NOT forwarded. The arm reads `ABLATION_RUNS`, not
-          # `RUNS`: every ablation shares one answer cache across its two arms, so a
-          # second run replays the first run's cached answers and costs full wall-clock
-          # for a byte-identical report.
+          # RUNS is deliberately NOT forwarded. The arm reads `ABLATION_RUNS`, not `RUNS`.
+          #
+          # This comment used to claim that a second repetition "replays the first run's cached
+          # answers and costs full wall-clock for a byte-identical report", and it was the reason
+          # this input defaulted to 1. Run `40722772896` falsifies both halves: four repetitions of
+          # one configuration produced totals of 407 / 414.5 / 414.5 / 423 and MR counts spanning
+          # 81 to 88, at 2.87x the wall clock of a single pass. A byte-identical report has
+          # min = max. The default is now 4, because a one-repetition artifact cannot say whether
+          # a difference is the treatment or the sampling -- and that is exactly how §13.118's
+          # control came to be unreadable against its own treatment.
           LIMIT: ${{ github.event.inputs.limit || '60' }}
-          ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
+          ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '4' }}
           TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
           # The reader is shared by both sides, so the model and the thinking mode have
           # to reach this step too. Omitting them would run the arm's two sides on a

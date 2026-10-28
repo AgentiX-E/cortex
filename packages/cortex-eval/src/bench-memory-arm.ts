@@ -2129,7 +2129,15 @@ export async function runCortexMemoryArm(
     ...(options.runs === undefined ? {} : { runs: options.runs }),
     ...(options.alpha === undefined ? {} : { alpha: options.alpha }),
     ...(options.scorer === undefined ? {} : { scorer: options.scorer }),
-    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    // Stamped inside `runAblationReport`, after the ablation returns -- never here.
+    //
+    // This was `generatedAt: options.generatedAt ?? new Date().toISOString()`, which is an
+    // ARGUMENT: it is evaluated when the call is made, so the stamp landed before the first
+    // question and `runAblationReport`'s own post-run default never ran. Run `40722772896`
+    // wrote `16:08:38Z` into a report whose artifact was uploaded at `18:15:55Z`, and a reader
+    // auditing that run's duration from the artifact alone gets 92 seconds for 2h08m of work.
+    // `PREREGISTRATION` §13.118.5 is where the wrong number was first read.
+    ...(options.generatedAt === undefined ? {} : { generatedAt: options.generatedAt }),
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     memoryArmConfig: options.memoryArmConfig,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),

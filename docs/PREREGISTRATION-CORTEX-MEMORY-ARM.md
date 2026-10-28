@@ -771,7 +771,10 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   variable exists because §13.100.2 measured the reader's judgement moving on 24 of 121 answers with
   no treatment at all, so sampling it and voting is the one mechanism whose target is the instrument's
   own measured defect. §13.101.4 registers what a run of it must show.
-- `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged.
+- `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged, and as of §13.119 the value
+  finally reaches the request: it was declared, forwarded and never read from §10.3's first
+  dispatch until then, so every reading before §13.119 was served at the provider's default
+  sampling. The number did not move; it started being true.
 - `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
@@ -12199,3 +12202,285 @@ patch, because the file's own totals and line numbers churn on every rebuild.
 configuration at import time, found by the first test that imported it. Both are "the symbol exists, the
 suite is green, and the boundary between two surfaces was never exercised". The boundary here is the package
 entry; there, it was the import.
+
+## 13.118 Doubling the room buys coverage and sells dilution, at almost exactly the same price
+
+§13.113 registered `max_prompt_chars=96000` against the 48,000 §13.82 adopted, on one variable, with three
+numbered predictions and a stopping rule. `40722772896` finished `success` in **2h08m04s** with four
+repetitions. Read against `40698867439` — the adopted configuration, same commit series, `reviewPass: bare`,
+`relevanceSignal: retrieval-hybrid`, `relevanceTopK: 256`, one value different — the answer is not the one
+either branch of the registration expected.
+
+### 13.118.1 The readings
+
+| statistic                                          | 48,000 (`40698867439`)            | 96,000 (`40722772896`)                   |
+| -------------------------------------------------- | --------------------------------- | ---------------------------------------- |
+| repetitions in the artifact (`runs`)               | **1**                             | **4**                                    |
+| feature aggregate, mean                            | 83.40%                            | **82.95%**                               |
+| feature aggregate, min / median / max              | 83.40 (one sample)                | **81.40 / 82.90 / 84.60**                |
+| first repetition, total                            | 417                               | 418                                      |
+| first repetition, per capability                   | 141/83/64/100/29                  | 141/81/64/102/30                         |
+| per-capability mean over repetitions               | n/a (single sample)               | 137.3/84.3/62.0/101.5/29.8               |
+| per-capability min–max over repetitions            | n/a                               | 133–141 / 81–88 / 60–64 / 99–105 / 29–30 |
+| `featurePromptEvidenceChars` median                | 46,851.5                          | **92,078.5**                             |
+| window turns, MR / TR / IE / KU / ABS (median)     | 174 / 179 / 61 / 62 / 72          | **243 / 242 / 117.5 / 125.5 / 133**      |
+| evidence carried as a share of the budget, MR / TR | 96.2% / 98.2%                     | **69.9% / 69.3%**                        |
+| questions at complete gold coverage                | 256 of 500                        | **371 of 500**                           |
+| mean coverage, MR / TR / IE / KU / ABS             | 96.6 / 95.4 / 84.3 / 77.9 / 66.9% | **100.0 / 100.0 / 90.8 / 89.6 / 81.1%**  |
+| declines                                           | 51 (10.2%)                        | 46.75 per run (9.6%)                     |
+| wall clock                                         | 44m37s                            | 2h08m04s                                 |
+
+The room doubled and the score did not move. Everything below is about which of those two facts is the finding.
+
+### 13.118.2 Two predictions falsified, one holds, and the third was unfalsifiable as written
+
+| #   | prediction (§13.113)                  | observed                                                                               | verdict                                   |
+| --- | ------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 1   | MR gains **≥ 3 questions**            | **+1.3** on the registered statistic (84.3 against 83); **−2** on the first repetition | **falsified**                             |
+| 2   | IE loses **no more than 2 questions** | **−3.7** (137.3 against 141); 0 on the first repetition                                | **falsified**                             |
+| 3   | `goldOverlap` rises on MR and TR      | MR **96.6% → 100.0%**, TR **95.4% → 100.0%**                                           | **holds, and was already at the ceiling** |
+
+Prediction 3 needs its own paragraph, because holding it is the more awkward outcome. The 48,000 artifact's
+**median** coverage on MR and TR was already **100.0%** for correct answers _and_ for wrong ones. A prediction
+phrased as "the median rises" cannot rise from 100%, and it did not — the only place the rise is visible is the
+distribution: complete-coverage questions went **256 → 371**, and MR and TR each went to **every question at
+complete coverage** (85 → 121 and 89 → 127). So the registration named a statistic at its ceiling. The
+prediction is recorded as holding on the distribution and as **unmeasurable on the statistic it named**, which
+is a defect in the registration and not a result.
+
+### 13.118.3 The mechanism resolves into two opposite numbers
+
+§13.113 said the mechanism under test was "**coverage against dilution**". The artifact answers it directly,
+because `goldOverlap` is a **pre-treatment** field carried by both runs: partition the 500 questions by their
+coverage state _in the control_, and the two forces separate with no appeal to any outcome variable.
+
+| group                                                | n   | 48k correct | 96k correct | Δ      | bought / sold | exact McNemar p |
+| ---------------------------------------------------- | --- | ----------- | ----------- | ------ | ------------- | --------------- |
+| complete coverage at **both** budgets (dilution arm) | 256 | 219         | 211         | **−8** | 10 / 18       | 0.185           |
+| coverage not complete at 48,000 (coverage arm)       | 244 | 198         | 207         | **+9** | 18 / 9        | 0.122           |
+| **total**                                            | 500 | 417         | 418         | **+1** | 28 / 27       | —               |
+
+**The increment is a wash because it is two increments.** Where the gold was already complete, ~70 more turns of
+context cost **eight questions**. Where the gold was incomplete, the extra room bought **nine**. Those are the
+two numbers §13.113 predicted as one, and together they are +1 — the aggregate this run actually reported.
+
+Inside the clean 256, the loss is where §13.83 said the room's contents are worst: MR **65 → 59 (−6)** on 85
+questions, TR **77 → 75 (−2)** on 89, and IE, KU and ABS **exactly unchanged** (0/0/0 on 75/5/2). So the
+dilution is not spread across the roster; it is MR, which is the capability whose window is 51.9% assistant
+prose.
+
+**What this does not license.** Neither arm is significant on its own (p = 0.185, 0.122). The partition
+_locates_ the cancellation; it does not certify either component, and the honest sentence is "the two forces are
+of the same size and opposite sign, and 500 questions cannot separate them". The reason the partition is still
+worth printing is that it is not a post-hoc outcome slice: the grouping variable is the control's own coverage,
+measured before the treatment existed, and it was the variable §13.113 named in advance.
+
+The abstention line agrees. Pairing the two dispatches question by question
+(`answer === null` on both sides, the predicate §13.116 registers): `recovered` 4, `corrected` 24, `declined` 7,
+`missed` 20 — a **content flow**, so §13.116's rule reads it as "the window bought **evidence**, not **room**".
+Four questions that used to decline stopped declining. Twenty-four answers changed. That is not a
+response-shape effect and it is not the effect §13.113 predicted, which was a room effect.
+
+### 13.118.4 On the two decisive routes the budget stopped binding, and something else had been binding all along
+
+This is the discovery that outranks the verdict. `--window` on the 96,000 artifact:
+
+```
+capability    n   turns    chars  chars/turn   budget
+MR          121   243.0    67133         275   69.9%
+TR          127   242.0    66566         277   69.3%
+IE          150   117.5    94814         806   98.8%
+KU           72   125.5    94806         759   98.8%
+ABS          30   133.0    94794         709   98.7%
+```
+
+On IE, KU and ABS the character budget binds at ~98.8%, as it did at 48,000 (97.3–98.2%). On **MR and TR it
+does not**: 243 turns spending **69.9%** of a 96,000-character room. A doubling of the budget that lands at 70%
+of it did not buy 240 turns of room — it bought **the whole pool**. `relevanceTopK` is 256, and MR and TR
+exhaust it (265–277 characters per turn × 256 = 68–71k characters) before the room runs out.
+
+The artifact says so twice. `evidenceReduction` reports `maxTurnsPerRecord: 256` — equal to the pool width —
+with `reducedQuestionIds` on **41 questions** and `droppedTurns: 491`: the per-record bound, not the budget,
+is what stops those windows. And §13.82.6 had already priced this route: raising MR to ~250 turns would deliver
+94.68% of its gold for "about three questions". It delivered **+1.3**.
+
+So the honest statement of what this run measured is narrower than what it registered: **on MR and TR it
+replaced "the budget cut the window" with "the pool cut the window"**, and the answer to "would 240 turns of
+_retrieved_ evidence help" is still unmeasured — it would need `relevanceTopK` raised with the budget held, and
+that is a different dispatch. On IE, KU and ABS the budget did bind, and those three bought +0, +0 and +0.
+
+### 13.118.5 The measurement that makes a ±3-question prediction untestable
+
+Four repetitions of **one** configuration, in one job, on one dataset, produced totals of **407, 414.5, 414.5 and
+423** (min / median / max from the artifact) and MR counts spanning **81 to 88**. That is a **16-question spread
+on the roster and 7 on MR**, at `temperature` unset — which §13.114 established means the provider's default,
+`1.0`, not the 0 every document claimed.
+
+§13.113 predicted **+3**. The arm's own dispersion is **more than twice the effect size**, and the control it was
+compared against is a **single sample** whose dispersion was never measured. No reading of this run can resolve
++3, and the fact that it landed on +1.3 is arithmetic, not evidence.
+
+**The workflow says the repetitions are free and identical, and the artifact disproves both halves.** The comment
+at `benchmark-cortex-memory.yml` reads:
+
+> `RUNS` is deliberately NOT forwarded. The arm reads `ABLATION_RUNS` … every ablation shares one answer cache
+> across its two arms, so a second run replays the first run's cached answers and costs full wall-clock for a
+> **byte-identical report**.
+
+A byte-identical report has min = max. This one has 81.40 against 84.60, and the four repetitions cost 2.87× a
+single pass (44m37s → 2h08m04s) rather than 1.0×. That comment is why `ablation_runs` defaults to `1`, which is
+why the control was dispatched as a single sample, which is why the comparison cannot be read. **A comment that
+says a repetition is free and empty is a comment that makes every later comparison underpowered**, and it is the
+fourth form of the §7.3 side channel expressed as prose instead of as code: the value is read, the cost is paid,
+and the document that decides how it is used is wrong about what it does.
+
+### 13.118.6 Decision: 96,000 is rejected
+
+Not adopted. The registered gain is absent on the registered statistic; the two capabilities that decide the
+SOTA gap never received the treatment (13.118.4); the three that did received it and moved by 0, 0 and −2; and
+the increment costs 2× prompt tokens and 2.87× wall clock. 48,000 remains the adopted budget and §13.82 remains
+its justification.
+
+**The stopping rule did not fire, and that is a defect in the rule.** §13.113's rule was "if MR ≤ 0 **and**
+IE < −2, the budget has a ceiling at 48,000 … no further sweep is run". The observed corner is MR **+1.3**
+(positive, under the prediction's threshold) with IE **−3.7** (past it). One conjunct holds and one does not, so
+the registered rule is silent, and the decision above is a judgement rather than a registered outcome. Recorded
+as such: a stopping rule that spells out only the double-failure corner leaves every mixed corner to be decided
+after the numbers are in, which is the thing a stopping rule exists to prevent.
+
+### 13.118.7 What the registration got wrong, in three places
+
+1. **It predicted a rise in a statistic already at its ceiling.** MR and TR's median coverage at 48,000 was
+   100.0% for correct and wrong answers alike. Prediction 3 could not be tested as phrased. The rule this
+   leaves: before registering a direction on a statistic, print its value in the control.
+2. **It predicted an effect smaller than the arm's measurement noise, and did not look.** +3 questions against a
+   16-question roster spread. §13.100 had already measured 5–6 questions per route; the register carried the
+   number and did not apply it. The rule this leaves: a registered effect size must be stated **against** the
+   last measured dispersion, in the same sentence.
+3. **The stopping rule covered one corner of four.** See 13.118.6.
+
+All three are one defect wearing three coats: the predictions were written from the mechanism and not from the
+instrument. The mechanism in §13.113 was right — coverage against dilution is exactly what 13.118.3 measured —
+and every number attached to it was unreadable from the day it was registered.
+
+### 13.118.8 What this redirects
+
+The room is not the lever, and this time it is not the lever on the evidence rather than on the arithmetic:
+
+- **MR's remaining deficit is not missing evidence.** At 96,000 every one of the 121 MR questions has its
+  complete gold set in the window, and 40 of them are still wrong (30 wrong and 10 declined, first repetition).
+  §13.82.3 said this about a subset at 48,000; the 96,000 run says it about all of them. "The gold was not
+  there" is now false for every MR error, so no further budget, pool width or coverage work can be aimed at it.
+- **The next increment is precision, which is the rerank stage** (§13.115), and it is now aimed by a
+  measurement rather than by a paper: 243 turns are in the window and the ranking decides their order, so the
+  question "which turn does the reader see first" has 243 slots of room to matter in.
+- **But it must be dispatched after the temperature is pinned** (§13.114), because +3-question predictions are
+  not testable at a 7-question per-route spread, and §13.115's second criterion is MR ≥ +3. A rerank run read at
+  this dispersion would produce a number indistinguishable from a shuffle, which is the failure this whole
+  register exists to prevent.
+
+So the order is: pin the temperature, re-measure the arm against itself at four repetitions, and only then spend
+a dispatch on the reranker.
+
+## 13.119 The temperature reaches the request, and the input that could not say "none"
+
+§13.114 recorded the defect and refused to fix it in a documentation round: `TEMPERATURE` was declared, forwarded,
+and read by one runner in the repository — the **reference** pipeline's — while the arm sent nothing and every
+artifact described a run that had been sampled at the provider's default. §13.118 then priced it: four repetitions
+of one configuration spread over **16 questions** on the roster and **7 on MR**, against a registered effect of 3.
+
+This section is the fix, the sentinel it needs, and the two dispatches that read it.
+
+### 13.119.1 Where the value is read, and why there
+
+`packages/cortex-eval/src/reader-temperature.ts` holds two functions and nothing else:
+
+- `readTemperature(env): number | null` — `null` for absent, empty, and the word `default`; a number in `[0, 2]`
+  otherwise; **throws** for anything else, naming the value and the range.
+- `withTemperature(llm, t): LLM` — the same reader, with `t` supplied to any call that did not name its own.
+
+`createLlmFromEnv` wraps the adapter with the second when the first returns a value, and `resolveReaderIdentity`
+returns the same value it parsed. That is the whole wiring, and its shape is the argument:
+
+1. **A wrapper, not a parameter**, because the call site is the defect. `cortex-memory`'s `#consult` calls
+   `complete(prompt)` with no options, and any future call site would have to remember. At the boundary, nothing
+   has to.
+2. **Absent stays absent.** A factory that injected `0` for a missing value would retro-fit determinism onto a
+   campaign's worth of numbers that never had it, and the artifact would then describe those runs as pinned.
+   `null` is a state, not a zero.
+3. **An explicit call-site value wins.** `llm-reranker.ts` pins `0` for its own prompt; a default that overrode it
+   would make the reranker's temperature a function of an unrelated environment variable.
+4. **Refused, not clamped, outside the range.** `Number('hot')` is `NaN`, and `NaN` in a JSON body serialises as
+   `null`, which the provider reads as _unset_ — a run that believed it had pinned a temperature and had not. That
+   is the fifth form of the §7.3 side channel, so it throws instead.
+
+### 13.119.2 The sentinel, and why the input could not simply be left empty
+
+A `workflow_dispatch` input is a **string**. "Not set" cannot be forwarded as an absent variable: it arrives as
+`''`, the workflow expression substitutes it, and the job's `env` ends up carrying a literal. So "send nothing" has
+to be spelled, and the spelling is `default` — the same word the artifact already renders for that state
+(`temp=default`, §13.114). One word, one meaning, in the dispatch and in the report.
+
+`readTemperature` is exported from the package entry for one caller: `cortex-eval/bench/run.ts`, the reference
+pipeline, which previously did `Number(process.env['TEMPERATURE'] ?? 0)` and would have turned the sentinel into
+`NaN`. It now reads `readTemperature(process.env) ?? 0`, so the sentinel resolves to `0` **for that pipeline
+only** — its systems take a number and have always sent 0. The asymmetry is deliberate: the reference pipeline
+must not move between the two arms of §13.119.3, or the control and the treatment would differ in two places
+instead of one.
+
+### 13.119.3 What the registration now says, and what the default now does
+
+No value in §10.3 changed. `temperature: 0` was always the registered value; it simply never arrived. From this
+commit it does, so the registered configuration is measured for the first time.
+
+One default _did_ change: `ablation_runs` in the workflow went `'1'` → `'4'`, and the input came off the
+`DEFAULT_MAY_DIFFER` exemption list in `tools/__tests__/test_preregistration_config.py`. The exemption existed
+because a workflow comment claimed extra repetitions "replay the first run's cached answers and cost full
+wall-clock for a byte-identical report". `40722772896` falsifies both halves (13.118.5), and the consequence was
+not theoretical: §13.118's **control** was a button run, so it carried one sample against a treatment of four.
+A default that produces an artifact its own treatment cannot be read against is precisely the "shipped
+configuration contradicts its own registration" defect that class was written for, so the default moved and the
+exemption was withdrawn rather than re-worded. `limit` stays exempt for the reason it always had: a smoke run is
+honest about being a smoke run.
+
+### 13.119.4 Two dispatches, and the invariant that decides whether either can be read
+
+Both at `limit=0`, `ablation_runs=4`, `max_prompt_chars=48000`, everything else at §10.3:
+
+| arm               | `cortex_memory_temperature` | what it is                                                                           |
+| ----------------- | --------------------------- | ------------------------------------------------------------------------------------ |
+| **A — control**   | `default`                   | the condition every run before this section was in, now measured at four repetitions |
+| **B — treatment** | `0`                         | the registered configuration, reaching the request for the first time                |
+
+They are independent jobs on the same commit, so they are dispatched together; the serial rule (§4) governs
+dispatches whose inputs interact, and these share no state.
+
+**The invariant, checked before either prediction.** Temperature cannot change retrieval. Retrieval on this arm is
+`retrieval-hybrid` — dense plus lexical RRF, `confidenceSignal: none`, `queryExpansion: none`,
+`selfConsistency: none` — so no ranking decision passes through the reader. Therefore **A and B must produce
+identical `goldOverlap`, identical window turns and identical `featurePromptEvidenceChars`, question by question**.
+A difference in any of the three means the wrapper reached further than the reader — the embedding call, the
+retry, the prompt — and the run is an assembly failure rather than a temperature experiment. This is checked
+first, and it is checkable without reading a single accuracy number.
+
+**Predictions, from §13.114, now with the dispersion §13.118 measured:**
+
+1. **Pinning `T = 0` shrinks the per-route movement.** B's four-repetition spread must be **smaller than A's**:
+   under 7 questions on MR and under 16 on the roster. If B's spread is not smaller, temperature is not what the
+   movement was, and §13.100's "the instrument's own movement" needs a different cause.
+2. **The mean moves by less than the movement it removes.** `|B − A|` on the roster mean under **8 questions**
+   (half of A's measured spread). If it moves more, the arm's configuration has been tuned to a sampling artefact
+   rather than to a mechanism — a far more uncomfortable finding than a wrong temperature, and one that would
+   invalidate the comparison base of every increment in §13.79 onward.
+3. **Kill clause, not a prediction.** If A and B produce the **same 500 answers**, temperature was never doing
+   anything on this workload and the input is **deleted** rather than pinned. A declared input that changes
+   nothing is worse than an absent one: it costs a reader's attention on every configuration line it appears in.
+
+**What this does not license.** Neither arm is a SOTA reading. A is the historical condition and B is the
+registered one; whichever wins, the deliverable is the _dispersion_, because that is the number every later
+`±3`-question prediction has to be stated against (§13.118.7 rule 2).
+
+**Sequencing.** §13.115's rerank increment waits for this. Its second criterion is "MR ≥ +3", and +3 is not
+resolvable at a 7-question per-route spread. Spending a rerank dispatch before the temperature is pinned would
+produce a number indistinguishable from a shuffle — which is the exact failure mode this register exists to
+prevent, and it would be the third time (§13.118 was the second).

@@ -81,13 +81,17 @@ describe('resolveReaderIdentity', () => {
     expect(() => resolveReaderIdentity({})).not.toThrow();
   });
 
-  it('reports that no temperature was sent, even when the environment carries one', () => {
-    // Not an oversight, and not a claim that the input is harmless: §13.114 registers the
-    // defect and the experiment that fixes it. Honouring `TEMPERATURE` here would change what
-    // every subsequent run sends, which is exactly the kind of silent move this campaign
-    // forbids -- so the value is recorded as absent and the change gets its own dispatch.
-    expect(resolveReaderIdentity({ TEMPERATURE: '0' }).temperature).toBeNull();
-    expect(resolveReaderIdentity({ TEMPERATURE: '1.0' }).temperature).toBeNull();
+  it('states the temperature the request will carry, which is no longer always absent', () => {
+    // This test used to assert the opposite, and the comment explaining why is worth keeping as
+    // history: `TEMPERATURE` was declared, forwarded, and read by nothing on the arm's path, so
+    // §13.114 recorded the value as `null` rather than silently honouring it -- because honouring
+    // it would move every number the campaign had recorded. §13.119 is that move: the value is now
+    // parsed (`reader-temperature.ts`), injected at the reader boundary, and this assertion flips
+    // with it. `null` remains reachable only by asking for it.
+    expect(resolveReaderIdentity({}).temperature).toBeNull();
+    expect(resolveReaderIdentity({ TEMPERATURE: 'default' }).temperature).toBeNull();
+    expect(resolveReaderIdentity({ TEMPERATURE: '0' }).temperature).toBe(0);
+    expect(resolveReaderIdentity({ TEMPERATURE: '1.0' }).temperature).toBe(1);
   });
 });
 
@@ -149,18 +153,23 @@ describe('the reader reaches the artifact', () => {
     expect(line(identity)).toContain(
       '`reader=deepseek:deepseek-chat@api.deepseek.com/thinking=disabled/temp=default`',
     );
+    // The pinned value renders as itself, so a run that sent 0 and a run that sent nothing are
+    // distinguishable in the one line a reader of the Markdown actually looks at (§13.119).
+    expect(line(resolveReaderIdentity({ TEMPERATURE: '0' }))).toContain('temp=0`');
+    expect(line(resolveReaderIdentity({ TEMPERATURE: '0' }))).not.toContain('temp=default');
     // The control, and the one that matters: an artifact from before the field must not appear
     // to have run against an unrecorded reader.
     expect(line(undefined)).not.toContain('reader=');
   });
 
   it('states the temperature the request actually carried, not the one the input claims', () => {
-    // `temp=default` is the state of every run this campaign has recorded. Spelling it rather
-    // than omitting it is the same rule `reviewPass` follows: a run that carried no temperature
-    // and an artifact that predates the field must not be the same bytes.
+    // `temp=default` is the state of every run this campaign recorded before §13.119. Spelling it
+    // rather than omitting it is the same rule `reviewPass` follows: a run that carried no
+    // temperature and an artifact that predates the field must not be the same bytes. The second
+    // half is the new one -- a pinned value has to be tellable from an absent one in the same line.
     const metrics = { total: 0, correct: 0 } as never;
     expect(() => metrics).not.toThrow();
-    const identity = resolveReaderIdentity({ TEMPERATURE: '0' });
-    expect(identity.temperature).toBeNull();
+    const pinned = resolveReaderIdentity({ TEMPERATURE: '0' });
+    expect(pinned.temperature).toBe(0);
   });
 });

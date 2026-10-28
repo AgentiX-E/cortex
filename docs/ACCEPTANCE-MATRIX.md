@@ -130,6 +130,22 @@ The first row is why the census was built: the prediction `attempted > 0` is unf
 that does not carry the count, and `40522788515` is exactly such an artifact. A mechanism whose firing is
 unobservable is not yet measured, whatever the accuracy column says.
 
+## 4.2.1 The resolution of S1, now that it has been measured
+
+`S1` reads **83.5%** (`417.25 / 500`, five 48,000-character runs). Two facts about that number were measured
+after it was written and belong beside it:
+
+- **The arm's own dispersion is wider than most of the increments it is used to judge.** Four repetitions of
+  one configuration, one job, one dataset (`40722772896`) produced totals of **407 / 414.5 / 414.5 / 423** and
+  MR counts spanning **81–88**. Any prediction of the form "±3 questions" is therefore not resolvable on this
+  arm as configured — which is why `S6`/`S7` carry a criterion and not only a threshold, and why the
+  temperature pin (§13.119) is queued ahead of the rerank.
+- **Buying more room does not move it.** `max_prompt_chars=96000` was dispatched as one variable and **rejected**:
+  82.95% mean against 83.40%, with the coverage it bought (+9 questions where the gold was incomplete) almost
+  exactly cancelled by the dilution it sold (−8 where the gold was already complete). 48,000 stays, and on the
+  two capabilities that decide the gap every wrong answer now has **complete** gold coverage — so no further
+  coverage work can be aimed at them (§13.118).
+
 ## 4.3 What is honestly not measured
 
 **None of the four model-side increments has an end-to-end reading.** They are justified by the level below — a

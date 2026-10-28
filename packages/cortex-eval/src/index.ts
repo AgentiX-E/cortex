@@ -391,6 +391,12 @@ export {
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
+// `withTemperature` stays module-private: `llm-factory` is its only consumer, and an exported
+// decorator with one in-package caller is an export the census reports as an orphan. The reader
+// is `readTemperature`, which `bench/run.ts` needs so the `default` sentinel does not arrive as
+// `NaN` in the reference pipeline (§13.119).
+export { readTemperature } from './reader-temperature.js';
+
 export {
   parseCritiqueMode,
   rerankArmOptions,

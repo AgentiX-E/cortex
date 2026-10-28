@@ -17,6 +17,8 @@
 import type { LLM } from '@agentix-e/cortex-core';
 import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-ai';
 
+import { readTemperature, withTemperature } from './reader-temperature.js';
+
 export type LlmEnv = Record<string, string | undefined>;
 
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
@@ -45,13 +47,14 @@ export function resolveTimeoutMs(thinking: ThinkingMode): number | undefined {
  * artifacts differing by 7.20 points carried identical `memoryArmConfig` blocks, so the
  * model could only be recovered from a line in a job log that expires.
  *
- * ## Why `temperature` is `null` here
+ * ## Why `temperature` is `number | null`
  *
- * Because this arm has never sent one. The workflow declares the input, the dispatch sends
- * it, `env` carries it -- and nothing below `#consult` reads it, so the request body omits
- * the field and the provider's default applies. Setting it here would move every number
- * this campaign has recorded, so the defect is **recorded** (§13.114) and fixed by its own
- * experiment rather than silently in a documentation round.
+ * Because the two states are different facts and every reading before §13.119 was the second.
+ * `null` means the request carried no temperature and the provider's default applied -- which is
+ * what every run in this campaign did until the input was finally read, and what `default` still
+ * means. A number means the request carried it. The value is parsed by `readTemperature` so this
+ * function and the constructor cannot disagree about what the environment asked for, which is the
+ * same reason both call this function rather than reading the variables themselves.
  */
 export function resolveReaderIdentity(env: LlmEnv): {
   readonly provider: string;
@@ -73,7 +76,7 @@ export function resolveReaderIdentity(env: LlmEnv): {
   // pointed at an OpenAI-compatible proxy is not a DeepSeek run, and an artifact that called
   // it one would attribute its numbers to a provider that never served them.
   const provider = /(^|\.)deepseek\.com$/i.test(hostOf(baseUrl)) ? 'deepseek' : 'openai-compatible';
-  return { provider, model, baseUrl, thinking, temperature: null };
+  return { provider, model, baseUrl, thinking, temperature: readTemperature(env) };
 }
 
 /** The host of a base URL, or the string itself when it does not parse. */
@@ -95,11 +98,16 @@ export function createLlmFromEnv(env: LlmEnv): LLM {
   const identity = resolveReaderIdentity(env);
   const thinking: ThinkingMode = { type: identity.thinking };
   const timeoutMs = resolveTimeoutMs(thinking);
-  return new OpenAICompatibleLLM({
+  const llm = new OpenAICompatibleLLM({
     baseUrl: identity.baseUrl,
     apiKey,
     model: identity.model,
     thinking,
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
+  // Wrapped only when the environment asks for a temperature. The absent path stays absent on
+  // purpose: §13.114 records that every reading before §13.119 was taken with no temperature in
+  // the request, and a factory that injected `0` here would retro-fit determinism onto those
+  // numbers in the artifact's own description of them.
+  return identity.temperature === null ? llm : withTemperature(llm, identity.temperature);
 }

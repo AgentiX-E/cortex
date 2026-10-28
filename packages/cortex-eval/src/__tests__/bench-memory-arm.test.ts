@@ -3844,3 +3844,108 @@ describe('self-consistency options (§13.101)', () => {
     expect(line).not.toContain('vote=');
   });
 });
+
+/**
+ * The artifact's own timestamp, which was two hours early.
+ *
+ * `runAblationReport` stamps `generatedAt` after the ablation returns -- unless the caller
+ * hands it one, and the arm did: `generatedAt: options.generatedAt ?? new Date().toISOString()`
+ * is an **argument**, so it is evaluated when the call is made, before two hours of questions.
+ * Run `40722772896` therefore wrote `2026-10-28T16:08:38.140Z` into a report whose artifact was
+ * uploaded at `18:15:55Z`, and the first reader to subtract the two (this campaign, auditing the
+ * run's duration from the artifact alone) got 92 seconds for a 2h08m run.
+ *
+ * The fix is to stop evaluating the default at the call site. What is asserted here is the
+ * ordering rather than the value: the stamp must not precede the last thing the run did.
+ */
+describe('the report timestamp is taken when the numbers exist, not when the work is ordered', () => {
+  const CONFIG = {
+    threshold: 0,
+    retrievalThreshold: 0,
+    sessionBudget: null,
+    sourceTrust: 0.5,
+    confidenceSignal: 'none',
+    promptContract: 'abstention',
+    relevanceSignal: 'none',
+    relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+    relevanceUnits: 'turn',
+    renderingRoutes: [],
+    ask: 'route',
+    askRoutes: [],
+    reviewPass: 'none',
+    reviewBareDecline: false,
+  } as const;
+
+  function oneQuestion(): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'TR',
+          questionType: 'single-session-user',
+          question: 'Where did I go?',
+          expected: 'Lisbon',
+          context: [],
+          sessions: [],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+  }
+
+  it('stamps generatedAt at or after the last answer the reader gave', async () => {
+    // The reader takes real time on purpose: without a gap the two candidate stamps are the
+    // same millisecond and the assertion would pass on the defect. Five milliseconds is the
+    // smallest gap that survives a loaded CI runner without becoming a sleep test.
+    let finishedAt = 0;
+    const slowFeature = {
+      name: 'cortex-memory',
+      answer: async (): Promise<Answer> => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        finishedAt = Date.now();
+        return 'Lisbon';
+      },
+      lastRetrievedContext: () => ['user: I went to Lisbon.'],
+      lastAdmittedEvidence: () => ({ turns: 1, chars: 24 }),
+      lastRawOutput: () => 'Lisbon',
+    } as unknown as MemorySystem;
+    const promptOnly = {
+      name: 'reference-pipeline',
+      answer: (): Answer => 'Lisbon',
+    } as unknown as MemorySystem;
+
+    const { report } = await runCortexMemoryArm(oneQuestion(), promptOnly, slowFeature, {
+      runs: 1,
+      scorer: exactMatchScorer,
+      memoryArmConfig: CONFIG,
+    });
+
+    expect(finishedAt).toBeGreaterThan(0);
+    expect(Date.parse(report.generatedAt)).toBeGreaterThanOrEqual(finishedAt);
+  });
+
+  it('still honours an injected clock, because a reproducible run needs one', async () => {
+    // The injection is the reason the field exists as an option at all: a test or a replay
+    // cannot assert a wall-clock value. Dropping the eager default must not drop this path,
+    // which is why the fix is a conditional spread and not a deletion.
+    // Two objects, not one: the arm refuses an identical pair, and that guard is right -- a
+    // feature that IS the baseline reports 0.00pp by construction. The distinction matters here
+    // because the injected-clock path is exercised through the same constructor as any other run.
+    const promptOnly = {
+      name: 'reference-pipeline',
+      answer: (): Answer => 'Lisbon',
+    } as unknown as MemorySystem;
+    const featureOfSameShape = {
+      name: 'cortex-memory',
+      answer: (): Answer => 'Lisbon',
+    } as unknown as MemorySystem;
+    const { report } = await runCortexMemoryArm(oneQuestion(), promptOnly, featureOfSameShape, {
+      runs: 1,
+      scorer: exactMatchScorer,
+      memoryArmConfig: CONFIG,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+    });
+
+    expect(report.generatedAt).toBe('1970-01-01T00:00:00.000Z');
+  });
+});

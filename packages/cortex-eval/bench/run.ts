@@ -17,6 +17,7 @@ import {
   createLlmFromEnv,
   computeRecallCurve,
   createRerankerFromEnv,
+  readTemperature,
   type RerankFactoryOptions,
   describeEmbeddingCachePersist,
   deserializeEmbeddingCache,
@@ -271,7 +272,13 @@ async function main(): Promise<void> {
   const runs = Number(process.env['RUNS'] ?? 1);
   // Sampling temperature for both systems (default 0, deterministic). A positive
   // value introduces real sampling variance so the over-run t-test is defined.
-  const temperature = Number(process.env['TEMPERATURE'] ?? 0);
+  //
+  // Read through `readTemperature` so the sentinel the arm accepts (`default`) does not arrive
+  // here as `NaN`: this pipeline's systems take a number and have always sent 0, so the sentinel
+  // resolves to 0 for this caller only. That asymmetry is deliberate -- the reference pipeline
+  // must not move between the two arms of §13.119's dispatch, or the control and the treatment
+  // would differ in two places instead of one.
+  const temperature = readTemperature(process.env) ?? 0;
   // Runs for the ABLATIONS, which is deliberately independent of `runs` above.
   //
   // Every ablation shares one answer cache across its two arms (the pairing
