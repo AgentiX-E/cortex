@@ -46,6 +46,7 @@
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import { retrieveTopKByQueries, type RetrievalHit } from './retrieval.js';
+import { temporalBoosts } from './temporal-relevance.js';
 
 /**
  * What a turn scores when the index holds no measurement for it.
@@ -127,6 +128,20 @@ export type RelevanceCase = {
    * there the absence would silently change which operation ran.
    */
   readonly sessions?: readonly (readonly string[])[];
+  /**
+   * When each turn in `context` happened, parallel to it, or absent.
+   *
+   * Read only when `RelevanceIndexOptions.temporalWeight` is above zero, and absent is the state every
+   * archived run is in — so a case that names no dates is scored exactly as before. Carried on the same case
+   * type rather than a parallel one for the reason `sessions` is: two case types that differ by one field
+   * would let the builders drift in what they consider a case.
+   *
+   * `null` and `undefined` entries are the honest representation of a turn whose session carried no instant,
+   * and they score zero contribution rather than a penalty — see `temporal-relevance.ts`.
+   */
+  readonly turnDates?: readonly (number | null | undefined)[] | undefined;
+  /** When this question was asked, which is the anchor the turn instants are measured against. */
+  readonly askedAt?: number | null | undefined;
 };
 
 /** How to build the index. */
@@ -164,6 +179,24 @@ export type RelevanceIndexOptions = {
    * caller makes again, and one of them would eventually make a different one.
    */
   readonly retrieve?: Retrieval;
+  /**
+   * How much a turn's distance from the question's date contributes to its score. Defaults to **0**.
+   *
+   * ## Why zero is the default and why that is not timidity
+   *
+   * Every archived artifact was produced without this signal, so `0` has to mean "the ranking is what it
+   * was", byte for byte. A default above zero would silently change the meaning of every earlier run's
+   * configuration line, and an ablation could no longer hold this at "absent" because absent would not be
+   * expressible.
+   *
+   * The contribution is an **addition to the cosine the turn already earned**, and only for turns the
+   * retriever surfaced. Adding it to the floor would let a same-day turn the retriever never scored outrank
+   * a measured one, which reads as the temporal signal working while it is really the floor leaking.
+   *
+   * `docs/PLAN-RETRIEVAL-SIGNALS.md` §3 registers the experiment this exists for: `+3` recall@10 on the
+   * temporal questions of a 20-question column, at most `1` elsewhere, refuted below `+2`.
+   */
+  readonly temporalWeight?: number;
 };
 
 /** The shape both provided retrievers have: queries and a context in, ranked hits out. */
@@ -243,6 +276,14 @@ export type RelevanceIndex = {
    * position" cannot disagree; `relevance-index.test.ts` asserts the two agree.
    */
   rankedCandidatesFor(question: string): readonly string[];
+  /**
+   * How many distinct turn texts the temporal signal could place in time, and how many it looked at.
+   *
+   * Present only when `temporalWeight` was above zero. `scored: 0` with a non-zero population is the state
+   * that says "configured, fired on nothing", which is a different finding from a missing field — the same
+   * distinction `bareRetry` keeps for a retry pass, and it is the reason a census is not optional here.
+   */
+  readonly temporal?: { readonly scored: number; readonly total: number } | undefined;
 };
 
 /**
@@ -267,6 +308,9 @@ export async function buildRetrievalRelevanceIndex(
   options: RelevanceIndexOptions = {},
 ): Promise<RelevanceIndex> {
   const topK = options.topK ?? DEFAULT_RELEVANCE_TOP_K;
+  // Resolved once, outside the loop, for the reason `retrieve` is: a run cannot mix two weights across
+  // questions, and a weight of zero has to mean the shipped ranking rather than an approximate one.
+  const temporalWeight = options.temporalWeight ?? 0;
   // Resolved once, outside the loop, so a run cannot mix two mechanisms across questions.
   const retrieve: Retrieval =
     options.retrieve ??
@@ -277,6 +321,9 @@ export async function buildRetrievalRelevanceIndex(
   // turn and must remain O(1); this array is what gives a turn a position.
   const ranked = new Map<string, string[]>();
   let scoredPairs = 0;
+  // The census that separates "the signal fired on nothing" from "the signal was never wired". Counted over
+  // distinct turn texts, the same domain `affinityFor` answers in.
+  const temporal = { scored: 0, total: 0 };
 
   for (const entry of cases) {
     // The question first, then the case's own phrases. Order matters to the fusion --
@@ -285,11 +332,28 @@ export async function buildRetrievalRelevanceIndex(
     // maximum cosine across the queries that surfaced it.
     const queries = [entry.question, ...(entry.queries ?? [])];
     const hits = await retrieve(queries, entry.context, topK);
+    // Built once per case, before the hits are written: the affinity is a property of the case, and a
+    // per-hit recomputation would be the stateful-callback shape this module already refuses.
+    const boosts =
+      temporalWeight === 0
+        ? null
+        : temporalBoosts({
+            context: entry.context,
+            turnDates: entry.turnDates,
+            askedAt: entry.askedAt,
+          });
+    if (boosts !== null) {
+      temporal.scored += boosts.scored;
+      temporal.total += boosts.total;
+    }
     const byTurn = new Map<string, number>();
     const order: string[] = [];
     for (const hit of hits) {
       if (!byTurn.has(hit.text)) order.push(hit.text);
-      byTurn.set(hit.text, hit.score);
+      // Added only to a hit the retriever surfaced. The floor stays the floor: promoting an unscored turn
+      // with an affinity would let a same-day turn outrank a measured one, which reads as the signal
+      // working while it is really the floor leaking.
+      byTurn.set(hit.text, hit.score + temporalWeight * (boosts?.affinityFor(hit.text) ?? 0));
     }
     ranked.set(entry.question, order);
     scoredPairs += byTurn.size;
@@ -303,6 +367,11 @@ export async function buildRetrievalRelevanceIndex(
     questions: cases.length,
     scoredPairs,
     topK,
+    // Only present when the signal was configured, so a run that did not ask for it cannot report it as a
+    // zero -- the rule `bareRetry` follows for the same reason.
+    ...(temporalWeight === 0
+      ? {}
+      : { temporal: { scored: temporal.scored, total: temporal.total } }),
     relevanceFor(question: string, turn: string): number {
       return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
     },
