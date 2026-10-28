@@ -195,14 +195,12 @@ describe('the index, with the temporal weight at zero and above it', () => {
     context: readonly string[],
     topK: number,
   ) =>
-    context
-      .slice(0, topK)
-      .map((text, position) => ({
-        id: `${String(position)}`,
-        text,
-        score: 0.9 - position * 0.1,
-        index: position,
-      }));
+    context.slice(0, topK).map((text, position) => ({
+      id: `${String(position)}`,
+      text,
+      score: 0.9 - position * 0.1,
+      index: position,
+    }));
 
   async function indexAt(weight: number) {
     return buildRetrievalRelevanceIndex({} as never, [caseWithDates], {
@@ -280,14 +278,12 @@ describe('the census the signal publishes', () => {
     askedAt: ASKED,
   };
   const retriever = async (_q: readonly string[], context: readonly string[], topK: number) =>
-    context
-      .slice(0, topK)
-      .map((text, position) => ({
-        id: `${String(position)}`,
-        text,
-        score: 0.9 - position * 0.1,
-        index: position,
-      }));
+    context.slice(0, topK).map((text, position) => ({
+      id: `${String(position)}`,
+      text,
+      score: 0.9 - position * 0.1,
+      index: position,
+    }));
 
   it('is absent when the signal was not configured', async () => {
     // Absence and a zero are different sentences: one says the run did not carry the signal, the other says it

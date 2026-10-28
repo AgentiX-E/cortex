@@ -66,6 +66,8 @@ configuration differs in a way the publication does not state.
 | memoricai | frontier at 85.8%; self-reports diverge by +3 to −28pp |
 | Redis | independent reproduction converges at 86.5% |
 | benchd.ai (six open-source systems, 500 questions) | LlamaIndex 59.0%, LangChain 59.0%, **LLM baseline 57.6%**, AutoGPT 47.4%, **Mem0 OSS 32.4%**, Cognee 20.0%, **Graphiti 0.0%** |
+| **arXiv:2610.30755** (12 systems, 4 benchmarks) | **Raw-RAG wins 6 of 7 benchmark-model settings.** LongMemEval **87.53** against the best agentic memory system at 87.40; MemoryAgentBench 48.32 vs 43.84 (GPT-4o-mini) and 53.41 vs 47.88 (DeepSeek-V4-Flash) |
+| **arXiv:2608.19652** (StateMem) | 0.656 on LongMemEval with a **DeepSeek** reader (0.580 with Qwen), against Mem0 0.594 — the only published DeepSeek-reader figure on this benchmark |
 
 The benchd.ai row is the single most useful table in this literature, because it is the only one that measures
 systems *against a baseline with no memory at all* on the same harness. Three consequences:
@@ -150,6 +152,50 @@ reused, a forgotten fact leaked) from "the answer is wrong".
 | our abstention route is a *forgetting* behaviour with no forgetting metric | not adopted |
 | it names the failure classes we currently infer from discordant pairs | candidate |
 
+### 4.6 Naive retrieval beats every organised memory, and the mechanisms cost accuracy when added
+
+arXiv:2610.30755 (Xi'an Jiaotong, 2026-10-22, 62 pages) is the most uncomfortable result in this landscape,
+because it is the one that removes work rather than adding it. **Raw-RAG**: serialize the raw conversation
+with timestamps, chunk, dense-retrieve, rerank, hand the evidence to a reader. No extraction, no rewriting, no
+graph, no consolidation. It wins **six of seven** benchmark-model settings against twelve memory systems.
+
+| experiment | result |
+| --- | --- |
+| Mem0's own write decisions, audited | on LoCoMo, UPDATE + DELETE are **4.39%** of 33,902 decisions and effective mutations **1.90%**; on LongMemEval **2.46%** and **1.34%** of 428,858 |
+| replace UPDATE with append-only ADD and DELETE with NONE | LoCoMo goes **67.36% → 69.42%** — explicit rewriting bought nothing |
+| add machinery to Raw-RAG | atomic fact extraction **−19.62**, summarisation **−5.81**, graph expansion **−5.78** |
+| why extraction hurts | it takes test-time learning from **47.68%** to **15.37%** — the demonstrations it needs are broken apart |
+
+Two consequences for this repository, and the second is a correction.
+
+First: **it validates the decision not to do LLM extraction at ingest.** That decision was made on cost
+arithmetic (§4.3); this paper says it would also have cost accuracy.
+
+Second: **Raw-RAG's shape is our shape** — raw turns, timestamps, hybrid retrieval, a budget, no rewriting.
+At 87.53 with a GPT-4o-mini reader it is the strongest evidence available that the distance from our 80.80 is
+mostly the reader and not the architecture. See §8.1 for the reading this retires.
+
+### 4.7 State over retrieval, and a reader-side intervention that transfers
+
+arXiv:2608.19652 (StateMem) attacks a different axis: not what to retrieve but what the answer call is told to
+do. Its wrapper rewrites the one answer call an existing backend already makes into two sections — first
+*trace, in chronological order, every relevant value, revision, standing rule and derived input*, capped at 250
+words; then *resolve the question from that trace* with later-over-earlier precedence and explicit retirement.
+
+| measurement | value |
+| --- | --- |
+| LongMemEval, DeepSeek reader | StateMem **0.656** vs Mem0 0.594 |
+| LongMemEval, Qwen reader | 0.580 vs 0.566 |
+| temporal reasoning, DeepSeek | StateMem **0.624** vs long context **0.391** |
+| knowledge update | **0.795** |
+| transfer across six backends | **+31.7 to +66.6 points** over each backend alone |
+| attributed to state structure specifically | **+15.0 to +31.7** after a matched control with the same call count, format and budget |
+
+The matched control is the part worth copying as a method: the control asks for a generic relevant-information
+summary with the same two-section format and the same 250-word budget, so the difference isolates the
+*structure* rather than the extra text. This repository's `dispatch2` reading is the same family of
+intervention; the StateMem result says the pair (intervention, matched control) is what makes it attributable.
+
 ## 5. Datasets, ranked by what they would add
 
 | dataset | scale | what it scores that we do not | verdict |
@@ -198,10 +244,21 @@ available.
 
 1. **The target is 85.8%, not 96.2%.** Anything above the grade-A frontier is either a different reader or a
    different metric until an independent run says otherwise.
+2. **A reading made here is withdrawn.** An earlier version of this file treated the 82.4% oracle as the reader
+   ceiling and inferred that 80.80% sitting 1.6 points under it meant retrieval had little left to buy. Raw-RAG
+   at 87.53 with GPT-4o-mini — 5.1 points *above* that oracle — retires the inference. 82.4 was one
+   configuration of an oracle, not a bound, and the reader axis has to be priced by measurement rather than
+   inferred from a seat under it. The `S1` row in `ACCEPTANCE-MATRIX.md` carries the same retraction rather
+   than a quietly corrected claim.
 2. **The reader axis must be priced before any further memory work.** 84.23 → 94.87 from one swap is larger than
    our entire gap, and our 80.80% sits 1.6 points under a GPT-4o oracle ceiling.
-3. **The retrieval gap is 6–9 points of recall@10**, and it is addressable with signals the public systems
-   enumerate. That is a mechanism list, not a mystery.
-4. **The next external milestone is a submission, not a score**: run our arm under a fixed external reader.
-5. **Every number in this file is quoted with its four attributes or not at all**, because the alternative is
+4. **The retrieval gap is 6–9 points of recall@10**, and it is addressable with signals the public systems
+   enumerate. That is a mechanism list, not a mystery — but §4.6 says to add them one at a time and measure,
+   because three of the four mechanisms that paper tried made things worse.
+5. **The next external milestone is a submission, not a score**: run our arm under a fixed external reader.
+6. **Every number in this file is quoted with its four attributes or not at all**, because the alternative is
    contributing to the spread this document exists to measure.
+7. **Adding mechanism is now the hypothesis under test, not the default.** §4.6's four experiments all moved
+   the same way, and two of them are exactly what this project was about to build. That does not make them
+   wrong here, but it does mean each one ships at weight zero, with a census, and with a pre-stated condition
+   under which it is removed.

@@ -370,9 +370,36 @@ export const CRITERIA: readonly Criterion[] = [
         // no retrieval change can move a score past the reader that reads it.
         name: 'oracle context, GPT-4o',
         value: 0.824,
-        grade: 'A',
+        grade: 'B',
         recipe:
-          'the answer evidence handed over, GPT-4o reading it — the reader ceiling on this benchmark',
+          'one oracle configuration: the answer evidence handed over, GPT-4o reading it. **Not a ceiling** — see onMiss',
+      },
+      {
+        // The row that retired "oracle is the reader ceiling". A raw-RAG pipeline — timestamps, chunking,
+        // dense retrieval, reranking, no extraction and no rewriting — reads 87.53 with a GPT-4o-mini reader,
+        // which is 5.1 points *above* the oracle figure. So 82.4 was a configuration, not a bound, and the
+        // inference "we are 1.6 under the ceiling so retrieval is nearly done" does not survive it.
+        //
+        // It also matters for a second reason: this pipeline is the shape Cortex already has. No LLM
+        // extraction at ingest, no fact rewriting, raw turns plus dates, hybrid retrieval, a reranking stage.
+        // A same-shaped system reaching 87.53 is the strongest evidence available that the distance from
+        // 80.80 is mostly the reader rather than the architecture.
+        name: 'Raw-RAG (naive, GPT-4o-mini)',
+        value: 0.8753,
+        grade: 'B',
+        recipe:
+          'arXiv:2610.30755: timestamps, chunking, dense retrieval and reranking over raw turns, no extraction, no rewriting — 87.53 against the strongest agentic memory system at 87.40',
+      },
+      {
+        // The one row measured with a DeepSeek reader, which is the reader this arm uses. StateMem reports
+        // 0.656 on LongMemEval with DeepSeek and 0.580 with Qwen, against Mem0 at 0.594 and full history
+        // lower still. It is the only published DeepSeek-reader reading on this benchmark, so it is the only
+        // (weak) anchor for what 80.80 means: 15.2 points above it, on a different corpus version and judge.
+        name: 'StateMem (DeepSeek reader)',
+        value: 0.656,
+        grade: 'B',
+        recipe:
+          'arXiv:2608.19652: state-tracking memory, DeepSeek reader — 0.656; the only published DeepSeek-reader figure on this benchmark',
       },
       {
         // The controlled half of Mastra's own reader ablation: same memory system at 84.23% (GPT-4o) and 94.87%
@@ -409,7 +436,7 @@ export const CRITERIA: readonly Criterion[] = [
         value: 0.9487,
         grade: 'C',
         recipe:
-          'vendor research page, strongest reader — above the GPT-4o oracle ceiling, so not the same experiment as the row above',
+          'vendor research page, strongest reader — the same memory system as the GPT-4o row above, differing only in the model that reads it, which is what makes the 10.6-point gap an experiment on the reader',
       },
       {
         name: 'agentmemory V4',
@@ -427,7 +454,7 @@ export const CRITERIA: readonly Criterion[] = [
       },
     ],
     onMiss:
-      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. The oracle row is the internal control on that sentence: a reader that cannot exceed 82.4% given the right evidence cannot be pushed past 85% by retrieval, and a seat 1.6 points under it has to be priced on the reader axis before it is priced on the retrieval axis.',
+      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. **A retracted reading is recorded here rather than deleted**: an earlier version of this row called the 82.4% oracle a reader ceiling and inferred that 80.8% sitting 1.6 points under it meant retrieval had little left to buy. arXiv:2610.30755 retired that inference — a naive raw-RAG pipeline reads 87.53 with a GPT-4o-mini reader, above the oracle. So 82.4 was a configuration and not a bound, and the reader axis has to be priced by measurement (same hits, different reader, recall held constant) rather than inferred from a seat under an oracle.',
   },
   {
     id: 'S2',

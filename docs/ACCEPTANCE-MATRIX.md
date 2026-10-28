@@ -142,7 +142,9 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | --- | --- | --- | --- |
 | memoricai | 85.8% | A | 500 questions, official prompts, gpt-4o-2024-08-06 as reader and judge, ~11k-token contexts |
 | Supermemory | 81.6% | A | the published GPT-4o-reader configuration, per the same independent comparison |
-| **oracle context, GPT-4o** | **82.4%** | A | **the answer evidence handed over, GPT-4o reading it — the reader ceiling** |
+| oracle context, GPT-4o | 82.4% | B | one oracle configuration — **not a ceiling**, see consequence 3 |
+| **Raw-RAG (naive, GPT-4o-mini)** | **87.5%** | B | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting |
+| StateMem (DeepSeek reader) | 65.6% | B | state-tracking memory; the only published DeepSeek-reader figure on this benchmark |
 | **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->81.0% | — | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256` |
 | Mastra OM, GPT-4o | 84.2% | B | vendor research page, observational memory, GPT-4o reader and judge |
 | Mem0 OSS, reproduced | 32.4% | B | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not |
@@ -150,7 +152,7 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | Zep | 71.2% | A | as reported in Zep's own LongMemEval paper, GPT-4o reader |
 | full-context GPT-4o | 60.2% | A | the paper baseline: the whole history in the window |
 | Hindsight (vendor) | 94.6% | C | vendor-reported; reader, judge and preprocessing not published reproducibly |
-| Mastra OM, GPT-5-mini | 94.9% | C | the strongest reader — above the GPT-4o oracle ceiling, so not the same experiment |
+| Mastra OM, GPT-5-mini | 94.9% | C | the strongest reader; the same memory system as the GPT-4o row, which is what makes the 10.6-point gap an experiment on the reader |
 | agentmemory V4 | 96.2% | C | single deterministic run, Claude Opus 4.6 reader, six-signal retrieval |
 | Graphonomous | 92.6% | C | keyword-recall proxy on an oracle split — not the official metric |
 
@@ -162,15 +164,18 @@ Four consequences, and the last two are uncomfortable:
 2. **Most open-source memory systems lose to having no memory at all.** The reproduced no-memory baseline is
    57.6%, and four of the six systems in the same harness scored below it. So the first acceptance question is
    "beats full context", and only then "beats the leaderboard". Cortex's 81.0% clears that bar by 23.4 points.
-3. **The oracle row bounds what retrieval work can buy.** An oracle run is handed the gold evidence and asked
-   only to read it. At 82.4% with GPT-4o, a retrieval improvement cannot move a GPT-4o-read score past that
-   ceiling — and Cortex sits 1.6 points under it. The 21-point gap to the frontier is therefore *not* all
-   retrieval, and any plan that treats it as retrieval is mispriced.
-4. **The reader axis is larger than the gap.** Mastra's own ablation moves one memory system from 84.23% to
-   94.87% by changing only the reader — a single-variable delta of 10.6 points, against the 4.8 points this
-   project needs to reach the reproducible frontier. This does not make the reader a shortcut (our judge
-   prompts are fixed at the benchmark's own), but it does mean a reader swap has to be measured as its own
-   increment rather than assumed into a memory result.
+3. **A reading here is withdrawn rather than quietly corrected.** An earlier version of this section called the
+   82.4% oracle the reader ceiling and inferred that 80.8% sitting 1.6 points under it meant retrieval had
+   little left to buy. arXiv:2610.30755 retires that inference: a naive raw-RAG pipeline reads **87.53** with a
+   GPT-4o-mini reader, five points *above* the oracle. So 82.4 was one configuration and not a bound. The gap is
+   still not all retrieval, but the reason now has to come from a measurement — same hits, different reader,
+   recall held constant — rather than from a seat under an oracle.
+4. **The reader axis is larger than the gap, and a second argument now agrees with it.** Mastra's own ablation
+   moves one memory system from 84.23% to 94.87% by changing only the reader — a 10.6-point single-variable
+   delta against the 4.8 points this project needs. And Raw-RAG reaches 87.5% with a mid-tier reader using this
+   project's own shape: raw turns, dates, hybrid retrieval, no rewriting. Two independent lines, one conclusion:
+   a reader swap is its own increment, measured, never assumed into a memory result. Judge prompts stay fixed at
+   the benchmark's own either way.
 
 The category split is where the deficit is, and it is not uniform. Knowledge update is at
 <!-- reading:S2 -->86.8%, above the threshold and above the frontier's implied position; multi-session is at
