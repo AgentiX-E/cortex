@@ -723,11 +723,15 @@ forwarded into a step's `env`. Three injections were run against it:
   whose questions assemble evidence across turns; the three untouched capabilities reproduce their control's
   window **to the character** (61.0 / 62.0 / 72.0 turns) and that is the check §13.83 registered before the run
   existed. `all` reaches every route and is the identity a run with no filter is in.
-* `reviewPass: none` — **registered by §13.94 at the identity**: one consultation per question, which is
-  the state every run before that section was in. The pass exists because §13.93 measured the failure as
-  membership rather than coverage — a reader that walked all forty-four sessions still named two items —
-  and `none` is what the line must say on a run that performed no second look, for the same reason the
-  cap is spelled `none` rather than omitted.
+* `reviewPass: bare` — **adopted by §13.112, which is also the section that found the drift this
+  line had accumulated.** The bare-decline retry is what a dispatch now ships: a reply that is the
+  abstention token and nothing else is asked once more with that token absent from the prompt, on the
+  flat and temporal routes only. It was registered at the identity by §13.94 and adopted on the
+  measurement §13.107 records — six readings, 22/19/25/22/23 consultations and a four-run mean of
+  83.45% against the control's 81.0%, no capability lower, `ABS` 29/30 in every run. The identity is
+  still expressible and still matters: `none` is the control, it must be named explicitly by any run
+  that wants it, and §13.112 states why the difference between "ships" and "is the control" has to be
+  written in the same place as the number.
 * `queryExpansion: none` — **registered by §13.97 at the identity**: the relevance index is built
   from the question alone, which is the state every archived run was in. The variable exists because
   §13.96 localised the residual multi-session loss to the matching decision rather than to list

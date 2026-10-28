@@ -308,5 +308,132 @@ class TestDispatchedConfigurationMatchesTheRegistration(unittest.TestCase):
         )
 
 
+WORKFLOW = ROOT / ".github" / "workflows" / "benchmark-cortex-memory.yml"
+
+# Inputs whose `workflow_dispatch` default is deliberately NOT the registered value.
+#
+# Written out rather than inferred, because the difference has to be a decision somebody made
+# and can be asked about. `limit` and `ablation_runs` default to a cheap smoke run so that a
+# person opening the "Run workflow" page and pressing the button gets an answer in minutes
+# instead of hours; §10.3 registers the full 500-question, four-run experiment. Both are
+# correct, and they are correct *about different things*, which is exactly why the rule below
+# cannot be "the default must equal the registration".
+#
+# Anything else that disagrees is a shipped configuration that contradicts its own
+# registration — the defect this class was written for.
+DEFAULT_MAY_DIFFER = {
+    "limit": "the button-run budget is a smoke run; §10.3 registers the full N",
+    "ablation_runs": "the button-run budget is one repetition; §10.3 registers four",
+}
+
+
+def declared_defaults() -> dict[str, str]:
+    """`{input name: default}` for every `workflow_dispatch` input that declares one.
+
+    Parsed with a hand-written reader rather than a YAML library for the reason
+    `test_workflow_yaml.py` gives: the repository has no YAML dependency in the tools layer and
+    the block's shape is fixed by GitHub rather than by this file. The reader is deliberately
+    literal about indentation — six spaces before the input, eight before its keys — because a
+    regex that tolerated any indentation would also read keys out of `on.push.paths`.
+    """
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index("workflow_dispatch")
+    end = source.index("\njobs:", start)
+    block = source[start:end]
+
+    defaults: dict[str, str] = {}
+    current: str | None = None
+    for line in block.splitlines():
+        header = re.match(r"^      ([A-Za-z_][A-Za-z0-9_]*):\s*$", line)
+        if header:
+            current = header.group(1)
+            continue
+        value = re.match(r"^        default: (.*)$", line)
+        if value and current is not None:
+            # A default is always quoted in this workflow; strip one layer so the comparison is
+            # against the value GitHub would pass, not against the source spelling.
+            literal = value.group(1).strip()
+            if len(literal) >= 2 and literal[0] == literal[-1] and literal[0] in "'\"":
+                literal = literal[1:-1]
+            defaults[current] = literal
+    if not defaults:
+        raise AssertionError(
+            "no `workflow_dispatch` defaults were read. A parser that silently finds nothing "
+            "makes every assertion in TestTheShippedDefaultAgreesWithTheRegistration vacuous."
+        )
+    return defaults
+
+
+class TestTheShippedDefaultAgreesWithTheRegistration(unittest.TestCase):
+    """The direction every previous guard in this file could not see.
+
+    ## The defect this class exists for
+
+    `TestDispatchedConfigurationMatchesTheRegistration` compares §10.3 with the dispatch
+    script. Both are files a maintainer edits by hand, and both were correct on the day the
+    workflow's own default for `cortex_memory_review_pass` moved from `''` to `'bare'`: the
+    workflow said the treatment ships, §10.3 said `none`, the script said `none`, and every
+    test was green.
+
+    The consequence is not cosmetic. A dispatch through `tools/dispatch-cortex-memory-ab.py`
+    sends `review_pass=none` explicitly, so the script reproduces the **control** while its
+    docstring calls it the registered configuration — 81.0% instead of the 83.45% the product
+    reads. And a dispatch through the GitHub UI, sending no `review_pass` at all, reproduces
+    the product. Two ways to "run the registered configuration" that differ by 2.45 points,
+    with nothing in either artifact able to say which one it was.
+
+    Run `40698867439` is the measurement that separated them: it sent no `review_pass`, landed
+    on the workflow default, and read 83.40% (417/500) — 0.05 points from the four-run mean
+    §10.3's neighbours report.
+
+    ## Why the rule is "the shipped default is the registration", with an allowlist
+
+    Because a `workflow_dispatch` default is the only place in the repository that expresses
+    "what a run gets when nobody chooses". If that value disagrees with §10.3, then the
+    registration is not the shipped configuration and the product has no stated configuration
+    at all. The two exceptions are the button-run budgets, whose whole purpose is to be
+    cheaper than the experiment; they are named in `DEFAULT_MAY_DIFFER` with their reason.
+    """
+
+    def test_the_defaults_were_read(self) -> None:
+        # The control. A reader that returned an empty dict, or one that missed the input this
+        # class was written for, would make the assertion below pass while checking nothing.
+        defaults = declared_defaults()
+        self.assertIn("cortex_memory_review_pass", defaults)
+
+    def test_every_overlapping_input_agrees_or_declares_why_not(self) -> None:
+        found = registered()
+        defaults = declared_defaults()
+        checked = 0
+        for concept, value in sorted(found.items()):
+            input_name = CONCEPT_TO_INPUT[concept]
+            if input_name not in defaults:
+                continue
+            shipped = defaults[input_name]
+            if shipped == "":
+                # An empty default means "leave the reader's own default alone", which is a
+                # different statement from naming a value and cannot contradict one.
+                continue
+            checked += 1
+            if input_name in DEFAULT_MAY_DIFFER:
+                continue
+            with self.subTest(concept=concept):
+                self.assertEqual(
+                    shipped,
+                    value,
+                    f"the workflow ships `{input_name}: {shipped}` but §10.3 registers "
+                    f"`{concept}: {value}`. A dispatch that names no value therefore runs "
+                    "something the registration does not describe, and the artifact cannot "
+                    "tell the two apart. Move both, or add the input to DEFAULT_MAY_DIFFER "
+                    "with the reason it is allowed to differ.",
+                )
+        self.assertGreater(
+            checked,
+            0,
+            "no input overlapped the registration, so this guard checked nothing. That is "
+            "the state a renamed input leaves behind.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

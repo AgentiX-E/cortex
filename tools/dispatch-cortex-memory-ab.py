@@ -318,11 +318,15 @@ INPUTS = {
     # MR from 83 to 90 and TR from 93 to 98 with no capability regressed, so these two lines move
     # with §10.3. The reach stays scoped: the three untouched capabilities reproduce their control
     # window to the character, which is the internal control the registration asked for.
-    # §13.94's second consultation. `none` is the state every archived run is in and is sent
-    # explicitly for the reason every registered value is: the run's pass should not depend on an
-    # absent input meaning "no pass". The experiment overrides it with `--set
-    # cortex_memory_review_pass=audit`.
-    "cortex_memory_review_pass": "none",
+    # §13.94's second consultation, adopted as `bare` by §13.108. The value was `none` here for one
+    # revision after the workflow's own default moved to `bare`, which made this script reproduce the
+    # CONTROL while calling itself the registered configuration: run `40698867439` dispatched with no
+    # `review_pass` input at all, arrived at `bare` through the workflow default, and read 83.40%
+    # (417/500) against the 81.0% this line would have produced. Both values are legitimate and the
+    # experiment still overrides with `--set`; what is not legitimate is the shipped configuration and
+    # the script that reproduces it disagreeing, which is why
+    # `tools/__tests__/test_preregistration_config.py` now pins this line to the workflow default.
+    "cortex_memory_review_pass": "bare",
     # §13.97's variable, held at the identity in the registered configuration. An experiment
     # overrides it with `--set cortex_memory_query_expansion=llm`; the marker in the log says
     # which dispatches departed from this table.
