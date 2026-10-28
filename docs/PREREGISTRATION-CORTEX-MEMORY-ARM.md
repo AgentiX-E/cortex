@@ -11950,11 +11950,13 @@ temperature — `1.0` for DeepSeek — not at 0. Two consequences, one benign an
    5–6 questions per route and §13.108.3 built its argument on that number. It is consistent with
    `T = 1.0` on 500 questions, and the previous attribution ("the instrument's own movement") was
    right about the size and silent about the cause. Nothing in the campaign's arithmetic changes.
-2. **Every claim of determinism for this arm is false as written.** Not the paired McNemar results —
-   both sides share the reader and the temperature, so the comparison is unaffected — but any
+2. **Every claim of determinism for this arm is false as written.** Not the feature aggregate —
+   that number is one system's own accuracy and a temperature cannot make it a lie — but any
    sentence that says a run is reproducible to the question. Two dispatches of one configuration
    are two samples at `T = 1.0`, and §13.91's `44.20%` twice in a row was the reference pipeline,
    which does read the variable.
+   **This paragraph originally continued "both sides share the reader and the temperature, so the
+   paired comparison is unaffected", and that half is wrong — §13.120.**
 
 **Why it is not fixed in this commit.** Because fixing it moves every number. A reader pinned to
 `T = 0` is a different reader in the sense that matters here: the distribution narrows, the mean can
@@ -12484,3 +12486,42 @@ registered one; whichever wins, the deliverable is the _dispersion_, because tha
 resolvable at a 7-question per-route spread. Spending a rerank dispatch before the temperature is pinned would
 produce a number indistinguishable from a shuffle — which is the exact failure mode this register exists to
 prevent, and it would be the third time (§13.118 was the second).
+
+## 13.120 The two sides of one dispatch never shared a temperature, and this register said they did
+
+Found while wiring §13.119, in the sentence that had justified leaving the defect alone.
+
+`NaturalLanguageMemorySystem` — the arm's **baseline**, constructed in `bench/run-ablation.ts` with no
+`temperature` — sends `this.options.temperature ?? DEFAULT_TEMPERATURE` on every call, and `DEFAULT_TEMPERATURE`
+is **0**. `cortex-memory` — the arm's **feature** — sent nothing at all until §13.119, so the provider's default
+applied. Both sides receive one `llm` built by `createLlmFromEnv`, but a shared object is not a shared
+temperature: one side names the value on every call and the other never named it.
+
+So the correct statement about every dispatch this campaign has taken is: **the feature side was sampled at the
+provider's default (`1.0`) and the baseline side was pinned at 0**, in the same job, over the same questions,
+against the same endpoint. §13.114 wrote the opposite in a parenthetical, and the parenthetical was the reason
+the defect looked cosmetic.
+
+**What this does and does not touch.**
+
+| reading                                                           | affected?                                              | why                                                                                                                                           |
+| ----------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| The feature aggregate (`S1`'s 83.5%)                              | **no**                                                 | one system's own accuracy; sampling does not change what it measures, only how tightly                                                        |
+| `Δ accuracy` and the McNemar p-value against `reference-pipeline` | **yes**                                                | the two sides differ by a sampling setting as well as by architecture, so the Δ is a **system** comparison and not a reader-held-constant one |
+| The per-capability table's `b✓f✗` / `b✗f✓` columns                | **yes**, same reason                                   | each cell is a disagreement between a pinned reader and an unpinned one                                                                       |
+| Anything §13.118 read about the budget                            | **no**                                                 | both sides of that comparison were the same system                                                                                            |
+| Anything §13.115 will read about reranking                        | **no**, provided the rerank arms are both feature-side | §13.115's control and treatment are the same reader, so the two arms share whatever temperature is in force                                   |
+
+**No code changes.** Pinning the baseline to the environment's value would move the reference pipeline's own
+published reading (`44.20%` twice, §13.91) and break comparability with every artifact back to §13.1, in exchange
+for a Δ that nothing in the acceptance table scores. The baseline's 0 is a property of that system, documented in
+its own code and pinned by its own test (`natural-language-memory.test.ts`: "passes temperature 0 to the LLM by
+default for determinism"). What was missing was the sentence saying the two sides differ, and the artifact has no
+field that could have said it — `reader` describes the arm's reader, and the arm is the feature side.
+
+**What the §13.119 dispatches therefore are.** Arm B (`temperature=0`) is the first dispatch in which **both
+sides are pinned**, so its Δ against `reference-pipeline` is the first one in this register that is a
+reader-held-constant comparison. Arm A (`default`) reproduces the historical condition exactly, which is what
+makes it the control. Neither arm's headline changes, and the prediction in §13.119.4 is about the feature
+aggregate only — but a reader comparing B's `Δ` against any earlier artifact's `Δ` should know that the two are
+different quantities.
