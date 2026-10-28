@@ -119,7 +119,7 @@ must be printed, not equalised.
 | `mem0` driver | **done and run**: `40519523383` produced `0.0%` and the number was wrong — §6.1 |
 | `--sut` wiring into `tools/competitor-harness.mjs` | **done**, and it now prints ingest loss |
 | the first quotable reading | **open**: the repaired driver has not been dispatched yet |
-| second competitor | `agentmemory V4`, per §6.2 — highest published score and individually nameable signals |
+| second competitor | `RAW-RAG`, per §6.2 — same shape as this arm, MIT, DeepSeek reader supported, same corpus file |
 
 ### 6.1 Run `40519523383`, and the two defects that produced a plausible number
 
@@ -196,8 +196,27 @@ assessment, from each project's own packaging:
 | Mastra OM | `@mastra/memory` (TypeScript) | one LLM call per compression window | not a retrieval interface — a context-assembly policy | the copyable mechanism is window management, not a `search` endpoint |
 | Letta / MemGPT | `letta` | LLM extraction | server-oriented | different interaction model: an agent loop, not retrieval |
 
-The ordering rule this table implies: **the second competitor is `agentmemory V4`**, because it is the only one that
-is both the highest published score and a pipeline whose parts are separately nameable.
+The ordering rule this table implies, revised this round: **the second competitor is `RAW-RAG`**, not
+`agentmemory V4`.
+
+| reason | detail |
+| --- | --- |
+| **same shape** | raw turns, timestamps, dense retrieval, reranking, no extraction, no rewriting — a reproduction that disagrees points at an implementation detail rather than at an architecture |
+| **the reader we already use** | an explicit `DEEPSEEK_*` block beside the OpenAI-compatible `LLM_*`, so the comparison holds the reader fixed by configuration rather than by re-implementation |
+| **the same corpus file** | `longmemeval/longmemeval_s_cleaned.json`, 500 questions — no version question to answer first |
+| **its own ablations exist** | `rag_atomic_facts`, `rag_raw_summary`, `rag_graph_expanded_raw`: three mechanisms this project is also considering, already measured inside the competitor by its authors |
+| **MIT** | no licence argument |
+
+`agentmemory V4` is the better *leaderboard* reproduction — highest published figure, six separately nameable
+signals — but it is a different architecture, so a disagreement would be attributable to the architecture and
+not to the implementation. Both are worth running; the order changed because the shape-matched one answers the
+question this arm currently has ("is the distance to 87.5 the reader or the pipeline?"), and the leaderboard one
+answers a question the project is not yet asking.
+
+The one open dependency in `RAW-RAG` is the reranker: the paper uses a Cohere `/v2/rerank` endpoint, and the
+Runner holds DeepSeek and Zhipu keys. Two substitutions are possible and both have to be stated in the manifest
+rather than assumed — a local cross-encoder, or an OpenAI-compatible rerank endpoint if Zhipu exposes one. A run
+with the reranker disabled is a different system and its row must say so.
 
 ## 7. What this does not fix
 

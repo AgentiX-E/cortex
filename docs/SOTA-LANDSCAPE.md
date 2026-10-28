@@ -166,6 +166,18 @@ graph, no consolidation. It wins **six of seven** benchmark-model settings again
 | add machinery to Raw-RAG | atomic fact extraction **−19.62**, summarisation **−5.81**, graph expansion **−5.78** |
 | why extraction hurts | it takes test-time learning from **47.68%** to **15.37%** — the demonstrations it needs are broken apart |
 
+**It is also the most reproducible competitor this project has found**, which changes the order of §6.2:
+
+| requirement | RAW-RAG |
+| --- | --- |
+| licence | MIT |
+| reader | OpenAI-compatible `LLM_*` **and an explicit `DEEPSEEK_*` block** — the reader this arm uses is a first-class configuration |
+| embedder | OpenAI-compatible `VECTORIZE_*`, so Zhipu's `embedding-3` fits |
+| corpus | **`longmemeval/longmemeval_s_cleaned.json`, the same file this project runs** |
+| launch | `python -m evaluation.cli --dataset longmemeval --system rag` |
+| its own ablations | `rag_atomic_facts`, `rag_raw_summary`, `rag_graph_expanded_raw` — the same three mechanisms §4.6 measured as harmful |
+| reranker | the one open dependency: the paper uses a Cohere `/v2/rerank` endpoint, and a local cross-encoder or an OpenAI-compatible rerank endpoint would have to be substituted |
+
 Two consequences for this repository, and the second is a correction.
 
 First: **it validates the decision not to do LLM extraction at ingest.** That decision was made on cost
@@ -195,6 +207,22 @@ The matched control is the part worth copying as a method: the control asks for 
 summary with the same two-section format and the same 250-word budget, so the difference isolates the
 *structure* rather than the extra text. This repository's `dispatch2` reading is the same family of
 intervention; the StateMem result says the pair (intervention, matched control) is what makes it attributable.
+
+### 4.8 Four papers in one day, three of which bound what this project may claim
+
+The 2026-10-22/26 batch is worth reading together because each one removes a different assumption.
+
+| paper | finding | what it bounds here |
+| --- | --- | --- |
+| arXiv:2610.31366, **AfterDeleteBench** | one query recovered a deleted secret from Qwen2.5-7B in ~**2/3** of cases while controls that never saw it recovered zero; with only derived artefacts left, exact reconstruction succeeded **62–99%** across Qwen, Mistral and Phi-3. Provenance-aware closure — deleting everything downstream — dropped recovery to zero | any future "forget this" claim has to be measured *behaviourally*, not as a storage operation |
+| arXiv:2610.30698, **validity ledger** | flipping only the *validity state* of memories, content untouched, changed the operative context in **96.25%** of 2,080 matched pairs and cost **40.54 points** on LongMemEval; oracle enforcement restored all of it | the bookkeeping of which memory is current is a **40-point** lever, not a housekeeping detail — this is the axis our KU capability sits on |
+| arXiv:2610.30478, **distillation vs buffer** | distilling memory into weights bought a non-significant **+1**; attaching a frozen retrieval buffer bought **+34** | any proposal to move memory into parameters is measured against a frozen-buffer baseline, not against nothing |
+| **MemoryTax** (prior week) | Opus 5.5 plus raw-history search reached **99%** at under half the cost | the frontier's own recipe is *raw record plus a good search box* — which is this project's shape |
+
+Two of these say the same thing from opposite directions: **what is worth engineering is provenance** —
+knowing what came from where, what is still current, and what must die when a source is deleted. That is a
+write-time and bookkeeping problem, and this project's ledger (`temporality` + `bitemporal`) is aimed at
+exactly it while its retrieval is aimed at the part the benchmarks keep voting down.
 
 ## 5. Datasets, ranked by what they would add
 
