@@ -187,7 +187,13 @@ function tail(text, limit = 600) {
  * The provider is stateful on purpose: `ingest` and `search` both go to the same child, so a system that caches
  * internally keeps its cache between the two, which is what it would do in production.
  */
-export async function createSutProvider({ driver, python = 'python3', env = {}, timeoutMs, cwd } = {}) {
+export async function createSutProvider({
+  driver,
+  python = 'python3',
+  env = {},
+  timeoutMs,
+  cwd,
+} = {}) {
   const spec = DRIVERS[driver];
   if (spec === undefined) {
     throw new SutFailure(
@@ -195,7 +201,10 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
     );
   }
   const budget = timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const channel = new Channel(python, [join(SUT_DIR, spec.script)], { env, ...(cwd === undefined ? {} : { cwd }) });
+  const channel = new Channel(python, [join(SUT_DIR, spec.script)], {
+    env,
+    ...(cwd === undefined ? {} : { cwd }),
+  });
 
   const manifest = await channel.send({ op: 'manifest' }, budget);
   if (!manifest.ok) {
@@ -203,11 +212,15 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
   }
   for (const field of ['name', 'build', 'version']) {
     if (typeof manifest[field] !== 'string') {
-      throw new SutFailure(`${spec.name} manifest has no string \`${field}\`: ${JSON.stringify(manifest)}`);
+      throw new SutFailure(
+        `${spec.name} manifest has no string \`${field}\`: ${JSON.stringify(manifest)}`,
+      );
     }
   }
   if (!['llm', 'embedding', 'none'].includes(manifest.build)) {
-    throw new SutFailure(`${spec.name} declared build ${JSON.stringify(manifest.build)}, which is not a cost class`);
+    throw new SutFailure(
+      `${spec.name} declared build ${JSON.stringify(manifest.build)}, which is not a cost class`,
+    );
   }
 
   /** Per-question refusals, kept so the summary can separate them from empty results. */
@@ -246,7 +259,9 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
       if (!response.ok) {
         // Both the driver's own words and its per-session list, because a run that stored nothing has to be
         // diagnosable from the failure alone — there is no table afterwards to look at.
-        const detail = Array.isArray(response.skipped) ? response.skipped.slice(0, 3).join('; ') : '';
+        const detail = Array.isArray(response.skipped)
+          ? response.skipped.slice(0, 3).join('; ')
+          : '';
         throw new SutFailure(
           `ingest refused: ${String(response.error)}${detail === '' ? '' : ` [${detail}]`}`,
         );
@@ -274,7 +289,12 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
     async search(query, options) {
       const limit = Number(options.limit ?? 0);
       const response = await channel.send(
-        { op: 'search', query, limit, ...(options.asOf === undefined ? {} : { asOf: options.asOf }) },
+        {
+          op: 'search',
+          query,
+          limit,
+          ...(options.asOf === undefined ? {} : { asOf: options.asOf }),
+        },
         budget,
       );
       if (!response.ok) {
@@ -284,7 +304,9 @@ export async function createSutProvider({ driver, python = 'python3', env = {}, 
         return [];
       }
       if (!Array.isArray(response.hits)) {
-        throw new SutFailure(`search answered without a \`hits\` array: ${JSON.stringify(response).slice(0, 200)}`);
+        throw new SutFailure(
+          `search answered without a \`hits\` array: ${JSON.stringify(response).slice(0, 200)}`,
+        );
       }
       if (response.hits.length > limit) {
         throw new SutFailure(
@@ -344,7 +366,8 @@ async function selftest() {
   // Two assertions, and both are about the protocol rather than the ranking: a channel that returns nothing on a
   // query whose term is present proves nothing, and a driver that survives `reset` would make every
   // isolated-mode number after the first question wrong.
-  if (hits.length === 0) throw new SutFailure('the reference driver found nothing in a corpus it was given');
+  if (hits.length === 0)
+    throw new SutFailure('the reference driver found nothing in a corpus it was given');
   if (afterReset.length !== 0) throw new SutFailure('reset left retrievable text behind');
 }
 

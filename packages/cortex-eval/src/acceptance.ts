@@ -371,7 +371,8 @@ export const CRITERIA: readonly Criterion[] = [
         name: 'oracle context, GPT-4o',
         value: 0.824,
         grade: 'A',
-        recipe: 'the answer evidence handed over, GPT-4o reading it — the reader ceiling on this benchmark',
+        recipe:
+          'the answer evidence handed over, GPT-4o reading it — the reader ceiling on this benchmark',
       },
       {
         // The controlled half of Mastra's own reader ablation: same memory system at 84.23% (GPT-4o) and 94.87%
