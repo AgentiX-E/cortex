@@ -115,11 +115,60 @@ must be printed, not equalised.
 
 | piece | state |
 | --- | --- |
-| protocol + adapter + reference driver + tests | **done** (`tools/competitor-sut/PROTOCOL.md`, `tools/competitor-sut.mjs`, 9 tests) |
-| `mem0` driver | **done and partially exercised**: manifest verified against `mem0ai 2.2.1`; ingest does not complete in the development sandbox within 90 s (offline telemetry retries) |
-| `--sut` wiring into `tools/competitor-harness.mjs` | next |
-| the first real run (mem0, `infer=0`, Zhipu embeddings, 100 stratified questions) | needs a Runner, one dispatch |
-| second competitor | after the first produces a number, because the second one's cost is only knowable once the machinery has been through one end to end |
+| protocol + adapter + reference driver + tests | **done** (`tools/competitor-sut/PROTOCOL.md`, `tools/competitor-sut.mjs`, 17 tests) |
+| `mem0` driver | **done and run**: `40519523383` produced `0.0%` and the number was wrong — §6.1 |
+| `--sut` wiring into `tools/competitor-harness.mjs` | **done**, and it now prints ingest loss |
+| the first quotable reading | **open**: the repaired driver has not been dispatched yet |
+| second competitor | `agentmemory V4`, per §6.2 — highest published score and individually nameable signals |
+
+### 6.1 Run `40519523383`, and the two defects that produced a plausible number
+
+The run printed:
+
+```
+mem0                embedding 0.0%    0.0%    0.000   —    0    0
+system under test: 100 refusal(s), 0 empty result(s) of 100 question(s).
+```
+
+Every element of that row is consistent with "mem0 retrieves nothing on this corpus", and none of it was true.
+
+| defect | what it did | why nothing caught it |
+| --- | --- | --- |
+| the vector store was never told the embedding width | `FAISSConfig.embedding_model_dims` defaults to **1536**; the configured embedder produces **1024**; faiss rejects every `add` with a bare `AssertionError` from `assert d == self.d` | the driver caught the exception per session and listed it as `skipped`, which is correct for one bad session and fatal for a hundred |
+| nothing read the skip list | the store stayed empty, so every `search` raised the same assertion and the parent counted each one as a **refusal** — a claim about the system | `refusals` and `emptyResults` were already separate counters; the third counter did not exist |
+
+The lesson is not "mem0 is hard to configure". It is that **the protocol had three verdicts and needed four**: a
+run that fails, a question the system refuses, a question it finds nothing for, and **a corpus that never reached
+the store**. The fourth was in the data from the first commit — `ingest` had always returned `skipped` — and no
+renderer read it.
+
+What changed, each with a test that runs without a vendor key:
+
+1. the driver passes `embedding_model_dims` to the store, and **refuses to guess** when the embedder does not
+   declare a width, because a store left at its default is silently claiming a vector space;
+2. a run whose ingest stores nothing is a **failed comparison**, checked in the driver and again in the protocol —
+   the rule belongs to every driver, not to the ones that remembered to implement it;
+3. the report prints `ingest: N of M session(s) stored, K refused` with reasons whenever the count is not zero.
+
+Verified against `mem0ai 2.2.1` + `faiss-cpu` in the development sandbox: ingest stores 2 turns, search returns 2
+hits. The next dispatch of `competitor-retrieval.yml --sut mem0` is the first reading that will be quotable.
+
+### 6.2 Which competitors can actually be run here
+
+The machinery exists so that "can we run it" is a per-competitor fact rather than a project decision. Current
+assessment, from each project's own packaging:
+
+| system | package | ingest cost | behind the protocol | note |
+| --- | --- | --- | --- | --- |
+| Mem0 OSS | `mem0ai` | 1 embedding/turn (`infer=0`) | **yes** — `mem0_driver.py` | driver repaired; first quotable reading pending |
+| agentmemory V4 | `pip install -e ".[dense]"` | 1 embedding/turn, optional cross-encoder rerank | **candidate** — `async_recall` / `async_build_context` map onto `search` / `ingest` | highest published figure (96.2%) with individually nameable signals, so a disagreement names *which* signal |
+| Graphiti / Zep | `graphiti-core` | LLM entity extraction per episode | needs a graph server or an embedded driver | 0.0% in one independent harness — reproduce the *harness fit* before the score |
+| Cognee | `cognee` | LLM extraction | heavy dependency tree | 20.0% in the same harness |
+| Mastra OM | `@mastra/memory` (TypeScript) | one LLM call per compression window | not a retrieval interface — a context-assembly policy | the copyable mechanism is window management, not a `search` endpoint |
+| Letta / MemGPT | `letta` | LLM extraction | server-oriented | different interaction model: an agent loop, not retrieval |
+
+The ordering rule this table implies: **the second competitor is `agentmemory V4`**, because it is the only one that
+is both the highest published score and a pipeline whose parts are separately nameable.
 
 ## 7. What this does not fix
 

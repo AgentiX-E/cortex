@@ -91,18 +91,38 @@ became visible; it is now zero, because `assemble` calls them.
 
 ### 4.1 The increments, one row each
 
-| Increment | unit | controlled | artifact | end to end |
-| --- | --- | --- | --- | --- |
-| relation-preserving split (step 28) | `knowledge/*.test.ts`, 149 tests | G1/G2/G3 on 20 reviewed pairs | `knowledge-probe.mjs` | not measured yet |
-| assumption ledger (step 29) | `assumption`/`revision`, 39 tests | K1/K2/K3 | census: `assumptionPenalty` gained a caller | not measured yet |
-| temporality and plans (step 30) | `temporality`, 34 tests | T1–T4 | census: `planFactor` gained a caller | not measured yet |
-| context assembler (step 33) | `assemble`, 42 tests | all arms now call it | census: `Penalty`, `assumptionPenalty` left the orphan list | not measured yet |
-| abstention recovery (step 26) | `abstention-recovery`, 21 tests | — | `recovery` in the artifact | R1, net −1 |
-| date frame | pre-registered | — | — | A7, unrun |
+Six columns, because a mechanism can be correct, act where it claims, be wired, help on a corpus — and still be
+aimed at an axis nobody else competes on. The last column names the axis and who else reports on it, so an
+increment that cannot be compared says so before it is built rather than after it is measured.
 
-The last column is the honest one: **none of the four model-side increments has an end-to-end reading yet.**
-They are justified by the level below — a mechanism that acts where it claims, on a set built to contain the
-failure — and that justification is weaker than a benchmark number. The next run of S1–S4 is what converts it.
+| Increment | unit | controlled | artifact | end to end | axis, and who else reports on it |
+| --- | --- | --- | --- | --- | --- |
+| relation-preserving split (step 28) | `knowledge/*.test.ts`, 149 tests | G1/G2/G3 on 20 reviewed pairs | `knowledge-probe.mjs` | not measured yet | internal only — no competitor publishes a relation-split corpus |
+| assumption ledger (step 29) | `assumption`/`revision`, 39 tests | K1/K2/K3 | census: `assumptionPenalty` gained a caller | not measured yet | internal only |
+| temporality and plans (step 30) | `temporality`, 34 tests | T1–T4 | census: `planFactor` gained a caller | not measured yet | temporal reasoning; every published system reports it, and all of them collapse on it |
+| context assembler (step 33) | `assemble`, 42 tests | all arms now call it | census: `Penalty`, `assumptionPenalty` left the orphan list | not measured yet | context budget; agentmemory V4's per-capability token budgets are the public comparison |
+| abstention recovery (step 26) | `abstention-recovery`, 21 tests | — | `recovery` in the artifact | R1, net −1 | abstention; LongMemEval's 30 ABS questions are the only public axis |
+| date frame | pre-registered | — | — | A7, unrun | temporal; the paper's own time-aware index ablation (+7–11pp) |
+| **`reviewPass: 'bare'`** | `bare-decline-retry`, 12 tests | reach: `flat` + `temporal`, ABS excluded in code | `## Bare-decline retry` section, `bareRetry` in JSON | run `40522788515`, 80.80% — see §4.2 | response shape; no competitor publishes a decline-shape ablation |
+| **ingest completeness** | `test_competitor_sut.py`, 17 tests | partial loss survives, total loss aborts | `ingest: N of M session(s) stored, K refused` line | `40519523383` — see §4.2 | **all of them**: the benchd.ai 0.0%/20.0%/32.4% rows are unreconciled instrument results of this shape |
+| **store width declaration** | 3 parametrised tests | faiss 1024/256, qdrant 768 | `vector_store_dims` in the manifest | `40519523383` reproduced and fixed | **all of them**: any comparison whose store was built at a different width than its embedder |
+
+### 4.2 The two increments built this round, and what settling them requires
+
+| Increment | what would make it a result | what would not |
+| --- | --- | --- |
+| `reviewPass: 'bare'` | `attempted` > 0 and IE/TR each move by ≥3 questions, with ABS still 30/30 and MR unchanged | an unchanged total. `40522788515` returned 80.80% — the control's number exactly — and its artifact said the pass was *configured*, which is not the same statement as *fired* |
+| ingest completeness | a competitor run that either reports `N of M stored` or aborts, never a 0.0% row | a fixed driver that is only ever tested on a healthy corpus |
+
+The first row is why the census was built: the prediction `attempted > 0` is unfalsifiable against an artifact
+that does not carry the count, and `40522788515` is exactly such an artifact. A mechanism whose firing is
+unobservable is not yet measured, whatever the accuracy column says.
+
+## 4.3 What is honestly not measured
+
+**None of the four model-side increments has an end-to-end reading.** They are justified by the level below — a
+mechanism that acts where it claims, on a set built to contain the failure — and that justification is weaker than
+a benchmark number. The next run of S1–S4 is what converts it.
 
 ## 5. What a competitor number may and may not be used for
 
@@ -122,23 +142,40 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | --- | --- | --- | --- |
 | memoricai | 85.8% | A | 500 questions, official prompts, gpt-4o-2024-08-06 as reader and judge, ~11k-token contexts |
 | Supermemory | 81.6% | A | the published GPT-4o-reader configuration, per the same independent comparison |
+| **oracle context, GPT-4o** | **82.4%** | A | **the answer evidence handed over, GPT-4o reading it — the reader ceiling** |
 | **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->81.0% | — | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256` |
+| Mastra OM, GPT-4o | 84.2% | B | vendor research page, observational memory, GPT-4o reader and judge |
+| Mem0 OSS, reproduced | 32.4% | B | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not |
+| no-memory baseline | 57.6% | B | benchd.ai: the whole history in the window, no memory system |
 | Zep | 71.2% | A | as reported in Zep's own LongMemEval paper, GPT-4o reader |
 | full-context GPT-4o | 60.2% | A | the paper baseline: the whole history in the window |
 | Hindsight (vendor) | 94.6% | C | vendor-reported; reader, judge and preprocessing not published reproducibly |
+| Mastra OM, GPT-5-mini | 94.9% | C | the strongest reader — above the GPT-4o oracle ceiling, so not the same experiment |
+| agentmemory V4 | 96.2% | C | single deterministic run, Claude Opus 4.6 reader, six-signal retrieval |
 | Graphonomous | 92.6% | C | keyword-recall proxy on an oracle split — not the official metric |
 
-Three consequences, and the third is uncomfortable:
+Four consequences, and the last two are uncomfortable:
 
-1. **The gap to close is 85.8%, not 94.6%.** The published, reproducible frontier on this benchmark with a
+1. **The gap to close is 85.8%, not 96.2%.** The published, reproducible frontier on this benchmark with a
    GPT-4o-class reader is memoricai's 85.8%; everything above it is either a vendor claim or a different
-   metric. Writing 94.6% into a target would be targeting a number nobody has reproduced.
-2. **Cortex sits inside the grade-A band already.** 81.0% is above Zep (71.2%), above full context (60.2%),
-   and level with Supermemory's published figure. The honest claim is "competitive, not leading".
-3. **The category split is where the deficit is, and it is not uniform.** Knowledge update is at
-   <!-- reading:S2 -->86.8%, above the threshold and above the frontier's implied position; multi-session is at
-   <!-- reading:S3 -->69.6% and temporal reasoning at <!-- reading:S4 -->74.6%, and those two categories hold
-   essentially all of the gap.
+   metric. Writing 96.2% into a target would be targeting a number nobody has reproduced.
+2. **Most open-source memory systems lose to having no memory at all.** The reproduced no-memory baseline is
+   57.6%, and four of the six systems in the same harness scored below it. So the first acceptance question is
+   "beats full context", and only then "beats the leaderboard". Cortex's 81.0% clears that bar by 23.4 points.
+3. **The oracle row bounds what retrieval work can buy.** An oracle run is handed the gold evidence and asked
+   only to read it. At 82.4% with GPT-4o, a retrieval improvement cannot move a GPT-4o-read score past that
+   ceiling — and Cortex sits 1.6 points under it. The 21-point gap to the frontier is therefore *not* all
+   retrieval, and any plan that treats it as retrieval is mispriced.
+4. **The reader axis is larger than the gap.** Mastra's own ablation moves one memory system from 84.23% to
+   94.87% by changing only the reader — a single-variable delta of 10.6 points, against the 4.8 points this
+   project needs to reach the reproducible frontier. This does not make the reader a shortcut (our judge
+   prompts are fixed at the benchmark's own), but it does mean a reader swap has to be measured as its own
+   increment rather than assumed into a memory result.
+
+The category split is where the deficit is, and it is not uniform. Knowledge update is at
+<!-- reading:S2 -->86.8%, above the threshold and above the frontier's implied position; multi-session is at
+<!-- reading:S3 -->69.6% and temporal reasoning at <!-- reading:S4 -->74.6%, and those two categories hold
+essentially all of the gap.
 
 ## 6. The methodology that produced these numbers
 
