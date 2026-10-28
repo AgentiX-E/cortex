@@ -153,6 +153,35 @@ What changed, each with a test that runs without a vendor key:
 Verified against `mem0ai 2.2.1` + `faiss-cpu` in the development sandbox: ingest stores 2 turns, search returns 2
 hits. The next dispatch of `competitor-retrieval.yml --sut mem0` is the first reading that will be quotable.
 
+### 6.1.1 The same harness, the same driver, before and after
+
+The repair is not argued from the unit tests alone. The full harness — every provider row, the capability table,
+the refusal counts — was run end to end on the synthetic corpus with a deterministic hash embedder, which needs no
+vendor key:
+
+| | before the repair (`40519523383`, LongMemEval 100) | after (`--sut mem0 --people 3`, synthetic) |
+| --- | --- | --- |
+| recall@k | 0.0% | **100.0%** |
+| all-gold | 0.0% | 88.9% |
+| MRR | 0.000 | **1.000** |
+| refusals | 100 of 100 | **0 of 15** |
+| empty results | 0 | 0 |
+
+Two things this does and does not establish. **It does** establish that the pipeline now moves data in both
+directions, which the previous run could not demonstrate for any question. **It does not** produce a Mem0 score:
+the embedder is a hash space, the corpus is ours, and the manifest says so
+(`"comparable_to": "a hash-space run only"`). The `all-gold` gap at 88.9% against recall's 100.0% is mem0's own
+behaviour showing through — it returns extracted memory text rather than the turns it was given, so a hit whose
+text does not contain the gold turn verbatim scores as recall but not as all-gold. On the real corpus that
+difference is the thing to watch: it is the difference between "mem0 found it" and "mem0 returned something that
+made us find it".
+
+The `~tok` column reads **12** here against the lexical arms' ~2,600, because mem0 returns short extracted
+memories rather than sessions. That is a real cost advantage on this corpus and an untested one on LongMemEval,
+where the published Mem0 configurations report 6.8–7.0k tokens. Recording the difference rather than the number is
+the point: the token column is the one a reader will use to argue about efficiency, and it is measured on the
+corpus that was run.
+
 ### 6.2 Which competitors can actually be run here
 
 The machinery exists so that "can we run it" is a per-competitor fact rather than a project decision. Current
