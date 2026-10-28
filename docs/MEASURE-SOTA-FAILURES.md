@@ -369,7 +369,7 @@ before a dispatch:
 
 | candidate | population it addresses | ceiling | measurability at n=500 |
 | --- | --- | --- | --- |
-| **forbid the bare token on the four routes whose gold is never a decline** (§2.2) | **21 first-attempt + 9 retry = 30** | **+30** | paired; the largest population available anywhere in this measurement |
+| **forbid the bare token on the four routes whose gold is never a decline** (§2.2) — **implemented as `reviewPass: 'bare'`** | **21 first-attempt + 9 retry = 30** | **+30** | paired; the largest population available anywhere in this measurement |
 | forbid cross-session merging without a shared citation (§3.2) | 5 MR | +5 | paired only — 5 is inside the 15-question marginal range (§2.3) |
 | extend `reviewPass: recover` to `temporal` and `flat` (§2.3) | 33 declines, ~1/10 convert | +3 | paired only, and its own retries are bare, so the prior says +3 |
 | a contract for hedged-but-sufficient evidence (§2.4) | 8 TR | +8 | paired |
@@ -378,6 +378,30 @@ Note what changed here: the first draft's top candidate was "a contract for hedg
 "up to 45". The measurement cut it to **8** — the hedge word is a TR-only shape — and promoted a
 candidate that had not been on the list at all, because the declines turned out to be one response
 shape rather than forty-five reasons.
+
+### 7.1 The first candidate, as built
+
+`reviewPass: 'bare'` (dispatch input `cortex_memory_review_pass`) asks once more after a reply that
+was the token and nothing else, with the same evidence, the same question, and **the token absent from
+the prompt**. Reach is `flat` and `temporal`; `multi-session` keeps its own `recover` and the
+abstention route is excluded in code.
+
+**Its control is `39509698041`, not `40088479628`.** `bare` replaces `recover` at the dispatch input,
+and `recover` reaches `multi-session` — so a run at `bare` differs from `40088479628` on two routes at
+once (a new treatment on `flat`/`temporal`, the absence of a retry on `multi-session`). Against
+`39509698041` (`reviewPass: none`) the only difference is the treatment, and MR is identical in both
+by construction. That is the comparison the registration below is written against.
+
+| prediction | content | refutation |
+| --- | --- | --- |
+| P1 | the mechanism fires: `attempted` > 0 on a run whose declines include bare ones | `attempted` is 0 |
+| P2 | IE's declines fall from **12** and TR's from **21** — the 21 first-attempt bare declines are the population | either column moves by fewer than 3 questions |
+| P3 | `ABS` stays at **30/30** and `MR` does not move — neither route is reached | any movement on either |
+| P4 | the run costs at most ~35 extra calls (the 21 bare declines plus misclassification) | more than 80 |
+
+P3 is the one that matters most: it is an internal control that the treatment did what its reach says
+and nothing else. A run where `ABS` moves is a run where the guard failed, whatever the other columns
+say.
 
 **The bar is the discordant pair, not the marginal total.** `paired-test.ts` computes an exact McNemar
 over the same 500 questions, so a change that wins 12 and loses 5 is significant even though its

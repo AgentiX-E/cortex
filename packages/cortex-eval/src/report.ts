@@ -84,6 +84,21 @@ export type AblationReport = {
    */
   recovery?: RecoveryCensus | undefined;
   /**
+   * What the bare-decline retry did: consultations attempted, and how many produced an answer.
+   *
+   * A third field rather than a value inside `recovery`, because the two treatments act on different declines.
+   * `recovery` consults when a decline contradicted its own evidence list; `bareRetry` consults when the first
+   * answer was the abstention token and nothing else, and the second prompt is built without that token. A system
+   * can carry either, both, or neither, and folding them together would let a reader credit a conversion to the
+   * treatment that did not produce it.
+   *
+   * Present only when the system exposes `bareRetryCensus()`, which is the statement "this build carries the
+   * pass". Run `40522788515` ran `reviewPass: 'bare'` over five hundred questions and reported an accuracy
+   * identical to its control, with nothing in the artifact to say whether the pass fired and converted nothing or
+   * never fired at all — the ambiguity this field exists to remove.
+   */
+  bareRetry?: BareRetryCensus | undefined;
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the
@@ -694,6 +709,19 @@ export type RecoveryCensus = {
   readonly answered: number;
 };
 
+/**
+ * The bare-decline retry's own tally.
+ *
+ * Same shape as {@link RecoveryCensus} and deliberately a separate type: two structurally identical records whose
+ * numbers count different events should not be interchangeable in a signature, because the compiler would then
+ * accept a call site that passed one where the other belongs. `attempted` counts questions re-asked without the
+ * abstention token offered; `answered` counts the ones that came back with something other than the token.
+ */
+export type BareRetryCensus = {
+  readonly attempted: number;
+  readonly answered: number;
+};
+
 export type AbstentionReasons = {
   /** The write gate admitted nothing, so there was no evidence to decline from. */
   empty: number;
@@ -1121,6 +1149,10 @@ export function formatAblationReport(report: AblationReport): string {
   // nesting this one inside the abstention test would hide a recovery pass on a system that reports
   // no bottleneck census -- which is exactly the system the recovery pass was written for.
   lines.push(...recoveryLines(report.recovery));
+  // Its own line and its own guard, for the reason above: a system may carry one pass, the other, both, or
+  // neither, and a section that only appeared when `recovery` did would hide the bare pass on exactly the builds
+  // that have it without the older one.
+  lines.push(...bareRetryLines(report.bareRetry));
   lines.push('');
   return lines.join('\n');
 }
@@ -1177,6 +1209,34 @@ function recoveryLines(census: RecoveryCensus | undefined): string[] {
     'Attempted counts declines that contradicted their own Step 1 list; a decline with an empty list',
     'is the state the contract licenses and is not consulted. This pass fires only on a decline, so',
     'no answer that was already correct can move.',
+  ];
+}
+
+/**
+ * The bare-decline retry, rendered only when the run could have fired it.
+ *
+ * The footnote states the two exclusions because both are the difference between a mechanism and a regression.
+ * The abstention route is excluded in code: its gold is a decline, so re-asking would spend a call to convert a
+ * correct answer into a wrong one. Questions answered on the first attempt never reach the pass, which is why
+ * `attempted` is bounded by the decline count rather than by the question count -- and why a zero here is a
+ * statement about the population, not about the switch.
+ */
+function bareRetryLines(census: BareRetryCensus | undefined): string[] {
+  if (census === undefined) return [];
+  const { attempted, answered } = census;
+  const converted = attempted === 0 ? 'n/a' : `${((answered / attempted) * 100).toFixed(1)}%`;
+  return [
+    '',
+    '## Bare-decline retry',
+    '',
+    '| Consultations | Answered | Converted |',
+    '|---|---|---|',
+    `| ${attempted} | ${answered} | ${converted} |`,
+    '',
+    'Attempted counts questions whose first answer was the abstention token and nothing else, re-asked with',
+    'that token absent from the prompt. The abstention route is excluded: its gold is the decline, so a retry',
+    'there could only spend a call to turn a correct answer into a wrong one. A question answered first time',
+    'is never re-asked.',
   ];
 }
 

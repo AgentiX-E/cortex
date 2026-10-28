@@ -48,6 +48,7 @@ import { readToggle } from './env-toggle.js';
 import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
+  BareRetryCensus,
   MemoryArmConfig,
   RecoveryCensus,
 } from './report.js';
@@ -2056,7 +2057,11 @@ export async function runCortexMemoryArm(
   // exposure. The alternative -- returning the census and having each caller
   // remember to feed it back into a render -- is the side channel this repository
   // has already removed twice.
-  const census = { ...abstentionReasonsOf(feature), ...recoveryOf(feature) };
+  const census = {
+    ...abstentionReasonsOf(feature),
+    ...recoveryOf(feature),
+    ...bareRetryOf(feature),
+  };
   const questions = buildArmRoster(
     dataset,
     report.ablation,
@@ -2108,6 +2113,10 @@ export async function runCortexMemoryArm(
     // The recovery pass's own tally, spread on the same rule: absent means the system does not
     // carry the pass, which is a different statement from "it fired zero times".
     ...(census.recovery === undefined ? {} : { recovery: census.recovery }),
+    // The bare-decline retry's tally, on the same rule and in its own field: it counts a different
+    // treatment on a different population, and a run that carries it must be able to say how often it
+    // fired without a reader inferring it from an unchanged accuracy.
+    ...(census.bareRetry === undefined ? {} : { bareRetry: census.bareRetry }),
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.
@@ -2494,6 +2503,35 @@ function recoveryOf(system: MemorySystem): { recovery?: RecoveryCensus } {
   }
   return {
     recovery: { attempted: record.attempted as number, answered: record.answered as number },
+  };
+}
+
+/**
+ * The bare-decline retry's tally, read the way `recoveryOf` reads its own.
+ *
+ * Same three decisions, for the same reasons: an absent accessor means the system does not carry the pass (which
+ * the report must say by omission rather than by a zero), a throwing one is a broken optional capability rather
+ * than a failed run, and a payload that is not two whole non-negative counts is discarded rather than coerced.
+ */
+function bareRetryOf(system: MemorySystem): { bareRetry?: BareRetryCensus } {
+  const candidate = (system as { bareRetryCensus?: unknown }).bareRetryCensus;
+  if (typeof candidate !== 'function') return {};
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return {};
+  }
+
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  for (const key of ['attempted', 'answered'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  return {
+    bareRetry: { attempted: record.attempted as number, answered: record.answered as number },
   };
 }
 

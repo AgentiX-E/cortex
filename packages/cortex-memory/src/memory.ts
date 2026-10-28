@@ -723,7 +723,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /** How often a bare decline was re-asked, and how often the second answer stood. */
-  bareRetries(): { attempted: number; answered: number } {
+  bareRetryCensus(): { attempted: number; answered: number } {
     return { ...this.#bareRetries };
   }
 

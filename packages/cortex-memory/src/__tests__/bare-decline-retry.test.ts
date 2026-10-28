@@ -104,7 +104,7 @@ describe('the bare decline gets one question back, and only when the option is o
     const answer = await system.answer(question, context);
     expect(answer).toBe('Business Administration');
     expect(seen).toHaveLength(2);
-    expect(system.bareRetries()).toEqual({ attempted: 1, answered: 1 });
+    expect(system.bareRetryCensus()).toEqual({ attempted: 1, answered: 1 });
   });
 
   it('does not offer the abstention token in the second prompt', async () => {
@@ -126,7 +126,7 @@ describe('the bare decline gets one question back, and only when the option is o
     const system = memory({ reviewBareDecline: true }, llm);
     expect(await system.answer(question, context)).toBeNull();
     expect(seen).toHaveLength(1);
-    expect(system.bareRetries()).toEqual({ attempted: 0, answered: 0 });
+    expect(system.bareRetryCensus()).toEqual({ attempted: 0, answered: 0 });
   });
 
   it('re-asks only when the first reply was a decline, so an answer is never re-asked', async () => {
@@ -144,7 +144,7 @@ describe('the bare decline gets one question back, and only when the option is o
     const system = memory({ reviewBareDecline: true }, llm);
     expect(await system.answer(question, context)).toBeNull();
     expect(seen).toHaveLength(2);
-    expect(system.bareRetries()).toEqual({ attempted: 1, answered: 0 });
+    expect(system.bareRetryCensus()).toEqual({ attempted: 1, answered: 0 });
   });
 
   it('leaves the abstention route alone, where a bare decline is the right answer', async () => {
@@ -154,7 +154,7 @@ describe('the bare decline gets one question back, and only when the option is o
     const system = memory({ reviewBareDecline: true }, llm);
     expect(await system.answerAbstention(question, context)).toBeNull();
     expect(seen).toHaveLength(1);
-    expect(system.bareRetries()).toEqual({ attempted: 0, answered: 0 });
+    expect(system.bareRetryCensus()).toEqual({ attempted: 0, answered: 0 });
   });
 });
 

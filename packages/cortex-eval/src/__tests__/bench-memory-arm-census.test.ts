@@ -392,3 +392,82 @@ describe('the arm records what the recovery pass did', () => {
     expect(result.report.questions).toHaveLength(1);
   });
 });
+
+describe('the arm records what the bare-decline retry did', () => {
+  /**
+   * The same optional-capability rule as `recoveryCensus`, a different treatment.
+   *
+   * `reviewPass: 'bare'` asks a second time, without the abstention token in the prompt, when the first answer was
+   * the token and nothing else. Run `40522788515` ran it over all five hundred questions and its artifact reported
+   * `reviewPass=bare` beside an accuracy identical to the control — and nothing in the artifact said whether the
+   * pass had fired twenty-one times and converted none, or had never fired. Those are different findings: the
+   * first closes the mechanism, the second says the switch was inert. The census is what separates them.
+   */
+  function systemWithBareRetry(payload: unknown, impl?: () => unknown): MemorySystem {
+    return {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      bareRetryCensus: impl ?? (() => payload),
+    } as unknown as MemorySystem;
+  }
+
+  it('carries the two counts through, and renders them', async () => {
+    const result = await run(systemWithBareRetry({ attempted: 21, answered: 4 }));
+
+    expect(result.report.bareRetry).toEqual({ attempted: 21, answered: 4 });
+    expect(result.markdown).toContain('## Bare-decline retry');
+    expect(result.markdown).toMatch(/\|\s*21\s*\|\s*4\s*\|\s*19\.0%\s*\|/);
+  });
+
+  it('renders zero attempts as not-applicable rather than as a share of nothing', async () => {
+    const result = await run(systemWithBareRetry({ attempted: 0, answered: 0 }));
+
+    expect(result.markdown).toMatch(/\|\s*0\s*\|\s*0\s*\|\s*n\/a\s*\|/);
+    // A pass that was configured and never fired is the case this whole census exists for, so the section has to
+    // appear with a zero in it rather than be omitted as uninteresting.
+    expect(result.markdown).toContain('## Bare-decline retry');
+  });
+
+  it('omits the section for a system that does not carry the pass', async () => {
+    const result = await run(constantSystem('cortex-memory', 'one'));
+
+    expect(result.report.bareRetry).toBeUndefined();
+    expect(result.markdown).not.toContain('## Bare-decline retry');
+  });
+
+  it('discards a payload that is not two whole non-negative counts', async () => {
+    const result = await run(systemWithBareRetry({ attempted: Number.NaN, answered: 4 }));
+    expect(result.report.bareRetry).toBeUndefined();
+  });
+
+  it('discards a negative count rather than publishing it', async () => {
+    const result = await run(systemWithBareRetry({ attempted: -1, answered: 4 }));
+    expect(result.report.bareRetry).toBeUndefined();
+  });
+
+  it('treats a throwing accessor as absent rather than failing the run', async () => {
+    const result = await run(
+      systemWithBareRetry(null, () => {
+        throw new Error('broken');
+      }),
+    );
+    expect(result.report.bareRetry).toBeUndefined();
+    expect(result.report.questions).toHaveLength(1);
+  });
+
+  it('keeps the two censuses apart when a system carries both passports', async () => {
+    // A system may carry the recovery pass and the bare pass at once -- they answer different questions about a
+    // decline. One field holding both would let a reader attribute a conversion to the wrong treatment.
+    const both = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      recoveryCensus: () => ({ attempted: 9, answered: 3 }),
+      bareRetryCensus: () => ({ attempted: 21, answered: 4 }),
+    } as unknown as MemorySystem;
+
+    const result = await run(both);
+
+    expect(result.report.recovery).toEqual({ attempted: 9, answered: 3 });
+    expect(result.report.bareRetry).toEqual({ attempted: 21, answered: 4 });
+  });
+});
