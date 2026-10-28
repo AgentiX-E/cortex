@@ -1573,6 +1573,14 @@ export function toMemoryArmConfig(
    * from a treatment that reached zero questions.
    */
   expansion?: MemoryArmConfig['queryExpansionCounts'],
+  /**
+   * Which reader will answer, when the caller knows it.
+   *
+   * A parameter for the reason `embedding` is one: this module never constructs a reader, so
+   * only `bench/run-ablation.ts` can say which model it built. `PREREGISTRATION` §13.110 is
+   * the run that made it necessary -- two artifacts 7.20 points apart with identical blocks.
+   */
+  reader?: MemoryArmConfig['reader'],
 ): MemoryArmConfig {
   return {
     threshold: options.threshold,
@@ -1644,6 +1652,9 @@ export function toMemoryArmConfig(
     // `exactOptionalPropertyTypes`, and the distinction -- a run that named no backend
     // versus an artifact that predates the field -- is the one the type exists to keep.
     ...(embedding === undefined ? {} : { embedding }),
+    // Same rule and the same reason as `embedding`: a run that named no reader and an artifact
+    // that predates the field are different facts, and only the conditional spread keeps them so.
+    ...(reader === undefined ? {} : { reader }),
   };
 }
 

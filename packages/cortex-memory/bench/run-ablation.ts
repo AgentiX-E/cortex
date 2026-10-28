@@ -39,6 +39,7 @@
  */
 import {
   createLlmFromEnv,
+  resolveReaderIdentity,
   createEmbeddingWithProvenanceFromEnv,
   resolveEmbeddingProvenance,
   describeFailure,
@@ -600,6 +601,12 @@ async function main(): Promise<void> {
             phrases: expansion.phrases,
             refused: expansion.empty,
           },
+      // §13.110's debt, paid: which reader answered, in the artifact rather than in a job log
+      // that expires. Resolved by the same function `createLlmFromEnv` calls, so the model that
+      // answers and the model this record names cannot be two readings of one environment --
+      // and `temperature: null` states the fact §13.114 registers rather than the value the
+      // workflow input claims.
+      resolveReaderIdentity(process.env),
     ),
     featureConfig: { cortexMemory: true },
     // Read from the parsed arm options, not decided here: §13.12 registers the

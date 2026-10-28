@@ -329,6 +329,7 @@ export {
   createLlmFromEnv,
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
+  resolveReaderIdentity,
   type LlmEnv,
 } from './llm-factory.js';
 export {

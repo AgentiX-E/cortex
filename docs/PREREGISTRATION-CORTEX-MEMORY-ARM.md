@@ -11879,3 +11879,66 @@ Stopping rule: one dispatch, read in the order above. If MR ≤ 0 and IE < −2,
 48,000, §13.82 is the last word, and no further sweep is run — the arm's remaining headroom is then
 precision (which turn), not volume (how many), and that is the rerank increment's question rather than
 this one's.
+
+## 13.114 The arm has never sent a temperature, and every artifact said it had
+
+The workflow declares a `temperature` input with a default of `'0'` and a description that reads
+"Sampling temperature (0 = deterministic)". The dispatch script sends it. `§10.3` registers it. Every
+document that describes a reading says the runs were taken at temperature 0.
+
+Nothing on this arm's path reads it.
+
+```
+benchmark-cortex-memory.yml   TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}   # forwarded
+cortex-eval/src/llm-factory.ts   createLlmFromEnv(env)   -- reads DEEPSEEK_API_KEY, _BASE_URL, _MODEL, _THINKING
+cortex-memory/src/memory.ts      #consult -> this.#llm.complete(prompt)   -- no options
+cortex-ai/src/llm/openai-compatible.ts   if (opts.temperature != null) body['temperature'] = ...
+```
+
+`TEMPERATURE` is read in exactly one place in the repository — `cortex-eval/bench/run.ts`, the
+**reference pipeline's** runner. So on `benchmark-cortex-memory.yml` the variable is declared,
+forwarded, and never consulted, which is the third form of the §7.3 side channel with a twist: the
+value never becomes an option, so `bench-memory-arm.test.ts` (which guards "option set but unread")
+cannot see it either.
+
+**What it costs.** Every reading this campaign has taken was served at the provider's default
+temperature — `1.0` for DeepSeek — not at 0. Two consequences, one benign and one not:
+
+1. **The noise floor is sampling, and now it is named.** §13.100 measured the arm's own movement at
+   5–6 questions per route and §13.108.3 built its argument on that number. It is consistent with
+   `T = 1.0` on 500 questions, and the previous attribution ("the instrument's own movement") was
+   right about the size and silent about the cause. Nothing in the campaign's arithmetic changes.
+2. **Every claim of determinism for this arm is false as written.** Not the paired McNemar results —
+   both sides share the reader and the temperature, so the comparison is unaffected — but any
+   sentence that says a run is reproducible to the question. Two dispatches of one configuration
+   are two samples at `T = 1.0`, and §13.91's `44.20%` twice in a row was the reference pipeline,
+   which does read the variable.
+
+**Why it is not fixed in this commit.** Because fixing it moves every number. A reader pinned to
+`T = 0` is a different reader in the sense that matters here: the distribution narrows, the mean can
+move either way, and every threshold in `ACCEPTANCE-MATRIX.md` was calibrated against samples. A
+change of that size gets its own dispatch, its own control, and its own section — not a line in a
+documentation round. So this section records the defect and the artifact records the fact:
+
+`MemoryArmConfig.reader` is new, and `reader.temperature` is `number | null`, populated by
+`resolveReaderIdentity(env)` — the same function `createLlmFromEnv` calls, so the reader that
+answers and the reader the artifact names cannot be two readings of one environment. `null` means
+"the request carried no temperature", which is the state of every run before this field existed, and
+it renders as `temp=default` rather than being omitted, for the reason `reviewPass` renders `none`:
+a fact and a missing field must not be the same bytes.
+
+**What the run to fix it has to show.** Registered, not dispatched:
+
+- **Prediction 1.** Pinning `T = 0` shrinks the per-route movement below the 5–6 questions §13.100
+  measured. That is the observable the field exists for, and it is checkable before any threshold
+  moves.
+- **Prediction 2.** The mean moves by less than the movement it removes. If it moves more, the arm's
+  configuration is tuned to a sampling artefact rather than to a mechanism, which would be a far
+  more uncomfortable finding than a wrong temperature.
+- **Kill clause.** If `T = 0` and `T = default` produce the same 500 answers, the temperature was
+  never doing anything and the input should be deleted rather than fixed — a declared input that
+  changes nothing is worse than an absent one, because it costs a reader's attention every time it
+  appears in a config line.
+
+Until that run exists, every sentence in `cortex-docs` that says "temperature 0" is corrected to say
+what the artifact now says: **no temperature was sent**.

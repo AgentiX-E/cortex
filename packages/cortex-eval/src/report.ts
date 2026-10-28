@@ -667,7 +667,73 @@ export type MemoryArmConfig = {
         readonly preflight: 'ok' | 'not-run';
       }
     | undefined;
+  /**
+   * Which reader answered, recorded where a reader of the artifact looks.
+   *
+   * ## Why this is a field and not a log line
+   *
+   * `PREREGISTRATION` §13.109 fixed three conditions for the reader axis before its first
+   * run existed, and the first of them was "a pinned model identity in the artifact". The
+   * run happened (`40698883428`) and the condition was **not** met: the model id existed
+   * only in the job log's `DEEPSEEK_MODEL:` line, and two artifacts that differ by seven
+   * points carried identical `memoryArmConfig` blocks. §13.110 records that as debt rather
+   * than arguing it away; this field pays it.
+   *
+   * ## Why `temperature` is `number | null` and not a number
+   *
+   * Because the arm has never sent one. `TEMPERATURE` is declared by the workflow and
+   * forwarded into `env`, and **nothing on this arm's path reads it**: `createLlmFromEnv`
+   * ignores it and `#consult` calls `complete(prompt)` with no options, so the request body
+   * carries no `temperature` field and the provider's own default applies. `null` is that
+   * sentence in one value -- "the request carried none" -- and it is deliberately distinct
+   * from `0`, which is what the workflow input claims. §13.114 registers the defect; this
+   * field is how a future run can prove it was fixed.
+   */
+  readonly reader?:
+    | {
+        readonly provider: string;
+        readonly model: string;
+        readonly baseUrl: string;
+        readonly thinking: 'enabled' | 'disabled';
+        readonly temperature: number | null;
+      }
+    | undefined;
 };
+
+/**
+ * One field of the configuration line, for the reader that answered.
+ *
+ * Slash-separated rather than comma-separated because the line already uses commas between
+ * fields, so a comma inside a value would make one field read as three -- the same reason
+ * `maxTurnCharsRoutes` joins with `+`.
+ *
+ * The host, not the full URL: the scheme and the version segment are the same for every
+ * provider this project has run and the host is the part that says **which service** answered.
+ * A URL with a query string would put a credential in an artifact if one ever arrived that way,
+ * which is why this reads `URL.host` and never echoes the string it was given.
+ */
+function renderReader(reader: {
+  readonly provider: string;
+  readonly model: string;
+  readonly baseUrl: string;
+  readonly thinking: 'enabled' | 'disabled';
+  readonly temperature: number | null;
+}): string {
+  // `new URL` throws on a malformed string, and a rendered report is not the place to throw:
+  // the identity is still worth stating without its host, and a crash here would destroy the
+  // whole artifact over a field that exists to describe one.
+  let host = 'unknown';
+  try {
+    host = new URL(reader.baseUrl).host;
+  } catch {
+    host = reader.baseUrl.replace(/^https?:\/\//, '').split('/')[0] ?? 'unknown';
+  }
+  return (
+    `reader=${reader.provider}:${reader.model}@${host}` +
+    `/thinking=${reader.thinking}` +
+    `/temp=${reader.temperature === null ? 'default' : String(reader.temperature)}`
+  );
+}
 
 /**
  * Distinct questions on which each arm's retry actually re-queried.
@@ -954,7 +1020,14 @@ export function formatAblationReport(report: AblationReport): string {
           ? ''
           : `, \`embedding=${memoryArm.embedding.provider}/` +
             `${memoryArm.embedding.model ?? 'n/a'}@${memoryArm.embedding.dimensions}\`` +
-            `, \`embeddingPreflight=${memoryArm.embedding.preflight}\``),
+            `, \`embeddingPreflight=${memoryArm.embedding.preflight}\``) +
+        // Which reader answered. Appended only when the caller named one, for the reason the
+        // embedding field is: an artifact that predates the field must read as pre-dating it
+        // rather than as having run against an unrecorded reader. `temp=default` is the state
+        // every run before §13.114 was in and is spelled rather than omitted, because "the
+        // request carried no temperature" and "this artifact predates the field" are the same
+        // bytes otherwise -- the distinction the `reviewPass` field exists to keep.
+        (memoryArm.reader === undefined ? '' : `, \`${renderReader(memoryArm.reader)}\``),
     );
 
     // The reachable set, rendered beside the name and for the reason §12.8 gives: the
