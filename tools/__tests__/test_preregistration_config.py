@@ -450,5 +450,85 @@ class TestTheShippedDefaultAgreesWithTheRegistration(unittest.TestCase):
         )
 
 
+# The inputs whose value is not free-form: a TypeScript parser reads them and refuses anything it
+# does not recognise. `{input name: module that owns the vocabulary}`.
+#
+# This mapping exists because of a shipment that could not start. `cortex_memory_rerank` was
+# registered as `none` — the word §10.3 uses, the word the dispatch script sends, and the word the
+# report prints for the control group — while `rerank-factory.ts` accepted only
+# `off/0/false/no/disabled`. Every other guard in this file compares two places that agreed; none of
+# them asked whether the shipped value is **readable by the code that has to read it**. The cost was
+# two dispatched runs (`40749122312`, `40749136661`) that died 68 seconds in, before their first
+# question, and would have died identically on every future dispatch.
+PARSED_BY = {
+    "cortex_memory_rerank": "packages/cortex-eval/src/rerank-factory.ts",
+}
+
+
+def shipped_inputs() -> dict[str, str]:
+    """`{input name: value}` for every value the dispatch script sends (the `INPUTS` table)."""
+    source = (ROOT / "tools" / "dispatch-cortex-memory-ab.py").read_text(encoding="utf-8")
+    start = source.index("INPUTS")
+    start = source.index("{", start)
+    end = source.index("\n}", start)
+    table = source[start:end]
+    return {
+        name: value
+        for name, value in re.findall(r'"([a-z0-9_]+)":\s*"([^"]*)"', table)
+    }
+
+
+def accepted_toggle_values(module: Path) -> set[str]:
+    """The literals in every `*_VALUES` set the module declares, lowercased.
+
+    Read out of the TypeScript rather than duplicated here, because a copy would be the third
+    vocabulary this guard exists to catch. Both sets are declared as
+    `const NAME_VALUES = new Set([...])` on one line.
+    """
+    source = module.read_text(encoding="utf-8")
+    values: set[str] = set()
+    for literal in re.findall(r"_VALUES\s*=\s*new Set\(\[([^\]]*)\]\)", source):
+        values.update(re.findall(r"'([^']*)'", literal))
+    return {value.strip().lower() for value in values}
+
+
+class TestTheShippedPayloadCanStart(unittest.TestCase):
+    """Every value the dispatch script sends is one the code accepts.
+
+    The failure this pins is not "the wrong value" — a wrong value shows up as a number. It is
+    "a value nothing can parse", which produces no number at all, on the first dispatch after the
+    shipment, and only then.
+    """
+
+    def test_every_parsed_input_ships_a_value_its_parser_accepts(self):
+        shipped = shipped_inputs()
+        checked = 0
+        for input_name, module in PARSED_BY.items():
+            with self.subTest(input=input_name):
+                self.assertIn(
+                    input_name,
+                    shipped,
+                    f"{input_name} is claimed to be parsed but the dispatch script no longer "
+                    "sends it, so this guard checked nothing.",
+                )
+                accepted = accepted_toggle_values(ROOT / module)
+                self.assertTrue(
+                    accepted,
+                    f"no `*_VALUES` set was found in {module}. Either the sets were renamed — in "
+                    "which case this guard is blind and must be pointed at the new declaration — "
+                    "or the vocabulary moved into code this file cannot read.",
+                )
+                self.assertIn(
+                    shipped[input_name].strip().lower(),
+                    accepted,
+                    f"the dispatch script ships `{input_name}={shipped[input_name]}` but {module} "
+                    f"accepts only {sorted(accepted)}. A value the parser refuses is not a "
+                    "configuration error, it is a run that never starts: it fails before the first "
+                    "question, spends nothing, and produces no artifact to diagnose from.",
+                )
+                checked += 1
+        self.assertGreater(checked, 0, "no parsed input was checked")
+
+
 if __name__ == "__main__":
     unittest.main()

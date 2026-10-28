@@ -70,6 +70,27 @@ describe('the arm switch is not the reference pipeline switch', () => {
       provider: 'openai-compatible',
     });
   });
+
+  it('accepts the word the registration and the artifact both use for "off"', () => {
+    // `none` is not a synonym invented here: it is the value §10.3 registers
+    // (`rerank: none`), the value `tools/dispatch-cortex-memory-ab.py` sends by default, and the
+    // value `renderRerank` prints for the control group. The parser not accepting it meant the
+    // **shipped payload could not start**: run `40749136661` died in its first minute with
+    //
+    //     Unknown CORTEX_MEMORY_RERANK value "none"; expected one of on, true, 1, yes, enabled
+    //     to enable, or off, 0, false, no, disabled to disable.
+    //
+    // Three vocabularies, one value, and the parser owned the only one nobody else used. The
+    // registry is the specification here, so the parser moves.
+    expect(resolveRerankIdentity({ CORTEX_MEMORY_RERANK: 'none' }, { arm: true })).toEqual({
+      provider: 'none',
+    });
+    expect(resolveRerankIdentity({ CORTEX_MEMORY_RERANK: 'NONE' }, { arm: true })).toEqual({
+      provider: 'none',
+    });
+    expect(resolveRerankIdentity({ CORTEX_RERANK: 'none' })).toEqual({ provider: 'none' });
+    expect(createMemoryArmReranker({ CORTEX_MEMORY_RERANK: 'none' }, {})).toBeUndefined();
+  });
 });
 
 describe('the identity names the service that will answer', () => {

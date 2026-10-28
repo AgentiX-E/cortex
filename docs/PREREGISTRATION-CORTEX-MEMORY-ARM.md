@@ -12525,3 +12525,65 @@ reader-held-constant comparison. Arm A (`default`) reproduces the historical con
 makes it the control. Neither arm's headline changes, and the prediction in §13.119.4 is about the feature
 aggregate only — but a reader comparing B's `Δ` against any earlier artifact's `Δ` should know that the two are
 different quantities.
+
+## 13.121 The shipped payload could not start, and every guard agreed with itself
+
+Two dispatches were spent on this. `40749122312` (`temperature=default`) and `40749136661` (`temperature=0`) both
+failed after **68 and 90 seconds**, at the step that runs the arm, before the first question:
+
+```
+Error: Unknown CORTEX_MEMORY_RERANK value "none"; expected one of on, true, 1, yes, enabled
+to enable, or off, 0, false, no, disabled to disable.
+```
+
+**Three vocabularies, one value, and the parser owned the only one nobody else used.** §10.3 registers
+`rerank: none`. `tools/dispatch-cortex-memory-ab.py` sends `none` by default. `renderRerank` prints `rerank=none`
+for the control group. `rerank-factory.ts` accepted `off / 0 / false / no / disabled` — and `none` was not among
+them, so the **registered configuration could not be dispatched at all**. It would have failed identically on
+every future dispatch of the default payload.
+
+**Why nothing caught it, which is the part worth recording.** Every guard in
+`tools/__tests__/test_preregistration_config.py` compares two _documents_: §10.3 against the dispatch script, the
+workflow's default against §10.3. All of them agreed — they were all saying `none`. `pnpm check` was green, and I
+ran it before pushing, which §13.117 established as the rule after the missing re-export. The rule held and the
+defect still shipped, because the tests construct the arm from **fixtures** and nothing constructs it from the
+**payload**. A green suite says the code reads its own case; it does not say the shipped value is the case.
+
+That is the same shape as §13.117 one layer out: there, the symbol existed and the package entry did not export
+it; here, the value existed and the parser did not accept it. Both are a boundary that is only crossable at
+runtime and was only ever crossed by hand.
+
+**The fix**, and the direction it went. The registry is the specification — it is the document the artifact is
+supposed to describe — so `none` joins `DISABLED_VALUES` and the parser moves, not the four documents.
+`rerank-factory.ts`'s docblock now carries the run ids.
+
+**The guard, and it was verified against the defect.** `TestTheShippedPayloadCanStart` reads the `INPUTS` table out
+of the dispatch script and every `*_VALUES` set out of the module that parses that input, then asserts membership.
+Reverting `none` makes it fail with both vocabularies printed:
+
+```
+the dispatch script ships `cortex_memory_rerank=none` but packages/cortex-eval/src/rerank-factory.ts
+accepts only ['', '0', '1', 'disabled', 'enabled', 'false', 'no', 'off', 'on', 'true', 'yes']
+```
+
+It is a cross-language guard on purpose. A TypeScript test would have needed a copy of `INPUTS`, and a copy is the
+third vocabulary this section exists to remove.
+
+**Verified end to end without spending a dispatch.** The bench was started locally with the registered payload
+and no credentials at all: it now walks past option resolution and stops on `LONGMEMEVAL_PATH is required`, which
+is the next thing it needs. Before the fix the same command stopped on the rerank value. That check costs four
+seconds and no API call, and it is the one that should have preceded both dispatches.
+
+**What it cost, and what it did not.** Two dispatches and about three minutes of wall clock each. Nothing was
+measured and no number moved, so by §4 these are infrastructure failures to be re-dispatched with the reason
+recorded — not redraws and not results. What it bought is a class of defect named and instrumented, and one more
+entry in the table §13.112 started:
+
+| form | wrong where                                                    | caught by                                        |
+| ---- | -------------------------------------------------------------- | ------------------------------------------------ |
+| 1    | input not declared in the workflow                             | `test_dispatch_inputs.py`                        |
+| 2    | declared but not forwarded into `env`                          | `test_dispatch_inputs.py`                        |
+| 3    | forwarded but never read by the arm                            | `bench-memory-arm.test.ts`                       |
+| 4    | read correctly, dispatch never sends the registered value      | `test_preregistration_config.py`                 |
+| 5    | the workflow's own default disagrees with the registration     | `TestTheShippedDefaultAgreesWithTheRegistration` |
+| 6    | **the registered value is one the code that reads it rejects** | **`TestTheShippedPayloadCanStart`**              |

@@ -65,7 +65,17 @@ const DEFAULT_LLM_RERANK_MODEL = 'deepseek-chat';
 const ENABLED_VALUES = new Set(['on', 'true', '1', 'yes', 'enabled']);
 
 /** Values of `CORTEX_RERANK` that turn the stage off, explicitly. */
-const DISABLED_VALUES = new Set(['', 'off', '0', 'false', 'no', 'disabled']);
+/**
+ * The values that mean "this stage is absent".
+ *
+ * `none` is here because it is the word **everything else uses**: §10.3 registers `rerank: none`,
+ * `tools/dispatch-cortex-memory-ab.py` sends it by default, and `renderRerank` prints it for the
+ * control group. Its absence from this set meant the shipped payload could not start — run
+ * `40749136661` died 68 seconds in, before its first question, and every dispatch of the
+ * registered configuration would have died the same way. Three vocabularies for one value is the
+ * defect; the registry is the specification, so this set moved.
+ */
+const DISABLED_VALUES = new Set(['', 'none', 'off', '0', 'false', 'no', 'disabled']);
 
 /** Backends `CORTEX_RERANK_PROVIDER` can select. */
 const RERANK_PROVIDERS = ['openai', 'llm', 'local'] as const;
