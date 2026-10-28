@@ -30,10 +30,21 @@ Two arms, one variable, paired by question.
 | judge | the benchmark's own prompt, unchanged | **identical** |
 | reader | the shipped model (`deepseek-chat`) | one other model |
 
-The claim that "the hits did not move" is not an assumption; it is **measured**, because retrieval here is
-deterministic given the corpus and the embedding cache: the run's own `recall@k` column and its per-question
-candidate sets must be identical between arms. If they are not, the run is void — a reader difference computed
-over different evidence is not a reader difference.
+The claim that "the hits did not move" is not an assumption. Retrieval here is deterministic given the corpus
+and the embedding cache, and three artefacts make that checkable without trusting anything:
+
+| evidence | where it is | what it proves |
+| --- | --- | --- |
+| `corpus sha256` | the run's own log | the same file, byte for byte |
+| `Restored N embedding vectors` | the log | the haystack vectors came from cache rather than a fresh provider call |
+| `goldOverlap.pool` per question | the JSON report, when it can be collected | the ranking surfaced the same candidates |
+
+**The third one is the real check and the first two are only consistent with it.** `benchmark-cortex-memory.yml`
+does not print a `recall@k` line — that column belongs to `competitor-harness.mjs` — so a reader arm dispatched
+through the benchmark workflow can only compare candidate sets through the per-question records. If the
+artifacts cannot be collected, the run reports R2 as **unverified** rather than as passed, and the accuracy
+difference is published with that qualification attached. Stating this before the run rather than after is the
+point: a check whose evidence might not exist has to say so in advance, or it becomes a check nobody applies.
 
 ## 2. Predictions, with numbers
 
@@ -78,6 +89,8 @@ checkable. A run that re-embedded would have no way to demonstrate that the evid
 
 ## 6. State
 
-Registered, not run. The dispatch is one input (`model`) on `benchmark-cortex-memory.yml`, with the control's
-full input set from `docs/ARM-PRESETS.md` §1 — because a reader arm that also changed `ask` or the budget would
-be the same defect this round already paid for once.
+**Running.** Both arms dispatched with the full input set from `docs/ARM-PRESETS.md` §2 — which is now the
+default, so the only field that differs between them is `model`: `deepseek-chat` (control) against
+`deepseek-v4-pro` (treatment). Same provider, same key, same endpoint, so a difference cannot be an
+availability artefact. A reader arm that also changed `ask` or the budget would be the same defect this round
+already paid for once.
