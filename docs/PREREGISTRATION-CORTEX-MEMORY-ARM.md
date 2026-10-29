@@ -13678,13 +13678,17 @@ same run.
 
 The registered repair, before the next portfolio is read:
 
-| # | requirement | falsified by |
-| - | ----------- | ------------ |
-| 1 | `tools/ledger.mjs` accepts a **cross-run pair** (`--across arm=<report> --control=<report>`) and computes bought/sold by question id | it cannot express the table in §13.131.2 |
-| 2 | a portfolio that mixes a within-run increment and a cross-run one is **refused by name** | it prints a union |
-| 3 | the tool prints the control's identity per increment (`generatedAt` plus the capability totals), so a reader can see the two lists came from one baseline | any portfolio whose printed baselines differ |
+| # | requirement | status | falsified by |
+| - | ----------- | ------ | ------------ |
+| 1 | `tools/ledger.mjs` accepts a **cross-run pair** (`--across label=<report> --control <report>`) and computes bought/sold by question id | **done**, and it reproduces §13.131.2 exactly (bought 14 / sold 81 on the archived pair) | it cannot express the table in §13.131.2 |
+| 2 | a portfolio that mixes a within-run increment and a cross-run one is **refused by name** | **done** — the message names the offending labels and says which baseline each side carries | it prints a union |
+| 3 | the tool prints the control's identity (`path`, `generatedAt`, roster size) and marks each arm `(from across)` | **done**; `--json` carries `mode` and `control` so a later reader can tell the two modes apart without the log | any portfolio whose printed baselines differ |
+| 4 | a cross-run pair whose two rosters differ is refused, naming the ids | **done** | it computes a diff that is partly a diff of the dataset |
 
-Until that lands, no additivity claim is made in either document, and the two increments are reported as what
-they are: **both negative against the same control**, so there is nothing to add. The additivity question
-becomes live again only when an increment is positive, which is the same condition §13.125 was written to
-serve.
+Four cases cover the mode in `tools/__tests__/test_ledger.py` (cross-run arithmetic, roster mismatch, mixing,
+identity), plus two on the JSON envelope, and the within-run reading keeps its shape with a `mode` field
+added — so every prior portfolio in this document stays readable and is now labelled as what it was.
+
+The additivity question itself is still not live: both increments are negative against the same control, and
+there is nothing to add. It becomes live when an increment is positive, which is the condition §13.125 was
+written to serve.
