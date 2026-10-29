@@ -1239,16 +1239,35 @@ export function formatAblationReport(report: AblationReport): string {
   // repeated on every line rather than announced once above them, because these lines are
   // copied out by line -- into a summary table, a commit message, a plan -- and a heading
   // three lines up does not travel with them.
+  //
+  // §13.122: the same argument, one step further. All three come from
+  // `report.feature.metrics`, which is ONE repetition, and they sit eleven lines under a
+  // table whose whole purpose is to say the repetitions disagree. Runs `40751377644` and
+  // `40751394094` differed in one arming and quoted 86.20% against 83.40% here while their
+  // four-run means were 84.30% and 84.20%: the first repetitions implied a `+2.80pp` effect
+  // where the means imply `+0.10pp`. Neither line was wrong; the line simply did not say
+  // which of the two questions it answered, and the stronger reading was the one a reader
+  // reached for. So the repetition is named, and when the artifact holds more than one the
+  // comparable number is published beside it rather than left to be found in the table.
+  const repetition =
+    report.runs === undefined || report.runs <= 1 ? '' : `, first of ${report.runs} runs`;
   lines.push(
     '',
-    `- Overall accuracy (\`${report.feature.name}\`): ${pct(report.feature.metrics.accuracy)}`,
+    `- Overall accuracy (\`${report.feature.name}\`${repetition}): ${pct(report.feature.metrics.accuracy)}`,
   );
   lines.push(
-    `- Abstention rate (\`${report.feature.name}\`): ${pct(report.feature.metrics.abstentionRate)}`,
+    `- Abstention rate (\`${report.feature.name}\`${repetition}): ${pct(report.feature.metrics.abstentionRate)}`,
   );
   lines.push(
-    `- Abstention correct rate (\`${report.feature.name}\`): ${pct(report.feature.metrics.abstentionCorrectRate)}`,
+    `- Abstention correct rate (\`${report.feature.name}\`${repetition}): ${pct(report.feature.metrics.abstentionCorrectRate)}`,
   );
+  if (repetition !== '') {
+    const spread = ab.featureAggregate;
+    lines.push(
+      `- Overall accuracy over all runs (\`${report.feature.name}\`): ${pct(spread.avg)} ` +
+        `(min ${pct(spread.min)}, max ${pct(spread.max)})`,
+    );
+  }
   lines.push('', '## Per-capability paired significance (McNemar + Wilson CI)', '');
   lines.push(
     '| Capability | Total | Baseline acc | Feature acc | b✓f✗ | b✗f✓ | McNemar p | Significant |',

@@ -182,3 +182,58 @@ describe('the ablation table still separates the two systems by name', () => {
     expect(md).toContain('| reference-pipeline |');
   });
 });
+
+describe('a quotable line says which repetition it reports', () => {
+  // The two artifacts of runs `40751377644` and `40751394094` differed in ONE
+  // arming -- the reader's temperature -- and their `Overall accuracy` lines read
+  // 86.20% and 83.40%. Their four-run means read 84.30% and 84.20%. Quoting the
+  // first repetitions against each other says `+2.80pp`; quoting the means says
+  // `+0.10pp`. The line said `Overall accuracy` and nothing else, so a 28x
+  // difference in the size of the claimed effect was invisible in the artifact,
+  // and it was read the wrong way before the means were checked. The line travels
+  // on its own into a summary table or a commit message, so the qualification has
+  // to travel with it.
+  function multiRun(
+    runs: number,
+    first: number,
+    avg: number,
+    min: number,
+    max: number,
+  ): AblationReport {
+    const built = report('cortex-memory', 'reference-pipeline', first);
+    built.runs = runs;
+    built.ablation.featureAggregate = { min, max, avg, median: avg };
+    return built;
+  }
+
+  it('says `first of N runs` when the artifact holds more than one', () => {
+    const md = formatAblationReport(multiRun(4, 0.862, 0.843, 0.83, 0.862));
+    expect(md).toContain('- Overall accuracy (`cortex-memory`, first of 4 runs): 86.20%');
+  });
+
+  it('publishes the mean over all runs beside it, because that is the comparable number', () => {
+    const md = formatAblationReport(multiRun(4, 0.862, 0.843, 0.83, 0.862));
+    expect(md).toContain(
+      '- Overall accuracy over all runs (`cortex-memory`): 84.30% (min 83.00%, max 86.20%)',
+    );
+  });
+
+  it('says nothing about repetitions on a single-run artifact', () => {
+    // The negative half. A suffix on a one-run artifact would claim a spread that
+    // does not exist, and every artifact written before `runs` was recorded would
+    // grow a qualification it cannot support.
+    const md = formatAblationReport(COGNITIVE);
+    expect(md).toContain('- Overall accuracy (`cortex-memory`): 80.80%');
+    expect(md).not.toContain('first of');
+    expect(md).not.toContain('over all runs');
+  });
+
+  it('keeps the two abstention lines on the same repetition as the accuracy above them', () => {
+    // All three come from `feature.metrics`, which is one repetition. Labelling
+    // only the accuracy line would leave the two rates below it indistinguishable
+    // from per-run means.
+    const md = formatAblationReport(multiRun(4, 0.862, 0.843, 0.83, 0.862));
+    expect(md).toContain('- Abstention rate (`cortex-memory`, first of 4 runs): 15.00%');
+    expect(md).toContain('- Abstention correct rate (`cortex-memory`, first of 4 runs): 88.89%');
+  });
+});
