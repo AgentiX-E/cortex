@@ -13819,3 +13819,84 @@ or a date read from the context"* — and that list is the exact taxonomy of the
 the diff set. It is deliberately **not** in `derive`, because position plus wording is two changes in one run.
 If prediction 5 fails while prediction 2 holds — replies stop saying *"cannot be merged"* and still decline —
 the taxonomy is the next registered sentence, and it is the one the reading most directly supports.
+
+## 13.133 The prompt axis on MR is priced: three rules were worth one question, and the reply-shape tax is not a tax
+
+### 13.133.1 What four prompt attempts cost and bought, on one capability
+
+MR has now been treated by four asks, each one field against its own control, and the ledger of that axis is short
+enough to read as a whole:
+
+| ask | what it changed on MR | MR mean | against |
+| --- | --------------------- | ------: | ------- |
+| `aggregation` (§13.104) | an exchange rule, a four-form arithmetic mapping, a looser decline condition | 87.5 | 86.2 (`39509698041`) — **+1.3** |
+| `silent` (§13.127) | the Step 1 notes made private | 61 | 87 (`40792853362`) — **−26** |
+| `answer-line` (§13.130) | a reply shape on a route MR does not read | 39 | 87 (`40807829150`) — **−48**, fallthrough defect |
+| `derive` (§13.132) | the combine licence moved to the last position | pending | 87 (`40751394094`) |
+
+The one that bundled the most was worth the least. Three membership rules — an exchange is two items, verb
+exclusivity with examples, dedupe across sessions — moved MR under-counts from 15 to **14** and the mean by 1.3
+questions. That is the number to beat, and it is why §13.132 registers a **position** rather than adding a fifth
+sentence.
+
+### 13.133.2 The nine remaining counting errors, and the rule they are not
+
+Of MR's 34 wrong answers, 11 have a numeric gold and a numeric reply, and **9 differ by 1 or 2**:
+
+| question | gold | reply | shape of the question |
+| -------- | ---: | ----: | --------------------- |
+| `0a995998` | 3 | 2 | pick up **or** return |
+| `a9f6b44c` | 2 | 4 | service **or** plan to service |
+| `bf659f65` | 3 | 2 | purchased **or** downloaded |
+| `d23cf73b` | 4 | 6 | learned to cook **or** tried out |
+| `21d02d0d` | 2 | 1 | fun runs I **missed** |
+| `2e6d26dc` | 5 | 6 | friends **and** family members |
+| `3a704032` | 3 | 2 | plants I **acquired** |
+| `60159905` | 3 | 2 | dinner parties I **attended** |
+| `681a1674` | 2 | 1 | Marvel movies I **re-watched** |
+
+Four of the nine are an explicit A-or-B union, which is what the exchange rule was written for, and it did not fix
+them. Two are over-counts and seven are under-counts, so the failure is not a bias that a "count more" or "count
+less" sentence can correct — it is per-question set membership, and a rule stated in the prompt is applied by the
+same reader that is already getting it wrong. **The ceiling of the membership axis is nine questions and its
+measured price is one**, which is the strongest available argument that the next MR increment is not a sentence.
+
+### 13.133.3 The reply shape is not a tax on unit-bearing golds, which retires one candidate
+
+§13.130 read the `answer-line` collapse as "a reply shape is a tax on every question whose gold is not that shape",
+and the obvious next candidate was to narrow Step 2 the same way. The artifact says it would be worth at most one
+question. Of the 121 MR golds, 49 are bare integers, 60 carry a unit or a sentence, and 12 carry no digit; the arm
+answered **30** of the 72 non-bare-int golds with a bare number, and the judge marked **24 of those 30 correct** —
+`$2,500` → `2500`, `8 days` → `8`, `70 pounds` → `70`. The numeric gate reads the last number, and the judge
+accepts it against a unit-bearing gold.
+
+The six failures in that group are misfires for a different reason: five are the off-by-ones of §13.133.2 and one,
+`5025383b`, answered `2` to *"What are the two hobbies that led me to join online communities"* whose gold is
+`photography and cooking`. **So the whole value of a Step-2 form mapping, priced on this artifact, is one question**,
+and it is not registered. `aggregation` carried that mapping and this is the arithmetic of why it moved nothing.
+
+### 13.133.4 `derive` and `recover` share ten questions, and against a shared control that is now a reading
+
+§13.128.1 counted 12 MR declines of which 10 carry a non-empty list; §13.132.1 counted 12 declines of which 10 are
+questions the reference pipeline answers. They are the same ten, and the two questions that fall outside each set
+are the same two — `157a136e` and `c18a7dc8`, whose Step 1 is explicitly empty.
+
+That is not a coincidence to be explained away, it is the design: two treatments, one population, one control.
+`derive` is prompt-side (the reader stops having a reason to decline) and `recover` is pass-side (a second call
+repairs a decline without a list). Both are measured against `40751394094`, so the ledger's cross-run mode computes
+a **real** overlap here — unlike §13.131, where two increments were both measured against the reference arm and the
+208-question overlap was an artifact of the shared third party.
+
+What the pair can say that neither can alone:
+
+- if `derive` converts five and `recover` converts five and they are the **same** five, the two mechanisms are one
+  mechanism and the cheaper one wins;
+- if they convert **disjoint** fives, the ten declines are two kinds of failure and the register should stop
+  treating "declines" as one population — which is already what the two empty-list questions hint at;
+- if `derive` converts none and `recover` converts five, the licence was never the blocker and §13.132.7's taxonomy
+  sentence is not next either; the reader needs a second call, not a better first one.
+
+Ordering: `derive` first, because it is one dispatch with no extra model call per question and its mechanism check
+(`promptChars` unchanged, refusal vocabulary falling) is judge-free. `recover` follows against the same control,
+and its claim 4 (§13.128.3) already asks whether the listed items can be counted into the gold — a question only a
+pass can answer.
