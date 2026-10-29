@@ -525,6 +525,105 @@ describe('the enumerated ask adds a two-step contract on the multi-session route
 });
 
 /**
+ * §13.123: the silent ask, which is the shape the reference pipeline actually runs.
+ *
+ * ## The diagnosis this file was extended to correct
+ *
+ * §13.34 read the reference pipeline's MR advantage as *"enumerate matching items first, compute
+ * second, and make the abstention token conditional on the list existing"*, and every ask since —
+ * `enumerated`, `sweep`, `aggregation` — improved **how the list is written**. Three attempts,
+ * and §13.96 records all three as *"each lengthened the list and failed to raise accuracy"*.
+ *
+ * The reference pipeline's own builder does not ask for a list. `conInstruction` in
+ * `natural-language-memory.ts` opens with *"Work in two steps, but write ONLY the final answer"*
+ * and its Step 1 ends *"Keep those notes to yourself; do NOT write them out"*. The docblock beside
+ * it states the measurement that put those words there: run `7a349da` found the model *"writing out
+ * its Step 1 notes and never reaching Step 2 on 7.5% of the diagnosed questions"*, leaking up to
+ * 33 KB of self-talk into the parsed answer.
+ *
+ * So the two arms point in opposite directions on the one instruction both campaigns agree matters,
+ * and the arm that wins MR by ~18 questions is the one that says **do not write it**. §13.92's list
+ * census is the same failure seen from this side: a median Step 1 list of 2.0 items where the gold
+ * is 3 to 10 — a list of what was noticed, not a reading of what was printed.
+ *
+ * ## What this ask changes, in one sentence
+ *
+ * The same two steps with the same arithmetic and the same merging sentence, with the notes kept
+ * private. That is the whole variable: `enumerated` says *"write both of them out"*, this says
+ * *"write ONLY the final answer"*.
+ *
+ * ## Why the decline clause moves with it, and why that is still one variable
+ *
+ * `enumerated` conditions declining on the Step 1 **list** being empty, because the list is the
+ * artefact it can inspect. With the notes unwritten there is no artefact, so the same rule has to
+ * be stated over what the reader found rather than over what it wrote. The two sentences are one
+ * decision — *is the list an object on the page or a step in the reader's head* — and changing only
+ * the first would leave a contract that demands a written list while licensing a decline that
+ * inspects an unwritten one. A dispatch cannot administer half of that.
+ */
+describe('the silent ask keeps the notes out of the answer, which is what the reference does', () => {
+  const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
+  const SILENT_RULE = 'write ONLY the final answer';
+  const WRITTEN_RULE = 'write both of them out';
+
+  it('tells the reader to keep Step 1 to itself', async () => {
+    const seen: string[] = [];
+    await build(seen, 'silent').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain(SILENT_RULE);
+    expect(block).toContain('do NOT write them out');
+    // The negative half is the experiment: this string IS `enumerated`, so a block that
+    // still carries it is the control wearing the treatment's name.
+    expect(block).not.toContain(WRITTEN_RULE);
+    expect(block).not.toContain('one per line');
+  });
+
+  it('keeps both steps, the arithmetic and the sentence that licenses combining', async () => {
+    // The mechanism is carried over rather than replaced: this is `enumerated` with the
+    // notes made private, not `extractive` with a new name. A block that dropped Step 2's
+    // per-form arithmetic would test two things at once against §13.34's run.
+    const seen: string[] = [];
+    await build(seen, 'silent').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain('Step 1');
+    expect(block).toContain('Step 2');
+    expect(block).toContain('the number of distinct items');
+    expect(block).toContain(MERGING_SENTENCE);
+    expect(block).toContain('INSUFFICIENT_EVIDENCE');
+  });
+
+  it('leaves the flat path and the temporal route on the enumerated block, byte for byte', async () => {
+    // The reach is `enumerated`'s, so the single variable against an `enumerated` control is
+    // what the multi-session route reads. TR's gain came from the temporal route and IE's
+    // from the flat path; a dispatch that moved either would make MR unattributable.
+    const silent: string[] = [];
+    const enumerated: string[] = [];
+    await build(silent, 'silent').answer('How many kits do I own?', [TEXT]);
+    await build(enumerated, 'enumerated').answer('How many kits do I own?', [TEXT]);
+    expect(instructionsOf(silent[0]!)).toBe(instructionsOf(enumerated[0]!));
+
+    const silentTemporal: string[] = [];
+    const enumeratedTemporal: string[] = [];
+    await build(silentTemporal, 'silent').answerTemporal('How long ago?', [TEXT], '2023/06/01');
+    await build(enumeratedTemporal, 'enumerated').answerTemporal(
+      'How long ago?',
+      [TEXT],
+      '2023/06/01',
+    );
+    expect(instructionsOf(silentTemporal[0]!)).toBe(instructionsOf(enumeratedTemporal[0]!));
+  });
+
+  it('moves the multi-session route and no other, so the reach equals the enclosed control', () => {
+    // Equality of the two reach sets is what makes `silent` dispatchable against `enumerated`
+    // as a single variable rather than against the shipped arm as two.
+    expect(ASK_ROUTES.silent).toEqual(['multi-session', 'flat', 'temporal']);
+    expect(ASK_ROUTES.silent).toEqual(ASK_ROUTES.enumerated);
+  });
+});
+
+/**
  * §13.92: the sweep, which is what the lists say the failure is.
  *
  * ## The measurement this file was extended for

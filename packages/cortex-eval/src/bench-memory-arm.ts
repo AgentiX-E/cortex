@@ -1013,6 +1013,11 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // fell through to the control's block elsewhere, which removed the merging sentence from flat and
   // temporal -- TR fell 21 questions in a run registered as a single-variable test.
   aggregation: ['multi-session', 'flat', 'temporal'],
+  // §13.123's ask: `enumerated`'s reach and `enumerated`'s block on flat and temporal, with the
+  // Step 1 notes made private on the multi-session route. Dispatchable against an `enumerated`
+  // control as a single variable because the other two routes are byte-identical, which is what
+  // keeps TR and IE from moving under a registration that names only multi-session.
+  silent: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

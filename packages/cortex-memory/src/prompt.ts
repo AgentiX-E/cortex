@@ -132,6 +132,22 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // 21 questions and IE 9 in a run registered as a single-variable test. The reach table and the
   // fallthrough are two statements of one fact, and they disagreed.
   aggregation: ['multi-session', 'flat', 'temporal'],
+  // §13.123. The same reach as `enumerated`, and the same block everywhere except the
+  // multi-session route: this is `enumerated` with the Step 1 notes made private.
+  //
+  // The correction it exists for is a diagnosis, not a wording. §13.34 attributed the reference
+  // pipeline's ~18-question MR lead to *"enumerate matching items first, compute second"*, and
+  // three asks later (`enumerated`, `sweep`, `aggregation`) every attempt had improved how the
+  // list is **written** while §13.96 recorded all three as failing to raise accuracy. The
+  // reference's own builder says the opposite: `write ONLY the final answer`, with a docblock
+  // recording that writing the notes out left the model stranded at Step 1 on 7.5% of diagnosed
+  // questions. §13.92's census is the same failure from the other side — a median Step 1 list of
+  // 2.0 items against a gold count of 3 to 10 — so the list is what the reader noticed, and what
+  // is missing is a reading of the window.
+  //
+  // Flat and temporal keep `enumerated`'s block byte for byte through the same fallthrough, so
+  // the single variable against an `enumerated` control is what the multi-session route reads.
+  silent: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -199,7 +215,14 @@ type EvidenceRendering = 'numbered' | 'sourced';
  * Defaults to `route`, so every prior artifact keeps its meaning byte for byte.
  */
 export type EvidenceAsk =
-  'route' | 'extractive' | 'aggregate' | 'computed' | 'enumerated' | 'sweep' | 'aggregation';
+  | 'route'
+  | 'extractive'
+  | 'aggregate'
+  | 'computed'
+  | 'enumerated'
+  | 'sweep'
+  | 'aggregation'
+  | 'silent';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -651,6 +674,68 @@ const ENUMERATED_MULTI_SESSION_INSTRUCTION = withReplacedClose(
 );
 
 /**
+ * The multi-session contract with the Step 1 notes kept private — §13.123.
+ *
+ * ## Why this exists, stated as the correction it is
+ *
+ * §13.34 copied the reference pipeline's **structure** and wrote its own wording, on the reading
+ * that the reference *"enumerates matching items first, compute second"*. It does not. Its builder
+ * (`conInstruction` in `natural-language-memory.ts`) opens with `Work in two steps, but write ONLY
+ * the final answer` and closes Step 1 with `Keep those notes to yourself; do NOT write them out`.
+ * The docblock beside it carries the measurement that put those words there: with the notes
+ * written out, the model *"never reached Step 2 on 7.5% of the diagnosed questions"* and leaked up
+ * to 33 KB of self-talk into the parsed answer.
+ *
+ * So the arm that leads MR by about eighteen questions is the one that says **do not write it**,
+ * and every ask this campaign built after §13.34 sharpened the instruction to write it. §13.96's
+ * summary of three consecutive failures — *"each lengthened the list and failed to raise accuracy"* —
+ * is that direction's own report. §13.92 priced the same thing from the response side: the median
+ * Step 1 list is **2.0 items** where the gold count is 3 to 10, and six of ten wrong counting
+ * questions list fewer items than the gold and none lists exactly that many.
+ *
+ * ## What is copied and what is this project's own
+ *
+ * Copied: the silent step, and the reply shape that makes a silent step safe. Own: Step 2's
+ * per-form arithmetic — counts, durations, amounts, a named value — because the reference's
+ * `Answer the question using ONLY those identified facts` says nothing about what a counting
+ * question's answer looks like, and that sentence is the part of `enumerated` that was never the
+ * problem.
+ *
+ * ## The decline clause moves with Step 1, and it is one decision
+ *
+ * `enumerated` conditions declining on the written list, because a written list is inspectable.
+ * With the notes unwritten there is nothing on the page to inspect, so the same rule has to be
+ * stated over what the reader found. The two sentences are the two projections of a single
+ * decision — *is the list an object on the page or a step in the reader's head* — and a dispatch
+ * that moved only the first would administer a contract that demands a written list while
+ * licensing a decline that inspects an unwritten one.
+ */
+const SILENT_CONTRACT = [
+  'Work in two steps, but write ONLY the final answer.',
+  'Step 1 — Silently read each turn and identify every item in the evidence that matches the question, with the date it was stated. Use the question’s own wording for the action and do not substitute a similar one. Treat one event mentioned in several turns as one item, and do not merge two items into one. Keep those notes to yourself; do NOT write them out.',
+  'Step 2 — compute the answer from those items, exactly as the question asks: the number of distinct items, the total of the durations or amounts, or the single value or event it names. Do not re-filter what you found at this step.',
+  `Do not reply ${ABSTAIN_TOKEN} unless nothing in the evidence matches the question: an unmatched question is the only licence to decline, and needing to add, subtract, convert or compare what the evidence does state is not one.`,
+].join('\n');
+
+/**
+ * The closers for the silent ask, in the position where the rule decides (§13.56).
+ *
+ * `enumerated` states the rule above its close and again inside it, because placing it only once
+ * let 12 of 21 surviving MR declines keep a non-empty list. The same argument applies here with
+ * the object changed: the second statement is what the parser's last-line rule sees.
+ */
+const SILENT_CLOSE = `Reply with the Step 2 number alone. If nothing in the evidence matches the question, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The multi-session block under `silent`: `enumerated`'s shape, with the notes unwritten. */
+const SILENT_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    SILENT_CONTRACT,
+  ),
+  SILENT_CLOSE,
+);
+
+/**
  * The sweep's two steps: a line per session, then a count of what the lines name.
  *
  * ## Why a line per session, when `enumerated` already asks for a list
@@ -831,6 +916,16 @@ function instructionsFor(
     }
     // Everything else is `computed` to the byte, which is the whole reason this ask can
     // be dispatched against §13.26's run as a single variable.
+    return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'silent') {
+    // §13.123. The fallthrough is `enumerated`'s rather than the shipped block, which is what
+    // makes this dispatchable against an `enumerated` control with one variable instead of two:
+    // flat and temporal must read exactly what the control's run read, or TR and IE would move
+    // under a registration that named only multi-session — §13.104's defect, arriving again.
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return SILENT_MULTI_SESSION_INSTRUCTION;
+    }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
   if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
