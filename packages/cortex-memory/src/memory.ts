@@ -1068,7 +1068,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
     }
     if (!isBareDecline(this.#lastRawOutput)) return this.#recordOutcome(first);
     this.#bareRetries.attempted += 1;
-    const second = await this.#consult(buildRetryPrompt(question, kept, options));
+    // `assembled.carried`, not `kept`. `buildRetryPrompt`'s contract is that the retry re-reads *the same
+    // evidence* ("rendered exactly as the first pass rendered them"), and on a question where the budget
+    // binds, "the same evidence" is the set the first pass carried -- not the window the route admitted.
+    // Built from `kept`, the retry re-sent the part of the window the first pass had just refused to send:
+    // a 1,024-character prompt against a 520-character first pass on the fixture in
+    // `bare-decline-retry.test.ts`, and none of that extra evidence was in the call it was correcting.
+    // Two consequences, both asserted there: the retry's evidence block is now a byte prefix of the first
+    // prompt's (so the shared head is cacheable, which it was not when the block was longer), and the retry
+    // never carries more of the window than the call it corrects. It can still be the longer *prompt* --
+    // its instruction block is the treatment and is not the evidence's budget to spend. The reach is zero on
+    // the registered budget and that is the point: §13.139 measures no question above the 48,000 ceiling, so
+    // `fitToBudget` never fires there and this defect is latent -- but it is live at the 24,000 product
+    // default every run before §13.82 used, where the median window is nearly twice the ceiling and every
+    // retried question re-sent all of it. §13.147 has the arithmetic.
+    const second = await this.#consult(buildRetryPrompt(question, assembled.carried, options));
     if (second !== null) this.#bareRetries.answered += 1;
     return this.#recordOutcome(second);
   }

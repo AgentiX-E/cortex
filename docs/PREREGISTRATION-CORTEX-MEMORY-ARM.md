@@ -14533,6 +14533,13 @@ front. If it comes back near 20%, the instruction block is far larger than its c
 six route-specific contracts are candidates), and reordering becomes a registered experiment with a measurable
 prize. **The measurement decides which; no reading of the source can.**
 
+**Amended before the first reading, not after it.** §13.147.3 decomposes this prediction, because the dispatch
+that answers it runs four repetitions and passes 2-4 send byte-identical requests: the share the artifact
+reports is dominated by repetition reuse rather than by prompt ordering, and prediction 1's 10-14M band is
+compatible with both a cold single pass and a warm four-pass dispatch. Prediction 2's threshold is retained;
+what §13.147.3 adds is which of three readings a given share licenses, and prediction 4 -- the share lands in
+the 60-80% band -- registered there while the artifact was still in flight.
+
 ### 13.140.6 What this does not licence
 
 Three ways to cut the bill exist and none of them is taken here, for three different reasons:
@@ -15223,3 +15230,151 @@ than as untouched.
 It also gives every future mechanism ask the same seam. `bareRetryCensus()` has the same shape, and a watch
 that fires on one question and not the next is the generic case -- the wrapper is keyed on the accessor, so
 a second mechanism is one more wrapper and no change to the record type.
+
+## 13.147 What one dispatch buys, read from the code because there is no invoice to read
+
+§13.140 registered the instrument that prices a run and §13.142 settled one prediction without spending a
+call. Neither answers the question a reader of the bill asks first: **which call is the expensive one, and is
+any of it buying nothing?** That is answerable from the source alone, and this section answers it from the
+source -- with the reach of each answer in questions, because "the prompt is 48,000 characters" is a fact
+about a constant and "eleven thousand questions are answered per dispatch" is a fact about a bill.
+
+### 13.147.1 The call graph, counted
+
+Every provider request in the registered configuration (`ablation_runs: 4`, `review_pass: bare`,
+`rerank: none`, `query_expansion: none`, `self_consistency: none`), per arm per 500-question pass:
+
+| call | built at | count | prompt size | reusable prefix |
+| --- | --- | --- | --- | --- |
+| first-pass answer | `#answerWithBareRetry` -> `buildPrompt` | 500 | `cortex_memory_max_prompt_chars` = 48,000, and §13.139 measures 468 of 500 at 95% of it | none: the prompt is question-specific from its first evidence line |
+| bare-decline retry | `buildRetryPrompt` | 21 (feature arm only, §13.94) | the first pass's window plus a longer instruction | its whole evidence block is the head of the first prompt (§13.147.4) |
+| abstention recovery | `buildRecoveryPrompt` | 13-17 when `review_pass: recover` (§13.141) | the reader's own Step 1 list, no evidence re-sent | not applicable |
+| answer audit | `buildAuditPrompt` | 500 when `review_pass: audit` | the window again | not in this configuration |
+| answer-equivalence judge | `buildJudgePrompt` | at most 500, less its own cache | question + predicted + expected, a few hundred characters | fully: keyed on the triple |
+| cross-encoder rerank | `LLMReranker.score` | 0 | -- | registered `none` |
+| query expansion | -- | 0 | -- | registered `none` |
+
+So one dispatch of this arm issues **4,000 first-pass answer calls** (four repetitions, two sides), **84
+retries**, and **at most 1,000 judge calls**. The judge is nearly free twice over and both reasons are
+deliberate: its prompt is two short strings and a question, and `judge.ts` caches verdicts process-wide on the
+`(question, predicted, expected)` triple -- which repetitions 2-4 mostly hit, because the flip rate on
+untouched questions is 7.08% (§13.135) and 92.92% of a repetition's answers are the previous repetition's
+answer verbatim. A repetition therefore pays for its answer prompts and almost nothing for its grading.
+
+**The whole bill is the first-pass answer prompt.** Everything else in the table is a rounding error against
+4,000 x ~11,400 tokens, which is why the rest of this section is about that one call and about whether
+repetitions pay for it more than once.
+
+### 13.147.2 The arithmetic, cold
+
+§13.139 measures the roster's **median** `promptChars` at 46,851 on the 48,000 ceiling -- not the threshold, the
+middle question, with 468 of 500 at or above 95% of it and the largest 409 characters short. At four characters
+per token that is **11,713 tokens**; 4,000 calls make **46.9M prompt tokens** per dispatch, against roughly 0.2M
+completion tokens (the answer is a line or a short list) and 0.15M judge tokens.
+
+The 4.0 is an assumption, and it is the one number here that the artifact retires rather than confirms:
+`llmUsage.promptTokens` divided by the roster's `promptChars` is the measured ratio, and a ratio far from 4.0
+would mean the prompt is not what the roster says it is. It is not exact in either direction -- `promptChars`
+describes the **first** prompt only, so the division understates the ratio by the retry's share, which
+§13.147.1 puts at 84 calls of 4,000.
+
+### 13.147.3 Prediction 2 is about to be answered by the wrong variable, and the repair goes on record first
+
+The `recover` dispatch now in flight is the first artifact carrying `llmUsage`. It will report the three
+numbers §13.140.5 predicts, and two of those predictions cannot be read the way they are written:
+
+**Prediction 1's band cannot tell one run from four.** One 500-question pass, two sides, cold: 1,000 x 11,400
+= **11.4M**, inside the registered 10-14M. Four repetitions with repeats served from a prefix cache:
+11.4M + 3 x 11.4M x 0.1 = **14.8M**, also inside it. A total inside the band is therefore compatible with both
+"every call paid full price once" and "three quarters of the prompt tokens were billed at a tenth", and the
+band must not be read as evidence for either.
+
+**Prediction 2 is stated about ordering and will be measured against repetition.** Its premise is that the
+only reusable prefix is the fixed instruction block, "a few hundred tokens of 47,000 characters" -- true
+*within* a pass. But a dispatch runs four passes, and passes 2-4 send **byte-identical requests**: `now` is
+fixed at construction (`bench/run-ablation.ts` evaluates `Date.now()` once, before either system answers
+anything), retrieval is deterministic over a cached embedding store, and the reader runs at temperature 0
+(§13.119). A repetition is not a similar prompt, it is the same prompt. If the provider serves prefixes at all,
+the expected share over a four-run dispatch is near 3/4 -- and that number would say nothing about ordering.
+
+So prediction 2's threshold is retained and its **interpretation** is decomposed, before the reading:
+
+| share | what it means | what follows |
+| --- | --- | --- |
+| under 5% | no repetition reuse *and* no ordering win | repetitions cost what §13.145.2 assumed they cost; moving a stable block to the front is settled negative, and prediction 2 stands as written |
+| 60-80% | repetitions are reused and ordering is invisible from this artifact | the **marginal** repetition is about a tenth of the prompt, so "eight repetitions cost double" is wrong and the resolution arithmetic must be restated before the next repetition decision; ordering stays untested |
+| 20% to 60% | neither story fits | the instrument or the provider is doing something neither this section nor §13.140.2 describes, and per-pass spend is needed to localise it |
+
+**Prediction 4, registered here and before the artifact exists:** the share falls in the 60-80% band, because
+three of every four answer calls in a dispatch are exact repeats of a prompt the same job has already sent.
+
+The instrument that would settle all three readings at once is **per-pass spend** -- an `llmUsage` delta around
+each of the eight passes rather than around the ablation -- and it is deliberately *not* built yet: if the
+share lands in the top band it answers the repetition question on its own, and if it lands in the bottom band
+per-pass spend would be a second measurement of a fact already known. The middle band is the only one that
+needs it, and that is the reason to wait rather than to guess.
+
+### 13.147.4 The retry re-sent a window the first pass had refused, and its docstring said it did not
+
+`buildRetryPrompt`'s docstring states the contract: *"The evidence and the question are rendered exactly as
+the first pass rendered them, so the only difference between the two calls is the instruction."*
+`#answerWithBareRetry` passed it `kept` -- the window the **route admitted** -- rather than
+`assembled.carried`, the set the **first prompt carried**. On a question where the budget binds, those are
+different objects, and the retry was built from the larger one.
+
+Measured on the fixture in `bare-decline-retry.test.ts` (eight turns, a 520-character budget): the first
+prompt is 520 characters and its evidence ends mid-turn, because `fitToBudget` clips at a character boundary;
+the retry was **1,024 characters**, and every one of those extra 504 characters was evidence the first pass had
+just refused to send. It is the only call in the pipeline with no ceiling on it at all.
+
+Three things are now asserted rather than described, and each of them fails on the pre-fix code:
+
+1. **It drops what the first pass dropped.** The retry carries every line the first prompt carried and none it
+   did not. (The fixture must bind -- the test asserts `dropped.length > 0` -- or it measures a prompt that
+   fits and proves nothing.)
+2. **Its evidence block is a byte prefix of the first prompt.** `render(prefix)` is a prefix of `render(all)`
+   whenever the produced text is contiguous from the start, which is the property `wholeTurnsIn` already
+   relies on. Pre-fix the block was *longer* than the first prompt and no provider could serve a byte of it;
+   post-fix the shared head is exactly what a prefix cache reads.
+3. **It never carries more of the window than the call it corrects** -- and, separately, its instruction block
+   is *longer* than the contract's (369 characters against 145 on the fixture), which is pinned so that a
+   future comparison of total lengths cannot be mistaken for the evidence comparison that means something.
+
+**What this is worth, honestly: nothing at all on the configuration that is running, and that is the finding.**
+§13.139's distribution says no question on the roster exceeds the ceiling -- zero at 48,000, the largest at
+47,591 -- so `fitToBudget` never fires at the registered budget and `carried` and `kept` are the same array on
+all 500 questions. The defect is **latent at 48,000 and live at 24,000**: the product default every run before
+§13.82 used was 24,000 against a median window of 46,851, which means on that configuration a retry re-sent
+**nearly twice the ceiling** it was correcting, on every question that retried. The reason to fix it is not
+today's bill. It is that a dispatchable ceiling is one `--set` away from being that configuration again, and the
+retry would then answer from a window no other call in the pipeline was allowed to see.
+
+**And the retry still has no budget of its own**, which is registered as *unchanged* rather than as an
+oversight: post-fix it is 669 characters against a 520-character budget, and the excess is the instruction.
+Spending a ceiling on the treatment would truncate the treatment; the evidence is bounded by the first pass,
+and that is the part the ceiling was ever meant to bound.
+
+### 13.147.5 What none of this licences
+
+- **§13.140.6 stands unchanged.** The control arm is not cached, the repetitions are not cut, and the window is
+  not shrunk: the first two destroy the noise floor and the third is the arm's independent variable.
+- **No prices.** `usage.ts` refuses to hold a rate card and this section does not introduce one. Token counts
+  are facts the provider published; a currency figure is a fact about a contract, and a stale contract
+  denominated in money survives review in a way a stale count cannot.
+- **No conclusion about ordering.** Prediction 2's third row is the only one that would licence an ordering
+  experiment, and it is the one row that cannot arrive from a four-run dispatch.
+
+### 13.147.6 Acceptance criteria
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | the retry carries what the first pass carried and drops what it dropped | `bare-decline-retry.test.ts`, eight-turn fixture with a binding budget |
+| 2 | its evidence block is a byte prefix of the first prompt | same file, `startsWith` on the block |
+| 3 | it never carries more evidence than the call it corrects | same file, evidence lengths compared |
+| 4 | the reason a total-length comparison would be wrong is pinned | same file, instruction lengths compared in the opposite direction |
+| 5 | a reasoned decline is still not retried, and an answer never is | pre-existing tests, unchanged |
+| 6 | the abstention route is still untouched | pre-existing test, unchanged |
+
+Criterion 2 is the one that constrains the future: it is the only assertion in the suite that would fail if a
+later refactor rebuilt the retry from turns again, and it is stated in the currency the provider charges in --
+bytes at the head of the request.

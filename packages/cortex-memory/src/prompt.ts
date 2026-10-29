@@ -1457,8 +1457,13 @@ export type AssembledPrompt = {
  * would make the table's invariant ("every instruction block names the token") false in one branch.
  *
  * The evidence and the question are rendered exactly as the first pass rendered them, so the only difference
- * between the two calls is the instruction. A retry that re-sampled a different window would be a second
- * observation rather than a correction.
+ * between the two calls is the instruction.
+ *
+ * That sentence is a **precondition on the caller**, not a property of this function: it holds when `turns` is
+ * the set the first prompt carried (`AssembledPrompt.carried`) and stops holding the moment a caller passes the
+ * window it admitted or budgeted. `#answerWithBareRetry` passed the latter until §13.147, which sent the retry a
+ * larger window than the call it was correcting. Asserted from the prompt side in `bare-decline-retry.test.ts`,
+ * where the retry's evidence block is required to be a byte prefix of the first prompt's.
  */
 export function buildRetryPrompt(
   question: string,

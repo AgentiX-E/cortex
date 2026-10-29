@@ -158,6 +158,92 @@ describe('the bare decline gets one question back, and only when the option is o
   });
 });
 
+describe('the retry re-sends the window the first pass carried, and nothing it dropped', () => {
+  /**
+   * The retry's own contract, taken literally: *"The evidence and the question are rendered exactly as the first
+   * pass rendered them, so the only difference between the two calls is the instruction."*
+   *
+   * The route admits a window and `buildPrompt` spends a budget on it, so "the evidence the first pass rendered"
+   * is `AssembledPrompt.carried` -- the turns that reached the reader -- and not the window the route admitted.
+   * The two are the same object whenever the prompt fits, which is why the difference was invisible: the defect
+   * only exists on the questions where the budget binds, and those are the expensive ones.
+   *
+   * Two consequences, and both are measured here rather than argued:
+   *
+   *  - **The retry can be larger than the first pass.** `fitToBudget` cuts the window to the ceiling; a retry
+   *    built from the uncut window is not "the same evidence", it is more evidence than the first call was
+   *    allowed, and it is the one call in the pipeline with no ceiling on it at all.
+   *  - **It shares no prefix with the first prompt**, so a provider's prefix cache -- which keys on the leading
+   *    bytes of the request -- cannot serve any of it. Re-sending the carried set makes the retry prompt a
+   *    prefix-extension of the first, which is the difference between paying for the window twice and paying
+   *    for the instruction twice.
+   */
+  const question = 'What did I do on the two days I was in Lisbon?';
+  const lines = [
+    '[2023/05/20] user: I flew to Lisbon on Saturday and stayed near the river.',
+    '[2023/05/20] assistant: That neighbourhood is walkable to most of the old town.',
+    '[2023/05/21] user: On Sunday I walked to the castle and then took a tram to Belem.',
+    '[2023/05/21] assistant: The tram is the fastest way to get out there.',
+    '[2023/05/22] user: I came back on Monday morning and went straight to the office.',
+    '[2023/05/22] assistant: That is a short flight at least.',
+    '[2023/05/23] user: I still have the pastries I bought at the airport.',
+    '[2023/05/23] assistant: They keep for a couple of days.',
+  ];
+  /** Small enough that `fitToBudget` keeps only a prefix of eight lines, and it is asserted, not assumed. */
+  const BUDGET = 520;
+
+  it('drops from the retry exactly what the first prompt dropped, and keeps what it kept', async () => {
+    const { llm, seen } = scripted([ABSTAIN_TOKEN, 'I walked to the castle.']);
+    await memory({ reviewBareDecline: true, maxPromptChars: BUDGET }, llm).answer(question, lines);
+    const [first, retry] = seen as [string, string];
+
+    const carried = lines.filter((line) => first.includes(line));
+    const dropped = lines.filter((line) => !first.includes(line));
+    // The fixture has to bind, or this test measures a prompt that fits and proves nothing.
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(carried.length).toBeGreaterThan(0);
+
+    for (const line of dropped) {
+      expect(retry).not.toContain(line);
+    }
+    for (const line of carried) {
+      expect(retry).toContain(line);
+    }
+  });
+
+  it('re-sends an evidence block that is a byte prefix of the first prompt', async () => {
+    // The cost property, stated as the text a provider sees. The profile is chosen because `fitToBudget`
+    // clips the window at a character boundary, so the first prompt can end mid-turn: what the retry
+    // re-sends is the head of that string and nothing else, which is the largest share of the first pass
+    // any retry could reuse. Built from the admitted window instead, this block would be *longer* than the
+    // first prompt's and no provider could serve a byte of it.
+    const { llm, seen } = scripted([ABSTAIN_TOKEN, 'I walked to the castle.']);
+    await memory({ reviewBareDecline: true, maxPromptChars: BUDGET }, llm).answer(question, lines);
+    const [first, retry] = seen as [string, string];
+    const boundary = retry.indexOf('\n\nQUESTION: ');
+    expect(boundary).toBeGreaterThan(0);
+    const retryEvidence = retry.slice(0, boundary);
+    expect(first.startsWith(retryEvidence)).toBe(true);
+  });
+
+  it('does not exceed the evidence the first pass printed, even though its instruction is longer', async () => {
+    // The retry's instruction block is longer than the contract's and it is not the evidence's budget to
+    // spend, so the comparison that means anything is on the evidence: the retry must never carry more of
+    // the window than the call it corrects. Built from `kept` it carried the whole window -- a 1,024
+    // character prompt against a 520-character first pass on this fixture -- and the excess was all
+    // evidence. The second assertion pins the reason a total-length comparison would be the wrong test.
+    const { llm, seen } = scripted([ABSTAIN_TOKEN, 'I walked to the castle.']);
+    await memory({ reviewBareDecline: true, maxPromptChars: BUDGET }, llm).answer(question, lines);
+    const [first, retry] = seen as [string, string];
+    const evidenceOf = (prompt: string): string =>
+      prompt.slice(0, prompt.indexOf('\n\nQUESTION: '));
+    const instructionOf = (prompt: string): string =>
+      prompt.slice(prompt.indexOf('\n\nQUESTION: '));
+    expect(evidenceOf(retry).length).toBeLessThan(evidenceOf(first).length);
+    expect(instructionOf(retry).length).toBeGreaterThan(instructionOf(first).length);
+  });
+});
+
 describe('buildRetryPrompt, which the retry sends', () => {
   const turn = {
     id: 't1',
