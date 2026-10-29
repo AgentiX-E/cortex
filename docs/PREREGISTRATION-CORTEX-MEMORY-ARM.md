@@ -13566,6 +13566,38 @@ Claim 2 is the one that would separate "licensing composition is safe" from "any
 block costs the short-gold questions" — the 117 are 99.1% correct, so their headroom is one question
 and their downside is the whole block's worth of phrasing.
 
+### 13.129.9 The result: the reach is 34 questions, and claim 1 was impossible when it was written
+
+Run `40824682542`, `ask=recommend`, four repetitions, against `40751394094`.
+
+| capability | control   | `recommend` | Δ       | `promptChars` moved |
+| ---------- | --------- | ----------- | ------- | ------------------- |
+| IE         | 140/150   | 144/150     | **+4**  | **34 of 150**       |
+| MR         | 87/121    | 85/121      | −2      | 0                   |
+| KU         | 61/72     | 66/72       | +5      | 0                   |
+| TR         | 100/127   | 102/127     | +2      | 0                   |
+| ABS        | 29/30     | 29/30       | 0       | 0                   |
+| **overall**| 417/500   | 426/500     | **+9**  | 34                  |
+
+Claims 2, 3 and 4 hold and claim 5 holds numerically: the 117 short-gold questions went 116 → **117**,
+declines per run went 13.0 → **12.5**, no question outside `flat` moved a prompt byte, and the overall
+went 83.40% → **85.20%**.
+
+**Claim 1 is falsified: 24 → 27, and the falsifier was ≤ 27.** Not by a rounding: the claim asked for 28
+and the falsifier fired at 27, which is the boundary.
+
+The reason matters more than the miss. `recommend` reaches the `flat` route, and of the 33
+paragraph-gold questions only **9** render that route — the other 24 render `multi-session`, `temporal`
+or `abstention`, so their prompts are byte-identical and no treatment was administered to them. The
+ceiling is therefore 24 + 3 = **27**: the nine treated paragraph questions hold three errors and claim 1
+asked for four conversions out of a population where only three questions were wrong and reachable.
+
+> **A claim whose arithmetic ceiling is below its own threshold is a wish written in the grammar of a
+> prediction.** §13.129.4 said a shape-constraining repair must be validated on the subset whose gold has
+> that shape; this run adds the other half — the subset must also be one the treatment **reaches**.
+
+That is the whole of §13.135's first rule, measured the expensive way.
+
 ## 13.130 The other half of a single-variable claim, made mechanical
 
 ### 13.130.1 Four arrivals of one defect
@@ -13954,3 +13986,129 @@ retired two asks; they say nothing about prompts. What retires the prompt axis o
 questions by reordering, one by a rule set — with the best result on the axis at +1.3. Recording the distinction
 matters because the failure-based reading would have retired the axis after §13.127, and `derive` would never have
 been written.
+
+## 13.135 The untreated questions are this pair's own noise realisation, and they produced seven of the nine
+
+### 13.135.1 One split that changes what the run means
+
+Run `40824682542` moved **+9** questions against `40751394094` and reported 85.20% against 83.40%. Cut the
+same roster by whether the treatment reached the question — `promptChars` is the arm's own statement of the
+length of the prompt it rendered, so two runs that agree on it rendered the same bytes for that question:
+
+| bucket                              |     n | bought | sold | net   |
+| ----------------------------------- | ----: | -----: | ---: | ----- |
+| treated (`promptChars` differ)      |    34 |      2 |    0 | **+2** |
+| untouched (`promptChars` identical) | **466** | **20** | **13** | **+7** |
+
+**Seven of the nine came from questions whose prompts did not move by one byte.** Per capability, and the
+four rows that did not move a single prompt are the reading:
+
+| capability | `promptChars` moved | flips | bought | sold | net |
+| ---------- | ------------------: | ----: | -----: | ---: | --- |
+| IE         | 34 of 150           | 8     | 6      | 2    | +4  |
+| MR         | **0**               | 12    | 5      | 7    | −2  |
+| KU         | **0**               | 5     | 5      | 0    | +5  |
+| TR         | **0**               | 10    | 6      | 4    | +2  |
+| ABS        | **0**               | 0     | 0      | 0    | 0   |
+
+The four untouched capabilities hold **350 questions, 27 flips (7.71%) and a net of +5**. The 116 untouched
+IE questions hold 6 flips (5.17%) and a net of +2. Together: 466 questions, **33 flips (7.08%), net +7**.
+
+That is a **+1.5 pp "gain" produced by nothing**. It is not a bug in the scorer and it is not the treatment;
+it is the same configuration, the same roster, the same four repetitions and the same temperature, on
+questions whose prompts are byte-identical, run twice.
+
+### 13.135.2 What this does to the nine, and to §13.129.5
+
+Subtract what the untouched bucket's own rates predict for 34 questions: +2 − 34 × (7/466) = **+1.5
+questions of excess**. So of the reported +9, one and a half questions are the ask and seven and a half are
+the reader.
+
+§13.129.5 recorded *"KU +5 on byte-identical prompts is the reader floor"* as a fact about one capability on
+one pair of runs. It generalises, and the general form is stronger than the instance:
+
+> **Every cross-run pair carries its own noise realisation, and the realisation is larger than any single
+> point reading the campaign has been quoting.** It does not have to be borrowed from an earlier pair; it is
+> in the artifact, in the 466 questions that were not touched.
+
+At 7.08% flipping and a +1.5 pp net on 466 questions, **a whole-roster difference below about two points is
+not readable from a single pair**. §13.129's own reading — 140 → 128 IE with thirteen flips — survives that
+floor, because thirteen flips against an expected 10.6 is still a flip count, not a net. What does not
+survive is any claim of the form "the total went up two points, so the treatment worked".
+
+### 13.135.3 The instrument, and the two mutations it survives
+
+`tools/ledger.mjs --across` now computes the split from `promptChars` on both sides and prints it beside the
+increment:
+
+```
+    treated  (promptChars differ)   : 34 questions, bought 2, sold 0, net +2
+    untouched (promptChars identical): 466 questions, bought 20, sold 13, net +7
+      the untouched bucket is this pair's own noise realisation, at 1.50% net per question, so 34 treated
+      questions would move +0.5 by themselves; the treatment's excess is +1.5 question(s)
+```
+
+Three design decisions in that block are load-bearing:
+
+1. **A missing field is not "untouched".** `promptChars` absent on either side puts the question in an
+   `unknown` bucket and the tool prints `N question(s) carry no promptChars on at least one side, so the
+   split above is over the rest and not over the roster`. Counting absent as untouched would put the whole
+   roster in the noise bucket and report an excess of minus the entire treated net — a confident wrong
+   answer where the honest one is that the artifact does not carry the field. This is the same rule
+   `threshold` and `sessionBudget` are read under.
+2. **The verdict is printed, not inferred.** When the excess is ≤ 0 the tool writes `ATTRIBUTION FAILS: the
+   treated questions moved no more than untouched ones, so this net is not evidence about the treatment
+   whatever its sign`. A reader who sees only "+9" cannot reach the wrong conclusion without contradicting a
+   line that is already on screen.
+3. **No p-value.** 34 questions do not support one, and printing one would make an arithmetic statement look
+   like an inferential one.
+
+`tools/__tests__/test_ledger.py` grows from 11 to 16 cases, and the two mutations both die:
+
+| mutation | caught by |
+| -------- | --------- |
+| count every splittable question as untouched | 3 tests, incl. `test_across_json_carries_the_reach_split` |
+| count a missing `promptChars` as treated | 1 test: `test_across_says_when_the_split_cannot_be_computed` |
+
+### 13.135.4 What `recommend` actually had to work with
+
+Of the 34 treated questions, **25 are short-gold and the control already scores 25/25** on them. There is no
+headroom in three quarters of the reach. The work was nine paragraph-gold questions holding three errors,
+and the ask converted two of the three:
+
+- `57f827a0` — the control copied the evidence block back (`1. [2023/05/27 (Sat) 03:14] user: I'm lo…`); the
+  treatment wrote *"The evidence doesn't include any tips on…"*, which the judge accepted.
+- `a89d7624` — the control's prose was not accepted; the treatment wrote *"For your Denver trip, catch a
+  show at Re…"*, which is the paraphrase the gold wanted.
+
+**Zero sold.** `recommend` is the only ask in this campaign whose treated population lost nothing: `silent`
+cost 26 MR questions and `answer-line` cost 48, both on their own reach. Two sentences added to the flat
+block and a close that keeps the token intact — no reply shape, no label, no length rule the reader has to
+satisfy before it can answer — cost one question of damage at most and bought two.
+
+Verdict: **not adopted.** Claim 1 is falsified and the mechanism's +1.5 excess is inside a ±1.5σ band. It
+stays a selectable ask, recorded as the one ask on the axis with a small ceiling and no downside, which is
+the shape a future IE increment would want to start from.
+
+### 13.135.5 Three rules, and the second one is what this section is for
+
+1. **A claim's ceiling is computed on the treated population.** §13.129.9 is the expensive example: 33
+   paragraph-gold questions, 9 of them reachable, three errors between them, threshold of four.
+2. **Every increment reports its treated/untouched split, and the untouched bucket is this pair's own
+   realisation.** Not the previous pair's, not a global constant. It is free — it is in the artifact — and
+   it is the only number that says whether a net belongs to the treatment.
+3. **When a treatment covers an entire capability, the reference comes from the capabilities it did not
+   reach.** `derive` reaches `multi-session`, `flat` and `temporal`, which is IE, MR and TR; only KU (72) and
+   ABS (30) stay untouched. So §13.132's MR predictions are measured against a 102-question reference, and
+   that is weaker than the 466-question one here — a fact to state, not to hide.
+
+### 13.135.6 What the floor does to §13.132's thresholds
+
+MR flipped 12 times on zero prompt movement in this pair, so the pair's MR-scale net has a spread of roughly
+√12 ≈ **3.5 questions**. §13.132's prediction 3 asks for +5, which is about **1.4σ**, and prediction 2 asks
+for five fewer declines, which is the same distance in the other direction.
+
+Both stay as registered, with one addition that this section makes mandatory: **prediction 3 additionally
+requires a positive excess against the KU + ABS reference.** A +5 that arrives while the 102 untouched
+questions move +5 is a coin landing heads, and a campaign that has just priced its own floor cannot then
+accept a 1.4σ reading as mechanism evidence. It can accept it as a reason to run the pair again.

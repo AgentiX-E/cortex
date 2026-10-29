@@ -279,3 +279,137 @@ def test_within_run_json_mode_is_unchanged_by_the_new_mode(tmp_path: Path) -> No
     assert parsed["mode"] == "within-run"
     assert "control" not in parsed
     assert parsed["portfolio"]["bought"] == ["m1"]
+
+
+def roster_with_prompts(rows: dict[str, tuple[bool, int]]) -> dict:
+    """
+    A report that also carries `promptChars`, which is what makes a cross-run pair attributable.
+
+    `promptChars` is the arm's own statement of how long the prompt it rendered was, so two runs that agree on
+    it for a question rendered the same prompt for that question and two that disagree did not. It is the only
+    field in the artifact that separates "the treatment did not reach this question" from "the treatment
+    reached it and changed nothing", and those two mean opposite things about a net change.
+    """
+    return {
+        "dataset": "longmemeval/s/500",
+        "questionCount": len(rows),
+        "generatedAt": "2026-10-29T00:00:00.000Z",
+        "questions": [
+            {"questionId": question, "correct": correct, "capability": "IE", "promptChars": chars}
+            for question, (correct, chars) in rows.items()
+        ],
+    }
+
+
+def test_across_splits_by_whether_the_treatment_reached_the_question(tmp_path: Path) -> None:
+    """
+    THE CASE 13.135 EXISTS FOR.
+
+    Run `40824682542` reported a net +9 against its control and 7 of the 9 came from questions whose prompts
+    were byte-identical. The instrument printed one net for the whole roster, so the only reading available
+    was the wrong one. Here q1 and q2 are treated and one goes each way; q3 and q4 are untouched and one is
+    bought. The two buckets have to be printed separately or the net is uninterpretable.
+    """
+    control = roster_with_prompts({"q1": (True, 100), "q2": (False, 100), "q3": (False, 100), "q4": (True, 100)})
+    arm = roster_with_prompts({"q1": (False, 140), "q2": (True, 90), "q3": (True, 100), "q4": (True, 100)})
+
+    completed = run_across(tmp_path, {"recommend": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "treated  (promptChars differ)   : 2 questions, bought 1, sold 1, net +0" in completed.stdout
+    assert "untouched (promptChars identical): 2 questions, bought 1, sold 0, net +1" in completed.stdout
+
+
+def test_across_prints_the_noise_rate_the_untouched_bucket_measured(tmp_path: Path) -> None:
+    """The untouched bucket's net per question is the number a treatment has to beat, so it is printed."""
+    control = roster_with_prompts(
+        {
+            "q1": (False, 100),
+            "q2": (False, 100),
+            "q3": (False, 100),
+            "q4": (False, 100),
+            "q5": (True, 100),
+            "q6": (False, 100),
+        }
+    )
+    arm = roster_with_prompts(
+        {
+            "q1": (True, 100),
+            "q2": (True, 100),
+            "q3": (False, 100),
+            "q4": (False, 300),
+            "q5": (True, 100),
+            "q6": (False, 100),
+        }
+    )
+
+    completed = run_across(tmp_path, {"recommend": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    # Five untouched questions, two bought and none sold: 40.00% net per question.
+    assert "untouched (promptChars identical): 5 questions, bought 2, sold 0, net +2" in completed.stdout
+    assert "40.00% net per question" in completed.stdout
+    assert "the treatment's excess is -0.4 question(s)" in completed.stdout
+
+
+def test_across_says_so_when_untouched_questions_produced_the_whole_net(tmp_path: Path) -> None:
+    """
+    A net change that untouched questions produced is not evidence about the treatment, whatever its sign.
+
+    At 466 untouched questions moving +7 and 34 treated ones moving +2, a reader who saw only "+9" would have
+    concluded the ask worked. The printed verdict is what makes the sign of a net change irrelevant when the
+    bucket that produced it never saw the treatment.
+    """
+    control = roster_with_prompts({"q1": (False, 100), "q2": (False, 100), "q3": (False, 100)})
+    arm = roster_with_prompts({"q1": (True, 100), "q2": (True, 100), "q3": (False, 300)})
+
+    completed = run_across(tmp_path, {"recommend": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "ATTRIBUTION FAILS" in completed.stdout
+    assert "not evidence about the treatment whatever its sign" in completed.stdout
+
+
+def test_across_says_when_the_split_cannot_be_computed(tmp_path: Path) -> None:
+    """
+    A report that predates `promptChars` cannot be split, and "cannot say" is printed rather than assumed.
+
+    Counting a missing field as untouched would put every question in the noise bucket and report an excess of
+    minus the whole treated net -- a confident wrong answer where the honest one is that the field is absent.
+    """
+    control = roster({"q1": True, "q2": False})
+    arm = roster({"q1": False, "q2": True})
+
+    completed = run_across(tmp_path, {"answer-line": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "carry no promptChars on at least one side" in completed.stdout
+    assert "the split above is over the rest and not over the roster" in completed.stdout
+
+
+def test_across_json_carries_the_reach_split(tmp_path: Path) -> None:
+    """A later reader recomputes the split from the JSON, so the buckets have to be there and be numbers."""
+    control = roster_with_prompts({"q1": (True, 100), "q2": (False, 100)})
+    arm = roster_with_prompts({"q1": (False, 180), "q2": (True, 100)})
+
+    control_path = tmp_path / "control.json"
+    control_path.write_text(json.dumps(control), encoding="utf-8")
+    arm_path = tmp_path / "arm.json"
+    arm_path.write_text(json.dumps(arm), encoding="utf-8")
+    completed = subprocess.run(
+        ["node", str(TOOL), "--control", str(control_path), "--across", f"recommend={arm_path}", "--json"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    parsed = json.loads(completed.stdout)
+    reach = parsed["reach"][0]
+    assert reach["label"] == "recommend"
+    assert reach["treated"] == {"questions": 1, "bought": 0, "sold": 1}
+    assert reach["untouched"] == {"questions": 1, "bought": 1, "sold": 0}
+    assert reach["unknown"] == {"questions": 0, "bought": 0, "sold": 0}
+    assert reach["complete"] is True

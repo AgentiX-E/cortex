@@ -177,6 +177,7 @@ function verdictsOf(file) {
     );
   }
   const verdicts = new Map();
+  const promptChars = new Map();
   for (const question of questions) {
     const id = question.questionId;
     if (typeof id !== 'string' || id.length === 0) {
@@ -186,8 +187,11 @@ function verdictsOf(file) {
       throw new Error(`${file} names ${id} twice: a run cannot answer one question twice`);
     }
     verdicts.set(id, question.correct === true);
+    // Kept per question because it is the only field that says which questions a treatment actually reached.
+    // Absent is not zero here either: a report that predates the field cannot be read as "nothing was treated".
+    promptChars.set(id, typeof question.promptChars === 'number' ? question.promptChars : null);
   }
-  return { verdicts, generatedAt: parsed.generatedAt ?? 'unknown', questions };
+  return { verdicts, promptChars, generatedAt: parsed.generatedAt ?? 'unknown', questions };
 }
 
 /**
@@ -221,7 +225,44 @@ function acrossIncrement(label, file, control) {
   const ledger = ledgerOf(label, {
     discordantQuestions: { baselineIncorrectFeatureCorrect: bought, baselineCorrectFeatureIncorrect: sold },
   });
-  return { ledger, generatedAt: arm.generatedAt };
+  return { ledger, generatedAt: arm.generatedAt, split: splitOf(ids, control, arm, bought, sold) };
+}
+
+/**
+ * The same ledger, cut by whether the treatment actually reached the question.
+ *
+ * `promptChars` is the arm's own statement of how many characters the prompt it rendered contained, so two
+ * runs that disagree on it disagree on the treatment and two that agree did not. That gives every cross-run
+ * pair a **noise realisation it measures on itself**: the questions the treatment did not reach are the
+ * questions on which the pair's net change is pure reader and judge variation, at the same temperature, on
+ * the same configuration, over the same roster. Section 13.135 records what that bought the first time it
+ * was computed -- 466 untouched questions moved 20 up and 13 down, net +7, while the 34 questions the ask
+ * reached moved 2 and 0.
+ *
+ * A pair is only splittable when both sides carry the field for every question. `null` means "this report
+ * cannot say", and a question in that state is counted rather than assumed untouched -- the same rule the
+ * `threshold` and `sessionBudget` fields are read under.
+ */
+function splitOf(ids, control, arm, bought, sold) {
+  const buckets = {
+    treated: { questions: 0, bought: 0, sold: 0 },
+    untouched: { questions: 0, bought: 0, sold: 0 },
+    unknown: { questions: 0, bought: 0, sold: 0 },
+  };
+  for (const id of ids) {
+    const before = control.promptChars.get(id);
+    const after = arm.promptChars.get(id);
+    const bucket =
+      before === null || after === null ? 'unknown' : before === after ? 'untouched' : 'treated';
+    buckets[bucket].questions += 1;
+    if (bought.includes(id)) buckets[bucket].bought += 1;
+    if (sold.includes(id)) buckets[bucket].sold += 1;
+  }
+  return {
+    ...buckets,
+    /** True when every question could be classified, which is the precondition for reading the split. */
+    complete: buckets.unknown.questions === 0,
+  };
 }
 
 const acrossMode = controlPaths.length === 1;
@@ -250,6 +291,11 @@ if (asJson) {
           : {}),
         increments,
         portfolio,
+        // Present only when there is a control to compare prompts against, because attribution is a property
+        // of a pair and not of a run.
+        ...(acrossMode
+          ? { reach: readings.map((reading) => ({ label: reading.ledger.label, ...reading.split })) }
+          : {}),
       },
       null,
       2,
@@ -268,7 +314,8 @@ if (acrossMode) {
   );
   lines.push('');
 }
-for (const increment of increments) {
+for (const reading of readings) {
+  const increment = reading.ledger;
   const origin = acrossMode ? ' (from across)' : '';
   lines.push(
     `- ${increment.label}${origin}: bought ${increment.bought.length}, sold ${increment.sold.length}, ` +
@@ -276,6 +323,57 @@ for (const increment of increments) {
   );
   if (increment.bought.length > 0) lines.push(`    bought: ${increment.bought.join(', ')}`);
   if (increment.sold.length > 0) lines.push(`    sold:   ${increment.sold.join(', ')}`);
+  if (reading.split) lines.push(...splitLines(reading.split));
+}
+
+/**
+ * The reach split, rendered as a reading rather than a footnote.
+ *
+ * The untouched bucket is printed first among the two because it is the one that costs nothing to obtain and
+ * is the one a net change has to beat: it is the same pair of runs, the same configuration, the same roster
+ * and the same temperature on questions whose prompts are byte-identical, so whatever it moved is the amount
+ * this pair moves by itself. The excess is stated as arithmetic -- the treated bucket's net minus what the
+ * untouched bucket's own bought and sold rates predict for that many questions -- and never as a p-value,
+ * because 34 questions do not support one.
+ */
+function splitLines(split) {
+  const out = [];
+  const net = (bucket) => bucket.bought - bucket.sold;
+  for (const [name, bucket] of [
+    ['treated  (promptChars differ)   ', split.treated],
+    ['untouched (promptChars identical)', split.untouched],
+  ]) {
+    out.push(
+      `    ${name}: ${bucket.questions} questions, bought ${bucket.bought}, sold ${bucket.sold}, ` +
+        `net ${net(bucket) >= 0 ? '+' : ''}${net(bucket)}`,
+    );
+  }
+  if (!split.complete) {
+    out.push(
+      `    ${split.unknown.questions} question(s) carry no promptChars on at least one side, so the split ` +
+        'above is over the rest and not over the roster',
+    );
+  }
+  if (split.untouched.questions === 0) {
+    out.push('    no untouched question to price the noise against: this pair says nothing about attribution');
+    return out;
+  }
+  const rate = net(split.untouched) / split.untouched.questions;
+  const expected = rate * split.treated.questions;
+  const excess = net(split.treated) - expected;
+  out.push(
+    `      the untouched bucket is this pair's own noise realisation, at ${(100 * rate).toFixed(2)}% net per ` +
+      `question, so ${split.treated.questions} treated questions would move ${expected >= 0 ? '+' : ''}` +
+      `${expected.toFixed(1)} by themselves; the treatment's excess is ${excess >= 0 ? '+' : ''}` +
+      `${excess.toFixed(1)} question(s)`,
+  );
+  if (excess <= 0) {
+    out.push(
+      '      ATTRIBUTION FAILS: the treated questions moved no more than untouched ones, so this net is not ' +
+        'evidence about the treatment whatever its sign',
+    );
+  }
+  return out;
 }
 
 lines.push('', 'Portfolio', '');

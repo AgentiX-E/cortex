@@ -150,7 +150,12 @@ tax on every question whose gold is not that shape. Its reach also declared one 
 }
 ```
 
-`recommend` (§13.129.8, IE): the same block again, and the value to dispatch next.
+`recommend` (§13.129.9, IE) — **read, and not adopted**: run `40824682542` moved the roster 83.40% → 85.20%
+and the split says not to believe it. Of the nine questions bought, **seven came from the 466 whose prompts did
+not move a byte**; the treated 34 bought 2 and sold 0, and after subtracting what the untouched bucket's own
+1.50% net per question predicts, the treatment's excess is **+1.5 questions**. Claim 1 was falsified at its own
+boundary (24 → 27 against a threshold of 28) and was **impossible when written**: only 9 of the 33
+paragraph-gold questions render `flat`, and those nine held three errors, so the ceiling was 27.
 
 ```json
 {
@@ -159,7 +164,10 @@ tax on every question whose gold is not that shape. Its reach also declared one 
 ```
 
 It adds a licence to compose and a ban on quoting the evidence, and **no reply shape** — the lesson the ask above
-paid for. Reach `enumerated`'s, change set `{flat}`, control `40751394094`.
+paid for. Reach `enumerated`'s, change set `{flat}`, control `40751394094`. It stays selectable for one reason
+worth remembering: it is the only ask in this file whose treated population lost **nothing**, against `silent`'s
+−26 and `answer-line`'s −48 on their own reaches. A small ceiling with no downside is the right starting shape
+for a future IE increment; it is not a reason to ship this one.
 
 `derive` (§13.132.5, MR): the value to dispatch next, and the smallest change any ask in this file makes.
 
@@ -202,6 +210,10 @@ not read:
   accuracy number. This bullet used to claim `answer-line` reached one route, which is the reading that produced
   `40807829150`: a reach of one route with a fallthrough of `own` is not a narrower treatment, it is a different
   experiment (§13.130).
+- **the split is read before the net.** `node tools/ledger.mjs --control <run> --across <label>=<run>` prints the
+  treated and untouched buckets, the untouched bucket's net per question and the treatment's excess, and prints
+  `ATTRIBUTION FAILS` when that excess is not positive (§13.135). A dispatcher who reads only the overall delta is
+  reading the number that +7 questions of reader noise produced on this arm.
 - the two asks **cannot be dispatched together**; both are `ask` values and a run that moved both would price
   neither (§13.124.4).
 - `cortex_memory_review_pass` defaults to `bare`, which is the shipped treatment, so both blocks above inherit
