@@ -13027,12 +13027,13 @@ wrong and *b* right; `a` sold it when *a's* baseline was right and *a* wrong. On
 and baseline-wrong **unless the two runs' baselines disagree on it** — so the same-named control, run twice over
 the same 500 questions, disagreed with itself on at least those 4 questions in the direction *a*-right/*b*-wrong.
 The aggregate gap between the two baselines is +1 question (218 against 217), so at least 3 more must disagree the
-other way: **≥ 7 of 500 questions, 1.4%, of baseline self-disagreement**, and that is a lower bound, because every
-question both features got wrong hides the baseline's verdict behind two nulls.
+other way: **≥ 7 of 500 questions, 1.4%, of per-question baseline disagreement**, and that is a lower bound, because
+every question both features got wrong hides the baseline's verdict behind two nulls.
 
-This is the noise floor §13.122 was looking for, measured on a different axis and without a dispatch: the control
-arm is **not a fixed object**, and a delta of ±1.4 points between two runs of the same configuration is inside what
-the control alone can produce. Every figure in this register is now read against that floor.
+This is a **per-question identity** floor, and §13.125.7 measures the other three floors the artifacts already
+carry. The short version: the control's *count* moves 2 to 5 questions across four repetitions, the treatment's
+moves 7 to 16, and the identity floor is larger than either — which is why "a delta below X is noise" needs X
+named before it means anything.
 
 ### 13.125.5 The acceptance criteria for the instrument itself
 
@@ -13067,4 +13068,43 @@ What that makes checkable **before** either number arrives:
 
 That is the first use of the instrument that costs nothing: it turns "the two increments are independent" from an
 assumption in a paragraph into a set that either intersects or does not.
+
+### 13.125.7 The floor is not one number, and the free check has been run
+
+§13.125.4 left one thing open: its 1.4% was **per-question identity**, from two runs that each carried a single
+repetition, and it said nothing about how far a *count* moves. Both artifacts that can answer that were already
+downloaded, because they are §13.122's temperature pair — each dispatches four repetitions, and `baselineAggregate`
+has always carried the control's own `min`/`max` across them. Nobody had read that field.
+
+| arm                    | baseline min / mean / max | baseline spread | feature min / mean / max | feature spread |
+| ---------------------- | ------------------------- | --------------- | ------------------------ | -------------- |
+| `40751377644` T unset  | 219.0 / 221.8 / 224.0      | **5**           | 415.0 / 421.5 / 431.0     | **16**         |
+| `40751394094` T = 0    | 225.0 / 225.8 / 227.0      | **2**           | 417.0 / 421.0 / 424.0     | **7**          |
+
+Three things follow, and the third one is new to §13.122's account.
+
+**1. Temperature halves the control's wobble too, not only the treatment's.** 5 → 2 questions against 16 → 7.
+The control is an LLM pipeline like the treatment, so this is what one would expect; it had simply never been
+measured, because §13.122.2's table reports the *feature* roster's min/mean/max and the control's spread was never
+printed anywhere.
+
+**2. The per-question floor is larger than any count floor.** At T=0 the control's count moves 2 questions across
+four repetitions, while two different runs of the same control disagreed on **≥ 7** questions by identity. Both
+are true at once: a control can swap twenty verdicts and net two. So "a delta below seven questions is noise" and
+"the control moves by two" are statements about different quantities, and a sentence that quotes one of them
+without naming it is not a noise floor but a number with a units error.
+
+**3. The control's centre moved four questions between the two arms, while the treatment's moved half of one.**
+221.8 → 225.8 against 421.5 → 421.0. `bench/run.ts` states that the temperature is set for **both** systems, so
+this is not a leak of the treatment's setting into the control — it is the control responding to the same change
+more strongly than the treatment does. §13.122.2's headline ("the centre does not move") is a statement about the
+**feature roster**, which is the roster every percentage in this register quotes, and it stands. What does not
+stand is any reading of it as "temperature leaves the pair's difference alone": the difference moved by about
+4.5 questions, which is 2.2 points of roster share, and it moved because the control rose.
+
+**What this changes in practice.** Every prediction in §13.123.4, §13.124.4 and §13.125.6 is stated in *questions
+bought against a control on the same dispatch*. That form is untouched by all of the above, because a paired
+per-question comparison never subtracts two runs' means. The table is here to stop the weaker form — "the arm is
+84.2 and was 84.3, so nothing moved" — from being written with a straight face, and to record that `T = 0` is a
+choice about **variance on both sides**, not a claim that the pair's difference is temperature-invariant.
 
