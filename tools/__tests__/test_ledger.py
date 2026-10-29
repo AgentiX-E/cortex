@@ -132,6 +132,10 @@ def run_across(
         path = tmp_path / f"across-{label}.json"
         path.write_text(json.dumps(body), encoding="utf-8")
         argv.extend(["--across", f"{label}={path}"])
+    # `extra` had been accepted and dropped since this helper was written, so the first caller to pass an
+    # argument through it asserted against a run that never received one. Appending it here is the whole
+    # repair; the lesson is that a helper taking a parameter it ignores turns a test into a coincidence.
+    argv.extend(extra or [])
     return subprocess.run(argv, cwd=REPO, capture_output=True, text=True, timeout=180, check=False)
 
 
@@ -316,8 +320,9 @@ def test_across_splits_by_whether_the_treatment_reached_the_question(tmp_path: P
     completed = run_across(tmp_path, {"recommend": arm}, control)
 
     assert completed.returncode == 0, completed.stderr
-    assert "treated  (promptChars differ)   : 2 questions, bought 1, sold 1, net +0" in completed.stdout
-    assert "untouched (promptChars identical): 2 questions, bought 1, sold 0, net +1" in completed.stdout
+    assert "split by promptChars" in completed.stdout
+    assert "treated   : 2 questions, bought 1, sold 1, net +0" in completed.stdout
+    assert "untouched : 2 questions, bought 1, sold 0, net +1" in completed.stdout
 
 
 def test_across_prints_the_noise_rate_the_untouched_bucket_measured(tmp_path: Path) -> None:
@@ -347,7 +352,7 @@ def test_across_prints_the_noise_rate_the_untouched_bucket_measured(tmp_path: Pa
 
     assert completed.returncode == 0, completed.stderr
     # Five untouched questions, two bought and none sold: 40.00% net per question.
-    assert "untouched (promptChars identical): 5 questions, bought 2, sold 0, net +2" in completed.stdout
+    assert "untouched : 5 questions, bought 2, sold 0, net +2" in completed.stdout
     assert "40.00% net per question" in completed.stdout
     assert "the treatment's excess is -0.4 question(s)" in completed.stdout
 
@@ -366,8 +371,12 @@ def test_across_says_so_when_untouched_questions_produced_the_whole_net(tmp_path
     completed = run_across(tmp_path, {"recommend": arm}, control)
 
     assert completed.returncode == 0, completed.stderr
-    assert "ATTRIBUTION FAILS" in completed.stdout
-    assert "not evidence about the treatment whatever its sign" in completed.stdout
+    assert "NO GAIN" in completed.stdout
+    assert "not evidence of a benefit" in completed.stdout
+    # Both bought questions are untouched and the one treated question is untouched too, so the treated
+    # bucket's net is 0 against an expected +1: the excess is negative and the tool says so rather than
+    # calling a regression a null.
+    assert "the excess is NEGATIVE" in completed.stdout
 
 
 def test_across_says_when_the_split_cannot_be_computed(tmp_path: Path) -> None:
@@ -413,3 +422,152 @@ def test_across_json_carries_the_reach_split(tmp_path: Path) -> None:
     assert reach["untouched"] == {"questions": 1, "bought": 1, "sold": 0}
     assert reach["unknown"] == {"questions": 0, "bought": 0, "sold": 0}
     assert reach["complete"] is True
+
+
+def roster_with_capabilities(rows: dict[str, tuple[bool, str]]) -> dict:
+    """A report whose records carry a mechanism field, which is what a declared treated set is cut by."""
+    return {
+        "dataset": "longmemeval/s/500",
+        "questionCount": len(rows),
+        "generatedAt": "2026-10-30T00:00:00.000Z",
+        "questions": [
+            {"questionId": question, "correct": correct, "capability": capability}
+            for question, (correct, capability) in rows.items()
+        ],
+    }
+
+
+def test_treated_can_be_declared_by_the_field_the_mechanism_reaches(tmp_path: Path) -> None:
+    """
+    THE CASE RUN `40859499624` FORCED.
+
+    `ask=derive` permutes two blocks of the prompt, so every prompt keeps its length -- the run's first
+    prediction asserted exactly that and the artifact confirmed it on 500 of 500 records. The `promptChars`
+    split therefore saw **0 treated questions** and printed an attribution failure about a treatment that had
+    reached 121 of them and moved 18 verdicts. Declaring the population by the field the mechanism acts on is
+    the repair, and the reading has to say which definition produced the buckets.
+    """
+    control = roster_with_capabilities(
+        {"a": (True, "MR"), "b": (False, "MR"), "c": (True, "IE"), "d": (False, "IE")}
+    )
+    arm = roster_with_capabilities(
+        {"a": (False, "MR"), "b": (True, "MR"), "c": (False, "IE"), "d": (False, "IE")}
+    )
+
+    completed = run_across(tmp_path, {"derive": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "split by capability in {MR}" in completed.stdout
+    assert "treated   : 2 questions, bought 1, sold 1, net +0" in completed.stdout
+    assert "untouched : 2 questions, bought 0, sold 1, net -1" in completed.stdout
+
+
+def test_a_permutation_split_says_the_prompt_lengths_did_not_move(tmp_path: Path) -> None:
+    """The zero-treated reading names the shape it cannot see, rather than implying the treatment missed."""
+    control = roster_with_prompts({"q1": (True, 100), "q2": (False, 100)})
+    arm = roster_with_prompts({"q1": (False, 100), "q2": (True, 100)})
+
+    completed = run_across(tmp_path, {"derive": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "which is what a permutation treatment looks like from here" in completed.stdout
+    assert "--treated <field>=<value>" in completed.stdout
+
+
+def test_a_declared_field_the_arm_does_not_carry_is_unknown_not_untouched(tmp_path: Path) -> None:
+    """
+    Absent is not false. A record without the declared field cannot be classified, and counting it as
+    untouched would put it in the noise bucket and move the excess by exactly its own verdicts.
+    """
+    control = roster({"q1": True, "q2": False})
+    arm = {
+        "dataset": "longmemeval/s/500",
+        "questionCount": 2,
+        "generatedAt": "2026-10-30T00:00:00.000Z",
+        "questions": [
+            {"questionId": "q1", "correct": False, "capability": "MR"},
+            {"questionId": "q2", "correct": True},
+        ],
+    }
+
+    completed = run_across(tmp_path, {"derive": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "1 question(s) carry no promptChars on at least one side" in completed.stdout
+    assert "treated   : 1 questions" in completed.stdout
+
+
+def test_two_treated_definitions_are_refused(tmp_path: Path) -> None:
+    """Two definitions would make the split depend on argument order, which nobody could read off the log."""
+    control = roster_with_capabilities({"a": (True, "MR")})
+    arm = roster_with_capabilities({"a": (False, "MR")})
+
+    completed = run_across(
+        tmp_path, {"derive": arm}, control, ["--treated", "capability=MR", "--treated", "capability=IE"]
+    )
+
+    assert completed.returncode == 2
+    assert "names one population" in completed.stderr
+
+
+def test_a_treated_value_without_an_equals_is_refused(tmp_path: Path) -> None:
+    """A malformed selector must not fall back to `promptChars`: that is a different population silently."""
+    control = roster_with_capabilities({"a": (True, "MR")})
+    arm = roster_with_capabilities({"a": (False, "MR")})
+
+    completed = run_across(tmp_path, {"derive": arm}, control, ["--treated", "capability"])
+
+    assert completed.returncode == 2
+    assert "takes <field>=<value>" in completed.stderr
+
+
+def test_treated_without_a_control_is_refused(tmp_path: Path) -> None:
+    """A declared population is a cross-run split; without a control there is nothing to price it against."""
+    path = tmp_path / "arm.json"
+    path.write_text(json.dumps(roster_with_capabilities({"a": (True, "MR")})), encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(TOOL), f"derive={path}", "--treated", "capability=MR"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "needs --control" in completed.stderr
+
+
+def test_json_carries_the_definition_the_buckets_were_cut_by(tmp_path: Path) -> None:
+    """A later reader recomputes from the JSON, so it has to know which population was called treated."""
+    control = roster_with_capabilities({"a": (True, "MR"), "b": (False, "IE")})
+    arm = roster_with_capabilities({"a": (False, "MR"), "b": (True, "IE")})
+
+    control_path = tmp_path / "control.json"
+    control_path.write_text(json.dumps(control), encoding="utf-8")
+    arm_path = tmp_path / "arm.json"
+    arm_path.write_text(json.dumps(arm), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            "node",
+            str(TOOL),
+            "--control",
+            str(control_path),
+            "--across",
+            f"derive={arm_path}",
+            "--treated",
+            "capability=MR",
+            "--json",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    parsed = json.loads(completed.stdout)
+    assert parsed["reach"][0]["treatedBy"] == "capability in {MR}"
+    assert parsed["reach"][0]["treated"]["questions"] == 1

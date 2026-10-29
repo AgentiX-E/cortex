@@ -14795,3 +14795,113 @@ Mutation: `prefixToday: 0` fails criterion 2 and nothing else.
 spending a run on an arithmetic exercise.** Applied forward: every registered prediction is now checked against
 `tools/` before it is dispatched — if a tool can compute it, the tool computes it and the registration records the
 computation, so the dispatch is spent only on what needs a model.
+
+## 13.143 `derive` reproduced its mechanism to the character and lost six questions: MR's verdicts are order-sensitive at 15%
+
+### 13.143.1 The assembly check, before any accuracy is read
+
+Run **`40859499624`**, `ask=derive`, control **`40751394094`** (`ask=enumerated`, `reviewPass=bare`, `T=0`).
+
+| criterion | reading | verdict |
+| --- | --- | --- |
+| `ask` | `enumerated` → `derive` | intended |
+| `askRoutes` | unchanged on the arm's three routes | intended |
+| **`promptChars`, all 500 records** | **MR 121/121, TR 127/127, IE 150/150, KU 72/72, ABS 30/30 equal** | **the permutation is real** |
+
+That last row is §13.132.5's prediction 1 and it is the strongest mechanism reading in this document: the treatment
+is a **row permutation** of two blocks, so every prompt must keep its length to the character, and 500 of 500 did.
+No other treatment in §13.1–§13.142 could assert this — the others regenerate text and can only assert that the
+prompt *changed*.
+
+So the sentence moved, on every question, and nothing else did. What follows is a reading of what moving it cost.
+
+### 13.143.2 The result
+
+| capability | n | control | derive | net | won | lost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| IE | 150 | 140 | 142 | +2 | 5 | 3 |
+| **MR** | **121** | **87** | **81** | **−6** | 6 | 12 |
+| TR | 127 | 100 | 105 | +5 | 9 | 4 |
+| KU | 72 | 61 | 62 | +1 | 4 | 3 |
+| ABS | 30 | 29 | 29 | 0 | 0 | 0 |
+| **total** | 500 | 417 | 419 | **+2** | 24 | 22 |
+
+The treated capability lost six questions and the three untouched ones gained eight between them. Every criterion
+in §13.132.5 except the two mechanism rows fails:
+
+| # | threshold | reading | |
+| --- | --- | --- | --- |
+| 1 | `promptChars` equal on 121 MR records | 121/121 equal | **pass** |
+| 2 | MR declines 12 → ≤ 7 | 12 → **11** | fail |
+| 3 | ≥ 5 of the 10 winnable convert | **3** converted, MR 87 → 81 | fail |
+| 4 | MR ≥ 76.0% | **66.94%** | fail |
+| 5 | ≤ 5 MR decline replies carry the refusal phrases (control: "12 of 12") | **8 of 11**, against **8 of 12** in the control | fail |
+| 6 | IE/KU/TR/ABS prompts identical | 379/379 identical | **pass** |
+| 7 | overall mean ≥ 84.2 | **83.80** | fail |
+
+Criterion 5's baseline did not reproduce and that is worth recording separately: the control's twelve MR declines
+carry one of the six registered phrases in **eight** cases, not twelve. The phrase list is a crude instrument
+(`d6062bb9`, `157a136e`, `c18a7dc8` and `37f165cf` phrase their refusals as *"No item in the evidence states…"*),
+so the criterion was registered against a baseline nobody had counted. It fails either way — 8 → 8 is not a fall —
+but the registered "12 of 12" is a number this document should not keep.
+
+### 13.143.3 The attribution, which the instrument could not compute until it was repaired
+
+`ledger.mjs --across` splits treated from untouched by `promptChars`, and this treatment **has no prompt-length
+change by construction** — it printed `0 treated questions` and an attribution failure about a run that had
+reached 121. The tool now takes the population from the mechanism (`--treated capability=MR`):
+
+```
+    split by capability in {MR}
+  treated   : 121 questions, bought 6, sold 12, net -6
+  untouched : 379 questions, bought 18, sold 10, net +8
+    the untouched bucket is this pair's own noise realisation, at 2.11% net per question, so
+    121 treated questions would move +2.6 by themselves; the treatment's excess is -8.6 question(s)
+    flip rate: treated 14.9% (18/121), untouched 7.4% (28/379)
+    NO GAIN: the treated questions did not move up more than the untouched ones...
+    and the excess is NEGATIVE: ... a regression and not a null
+```
+
+**−8.6 questions of excess**, and the flip rates are the more informative pair: the treated questions moved
+**twice as often** as the untouched ones (14.9% against 7.4%) while moving in the wrong direction.
+
+### 13.143.4 What this run actually measured, which is bigger than the sentence it was about
+
+The sentence is dead: moving the merging licence adjacent to the closing sentence does not work, and no reading
+here supports re-registering it in another position. What survives is a measurement about the **instrument**:
+
+**MR's verdicts are order-sensitive.** Two runs whose MR prompts have identical length, identical evidence,
+identical instruction text and only a different **order** inside the block disagree on **18 of 121 questions**
+(14.9%). The untouched capabilities, which read byte-identical prompts, disagree on 28 of 379 (7.4%) — the same
+rate §13.135 measured at 33 of 466 (7.08%). So the permutation **doubled** the reader's instability on the one
+capability it touched.
+
+Three consequences, and the third is the expensive one:
+
+1. **MR's resolution is about ±10 questions.** A 121-question capability with an 18-question flip rate cannot
+   resolve an effect smaller than roughly 10 questions (8.3 points) in one dispatch. Every MR prediction from here
+   states a floor above that or runs more repetitions.
+2. **The ±6 question band of §13.122.2 is a lower bound, not the resolution.** That band was measured on routes
+   whose prompts were byte-identical; on MR, where the prompt is a two-block document, the reader's own variance
+   rises with the amount of structure the renderer puts in front of it.
+3. **§13.133's prompt-axis pricing is void on MR.** That section priced three prompt-editing rules at +1.3
+   questions combined, and this run shows that a text edit reaching MR cannot be resolved at all in one dispatch:
+   +1.3 sits inside a ±10 noise band. The pricing stands for the routes it was measured on and must not be
+   extrapolated to the capability with the largest prompt.
+
+### 13.143.5 What this does not license
+
+**It does not license "the licence sentence is fine where it was."** The move lost six questions; the position it
+moved *from* is still the position that lost those six, and §13.56's rule — a reader that lists items and then
+declines — is still the largest single block of MR loss. What died is *this* edit, not the diagnosis.
+
+**It does not license a second permutation attempt.** Any further rearrangement lives in the same ±10 band, so it
+would need either a much larger population or a different route to the same evidence. The registered replacement is
+`recover` (§13.128 / §13.141), which is one-sided by construction and does not depend on this band at all.
+
+### 13.143.6 The rule this adds
+
+**A mechanism that reproduces to the character can still be unmeasurable at the population it acts on, so the flip
+rate of the treated bucket is read before the net is compared with anything.** Applied forward: every registration
+whose mechanism is a reordering, a rename or a single-sentence move states the flip rate it expects on its treated
+population, and a threshold below that rate is refused at registration rather than reported as a null afterwards.

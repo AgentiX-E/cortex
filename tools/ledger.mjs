@@ -80,6 +80,7 @@ function takeOption(name) {
 
 const controlPaths = takeOption('--control');
 const acrossArgs = takeOption('--across');
+const treatedArgs = takeOption('--treated');
 
 /**
  * The positional `<label>=<path>` arguments, with every option and its value skipped.
@@ -88,10 +89,20 @@ const acrossArgs = takeOption('--across');
  * read as an increment -- which is how a control file and an arm file would end up as two arms with one of
  * them labelled by a path.
  */
+/**
+ * The options that take a value, named once.
+ *
+ * The scan below has to skip an option's VALUE as well as the option, and listing that set here is what
+ * keeps `--treated capability=MR` from being read as an increment labelled `capability`: the first version
+ * of this loop named only the two options that existed then, and the new one arrived as a fabricated arm
+ * and a `refusing to mix` error that named `capability` as though it were a treatment.
+ */
+const VALUE_OPTIONS = new Set(['--control', '--across', '--treated']);
+
 const args = [];
 for (let index = 0; index < argv.length; index += 1) {
   const arg = argv[index];
-  if (arg === '--control' || arg === '--across') {
+  if (VALUE_OPTIONS.has(arg)) {
     index += 1;
     continue;
   }
@@ -119,6 +130,61 @@ if (controlPaths.length === 1 && acrossArgs.length === 0) {
 
 if (acrossArgs.length > 0 && controlPaths.length === 0) {
   process.stderr.write('--across needs --control: a cross-run pair has no baseline otherwise\n');
+  process.exit(2);
+}
+
+/**
+ * How the treated population is defined when it is not `promptChars` that defines it.
+ *
+ * `--treated capability=MR` says: the mechanism reaches the questions whose record carries this value.
+ *
+ * ## Why this exists, and the run that forced it
+ *
+ * `promptChars` identifies the treated population only for treatments that **regenerate** a prompt. Run
+ * `40859499624` (`ask=derive`) is a **row permutation**: the licence sentence moves inside the block, both
+ * halves keep the same multiset of lines, so every one of the 500 prompts is the same length by
+ * construction -- which is what §13.132.5's first prediction asserted and what the artifact confirmed,
+ * MR 121/121 identical. The promptChars split therefore reported **0 treated questions** and printed
+ * `ATTRIBUTION FAILS: the treated questions moved no more than untouched ones` about a treatment that had
+ * reached 121 of them and moved 18 verdicts.
+ *
+ * A tool whose instrument cannot see the treatment must say which population the caller meant, or it will
+ * confidently price the wrong one. So the treated set can be declared by any record field, and the reading
+ * prints which definition produced it.
+ */
+function treatedSpecOf(values) {
+  if (values.length === 0) return null;
+  if (values.length > 1) {
+    process.stderr.write(
+      `--treated names one population; got ${values.length} (${values.join(', ')}). ` +
+        'Two definitions would make the split depend on argument order.\n',
+    );
+    process.exit(2);
+  }
+  const raw = values[0];
+  const [field, list] = raw.split('=');
+  if (!field || !list) {
+    process.stderr.write(
+      `--treated takes <field>=<value>[,<value>...], and ${JSON.stringify(raw)} is not that. ` +
+        'Example: --treated capability=MR\n',
+    );
+    process.exit(2);
+  }
+  const allowed = list
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  if (allowed.length === 0) {
+    process.stderr.write(`--treated ${field}= names no value, so it would treat nothing\n`);
+    process.exit(2);
+  }
+  return { field, values: allowed };
+}
+
+const treatedSpec = treatedSpecOf(treatedArgs);
+
+if (treatedSpec !== null && controlPaths.length === 0) {
+  process.stderr.write('--treated describes a cross-run split and needs --control\n');
   process.exit(2);
 }
 
@@ -193,7 +259,13 @@ function verdictsOf(file) {
     // Absent is not zero here either: a report that predates the field cannot be read as "nothing was treated".
     promptChars.set(id, typeof question.promptChars === 'number' ? question.promptChars : null);
   }
-  return { verdicts, promptChars, generatedAt: parsed.generatedAt ?? 'unknown', questions };
+  // The raw records, so a split can be declared on any field rather than only on the character count.
+  const records = new Map();
+  for (const question of questions) {
+    const id = typeof question?.questionId === 'string' ? question.questionId : null;
+    if (id !== null) records.set(id, { ...question });
+  }
+  return { verdicts, promptChars, records, generatedAt: parsed.generatedAt ?? 'unknown', questions };
 }
 
 /**
@@ -231,7 +303,7 @@ function acrossIncrement(label, file, control) {
       baselineCorrectFeatureIncorrect: sold,
     },
   });
-  return { ledger, generatedAt: arm.generatedAt, split: splitOf(ids, control, arm, bought, sold) };
+  return { ledger, generatedAt: arm.generatedAt, split: splitOf(ids, control, arm, bought, sold, treatedSpec) };
 }
 
 /**
@@ -249,23 +321,41 @@ function acrossIncrement(label, file, control) {
  * cannot say", and a question in that state is counted rather than assumed untouched -- the same rule the
  * `threshold` and `sessionBudget` fields are read under.
  */
-function splitOf(ids, control, arm, bought, sold) {
+function splitOf(ids, control, arm, bought, sold, spec) {
   const buckets = {
     treated: { questions: 0, bought: 0, sold: 0 },
     untouched: { questions: 0, bought: 0, sold: 0 },
     unknown: { questions: 0, bought: 0, sold: 0 },
   };
-  for (const id of ids) {
+  /**
+   * Which bucket one question falls in, under whichever definition of "treated" was declared.
+   *
+   * The declared field is read from the **arm**, not from the control: "did the treatment reach this
+   * question" is a fact about the run that administered it, and the control is the run it is measured
+   * against. A field the arm does not carry is `unknown` -- absent is not false, the rule `promptChars`
+   * already follows one branch up.
+   */
+  const bucketOf = (id) => {
+    if (spec !== null) {
+      const record = arm.records.get(id);
+      const raw = record === undefined ? undefined : record[spec.field];
+      if (raw === undefined || raw === null) return 'unknown';
+      return spec.values.includes(String(raw)) ? 'treated' : 'untouched';
+    }
     const before = control.promptChars.get(id);
     const after = arm.promptChars.get(id);
-    const bucket =
-      before === null || after === null ? 'unknown' : before === after ? 'untouched' : 'treated';
+    return before === null || after === null ? 'unknown' : before === after ? 'untouched' : 'treated';
+  };
+  for (const id of ids) {
+    const bucket = bucketOf(id);
     buckets[bucket].questions += 1;
     if (bought.includes(id)) buckets[bucket].bought += 1;
     if (sold.includes(id)) buckets[bucket].sold += 1;
   }
   return {
     ...buckets,
+    /** The definition the buckets were cut by, printed so a reader cannot assume the wrong one. */
+    treatedBy: spec === null ? 'promptChars' : `${spec.field} in {${spec.values.join(',')}}`,
     /** True when every question could be classified, which is the precondition for reading the split. */
     complete: buckets.unknown.questions === 0,
   };
@@ -347,9 +437,13 @@ for (const reading of readings) {
 function splitLines(split) {
   const out = [];
   const net = (bucket) => bucket.bought - bucket.sold;
+  // The definition is printed, not assumed. A reader who knows only that "the split was computed" will
+  // read `treated 0` as a treatment that reached nothing, which is the exact misreading this line prevents
+  // for a permutation treatment (`promptChars` cannot see one).
+  out.push(`      split by ${split.treatedBy}`);
   for (const [name, bucket] of [
-    ['treated  (promptChars differ)   ', split.treated],
-    ['untouched (promptChars identical)', split.untouched],
+    ['treated   ', split.treated],
+    ['untouched ', split.untouched],
   ]) {
     out.push(
       `    ${name}: ${bucket.questions} questions, bought ${bucket.bought}, sold ${bucket.sold}, ` +
@@ -361,6 +455,15 @@ function splitLines(split) {
       `    ${split.unknown.questions} question(s) carry no promptChars on at least one side, so the split ` +
         'above is over the rest and not over the roster',
     );
+  }
+  if (split.treated.questions === 0 && split.treatedBy === 'promptChars') {
+    // §13.143: a row permutation changes no prompt's length, so this instrument cannot see it. Say so where
+    // the zero is printed rather than leaving a reader to conclude the treatment reached nothing.
+    out.push(
+      '    no question changed its prompt length, which is what a permutation treatment looks like from ' +
+        'here: declare the population the mechanism reached with --treated <field>=<value>',
+    );
+    return out;
   }
   if (split.untouched.questions === 0) {
     out.push(
@@ -377,11 +480,36 @@ function splitLines(split) {
       `${expected.toFixed(1)} by themselves; the treatment's excess is ${excess >= 0 ? '+' : ''}` +
       `${excess.toFixed(1)} question(s)`,
   );
-  if (excess <= 0) {
+  // The flip RATE of each bucket, which is the other half of the reading: a bucket's net can be zero while
+  // every question in it moved, and that is a treatment that is loud and directionless rather than inert.
+  // A pair of runs whose prompts differ only in ORDER cannot be read from its net alone -- the ordering is
+  // what decides whether the reader's own instability averages out.
+  const flip = (bucket) =>
+    bucket.questions === 0 ? 0 : (bucket.bought + bucket.sold) / bucket.questions;
+  out.push(
+    `      flip rate: treated ${(100 * flip(split.treated)).toFixed(1)}% ` +
+      `(${split.treated.bought + split.treated.sold}/${split.treated.questions}), untouched ` +
+      `${(100 * flip(split.untouched)).toFixed(1)}% ` +
+      `(${split.untouched.bought + split.untouched.sold}/${split.untouched.questions})`,
+  );
+  if (excess > 0) {
     out.push(
-      '      ATTRIBUTION FAILS: the treated questions moved no more than untouched ones, so this net is not ' +
-        'evidence about the treatment whatever its sign',
+      `      the treatment bought ${excess.toFixed(1)} question(s) more than the pair's own noise predicts`,
     );
+  } else {
+    // Two different failures, said differently. `excess === 0` is a treatment that did nothing; a negative
+    // excess is a treatment that moved the treated questions DOWN, and calling that "no evidence" would
+    // throw away the only thing a regression can be -- which is what a reader of §13.143 needs to see.
+    out.push(
+      '      NO GAIN: the treated questions did not move up more than the untouched ones, so this net is ' +
+        'not evidence of a benefit' + (excess < 0 ? '' : ' whatever its sign'),
+    );
+    if (excess < 0) {
+      out.push(
+        '      and the excess is NEGATIVE: the treatment moved its own population down by more than the ' +
+          'untouched rate predicts, which is a regression and not a null',
+      );
+    }
   }
   return out;
 }
