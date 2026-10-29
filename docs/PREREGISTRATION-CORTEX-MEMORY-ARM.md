@@ -13692,3 +13692,130 @@ added — so every prior portfolio in this document stays readable and is now la
 The additivity question itself is still not live: both increments are negative against the same control, and
 there is nothing to add. It becomes live when an increment is positive, which is the condition §13.125 was
 written to serve.
+
+## 13.132 The twelve declines refuse to join two stated facts, and the sentence that licenses joining is already in the block
+
+### 13.132.1 The diff set, read one question at a time
+
+§13.126 closed the retrieval axis at five questions. What is left is the reader, and MR's share of it is 34
+wrong answers on the control `40751394094`. Twenty-four of them are questions the reference pipeline answers
+(`ablation.discordantQuestions.baselineCorrectFeatureIncorrect`, MR column), and the useful split is not by
+gold shape but by **what the reply does**:
+
+| what the reply does | count | questions |
+| ------------------- | ----: | --------- |
+| declines | **10** | `dd2973ad` `60bf93ed` `9aaed6a3` `e6041065` `d905b33f` `a4996e51` `a1cc6108` `d6062bb9` `157a136e` `c18a7dc8` |
+| answers a count, wrong | 10 | `a9f6b44c` `681a1674` `bf659f65` `3a704032` `0a995998` `d23cf73b` `2e6d26dc` `21d02d0d` `60159905` `gpt4_2f91af09` |
+| answers the wrong shape | 1 | `5025383b` — gold *"photography and cooking"*, reply `2` |
+| derives, wrong | 3 | `a11281a2` (350 for 100) `2b8f3739` (truncated third item) `92a0aa75` (picked the company's 3y9m instead of the role's 1y5m) |
+
+Two further MR declines, `73d42213` and `37f165cf`, are questions the reference pipeline also misses, so the
+decline population is **12** and the winnable decline population is **10**.
+
+Every one of the twelve carries its gold turns: `goldOverlap.carried` is 12/12 at the median, 11/11 for seven
+of them, and 6/10 at worst (`a1cc6108`). No decline in this set is a question whose evidence was not in the
+prompt, which is why the retrieval axis and this one do not overlap.
+
+### 13.132.2 Eleven of the twelve state their reason, and the reason is the same refusal
+
+The reply texts are quoted verbatim in the docblock of `DERIVE_MULTI_SESSION_INSTRUCTION`, and three of them
+are decisive:
+
+- `9aaed6a3` (gold `$0.75`) — *"The 1% cashback rate is mentioned in Session 11, but that is a **separate
+  session and cannot be merged**."* It found the rate and the amount, and declined because joining them
+  looked forbidden.
+- `dd2973ad` (gold `2 AM`) — *"These are different Wednesdays, so the evidence **does not connect** the 2 AM
+  bedtime to the day before the doctor's appointment."* It resolved both dates correctly and declined at the
+  join.
+- `73d42213` (gold `9:00 AM`) — *"Since the Step 1 list is not empty, the answer must be computed from it —
+  but **no item gives the arrival time**."* This is the rule being **obeyed**: the reader checked the list,
+  found it non-empty, tried to compute, and had no category for interpolating 9 AM from "left home at 7 AM"
+  and "back at the office around 1 PM".
+
+Six more say the same thing in the shape *"does not state the user's age"* / *"does not state the purchase
+date"* / *"does not state the sale price"*: the derived operand is missing as a single stated fact, so the
+question is read as unanswerable.
+
+### 13.132.3 The sentence exists and is not read, and that is a position finding
+
+The block already contains the licence. `MERGING_SENTENCE` reads: *"The answer may require combining evidence
+from more than one turn or session: gather every relevant piece first, then compute the answer. Do not reply
+`INSUFFICIENT_EVIDENCE` merely because no single piece states the answer outright."* That is, word for word,
+the answer to `a1cc6108`, `d905b33f`, `60bf93ed`, `e6041065`, `a4996e51`, `157a136e` and `c18a7dc8`.
+
+It is six lines from the closing rule, because `withMergingSentence` inserts it above the block's last line and
+`withInsertedBeforeClose` then inserts the five-line enumeration contract **above that**. Between the licence
+and the closing rule sits Step 1's *"do not merge two items into one"*, and `9aaed6a3` quotes the nearer
+sentence back — *"cannot be merged"*. §13.56 measured the same shape once already: with a rule placed above the
+closing line, 12 of 21 surviving MR declines had read the exception and followed the rule instead.
+
+So the variable is **position, not wording**. `derive` renders `MERGING_SENTENCE` last and changes nothing else.
+
+### 13.132.4 What makes this one run and not two
+
+`aggregation` (§13.103) was the version of this idea that bundled three changes — an exchange rule, a four-line
+arithmetic mapping, and a **looser** decline condition — and run `39641088296` measured MR abstentions rising
+from 10 to **16** under it. Loosening the condition is not free and it is not what this run does: `derive`
+keeps *"Reply `INSUFFICIENT_EVIDENCE` only when the Step 1 list is empty"* and keeps the closing line's
+condition, character for character.
+
+Two properties hold the single-variable claim, and both are tests rather than sentences:
+
+1. **The two blocks are permutations of one another.** `derive-licence.test.ts` compares their line multisets
+   and requires equality, so a reworded licence, a duplicated one, an added clause or a Step 2 edit fails as a
+   change of variable.
+2. **A permutation preserves length.** The MR `promptChars` of every treated record must equal the control's
+   **to the character** — 46,143 on `a11281a2`, and so on for all 121. A permutation that changes the length
+   is not a permutation.
+
+The reach is `enumerated`'s three routes and the change set is `multi-session` alone, held by
+`ask-changes.test.ts`, which renders all six routes twice and requires the set of routes whose bytes differ to
+equal `ASK_CHANGES` exactly. That test is what §13.104 and `40807829150` are both about.
+
+### 13.132.5 Predictions, registered before the dispatch
+
+Dispatch: `--set cortex_memory_ask=derive` on §10.3's configuration (`selfConsistency` and `queryExpansion`
+both `none`), N = 500, four repetitions. Control: **`40751394094`** — `ask=enumerated`, `reviewPass=bare`,
+`temperature=0`, first repetition 83.40% overall and MR 87/121.
+
+| #   | prediction | falsified if |
+| --- | ---------- | ------------ |
+| 1   | mechanism: `ask=derive`, `askRoutes` = `multi-session`, `flat`, `temporal`, and MR `promptChars` **equal to the control's on all 121 records** | any record's `promptChars` moves |
+| 2   | MR declines **12 → ≤ 7** | 10 or more remain |
+| 3   | of the ten winnable declines, **≥ 5 convert** (MR 87 → ≥ 92) | ≤ 3 convert (MR ≤ 90) |
+| 4   | MR accuracy **≥ 76.0%** (92/121) against the control's 71.9% | < 74.4% |
+| 5   | the refusal vocabulary falls: **≤ 5** of the MR decline replies contain *"does not state"*, *"not stated"*, *"cannot be computed"*, *"separate session"*, *"cannot be merged"* or *"does not connect"*, against **12 of 12** in the control | **9 or more** still do |
+| 6   | guard: IE, KU, TR and ABS `promptChars` **identical on 500 of 500**, and TR within ±5, IE within ±7 of the control's spread (§13.122.2) | any of the four moves a prompt, or TR / IE outside |
+| 7   | overall mean **≥ 84.2** and first repetition ≥ 83.4 | below 83.0 |
+
+Prediction 5 is the mechanism reading and it is judge-free: it is a string search over the same replies the
+score is computed from, so a run that scored the same while the replies stopped saying *"cannot be merged"*
+would still be evidence the sentence moved, and a run that scored better while they all still said it would be
+evidence of something else.
+
+§13.125's bar of 85.0% needs **eight** conversions rather than five, and it is not the registered threshold
+here: the treatment is one sentence, and asking a sentence to carry eight questions is how a registration
+starts predicting its author's hopes. Five is the floor at which the reading is distinguishable from the
+reader noise floor §13.127 measured — 19 of 379 verdicts (5.0%) flip on byte-identical prompts.
+
+### 13.132.6 What a positive result would mean, and what it would not
+
+It would mean the largest single block of MR's remaining loss is a **document-ordering** defect rather than a
+capability gap: the reader can do the joins, and one sentence it was given was read last by the rule that says
+not to. That would also re-price §13.56 from one rule to a class.
+
+It would not touch the fourteen answered-wrong questions, which are a different failure: ten are counts off by
+one or two (`0a995998` 3 → 2, `d23cf73b` 4 → 6, `60159905` three → 2) and that is set membership; one,
+`5025383b`, answered `2` to *"What are the two hobbies"*, which is Step 2 being written as an instruction to
+count rather than as a mapping from question form to operation. Those are §13.133's territory — the reference
+pipeline's four-line mapping, which `aggregation` bundled and therefore never priced on its own. It would not
+touch `2b8f3739` either: that reply computed $375 correctly from a third item whose amount was **truncated in
+the rendering**, which is a `maxTurnChars` question and not a prompt one.
+
+### 13.132.7 The next step if position alone does not convert
+
+The reference aggregation prompt also carries *"a sum, a difference, an average, a percentage, an elapsed time,
+or a date read from the context"* — and that list is the exact taxonomy of the thirteen derivation questions in
+the diff set. It is deliberately **not** in `derive`, because position plus wording is two changes in one run.
+If prediction 5 fails while prediction 2 holds — replies stop saying *"cannot be merged"* and still decline —
+the taxonomy is the next registered sentence, and it is the one the reading most directly supports.

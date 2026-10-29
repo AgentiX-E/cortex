@@ -193,6 +193,12 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // down `flat`, so the licence to compose is what the block is missing — not a reply shape, which
   // is what `answer-line` supplied and what cost 12 IE questions.
   recommend: ['multi-session', 'flat', 'temporal'],
+  // §13.132. The same three routes as `enumerated` and the same block on flat and temporal, so the
+  // reach set cannot separate the two asks and the artifact separates them by the `ask` value beside
+  // an unchanged `askRoutes` -- the argument `enumerated` and `computed` already make. `derive`
+  // reaches `multi-session` only to *reorder* it: the licence to combine evidence is in both blocks,
+  // and it is the last thing read in this one.
+  derive: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -235,6 +241,7 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   silent: 'enumerated',
   'answer-line': 'enumerated',
   recommend: 'enumerated',
+  derive: 'enumerated',
 };
 
 /**
@@ -257,6 +264,11 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   silent: ['multi-session'],
   'answer-line': ['flat'],
   recommend: ['flat'],
+  // §13.132. The licence to combine, moved to the last position and otherwise unchanged; the change
+  // set is the multi-session route because `enumerated` and `derive` administer the same bytes to
+  // flat and temporal. That equality is the single-variable claim and `derive-licence.test.ts`
+  // states it as a line-multiset comparison rather than as a description.
+  derive: ['multi-session'],
 };
 
 /**
@@ -333,7 +345,8 @@ export type EvidenceAsk =
   | 'aggregation'
   | 'silent'
   | 'answer-line'
-  | 'recommend';
+  | 'recommend'
+  | 'derive';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -785,6 +798,69 @@ const ENUMERATED_MULTI_SESSION_INSTRUCTION = withReplacedClose(
 );
 
 /**
+ * The multi-session block under `derive`: `enumerated`, with the licence to combine read **last**.
+ *
+ * ## What the twelve declines say, in their own words
+ *
+ * Run `40751394094` declines twelve MR questions and gets none of them right; ten of the twelve are
+ * questions the reference pipeline answers. Every one of the twelve carries its gold turns (the
+ * `goldOverlap` reading is 6/10 at worst, 12/12 at the median), so no decline is a retrieval miss.
+ * Read one at a time, the *stated* reason is the same refusal in eleven of them: the model found the
+ * pieces and would not join them.
+ *
+ * | question | gold | what the reply says |
+ * | --- | --- | --- |
+ * | `9aaed6a3` | `$0.75` | "The 1% cashback rate is mentioned in Session 11, but that is a **separate session and cannot be merged**" |
+ * | `dd2973ad` | `2 AM` | "These are different Wednesdays, so the evidence **does not connect** the 2 AM bedtime to the day before the appointment" |
+ * | `73d42213` | `9:00 AM` | "Since the Step 1 list is not empty, the answer must be computed from it — **but no item gives the arrival time**" |
+ * | `a1cc6108` | `11` | "The evidence states Alex is 21, but it **does not state the user's age**" |
+ * | `d905b33f` | `20%` | "states the book was originally priced at $30 but **does not state the sale price**" |
+ * | `60bf93ed` | `5 days` | "states the backpack arrived on 1/20 but **does not state the purchase date**" |
+ * | `e6041065` | `40%` | "the exact total number of shoes packed is **not stated**" |
+ * | `a4996e51` | `50` | "**does not state a specific number of hours** … it only says hours are increased from the usual 40" |
+ * | `d6062bb9` | `1,998` | lists the TikTok count and then "**no view count stated**" for the YouTube one |
+ * | `157a136e` | `43` | "No item in the evidence states the user's age or the grandma's age" |
+ * | `c18a7dc8` | `7` | "No item in the evidence states the user's age at college graduation" |
+ * | `37f165cf` | `856` | sums nothing: "There is no January or March novel" |
+ *
+ * ## Why the docblock blames position rather than wording
+ *
+ * The sentence that licenses exactly this is already in the block. `MERGING_SENTENCE` says *"The
+ * answer may require combining evidence from more than one turn or session: gather every relevant
+ * piece first, then compute the answer. Do not reply INSUFFICIENT_EVIDENCE merely because no single
+ * piece states the answer outright."* — which is, word for word, the answer to `a1cc6108`,
+ * `d905b33f`, `60bf93ed`, `e6041065`, `a4996e51`, `157a136e` and `c18a7dc8`.
+ *
+ * It is not read. `withMergingSentence` inserts it above the block's final line, and then
+ * `withInsertedBeforeClose` inserts the five-line enumeration contract above *that* — so the licence
+ * sits six lines from the closing rule, behind a Step 1 sentence that says "do not merge two items
+ * into one". `9aaed6a3` quotes the nearer sentence back: **"cannot be merged"**. §13.56 measured this
+ * shape once already, when a rule placed above the closing line lost to it and 12 of 21 surviving
+ * declines had read the exception and followed the rule.
+ *
+ * So this ask moves the licence and changes nothing else. The text is `MERGING_SENTENCE` itself, not
+ * a copy of it and not a strengthened version, which is what makes the run attributable: the same
+ * bytes in a different position. `derive-licence.test.ts` holds the claim to that — it compares the
+ * two blocks' **line multisets** and requires them equal, so a reworded sentence, a duplicated one
+ * or an extra clause fails as a change of variable rather than passing as an edit.
+ *
+ * ## Why not the taxonomy sentence the reference pipeline also carries
+ *
+ * Its aggregation prompt adds *"a sum, a difference, an average, a percentage, an elapsed time, or a
+ * date read from the context"*, and that list is the exact taxonomy of the thirteen derivation
+ * questions in the diff set. Naming it here would make the run two changes at once — position and
+ * wording — and §13.104 is the case for why a bundled prompt edit is not attributable even when
+ * every part of it is right. It is the *next* registered step if position alone does not convert.
+ */
+const DERIVE_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withInsertedBeforeClose(CONTRACT_INSTRUCTIONS.extractive(undefined), ENUMERATION_CONTRACT),
+    MERGING_SENTENCE,
+  ),
+  ENUMERATED_CLOSE,
+);
+
+/**
  * The multi-session contract with the Step 1 notes kept private — §13.123.
  *
  * ## Why this exists, stated as the correction it is
@@ -1161,6 +1237,17 @@ function instructionsFor(
       return ask === 'answer-line' ? ANSWER_LINE_FLAT_INSTRUCTION : RECOMMEND_FLAT_INSTRUCTION;
     }
     return contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'derive') {
+    // §13.132. `enumerated`'s reach and `enumerated`'s fallthrough, because the run is registered
+    // against an `enumerated` control and the only route whose reading may move is multi-session.
+    // Written as three statements rather than `return own` for the reason §13.124 wrote the same
+    // three: `40807829150`'s fallthrough returned the shipped block, which cost MR 48 questions and
+    // TR 12 under a registration that named neither.
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return DERIVE_MULTI_SESSION_INSTRUCTION;
+    }
+    return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
   if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
     return withMergingSentence(own);

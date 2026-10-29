@@ -1032,6 +1032,14 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // evidence. Same reach and same change set as `answer-line`, and the two are separated by the
   // `ask` value beside an unchanged `askRoutes` -- exactly the argument the entry above makes.
   recommend: ['multi-session', 'flat', 'temporal'],
+  // §13.132's ask: `enumerated` with the licence to combine evidence read **last**, on the
+  // multi-session route alone. Same reach and same change set as `enumerated`, and the two are
+  // separated by the `ask` value beside an unchanged `askRoutes`. Written against twelve MR declines
+  // on `40751394094`, none correct, ten of them questions the reference pipeline answers and every one
+  // carrying its gold turns: eleven of the twelve refuse to join two stated facts ("a separate
+  // session and cannot be merged", "does not state the user's age"), which is what `MERGING_SENTENCE`
+  // licenses and what `enumerated` buries six lines above its closing rule.
+  derive: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

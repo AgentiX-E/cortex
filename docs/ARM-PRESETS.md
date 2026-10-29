@@ -109,7 +109,7 @@ unbuilt, and this section says so rather than describing a dispatch that has no 
 | S-4 importance | as above                                                | registered, unbuilt                                                     |
 | S-5 rerank     | `cortex_memory_rerank=cross-encoder` (proposed)         | registered, unbuilt                                                     |
 
-## 3.5 The ask arms (`silent`, `answer-line`, `recommend`) — the one input §1 already names
+## 3.5 The ask arms (`silent`, `answer-line`, `recommend`, `derive`) — the one input §1 already names
 
 The two ask experiments are single-variable against §1, but the field they change is **already in the preset**,
 which makes merging the two blocks a replace rather than an addition. Written down because "merge with §1" is
@@ -161,6 +161,29 @@ tax on every question whose gold is not that shape. Its reach also declared one 
 It adds a licence to compose and a ban on quoting the evidence, and **no reply shape** — the lesson the ask above
 paid for. Reach `enumerated`'s, change set `{flat}`, control `40751394094`.
 
+`derive` (§13.132.5, MR): the value to dispatch next, and the smallest change any ask in this file makes.
+
+```json
+{
+  "cortex_memory_ask": "derive"
+}
+```
+
+It **reorders** `enumerated`'s multi-session block and adds, drops and rewords nothing: the merging sentence —
+*"the answer may require combining evidence from more than one turn or session … do not reply
+`INSUFFICIENT_EVIDENCE` merely because no single piece states the answer outright"* — is moved from six lines
+above the closing rule to immediately above it. That sentence is already an answer to seven of the control's
+twelve MR declines; the reason it was not read is that the enumeration contract's *"do not merge two items into
+one"* sat closer to the rule that decides, and one reply quotes it back as *"a separate session and cannot be
+merged"*. Reach `enumerated`'s, change set `{multi-session}`, control `40751394094`.
+
+Two checks make it a one-variable run, and both are tests:
+
+- the two blocks must be **permutations** of one another (`derive-licence.test.ts` compares line multisets), so a
+  reworded or duplicated sentence fails as a change of variable rather than passing as an edit;
+- a permutation preserves length, so MR's `promptChars` must equal the control's **to the character** on all 121
+  records. A treated run whose MR prompt got longer is not this ask.
+
 **And the check is the same one.** `ask` must be the only differing field, and one line of the arm-config output
 says so:
 
@@ -173,8 +196,8 @@ relevanceUnits=turn, maxTurnChars=400, maxPromptChars=48000
 Three things that are easy to get wrong here, each of which the reach tests already guard but a dispatcher does
 not read:
 
-- all three asks now declare `enumerated`'s reach (three routes) and differ from the control on **one**: `silent`
-  and `recommend` on `multi-session` and `flat` respectively, `answer-line` on `flat`. The untreated routes must
+- all four asks now declare `enumerated`'s reach (three routes) and differ from the control on **one**: `silent`
+  and `derive` on `multi-session`, `recommend` and `answer-line` on `flat`. The untreated routes must
   reproduce the enumeration arm **question for question** — that is the assembly check, and it is read before any
   accuracy number. This bullet used to claim `answer-line` reached one route, which is the reading that produced
   `40807829150`: a reach of one route with a fallthrough of `own` is not a narrower treatment, it is a different
