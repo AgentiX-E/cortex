@@ -15000,3 +15000,104 @@ would let a reader price a delta against a spread no run produced.
 what a reader is quoted.** Applied forward: no threshold in this document is set from a first-repetition number,
 and any treatment whose predicted effect is smaller than its run's own per-capability range is registered as
 "needs repetitions" rather than dispatched against a threshold it cannot reach.
+
+### 13.145 The four repetitions were published as three numbers, and the denominator was the constraint
+
+#### 13.145.1 The defect
+
+`ablation.ts` has held `featureCorrectPerRun` -- a boolean vector per repetition, one entry per question -- since
+13.88. It collapsed each capability's per-run **count** into `{min, avg, max}` and dropped the vectors. Every
+artifact that has ever left the runner therefore states that MR scored between 81 and 87 out of 121 and cannot
+state **which** question moved.
+
+The cost is not cosmetic. Three numbers cannot be recomputed for a population smaller than a capability, and every
+ask this campaign has registered in the last four sections is about a population smaller than a capability. A review
+pass reaches ten of the 121 MR questions (13.141.1). Ten questions is not a rounding of 121; it is a different
+experiment, and the artifact that would have answered it was throwing the denominator away one line before it
+computed the summary.
+
+#### 13.145.2 What the artifact now carries
+
+`ablation.featureCorrectByRun` and `ablation.baselineCorrectByRun`: run-major, one string per repetition, one
+character per dataset question, `'1'` correct and `'0'` not. 2 kB for the 500-question roster, a character grid
+rather than a bitmask so that a reader in `tools/*.mjs` is not a bit-twiddler.
+
+Three properties it is built to have:
+
+- **Omitted at one repetition.** It would be a second copy of `featureCorrect`, and two arrays that must agree are
+  two arrays that can disagree -- the reason `correctnessVector` derives rather than stores.
+- **Verified, not trusted, by the reader.** `ledger.mjs` refuses a grid whose first row is not the roster's verdicts
+  text. `questions[]` is documented as the first repetition, so a grid that fails that comparison is a grid whose
+  question order cannot be read; a shifted reading would be arithmetically perfect and about the wrong questions.
+- **Readable per declared population.** `--treated <field>=<value>` now cuts the grid as well as the split, through
+  one shared `bucketOfQuestion`, so the population the split divides and the population the grid is cut by cannot
+  drift into two definitions.
+
+#### 13.145.3 The arithmetic that makes narrowing worth more than repeating
+
+Run `40859499624`'s MR side, four repetitions each: feature 81-87 (avg 83.0), baseline 100-101 (avg 100.75). The
+`{min, avg, max}` triple bounds the per-draw spread: with four draws summing to 332 and spanning 81-87, the
+distribution is `(81, 82, 82, 87)` or `(81, 81, 83, 87)`, so `sd ≈ 2.35-2.45`. The baseline side sums to 403 and
+cannot exceed 101, so it is `(100, 101, 101, 101)`, `sd ≈ 0.43`.
+
+| reading | population | per-draw sd (arm / control) | SE of the 4-vs-4 difference | smallest difference this resolves at 80% power |
+| --- | --- | --- | --- | --- |
+| whole MR | 121 | 2.45 / 0.43 | 1.24 | **4.2 questions** (3.5 pp) |
+| reachable ten, flipping at the corpus rate | 10 | 0.70 / 0.12 | 0.36 | **1.2 questions** |
+| reachable ten, each a coin flip | 10 | 1.58 / 0.12 | 0.79 | **2.7 questions** |
+
+The 80%-power column is `(t_{0.975,6} + t_{0.80,6}) · SE = 3.353 · SE`, with `SE = sqrt(sd_arm²/4 + sd_control²/4)`.
+The control's per-draw sd on a ten-question population is derived the same way from its own MR spread and lands at
+0.12: it is close to deterministic, which is why the control side contributes almost nothing to any of the three
+rows.
+
+Two readings follow, and they are the reason this section exists rather than a note inside 13.144:
+
+1. **Four repetitions are not the binding constraint.** `13.141.5` registered ">= 4 of the ten MR questions convert"
+   -- exactly 4.2 questions' worth of effect. It sits *on* the whole-MR threshold, not above it, so the registered
+   ask is one draw away from its own resolution and would be reported as "not a separation" half the time it was
+   true.
+2. **Narrowing the population buys more than buying repetitions.** Four more repetitions per arm would move 4.2 to
+   4.2 / sqrt(2) = 3.0 at double the cost and double the wall clock. Reading the ten reachable questions instead
+   moves the threshold to 1.2-2.7 at **no additional cost**, because the 111 questions that cannot move contribute
+   their variance and nothing else.
+
+The corpus rate used in the middle row is derived from the same artifact: `sd² = Σ p_i(1-p_i) = 6.0` over 121
+questions gives `p(1-p) ≈ 0.05`, i.e. about 6 MR questions change their answer between draws. The third row is the
+worst case, where the ten reachable questions are precisely the unstable ones.
+
+#### 13.145.4 Acceptance criteria, and how each was tested
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | one character per question per repetition, in dataset order | `correctness-matrix.test.ts` -- `carries one character per question per repetition, in dataset order` |
+| 2 | the grid's first row is the roster's verdicts text | `agrees with the first-repetition vector`; `ledger.mjs` refuses otherwise (`test_refuses_a_grid_that_does_not_describe_the_roster`) |
+| 3 | omitted at one repetition rather than duplicated | `omits the field when there is one repetition` |
+| 4 | a trailing false is a question, not padding | `does not treat a trailing false as absent` |
+| 5 | rows that disagree on length are refused, not padded | `test_refuses_a_grid_whose_rows_cover_different_rosters` |
+| 6 | the per-question read names `always` / `never` / `moved` and the per-draw sd | `test_reads_each_question_across_the_repetitions` |
+| 7 | conversions are counted as questions, in both directions | `test_counts_the_questions_that_traded_one_extreme_for_the_other` |
+| 8 | a fully stable population says so instead of printing a mean it cannot sharpen | `test_says_so_when_narrowing_the_population_bought_nothing` |
+| 9 | a side without a grid says its repetitions cannot be read | `test_a_side_without_a_grid_says_its_repetitions_cannot_be_read` |
+| 10 | the JSON node and the text come from one function | `test_json_carries_the_repetition_summary` |
+
+Two mutations were run against the derivation and both were caught. Publishing only the first repetition reddens
+criterion 1. Reversing the mask inside `correctnessMask` reddened **nothing** in the first version of the fixture,
+because `'111'` and `'101'` are palindromes -- the alignment was pinned by no test at all. The fixture now flips the
+first of four questions and produces `'1111'` / `'0111'`, and the reversal mutation reddens criterion 1. The
+palindrome is recorded here rather than quietly fixed: it is the second time this campaign has found a green test
+whose fixture could not distinguish the behaviour it claimed to check (13.137.4's `extra` parameter was the first).
+
+#### 13.145.5 What it changes for the in-flight `recover` run and for every ask after it
+
+Run `40883121464` (`review_pass=recover`, tree `ed805b2`) was dispatched before this field existed, so **its
+artifact will carry no grid** and `13.141.5` has to be read on the whole-MR mean -- the 4.2-question column. That
+is not a reason to cancel it: its control (`40859499624`) is matched on everything except the two commits that
+intentionally differ, and `13.145.3` says the reading is borderline rather than void. If it lands at 87.0 against
+83.0 the pair is at its own resolution and the honest verdict is "the mean moved by more than this instrument can
+separate, and the question-level read was not taken".
+
+The rule this adds: **any ask registered against fewer than a whole capability must state its population and its
+resolution in questions before it is dispatched.** 4.2 whole-MR was never printed anywhere in this document until
+now, and three registered asks (`13.133`'s +1.3, `13.141.5`'s 4-of-10, `13.143`'s thresholds) were written against
+thresholds that this arithmetic says they could not have reached on the population they were written for.

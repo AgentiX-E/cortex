@@ -24,6 +24,7 @@ import type {
 import { classifyTransitions } from './answer-transition.js';
 import { evaluateWithScorerDetailed } from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
+import { correctnessMask } from './question-record.js';
 import {
   aggregate,
   cohensD,
@@ -491,13 +492,17 @@ export async function runAblation(
         : -Infinity;
 
   // §13.88's projection. Absent for one repetition, because a spread of zero would read as
-  // perfect stability rather than as no measurement.
+  // perfect stability rather than as no measurement. The masks ride the same condition: at one
+  // repetition they would be a second copy of `featureCorrect`/`baselineCorrect`, and two arrays that
+  // must agree are two arrays that can disagree.
   const capabilitySpreads =
     runs > 1
       ? {
           featureByCapability: spreadByCapability(dataset, featureCorrectPerRun),
           baselineByCapability: spreadByCapability(dataset, baselineCorrect),
           questionsByCapability: questionsByCapability(dataset),
+          featureCorrectByRun: featureCorrectPerRun.map(correctnessMask),
+          baselineCorrectByRun: baselineCorrect.map(correctnessMask),
         }
       : {};
 

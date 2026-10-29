@@ -263,6 +263,21 @@ function verdictsOf(file) {
   // pairing this tool computes is a pairing of one draw against one draw -- the noisiest comparison the
   // artifact supports. The means were in the same file the whole time.
   const spread = spreadOf(parsed);
+  // The per-question grid, when the report carries one. Verified against the roster below rather than
+  // trusted: a grid that addresses a different question order would produce a per-question reading that is
+  // arithmetically perfect and about the wrong questions, with nothing in the output to show it.
+  const repetitions = repetitionsOf(parsed, file);
+  if (repetitions !== null) {
+    const firstRun = questions.map((question) => (question.correct === true ? '1' : '0')).join('');
+    if (repetitions[0].length !== questions.length || repetitions[0] !== firstRun) {
+      throw new Error(
+        `${file}: the per-run grid does not describe the roster -- repetition 0 is ${repetitions[0].length} ` +
+          `characters and the roster is ${questions.length} questions, and the two ${repetitions[0] === firstRun ? 'agree' : 'disagree'} ` +
+          'on their contents. `questions[]` is documented as the first repetition, so a grid that fails ' +
+          'either check is a grid whose question order cannot be read.',
+      );
+    }
+  }
   // The raw records, so a split can be declared on any field rather than only on the character count.
   const records = new Map();
   for (const question of questions) {
@@ -274,6 +289,7 @@ function verdictsOf(file) {
     promptChars,
     records,
     spread,
+    repetitions,
     generatedAt: parsed.generatedAt ?? 'unknown',
     questions,
   };
@@ -314,12 +330,178 @@ function acrossIncrement(label, file, control) {
       baselineCorrectFeatureIncorrect: sold,
     },
   });
+  // The population the repetition read is cut by: the declared one when there is one, otherwise the whole
+  // roster. Index positions rather than ids, because the grid is indexed by dataset order -- which
+  // `verdictsOf` has just verified agrees with the roster on its first repetition.
+  const population =
+    treatedSpec === null
+      ? ids.map((_, index) => index)
+      : ids
+          .map((id, index) => ({ id, index }))
+          .filter(({ id }) => bucketOfQuestion(id, treatedSpec, control, arm) === 'treated')
+          .map(({ index }) => index);
   return {
     ledger,
     generatedAt: arm.generatedAt,
     split: splitOf(ids, control, arm, bought, sold, treatedSpec),
     spread: { control: control.spread, arm: arm.spread },
+    population,
+    armRecord: arm,
   };
+}
+
+/**
+ * The per-question correctness grid across repetitions, when the artifact carries one.
+ *
+ * ## Why the spreads are not enough
+ *
+ * `spreadOf` reads `{min, avg, max}` per **capability**. Those are three numbers about a count: they cannot
+ * name a question, cannot be recomputed for a population smaller than a capability, and cannot separate one
+ * question flapping four times from four questions flapping once each.
+ *
+ * That is the binding constraint on this campaign, not the repetition count. A review pass is reachable on
+ * ten of the 121 MR questions; a net `+4` on those ten is a large effect, and the same `+4` spread over 121
+ * is inside the noise. The collapsed counts cannot tell the two readings apart because the denominator is
+ * discarded before they are computed.
+ *
+ * ## What it refuses
+ *
+ * A grid whose rows disagree on length does not address one roster, so it cannot be indexed by question;
+ * a row with a character other than `'0'`/`'1'` is not a correctness mask. Both are refused by name rather
+ * than padded or coerced: a silently shorter row would shift every question after the gap, and the shifted
+ * reading would be arithmetically perfect and about the wrong questions.
+ */
+function repetitionsOf(parsed, label) {
+  const table = parsed?.ablation?.featureCorrectByRun;
+  if (!Array.isArray(table) || table.length === 0) return null;
+  const masks = [];
+  for (const [index, mask] of table.entries()) {
+    if (typeof mask !== 'string' || mask.length === 0 || /[^01]/.test(mask)) {
+      throw new Error(
+        `${label}: repetition ${index} is not a '0'/'1' string, so it cannot be read as a correctness mask`,
+      );
+    }
+    if (masks.length > 0 && mask.length !== masks[0].length) {
+      throw new Error(
+        `${label}: repetition ${index} covers ${mask.length} questions and repetition 0 covers ` +
+          `${masks[0].length}; the grid does not address one roster`,
+      );
+    }
+    masks.push(mask);
+  }
+  return masks;
+}
+
+/**
+ * How each question in a population scored across the repetitions, and how the draws themselves spread.
+ *
+ * Both halves are kept because they answer different questions. `hits` says whether a question ever moved,
+ * which is what a treatment acts on; `totals`/`sd` says how much the run as a whole wobbles, which is what
+ * decides how large a delta has to be before it can be read at all.
+ */
+function stabilityOf(record, indices) {
+  const masks = record.repetitions;
+  if (masks === null) return null;
+  const runs = masks.length;
+  const hits = indices.map((index) =>
+    masks.reduce((sum, mask) => sum + (mask[index] === '1' ? 1 : 0), 0),
+  );
+  const totals = masks.map((mask) =>
+    indices.reduce((sum, index) => sum + (mask[index] === '1' ? 1 : 0), 0),
+  );
+  const mean = totals.reduce((sum, total) => sum + total, 0) / runs;
+  const sd = Math.sqrt(totals.reduce((sum, total) => sum + (total - mean) ** 2, 0) / runs);
+  return { runs, questions: indices.length, hits, totals, mean, sd };
+}
+
+/**
+ * The same reading as a JSON node: how many questions were always right, never right, and moved.
+ *
+ * Derived from `stabilityOf` rather than recomputed, so the text and the JSON cannot disagree about a run --
+ * the split this tool already had to learn twice.
+ */
+function stabilitySummaryOf(stability) {
+  if (stability === null) return null;
+  const always = stability.hits.filter((hits) => hits === stability.runs).length;
+  const never = stability.hits.filter((hits) => hits === 0).length;
+  return {
+    runs: stability.runs,
+    questions: stability.questions,
+    always,
+    never,
+    moved: stability.questions - always - never,
+    meanPerDraw: stability.mean,
+    sdPerDraw: stability.sd,
+  };
+}
+
+/**
+ * The repetitions read question by question, over a declared population.
+ *
+ * What this adds to `spreadLines`: the mean and its spread are computed over the *population* rather than
+ * over everything, and the two-sided count -- how often each question was right across the draws -- replaces
+ * a per-capability total. A pair whose means differ by four questions while nine questions went `0/4` to
+ * `4/4` and five went the other way is a pair that moved fourteen questions; the mean alone reads it as
+ * "four".
+ */
+function stabilityLines(label, control, arm, spec, indices) {
+  const controlStability = stabilityOf(control, indices);
+  const armStability = stabilityOf(arm, indices);
+  if (controlStability === null && armStability === null) return [];
+  const population =
+    spec === null
+      ? `all ${indices.length} questions`
+      : `${spec.field}=${spec.values.join('|')} (${indices.length} questions)`;
+  const out = ['', `      repetitions, question by question -- ${population}`];
+  const describe = (name, stability) => {
+    if (stability === null) {
+      out.push(
+        `        ${name.padEnd(8)}: this report carries no per-run grid, so its repetitions cannot be read`,
+      );
+      return;
+    }
+    const always = stability.hits.filter((hits) => hits === stability.runs).length;
+    const never = stability.hits.filter((hits) => hits === 0).length;
+    const moved = stability.questions - always - never;
+    out.push(
+      `        ${name.padEnd(8)}: always ${always}, never ${never}, moved within the ${stability.runs} ` +
+        `${moved}; mean per draw ${stability.mean.toFixed(2)} (sd ${stability.sd.toFixed(2)})`,
+    );
+  };
+  describe('control', controlStability);
+  describe(label, armStability);
+  if (controlStability === null || armStability === null) return out;
+  // The sharpest form of the question a conversion ask is actually asking: a question the control never
+  // answered and the arm answered on every draw moved by construction, not by a lucky draw.
+  const converted = indices.filter(
+    (index, offset) =>
+      controlStability.hits[offset] === 0 && armStability.hits[offset] === armStability.runs,
+  );
+  const lost = indices.filter(
+    (index, offset) =>
+      controlStability.hits[offset] === controlStability.runs && armStability.hits[offset] === 0,
+  );
+  const netHits =
+    armStability.hits.reduce((sum, hits) => sum + hits, 0) -
+    controlStability.hits.reduce((sum, hits) => sum + hits, 0);
+  out.push(
+    `        never -> always: ${converted.length} question(s); always -> never: ${lost.length}`,
+  );
+  out.push(
+    `        net over the population: ${netHits >= 0 ? '+' : ''}${netHits} question-draws of ` +
+      `${controlStability.questions * controlStability.runs} ` +
+      `(${((100 * netHits) / (controlStability.questions * controlStability.runs)).toFixed(2)} points)`,
+  );
+  // Printed only when it is zero, because a zero here is the reading that says the population was cut for
+  // nothing: the two draws agree on every question in it, so a difference of means is drawn from noise that
+  // this grid can see question by question.
+  if (converted.length === 0 && lost.length === 0) {
+    out.push(
+      '        no question in this population took a value that repeats on every draw: the mean above ' +
+        'cannot be sharpened by narrowing the population',
+    );
+  }
+  return out;
 }
 
 /**
@@ -448,6 +630,30 @@ function spreadLines(label, controlSpread, armSpread) {
  * cannot say", and a question in that state is counted rather than assumed untouched -- the same rule the
  * `threshold` and `sessionBudget` fields are read under.
  */
+/**
+ * Which bucket one question falls in, under whichever definition of "treated" was declared.
+ *
+ * The declared field is read from the **arm**, not from the control: "did the treatment reach this question"
+ * is a fact about the run that administered it, and the control is the run it is measured against. A field
+ * the arm does not carry is `unknown` -- absent is not false, the rule `promptChars` already follows one
+ * branch up.
+ *
+ * Shared with the repetition read rather than reimplemented there, so the population the grid is cut by is
+ * the same population the split divides. Two definitions of "treated" in one tool is how a reader ends up
+ * holding a split and a grid that describe different questions.
+ */
+function bucketOfQuestion(id, spec, control, arm) {
+  if (spec !== null) {
+    const record = arm.records.get(id);
+    const raw = record === undefined ? undefined : record[spec.field];
+    if (raw === undefined || raw === null) return 'unknown';
+    return spec.values.includes(String(raw)) ? 'treated' : 'untouched';
+  }
+  const before = control.promptChars.get(id);
+  const after = arm.promptChars.get(id);
+  return before === null || after === null ? 'unknown' : before === after ? 'untouched' : 'treated';
+}
+
 function splitOf(ids, control, arm, bought, sold, spec) {
   const buckets = {
     treated: { questions: 0, bought: 0, sold: 0 },
@@ -462,21 +668,7 @@ function splitOf(ids, control, arm, bought, sold, spec) {
    * against. A field the arm does not carry is `unknown` -- absent is not false, the rule `promptChars`
    * already follows one branch up.
    */
-  const bucketOf = (id) => {
-    if (spec !== null) {
-      const record = arm.records.get(id);
-      const raw = record === undefined ? undefined : record[spec.field];
-      if (raw === undefined || raw === null) return 'unknown';
-      return spec.values.includes(String(raw)) ? 'treated' : 'untouched';
-    }
-    const before = control.promptChars.get(id);
-    const after = arm.promptChars.get(id);
-    return before === null || after === null
-      ? 'unknown'
-      : before === after
-        ? 'untouched'
-        : 'treated';
-  };
+  const bucketOf = (id) => bucketOfQuestion(id, spec, control, arm);
   for (const id of ids) {
     const bucket = bucketOf(id);
     buckets[bucket].questions += 1;
@@ -531,6 +723,11 @@ if (asJson) {
                       arm: serialiseSpread(reading.spread.arm),
                     }
                   : null,
+                stability: {
+                  population: reading.population.length,
+                  control: stabilitySummaryOf(stabilityOf(control, reading.population)),
+                  arm: stabilitySummaryOf(stabilityOf(reading.armRecord, reading.population)),
+                },
               })),
             }
           : {}),
@@ -572,6 +769,19 @@ for (const reading of readings) {
   // has no way to price.
   if (reading.spread)
     lines.push(...spreadLines(increment.label, reading.spread.control, reading.spread.arm));
+  // Last, because it is the sharpest read and the one that needs the most context above it: the deltas, the
+  // split that says which questions moved, the spreads that say how large a delta has to be. This one says
+  // how often each question in a declared population was right, draw by draw.
+  if (reading.population)
+    lines.push(
+      ...stabilityLines(
+        increment.label,
+        control,
+        reading.armRecord,
+        treatedSpec,
+        reading.population,
+      ),
+    );
 }
 
 /**

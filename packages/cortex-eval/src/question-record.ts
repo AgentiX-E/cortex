@@ -753,6 +753,23 @@ export function correctnessVector(records: readonly QuestionRecord[]): boolean[]
 }
 
 /**
+ * One repetition's correctness vector as text: `'1'` correct, `'0'` not, in input order.
+ *
+ * The artifact already publishes `featureCorrect` for the **first** repetition and a
+ * `{min, avg, max}` per capability over the rest. Those three numbers are a summary of counts: they
+ * cannot name a question, cannot be recomputed for a population smaller than a capability, and
+ * cannot distinguish one question flapping four times from four questions flapping once each.
+ *
+ * A character per question rather than a bitmask, because the readers are `tools/*.mjs` scripts and
+ * the artifact is already 51 MB: a bitmask makes every reader a bit-twiddler, and an off-by-one in
+ * one of them would report a different run from the same file with nothing to compare against. The
+ * cost is four characters per question per repetition -- 2 kB for the 500-question roster.
+ */
+export function correctnessMask(vector: readonly boolean[]): string {
+  return vector.map((correct) => (correct ? '1' : '0')).join('');
+}
+
+/**
  * The reverse of the record construction: the offer a record holds, or `null`.
  *
  * ## Why this is exported and shared

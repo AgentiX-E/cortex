@@ -92,10 +92,15 @@ describe('per-capability counts across repetitions', () => {
     expect(report.ablation.questionsByCapability).toBeUndefined();
   });
 
-  it('agrees with the roster on the first repetition', async () => {
-    // The new aggregate and the existing single-repetition roster must describe the same run. If
+  it('agrees with the first-repetition vector', async () => {
+    // The new aggregate and the existing single-repetition vector must describe the same run. If
     // they disagree, one of them is counting a different pass and every comparison across the two
     // is void -- which is exactly the reading §13.87 had to withdraw.
+    //
+    // Read from `ablation.featureCorrect` rather than from `report.questions`: the fixture's systems
+    // answer with a bare string, so no per-question record is captured and the roster is absent. A
+    // loop over an absent roster would pass while comparing nothing, which is the failure mode
+    // `test_ledger.py`'s `extra` parameter had.
     const report = await runAblationReport(
       dataset,
       alternatingSystem('baseline', dataset.questions.length),
@@ -103,15 +108,24 @@ describe('per-capability counts across repetitions', () => {
       { runs: 2, scorer: exactMatchScorer },
     );
 
+    expect(report.questions).toBeUndefined();
     const firstPass = new Map<string, number>();
-    for (const question of report.questions ?? []) {
+    dataset.questions.forEach((question, index) => {
       const key = question.capability;
-      firstPass.set(key, (firstPass.get(key) ?? 0) + (question.correct ? 1 : 0));
-    }
+      firstPass.set(
+        key,
+        (firstPass.get(key) ?? 0) + (report.ablation.featureCorrect[index] ? 1 : 0),
+      );
+    });
+    expect(firstPass.size).toBe(3);
     for (const [capability, count] of firstPass) {
-      // The roster is the **first** repetition, and the fixture makes the first pass the correct
-      // one, so the aggregate's max must equal it.
-      expect(report.ablation.featureByCapability?.[capability]?.max).toBe(count);
+      // The first repetition is the **correct** pass in this fixture, so the aggregate's max must
+      // equal it -- and its min must be the other pass.
+      expect(report.ablation.featureByCapability?.[capability]).toEqual({
+        min: 0,
+        avg: count / 2,
+        max: count,
+      });
     }
   });
 });

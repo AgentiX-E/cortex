@@ -573,6 +573,30 @@ export type AblationResult = {
    * Present on the same condition as the spreads: without them there is nothing to divide.
    */
   questionsByCapability?: Record<string, number> | undefined;
+  /**
+   * Per-question correctness on **every** repetition, run-major: one string per repetition, one
+   * character per dataset question, `'1'` correct and `'0'` not (see `correctnessMask`).
+   *
+   * ## What the spreads above cannot say
+   *
+   * `featureByCapability` is `{min, avg, max}` of a *count*. Three numbers cannot name a question,
+   * cannot be recomputed for a population smaller than a capability, and cannot separate one question
+   * flapping four times from four questions flapping once each — the same spread, opposite readings.
+   *
+   * That matters most for exactly the populations this campaign keeps asking about. A review pass is
+   * reachable on ten of the 121 MR questions; a `+4` on those ten is a large effect and a `+4` spread
+   * over 121 is inside the noise, and the collapsed counts cannot tell the two apart because the
+   * denominator was thrown away before they were computed.
+   *
+   * ## Absent, not duplicated
+   *
+   * With one repetition this field would be a second copy of `featureCorrect`, and two arrays that
+   * must agree are two arrays that can disagree — the reason `correctnessVector` derives rather than
+   * stores. So it is omitted at one repetition, on the same condition as the spreads.
+   */
+  featureCorrectByRun?: readonly string[] | undefined;
+  /** The baseline side of {@link AblationResult.featureCorrectByRun}. */
+  baselineCorrectByRun?: readonly string[] | undefined;
   /** Metrics from the first evaluation of the baseline system. */
   baselineMetrics: Metrics;
   /** Metrics from the first evaluation of the feature system. */

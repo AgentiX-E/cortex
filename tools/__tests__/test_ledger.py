@@ -715,3 +715,174 @@ def test_json_carries_both_distributions(tmp_path: Path) -> None:
     parsed = json.loads(completed.stdout)["reach"][0]["spread"]
     assert parsed["control"]["byCapability"]["MR"] == {"min": 1, "avg": 1, "max": 1}
     assert parsed["arm"]["overall"]["avg"] == 0.7
+
+
+def roster_with_grid(
+    rows: dict[str, tuple[bool, str]], masks: list[str], by_capability: dict[str, tuple[float, float, float]]
+) -> dict:
+    """
+    A report carrying the per-question grid across repetitions.
+
+    `masks` is run-major: one string per repetition, one character per question, in `rows` order. That is the
+    shape `ablation.featureCorrectByRun` publishes, and the shape this reader indexes by roster position.
+    """
+    return {
+        "dataset": "longmemeval/s/500",
+        "questionCount": len(rows),
+        "generatedAt": "2026-10-31T00:00:00.000Z",
+        "ablation": {
+            "featureAggregate": {"min": 0.5, "avg": 0.5, "max": 0.5},
+            "featureByCapability": {
+                capability: {"min": low, "avg": avg, "max": high}
+                for capability, (low, avg, high) in by_capability.items()
+            },
+            "featureCorrectByRun": masks,
+        },
+        "questions": [
+            {"questionId": question, "correct": correct, "capability": capability}
+            for question, (correct, capability) in rows.items()
+        ],
+    }
+
+
+# Two questions convert in each direction between these two artifacts: `q2` goes from never right in the
+# control to always right in the arm, and `q4` goes the other way. Their means are identical (2.50 both
+# sides), which is the point of the fixture: the mean is blind to a trade and the grid is not.
+#
+# The rosters differ because `questions[]` is the **first repetition**, and the first repetition is one of the
+# rows: a fixture that gave both sides the same roster would fail this reader's alignment check, which is the
+# check saying the two shapes must describe the same pass.
+GRID_CONTROL_QUESTIONS = {
+    "q1": (True, "MR"),
+    "q2": (False, "MR"),
+    "q3": (True, "MR"),
+    "q4": (True, "MR"),
+    "q5": (True, "IE"),
+    "q6": (True, "IE"),
+}
+GRID_ARM_QUESTIONS = {
+    "q1": (True, "MR"),
+    "q2": (True, "MR"),
+    "q3": (True, "MR"),
+    "q4": (False, "MR"),
+    "q5": (True, "IE"),
+    "q6": (True, "IE"),
+}
+GRID_CONTROL = ["101111", "101111", "100111", "100111"]
+GRID_ARM = ["111011", "111011", "110011", "110011"]
+
+
+def test_reads_each_question_across_the_repetitions(tmp_path: Path) -> None:
+    """
+    THE READING THE SPREADS CANNOT PRODUCE.
+
+    `featureByCapability` is `{min, avg, max}` of a count, so it cannot say that `q3` was right twice out of
+    four while `q2` was never right. Both artifacts below have the same mean over the declared population,
+    and they are not the same result.
+    """
+    control = roster_with_grid(GRID_CONTROL_QUESTIONS, GRID_CONTROL, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+    arm = roster_with_grid(GRID_ARM_QUESTIONS, GRID_ARM, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "repetitions, question by question -- capability=MR (4 questions)" in completed.stdout
+    assert "control : always 2, never 1, moved within the 4 1; mean per draw 2.50 (sd 0.50)" in completed.stdout
+    assert "recover : always 2, never 1, moved within the 4 1; mean per draw 2.50 (sd 0.50)" in completed.stdout
+
+
+def test_counts_the_questions_that_traded_one_extreme_for_the_other(tmp_path: Path) -> None:
+    """
+    A conversion ask is a claim about questions, so the count has to be of questions.
+
+    `q2` is never right in the control and always right in the arm; `q4` is the reverse. The net is zero and
+    the population is unchanged by either mean -- and the trade is the whole result.
+    """
+    control = roster_with_grid(GRID_CONTROL_QUESTIONS, GRID_CONTROL, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+    arm = roster_with_grid(GRID_ARM_QUESTIONS, GRID_ARM, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "never -> always: 1 question(s); always -> never: 1" in completed.stdout
+    assert "net over the population: +0 question-draws of 16 (0.00 points)" in completed.stdout
+
+
+def test_says_so_when_narrowing_the_population_bought_nothing(tmp_path: Path) -> None:
+    """
+    A zero here is a reading, not a missing value: every question in the population repeats itself, so the
+    mean difference is drawn entirely from questions this grid can point at -- and there are none.
+    """
+    stable = {"q1": (True, "MR"), "q2": (False, "MR")}
+    control = roster_with_grid(stable, ["10", "10", "10", "10"], {"MR": (1, 2, 1)})
+    arm = roster_with_grid(stable, ["10", "10", "10", "10"], {"MR": (1, 2, 1)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "no question in this population took a value that repeats on every draw" in completed.stdout
+
+
+def test_refuses_a_grid_that_does_not_describe_the_roster(tmp_path: Path) -> None:
+    """
+    `questions[]` is documented as the first repetition, so the grid's first row must be the roster's verdicts
+    text. A grid ordered differently would produce a per-question reading that is arithmetically perfect and
+    about the wrong questions, with nothing in the output to show it -- the failure mode this check exists to
+    make impossible.
+    """
+    control = roster_with_grid(GRID_CONTROL_QUESTIONS, GRID_CONTROL, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+    # Same length, last character flipped: an alignment that fails on contents rather than on size.
+    disagreeing = ["101110", "101111", "100111", "100111"]
+    arm = roster_with_grid(GRID_ARM_QUESTIONS, disagreeing, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode != 0
+    assert "does not describe the roster" in completed.stderr
+
+
+def test_refuses_a_grid_whose_rows_cover_different_rosters(tmp_path: Path) -> None:
+    """A short row would shift every question after the gap, and the shifted reading would still add up."""
+    control = roster_with_grid(GRID_CONTROL_QUESTIONS, GRID_CONTROL, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+    short = ["111011", "11101", "110011", "110011"]
+    arm = roster_with_grid(GRID_ARM_QUESTIONS, short, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode != 0
+    assert "does not address one roster" in completed.stderr
+
+
+def test_a_side_without_a_grid_says_its_repetitions_cannot_be_read(tmp_path: Path) -> None:
+    """Absent is not zero: an artifact that predates the field has not published that its questions were stable."""
+    control = roster_with_prompts({"q1": (True, 100), "q2": (False, 100)})
+    arm = roster_with_grid({"q1": (True, "MR"), "q2": (False, "MR")}, ["10", "10", "10", "10"], {"MR": (1, 2, 1)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "control : this report carries no per-run grid" in completed.stdout
+    assert "recover : always 1, never 1" in completed.stdout
+
+
+def test_json_carries_the_repetition_summary(tmp_path: Path) -> None:
+    """A later reader gets the same numbers as the text, from the same function."""
+    control = roster_with_grid(GRID_CONTROL_QUESTIONS, GRID_CONTROL, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+    arm = roster_with_grid(GRID_ARM_QUESTIONS, GRID_ARM, {"MR": (1, 2.5, 4), "IE": (2, 2, 2)})
+
+    completed = run_across(tmp_path, {"recover": arm}, control, ["--treated", "capability=MR", "--json"])
+
+    assert completed.returncode == 0, completed.stderr
+    stability = json.loads(completed.stdout)["reach"][0]["stability"]
+    assert stability["population"] == 4
+    assert stability["control"] == {
+        "runs": 4,
+        "questions": 4,
+        "always": 2,
+        "never": 1,
+        "moved": 1,
+        "meanPerDraw": 2.5,
+        "sdPerDraw": 0.5,
+    }
+    assert stability["arm"]["always"] == 2
+    assert stability["arm"]["never"] == 1
