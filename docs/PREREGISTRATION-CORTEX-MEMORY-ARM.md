@@ -15374,6 +15374,10 @@ and that is the part the ceiling was ever meant to bound.
 | 4 | the reason a total-length comparison would be wrong is pinned | same file, instruction lengths compared in the opposite direction |
 | 5 | a reasoned decline is still not retried, and an answer never is | pre-existing tests, unchanged |
 | 6 | the abstention route is still untouched | pre-existing test, unchanged |
+| 7 | the spend readout prints what the artifact states, and derives the per-pass call count | `test_readout_arm_run.py`, `TestTheProviderSpend` |
+| 8 | a report with no `llmUsage` is an absence, not a zero-spend run | same class: `--spend` exits 2 and says the artifact predates the instrument |
+| 9 | a corrupt block is refused rather than printed | same class: a hit above its prompt, more unpriced calls than calls, a negative count, and a `bool` where a count belongs |
+| 10 | the cache share is read against the three registered bands | same class: 0, 0.10, 0.40 and 0.70 of the prompt each produce their own verdict |
 
 Criterion 2 is the one that constrains the future: it is the only assertion in the suite that would fail if a
 later refactor rebuilt the retry from turns again, and it is stated in the currency the provider charges in --

@@ -821,6 +821,137 @@ CAPABILITY_ROUTES = {
 ASSISTANT_TURN = re.compile(r'\]\s*assistant:', re.I)
 
 
+#: The prefix-cache share bands §13.147.3 registers, with what each one licenses.
+#:
+#: Registered before the first artifact carrying `llmUsage` existed, and here rather than in prose so
+#: the reading is a lookup instead of an argument. A run whose share lands in the middle band needs a
+#: measurement this artifact cannot supply, and the band says so rather than leaving a reader to
+#: decide that a number between two stories supports the convenient one.
+PREFIX_SHARE_BANDS = (
+    (
+        0.0,
+        0.05,
+        'under 5%: no repetition reuse and no ordering win -- repetitions cost what they were '
+        'assumed to cost, and moving a stable block to the front is settled negative',
+    ),
+    (
+        0.20,
+        0.60,
+        '20-60%: neither story fits -- the instrument or the provider is doing something neither '
+        '13.140.2 nor 13.147.2 describes, and per-pass spend is required to localise it',
+    ),
+    (
+        0.60,
+        0.80,
+        '60-80%: repetitions are reused -- the marginal repetition costs about a tenth of the '
+        'prompt, so "eight repetitions cost double" is wrong and the resolution arithmetic must be '
+        'restated; ordering stays untested by this artifact',
+    ),
+)
+
+
+def spend_section(report: dict) -> str:
+    """What the provider said this run cost, and which registered reading its cache share lands in.
+
+    ## Why this reads `llmUsage` and divides by nothing
+
+    §13.140.1 registers the numbers and §13.147.2 does the one division that is licensed (prompt
+    tokens over the roster's `promptChars`, to check that the prompt is the size the roster says).
+    Everything else here is stated as the artifact states it, because the alternative -- a currency
+    figure -- is a rate card checked into a tool that ages silently and then reads as authoritative
+    (§13.140.7 refuses exactly that).
+
+    ## Why the share is the number with a decision attached
+
+    A dispatch runs `runs` repetitions, and passes 2..runs send byte-identical requests: `now` is
+    fixed at construction, retrieval is deterministic over a cached store, and the reader runs at
+    temperature 0. So the share the artifact reports is dominated by repetition reuse rather than by
+    prompt ordering, and the two questions have different consequences. §13.147.3 registers three
+    bands and what each one licenses; this function is where that registration is applied.
+
+    ## What is refused rather than printed
+
+    A cache hit larger than the prompt, more unpriced calls than calls, or a negative count are
+    corrupt artifacts: `parseUsage` drops a hit above its own prompt per call, so a sum that
+    violates it did not come from this adapter. Printing such a share would describe a discount the
+    run did not get.
+    """
+    usage = report.get('llmUsage')
+    if not isinstance(usage, dict):
+        raise ValueError(
+            'no llmUsage block: this artifact predates §13.140, or the run made no instrumented '
+            'call. Both are absences and neither is a zero-spend run'
+        )
+
+    def count(name: str) -> int:
+        value = usage.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f'llmUsage.{name} is {value!r}: a token count must be a non-negative integer')
+        return value
+
+    calls = count('calls')
+    unpriced = count('unpricedCalls')
+    prompt = count('promptTokens')
+    completion = count('completionTokens')
+    cached = count('cacheHitPromptTokens')
+
+    if unpriced > calls:
+        raise ValueError(f'llmUsage says {unpriced} unpriced of {calls} calls, which cannot be')
+    if cached > prompt:
+        raise ValueError(
+            f'llmUsage says {cached} cached tokens of a {prompt}-token prompt: the share is a subset '
+            'by construction, so this artifact is corrupt'
+        )
+
+    runs = report.get('runs')
+    if isinstance(runs, bool) or not isinstance(runs, int) or runs < 1:
+        runs = None
+
+    lines = ['provider spend (llmUsage)']
+    priced = f', {unpriced:,} unpriced' if unpriced else ''
+    lines.append(f'  calls        {calls:,}{priced}')
+    share = (cached / prompt) if prompt else None
+    if share is None:
+        lines.append(f'  prompt       {0:,} tokens -- no prompt tokens were reported')
+    else:
+        lines.append(
+            f'  prompt       {prompt:,} tokens, of which {cached:,} were served from the prefix '
+            f'cache ({share * 100:.1f}%)'
+        )
+    lines.append(f'  completion   {completion:,} tokens')
+    if prompt:
+        lines.append(f'  prompt:completion ratio {prompt / max(completion, 1):.1f}:1')
+
+    if runs is None:
+        lines.append(
+            '  repetitions  this artifact does not state `runs`, so the per-pass call count cannot '
+            'be derived and the share cannot be attributed between repetition reuse and ordering'
+        )
+    else:
+        lines.append(
+            f'  repetitions  {runs}, so a 500-question pass over two sides issues '
+            f'{500 * 2 * runs:,} answer calls of the {calls:,} recorded'
+        )
+
+    if share is not None:
+        verdict = None
+        for low, high, text in PREFIX_SHARE_BANDS:
+            if low <= share < high:
+                verdict = text
+                break
+        if verdict is None:
+            # Between 5% and 20%: neither registered band, and the gap is deliberate -- a share in
+            # it is too high for "no reuse" and too low for repetition reuse of three passes in four.
+            verdict = (
+                '5-20%: inside none of the three registered bands (13.147.3). That is a reading '
+                'neither this tool nor the registration anticipated, and per-pass spend is the only '
+                'way to attribute it'
+            )
+        lines.append(f'  reading      {verdict}')
+
+    return '\n'.join(lines)
+
+
 def audit_section(report: dict, questions: list[dict]) -> tuple[str, int]:
     """Check one artifact's fields against each other, and report the failures.
 
@@ -2494,6 +2625,12 @@ def main(argv: list[str]) -> int:
         metavar='BEFORE',
         help='print per-capability answer agreement between BEFORE and this report',
     )
+    parser.add_argument(
+        '--spend',
+        action='store_true',
+        help='print the provider spend this artifact reports, and read its prefix-cache share '
+        'against the bands 13.147.3 registers',
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -2540,6 +2677,14 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
         print(section)
+        return 0
+
+    if args.spend:
+        try:
+            print(spend_section(report))
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
         return 0
 
     if args.audit:

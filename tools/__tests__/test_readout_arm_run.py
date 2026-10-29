@@ -2218,3 +2218,112 @@ class TestTheArtefactAudit:
         r = self._audit(tmp_path, artifact)
         assert r.returncode == 1
         assert 'roster' in r.stdout
+
+
+def _spend_report(
+    *,
+    calls: int = 4_084,
+    unpriced: int = 0,
+    prompt: int = 46_900_000,
+    completion: int = 210_000,
+    cached: int = 32_000_000,
+    runs: object = 4,
+) -> dict:
+    """A report carrying only what the spend readout reads.
+
+    The block is the shape `attachLlmUsage` writes -- `UsageSnapshot` with no field renamed and none
+    defaulted -- because the point of these tests is the arithmetic and the band, not the parse.
+    """
+    report = _synthetic_report()
+    report['llmUsage'] = {
+        'calls': calls,
+        'unpricedCalls': unpriced,
+        'promptTokens': prompt,
+        'completionTokens': completion,
+        'cacheHitPromptTokens': cached,
+    }
+    if runs is not None:
+        report['runs'] = runs
+    return report
+
+
+class TestTheProviderSpend:
+    """§13.140 registers the instrument; §13.147.3 registers what its cache share licenses."""
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), str(path), '--spend'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_it_prints_the_numbers_the_artifact_states(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, _spend_report())
+        assert r.returncode == 0, r.stderr
+        assert '4,084' in r.stdout
+        assert '46,900,000' in r.stdout
+        assert '210,000' in r.stdout
+        # The share is the one derived quantity: 32 of 46.9 million.
+        assert '68.2%' in r.stdout, r.stdout
+
+    def test_it_derives_the_per_pass_call_count_from_the_repetitions(self, tmp_path: Path) -> None:
+        # 500 questions over two sides over four repetitions, beside the 4,084 calls recorded --
+        # the excess is the retry and judge traffic, and stating both is what makes the excess
+        # visible instead of implied.
+        r = self._run(tmp_path, _spend_report())
+        assert '4,000 answer calls of the 4,084' in r.stdout, r.stdout
+
+    def test_a_report_without_runs_cannot_attribute_the_share(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, _spend_report(runs=None))
+        assert r.returncode == 0, r.stderr
+        assert 'cannot be attributed' in r.stdout
+
+    @pytest.mark.parametrize(
+        ('cached', 'expected'),
+        [
+            (0, 'under 5%'),
+            (4_690_000, '5-20%'),  # 0.10 of the prompt
+            (18_760_000, '20-60%'),  # 0.40
+            (32_830_000, '60-80%'),  # 0.70
+        ],
+    )
+    def test_the_share_is_read_against_the_registered_bands(
+        self, tmp_path: Path, cached: int, expected: str
+    ) -> None:
+        r = self._run(tmp_path, _spend_report(cached=cached))
+        assert r.returncode == 0, r.stderr
+        assert expected in r.stdout, r.stdout
+
+    def test_a_missing_block_is_an_absence_and_not_a_free_run(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'predates' in r.stderr
+
+    @pytest.mark.parametrize(
+        'block',
+        [
+            # A cache hit is a SUBSET of the prompt by construction, so a sum above it did not come
+            # from this adapter.
+            {'calls': 1, 'unpricedCalls': 0, 'promptTokens': 10, 'completionTokens': 1,
+             'cacheHitPromptTokens': 11},
+            # More unpriced calls than calls cannot arise from a counter incremented once per call.
+            {'calls': 1, 'unpricedCalls': 2, 'promptTokens': 10, 'completionTokens': 1,
+             'cacheHitPromptTokens': 0},
+            {'calls': 1, 'unpricedCalls': 0, 'promptTokens': -1, 'completionTokens': 1,
+             'cacheHitPromptTokens': 0},
+            # Python's bool is an int: a producer that serialised a flag here must not read as a count.
+            {'calls': True, 'unpricedCalls': 0, 'promptTokens': 10, 'completionTokens': 1,
+             'cacheHitPromptTokens': 0},
+        ],
+    )
+    def test_a_corrupt_block_is_refused_rather_than_printed(self, tmp_path: Path, block: dict) -> None:
+        report = _synthetic_report()
+        report['llmUsage'] = block
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'non-negative integer' in r.stderr or 'subset' in r.stderr or 'cannot be' in r.stderr
