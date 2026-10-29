@@ -12695,22 +12695,27 @@ questions** it settles three queued experiments before any of them is dispatched
 | carried into the prompt (`carried`)             | **6,501 — 86.5%**         |
 | in the pool but not in the prompt               | **654 — 8.7%**            |
 
-And on the 69 wrong answers of that arm:
+And on the 83 wrong answers of the `temperature=0` arm:
 
-| question-level fact                                    | value        |
-| ------------------------------------------------------ | ------------ |
-| wrong answers whose gold is **absent** from the prompt | **0 of 69**  |
-| wrong answers whose gold is present                    | **69 of 69** |
-| best gold rank per wrong question — median             | **0**        |
-| best gold rank per wrong question — mean               | **2.0**      |
-| best gold rank per wrong question — p90 / max          | **7 / 18**   |
-| wrong questions with best gold rank below 10           | **65 of 69 — 94.2%** |
+| question-level fact                                    | value         |
+| ------------------------------------------------------ | ------------- |
+| wrong answers whose gold is **absent** from the prompt | **0 of 83**   |
+| wrong answers whose gold is present                    | **83 of 83**  |
+| best gold rank per wrong question — median             | **0**         |
+| best gold rank per wrong question — mean               | **2.1**       |
+| best gold rank per wrong question — max                | **24**        |
+| wrong questions with best gold rank below 10           | **78 of 83 — 94.0%** |
+
+The same census on the `temperature=unset` arm reads **0 of 69**, mean **2.0**, max **18** and
+**65 of 69 = 94.2%**, and the three totals — 7,516 gold units, 7,155 in the pool, 6,501 carried —
+are **identical to the digit** on both arms. Temperature does not touch retrieval, so this is a
+second, independent confirmation that §13.122's pair differs in one arming.
 
 The pool's own rank distribution says the same thing from the other side: `p25 = 6`, `median = 17`, `p75 = 48`, and
 **90.9% of all gold units sit at rank below 128**.
 
 **Not one wrong answer is wrong because the evidence was missing.** The median wrong answer has its gold at rank
-**zero** — the first retrieved turn — and 94.2% of them have it inside the first ten.
+**zero** — the first retrieved turn — and 94.0% of them have it inside the first ten.
 
 ### 13.123.2 What that retires, and why "no effect" was the wrong prediction
 
