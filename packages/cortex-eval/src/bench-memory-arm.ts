@@ -44,6 +44,8 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
+import { llmUsage, usageDelta, type UsageSnapshot } from '@agentix-e/cortex-ai';
+
 import { readToggle } from './env-toggle.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds, RerankIdentity } from './rerank-factory.js';
@@ -62,7 +64,12 @@ import {
   type EvidenceBoundOptions,
   type QuestionRecord,
 } from './question-record.js';
-import { formatAblationReport, runAblationReport, type FeatureConfig } from './report.js';
+import {
+  attachLlmUsage,
+  formatAblationReport,
+  runAblationReport,
+  type FeatureConfig,
+} from './report.js';
 import type { AnswerScorer } from './metrics.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import {
@@ -2152,6 +2159,17 @@ export async function runCortexMemoryArm(
     );
   }
 
+  // §13.140: what the provider said this run cost, taken as a difference across the
+  // ablation rather than read as a process total. The two arms, the judge and the
+  // retry ladder all issue requests through the same adapter, so this number is the
+  // whole bill and not the reader's share of it -- which is the only version of the
+  // number that can answer "did this change make the run more expensive".
+  //
+  // Taken BEFORE the ablation call so the arm's own setup -- a preflight, an embedding
+  // warm-up -- is included. It is not included today (the adapter's first request is
+  // the first answer), but a snapshot taken after the call would silently exclude it if
+  // that ever changed, and the exclusion would be invisible in the artifact.
+  const usageBefore = llmUsage();
   const report = await runAblationReport(dataset, baseline, feature, {
     ...(options.runs === undefined ? {} : { runs: options.runs }),
     ...(options.alpha === undefined ? {} : { alpha: options.alpha }),
@@ -2183,6 +2201,10 @@ export async function runCortexMemoryArm(
   // exposure. The alternative -- returning the census and having each caller
   // remember to feed it back into a render -- is the side channel this repository
   // has already removed twice.
+  // Read immediately after the ablation returns, before any rendering: everything the
+  // provider billed for has happened by now, and a snapshot taken after
+  // `formatAblationReport` would include the renderer's own calls if it ever made any.
+  const usage: UsageSnapshot = usageDelta(usageBefore, llmUsage());
   const census = {
     ...abstentionReasonsOf(feature),
     ...recoveryOf(feature),
@@ -2252,9 +2274,15 @@ export async function runCortexMemoryArm(
     questions,
     ...(evidenceReduction === null ? {} : { evidenceReduction }),
   };
+  // §13.140's spend, attached LAST and through a function rather than as a conditional
+  // spread in the literal above. The rule it encodes -- a run with no instrumented call
+  // omits the field instead of stating zeros -- is a claim about what absence means, and
+  // this repository has already paid three times for such a rule living in a spread at a
+  // call site: it cannot be tested, so it cannot be wrong out loud.
+  const withUsage = attachLlmUsage(reported, usage);
   return {
-    report: reported,
-    markdown: formatAblationReport(reported),
+    report: withUsage,
+    markdown: formatAblationReport(withUsage),
     // Read from the ablation's own aggregate rather than recomputed here, so the
     // returned value cannot disagree with the tables rendered beside it.
     delta: report.ablation.delta,

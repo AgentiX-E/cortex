@@ -5,6 +5,7 @@
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { parseJson } from '../json.js';
 import { retryableFetch } from '../retry.js';
+import { parseUsage, recordUsage } from '../usage.js';
 
 /** DeepSeek thinking-mode toggle (also honoured by compatible providers). */
 export type ThinkingMode = { type: 'enabled' | 'disabled' };
@@ -40,7 +41,17 @@ export class OpenAICompatibleLLM implements LLM {
   async complete(prompt: string, opts: CompleteOptions = {}): Promise<string> {
     const body = buildChatBody(this.options.model, prompt, opts, this.options.thinking);
     const res = await this.post('/chat/completions', body);
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const json = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: unknown;
+    };
+    // Recorded HERE rather than at the call sites, and that placement is the repair
+    // rather than a convenience: this is the one hop every provider request in the
+    // repository passes through, and the ten call sites above it are ten places a
+    // counter could be forgotten. The block is passed on unparsed so `parseUsage`
+    // owns every decision about what counts as a usable one -- including the decision
+    // that a response without a block is an UNPRICED call rather than a free one.
+    recordUsage(parseUsage(json.usage));
     return json.choices?.[0]?.message?.content ?? '';
   }
 

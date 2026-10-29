@@ -2,6 +2,8 @@
  * Scientific benchmark report: runs a baseline-vs-feature ablation and produces
  * a structured report plus a Markdown rendering for CI artifacts.
  */
+import type { UsageSnapshot } from '@agentix-e/cortex-ai';
+
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
 import type { CohortCoverage } from './datasets/sampling.js';
 import type { EvidenceReduction, QuestionRecord } from './question-record.js';
@@ -168,6 +170,31 @@ export type AblationReport = {
    * `null`-versus-`0` rule the retry-fire counters draw one field over.
    */
   evidenceReduction?: EvidenceReduction | undefined;
+  /**
+   * What the provider said this run cost, in tokens.
+   *
+   * ## Why the artifact states a bill at all
+   *
+   * Every number in this campaign is produced by a process that pays per token, and
+   * until §13.140 no artifact stated a single one: `OpenAICompatibleLLM.complete` read
+   * the `usage` block off every response and returned only `choices[0]`. The cost of
+   * that omission was not the invoice -- it was that no experiment could say whether a
+   * change to the window, the instruction block or the retry ladder moved the bill, so
+   * a treatment that bought one question with 40% more prompt had no price on it.
+   *
+   * ## Why absent rather than zeroed
+   *
+   * For the reason `evidenceReduction` is, one field up. A run whose reader never passed
+   * through the instrumented adapter made no measurable call, and a zeroed snapshot would
+   * report it as a free one. A run that DID call and whose provider returned no `usage`
+   * block is the third case and is the informative one: it attaches, with
+   * `unpricedCalls` equal to its call count and its token totals at `0`, which says the
+   * bill exists and cannot be read.
+   *
+   * Nothing here is a currency. Tokens are what the provider published; a price is a
+   * fact about a contract that this repository does not own.
+   */
+  llmUsage?: UsageSnapshot | undefined;
   /**
    * How many times each question was asked, as the report's own record of it.
    *
@@ -1310,6 +1337,14 @@ export function formatAblationReport(report: AblationReport): string {
   if (report.retryFires !== undefined) {
     lines.push(...retryFireLines(report.retryFires));
   }
+  // The bill, below the results for the same reason and in one line per fact. Rendered
+  // from the report rather than concatenated at the call site: the three previous
+  // sections that lived at a call site (`cohortCoverage`, `retryFires`, the abstention
+  // census) each vanished from a re-rendered artifact, and a reader with the JSON and no
+  // Markdown could not tell a free run from an unmeasured one.
+  if (report.llmUsage !== undefined) {
+    lines.push(...llmUsageLines(report.llmUsage));
+  }
   // The census also goes BELOW the results, for the `retryFires` reason: it
   // explains a delta's attribution rather than changing what the delta means, so
   // it reads as a footnote. `report.memoryArmConfig` is passed alongside because
@@ -1747,6 +1782,99 @@ export function retryFireLines(fires: RetryFireCounts): string[] {
         `${((fires.treatmentFires / (fires.questions === 0 ? 1 : fires.questions)) * 100).toFixed(2)} pp ` +
         'and carries no information about whether the feature helps. Do not read it as a ' +
         'negative result; read it as an under-powered one.',
+    );
+  }
+  return lines;
+}
+
+/**
+ * Attach a run's spend to its report, or decline to.
+ *
+ * The rule is one line and the reason is the whole function: a snapshot with `calls === 0`
+ * means no request in this run passed through the instrumented adapter. Attaching it
+ * would state "this run spent nothing" about a run whose spend is UNKNOWN -- which is the
+ * exact misreading `cortex-ai/src/usage.ts` was written to prevent one layer down, where
+ * a response with no `usage` block is an unpriced call and not a free one. Absent means
+ * not measured; a report that predates the instrument must not be distinguishable from a
+ * run that never called a provider, and neither may be distinguishable from a free run,
+ * because neither is one.
+ *
+ * ## Why the zero-call case is not the interesting one
+ *
+ * A run whose provider returned no `usage` block DOES attach: `calls` is its call count,
+ * `unpricedCalls` equals it, and the token columns are `0`. That combination is the
+ * informative one -- it says the bill exists and cannot be read -- and dropping it for
+ * looking zero would delete the only evidence that the instrument is pointed at a
+ * provider that never answers it. Only `calls === 0` is silence.
+ *
+ * Exported rather than inlined at the one call site for the reason the three earlier
+ * sections in this file record at length: a rule expressed as a conditional spread in an
+ * object literal is a rule no test can reach, and this repository has paid for that shape
+ * three times (`cohortCoverage`, `retryFires`, the abstention census).
+ */
+export function attachLlmUsage(report: AblationReport, usage: UsageSnapshot): AblationReport {
+  return usage.calls === 0 ? report : { ...report, llmUsage: usage };
+}
+
+/**
+ * The provider-spend section, as lines.
+ *
+ * **Not exported**, unlike `retryFireLines` beside it: that one has a second renderer in
+ * `runner.ts` and so earns its export, while this section has exactly one caller. Two
+ * renderers for one table is the defect `retryFireLines`'s docblock records; a single
+ * caller is the reason that defect cannot recur here.
+ *
+ * ## Why the section leads with calls and not with tokens
+ *
+ * Because a token total is only meaningful next to the denominator that produced it. Nine
+ * million prompt tokens over a thousand calls is a 9,000-token prompt; the same total over
+ * fifty calls is a runaway loop. The call count is also the only field that separates "the
+ * provider reported nothing" from "nothing was spent", which is the whole reason
+ * `unpricedCalls` exists one layer down.
+ *
+ * ## Why the reading line is a share of the prompt and not of the bill
+ *
+ * A currency figure would need a rate card this repository does not own (see
+ * `cortex-ai/src/usage.ts`), so what is rendered is the one ratio that is a property of
+ * the run rather than of the contract: how much of the prompt the provider served from
+ * its prefix cache. That share is the quantity that prices a prompt-ordering change, and
+ * a run that reports it makes the next dispatch's cost predictable before it is paid.
+ */
+function llmUsageLines(usage: UsageSnapshot): string[] {
+  const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
+  const lines = [
+    '',
+    '## Provider spend (as reported by the provider)',
+    '',
+    '| Field | Value |',
+    '|---|---|',
+    `| calls that returned a response | ${usage.calls} |`,
+    `| of those, with no \`usage\` block | ${usage.unpricedCalls} |`,
+    `| prompt tokens | ${usage.promptTokens.toLocaleString('en-US')} |`,
+    `| completion tokens | ${usage.completionTokens.toLocaleString('en-US')} |`,
+    `| prompt tokens served from the prefix cache | ${usage.cacheHitPromptTokens.toLocaleString('en-US')} |`,
+    '',
+    `- Prefix-cache share of the prompt: **${(hitShare * 100).toFixed(2)}%** ` +
+      `(${usage.cacheHitPromptTokens.toLocaleString('en-US')} of ${usage.promptTokens.toLocaleString('en-US')})`,
+  ];
+  if (usage.unpricedCalls === usage.calls) {
+    // Every call unpriced is the strongest warning this section can carry and it is not
+    // the same statement as a large unpriced share: it means the instrument is pointing
+    // at a provider that never answers it, so the token columns above are not "small",
+    // they are unmeasured, and no comparison between two runs can be priced at all.
+    lines.push(
+      '',
+      `- **NO PROVIDER COST WAS REPORTED**: all ${usage.calls} calls returned no \`usage\` ` +
+        'block, so every token column above is unmeasured rather than zero. The run is ' +
+        'costed from the invoice and not from this artifact; treat any comparison of ' +
+        'spend against a run that reports numbers as unavailable.',
+    );
+  } else if (usage.unpricedCalls > 0) {
+    lines.push(
+      '',
+      `- **PARTIAL**: ${usage.unpricedCalls} of ${usage.calls} calls reported no \`usage\` ` +
+        'block, so the token totals above cover the rest. The shortfall is not recoverable ' +
+        'from this artifact.',
     );
   }
   return lines;

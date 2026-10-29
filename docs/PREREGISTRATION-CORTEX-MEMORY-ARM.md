@@ -14429,3 +14429,130 @@ number for the one constraint it cares most about: **468 of 500 questions at or 
 Applied forward: `acceptance.ts` and every future ceiling check report the **mass near the limit**, not the max.
 The prior reading was not a careless sentence — 46,622 was a real mean on a real artifact — it was the wrong
 statistic for the question, and the wrong statistic pointed away from a live lever.
+
+## 13.140 Every artifact in this campaign was silent about its own bill, and the reason is one dropped field
+
+### 13.140.1 The omission
+
+Every provider on the OpenAI-compatible wire returns a `usage` block on every response. `complete()` in
+`cortex-ai/src/llm/openai-compatible.ts` read the body for `choices` and returned `choices[0].message.content`,
+and the block was discarded at that one line.
+
+The consequence is not that the campaign was expensive. It is that **no artifact in this campaign could state
+what a run cost**, so no experiment could ask whether a change made one. Every reading in §13.1–§13.139 that
+lengthened a prompt — a two-step contract, an enumeration, a licence moved six lines — was registered on
+accuracy alone, and the price of each was a fact about an invoice arriving days later. Two of the eleven
+registered asks were abandoned for destroying accuracy; none was ever priced.
+
+This is the fifth instance of the shape this repository keeps finding, and the first one outside the measurement
+code: a value produced on every request, carried through the transport, and dropped at the one hop where it
+would have been compared. `tools/ledger.mjs --across` is the same failure on the answer side (§13.135), and
+`usage` was in the response body the whole time.
+
+### 13.140.2 What the instrument is
+
+`cortex-ai/src/usage.ts`: a parser, one process-wide ledger, and a reading.
+
+| name | what it does | why it is where it is |
+| --- | --- | --- |
+| `parseUsage` | reads `prompt_tokens`, `completion_tokens`, `prompt_cache_hit_tokens` | the only place that decides what a usable block is |
+| `recordUsage` | one call, priced or unpriced | called from `complete()`, the one hop every request passes through |
+| `llmUsage` | a snapshot of the ledger | process-wide, because the ten call sites cannot thread a counter down |
+| `usageDelta` | one run's spend, from two snapshots | so a library function never has to know where a run begins |
+
+Two readings the ledger refuses to conflate, and both are the point:
+
+**Absent is not zero.** A response with no `usage` block is an unpriced call, and it is counted as a call. Ten
+call sites reporting a `0` token total for a run that spent twelve million is the artifact saying "free" about
+a bill, and that is strictly worse than saying nothing.
+
+**A cache hit is a subset of the prompt, not an addition to it.** `prompt_cache_hit_tokens` is the part of
+`prompt_tokens` the provider served from its prefix cache. Summing the two would report a bill up to twice the
+real one; the ledger adds the hit to its own column and never to `promptTokens`, and a hit larger than the
+prompt is dropped to `0` rather than believed — the run then understates its own discount, which is the safe
+direction for a number that will be used to decide whether reordering a 47,000-character prompt is worth a run.
+
+### 13.140.3 What it does not measure
+
+- **The embedder.** Zhipu is a different adapter on a different wire and its spend is not in this ledger. An
+  embedding cache hit rate is a separate instrument (§13.97 measures the cache, not the tokens).
+- **Requests that never produced a response.** A retry that fails on six attempts issues six prompts and leaves
+  no usage block. `retryStats().attempts` counts them; `llmUsage().calls` does not. **So `llmUsage` is a lower
+  bound on the bill, by construction**, and the gap is exactly the traffic that failed.
+- **Whether a timed-out generation was billed.** It may have been. This is why the number is stated as a lower
+  bound and not as a reconciliation.
+
+### 13.140.4 Acceptance criteria, and how each was tested
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | a missing block yields `undefined`, never zeros | `usage.test.ts` — `parseUsage(undefined)`/`(null)` |
+| 2 | a block missing either count is rejected whole | `parseUsage({prompt_tokens: 10})` |
+| 3 | a non-integer, negative or non-finite count is rejected | four cases, `Number.NaN` and `∞` included |
+| 4 | a cache hit above the prompt is dropped, not believed | `{prompt: 100, hit: 500}` → `hit: 0` |
+| 5 | **the adapter actually calls the parser** | `llm.test.ts` against a real HTTP server: `complete()` on a body carrying `usage` moves the ledger by exactly those numbers |
+| 6 | a response without a block is one call, zero priced | same server, other shape: `calls: 1, unpricedCalls: 1` |
+| 7 | a run with no instrumented call omits the field | `attachLlmUsage` returns its argument **by identity** |
+| 8 | an all-unpriced run still attaches | `calls: 1000, unpricedCalls: 1000` survives |
+| 9 | the section survives persistence | rendered from a JSON round-trip of the report |
+| 10 | the two warnings partition | all-unpriced → `NO PROVIDER COST WAS REPORTED`; partial → `PARTIAL`; neither fires when all priced |
+| 11 | the section is a footnote, not a banner | index of `Δ accuracy` < index of `Provider spend` |
+
+Criterion 5 is the one that matters and the one that cannot be tested at the parse layer. A parser with perfect
+tests and no caller is precisely what the campaign had before this section: the number was available on every
+request and nothing read it. Mutating the single line `recordUsage(parseUsage(json.usage))` out of `complete()`
+fails criteria 5 and 6 and nothing else — which is the evidence that the transport tests reach the transport.
+
+Coverage, per dimension, on the packages touched: `cortex-ai` **100 / 100 / 100 / 100** (with `usage.ts` at
+100 on all four); `cortex-eval` **99.59 / 99.08 / 99.80 / 99.59** over 2,415 tests. The census reports one new
+orphan, `cortex-ai: LlmUsage`, recorded in `tools/export-census-baseline.json` with the reason: it is the shape
+two signatures use and no call site names it, so `export` is required by the declaration and unearned by the
+call graph.
+
+### 13.140.5 The three questions this makes answerable, registered with predictions
+
+The first artifact produced after this section is the first one whose spend can be read. Three predictions go
+on record now so that the reading is a test and not a description:
+
+| # | prediction | falsified by |
+| --- | --- | --- |
+| 1 | `promptTokens` for one memory-arm run is between **10M and 14M** | outside that band, which would mean the prompt is not what `promptChars` says it is |
+| 2 | the prefix-cache share of the prompt is **under 5%** | a share ≥ 20%, which would make prompt ORDER a live cost lever |
+| 3 | `unpricedCalls` is **0** against DeepSeek | any non-zero value, which would mean a proxy strips the block or the instrument is not in the path |
+
+Prediction 2 is the one with a decision attached. The prompt is question-specific from its first evidence line,
+so the only reusable prefix is the fixed instruction block — a few hundred tokens of 47,000 characters. If the
+share comes back at 3%, prompt ordering is settled: there is nothing to win by moving a stable block to the
+front. If it comes back near 20%, the instruction block is far larger than its character count suggests (the
+six route-specific contracts are candidates), and reordering becomes a registered experiment with a measurable
+prize. **The measurement decides which; no reading of the source can.**
+
+### 13.140.6 What this does not licence
+
+Three ways to cut the bill exist and none of them is taken here, for three different reasons:
+
+**Cutting the control arm.** Every dispatch re-derives the same 500 control answers at full price. Caching them
+would nearly halve the cost and would destroy the noise floor: the 7.08% flip rate on untouched questions
+(§13.135) is *the control re-deriving itself*, and a cached control would make every future treatment look
+significant. The control's re-derivation is the cheapest measurement in the campaign.
+
+**Cutting `runs`.** Repetitions are what separate a +1.5-point artifact from a 1.4σ fluctuation. Buying the
+same reading with fewer samples is buying a smaller experiment, not a cheaper one.
+
+**Cutting the prompt.** The window is the independent variable of this entire arm. §13.139 established that 468
+of 500 questions sit at 95% of the ceiling; shrinking it is a treatment, and one that has already been
+measured in the other direction (§13.16).
+
+What remains is the traffic that buys nothing, and it needs one more counter before it can be cut: **a timed-out
+attempt re-sends the full prompt**, up to `maxRetries` times, and a generation that times out after 300 s on a
+12,000-token prompt pays for that prompt again. The registered threshold is one number — if any artifact of a
+future run reports a retry exhaustion with `attempts > 1` on a deadline, the next dispatch caps **timeout**
+retries at 1, because a deadline that has fired twice is not a transient network fault. Transient 5xx and reset
+retries keep their budget: those are the case the ladder exists for.
+
+### 13.140.7 The rule this adds
+
+**An artifact that cannot state its own bill cannot be compared on cost, and a cost claim made before the
+instrument existed is a claim about an invoice.** Applied forward: every registered treatment from here carries
+its `llmUsage` beside its accuracy delta, and a treatment that buys one question for 40% more prompt is now a
+trade a reader can price rather than a sentence about token efficiency.

@@ -9,6 +9,7 @@ import {
 import { OpenAIEmbedding } from '../embedding/openai.js';
 import { TransformersEmbedding } from '../local/embedding.js';
 import type { TransformersModule } from '../local/pipelines.js';
+import { llmUsage, usageDelta } from '../usage.js';
 import * as cortexAi from '../index.js';
 
 describe('package exports', () => {
@@ -122,6 +123,24 @@ describe('OpenAICompatibleLLM (real local server)', () => {
             res.end(JSON.stringify({ choices: [] }));
             return;
           }
+          // Two response shapes on one endpoint, because the property under test is the
+          // difference between them and a second server would let them drift apart. The
+          // `usage` block is the shape every OpenAI-compatible provider returns; its
+          // absence is the shape a stripping proxy returns.
+          if (body.includes('withusage')) {
+            res.end(
+              JSON.stringify({
+                choices: [{ message: { content: 'priced' } }],
+                usage: {
+                  prompt_tokens: 12_000,
+                  completion_tokens: 40,
+                  prompt_cache_hit_tokens: 9_000,
+                  prompt_cache_miss_tokens: 3_000,
+                },
+              }),
+            );
+            return;
+          }
           res.end(
             JSON.stringify({
               choices: [
@@ -156,6 +175,54 @@ describe('OpenAICompatibleLLM (real local server)', () => {
   it('returns an empty string when the response has no content', async () => {
     const llm = new OpenAICompatibleLLM({ baseUrl, apiKey: 'test', model: 'm' });
     expect(await llm.complete('emptycontent')).toBe('');
+  });
+
+  /**
+   * The two tests below are the transport half of `usage.ts`.
+   *
+   * `usage.test.ts` pins the parser against hand-built bodies and would stay green if
+   * the adapter never called it -- which is precisely the defect that kept every artifact
+   * in this campaign silent about spend: the provider published the number on every
+   * request and the adapter returned only `choices[0]`. A test at the parse layer cannot
+   * see a caller that does not call it, so the assertion has to start at `complete()` and
+   * read the process aggregate through its public accessor.
+   *
+   * Each takes a snapshot before the call and asserts on the DIFFERENCE, rather than
+   * resetting the process aggregate first: the aggregate is process-wide and the tests
+   * above it in this file make real calls too, so a reset would be this file's second
+   * global side effect and the assertion would depend on test order either way. The
+   * delta is the same arithmetic the report uses (`usageDelta`), so the test drives the
+   * production path rather than a test-only accessor.
+   */
+  it('records what the provider said the call cost', async () => {
+    const before = llmUsage();
+    const llm = new OpenAICompatibleLLM({ baseUrl, apiKey: 'test', model: 'm' });
+    expect(await llm.complete('withusage')).toBe('priced');
+    // The hit count is reported as part of the prompt it came from, not in addition to
+    // it: 12,000 and not 21,000.
+    expect(usageDelta(before, llmUsage())).toEqual({
+      calls: 1,
+      unpricedCalls: 0,
+      promptTokens: 12_000,
+      completionTokens: 40,
+      cacheHitPromptTokens: 9_000,
+    });
+  });
+
+  it('counts a response that states no cost as an unpriced call, not a free one', async () => {
+    const before = llmUsage();
+    const llm = new OpenAICompatibleLLM({ baseUrl, apiKey: 'test', model: 'm' });
+    await llm.complete('hi');
+    // `calls: 1` with `unpricedCalls: 1` is the whole assertion. Folding the missing
+    // block into zeros would produce the same token totals with `calls: 0`, and an
+    // artifact built from that reads exactly like a run that spent nothing.
+    expect(usageDelta(before, llmUsage())).toEqual({
+      calls: 1,
+      unpricedCalls: 1,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheHitPromptTokens: 0,
+    });
   });
 
   it('throws when the LLM server returns an error', async () => {

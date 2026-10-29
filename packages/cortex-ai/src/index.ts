@@ -39,6 +39,17 @@ export {
   type OpenAICompatibleLLMOptions,
   type ThinkingMode,
 } from './llm/openai-compatible.js';
+/**
+ * What the provider said each call cost.
+ *
+ * Three names and no more: the aggregate class, the parser and the recording entry are
+ * internal to this package -- the adapter is their only writer, and exporting a
+ * "record your own usage" door would let a caller double-count a call the adapter has
+ * already recorded. What a consumer outside this package needs is the reading
+ * (`llmUsage`), the arithmetic that turns two readings into one run's spend
+ * (`usageDelta`), and the shape both return.
+ */
+export { llmUsage, usageDelta, type UsageSnapshot } from './usage.js';
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';
 export {
   OpenAICompatibleReranker,

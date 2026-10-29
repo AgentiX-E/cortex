@@ -161,7 +161,14 @@ RATIONALE = {
         "one. They were extracted from six inline guards that carried `c8 ignore next` while still "
         "counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by "
         "`@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the "
-        "coverage honestly."
+        "coverage honestly. THE SPEND INSTRUMENT (13.140) adds ONE entry: `LlmUsage` is the shape "
+        "`parseUsage` returns and `recordUsage` takes, and neither of those two names it at a call "
+        "site -- the adapter passes the parser's result straight through -- so the type is named "
+        "only in two signatures. It is exported because a signature that returns a private name "
+        "cannot be declared, and it is NOT inlined into `UsageSnapshot` because the two are "
+        "different facts: a per-response report has no call count, and a ledger total has no "
+        "single response it describes. Merging them would let a caller pass a total where a report "
+        "belongs."
     ),
 }
 
