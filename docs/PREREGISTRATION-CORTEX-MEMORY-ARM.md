@@ -12864,3 +12864,98 @@ evidence for the same conclusion §13.123.1 reached from the other direction: **
 reading is** — and it also sets the bound on the "just add more context" reflex, because Mastra needed 2.5× this
 window to gain 0.7 points of MR over the reference pipeline.
 
+
+## 13.124 The flat route has no reply guard, and nine of IE's ten wrong answers are that
+
+### 13.124.1 A three-way split that no metric on the page uses
+
+`QuestionRecord.grounded` has been in the roster since §13's first artifacts and no table reads it. Split the 500
+questions by it and by whether an answer was produced at all:
+
+| bucket                | n   | correct | rate  |
+| --------------------- | --- | ------- | ----- |
+| answered + grounded   | 312 | 277     | 88.8% |
+| answered + ungrounded | 136 | 111     | 81.6% |
+| declined              | 52  | 29      | 55.8% |
+
+`ungrounded` is **not** a hallucination detector: 111 of its 136 answers are still correct, and the bucket as a
+whole reads 81.6%. What it is, on this arm, is mostly **a shape failure**, and that only becomes visible one
+capability down.
+
+### 13.124.2 IE's ten wrong answers, listed
+
+IE is 150 questions, 10 wrong, and `grounded` is false on **nine of them**. The answers themselves say why:
+
+| question    | `answer` length | what the reply actually was                                              |
+| ----------- | --------------- | ------------------------------------------------------------------------ |
+| `75832dbd`  | **31,547**      | the whole evidence block, with memory ids, copied back                    |
+| `57f827a0`  | **16,766**      | the same, from a different window                                         |
+| `d6233ab6`  | 577             | a fragment of the evidence section                                        |
+| `1da05512`  | **0**           | nothing at all                                                            |
+| `0a34ad58`  | 1,241           | starts `Based on the evidence, here are helpful …`                        |
+| `a89d7624`  | 872             | free prose about Denver's music scene                                     |
+| `0edc2aef`  | 57              | `No evidence items match the question abo…`                               |
+| `09d032c9`  | 137             | the same sentence, different question                                     |
+| `95228167`  | 64              | the same sentence again                                                   |
+| `778164c6`  | 14              | `Escovitch Fish` — **the only genuine knowledge miss of the ten**          |
+
+**Nine failures of format, one failure of knowledge.** Three shapes: the model echoes the evidence instead of
+answering (3), it explains that it cannot answer instead of declining (3), or it writes prose (2) — plus one empty
+reply. Across the whole roster 27 answers look like evidence echoes and 20 of those are still graded correct,
+which is why the aggregate never showed this: the judge's tolerance absorbs twenty of them and the nine that fail
+are all in the one capability whose gold is a short phrase.
+
+### 13.124.3 The reference hands the reader three guards this route does not have
+
+`buildQaPrompt` in `natural-language-memory.ts` — the block the reference's flat path uses — carries, in order:
+
+```
+Work in two steps, but write ONLY the final answer.
+Step 1 — Silently read each turn and identify … do NOT write them out.
+Step 2 — Answer the question using ONLY those identified facts.
+Your entire reply is one line in exactly this form, with nothing before or after it:
+Answer: <a word, name, number, or short phrase>
+Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.
+```
+
+This arm's flat block, rendered for the same question:
+
+```
+Answer the question using only the evidence above.
+The answer may require combining evidence from more than one turn or session: gather every relevant piece first,
+  then compute the answer. Do not reply INSUFFICIENT_EVIDENCE merely because no single piece states the answer
+  outright.
+Reply with the answer alone. If the evidence does not contain the answer, reply exactly INSUFFICIENT_EVIDENCE
+```
+
+Three differences, each of which names one of the three failure shapes above:
+
+| the reference says                                              | the failure it prevents          | this arm's block |
+| --------------------------------------------------------------- | -------------------------------- | ---------------- |
+| `Your entire reply is one line in exactly this form: Answer: …` | echoing the evidence, empty reply | **absent**       |
+| `with no explanation`                                            | `Based on the evidence, …`, `No evidence items match …` | **absent** |
+| `Work in two steps, but write ONLY the final answer`             | not applicable here — flat answers in one step | **absent** |
+
+`Reply with the answer alone` is the closest thing this block has, and it is a sentence about the answer's *length*.
+The reference states a **shape**: one line, a literal prefix, nothing before or after. §13.104 already showed a
+single missing sentence is worth 21.4 TR questions; this is the same class of finding, measured from the other
+direction — the sentence was never there.
+
+### 13.124.4 The rule this creates, and what it does not license
+
+**The rule.** A route whose gold is a short phrase needs a reply *shape*, not a reply *length*. "Answer alone"
+constrains how much; `Answer: <phrase>` constrains what. Only the second one is checkable by the parser, and only
+the second one is what `parse.ts`'s last-line rule can recover from.
+
+**What it does not license.** Adding the guard is not free in the token sense (§13.104.5: a longer instruction buys
+declines, because the budget is charged to the evidence — three lines here, about 200 characters, or half a
+delivered turn), and it cannot be dispatched beside `silent`: both are `ask` values, both change instruction blocks,
+and a run that moved both would price neither. The order is fixed by what is already measured — `silent` is
+registered against the reference's *multi-session* block and is in flight; the guard belongs to the *flat* block
+and its own dispatch.
+
+**The registration it will need, stated here so it is not improvised later.** `ask=answer-line`: the flat block
+plus the two guard sentences and nothing else, reach `flat` alone, control `enumerated`. Predictions: IE wrong
+10 → ≤ 4; the count of answers longer than 400 characters on the flat path → 0; KU and ABS byte-identical because
+their blocks are untouched. Falsified if IE does not improve or if any non-flat route's prompt moves.
+
