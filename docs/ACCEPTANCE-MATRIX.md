@@ -65,6 +65,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S5  | <!-- reading:S5 -->96.7%  | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                                 |
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
+| S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
@@ -82,6 +83,16 @@ default. `S6`'s threshold is an invariant and not a measurement: `rerankHits` de
 a thrown request, a short reply or a non-finite score, so an endpoint answering `401` five hundred times and a
 cross-encoder that agreed every time produce the **same accuracy**. One fallback makes the pair unreadable, and
 the census carries `calls` beside `fallbacks` so that a stage which never ran cannot be mistaken for a clean one.
+
+`S8` is the third row written before its run, and the one with the widest gap between its threshold and what the
+field has published. It prices the **instruction** rather than the retrieval: §13.123.1 measured that every wrong
+answer already carries its gold in the prompt, with a median best rank of **0**, so the eighteen multi-session
+questions this arm trails the `reference-pipeline` by cannot be recovered by any change to the pool, the width or
+the budget. What remains is what the reader is told to do, and the two arms are told opposite things — this one
+asks for the list to be written out, the reference asks for it to be kept private. `S8` is measured against an
+`enumerated` control whose flat and temporal blocks are byte-identical, so it is the rare row where an assembly
+failure is detectable from the control side: a movement in TR or IE means the dispatch administered more than one
+route and no number in the row is readable.
 
 ## 4. How each increment is tested, on four levels
 

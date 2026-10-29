@@ -577,6 +577,50 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       'Two ways to miss, and they are different findings. If `changed > 0` and the multi-session category moves by 3 or fewer, **delete the stage**: a mechanism the strongest published pipeline needs and this arm does not is either a difference in the corpus or a difference in what it is reranking, and both are results rather than reasons to keep it. If `changed = 0` with `fallbacks = 0`, the cross-encoder agreed with the fusion on all 500 questions, which settles the reranking question negatively for this corpus at this pool width — also a result, and also a reason to stop paying for it. The row is not reachable by overall accuracy: a stage that buys 3 questions in one category and loses 3 in another has moved the order without improving the answer, so no capability may fall by more than 2 within the same pair.',
   },
+
+  // ---- the instruction the reference pipeline actually runs (§13.123) ------------------------------
+  {
+    id: 'S8',
+    capability: 'multi-session reasoning',
+    metric:
+      'multi-session correct answers gained by the silent two-step contract over the enumerated one',
+    dataset:
+      'LongMemEval-S, 121 multi-session questions, treatment and control on byte-identical windows because flat and temporal are unchanged',
+    comparator: 'at-least',
+    threshold: 9,
+    unit: 'count',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/silent-ask.json',
+      key: 'delta.multiSession',
+    },
+    competitors: [
+      {
+        name: 'reference pipeline, multi-session (same model, same dataset, smaller window)',
+        value: 0.8678,
+        grade: 'B',
+        recipe:
+          'the `reference-pipeline` arm inside every cortex-memory artifact: same DeepSeek reader, same 500 questions, same judge, and a SMALLER window. Its builder asks the two steps with the notes unwritten; this arm has asked for the list since section 13.34',
+      },
+      {
+        name: 'Raw-RAG (naive), overall',
+        value: 0.875,
+        grade: 'B',
+        recipe:
+          'arXiv:2610.30755 — timestamps, chunking, dense retrieval and reranking over raw turns, no extraction, no rewriting. The same paper reports 87.53 against the strongest agentic memory system at 87.40, which is what makes a naive pipeline a meaningful bar rather than a straw one',
+      },
+      {
+        name: 'MemCog, multi-session',
+        value: 0.925,
+        grade: 'C',
+        recipe:
+          'best published multi-session figure, reached by agentic multi-step retrieval (2–3 steps per query) rather than by a prompt. Grade C because the reader and judge are not reported in a form this arm can reproduce; it is here as the ceiling the next phase aims at, not as a paired comparison',
+      },
+    ],
+    onMiss:
+      "Read prediction 2 of §13.123.4 first, and it is an assembly check rather than a miss. Flat and temporal are byte-identical between the two asks, so a change to TR or IE means the dispatch administered more than one route and **no number in this row is readable** — re-dispatch before interpreting. Given a clean pair: if MR moves by fewer than 9 and MR declines do not rise, the two-step shape is not where MR's eighteen questions live, and the next candidate is the rendering — the reference hands the reader JSON objects with `date`, `role` and `content`, while this arm hands it numbered prose with source ids, and nothing here has tested one against the other at this window. If MR does not move and declines rise above 13, the written list was doing real work as a decline-suppressant and the answer is a silent Step 1 plus an explicit do-not-decline clause, not a return to the list. The row cannot be reached by overall accuracy: the mechanism lives on one route, so a roster that rises while MR is flat would be a TR or IE movement that prediction 2 already calls an assembly failure.",
+  },
 ];
 
 /** What the checker found for one criterion. Filled in by the runner, never by hand. */

@@ -12587,3 +12587,251 @@ entry in the table §13.112 started:
 | 4    | read correctly, dispatch never sends the registered value      | `test_preregistration_config.py`                 |
 | 5    | the workflow's own default disagrees with the registration     | `TestTheShippedDefaultAgreesWithTheRegistration` |
 | 6    | **the registered value is one the code that reads it rejects** | **`TestTheShippedPayloadCanStart`**              |
+
+## 13.122 The temperature question is settled: it is a variance knob and the centre does not move
+
+### 13.122.1 The first check does not read accuracy
+
+Two arms were dispatched that differ in one arming: `40751377644` sends no temperature at all, `40751394094` sends
+`0`. §13.119 made `0` reach the request, so this is the first pair where the reader actually received a different
+sampling parameter, and §13.120 recorded that no earlier pair had.
+
+The first thing checked was therefore **not** the number. Temperature cannot change retrieval, so the evidence must
+be identical question by question. It is:
+
+| field                 | questions that differ |
+| --------------------- | --------------------- |
+| `goldOverlap`         | **0 of 500**          |
+| `evidenceTurns`       | **0**                 |
+| `evidenceChars`       | **0**                 |
+| `promptChars`         | **0**                 |
+| `turns`               | **0**                 |
+
+`memoryArmConfig` differs on `reader.temperature` and on nothing else — `null` against `0`, with the same model,
+endpoint, `thinking` and every retrieval field. Had any of the five fields above moved, the reading would have been
+`assembly failure` rather than a temperature effect, and no accuracy number would have been looked at.
+
+### 13.122.2 What the two arms measured
+
+| arm                    | min   | mean      | max   | roster spread | MR spread | TR spread |
+| ---------------------- | ----- | --------- | ----- | ------------- | --------- | --------- |
+| A `temperature=unset`  | 83.00 | **84.30** | 86.20 | **16**        | **12**    | **11**    |
+| B `temperature=0`      | 83.40 | **84.20** | 84.80 | **7**         | **6**     | **5**     |
+
+The registration (§13.119.4) asked for three things, and all three hold:
+
+| #     | prediction                                    | observed  | verdict  |
+| ----- | --------------------------------------------- | --------- | -------- |
+| **1** | MR spread below 7 and roster spread below 16   | 6 and 7   | **holds** |
+| **2** | the two rosters' means within 8 questions     | 0.5       | **holds** |
+| **3** | 500 identical per-question verdicts ⇒ drop it | 460 of 500 | **holds** |
+
+**The centre does not move and the spread halves.** 421.5 correct against 421.0 is a half-question difference on a
+roster whose spread was seven; 16 questions of spread against 7 is the effect. That is what a variance knob does,
+and it is the first time this campaign has measured one directly rather than inferred it from a single delta.
+
+### 13.122.3 What it buys, priced in the unit the next experiment spends
+
+With four repetitions and a range of `R`, the implied per-run standard deviation is `R / d₂` with `d₂ = 2.059`:
+
+| arm | σ per run | SEM of the 4-run mean | a 3-question effect is |
+| --- | --------- | --------------------- | ---------------------- |
+| A   | 7.8       | 3.9                   | **0.77 σ** — unreadable |
+| B   | 3.4       | 1.7                   | **1.76 σ** — directional, magnitude untrustworthy |
+
+That is the whole licence this section grants, and it is narrower than it looks. A `+3` question prediction at
+`temperature=unset` could not have been distinguished from noise at all. At `temperature=0` it is a one-sided
+`p ≈ 0.04` — enough to say *the arrow points the right way*, not enough to publish a magnitude. **Any claim of the
+form "mechanism X is worth N questions" still needs the paired design**, where the comparison is per question on
+one repetition rather than across repetitions; §13.116's transition split is the instrument for that and it is
+already wired.
+
+`temperature=0` is therefore adopted as the arming for every subsequent dispatch, and the reason is this table
+rather than a preference for determinism.
+
+### 13.122.4 The line that made the two arms look twenty-eight times further apart than they are
+
+Read from the two artifacts' first screens, the effect looks like **`+2.80` points**:
+
+| arm | `Overall accuracy` line | four-run mean |
+| --- | ----------------------- | ------------- |
+| A   | **86.20%**              | 84.30%        |
+| B   | **83.40%**              | 84.20%        |
+
+The gap between the quotable lines is `2.80`; the gap between the means is `0.10`. **The first repetition of A
+happened to be its best run and the first repetition of B happened to be its worst**, so a reader comparing the
+two `Overall accuracy` lines reads a 28-fold exaggeration of an effect that is not there — and this repository
+did read it that way before the means were checked.
+
+Neither line was wrong. The line did not say **which of two questions it answered**: the mean over repetitions, or
+the first one. It sits eleven lines under a table whose entire purpose is to report that the repetitions disagree,
+so the stronger reading was the one a reader reached for.
+
+The fix is in the artifact rather than in the reading discipline. When `runs > 1` the three quotable lines carry
+`first of N runs`, and the comparable number is published beside them:
+
+```
+- Overall accuracy (`cortex-memory`, first of 4 runs): 86.20%
+- Overall accuracy over all runs (`cortex-memory`): 84.30% (min 83.00%, max 86.20%)
+- Abstention rate (`cortex-memory`, first of 4 runs): 9.80%
+- Abstention correct rate (`cortex-memory`, first of 4 runs): 55.77%
+```
+
+A single-run artifact renders byte-identically to before, so every archived artifact keeps its meaning and
+`report-system-identity.test.ts` pins both halves — the labelled multi-run form and the unchanged single-run form,
+including the negative assertion that a one-run artifact grows no `first of` and no `over all runs`.
+
+## 13.123 The retrieval side is closed by its own census, and the three experiments it retires
+
+### 13.123.1 A census that answers three questions at once
+
+`goldOverlap` has been in every artifact since §13.26 and was read per run, per band. Read **once across all 500
+questions** it settles three queued experiments before any of them is dispatched:
+
+| quantity                                        | value                     |
+| ----------------------------------------------- | ------------------------- |
+| gold units counted                              | **7,516**                 |
+| in the retrieved pool (`pool`)                  | **7,155 — 95.2%**         |
+| carried into the prompt (`carried`)             | **6,501 — 86.5%**         |
+| in the pool but not in the prompt               | **654 — 8.7%**            |
+
+And on the 69 wrong answers of that arm:
+
+| question-level fact                                    | value        |
+| ------------------------------------------------------ | ------------ |
+| wrong answers whose gold is **absent** from the prompt | **0 of 69**  |
+| wrong answers whose gold is present                    | **69 of 69** |
+| best gold rank per wrong question — median             | **0**        |
+| best gold rank per wrong question — mean               | **2.0**      |
+| best gold rank per wrong question — p90 / max          | **7 / 18**   |
+| wrong questions with best gold rank below 10           | **65 of 69 — 94.2%** |
+
+The pool's own rank distribution says the same thing from the other side: `p25 = 6`, `median = 17`, `p75 = 48`, and
+**90.9% of all gold units sit at rank below 128**.
+
+**Not one wrong answer is wrong because the evidence was missing.** The median wrong answer has its gold at rank
+**zero** — the first retrieved turn — and 94.2% of them have it inside the first ten.
+
+### 13.123.2 What that retires, and why "no effect" was the wrong prediction
+
+| queued experiment                        | why it cannot move this number                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| **S-5, cross-encoder reranking**         | reranking permutes the pool. The gold is already at rank 0–18 for every wrong answer; there is no permutation of a list that improves on its first element |
+| **raising the pool width**               | 95.2% of gold is already retrieved. Even a perfect pool adds 4.8% of *units*, and those 361 units sit in questions that already have gold in the prompt |
+| **96,000-character budget** (§13.118)    | §13.118 measured it as a wash and attributed it to coverage against dilution. This is the mechanism: **there was nothing to buy.** The prompt ran at 46,622 characters of a 48,000 budget with no question at the cap, so the budget was never the constraint and doubling it could only re-arrange |
+
+That last row is the part worth keeping. §13.118 concluded "more evidence buys coverage and sells dilution" from a
+delta of roughly zero. The honest reading, now that the census is in hand, is narrower: **the lever was never
+connected**, and a future attempt at the same lever should first show that the budget binds — `promptChars` at the
+cap on a material share of questions — before spending a dispatch on it.
+
+### 13.123.3 The reference pipeline's advantage is the opposite instruction to the one this campaign has been sharpening
+
+`goldOverlap` closes the retrieval hypotheses. It does not explain why the **baseline** scores 86.78% on MR against
+this arm's 71.9% on the same model, the same dataset and a **smaller** window. §13.34 read that gap as a contract
+difference and stated it as:
+
+> *"enumerate matching items first, compute second, and make the abstention token conditional on the list existing"*
+
+Every ask since has sharpened **how the list is written**: `enumerated` (§13.34), `sweep` (§13.92, a line per
+session), `aggregation` (§13.103, exchanges as two items plus a form-to-operation table). §13.96 records that
+direction's own result in one sentence — *"three prompt-side attempts each lengthened the list and failed to raise
+accuracy"* — and §13.92 prices it from the response side: **a median Step 1 list of 2.0 items** where the gold
+count is 3 to 10, with six of ten wrong counting questions listing fewer items than the gold and none listing
+exactly that many.
+
+**The reference does not ask for a list.** Its builder (`conInstruction` in
+`packages/cortex-eval/src/natural-language-memory.ts`) opens:
+
+> `Work in two steps, but write ONLY the final answer.`
+
+and closes Step 1 with:
+
+> `Keep those notes to yourself; do NOT write them out.`
+
+The docblock beside it carries the measurement that put those words there: with the notes written out, the model
+*"never reached Step 2 on 7.5% of the diagnosed questions"* and leaked up to 33 KB of self-talk into the parsed
+answer. LongMemEval's CP4 control point is what the two-step shape comes from, and the silence is what LongMemEval's
+own implementation added to it.
+
+So the arm that leads MR by about eighteen questions is the one that says **do not write it**, and every ask this
+campaign built after §13.34 sharpened the instruction to write it. §13.92's 2.0-item list is not a reader that
+forgot how to enumerate; it is a reader that wrote down the two items it noticed and stopped.
+
+### 13.123.4 The registration: `ask=silent`
+
+**One variable**: `cortex_memory_ask=silent` against the adopted `enumerated`, everything else at the §10.3 arming
+plus §13.118's budget, §13.122's `temperature=0` and §13.94's `reviewPass=bare`.
+
+`silent` is `enumerated`'s block with the notes made private: same two steps, same per-form arithmetic (counts,
+durations, amounts, a named value), same merging sentence, same reach. Flat and temporal are **byte-identical** to
+`enumerated`, which `evidence-ask-reach.test.ts` pins, so TR and IE cannot move and the comparison is one route.
+
+The decline clause moves with Step 1 and that is deliberate rather than a second variable. `enumerated` conditions
+declining on the written list because a written list is inspectable; with the notes unwritten there is nothing on
+the page to inspect, so the same rule is stated over what the reader found. The two sentences are one decision —
+*is the list an object on the page or a step in the reader's head* — and a dispatch that moved only the first would
+administer a contract that demands a written list while licensing a decline that inspects an unwritten one.
+
+| #     | prediction                                                                                        | falsified if |
+| ----- | ------------------------------------------------------------------------------------------------- | ------------ |
+| **1** | MR mean rises from 86.5 to **≥ 95** of 121 — the 18-question gap to the baseline is the mechanism | ≤ 88         |
+| **2** | TR and IE reproduce the `enumerated` run to the question, since their prompts are byte-identical    | any change   |
+| **3** | MR declines do **not** rise above the `enumerated` control's 10 — a silent step cannot license more declining than a written one | > 13 |
+| **4** | MR `promptChars` does not fall below 45,000 — the silent contract is shorter than `enumerated`'s, so the evidence room grows rather than shrinks | < 44,000 |
+
+Prediction 2 is the assembly check and it is stated first in the reading order. Prediction 4 exists because
+§13.104.5 measured that **a longer instruction buys declines**: the budget is charged to the evidence, so a contract
+that grows costs window. `silent` is shorter, which is the rare case where the mechanism and the room point the
+same way.
+
+### 13.123.5 What each outcome would mean
+
+- **1 holds**: §13.34's diagnosis was inverted, and the campaign's entire ask ladder was climbing the wrong face.
+  The next question is then how far silence goes — and `self_consistency` (§13.101) becomes worth a dispatch for the
+  first time, because a reader whose judgement is the unstable part is exactly what sampling addresses.
+- **1 fails and 3 fails**: silence licenses more declining. That would mean the written list was doing real work as
+  a decline-suppressant, and §13.55's "the list is the licence" was right about mechanism and wrong about
+  direction — the answer would then be a silent Step 1 with an explicit "do not decline" clause.
+- **1 fails and 3 holds**: the two-step shape is not where MR's eighteen questions live at all, and the remaining
+  candidate is the **rendering** — the reference hands the reader a JSON array of `{date, role, content}` objects,
+  and this arm hands it numbered prose blocks with source ids. Nothing in this campaign has tested JSON against
+  prose at the current window.
+- **2 fails**: assembly failure. The dispatch administered more than one route, and no prediction about MR is
+  readable.
+
+### 13.123.6 External calibration, and what it says the ceiling is
+
+The published field, restricted to figures that state their reader, on the full 500-question set:
+
+| system                              | overall | multi-session | note                                                    |
+| ----------------------------------- | ------- | ------------- | ------------------------------------------------------- |
+| full-context GPT-4o (paper)         | 60.2    | 44.3          | the paper's own baseline                                |
+| no-memory baseline (benchd.ai)      | 57.6    | —             | whole history in the window, no memory system           |
+| Zep                                 | 71.2    | 83.5          | vendor figure, GPT-4o reader                            |
+| memoricai                           | 85.8    | —             | GPT-4o reader and judge                                 |
+| **Raw-RAG (naive)**                 | **87.5**| —             | arXiv:2610.30755 — timestamps, chunking, dense retrieval, reranking over raw turns, no extraction. **This is the pipeline this arm's baseline reproduces** |
+| Mastra OM, GPT-4o                   | 84.2    | 87.2          | observational memory                                    |
+| Contextier                          | 91.6    | 90.2          | 2,807 tokens per query                                  |
+| Mem0 (latest)                       | 93.4    | 86.5          | 6,787 tokens per query                                  |
+| Mastra OM, GPT-5-mini               | 94.9    | —             | same memory system, stronger reader                     |
+| Hindsight (vendor)                  | 94.6    | 87.2          | reader and judge unpublished                            |
+| **MemCog**                          | —       | **92.5**      | best published MR; agentic multi-step retrieval, 2–3 steps per query |
+
+Three readings matter for the path this section opens.
+
+**First, the target is above the baseline, not at it.** Raw-RAG reads 87.5 overall and this arm reads 84.2. The `+3`
+points between them is not a retrieval gap — §13.123.1 just closed retrieval — and it is not a reader gap either,
+since both run DeepSeek-class readers. It is the gap §13.123.3 is about.
+
+**Second, the best MR figure in the field belongs to a mechanism this arm does not have.** MemCog's 92.5 comes from
+an agent that decides what to look at next, 2–3 steps per query. That is a different architecture, not a prompt, and
+it is the honest candidate for the phase after this one.
+
+**Third, and least obvious: Mastra's 87.2 on MR comes from not retrieving at all.** Its whole compressed observation
+log — roughly 30K tokens covering all fifty sessions — is always in context, so aggregation becomes a pure reading
+task. This arm carries 46,622 **characters**, about 12K tokens, of a 550-turn pool. Mastra's result is therefore
+evidence for the same conclusion §13.123.1 reached from the other direction: **the room is not the constraint, the
+reading is** — and it also sets the bound on the "just add more context" reflex, because Mastra needed 2.5× this
+window to gain 0.7 points of MR over the reference pipeline.
+
