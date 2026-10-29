@@ -115,7 +115,10 @@ The two ask experiments are single-variable against §1, but the field they chan
 which makes merging the two blocks a replace rather than an addition. Written down because "merge with §1" is
 exactly the instruction that produced the 60-question run.
 
-`silent` (§13.123.4, MR): §1 with its `ask` line replaced.
+`silent` (§13.123.4, MR) — **refuted, kept as the ablation reference**: §1 with its `ask` line replaced.
+Run `40792853362` measured MR 87 → 61 against the enumerated control, with the loss localised to the 66 questions
+whose carried turns are byte-identical (48 → 31). Do not dispatch it as a candidate; it exists so the sentence
+"the written list is the state Step 2 counts from" has a measurement behind it.
 
 ```json
 {
