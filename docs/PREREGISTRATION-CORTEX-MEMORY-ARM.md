@@ -15382,3 +15382,184 @@ and that is the part the ceiling was ever meant to bound.
 Criterion 2 is the one that constrains the future: it is the only assertion in the suite that would fail if a
 later refactor rebuilt the retry from turns again, and it is stated in the currency the provider charges in --
 bytes at the head of the request.
+
+## 13.148 `recover` converted one question per run, which is a sixth of what this instrument can see
+
+`40883121464` landed at 15:48Z on 2026-10-29 after 2h14m, and it is the first artifact in this campaign that
+carries `llmUsage`. It also closes P0. This section reads it against its control and then reads its bill.
+
+### 13.148.1 The comparison is one field, and the artifacts agree on all 23 of the others
+
+| | control `40751394094` | treatment `40883121464` |
+| --- | --- | --- |
+| `reviewPass` | `bare` | `recover` |
+| every other field of `memoryArmConfig` | identical (23 of 24) | identical (23 of 24) |
+| `promptChars` median / mean over the roster | 46,851.5 / 46,622 | 46,851.5 / 46,622 |
+| `evidenceTurns` median / max | 417.5 / 616 | 417.5 / 616 |
+| reader | `deepseek:deepseek-chat`, thinking disabled, `temp=0` | same |
+
+The two rosters are **byte-identical in every window statistic**, which is the internal control this register
+asks for before any cross-artifact comparison: the treatment changed what the reader was asked a second time,
+and nothing about what it was shown the first time.
+
+### 13.148.2 On MR the means are equal, and the register's floor is 5.8 questions
+
+| capability | control min / mean / max | treatment min / mean / max | Δ mean (questions) |
+| --- | --- | --- | --- |
+| IE | 139 / 140.25 / 142 | 141 / 141.50 / 142 | **+1.25** |
+| **MR** | **83 / 86.50 / 89** | **85 / 86.50 / 88** | **0.00** |
+| KU | 61 / 62.75 / 64 | 62 / 63.50 / 67 | +0.75 |
+| TR | 100 / 102.50 / 105 | 102 / 103.75 / 105 | +1.25 |
+| ABS | 29 / 29.00 / 29 | 29 / 29.25 / 30 | +0.25 |
+| overall | 83.4 / 84.20 / 84.8 | 84.4 / 84.90 / 85.6 | +3.50 |
+
+Three things have to be read together, and none of them is the +0.70 points.
+
+**1. MR did not move at all.** Mean 86.50 on both sides, and the ranges overlap (83-89 against 85-88). Against
+the 5.8-question cross-artifact floor of §13.145.3 this is not "below resolution" in the sense of a small positive
+number that might be real -- it is **zero**, and the honest statement is that no gain was observed at all.
+
+**2. The routes the pass cannot reach moved by as much as the route it can.** §13.141.1 states the pass lives in
+`answerSessions`, so `IE`, `KU`, `TR` and `ABS` are byte-identical by construction. They moved +1.25, +0.75, +1.25
+and +0.25. That is a measurement of **this pair of dispatches' own churn on questions nothing touched**: about
+one question per capability, and it is the number any future increment has to beat before its own capability
+count means anything.
+
+**3. The reference pipeline moved further than the treatment did.** Its overall mean fell 45.15% -> 44.10%
+(**-5.25 questions**) and its MR mean fell 107.5 -> 103.0 (**-4.5 questions**) between the two dispatches, with
+no field in either artifact to explain it -- the reference pipeline's own configuration is recorded nowhere.
+This is not a defect of the treatment; it is the empirical answer to "why is the floor 5.8": **an untreated side
+of the same experiment drifted 4.5 questions on MR.**
+
+### 13.148.3 Paired, question by question, the flow is 14 and the net is 0
+
+Means can hide a cancellation, so the same comparison is read as transitions. The control's roster and this
+one are paired by `questionId`, first repetition against first repetition (neither artifact carries the
+per-run grid, which shipped after both were dispatched):
+
+| capability | n | bought | sold | net |
+| --- | --- | --- | --- | --- |
+| IE | 150 | 3 | 1 | +2 |
+| **MR** | **121** | **7** | **7** | **0** |
+| KU | 72 | 1 | 0 | +1 |
+| TR | 127 | 6 | 4 | +2 |
+| ABS | 30 | 0 | 0 | 0 |
+| roster | 500 | 17 | 12 | +5 |
+
+**MR's gross flow is 14 questions out of 121 and its net is zero.** The treatment is not "small"; it is
+indistinguishable, at this sample size, from the reader answering the same questions twice. And the two largest
+nets in the table (+2 IE, +2 TR) sit on capabilities the pass provably cannot reach.
+
+`node tools/ledger.mjs --control <control> --across recover=<this>` prints this table and the per-capability
+range overlap from the two artifacts; the run it reads is named on its first line.
+
+### 13.148.4 The mechanism's own census falsifies the size it was registered at
+
+| | registered (§13.128.3) | measured over 4 runs | per run |
+| --- | --- | --- | --- |
+| declines that contradict their own list | 13-17 per run | 33 | **8.25** |
+| converted to a correct answer | "at least 5 of the 16" | 4 | **1.0** |
+| conversion rate | -- | 12.1% | -- |
+
+Two separate failures, and they compound.
+
+**The population is half the size it was registered against.** The pass consulted 8.25 questions per run, not
+13-17. §13.141 derived 13-17 from three archived runs, and the archived runs carry `reviewPass: bare`, where the
+bare-decline retry fires *before* the recovery pass can see the same question -- 95 retries in this run against
+92 in the control. A question whose first reply is the bare token is *both* a bare decline and a decline with an
+empty list, and the two treatments claim it in different orders on different routes. That interaction was not
+in the registration and is the first thing a follow-up dispatch has to hold fixed.
+
+**The conversions are an order of magnitude below the claim.** One question per run against "at least five of
+sixteen" is a factor of five, and against the 5.8-question floor it is a factor of six: **the dispatch could not
+have detected its own registered effect.** That is the finding worth keeping. An increment whose mechanism can
+move one question per run cannot be measured by a four-repetition cross-artifact comparison, no matter how the
+result is read -- and §13.145.3's resolution table said so before the run, in different words.
+
+### 13.148.5 The bill, and what it settles
+
+| field | value |
+| --- | --- |
+| calls that returned a response | 5,756 |
+| of those, no `usage` block | **0** |
+| prompt tokens | **37,100,936** |
+| completion tokens | 365,791 |
+| prompt tokens served from the prefix cache | 2,402,211 |
+| prefix-cache share | **6.47%** |
+
+The call count decomposes exactly: 4,000 first-pass answer calls (four repetitions, two sides, 500 questions),
+128 retries (95 bare + 33 recovery, both on the feature side only), and therefore **1,628 judge calls** -- a
+judge-cache hit rate of 59.3%, not the ~93% §13.147.1 predicted from the 7.08% flip rate.
+
+| prediction | registered | measured | verdict |
+| --- | --- | --- | --- |
+| §13.140.5 #1, prompt tokens | 10M-14M | 37.1M | **falsified**, 2.65x the top of the band |
+| §13.140.5 #2, prefix-cache share under 5% | <5% | 6.47% | **falsified** by 1.47 points, and the "ordering is a lever" clause (>20%) is not met either |
+| §13.140.5 #3, `unpricedCalls` | 0 | 0 of 5,756 | **confirmed** |
+| §13.147.3 #4, the share lands in 60-80% | 60-80% | 6.47% | **falsified** |
+
+Prediction 1 was already amended in §13.147.3 before this artifact existed, and the amendment is what makes the
+reading clean rather than surprising: 37.1M is what a four-pass dispatch costs, and the band was a one-pass
+number. **§13.147.2's cold model is 30% high and cannot be corrected from this artifact**: it predicts 48.4M for
+the answer side, the measured total for both sides plus the judge is 37.1M, and the gap is either a
+characters-per-token ratio above 4.0 or a reference window smaller than the feature's -- a two-unknown division
+that §13.148.6 states as a bracket rather than a number.
+
+**Prediction 4 is falsified, and the 6.47% answers the cost question on its own.** The attribution of the credit
+is a hypothesis and is marked as one: the retry path re-sends its first pass's evidence seconds later, so 128
+retries x ~8,900 tokens is about **1.14M, or 47% of the credit, and that part is within-pass by construction** --
+and a fixed preamble on the reference side is the plausible source of much of the rest. **No across-pass credit is
+demonstrated**, but none is excluded either, which is exactly the gap §13.147.3 registered per-pass spend for.
+
+What the number settles does not depend on that attribution, and this is the airtight form:
+
+- **A repetition costs at least 93.5% of a full prompt.** The whole cache credit is 6.47% of the prompt bill, and
+  a lower bound on the within-pass part of it already exists (the retry path), so whatever the across-pass share
+  turns out to be, it is at most 6.47% and the repetition price cannot move by more than that. §13.145.2's cost
+  column stands, and "buy more repetitions to beat the noise floor" is expensive in the way it was assumed to be.
+- **Per-pass spend is the instrument that would close the residual 6.47%**, and it is worth building for the
+  attribution rather than for the decision: the decision it could change is bounded by six percent of a bill.
+- **Prompt ordering is settled negative, by derivation rather than by a run.** The only prefix stable across
+  questions is the instruction block, and on the longest route it is 1,591 characters -- **3.41%** of a
+  46,622-character prompt, measured by building the prompt (`buildSessionPrompt` with one session: 1,605
+  characters, of which 14 are evidence). Moving it to the front would put 3.41% of the prompt at a tenth of the
+  rate: **a saving of about 3%**, on a dispatch that costs four figures' worth of tokens. There is no experiment
+  to run here.
+
+### 13.148.6 What the bill cannot say, which is why it cannot be checked further
+
+Two gaps, both exposed by the reading rather than predicted by it.
+
+**The bill is not split by side.** One `llmUsage` delta covers both arms, the judge and every retry. The feature
+side alone carries 93.3M characters over its four passes (46,622 x 500 x 4), so the measured 37.1M tokens imply
+**at least 2.5 characters per token**; if the reference side's window were the same size the total would be
+186.5M characters and the ratio 5.0. The artifact carries neither the reference's window nor a per-side split, so
+the ratio is a **bracket of 2.5 to 5.1 and not a number**, and §13.147.2's 4.0 sits inside it: the artifact
+neither confirms nor refutes that constant. What it does refute is the arithmetic built on it -- a 4.0-based cold
+model of this dispatch is 4,128 x 11,713 = 48.4M tokens, and the measured total is 37.1M, so either the ratio is
+above 4 on this roster or the reference side's window is smaller than the feature's. Both are plausible, neither
+is readable from this artifact, and a per-side delta settles it in one field.
+
+**The reference pipeline's configuration is not in the artifact at all.** Only its `name` and its `metrics` are.
+That is why its 4.5-question MR drift cannot be attributed: a reader cannot tell a slower run from a changed
+window from a different retry policy, and the one thing a cross-artifact floor needs is the ability to say the
+control did not move for a reason.
+
+Both are one field each -- a per-side `llmUsage` delta, and the reference pipeline's `memoryArmConfig` -- and both
+are registered here rather than built, for the reason §13.147.3 gives: a measurement that no decision is waiting
+on is a measurement that ships untested.
+
+### 13.148.7 What the next dispatch has to be
+
+P0 closes as **not separated, with zero observed effect and a mechanism that moves one question per run.** Three
+consequences, in the order they bind:
+
+1. **`recover` cannot be measured at this sample size, and it is not worth a second dispatch on its own account.**
+   A mechanism worth 1.0 question per run needs a population that can resolve one question -- §13.145.3's
+   reachable ten, read as 0/4 -> 4/4 -- not 121 questions read as a mean.
+2. **The next dispatch that measures anything on MR must carry the per-run grid and the per-question reach
+   marks**, because this pair carries neither and the paired reading above is therefore one pairing of sixteen
+   possible ones.
+3. **The 5.8-question floor now has an empirical anchor**: an untreated side drifted 4.5 questions on MR between
+   two dispatches whose recorded fields are identical. §13.145.3's arithmetic and the reference's behaviour agree,
+   which is the first time that floor has been checked against a number rather than derived.
