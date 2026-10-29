@@ -647,8 +647,16 @@ export function roleOfTurn(turn: string): string | undefined {
  * a reach that named `assistant` or `preference` without naming `flat`. That is written down
  * rather than guarded because a guard would have to re-derive `questionType` routing here, which
  * is the duplication this table exists to avoid.
+ *
+ * ## Why it is exported
+ *
+ * A reading tool outside this package needs the same table to name a population by **route**
+ * rather than by capability. `tools/recovery-reach.mjs` reads the abstention-recovery pass's
+ * population, and that pass is wired into one route -- so a tool that hard-coded `MR` would be a
+ * second copy of this switch, which is exactly what the paragraph above refuses. Exporting the
+ * table is the alternative to duplicating it.
  */
-function evidenceRouteOf(capability: string): string {
+export function evidenceRouteOf(capability: string): string {
   switch (capability) {
     case 'MR':
       return 'multi-session';

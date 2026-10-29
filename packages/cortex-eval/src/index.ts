@@ -411,6 +411,7 @@ export {
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
   describeEmbeddingCachePersist,
+  evidenceRouteOf,
   persistEmbeddingCache,
   restoreArmEmbeddingCache,
   roleOfTurn,

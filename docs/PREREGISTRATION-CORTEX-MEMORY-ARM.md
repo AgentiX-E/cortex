@@ -15248,7 +15248,7 @@ Every provider request in the registered configuration (`ablation_runs: 4`, `rev
 | --- | --- | --- | --- | --- |
 | first-pass answer | `#answerWithBareRetry` -> `buildPrompt` | 500 | `cortex_memory_max_prompt_chars` = 48,000, and §13.139 measures 468 of 500 at 95% of it | none: the prompt is question-specific from its first evidence line |
 | bare-decline retry | `buildRetryPrompt` | 21 (feature arm only, §13.94) | the first pass's window plus a longer instruction | its whole evidence block is the head of the first prompt (§13.147.4) |
-| abstention recovery | `buildRecoveryPrompt` | 13-17 when `review_pass: recover` (§13.141) | the reader's own Step 1 list, no evidence re-sent | not applicable |
+| abstention recovery | `buildRecoveryPrompt` | **10** when `review_pass: recover` (§13.141.2, 8.25 measured in §13.149.1) | the reader's own Step 1 list, no evidence re-sent | not applicable |
 | answer audit | `buildAuditPrompt` | 500 when `review_pass: audit` | the window again | not in this configuration |
 | answer-equivalence judge | `buildJudgePrompt` | at most 500, less its own cache | question + predicted + expected, a few hundred characters | fully: keyed on the triple |
 | cross-encoder rerank | `LLMReranker.score` | 0 | -- | registered `none` |
@@ -15260,6 +15260,13 @@ deliberate: its prompt is two short strings and a question, and `judge.ts` cache
 `(question, predicted, expected)` triple -- which repetitions 2-4 mostly hit, because the flip rate on
 untouched questions is 7.08% (§13.135) and 92.92% of a repetition's answers are the previous repetition's
 answer verbatim. A repetition therefore pays for its answer prompts and almost nothing for its grading.
+
+**Measured, after the first bill arrived** (`40883121464`): 4,000 first-pass calls exactly, **128** retries (95
+bare + 33 recovery, both feature-side only) and therefore **1,628** judge calls, so the judge cache hit 59.3%
+rather than the ~93% predicted from the flip rate. The two retry estimates in the table were per-pass numbers
+(21 bare) and the measured rates are 23.75 bare and 8.25 recovery per pass; the recovery row's 10 replaces a
+13-17 that was the capability census before §13.141.2 removed the six questions on routes the pass is not
+wired into. §13.148.5 decomposes the bill and §13.149.1 reads the recovery population.
 
 **The whole bill is the first-pass answer prompt.** Everything else in the table is a rounding error against
 4,000 x ~11,400 tokens, which is why the rest of this section is about that one call and about whether
@@ -15421,9 +15428,13 @@ number that might be real -- it is **zero**, and the honest statement is that no
 
 **2. The routes the pass cannot reach moved by as much as the route it can.** §13.141.1 states the pass lives in
 `answerSessions`, so `IE`, `KU`, `TR` and `ABS` are byte-identical by construction. They moved +1.25, +0.75, +1.25
-and +0.25. That is a measurement of **this pair of dispatches' own churn on questions nothing touched**: about
-one question per capability, and it is the number any future increment has to beat before its own capability
-count means anything.
+and +0.25 -- in questions, 10 bought and 5 sold, a net of +5 that is the whole roster's net. That is a measurement
+of **this pair of dispatches' own churn on questions nothing touched**, about one question per capability, and it
+is the number any future increment has to beat before its own capability count means anything.
+
+On the one route the pass *can* reach, the split is sharper and §13.149 reads it: 2 of its 10 questions converted
+and 5 of the other 111 did, so the treated and untreated questions converted at 20.0% and 20.8%. The mean is zero
+not because the mechanism did nothing visible but because **a mean over 121 questions cannot see two**.
 
 **3. The reference pipeline moved further than the treatment did.** Its overall mean fell 45.15% -> 44.10%
 (**-5.25 questions**) and its MR mean fell 107.5 -> 103.0 (**-4.5 questions**) between the two dispatches, with
@@ -15453,28 +15464,36 @@ nets in the table (+2 IE, +2 TR) sit on capabilities the pass provably cannot re
 `node tools/ledger.mjs --control <control> --across recover=<this>` prints this table and the per-capability
 range overlap from the two artifacts; the run it reads is named on its first line.
 
-### 13.148.4 The mechanism's own census falsifies the size it was registered at
+### 13.148.4 The mechanism's own census reproduces its population and falsifies its conversion floor
 
-| | registered (§13.128.3) | measured over 4 runs | per run |
+| | registered (§13.141.5, after the route correction) | measured over 4 runs | per run |
 | --- | --- | --- | --- |
-| declines that contradict their own list | 13-17 per run | 33 | **8.25** |
-| converted to a correct answer | "at least 5 of the 16" | 4 | **1.0** |
-| conversion rate | -- | 12.1% | -- |
+| declines that contradict their own list | **10** per run (§13.141.2) | 33 | **8.25** |
+| returned an answer | "at least 4 of the 10" | 4 | **1.0** |
 
-Two separate failures, and they compound.
+Two things are true of this table and only one of them is a failure.
 
-**The population is half the size it was registered against.** The pass consulted 8.25 questions per run, not
-13-17. §13.141 derived 13-17 from three archived runs, and the archived runs carry `reviewPass: bare`, where the
-bare-decline retry fires *before* the recovery pass can see the same question -- 95 retries in this run against
-92 in the control. A question whose first reply is the bare token is *both* a bare decline and a decline with an
-empty list, and the two treatments claim it in different orders on different routes. That interaction was not
-in the registration and is the first thing a follow-up dispatch has to hold fixed.
+**The population is reproduced, not halved.** 8.25 consultations per run against a registered 10 is 0.82x, and
+the register's own decline census moves between repetitions (the control's first recorded repetition has 12 MR
+declines of which 10 carry a list). §13.149.1 recomputes the census from the control with the product's own
+predicates and gets 10, 1.60 mean items and 4 counting questions -- §13.128.1's table to the digit.
 
-**The conversions are an order of magnitude below the claim.** One question per run against "at least five of
-sixteen" is a factor of five, and against the 5.8-question floor it is a factor of six: **the dispatch could not
-have detected its own registered effect.** That is the finding worth keeping. An increment whose mechanism can
-move one question per run cannot be measured by a four-repetition cross-artifact comparison, no matter how the
-result is read -- and §13.145.3's resolution table said so before the run, in different words.
+**The conversion floor is missed by half.** The pass *answered* 4 of its 33 consultations, so it converted at
+most 4 questions over four runs against a registered floor of 4 per run. Since answering is necessary for
+converting, `answered` bounds conversions from above and the falsification needs no judge. §13.149.3 reads the
+conversions themselves, question by question, and the verdict there is stronger than "below the floor".
+
+The bare ladder's check belongs beside this: 95 retries in the treatment against 92 in the control. §13.141.1
+predicted that the pre-repair derivation would have withdrawn 92 consultations into this dispatch; 95 says the
+union repair held, and §13.141.3's test is why.
+
+**What this subsection said first, and why it was wrong.** Three numbers and one narrative were wrong here, and
+§13.149.5 records them: 13-17 (the capability census before §13.141.2, not the registered population), "5 of the
+16" (retired by §13.141.5 in favour of 4 of the 10), "the 5 counting questions" (that is the sixteen's count; the
+ten have 4), and the claim that the two passes "claim the same question in different orders on different routes",
+which contradicts the route table §13.141.1 established and §13.141.4 criterion 7 asserts by counting calls: the
+ladder is not wired into `multi-session` and the recovery pass is wired into nothing else, so they cannot compete
+for a question at all.
 
 ### 13.148.5 The bill, and what it settles
 
@@ -15551,15 +15570,238 @@ on is a measurement that ships untested.
 
 ### 13.148.7 What the next dispatch has to be
 
-P0 closes as **not separated, with zero observed effect and a mechanism that moves one question per run.** Three
-consequences, in the order they bind:
+P0 closes as **not separated, with zero observed effect and a mechanism whose population converts at the
+reader's own rate** (§13.149.3). Three consequences, in the order they bind:
 
-1. **`recover` cannot be measured at this sample size, and it is not worth a second dispatch on its own account.**
-   A mechanism worth 1.0 question per run needs a population that can resolve one question -- §13.145.3's
-   reachable ten, read as 0/4 -> 4/4 -- not 121 questions read as a mean.
+1. **`recover` closes, and it is not worth a second dispatch on its own account.** §13.149.3 measures its
+   population's conversion at 20.0% against a same-route base rate of 20.8%, so the honest reading of the
+   registered "4 of 10" is not "underpowered" but "the bar was set above a rate the mechanism does not have". A
+   second dispatch would be measuring the same base rate with four more pairings.
 2. **The next dispatch that measures anything on MR must carry the per-run grid and the per-question reach
    marks**, because this pair carries neither and the paired reading above is therefore one pairing of sixteen
-   possible ones.
+   possible ones. §13.149.6 states the design the grid makes possible: the pass's population converted against
+   **itself** in a pairing where it did not fire, which is the only counterfactual that does not lean on another
+   capability's rate.
 3. **The 5.8-question floor now has an empirical anchor**: an untreated side drifted 4.5 questions on MR between
    two dispatches whose recorded fields are identical. §13.145.3's arithmetic and the reference's behaviour agree,
    which is the first time that floor has been checked against a number rather than derived.
+
+## 13.149 The recovery pass converted its population at the reader's own rate, which is what no mechanism looks like
+
+§13.148 read `40883121464` as a dispatch: means, paired flow, bill. It deliberately did not read the one quantity
+this pass was built to move, because the artifact's record cannot be asked for it directly -- the population is a
+**predicate over a reply**, not a field, and the treatment's own record overwrites the reply that made a question
+reachable. This section builds the instrument that reads it, runs it on this pair, and reports what the pass
+actually did to the ten questions it can reach.
+
+The answer is not "it moved one question per run". It is **two of ten, against a base rate that expects 2.08 of
+ten**, which is the reading a mechanism has to beat to exist.
+
+### 13.149.1 The population, recomputed with the product's predicates
+
+`tools/recovery-reach.mjs` reads the control and calls `declinedItems` and `asksForCount` from `cortex-memory` --
+the same functions §13.128.1 counted with -- and prints the census by capability beside the route each capability
+answers on, taken from `evidenceRouteOf` rather than restated:
+
+| capability | route | questions | declines | listed | counting | mean items | reached |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| IE | `flat` | 150 | 1 | 0 | 0 | 0.00 | no |
+| **MR** | **`multi-session`** | **121** | **12** | **10** | **4** | **1.60** | **yes** |
+| KU | `knowledge-update` | 72 | 2 | 1 | 0 | 2.00 | no |
+| TR | `temporal` | 127 | 8 | 5 | 1 | 3.40 | no |
+| ABS | `abstention` | 30 | 29 | 0 | 0 | 0.00 | no |
+| roster | | 500 | 52 | 16 | 5 | | **10** |
+
+**This is §13.128.1's table to the digit** -- 16 questions in total, 10 of them on the one route the pass is
+wired into, mean 1.6 items on MR against a gold count of 3 to 10. A register whose population could not be
+reproduced two sections after it was counted would have a denominator nobody could check.
+
+### 13.149.2 Why the population has to come from the control, and what that costs
+
+`memory.ts` keeps the **last** thing the reader said when the pass consults a question and loses: the retry's own
+decline, which carries no list because the recovery prompt does not ask for one. Read from the treatment, the
+population therefore disappears:
+
+| | MR nulls | of those, carrying a Step 1 list |
+| --- | ---: | ---: |
+| control `40751394094` | 12 | **10** |
+| treatment `40883121464` | 10 | **0** |
+
+Two questions answered, eight declined a second time, and the two honest declines -- and **every trace of which
+question was reachable is gone**. The tool takes the population from the control for that reason, refuses a
+control whose population is empty, and refuses a population question the treatment does not carry; the second
+refusal is what stops an unpaired question's "no change" from being fabricated.
+
+The field that fixes this for future artifacts is `recoveryAttempted` (§13.146), which records the reach on the
+record itself. It does **not** replace this reading: the registration defined the population on the control's
+decline census, and a population recomputed from the treated side answers a different question -- "what did the
+pass consult" against "what could it have consulted". Both are worth having; only the second is the registered
+denominator.
+
+### 13.149.3 Two of ten, against a base rate that expects 2.08
+
+The ten questions, paired by id, with the answer the treatment returned:
+
+| question | items | counting | control | treatment | moved | answer |
+| --- | ---: | --- | --- | --- | --- | --- |
+| `dd2973ad` | 2 | no | wrong | **right** | **bought** | `2 AM` |
+| `9aaed6a3` | 1 | no | wrong | **right** | **bought** | `$0.75` |
+| `60bf93ed` | 1 | yes | wrong | wrong | unchanged | decline |
+| `e6041065` | 1 | no | wrong | wrong | unchanged | decline |
+| `d905b33f` | 1 | no | wrong | wrong | unchanged | decline |
+| `a4996e51` | 2 | yes | wrong | wrong | unchanged | decline |
+| `a1cc6108` | 1 | no | wrong | wrong | unchanged | decline |
+| `73d42213` | 2 | no | wrong | wrong | unchanged | decline |
+| `d6062bb9` | 2 | yes | wrong | wrong | unchanged | decline |
+| `37f165cf` | 3 | yes | wrong | wrong | unchanged | decline |
+
+Two converted. Both are non-counting questions, and both are the shape the retry is supposed to fix: the reader
+had listed the relevant item and declined anyway, and being shown its own list produced the answer.
+
+The question a conversion count cannot answer on its own is **what the same ten questions would have done without
+the pass**, and this pairing has a measurement for that. Every question on this route that the control answered
+wrongly is a question the reader could have got right on a second draw, and the pairing shows the rate:
+
+| group | questions | wrong in the control | wrong -> right | rate |
+| --- | ---: | ---: | ---: | ---: |
+| the pass's population | 10 | 10 | **2** | **20.0%** |
+| same route, untouched | 111 | 24 | 5 | **20.8%** |
+| the whole route | 121 | 34 | 7 | 20.6% |
+| IE | 150 | 10 | 3 | 30.0% |
+| TR | 127 | 27 | 6 | 22.2% |
+| KU | 72 | 11 | 1 | 9.1% |
+| ABS | 30 | 1 | 0 | 0.0% |
+
+**The treated questions converted at the untreated rate.** 20.0% against 20.8%, and the expected number of
+conversions under the base rate is 2.08 -- the measurement is 2, to two significant figures the mean of the
+distribution it is being compared against. `P(X >= 2 | 2.08) = 0.62`: the observed count is the *most* likely
+outcome of a reader that never received the treatment.
+
+Three consequences, and the third is the one that changes the roadmap:
+
+- **The pass is a second sample in effect.** Its own docstring argues the opposite -- quoting the reader's list
+  "makes this a correction of the first rather than a second sample" -- and §13.100.2 measured what a second
+  sample is worth (24 of 121 answers move). 20.0% against 20.8% says this pass delivers the second sample's rate
+  and charges a call for it.
+- **"Zero sold" is structural and therefore not evidence.** A decline is scored wrong on every capability whose
+  gold is not a decline, so answering it can only buy or leave it; §13.128.2's one-sided property is confirmed by
+  construction, not by this table. The roster-wide declined set does show 5 bought and 0 sold, which is the same
+  fact.
+- **The 4-of-10 bar was above the mechanism's own rate.** It is not that the dispatch was underpowered; it is
+  that the registered bar (40%) is twice the rate the population converts at (20%), and that rate is the
+  reader's.
+
+The limitation is stated rather than papered over: the base rate is another 24 questions on the same route in the
+same pairing, not the same ten questions on another draw. §13.149.6 states the instrument that would close it.
+
+### 13.149.4 The four registered claims, read
+
+| # | claim (§13.141.5, route-corrected from §13.128.3) | measured | verdict |
+| - | --- | --- | --- |
+| 1 | at least 4 of the 10 reachable questions convert to correct | **2** | **falsified** |
+| 2 | ABS does not move (29/30 question for question) | 0 bought, 0 sold of 30 | **holds** |
+| 3 | no question that did not decline changes verdict beyond the 5.0% reader floor | 24 of 448 = 5.36%, floor 22.4 +/- 9.2 | **holds** |
+| 4 | the counting questions are the ones most likely to convert | **0 of 4 counting, 2 of 6 not** | **falsified** |
+
+Claim 3 needs its arithmetic stated, because a 5.36% against a 5.0% floor looks like a failure and is not: the
+floor is an **estimate** from 379 questions (§13.127.2), so the comparison carries its spread. 22.4 expected
+flips with a standard deviation of 4.6 puts 24 inside one third of a standard deviation of the floor -- the
+reader's own noise, not the treatment's.
+
+Claim 4's falsifier was written before the run -- "zero of them convert while non-counting ones do" -- and that
+is exactly what happened. It is the sharpest of the four: the corrective prompt carries an extra paragraph for
+counting questions, and the four counting questions in the population converted **none**, while two of the six
+non-counting ones did. §13.128.3 expected the opposite and explained why (the list averages 1.6 items against a
+gold count of 3 to 10, so counting the list produces a specific wrong number rather than a recovery). That
+explanation survives its own test; the prediction it supported does not.
+
+### 13.149.5 Three numbers and one narrative this campaign published and then corrected
+
+§13.148.4 first reported this census as "the population is half the size it was registered against" and "the
+conversions are an order of magnitude below the claim", and both sentences were wrong. The record of what was
+wrong is worth more than the correction, because the error was a **stale quote** rather than a misreading:
+
+| what it said | what was true | why |
+| --- | --- | --- |
+| registered 13-17 per run | **10** per run | 13-17 is the module docstring's three-run figure across MR, TR **and** KU -- a capability census. §13.141.2 removed the six questions on routes the pass is not wired into and registered 10 |
+| "at least 5 of the 16" | "at least **4 of the 10**" | §13.141.5 restated the claim on the corrected population, and §13.147.1 was amended in the same dispatch |
+| "the 5 counting questions" | **4** | five is the sixteen's count; four are on the reachable ten |
+| "the bare ladder fires before the recovery pass can see the same question ... claimed in different orders on different routes" | the two passes **cannot** compete | §13.141.1 is a route table: the ladder is wired into `flat`/`temporal`/`assistant`/`knowledge-update` and explicitly not `multi-session`; the recovery pass is wired into `multi-session` only. §13.141.4 criterion 7 asserts the disjointness by counting calls across two routes |
+
+The fourth is the one that matters, because it was not a stale number but a **new narrative** that contradicted a
+section two documents earlier that carries a passing test. 95 bare retries in the treatment against 92 in the
+control is not evidence of two mechanisms competing for a question; it is evidence that §13.141.3's union repair
+held, since the pre-repair derivation would have withdrawn all 92.
+
+**The rule: a section that quotes a number quotes the section that derived it, and names the derivation's
+correction when there is one.** §13.147.1 cited §13.141 for 13-17; §13.141.2 had already replaced it with 10 in
+the same section the citation pointed at. Both numbers were in the document, and the quotation kept the older
+one.
+
+### 13.149.6 What would make this decidable, and why it is not worth buying
+
+The registered design is a sieve and its arithmetic is sound. At the base rate of 0.208 per question, a
+population of 10 converts 2.08 per repetition; the bar is 4, so a single repetition clears it by chance
+`P = 0.158`. Pooled over the four repetitions the arm already runs, `lambda = 8.3` and the bar is 16, which
+chance clears with `P = 0.011`. **A sieve at 1% false positive is a good sieve.**
+
+What it has no power against is the mechanism it is aimed at: at the measured rate the pooled expectation is
+8.3, so the probability of clearing 16 is indistinguishable from zero. The population would have to convert at
+**192% of its own base rate** for this design to read a pass. No re-ask mechanism was ever going to do that, and
+the number that says so is 2.08.
+
+So the design worth building is not a bigger sieve, it is a **paired counterfactual on the population itself**:
+
+- **Within one treatment artifact**, identify the questions consulted in repetition *k* (`recoveryAttempted`,
+  §13.146) and read their outcomes in the repetitions where the pass did **not** consult them -- the same
+  questions, the same route, the same reader, the same dispatch, with and without the mechanism. That is the only
+  counterfactual in this campaign that does not lean on another capability's rate or another dispatch's drift.
+- **The grid is what makes it readable** (`cedc847`), and the reach marks are what make the population
+  identifiable per repetition (`4f013cb`). Both shipped after this pair was dispatched, which is why this section
+  is one pairing of sixteen possible ones.
+- **The bar would be the population's own unconsulted rate**, not a number chosen in advance: if the pass
+  converts 2 of 10 while those same ten convert 0 of 10 in an untreated repetition, that is a mechanism; if they
+  convert 2 of 10 either way, it is a re-roll.
+
+**This is registered as the design, and not as the next dispatch.** The prior from §13.149.3 is that it would
+read the base rate, and a dispatch whose expected information is one already-measured rate is the measurement
+§13.148.6 refuses to build. `recover` closes here: not because it is unmeasurable, but because it has been
+measured, and what it does to its population is what the reader does on its own.
+
+### 13.149.7 The tool, and its acceptance criteria
+
+`tools/recovery-reach.mjs`, invoked as
+
+```
+node tools/recovery-reach.mjs --control <report.json> --treatment <report.json> [--json]
+```
+
+| # | criterion | test (`tools/__tests__/test_recovery_reach.py`) |
+| - | --- | --- |
+| 1 | the population is the product's predicate, not a copy of it | `test_counts_a_listed_decline_and_not_the_shapes_that_only_look_like_one` -- an absence-opener bullet and a bare decline are both excluded |
+| 2 | the reach is a route, not a capability name | `test_the_population_is_the_route_and_not_the_capability_name` -- an identical listed decline on `TR` is not in the population but is in the census |
+| 3 | the population is read from the control | `test_the_population_comes_from_the_control_because_the_treatment_overwrote_the_reply` -- 2, not 0, when the treatment overwrote both replies |
+| 4 | a net never stands in for a flow | `test_a_purchase_and_a_loss_are_both_named_because_a_net_hides_a_cancellation` |
+| 5 | the route the pass cannot reach is split out | `test_the_route_it_cannot_reach_is_split_out_from_every_other_capability` |
+| 6 | claim 1 is a floor of four, and the boundary is inclusive | `..._falsified_when_the_pass_converts_fewer_than_four`, `..._holds_at_four` |
+| 7 | claim 3 is compared against the floor's spread, not its point value | `test_a_flow_inside_the_readers_own_spread_is_not_called_a_falsification` |
+| 8 | claim 4 is falsified by its own stated falsifier | `test_the_counting_claim_is_falsified_by_its_own_stated_falsifier` |
+| 9 | the same file twice is refused | `test_refuses_the_same_file_twice` |
+| 10 | an unpaired population question is refused | `test_refuses_a_population_question_the_treatment_does_not_carry` |
+| 11 | an absent `answer` is not a decline | `test_refuses_an_absent_answer_field_because_absent_is_not_a_decline` |
+| 12 | a non-boolean verdict is refused | `test_refuses_a_verdict_that_is_not_a_boolean` |
+| 13 | an empty population is a wrong control | `test_refuses_a_control_with_no_reachable_population` |
+| 14 | `attempted: 0` against a non-empty population is an assembly failure | `test_a_treatment_that_consulted_nothing_is_an_assembly_failure_not_a_reading` -- exit 1, not 2 |
+| 15 | the machine and human readings carry the same population | `test_json_mode_carries_the_same_numbers_as_the_text` |
+
+Mutation, stated so a later refactor cannot silently pass: replacing `declinedItems` with a local copy of the
+bullet regex fails criterion 1 (the absence-opener); reading the population from the treatment fails criterion 3;
+replacing the gross flow with a net fails criterion 4; comparing claim 3 to `5.0%` as a point value fails
+criterion 7 on the flow `5.05%` in the fixture.
+
+### 13.149.8 The rule this adds
+
+**A treatment that can only fire on questions already scored wrong has a countable numerator and no denominator,
+so its population's own conversion rate is the reading and the roster mean is not.** The corollary is the one
+this campaign needed earlier: for such a treatment, **the counterfactual is the same questions without the
+treatment**, and any comparison against `0` is comparing against a number the reader does not obey.
