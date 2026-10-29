@@ -13614,3 +13614,77 @@ expected [ 'flat', 'multi-session', 'temporal' ] to deeply equal [ 'flat' ]
 
 which is the exact three-route movement that cost 48 MR and 12 TR questions. Eleven other cases stay
 green, so the failure names the ask rather than the table.
+
+## 13.131 The ledger's baseline is not the control's, and the prediction it was asked to test could not be answered
+
+### 13.131.1 What the tool computes, read against what §13.125.6 predicted
+
+§13.125.6 registered a prediction about the two asks:
+
+> The two asks reach different routes — `silent` changes the *multi-session* block, `answer-line` changes the
+> *flat* block — so their purchases should be **disjoint**. A non-empty `doubleCounted` after both land would
+> mean a question's verdict moved under an instruction aimed at another route.
+
+Run against the two artifacts on disk, the instrument answers:
+
+| quantity | value |
+| --- | ---: |
+| `silent` bought / sold | 233 / 52 |
+| `answer-line` bought / sold | 215 / 86 |
+| distinct bought (union) | 240 |
+| sum of purchases | 448 |
+| **double-counted** | **208** |
+| conflicting (bought by one, sold by the other) | 2 (`dd2973ad`, `b46e15ee`) |
+
+208 of 448, and it is **not** a route-isolation finding. `ledgerOf` reads `discordantQuestions`, which every
+report writes as **feature versus its own `reference-pipeline` baseline inside one run** — not treatment
+versus control across runs. The two increments therefore share a baseline that is the reference arm, and both
+of them beat that arm on the same questions: IE, KU and TR are where the arm wins, and each arm wins them
+independently. An overlap of 208 is the expected consequence of two runs of nearly the same configuration
+being compared with the same third party.
+
+**The prediction was registered against a pair the tool does not compute.** That is the finding, and it is a
+defect of the registration rather than of the instrument: the sentence "their purchases should be disjoint"
+is only meaningful for purchases measured against **one** shared control, and `discordantQuestions` was never
+that.
+
+### 13.131.2 What the cross-run pair actually gives
+
+`answer-line` (`40807829150`) against `enumerated` (`40751394094`), question by question:
+
+| | bought | sold | net |
+| --- | ---: | ---: | ---: |
+| IE | 1 | 13 | −12 |
+| MR | 3 | 51 | −48 |
+| KU | 6 | 1 | +5 |
+| TR | 4 | 16 | −12 |
+| ABS | 0 | 0 | 0 |
+| **roster** | **14** | **81** | **−67** |
+
+Two things this table says that the aggregate could not:
+
+- **The 14 purchases are not where the treatment was aimed.** IE — the route the guard changes — bought **1**
+  question and sold **13**. The purchases are 6 KU, 4 TR and 3 MR, i.e. the reader-noise floor: KU's prompts
+  are byte-identical and it moved 7 questions in both directions.
+- **The sold column is concentrated where the fallthrough was**: 51 of 81 are MR, which is the route that lost
+  its block.
+
+### 13.131.3 The rule this adds
+
+**A portfolio is only meaningful over increments measured against the same control run, and the tool must not
+be able to add two increments without saying which baseline each was measured against.** `discordantQuestions`
+records one pair and names neither member; two artifacts' lists are commensurable only if their control is the
+same run.
+
+The registered repair, before the next portfolio is read:
+
+| # | requirement | falsified by |
+| - | ----------- | ------------ |
+| 1 | `tools/ledger.mjs` accepts a **cross-run pair** (`--across arm=<report> --control=<report>`) and computes bought/sold by question id | it cannot express the table in §13.131.2 |
+| 2 | a portfolio that mixes a within-run increment and a cross-run one is **refused by name** | it prints a union |
+| 3 | the tool prints the control's identity per increment (`generatedAt` plus the capability totals), so a reader can see the two lists came from one baseline | any portfolio whose printed baselines differ |
+
+Until that lands, no additivity claim is made in either document, and the two increments are reported as what
+they are: **both negative against the same control**, so there is nothing to add. The additivity question
+becomes live again only when an increment is positive, which is the same condition §13.125 was written to
+serve.
