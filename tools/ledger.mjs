@@ -259,13 +259,24 @@ function verdictsOf(file) {
     // Absent is not zero here either: a report that predates the field cannot be read as "nothing was treated".
     promptChars.set(id, typeof question.promptChars === 'number' ? question.promptChars : null);
   }
+  // The four-run distribution, when the report carries one. `questions[]` is the FIRST repetition, so every
+  // pairing this tool computes is a pairing of one draw against one draw -- the noisiest comparison the
+  // artifact supports. The means were in the same file the whole time.
+  const spread = spreadOf(parsed);
   // The raw records, so a split can be declared on any field rather than only on the character count.
   const records = new Map();
   for (const question of questions) {
     const id = typeof question?.questionId === 'string' ? question.questionId : null;
     if (id !== null) records.set(id, { ...question });
   }
-  return { verdicts, promptChars, records, generatedAt: parsed.generatedAt ?? 'unknown', questions };
+  return {
+    verdicts,
+    promptChars,
+    records,
+    spread,
+    generatedAt: parsed.generatedAt ?? 'unknown',
+    questions,
+  };
 }
 
 /**
@@ -303,7 +314,123 @@ function acrossIncrement(label, file, control) {
       baselineCorrectFeatureIncorrect: sold,
     },
   });
-  return { ledger, generatedAt: arm.generatedAt, split: splitOf(ids, control, arm, bought, sold, treatedSpec) };
+  return {
+    ledger,
+    generatedAt: arm.generatedAt,
+    split: splitOf(ids, control, arm, bought, sold, treatedSpec),
+    spread: { control: control.spread, arm: arm.spread },
+  };
+}
+
+/**
+ * The four-run distribution a report carries, as `{overall, byCapability}` of `{min, avg, max}`.
+ *
+ * ## Why this is read at all
+ *
+ * `questions[]` holds **one draw per question** — the first repetition — so every paired delta this tool
+ * prints is one draw against one draw, which is the noisiest comparison a four-run artifact supports. Run
+ * `40859499624` is what made that concrete: its first-repetition pair read MR 87 → 81, and its own four
+ * repetitions ranged 83–89 and 81–87, so the −6 was inside a single configuration's spread and the mean
+ * difference was −3.5. A reader holding only the paired delta would have called a null a regression.
+ *
+ * The distributions are already in the artifact (`ablation.featureAggregate` and
+ * `ablation.featureByCapability`). Reading them here costs nothing and makes the resolution visible next to
+ * the delta it qualifies.
+ *
+ * ## Why a malformed distribution is dropped rather than repaired
+ *
+ * Same rule as `recoveryOf` in `cortex-eval`: a distribution that is present but wrong would let a reader
+ * price a delta against a spread no run produced. `null` means "this report does not carry one", which is a
+ * different statement from "the spread is zero".
+ */
+function spreadOf(parsed) {
+  const ablation = parsed?.ablation;
+  if (ablation === null || typeof ablation !== 'object') return null;
+  const clean = (node) => {
+    if (node === null || typeof node !== 'object') return null;
+    const { min, avg, max } = node;
+    for (const value of [min, avg, max]) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    }
+    return { min, avg, max };
+  };
+  const overall = clean(ablation.featureAggregate);
+  const byCapability = new Map();
+  const table = ablation.featureByCapability;
+  if (table !== null && typeof table === 'object') {
+    for (const [capability, node] of Object.entries(table)) {
+      const value = clean(node);
+      if (value !== null) byCapability.set(capability, value);
+    }
+  }
+  if (overall === null && byCapability.size === 0) return null;
+  return { overall, byCapability };
+}
+
+/** A spread as plain JSON, or `null` when the report carried none. */
+function serialiseSpread(spread) {
+  if (spread === null) return null;
+  return {
+    overall: spread.overall,
+    byCapability: Object.fromEntries([...spread.byCapability.entries()].sort()),
+  };
+}
+
+/**
+ * Whether one distribution's range overlaps another's.
+ *
+ * The honest test of "did these two runs disagree" when each carries four repetitions: if the ranges overlap,
+ * a difference of means inside them is not a separation, and a paired delta of one draw each cannot supply one.
+ */
+function rangesOverlap(a, b) {
+  if (a === null || b === null) return null;
+  // The overall aggregate is a rate; the per-capability figures are counts. Comparing them to each other
+  // would need a conversion, and a conversion is where a reader stops being able to check the arithmetic.
+  const scale = a.max <= 1.0000001 && b.max <= 1.0000001 ? 100 : 1;
+  const [aLow, aHigh] = [a.min * scale, a.max * scale];
+  const [bLow, bHigh] = [b.min * scale, b.max * scale];
+  return aLow <= bHigh && bLow <= aHigh;
+}
+
+/** The per-capability distributions, printed side by side with the paired delta they qualify. */
+function spreadLines(label, controlSpread, armSpread) {
+  if (armSpread === null) {
+    return [
+      `      ${label}: this report carries no per-run distribution, so the delta above is one draw against one draw`,
+    ];
+  }
+  const out = [];
+  if (controlSpread === null) {
+    out.push(`      ${label}: the control carries no per-run distribution`);
+    return out;
+  }
+  const rows = [];
+  for (const [capability, arm] of [...armSpread.byCapability.entries()].sort()) {
+    const control = controlSpread.byCapability.get(capability);
+    if (control === undefined) continue;
+    const overlap = rangesOverlap(control, arm);
+    rows.push(
+      `        ${capability}: control ${control.avg.toFixed(2)} (${control.min}-${control.max}), ` +
+        `${label} ${arm.avg.toFixed(2)} (${arm.min}-${arm.max})` +
+        (overlap === true ? ' -- ranges OVERLAP' : ''),
+    );
+  }
+  if (rows.length > 0) {
+    out.push(
+      '      per-capability means over all repetitions, which is the comparison the delta above is not:',
+    );
+    out.push(...rows);
+  }
+  if (armSpread.overall !== null && controlSpread.overall !== null) {
+    out.push(
+      `      overall mean: control ${(100 * controlSpread.overall.avg).toFixed(2)}% ` +
+        `(${(100 * controlSpread.overall.min).toFixed(1)}-${(100 * controlSpread.overall.max).toFixed(1)}), ` +
+        `${label} ${(100 * armSpread.overall.avg).toFixed(2)}% ` +
+        `(${(100 * armSpread.overall.min).toFixed(1)}-${(100 * armSpread.overall.max).toFixed(1)}), ` +
+        `delta ${(100 * (armSpread.overall.avg - controlSpread.overall.avg)).toFixed(2)} points`,
+    );
+  }
+  return out;
 }
 
 /**
@@ -344,7 +471,11 @@ function splitOf(ids, control, arm, bought, sold, spec) {
     }
     const before = control.promptChars.get(id);
     const after = arm.promptChars.get(id);
-    return before === null || after === null ? 'unknown' : before === after ? 'untouched' : 'treated';
+    return before === null || after === null
+      ? 'unknown'
+      : before === after
+        ? 'untouched'
+        : 'treated';
   };
   for (const id of ids) {
     const bucket = bucketOf(id);
@@ -391,7 +522,16 @@ if (asJson) {
         // of a pair and not of a run.
         ...(acrossMode
           ? {
-              reach: readings.map((reading) => ({ label: reading.ledger.label, ...reading.split })),
+              reach: readings.map((reading) => ({
+                label: reading.ledger.label,
+                ...reading.split,
+                spread: reading.spread
+                  ? {
+                      control: serialiseSpread(reading.spread.control),
+                      arm: serialiseSpread(reading.spread.arm),
+                    }
+                  : null,
+              })),
             }
           : {}),
       },
@@ -421,7 +561,17 @@ for (const reading of readings) {
   );
   if (increment.bought.length > 0) lines.push(`    bought: ${increment.bought.join(', ')}`);
   if (increment.sold.length > 0) lines.push(`    sold:   ${increment.sold.join(', ')}`);
-  if (reading.split) lines.push(...splitLines(reading.split));
+  if (reading.split) {
+    const overlap = reading.spread
+      ? rangesOverlap(reading.spread.control?.overall ?? null, reading.spread.arm?.overall ?? null)
+      : null;
+    lines.push(...splitLines(reading.split, overlap));
+  }
+  // After the split, because the split says WHICH questions moved and this says whether the amount they
+  // moved is larger than the run's own repetitions. A delta printed without the second is a number a reader
+  // has no way to price.
+  if (reading.spread)
+    lines.push(...spreadLines(increment.label, reading.spread.control, reading.spread.arm));
 }
 
 /**
@@ -434,7 +584,7 @@ for (const reading of readings) {
  * untouched bucket's own bought and sold rates predict for that many questions -- and never as a p-value,
  * because 34 questions do not support one.
  */
-function splitLines(split) {
+function splitLines(split, overlap = null) {
   const out = [];
   const net = (bucket) => bucket.bought - bucket.sold;
   // The definition is printed, not assumed. A reader who knows only that "the split was computed" will
@@ -502,12 +652,20 @@ function splitLines(split) {
     // throw away the only thing a regression can be -- which is what a reader of §13.143 needs to see.
     out.push(
       '      NO GAIN: the treated questions did not move up more than the untouched ones, so this net is ' +
-        'not evidence of a benefit' + (excess < 0 ? '' : ' whatever its sign'),
+        'not evidence of a benefit' +
+        (excess < 0 ? '' : ' whatever its sign'),
     );
     if (excess < 0) {
+      // Two very different claims share this arithmetic. Without the runs' own repetition ranges, a negative
+      // excess is the only signal available and it is worth stating as a regression. With them, and with the
+      // ranges overlapping, the same number is a draw-to-draw fluctuation and calling it a regression is
+      // exactly the misreading §13.143.4 records -- so the sentence changes when the ranges overlap.
       out.push(
-        '      and the excess is NEGATIVE: the treatment moved its own population down by more than the ' +
-          'untouched rate predicts, which is a regression and not a null',
+        overlap === true
+          ? "      the excess is negative on THIS PAIR OF DRAWS, but the two runs' repetition ranges " +
+              'overlap (below), so it is not a separation'
+          : '      and the excess is NEGATIVE: the treatment moved its own population down by more than the ' +
+              'untouched rate predicts, which is a regression and not a null',
       );
     }
   }

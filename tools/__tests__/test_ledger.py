@@ -571,3 +571,147 @@ def test_json_carries_the_definition_the_buckets_were_cut_by(tmp_path: Path) -> 
     parsed = json.loads(completed.stdout)
     assert parsed["reach"][0]["treatedBy"] == "capability in {MR}"
     assert parsed["reach"][0]["treated"]["questions"] == 1
+
+
+def roster_with_spread(
+    rows: dict[str, tuple[bool, str]], by_capability: dict[str, tuple[float, float, float]], overall: tuple[float, float, float]
+) -> dict:
+    """A report carrying the four-run distribution, which is the comparison a paired delta is not."""
+    return {
+        "dataset": "longmemeval/s/500",
+        "questionCount": len(rows),
+        "generatedAt": "2026-10-30T00:00:00.000Z",
+        "ablation": {
+            "featureAggregate": {"min": overall[0], "avg": overall[1], "max": overall[2]},
+            "featureByCapability": {
+                capability: {"min": low, "avg": avg, "max": high}
+                for capability, (low, avg, high) in by_capability.items()
+            },
+        },
+        "questions": [
+            {"questionId": question, "correct": correct, "capability": capability}
+            for question, (correct, capability) in rows.items()
+        ],
+    }
+
+
+def test_the_reading_prints_the_per_capability_means_beside_the_paired_delta(tmp_path: Path) -> None:
+    """
+    THE CASE RUN `40859499624` FORCED, AND THE ONE THAT CHANGED ITS VERDICT.
+
+    The first-repetition pair read MR 87 → 81 and the run looked like a regression. Its own four repetitions
+    ranged 83–89 and 81–87, so the two configurations overlap and the mean difference is −3.5. A tool that
+    prints only the paired delta reports a difference a reader cannot price.
+    """
+    control = roster_with_spread(
+        {"a": (True, "MR"), "b": (False, "MR"), "c": (True, "IE"), "d": (True, "IE")},
+        {"MR": (83, 86.5, 89), "IE": (139, 140.25, 142)},
+        (0.834, 0.842, 0.848),
+    )
+    arm = roster_with_spread(
+        {"a": (False, "MR"), "b": (True, "MR"), "c": (True, "IE"), "d": (True, "IE")},
+        {"MR": (81, 83, 87), "IE": (141, 142.5, 145)},
+        (0.838, 0.8415, 0.85),
+    )
+
+    completed = run_across(tmp_path, {"derive": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "per-capability means over all repetitions" in completed.stdout
+    assert "MR: control 86.50 (83-89), derive 83.00 (81-87) -- ranges OVERLAP" in completed.stdout
+    assert "overall mean: control 84.20%" in completed.stdout
+    assert "delta -0.05 points" in completed.stdout
+
+
+def test_overlapping_ranges_take_the_regression_wording_back(tmp_path: Path) -> None:
+    """
+    A negative excess on one pair of draws is a regression only if the runs themselves separate. When their
+    repetition ranges overlap, the same arithmetic is a fluctuation, and the sentence has to change with it.
+    """
+    # Both MR questions are sold and one untouched question is sold too, so the excess is negative (-1) while
+    # the two runs' overall ranges overlap -- the exact pair of facts run `40859499624` produced.
+    control = roster_with_spread(
+        {"a": (True, "MR"), "b": (True, "MR"), "c": (True, "IE"), "d": (True, "IE")},
+        {"MR": (2, 2, 2), "IE": (139, 140.25, 142)},
+        (0.48, 0.5, 0.52),
+    )
+    arm = roster_with_spread(
+        {"a": (False, "MR"), "b": (False, "MR"), "c": (True, "IE"), "d": (False, "IE")},
+        {"MR": (0, 0.5, 1), "IE": (141, 142.5, 145)},
+        (0.49, 0.51, 0.53),
+    )
+
+    completed = run_across(tmp_path, {"derive": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "the excess is negative on THIS PAIR OF DRAWS" in completed.stdout
+    assert "it is not a separation" in completed.stdout
+    assert "which is a regression and not a null" not in completed.stdout
+
+
+def test_separated_ranges_keep_the_regression_wording(tmp_path: Path) -> None:
+    """The other branch: when the ranges do not overlap, the negative excess is a regression and says so."""
+    control = roster_with_spread(
+        {"a": (True, "MR"), "b": (True, "MR"), "c": (True, "IE"), "d": (True, "IE")},
+        {"MR": (2, 2, 2), "IE": (2, 2, 2)},
+        (0.99, 1.0, 1.0),
+    )
+    arm = roster_with_spread(
+        {"a": (False, "MR"), "b": (False, "MR"), "c": (True, "IE"), "d": (False, "IE")},
+        {"MR": (0, 0, 0), "IE": (1, 1, 1)},
+        (0.45, 0.5, 0.55),
+    )
+
+    completed = run_across(tmp_path, {"derive": arm}, control, ["--treated", "capability=MR"])
+
+    assert completed.returncode == 0, completed.stderr
+    assert "which is a regression and not a null" in completed.stdout
+    assert "ranges OVERLAP" not in completed.stdout
+
+
+def test_a_report_without_a_distribution_says_the_delta_is_one_draw(tmp_path: Path) -> None:
+    """
+    `questions[]` is the first repetition, so a report that carries no distribution supports only the
+    noisiest comparison. Saying which one it is costs a line and prevents the delta being read as a mean.
+    """
+    control = roster_with_prompts({"q1": (True, 100), "q2": (False, 100)})
+    arm = roster_with_prompts({"q1": (False, 200), "q2": (True, 100)})
+
+    completed = run_across(tmp_path, {"sweep": arm}, control)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "carries no per-run distribution, so the delta above is one draw against one draw" in completed.stdout
+
+
+def test_json_carries_both_distributions(tmp_path: Path) -> None:
+    """A later reader recomputes the overlap from the JSON, so both sides have to be in it."""
+    control = roster_with_spread({"a": (True, "MR")}, {"MR": (1, 1, 1)}, (0.834, 0.842, 0.848))
+    arm = roster_with_spread({"a": (False, "MR")}, {"MR": (0, 0, 0)}, (0.6, 0.7, 0.8))
+
+    control_path = tmp_path / "control.json"
+    control_path.write_text(json.dumps(control), encoding="utf-8")
+    arm_path = tmp_path / "arm.json"
+    arm_path.write_text(json.dumps(arm), encoding="utf-8")
+    completed = subprocess.run(
+        [
+            "node",
+            str(TOOL),
+            "--control",
+            str(control_path),
+            "--across",
+            f"derive={arm_path}",
+            "--treated",
+            "capability=MR",
+            "--json",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    parsed = json.loads(completed.stdout)["reach"][0]["spread"]
+    assert parsed["control"]["byCapability"]["MR"] == {"min": 1, "avg": 1, "max": 1}
+    assert parsed["arm"]["overall"]["avg"] == 0.7

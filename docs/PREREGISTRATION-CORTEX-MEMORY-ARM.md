@@ -14815,35 +14815,32 @@ prompt *changed*.
 
 So the sentence moved, on every question, and nothing else did. What follows is a reading of what moving it cost.
 
-### 13.143.2 The result
+### 13.143.2 The result, and the comparison that had to be redone
 
-| capability | n | control | derive | net | won | lost |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| IE | 150 | 140 | 142 | +2 | 5 | 3 |
-| **MR** | **121** | **87** | **81** | **−6** | 6 | 12 |
-| TR | 127 | 100 | 105 | +5 | 9 | 4 |
-| KU | 72 | 61 | 62 | +1 | 4 | 3 |
-| ABS | 30 | 29 | 29 | 0 | 0 | 0 |
-| **total** | 500 | 417 | 419 | **+2** | 24 | 22 |
+The first read of this run compared **first repetitions** — the practice every earlier section in this document
+follows — and reported MR 87 → 81. The artifact also carries the **four-run distribution per capability**, and
+reading it changes what the difference is:
 
-The treated capability lost six questions and the three untouched ones gained eight between them. Every criterion
-in §13.132.5 except the two mechanism rows fails:
+| capability | n | control rep 1 | derive rep 1 | control mean (min–max) | derive mean (min–max) | Δ mean |
+| --- | ---: | ---: | ---: | --- | --- | ---: |
+| IE | 150 | 140 | 142 | 140.25 (139–142) | 142.50 (141–145) | +2.3 |
+| **MR** | **121** | **87** | **81** | **86.50 (83–89)** | **83.00 (81–87)** | **−3.5** |
+| TR | 127 | 100 | 105 | 102.50 (100–105) | 103.25 (101–105) | +0.8 |
+| KU | 72 | 61 | 62 | 62.75 (61–64) | 63.00 (62–64) | +0.3 |
+| ABS | 30 | 29 | 29 | 29.00 (29–29) | 29.00 (29–29) | 0 |
+| **overall** | 500 | 83.40% | 83.80% | **84.20%** (83.4–84.8) | **84.15%** (83.8–85.0) | **−0.05pp** |
 
-| # | threshold | reading | |
-| --- | --- | --- | --- |
-| 1 | `promptChars` equal on 121 MR records | 121/121 equal | **pass** |
-| 2 | MR declines 12 → ≤ 7 | 12 → **11** | fail |
-| 3 | ≥ 5 of the 10 winnable convert | **3** converted, MR 87 → 81 | fail |
-| 4 | MR ≥ 76.0% | **66.94%** | fail |
-| 5 | ≤ 5 MR decline replies carry the refusal phrases (control: "12 of 12") | **8 of 11**, against **8 of 12** in the control | fail |
-| 6 | IE/KU/TR/ABS prompts identical | 379/379 identical | **pass** |
-| 7 | overall mean ≥ 84.2 | **83.80** | fail |
+Three facts follow, and the first one is about the instrument rather than the treatment:
 
-Criterion 5's baseline did not reproduce and that is worth recording separately: the control's twelve MR declines
-carry one of the six registered phrases in **eight** cases, not twelve. The phrase list is a crude instrument
-(`d6062bb9`, `157a136e`, `c18a7dc8` and `37f165cf` phrase their refusals as *"No item in the evidence states…"*),
-so the criterion was registered against a baseline nobody had counted. It fails either way — 8 → 8 is not a fall —
-but the registered "12 of 12" is a number this document should not keep.
+1. **Four repetitions of ONE configuration span six questions on MR** — the control alone ranges 83–89. The
+   difference this run produced is −3.5 on the mean, and **the derive distribution's top (87) is inside the
+   control's range (83–89)**. The two configurations are not distinguishable on MR by this design.
+2. **The overall means differ by 0.05 points** (84.20% against 84.15%, i.e. a quarter of a question), while the
+   first-repetition pair read +2. The +2 was the noisiest available comparison and it is not the run's result.
+3. **Every registered threshold still fails**, because the thresholds were set on first-repetition numbers: MR
+   declines 12 → 11 (≤7 wanted), 3 of the 10 winnable converted (≥5 wanted), MR 83.0/121 = 68.6% on the mean
+   (< 76.0% wanted), overall mean 84.15% (< 84.2 wanted). A refutation does not need a sign test — but the *reason*
+   for it is "no movement at this resolution", not "six questions lost".
 
 ### 13.143.3 The attribution, which the instrument could not compute until it was repaired
 
@@ -14855,45 +14852,50 @@ reached 121. The tool now takes the population from the mechanism (`--treated ca
     split by capability in {MR}
   treated   : 121 questions, bought 6, sold 12, net -6
   untouched : 379 questions, bought 18, sold 10, net +8
-    the untouched bucket is this pair's own noise realisation, at 2.11% net per question, so
-    121 treated questions would move +2.6 by themselves; the treatment's excess is -8.6 question(s)
+    ... the treatment's excess is -8.6 question(s)
     flip rate: treated 14.9% (18/121), untouched 7.4% (28/379)
-    NO GAIN: the treated questions did not move up more than the untouched ones...
+    NO GAIN ...
     and the excess is NEGATIVE: ... a regression and not a null
 ```
 
-**−8.6 questions of excess**, and the flip rates are the more informative pair: the treated questions moved
-**twice as often** as the untouched ones (14.9% against 7.4%) while moving in the wrong direction.
+That reading is correct **for the first repetition**, which is what the tool pairs on, and it is the reading that
+made the means worth computing: −8.6 questions of excess on one draw, against a within-configuration range of six
+questions on MR alone. The tool's own docblock says a paired delta is a pairing of draws; this run is the case that
+makes that limit visible, and §13.144 records the repair.
 
 ### 13.143.4 What this run actually measured, which is bigger than the sentence it was about
 
-The sentence is dead: moving the merging licence adjacent to the closing sentence does not work, and no reading
-here supports re-registering it in another position. What survives is a measurement about the **instrument**:
+The sentence is dead — not because it lost six questions, but because **it moved nothing that this design can
+resolve**: MR −3.5 of 121 on the mean with the two ranges overlapping, and the overall mean flat to a quarter of a
+question. What survives is a measurement about the **instrument**, and it is worth more than the sentence:
 
-**MR's verdicts are order-sensitive.** Two runs whose MR prompts have identical length, identical evidence,
-identical instruction text and only a different **order** inside the block disagree on **18 of 121 questions**
-(14.9%). The untouched capabilities, which read byte-identical prompts, disagree on 28 of 379 (7.4%) — the same
-rate §13.135 measured at 33 of 466 (7.08%). So the permutation **doubled** the reader's instability on the one
-capability it touched.
+**A row permutation flips 18 of 121 MR verdicts (14.9%) between two runs whose prompts differ in no other way.**
+The untouched capabilities, which read byte-identical prompts, flip 28 of 379 (7.4%) — the rate §13.135 measured
+at 33 of 466 (7.08%). So the permutation **doubled the per-draw instability** on the one capability it touched,
+without moving the mean.
 
-Three consequences, and the third is the expensive one:
+Four consequences:
 
-1. **MR's resolution is about ±10 questions.** A 121-question capability with an 18-question flip rate cannot
-   resolve an effect smaller than roughly 10 questions (8.3 points) in one dispatch. Every MR prediction from here
-   states a floor above that or runs more repetitions.
-2. **The ±6 question band of §13.122.2 is a lower bound, not the resolution.** That band was measured on routes
-   whose prompts were byte-identical; on MR, where the prompt is a two-block document, the reader's own variance
-   rises with the amount of structure the renderer puts in front of it.
-3. **§13.133's prompt-axis pricing is void on MR.** That section priced three prompt-editing rules at +1.3
-   questions combined, and this run shows that a text edit reaching MR cannot be resolved at all in one dispatch:
-   +1.3 sits inside a ±10 noise band. The pricing stands for the routes it was measured on and must not be
-   extrapolated to the capability with the largest prompt.
+1. **Per-draw flip rate is not the resolution of a reported mean.** 18 flips on 121 questions gives a per-draw net
+   with a standard deviation of about four questions; averaged over the four repetitions the report already
+   carries, the resolution of the **mean** is about ±3 questions. Conflating the two — which this section did in
+   its first draft, before the distributions were read — overstates the noise by a factor of three and would have
+   declared a null a regression.
+2. **First-repetition comparisons are the noisiest comparison available, and this campaign has been making them.**
+   §13.129.1, §13.132.5 and §13.133 all quote first-repetition numbers because `questions[]` carries one draw per
+   question. The per-capability means were in the same artifact the whole time.
+3. **MR is order-sensitive at 14.9% per draw**, which is the strongest statement this run supports and is three
+   times the reader's byte-identical instability. Any MR treatment whose effect is a few questions still needs the
+   mean, and any MR treatment that is a *reordering* needs the mean plus a reason to believe order does not simply
+   add variance.
+4. **§13.133's prompt-axis pricing is priced per draw, not per mean.** Its +1.3 questions is below the per-draw
+   resolution and near the mean's; it stands for the routes it measured and remains unread on MR.
 
 ### 13.143.5 What this does not license
 
-**It does not license "the licence sentence is fine where it was."** The move lost six questions; the position it
-moved *from* is still the position that lost those six, and §13.56's rule — a reader that lists items and then
-declines — is still the largest single block of MR loss. What died is *this* edit, not the diagnosis.
+**It does not license "the licence sentence is fine where it was."** The move did not help, and the position it
+moved *from* is still the position that leaves MR at 86.5 of 121, with §13.56's rule — a reader that lists items
+and then declines — still the largest single block of that loss. What died is *this* edit, not the diagnosis.
 
 **It does not license a second permutation attempt.** Any further rearrangement lives in the same ±10 band, so it
 would need either a much larger population or a different route to the same evidence. The registered replacement is
@@ -14905,3 +14907,96 @@ would need either a much larger population or a different route to the same evid
 rate of the treated bucket is read before the net is compared with anything.** Applied forward: every registration
 whose mechanism is a reordering, a rename or a single-sentence move states the flip rate it expects on its treated
 population, and a threshold below that rate is refused at registration rather than reported as a null afterwards.
+
+## 13.144 The artifact carried four repetitions and this campaign kept quoting the first one
+
+### 13.144.1 The defect, and the run that exposed it
+
+`questions[]` holds **one record per question**: the first repetition. Every paired delta in this document is
+computed from it — `ledger.mjs --across`, `discordantQuestions`, §13.129.1's assembly checks, §13.132.5's
+thresholds, §13.133's pricing. All of them compare **one draw against one draw**.
+
+The same artifact carries `ablation.featureAggregate` and `ablation.featureByCapability`, each `{min, avg, max}`
+over the four repetitions it paid for. Nothing in `tools/` read them.
+
+Run `40859499624` is where the two readings diverge by enough to change a verdict:
+
+| reading | MR | overall |
+| --- | --- | --- |
+| first repetition, paired | 87 → 81 (**−6**) | 83.40% → 83.80% (**+2**) |
+| mean over four runs | 86.50 → 83.00 (**−3.5**) | 84.20% → 84.15% (**−0.05pp**) |
+
+and the distributions behind the means:
+
+| | control | derive |
+| --- | --- | --- |
+| MR | 83–89 | 81–87 |
+| overall | 83.4–84.8 | 83.8–85.0 |
+
+**Four repetitions of one configuration span six questions on MR.** The difference the run produced is inside a
+single configuration's own range, and the derive distribution's top (87) is inside the control's (83–89). Reported
+from first repetitions, that is "MR lost six questions"; reported from the means, it is "no movement this design
+can resolve". Both sentences are arithmetic over the same file.
+
+### 13.144.2 What the tool does now
+
+`--across` reads both distributions and prints them **after the split**, because the split says *which* questions
+moved and this says whether the amount is larger than the run's own repetitions:
+
+```
+      per-capability means over all repetitions, which is the comparison the delta above is not:
+        MR: control 86.50 (83-89), derive 83.00 (81-87) -- ranges OVERLAP
+        ...
+      overall mean: control 84.20% (83.4-84.8), derive 84.15% (83.8-85.0), delta -0.05 points
+```
+
+Two rules it encodes, both narrow:
+
+**A negative excess changes its sentence when the ranges overlap.** Without the distributions, a negative excess
+is the only signal available and it is worth stating as a regression — that is what §13.143.3's first reading said.
+With them, and with the ranges overlapping, the same arithmetic is a draw-to-draw fluctuation:
+
+```
+      the excess is negative on THIS PAIR OF DRAWS, but the two runs' repetition ranges
+      overlap (below), so it is not a separation
+```
+
+**A report without a distribution says so.** "`this report carries no per-run distribution, so the delta above is
+one draw against one draw`" is the honest caption for every artifact produced before this section, and it costs one
+line.
+
+The overlap test is a range comparison and nothing more: it says whether two four-point samples could have come
+from one configuration, not whether a difference is significant. A p-value over four repetitions would be a claim
+this artifact cannot support, and §13.135.6's rule about pricing with the wrong denominator applies to it.
+
+### 13.144.3 Acceptance criteria, and how each was tested
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | the means are printed beside the paired delta, per capability | `test_ledger.py` — `test_the_reading_prints_the_per_capability_means_beside_the_paired_delta` |
+| 2 | overlapping overall ranges take the regression wording back | `test_overlapping_ranges_take_the_regression_wording_back` |
+| 3 | separated ranges keep it | `test_separated_ranges_keep_the_regression_wording` |
+| 4 | a report with no distribution says the delta is one draw | `test_a_report_without_a_distribution_says_the_delta_is_one_draw` |
+| 5 | both distributions survive `--json` | `test_json_carries_both_distributions` |
+| 6 | a malformed `{min, avg, max}` is dropped rather than believed | `spreadOf`'s per-node validator; absence prints as absence |
+
+Criterion 6 is the one inherited from `recoveryOf` in `cortex-eval`: a distribution that is present but wrong
+would let a reader price a delta against a spread no run produced.
+
+### 13.144.4 What it changes about everything already registered
+
+- **§13.122.2's ±6-question band is a band on draws, not on means.** The mean over four repetitions is tighter by
+  about a factor of two. Every "inside the band" verdict in this document was reached on draws and remains valid
+  as stated, but it is not the resolution of a reported mean.
+- **§13.133's +1.3 questions** was measured on draws. On the mean it is nearer the resolution, which makes it
+  neither confirmed nor refuted — a treatment at that size needs repetitions, not a bigger population.
+- **§13.143's verdict does not change, its reason does.** `derive` is refuted as registered (every threshold
+  failed) and inert at this resolution (means overlap). The sentence "it lost six questions" was wrong and is
+  withdrawn below.
+
+### 13.144.5 The rule this adds
+
+**A paired delta is a claim about two draws; an artifact that carries four repetitions has a mean, and the mean is
+what a reader is quoted.** Applied forward: no threshold in this document is set from a first-repetition number,
+and any treatment whose predicted effect is smaller than its run's own per-capability range is registered as
+"needs repetitions" rather than dispatched against a threshold it cannot reach.
