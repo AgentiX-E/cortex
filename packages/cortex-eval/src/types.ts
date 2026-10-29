@@ -690,3 +690,69 @@ export type AblationResult = {
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };
+
+/**
+ * One increment's discordant identity, in a form two increments can be compared in.
+ *
+ * `discordantQuestions` already holds these two lists, and it holds them inside a result that also holds
+ * the baseline's metrics, the feature's metrics, five confidence intervals and the per-capability table.
+ * Comparing two increments would otherwise mean carrying two whole results into a function whose only
+ * question is set intersection, and the risk in that shape is not verbosity: it is that one caller decides
+ * "bought" from `discordant` counts and another from `discordantQuestions` ids, and the two disagree about
+ * the same run with nothing failing.
+ *
+ * So the ledger keeps the ids and the label and nothing else. The label is required because a portfolio of
+ * anonymous lists renders as a set and a reader cannot attribute a purchase to the increment that paid.
+ */
+export type IncrementLedger = {
+  /** How the increment will be named in a document, e.g. `silent`. */
+  readonly label: string;
+  /** Ids the increment got right that its own baseline got wrong. */
+  readonly bought: readonly string[];
+  /** Ids the increment got wrong that its own baseline got right. */
+  readonly sold: readonly string[];
+};
+
+/**
+ * What a group of increments bought and lost, with the double-counting made visible.
+ *
+ * Every field is derived from the `IncrementLedger`s and none of it is a new measurement of accuracy: the
+ * union sizes answer "how many distinct questions moved", the sums answer "what adding the per-increment
+ * gains would claim", and the two differ exactly when two increments paid for the same question.
+ */
+export type Portfolio = {
+  /** Distinct ids bought by at least one increment, in first-appearance order. */
+  readonly bought: readonly string[];
+  /** Distinct ids sold by at least one increment, in first-appearance order. */
+  readonly sold: readonly string[];
+  /** Ids bought by two or more increments: the questions a sum counts more than once. */
+  readonly doubleCounted: readonly string[];
+  /** Ids one increment bought and another sold: the questions a sum of nets cancels to nothing. */
+  readonly conflicting: readonly string[];
+  /** Σ|bought| across increments -- the claim "+9 and +6 make +15" makes. */
+  readonly summedBought: number;
+  /** Σ|sold| across increments. */
+  readonly summedSold: number;
+};
+
+/**
+ * The part of an ablation result a ledger reads, and why the field is optional here when it is required
+ * on `AblationResult`.
+ *
+ * A ledger asks one question of a run -- which questions crossed the verdict line -- and reading it
+ * through the whole result would tie the portfolio to sixteen fields it never touches, including five
+ * confidence intervals and a per-capability table. Narrowing the parameter is not decoration: it is what
+ * lets a caller build a portfolio from a **report read back from disk**, and a report read back from disk
+ * is exactly the shape that may predate `discordantQuestions`. On the live path the field is always
+ * present -- `runAblation` is its only producer and it sets the field unconditionally -- so the
+ * optionality describes the archive, not the pipeline, and `ledgerOf` refuses rather than guessing when an
+ * archived artifact has neither.
+ */
+export type LedgerSource = {
+  readonly discordantQuestions?:
+    | {
+        readonly baselineCorrectFeatureIncorrect: readonly string[];
+        readonly baselineIncorrectFeatureCorrect: readonly string[];
+      }
+    | undefined;
+};

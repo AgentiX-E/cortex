@@ -61,6 +61,9 @@ export { createProviderReader } from './competitor-reader.js';
 // referenced-locally.
 export { compareRuns } from './paired-test.js';
 export { runAblation, type AblationOptions } from './ablation.js';
+// §13.126: what two increments are worth together. `tools/ledger.mjs` is the caller, reading the
+// `discordantQuestions` lists out of archived reports.
+export { ledgerOf, portfolioOf, type IncrementLedger, type Portfolio } from './ledger.js';
 
 // A3: the arithmetic behind the card-acceptance criterion, so the criterion is computable before
 // there is data to compute it from.

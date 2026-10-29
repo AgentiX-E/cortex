@@ -12959,3 +12959,112 @@ plus the two guard sentences and nothing else, reach `flat` alone, control `enum
 10 → ≤ 4; the count of answers longer than 400 characters on the flat path → 0; KU and ABS byte-identical because
 their blocks are untouched. Falsified if IE does not improve or if any non-flat route's prompt moves.
 
+## 13.125 Two increments are not two numbers: the portfolio instrument, and what the archive said on its first read
+
+### 13.125.1 The sentence this exists to prevent
+
+The registry now holds four gains, each measured against its own control: `silent` at **+9 MR questions**
+(§13.123.4), `answer-line` at **+6 IE questions** (§13.124.4), the temporal signal at **+3 TR recall@10**, the
+cross-encoder at **+2 overall**. The natural next sentence is that they are worth twenty questions together, and
+nothing in the register licenses it: a per-run delta is a **count**, and a count does not say *which* questions.
+If two increments buy the same question, the second one's number was already spent by the first.
+
+The size of the trap is worth stating. Two columns of opaque hex ids at 100 questions look different even when they
+share three rows, and three rows is exactly enough to turn a claimed +15 into a delivered +12 — the same
+28-fold-shape defect §13.122.4 repaired for a different statistic, in the opposite direction.
+
+### 13.125.2 What no field in any artifact could say
+
+| field                  | answers                                       | cannot answer                     |
+| ---------------------- | --------------------------------------------- | --------------------------------- |
+| `delta`, the two aggregates | how much moved                            | which questions                   |
+| `perCapability`        | where in the roster                           | which questions                   |
+| `transitions`          | whether the move crossed the abstention line   | whether two increments share them |
+| `discordantQuestions`  | which questions **for one pair of runs**       | whether two pairs share them      |
+
+The last row is the one that matters: the identity of the flips already exists, one pair at a time, and the
+missing object is therefore **not a new measurement**. It is a set operation over lists already written to disk.
+
+### 13.125.3 The instrument, its arithmetic, and what it refuses
+
+`packages/cortex-eval/src/ledger.ts` (`ledgerOf`, `portfolioOf`) with `tools/ledger.mjs` as the caller.
+
+**The arithmetic.** `bought` is the union in first-appearance order, `summedBought` is `Σ|bought|` — the number a
+"+9 and +6 make +15" sentence is asserting — and `doubleCounted` names the ids counted twice. The identity is
+`summedBought − |bought| = Σ (mᵢ − 1)` over the multiplicity `mᵢ ≥ 1` of each id, which equals `|doubleCounted|`
+exactly when no id is bought three times; the tool prints both sides so the two-multiplicity case cannot be
+mistaken for the general one.
+
+**The second thing a sum cannot express at all.** If one increment buys a question and another sells it, the two
+nets read `+1` and `−1` and every rendering of that arithmetic says zero. `conflicting` names the question instead,
+because "two treatments moved this the opposite way" is a reason not to ship them together and it is invisible in
+both deltas.
+
+**Two refusals, both of them the absent-versus-empty decision this package has now made four times**
+(`recoveryCensus`, the `ingest` line, `rerankCensus`, and here):
+
+- an artifact that predates `discordantQuestions` is **refused by name**, not read as an increment that bought
+  nothing — absent and empty render identically in a union and mean opposite things;
+- a list that names one question twice is refused too, because a run cannot buy a question twice, and quietly
+  deduping it would put the list out of agreement with the count printed one line above it in the same report.
+
+### 13.125.4 The first read, on two archived reports, and the finding that was not being looked for
+
+The smoke test was two reports already on disk from §13's first 500-question campaign — same dataset, same
+baseline name `reference-pipeline`, and features at opposite ends of the roster:
+
+| run           | feature accuracy | bought | sold | baseline accuracy |
+| ------------- | ---------------- | ------ | ---- | ----------------- |
+| `40083132802` | 6.2% (31/500)    | 0      | 187  | 43.6% (218/500)   |
+| `40088479628` | 80.8% (404/500)  | 225    | 38   | 43.4% (217/500)   |
+
+The portfolio: **225 distinct bought**, `summedBought` 225, `doubleCounted` **0** — the 6.2% arm bought nothing, so
+the two purchases are disjoint by construction — 187 distinct sold out of 225 summed, and **4 conflicting ids**:
+`d23cf73b`, `2ce6a0f2`, `6e984301`, `gpt4_21adecb5`.
+
+Those four are a **proof rather than a hint**, and the arithmetic is short. `b` bought an id when *b's* baseline was
+wrong and *b* right; `a` sold it when *a's* baseline was right and *a* wrong. One id cannot be both baseline-right
+and baseline-wrong **unless the two runs' baselines disagree on it** — so the same-named control, run twice over
+the same 500 questions, disagreed with itself on at least those 4 questions in the direction *a*-right/*b*-wrong.
+The aggregate gap between the two baselines is +1 question (218 against 217), so at least 3 more must disagree the
+other way: **≥ 7 of 500 questions, 1.4%, of baseline self-disagreement**, and that is a lower bound, because every
+question both features got wrong hides the baseline's verdict behind two nulls.
+
+This is the noise floor §13.122 was looking for, measured on a different axis and without a dispatch: the control
+arm is **not a fixed object**, and a delta of ±1.4 points between two runs of the same configuration is inside what
+the control alone can produce. Every figure in this register is now read against that floor.
+
+### 13.125.5 The acceptance criteria for the instrument itself
+
+Registered, because an instrument with no criterion is a paragraph with a filename.
+
+| criterion                       | how it is checked                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| one definition of bought/sold   | `ledger.test.ts` asserts `ledgerOf` reproduces `discordantQuestions` from a **real `runAblation`**, and that both lengths equal the `discordant` counts printed above them |
+| the union is a union            | 11 unit cases: disjoint, two-way overlap, three-way overlap (one `doubleCounted` entry, not two), sold union, zero increments, no mutation of inputs |
+| absent ≠ empty                  | a `LedgerSource` with no `discordantQuestions` throws and the message names the increment               |
+| duplicate is refused            | a list naming one id twice throws and names the id and the side                                        |
+| the tool reads both envelopes   | 5 subprocess tests over hand-built reports, including the legacy artifact that must exit non-zero       |
+| coverage                        | `ledger.ts` at **100 / 100 / 100 / 100** on statements, branches, functions, lines                      |
+| no new orphans                  | `node tools/export-census.mjs --check` — `ledgerOf`, `portfolioOf` and the three types are all called     |
+
+**Falsified if** a portfolio ever reports `doubleCounted` empty for two increments whose `bought` lists share an
+id, or if `summedBought − |bought|` disagrees with the multiplicities it was built from. Both are unit-level and
+both run on every build.
+
+### 13.125.6 The prediction this registers for the next two readouts
+
+`silent` and `answer-line` are both registered against the **same** control (`enumerated`), which is the case where
+a union is legitimate rather than merely suggestive — the two ledgers are measured against one baseline, not two.
+They also cannot be dispatched together (§13.124.4), so the union stays a ceiling and does not become a score.
+
+What that makes checkable **before** either number arrives:
+
+> The two asks reach different routes — `silent` changes the *multi-session* block, `answer-line` changes the
+> *flat* block — so their purchases should be **disjoint**. A non-empty `doubleCounted` after both land would mean
+> a question's verdict moved under an instruction aimed at another route, which is a finding about route isolation
+> and not about either ask.
+
+That is the first use of the instrument that costs nothing: it turns "the two increments are independent" from an
+assumption in a paragraph into a set that either intersects or does not.
+
