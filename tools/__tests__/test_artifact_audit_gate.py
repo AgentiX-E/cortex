@@ -95,3 +95,34 @@ class TestTheAuditIsAWiredGate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheSpendReadoutIsAdvisoryAndSaysSo(unittest.TestCase):
+    """The audit gates; the spend readout does not. The asymmetry is deliberate.
+
+    A red audit means two fields of one run disagree, and no reader is needed to know the artifact
+    is wrong. A red spend readout means the *reader* of a valid run failed -- and the conclusion a
+    person draws from a red job is about the arm, which is the one conclusion the job must not
+    invite for a reason that is not about the arm. `continue-on-error` is the shortcut this
+    repository refuses everywhere it would hide a measurement (§13.140.6, §13.147.5); here it hides
+    a printer, and the block still ships in the artifact and still prints its reason to stderr.
+
+    Pinned rather than left to a comment, because an exception that nothing tests is an exception
+    the next editor widens.
+    """
+
+    def _spend_steps(self) -> list[dict]:
+        return [step for step in steps() if '--spend' in str(step.get('run', ''))]
+
+    def test_exactly_one_step_reads_the_bill_of_the_report_the_reader_reads(self) -> None:
+        matching = self._spend_steps()
+        self.assertEqual(len(matching), 1, 'expected exactly one spend step')
+        self.assertIn(REPORT, str(matching[0]['run']))
+
+    def test_it_runs_even_when_the_benchmark_failed(self) -> None:
+        # A partially failed run is exactly the one whose bill is worth reading: the retry traffic
+        # that §13.147.1 counts lives on the failure path.
+        self.assertEqual(self._spend_steps()[0].get('if'), 'always()')
+
+    def test_it_is_advisory(self) -> None:
+        self.assertTrue(self._spend_steps()[0].get('continue-on-error'))
