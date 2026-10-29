@@ -1022,7 +1022,16 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // cannot name. It states a reply SHAPE where `extractive` states a reply LENGTH, written against
   // nine of IE's ten wrong answers being the evidence block copied back, a sentence about not
   // finding anything, free prose, or an empty reply.
-  'answer-line': ['flat'],
+  //
+  // Run `40807829150` measured it and the reach below is the corrected one. The first dispatch
+  // declared one route and fell through to the *shipped* block on the other two, which cost MR 48
+  // questions and TR 12 -- §13.104's defect a fourth time. The reach is therefore `enumerated`'s,
+  // with flat the only route whose bytes change, and `ASK_CHANGES` in the product states that set.
+  'answer-line': ['multi-session', 'flat', 'temporal'],
+  // §13.129's ask: the flat route's licence to compose a recommendation and its ban on quoting the
+  // evidence. Same reach and same change set as `answer-line`, and the two are separated by the
+  // `ask` value beside an unchanged `askRoutes` -- exactly the argument the entry above makes.
+  recommend: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

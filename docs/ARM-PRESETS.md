@@ -109,7 +109,7 @@ unbuilt, and this section says so rather than describing a dispatch that has no 
 | S-4 importance | as above                                                | registered, unbuilt                                                     |
 | S-5 rerank     | `cortex_memory_rerank=cross-encoder` (proposed)         | registered, unbuilt                                                     |
 
-## 3.5 The ask arms (`silent`, `answer-line`) — the one input §1 already names
+## 3.5 The ask arms (`silent`, `answer-line`, `recommend`) — the one input §1 already names
 
 The two ask experiments are single-variable against §1, but the field they change is **already in the preset**,
 which makes merging the two blocks a replace rather than an addition. Written down because "merge with §1" is
@@ -137,13 +137,29 @@ whose carried turns are byte-identical (48 → 31). Do not dispatch it as a cand
 }
 ```
 
-`answer-line` (§13.124.4, IE): the same block with one value changed again.
+`answer-line` (§13.124.4, IE) — **refuted twice over, and its reach was corrected after the fact**:
+run `40807829150` moved the roster 84.20% → 71.55%, and the IE subset split by the shape of the gold says why:
+117 short-gold questions moved 116 → 116 while 33 paragraph-gold questions moved 24 → 12. A reply shape is a
+tax on every question whose gold is not that shape. Its reach also declared one route and fell through to the
+**shipped** block on the other two, which is why MR fell 87 → 39 and TR 100 → 88; the reach is now
+`enumerated`'s with `flat` the only route whose bytes change (§13.130). Do not dispatch it as a candidate.
 
 ```json
 {
   "cortex_memory_ask": "answer-line"
 }
 ```
+
+`recommend` (§13.129.8, IE): the same block again, and the value to dispatch next.
+
+```json
+{
+  "cortex_memory_ask": "recommend"
+}
+```
+
+It adds a licence to compose and a ban on quoting the evidence, and **no reply shape** — the lesson the ask above
+paid for. Reach `enumerated`'s, change set `{flat}`, control `40751394094`.
 
 **And the check is the same one.** `ask` must be the only differing field, and one line of the arm-config output
 says so:
@@ -157,9 +173,12 @@ relevanceUnits=turn, maxTurnChars=400, maxPromptChars=48000
 Three things that are easy to get wrong here, each of which the reach tests already guard but a dispatcher does
 not read:
 
-- `answer-line` reaches **one** route (`flat`) and `silent` reaches three, so their untreated routes must
+- all three asks now declare `enumerated`'s reach (three routes) and differ from the control on **one**: `silent`
+  and `recommend` on `multi-session` and `flat` respectively, `answer-line` on `flat`. The untreated routes must
   reproduce the enumeration arm **question for question** — that is the assembly check, and it is read before any
-  accuracy number.
+  accuracy number. This bullet used to claim `answer-line` reached one route, which is the reading that produced
+  `40807829150`: a reach of one route with a fallthrough of `own` is not a narrower treatment, it is a different
+  experiment (§13.130).
 - the two asks **cannot be dispatched together**; both are `ask` values and a run that moved both would price
   neither (§13.124.4).
 - `cortex_memory_review_pass` defaults to `bare`, which is the shipped treatment, so both blocks above inherit
@@ -201,3 +220,10 @@ estimated from one run is not a floor, it is another point.**
 repetitions at `temperature=0`, its *per-question identity* disagreed with itself on at least 7 of 500 between two
 runs, and the treatment's count moved 7. Quoting "seven" without saying which of the three it is describes a
 quantity that was never measured.
+
+**And the fourth, from §13.130**: the reach and the change set are two different statements, and an artifact only
+prints the first. `askRoutes` says which routes the block was composed onto; the *change set* says which routes
+actually read different bytes. Three dispatches were registered as single-variable and were not, because the
+fallthrough reverted the untouched routes to the shipped block instead of keeping the control's. Read
+`askRoutes` **against the control's**, and if they differ, the run is not one variable apart no matter what the
+registration says.

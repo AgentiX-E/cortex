@@ -162,7 +162,101 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // `flat` is the route IE goes down, and it is also the route `buildSessionPrompt` shares a
   // contract with — so the branch keys on the scope as well, or an ask registered as flat-only
   // would move MR (§13.104's defect, third arrival).
+  //
+  // ## The reach is `enumerated`'s, and the first dispatch of this ask is why
+  //
+  // The registration (§13.124.4) said "reach `flat` alone, control `enumerated`", and the first
+  // implementation read that as a reach of one route. With a fallthrough of the **shipped** block
+  // that is a different experiment: the two routes the ask does not name do not keep the control's
+  // block, they lose it. Run `40807829150` administered exactly that — flat got the guard, MR lost
+  // `enumerated`'s two-step contract and temporal lost the merging sentence — and the artifact
+  // reported it in one field: `askRoutes: ['flat']` against the control's three.
+  //
+  // Measured: MR 87 → 39 (−48), TR 100 → 88 (−12), IE 140 → 128 (−12), overall 84.2% → 71.55%.
+  // Only the IE number is a reading of the guard, because flat's block was the only one that
+  // changed *for the better* of a stated hypothesis; the other two are §13.104's defect arriving a
+  // fourth time, in an ask whose own docblock claimed to have keyed on the scope to avoid it.
+  //
+  // A reach of three routes with the control's block on two of them states the same single-variable
+  // claim the three asks above state: the routes outside the ask's *change set* read what the
+  // control read. `ASK_CHANGES` below is that set, and `ask-changes.test.ts` renders all six routes
+  // under every (ask, control) pair and compares bytes, so the next ask cannot arrive the fifth time.
+  'answer-line': ['multi-session', 'flat', 'temporal'],
+  // §13.129. The flat route alone, aimed at the subset the `answer-line` guard was never tested on
+  // and could not have helped: IE's 33 paragraph-gold questions, nine of them wrong, of which three
+  // are the evidence block copied back and four are the model **declining in prose** because the
+  // block tells it to extract a fact and a recommendation has to be composed.
+  //
+  // The reference pipeline names this mechanism in its own source: `RECOMMENDATION_CONTRACT` exists
+  // because "the extractive contract is wrong for preference questions ... it reads as having
+  // nothing to say and abstains". This arm has no preference contract and routes those questions
+  // down `flat`, so the licence to compose is what the block is missing — not a reply shape, which
+  // is what `answer-line` supplied and what cost 12 IE questions.
+  recommend: ['multi-session', 'flat', 'temporal'],
+};
+
+/**
+ * Which ask each ask is registered **against**, and which routes it therefore may not move.
+ *
+ * ## Why a table, and why now
+ *
+ * The fallthrough of an ask is not a detail of its implementation: it is the other half of the
+ * single-variable claim, and it has now been wrong four times in the same direction.
+ *
+ *   - §13.103/§13.104 `aggregation`: declared one route, fell through to the shipped block, TR −21.4
+ *   - §13.123 `silent`: the fallthrough was made `enumerated`'s, and the docblock says "arriving again"
+ *   - §13.124 `answer-line`: same defect a fourth time, MR −48 and TR −12 in run `40807829150`
+ *
+ * Each time the code was right about the block and wrong about what the *other* routes read, and
+ * each time the test asserted the fallthrough the implementation had rather than the one the
+ * registration needed — a test that pins a defect is worse than no test, because it reads as
+ * coverage. The `answer-line` test said, in a comment, "the control here is the SHIPPED block
+ * rather than `enumerated`", which is the defect stated as an intention and then enforced.
+ *
+ * ## What the two tables state
+ *
+ * `ASK_CONTROLS` is the arm each value is measured against; `ASK_CHANGES` is the set of routes whose
+ * bytes that value is allowed to differ on. Together they are a **predicate over renders**, not a
+ * claim about intent: render six routes twice — once under the ask, once under its control — and the
+ * set of routes whose instruction text differs must equal `ASK_CHANGES` exactly. A route that moves
+ * without being named fails, and a route that is named but does not move also fails, because an ask
+ * that claims a treatment it does not administer publishes a delta about nothing.
+ *
+ * `route` is its own control: it is the shipped behaviour, so it changes nothing by definition.
+ */
+export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
+  route: 'route',
+  extractive: 'route',
+  aggregate: 'route',
+  computed: 'route',
+  enumerated: 'computed',
+  sweep: 'route',
+  aggregation: 'enumerated',
+  silent: 'enumerated',
+  'answer-line': 'enumerated',
+  recommend: 'enumerated',
+};
+
+/**
+ * The routes whose instruction text each ask is allowed to change, relative to its control.
+ *
+ * Deliberately narrower than {@link ASK_ROUTES}: `ASK_ROUTES` is the reach — which routes the ask's
+ * block is *composed onto* — and this is the change set — which routes actually read different
+ * bytes. `enumerated` reaches three routes and changes one, because flat and temporal are
+ * `computed`'s block in both. That gap is the whole content of the single-variable claim, and it is
+ * the gap the four defects above fell into.
+ */
+export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
+  route: [],
+  extractive: ['abstention', 'temporal', 'knowledge-update', 'assistant'],
+  aggregate: ['multi-session', 'flat'],
+  computed: ['multi-session', 'flat', 'temporal'],
+  enumerated: ['multi-session'],
+  sweep: ['multi-session'],
+  aggregation: ['multi-session'],
+  silent: ['multi-session'],
   'answer-line': ['flat'],
+  recommend: ['flat'],
 };
 
 /**
@@ -238,7 +332,8 @@ export type EvidenceAsk =
   | 'sweep'
   | 'aggregation'
   | 'silent'
-  | 'answer-line';
+  | 'answer-line'
+  | 'recommend';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -802,6 +897,57 @@ const ANSWER_LINE_FLAT_INSTRUCTION = withReplacedClose(
 );
 
 /**
+ * The licence to compose, and the ban on quoting, that the flat block was missing.
+ *
+ * ## The measurement this is written against
+ *
+ * `answer-line` priced the wrong repair. §13.124 diagnosed nine IE failures as **shape** failures
+ * and prescribed a one-line `<phrase>` reply; run `40807829150` administered it and split the
+ * capability by the shape of the *gold*, which nothing had done before:
+ *
+ *     IE, gold <= 120 chars     117 questions   116 -> 116   (  0)
+ *     IE, gold >  120 chars      33 questions    24 ->  12   (-12)
+ *
+ * The guard is **inert on its target and destructive on the other subset**. Reading the nine wrong
+ * paragraph answers says why: three are the evidence block copied back (31,547 and 16,766
+ * characters), four are the model declining **in prose** — `No evidence items match the question
+ * about a Miami hotel` — and two are prose answers the judge did not accept. A one-line phrase is
+ * the opposite of the shape those questions need: their gold is a paragraph, and their failure is
+ * that the reader treats "no single turn states the recommendation" as "no answer exists".
+ *
+ * ## Why this is the reference pipeline's mechanism and not an invention
+ *
+ * `natural-language-memory.ts` carries `RECOMMENDATION_CONTRACT` for exactly this, with the
+ * diagnosis in its docblock: *"the extractive contract is wrong for preference questions ... it
+ * reads as having nothing to say and abstains."* This arm has no preference route, so those
+ * questions go down `flat` and read the extractive contract, which is the one the reference
+ * replaced.
+ *
+ * ## What it does not do, and the trap it avoids
+ *
+ * It states no reply shape, no prefix, and no length in words: `answer-line` proved that a shape is
+ * a tax on every question whose gold is not that shape. It keeps `extractive`'s token and its
+ * condition, so a question the evidence genuinely cannot answer still declines — and, unlike the
+ * guard, it leaves the bare-decline retry intact, because a prose reply that ends in the token is
+ * still a bare decline (`isBareDecline`) while `Answer: TOKEN` was not.
+ */
+const RECOMMEND_LICENCE =
+  'If the question asks for a suggestion, a recommendation, or advice, build it from what the user has already said they like, want, or are dealing with. Declining is not the right reply when those statements are in the evidence.';
+
+/** The echo ban, which is the half of the nine failures a shape guard could never reach. */
+const RECOMMEND_NO_ECHO =
+  'Do not quote, copy, or list the evidence turns. Reply in your own words, in at most three sentences, naming the specific options the evidence supports.';
+
+/** The flat block under `recommend`: `computed`'s, plus a licence to compose and a ban on echoing. */
+const RECOMMEND_FLAT_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    [RECOMMEND_LICENCE, RECOMMEND_NO_ECHO].join('\n'),
+  ),
+  `If the evidence contains nothing about the user's situation, reply exactly ${ABSTAIN_TOKEN}.`,
+);
+
+/**
  * The sweep's two steps: a line per session, then a count of what the lines name.
  *
  * ## Why a line per session, when `enumerated` already asks for a list
@@ -994,15 +1140,27 @@ function instructionsFor(
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
-  if (ask === 'answer-line') {
-    // §13.124. The scope test is load-bearing rather than defensive: `buildSessionPrompt` builds
-    // with `extractive` too, so a branch keyed on the contract alone would change MR under an ask
-    // registered as flat-only. The merge sentence is what `computed` gives this route, so the flat
-    // block below is `computed`'s with a reply shape added and nothing else moved.
-    if (contract === 'extractive' && scope !== 'multi-session') {
-      return ANSWER_LINE_FLAT_INSTRUCTION;
+  if (ask === 'answer-line' || ask === 'recommend') {
+    // §13.124 and §13.129. Two claims, one branch, because they are one rule: the ask changes the
+    // flat route and **nothing else may move**.
+    //
+    // The scope test is load-bearing rather than defensive: `buildSessionPrompt` builds with
+    // `extractive` too, so a branch keyed on the contract alone would change MR under an ask
+    // registered against the flat route.
+    //
+    // The fallthrough is `enumerated`'s, and run `40807829150` is why it is written as three
+    // statements instead of `return own`. That dispatch gave MR the *shipped* block instead of the
+    // control's, which cost 48 MR questions and 12 TR questions under a registration that predicted
+    // neither — §13.104's defect, fourth arrival, in the ask whose docblock claimed to have avoided
+    // it by keying on the scope. `ASK_CHANGES` states the change set and `ask-changes.test.ts`
+    // renders both arms on all six routes and compares bytes.
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return ENUMERATED_MULTI_SESSION_INSTRUCTION;
     }
-    return own;
+    if (contract === 'extractive') {
+      return ask === 'answer-line' ? ANSWER_LINE_FLAT_INSTRUCTION : RECOMMEND_FLAT_INSTRUCTION;
+    }
+    return contract === 'temporal' ? withMergingSentence(own) : own;
   }
   if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
     return withMergingSentence(own);

@@ -52,6 +52,8 @@
  * answer -- and leaves every other question free to decline again.
  */
 
+import { stripDecoration } from './parse.js';
+
 /**
  * Whether a reply was the token and nothing else.
  *
@@ -71,15 +73,29 @@
  * this predicate must never reach the abstention route.
  *
  * Wrappers count as bare. A model that writes `**INSUFFICIENT_EVIDENCE**` said nothing but the token, and
- * `stripLabel`'s own fixpoint folds those before this is asked; testing the raw text here keeps the two layers
- * from disagreeing about a decorated token.
+ * **so does a model that writes `Answer: INSUFFICIENT_EVIDENCE`** — the fix run `40807829150` needed, and the
+ * reason this predicate now reads decoration through `parse.ts`'s own function rather than its own pattern.
+ *
+ * ## Why the labelled shape is not a detail
+ *
+ * `answer-line` asked for one line of the form `Answer: <phrase>`, and a reader that ran out of evidence
+ * declined **in that form**. `parse.ts` accepted it (`isAbstention` strips the label), so the question was
+ * scored as a decline; this predicate did not, so the retry pass never fired. Six IE questions in that run
+ * end at `Answer: INSUFFICIENT_EVIDENCE`, and the control converts 92 of 92 bare declines into answers when
+ * the pass does fire. A prompt that names a reply shape could therefore disable a recovery mechanism without
+ * moving a single field of the artifact: the pass reported `attempted: 0` and nothing said why.
+ *
+ * The repair belongs here and not in the ask. `parse.ts` already owns the answer to "which part of a reply is
+ * presentation", and two implementations of that question is how the two layers came to disagree — so this
+ * imports the function instead of restating the pattern, and `bare-decline-label.test.ts` holds them together
+ * over the shapes a model actually emits.
  */
 export function isBareDecline(raw: string | null): boolean {
   if (raw === null) return false;
   const text = raw.trim();
   // Empty is *not* bare: nothing was said, which is a different state and belongs to the empty-evidence path.
   if (text === '') return false;
-  const stripped = text.replace(new RegExp(DECLINE_TOKEN, 'gi'), ' ').trim();
+  const stripped = stripDecoration(text).replace(new RegExp(DECLINE_TOKEN, 'gi'), ' ').trim();
   // Only wrappers left means the token stood alone. Anything else is content and the reader engaged.
   return /^[*_`"'\s]*$/.test(stripped);
 }

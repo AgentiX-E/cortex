@@ -245,7 +245,7 @@ function stripWrapper(text: string): string {
  * predicate rests on that distinction. Only decoration **around the whole line** is
  * removed, which is what separates presentation from content.
  */
-function stripDecoration(text: string): string {
+export function stripDecoration(text: string): string {
   let out = text.trim();
   for (;;) {
     const next = stripWrapper(stripLabel(stripWrapper(out))).trim();

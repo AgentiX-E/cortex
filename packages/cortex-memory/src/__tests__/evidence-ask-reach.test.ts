@@ -37,7 +37,7 @@ import { createMemory } from '@agentix-e/cortex-core';
 import type { LLM } from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
-import { ASK_ROUTES, buildPrompt, type EvidenceAsk } from '../prompt.js';
+import { ASK_CHANGES, ASK_ROUTES, buildPrompt, type EvidenceAsk } from '../prompt.js';
 import type { AdmittedTurn } from '../admission.js';
 
 const NOW = 1_759_470_000_000;
@@ -673,18 +673,26 @@ describe('the answer-line ask gives the flat route a reply shape', () => {
     expect(block).toContain('INSUFFICIENT_EVIDENCE');
   });
 
-  it('leaves the multi-session route byte-identical to the shipped block', async () => {
-    // The flat path and `buildSessionPrompt` share the `extractive` contract, so a branch
-    // keyed on the contract alone would silently change MR under an ask registered as
-    // flat-only -- §13.104's defect arriving a third time. The control here is the SHIPPED
-    // block rather than `enumerated`, because this ask's reach is the flat route alone:
-    // MR must read what a run with no ask at all would have read.
+  it('leaves the multi-session route byte-identical to the control, not to the shipped block', async () => {
+    // This assertion used to read `toBe(instructionsOf(shipped[0]))`, with a comment saying the
+    // control was the shipped block "because this ask's reach is the flat route alone". That is the
+    // §13.104 defect written down as an intention: the ask is registered against `enumerated`, so
+    // MR must read `enumerated`'s block and not the arm a run with no ask at all would have read.
+    //
+    // Run `40807829150` measured the difference: MR 87 -> 39. The flat path and
+    // `buildSessionPrompt` share the `extractive` contract, so a fallthrough of `own` silently
+    // removes the two-step contract from MR under an ask that names one route.
     const answerLine: string[] = [];
-    const shipped: string[] = [];
+    const control: string[] = [];
     await build(answerLine, 'answer-line').answerSessions('How many kits do I own?', [[TEXT]]);
-    await build(shipped, 'route').answerSessions('How many kits do I own?', [[TEXT]]);
+    await build(control, 'enumerated').answerSessions('How many kits do I own?', [[TEXT]]);
 
-    expect(instructionsOf(answerLine[0]!)).toBe(instructionsOf(shipped[0]!));
+    expect(instructionsOf(answerLine[0]!)).toBe(instructionsOf(control[0]!));
+    // And it must NOT be the shipped block, or the assertion above would hold for a fallthrough that
+    // reverts to `route` whenever `enumerated`'s block happens to equal it.
+    const shipped: string[] = [];
+    await build(shipped, 'route').answerSessions('How many kits do I own?', [[TEXT]]);
+    expect(instructionsOf(answerLine[0]!)).not.toBe(instructionsOf(shipped[0]!));
   });
 
   const UNTOUCHED_ROUTES: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> =
@@ -696,18 +704,26 @@ describe('the answer-line ask gives the flat route a reply shape', () => {
     ];
 
   for (const [name, drive] of UNTOUCHED_ROUTES) {
-    it(`leaves the ${name} route byte-identical`, async () => {
+    it(`leaves the ${name} route byte-identical to the control`, async () => {
+      // Compared against `enumerated` rather than the shipped block, because that is the arm this ask
+      // is registered against: the temporal route reads `computed`'s merged block in both, so a
+      // comparison with `route` would fail on a *correct* implementation. For the other three the two
+      // arms coincide, which `ask-changes.test.ts` asserts for every ask at once.
       const answerLine: string[] = [];
-      const shipped: string[] = [];
+      const control: string[] = [];
       await drive(build(answerLine, 'answer-line'));
-      await drive(build(shipped, 'route'));
+      await drive(build(control, 'enumerated'));
 
-      expect(instructionsOf(answerLine[0]!)).toBe(instructionsOf(shipped[0]!));
+      expect(instructionsOf(answerLine[0]!)).toBe(instructionsOf(control[0]!));
     });
   }
 
-  it('declares the flat route alone, so the comparison is one route', () => {
-    expect(ASK_ROUTES['answer-line']).toEqual(['flat']);
+  it('shares the control reach, and changes the flat route alone', () => {
+    // The reach is `enumerated`'s because the two routes it does not change must keep reading the
+    // control's block; the *change set* is one route, and that is what `ASK_CHANGES` states and
+    // `ask-changes.test.ts` checks by rendering both arms.
+    expect(ASK_ROUTES['answer-line']).toEqual(ASK_ROUTES.enumerated);
+    expect(ASK_CHANGES['answer-line']).toEqual(['flat']);
   });
 });
 
@@ -741,6 +757,71 @@ describe('the answer-line ask gives the flat route a reply shape', () => {
  * are not MR must reproduce their windows to the character, which is only checkable if their
  * prompts are unchanged.
  */
+/**
+ * §13.129: the licence to compose, and the ban on quoting, that the flat block never had.
+ *
+ * ## The reading this is written against
+ *
+ * `answer-line` added a reply **shape** to the same block and run `40807829150` split IE by the shape
+ * of the gold: 117 short-gold questions moved 116 -> 116, 33 paragraph-gold questions moved 24 -> 12.
+ * Reading the nine wrong paragraph answers names the mechanism: three are the evidence block copied
+ * back, four are the reader declining **in prose** -- `No evidence items match the question about a
+ * Miami hotel` -- because the block tells it to extract a fact, and a recommendation has to be
+ * composed. The reference pipeline states the same diagnosis in `RECOMMENDATION_CONTRACT`.
+ *
+ * So this ask adds no shape. It licenses composition where the question asks for a recommendation and
+ * forbids quoting the evidence, both of which are about *what* the answer may do, and it keeps the
+ * token so a genuine no-answer still declines.
+ */
+describe('the recommend ask licenses composition and forbids the echo', () => {
+  const LICENCE = 'build it from what the user has already said they like';
+  const NO_ECHO = 'Do not quote, copy, or list the evidence turns';
+  const BOUND = 'at most three sentences';
+
+  it('states a licence, a ban and a bound, and no reply shape', async () => {
+    const seen: string[] = [];
+    await build(seen, 'recommend').answer('Any tips for keeping my kitchen clean?', [TEXT]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain(LICENCE);
+    expect(block).toContain(NO_ECHO);
+    expect(block).toContain(BOUND);
+    // The trap `answer-line` fell into: a one-line form is a tax on every question whose gold is not
+    // that shape, and it is what turned six preference questions into prefix-labelled declines.
+    expect(block).not.toContain('one line in exactly this form');
+    expect(block).not.toContain('Answer: <');
+  });
+
+  it('keeps the abstention token, so a question the evidence cannot answer still declines', async () => {
+    const seen: string[] = [];
+    await build(seen, 'recommend').answer('Any tips for keeping my kitchen clean?', [TEXT]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain('INSUFFICIENT_EVIDENCE');
+    expect(block).toContain('combining evidence from more than one turn or session');
+  });
+
+  it('leaves the multi-session route reading the control block', async () => {
+    // The fallthrough is the half of the claim that has been wrong four times. `ASK_CHANGES` states
+    // it and `ask-changes.test.ts` checks every ask; this is the local statement for this one.
+    const recommend: string[] = [];
+    const control: string[] = [];
+    await build(recommend, 'recommend').answerSessions('How many kits do I own?', [[TEXT]]);
+    await build(control, 'enumerated').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    expect(instructionsOf(recommend[0]!)).toBe(instructionsOf(control[0]!));
+  });
+
+  it('differs from the shipped flat block, so the run administers a treatment', async () => {
+    const recommend: string[] = [];
+    const shipped: string[] = [];
+    await build(recommend, 'recommend').answer('Any tips for keeping my kitchen clean?', [TEXT]);
+    await build(shipped, 'route').answer('Any tips for keeping my kitchen clean?', [TEXT]);
+
+    expect(instructionsOf(recommend[0]!)).not.toBe(instructionsOf(shipped[0]!));
+  });
+});
+
 describe('the sweep ask walks the sessions instead of filtering them out of view', () => {
   const MERGING_SENTENCE = 'combining evidence from more than one turn or session';
   const SWEEP_RULE = 'one line for every session';

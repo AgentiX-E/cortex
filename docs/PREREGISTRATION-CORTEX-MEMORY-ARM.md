@@ -13395,3 +13395,222 @@ of its sixteen and merely relabels them.
 It follows `answer-line` (§13.124.4) and does not share a dispatch with it: both change what the reader reads, and
 a recovery on a flat-route question could not be attributed to either. Its own control is the enumerated arm, so
 the comparison is one field and no drift is inherited.
+
+## 13.129 `answer-line` is refuted by its own subset split, and the dispatch that measured it moved three routes
+
+### 13.129.1 The assembly check, before any accuracy was read
+
+Run `40807829150` (`ask=answer-line`) against the `enumerated` control `40751394094`. One configuration
+field differs in the artifact's own `memoryArmConfig`, and one field of the control's does not match it:
+
+| field | control `40751394094` | treatment `40807829150` | |
+| --- | --- | --- | --- |
+| `ask` | `enumerated` | `answer-line` | intended |
+| `askRoutes` | `multi-session, flat, temporal` | **`flat`** | **not intended** |
+| `threshold`, `retrievalThreshold`, `relevanceTopK`, `relevanceUnits`, `embedding`, `reader`, `maxTurnChars`, `maxPromptChars`, `reviewPass`, `selfConsistency` | — | identical | ok |
+| mean `evidenceChars` per question | 289,387 | 289,387 | identical |
+
+The evidence is byte-identical question for question. The prompts are not: mean `promptChars` rises
+46,622 → 46,948 (+327), which is the guard's length charged against a fixed 48,000-character budget
+(§13.104.5's mechanism, now with a number).
+
+`askRoutes` is the assembly failure. The registration said "reach `flat` alone, control `enumerated`",
+and the implementation read that as a reach of one route with a fallthrough to the **shipped** block —
+so the two routes the ask did not name lost the control's block rather than keeping it. The artifact
+printed that in one field and it was read as intended. It is not.
+
+| capability | n | control | treatment | Δ |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 150 | 140 | 128 | **−12** |
+| MR | 121 | 87 | 39 | **−48** |
+| KU | 72 | 61 | 66 | **+5** |
+| TR | 127 | 100 | 88 | **−12** |
+| ABS | 30 | 29 | 29 | 0 |
+| **roster** | 500 | **417** | **350** | **−67** |
+
+Over four repetitions the aggregate moves 84.20% → 71.55%. Only the IE column is a reading of the
+guard, and even that one has to be split before it means anything (§13.129.3). The MR and TR columns
+are §13.104's defect arriving a **fourth** time, and they are priced as such: removing the two-step
+contract from the multi-session route costs **48** questions, and removing the merging sentence from
+the temporal route costs **12**.
+
+### 13.129.2 What the two unplanned columns price
+
+They are not free evidence — the run was not registered to measure them — but they are not nothing
+either, because each is the exact minus of a block the register already contains:
+
+| removal | measured here | prior registration |
+| --- | ---: | --- |
+| `enumerated`'s two-step contract, multi-session | **−48** | `silent` (which rewrites it, not removes it) was −26 |
+| the merging sentence, temporal | **−12** | §13.104's accident was −21.4 |
+| the guard, flat | −12 | §13.124.4 predicted **+6** |
+
+The direction replicates twice; the magnitude is a different sample and a different pair of blocks, so
+the two numbers are recorded as two measurements of one mechanism rather than as a contradiction.
+
+### 13.129.3 The guard, split by the shape of the gold
+
+IE is 150 questions of three question types and two answer shapes, and the guard was written against
+the failure of one shape while being administered to both. Splitting IE by the **gold's** length —
+the only observable proxy the artifact carries for "this question's answer is a phrase" — separates
+them completely:
+
+| IE subset | n | control | treatment | Δ |
+| --- | ---: | ---: | ---: | ---: |
+| gold ≤ 120 characters | 117 | 116 (99.1%) | 116 (99.1%) | **0** |
+| gold > 120 characters | 33 | 24 (72.7%) | 12 (36.4%) | **−12** |
+
+**The guard is inert on its own target and destructive on the other subset.** The nine failures it was
+written for (§13.124.2) are not in the 117: they are all in the 33, and their gold is a paragraph. The
+registration's prediction — IE wrong 10 → ≤ 4 — is falsified in the opposite direction: 22 wrong.
+
+### 13.129.4 The thirteen flips, read one at a time
+
+IE moved 140 → 128 with thirteen questions correct→wrong and one wrong→correct. The thirteen are not
+one failure:
+
+| shape | n | what it is |
+| --- | ---: | --- |
+| `Answer: INSUFFICIENT_EVIDENCE` | **6** | the guard turned a preference question into a decline, written in the shape the guard demanded |
+| `Answer: <one phrase>` | **7** | the guard truncated a paragraph answer to the single most salient noun phrase (`Answer: Godox V1`, `Answer: Virtual coffee breaks`, `Answer: Chewy chocolate chip cookies`) |
+
+Both shapes are the guard doing exactly what it says. The block asked for one line in the form
+`Answer: <a word, name, number, or short phrase>`, and a question whose gold is "the user would prefer
+responses that build upon …" cannot be answered in that form. §13.124.2 diagnosed the nine as *shape*
+failures and that diagnosis was right; what it did not check is **whose** shape — the failures are
+answers that are too long, and the prescription was to make every answer shorter still.
+
+### 13.129.5 The mechanism the run exposed: a labelled decline disables the retry pass
+
+The six `Answer: INSUFFICIENT_EVIDENCE` cases are not ordinary declines:
+
+| layer | reads `Answer: INSUFFICIENT_EVIDENCE` as |
+| --- | --- |
+| `parse.ts` `isAbstention`, via `stripDecoration` | a decline — the label is presentation |
+| `isBareDecline` (before this change) | **content** — `Answer:` survived the token strip |
+
+`isBareDecline` gates the arm's bare-decline retry, which re-asks a declined question without offering
+the token. In the control that pass fires on 92 consultations and converts **92 of 92**; in this run it
+reported `attempted: 163, answered: 163` and never fired on the six, because their declines were not
+"bare" by a predicate that only stripped wrappers. Declines per run also doubled, 50 → 108.
+
+So a prompt that names a reply shape can switch off a recovery mechanism, and **no field of the
+artifact says so**: the pass reports `attempted`, and zero is indistinguishable from "no question
+declined". The repair is in the predicate, not in the ask — a prompt must not be able to disable a
+recovery path by asking for a format — and it is `abstention-recovery.ts` importing `parse.ts`'s
+`stripDecoration` so that one definition of "which part of a reply is presentation" serves both layers.
+
+### 13.129.6 What the run confirms
+
+- **KU +5 on byte-identical prompts** (61 → 66 of 72, 6.9%) is the reader floor again, on a third
+  independent pair of runs. §13.127.2 measured 5.0% over 379 verdicts; this is one sample of the same
+  quantity and it is recorded as one, not as a gain.
+- **ABS 29/30 unchanged**, which is what the reach predicts and what `ask-changes.test.ts` now enforces
+  mechanically.
+- **Instruction length costs declines**: 50 → 108 per run on the same evidence. §13.104.5's claim, now
+  with a measured magnitude on a 200-character instruction.
+
+### 13.129.7 The rule this adds
+
+**A repair aimed at a capability must be validated on the subset whose gold has the shape the repair
+assumes.** IE is one capability and two answer shapes; a block that constrains shape is a different
+treatment on each, and the aggregate is their sum — which is why twelve questions of damage and one
+question of gain looked like "IE moved a little" before the split and like a refuted hypothesis after
+it. Every future ask that constrains the *reply* rather than the *reading* carries this split in its
+registration.
+
+### 13.129.8 `recommend`: the next ask, registered before dispatch
+
+The nine paragraph-gold failures, read one at a time (`40751394094`):
+
+| shape | n | example |
+| --- | ---: | --- |
+| the evidence block copied back | 3 | `75832dbd` 31,547 chars, `57f827a0` 16,766 chars, `d6233ab6` 577 |
+| the reader declining **in prose** | 4 | `No evidence items match the question about a Miami hotel` |
+| prose answers the judge did not accept | 2 | `a89d7624`, `0a34ad58` |
+
+The four prose declines are the diagnosis: a recommendation question's gold is *generated*, and the
+flat block asks it to *extract* — "if the evidence does not contain the answer, reply exactly
+`INSUFFICIENT_EVIDENCE`" — so a reader holding the user's stated preferences concludes there is no
+answer to be found. The reference pipeline says the same thing in its own source, on
+`RECOMMENDATION_CONTRACT`: *"the extractive contract is wrong for preference questions … it reads as
+having nothing to say and abstains"*, measured there as abstention on the preference subset moving
+3.45% → 21.84%.
+
+`ask=recommend` is the flat block plus two sentences and no shape:
+
+```
+If the question asks for a suggestion, a recommendation, or advice, build it from what the user has
+  already said they like, want, or are dealing with. Declining is not the right reply when those
+  statements are in the evidence.
+Do not quote, copy, or list the evidence turns. Reply in your own words, in at most three sentences,
+  naming the specific options the evidence supports.
+```
+
+The close becomes `If the evidence contains nothing about the user's situation, reply exactly
+INSUFFICIENT_EVIDENCE.` — the token and its condition survive, and no prefix is introduced, so
+`isBareDecline` keeps working.
+
+Reach `enumerated`'s, change set `{flat}` — enforced, not asserted in prose (§13.130). Control
+`40751394094`.
+
+| # | claim | falsified by |
+| - | ----- | ------------ |
+| 1 | the 33 paragraph-gold questions convert at least 4: 24 → ≥ 28 | ≤ 27 |
+| 2 | the 117 short-gold questions do not regress beyond the floor: ≥ 113 | ≤ 112 |
+| 3 | declines per run stay near the control: ≤ 60 against 50 | ≥ 70 |
+| 4 | MR, TR, ABS prompts byte-identical; KU's too | any prompt moved outside `{flat}` |
+| 5 | overall ≥ 85.0% (control 84.20%) | < 84.2% |
+
+Claim 2 is the one that would separate "licensing composition is safe" from "any change to the flat
+block costs the short-gold questions" — the 117 are 99.1% correct, so their headroom is one question
+and their downside is the whole block's worth of phrasing.
+
+## 13.130 The other half of a single-variable claim, made mechanical
+
+### 13.130.1 Four arrivals of one defect
+
+| run | ask | what the fallthrough did | cost |
+| --- | --- | --- | --- |
+| `39641088296` | `aggregation` | shipped block instead of the control's | TR −21.4, IE −9 |
+| (review) | `silent` | the same shape, caught before dispatch | — |
+| `40807829150` | `answer-line` | shipped block instead of the control's | MR −48, TR −12 |
+
+Three dispatches, one cause: an ask whose block is correct and whose **fallthrough** is the arm nobody
+registered. Each time the prose said "the other routes are byte-identical to the control", and each
+time the test asserted the bytes the implementation produced, so the claim was never checked. The
+`answer-line` test states the mistake as an intention — *"the control here is the SHIPPED block rather
+than `enumerated`"* — which is a test pinning a defect while reading as coverage.
+
+### 13.130.2 What is asserted instead
+
+`ASK_CONTROLS` names the arm each ask is registered against; `ASK_CHANGES` names the routes whose
+instruction text that ask may differ on. `ask-changes.test.ts` renders **all six routes twice** — once
+under the ask, once under its control — and requires the set of routes whose instructions differ to
+equal `ASK_CHANGES` exactly. A route that moves without being declared fails; a route that is declared
+and does not move fails too, because an ask that claims a treatment it does not administer publishes a
+delta about nothing.
+
+The oracle is the registration, never the implementation. That is the only arrangement in which a wrong
+fallthrough is a failure rather than a fixture.
+
+### 13.130.3 Why the tables are test-only
+
+They are the one export in this package whose only caller is a test, and that is deliberate: moving them
+into the artifact would let the run under test publish its own expectation, which is precisely the
+arrangement that failed three times. The alternative — deleting them and restating the reach inside the
+test — is what each of the three failed runs already had. Recorded in
+`tools/export-census-baseline.json` under `memory-arm-ask-oracle` rather than left as an unlisted
+orphan.
+
+### 13.130.4 The mutation check
+
+The instrument was checked against the defect it exists for rather than assumed to work: restoring the
+pre-fix branch (`return own` for multi-session and temporal) makes two cases fail with
+
+```
+expected [ 'flat', 'multi-session', 'temporal' ] to deeply equal [ 'flat' ]
+```
+
+which is the exact three-route movement that cost 48 MR and 12 TR questions. Eleven other cases stay
+green, so the failure names the ask rather than the table.
