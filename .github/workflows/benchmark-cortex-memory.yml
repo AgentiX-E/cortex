@@ -534,3 +534,21 @@ jobs:
         run: |
           python3 tools/readout-arm-run.py --audit \
             packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+      # Beside the audit, in the same `if: always()` tail as the upload. The artifact carries the
+      # same numbers, but the log is what a reader sees when the artifact has expired, and the bands
+      # of 13.147.3 are applied here rather than remembered by whoever reads the JSON six weeks
+      # later.
+      #
+      # ADVISORY, and the one place here where `continue-on-error` is the right answer rather than a
+      # shortcut: the audit step above is the gate, and it is the one that exits non-zero on a
+      # broken artifact. A readout that fails must not turn a valid 2h20m measurement red, because
+      # the conclusion a reader draws from a red job is about the arm. A corrupt block still prints
+      # its reason to stderr and still ships in the artifact, so the failure is visible without
+      # being indistinguishable from "the treatment lost points".
+      - name: Report what the provider said this run cost
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/readout-arm-run.py --spend \
+            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+
