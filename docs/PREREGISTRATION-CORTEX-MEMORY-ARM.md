@@ -13108,3 +13108,69 @@ per-question comparison never subtracts two runs' means. The table is here to st
 84.2 and was 84.3, so nothing moved" — from being written with a straight face, and to record that `T = 0` is a
 choice about **variance on both sides**, not a claim that the pair's difference is temperature-invariant.
 
+## 13.126 Every retrieval-side increment in the plan has a ceiling of five questions, and it is per capability
+
+### 13.126.1 The number that was in the artifact all along
+
+§13.123.1 read `goldOverlap` once, across the roster, and concluded that no wrong question was missing its
+evidence. That was enough to retire three experiments and not enough to price the two that remain registered —
+S-1 (temporal signal, "TR recall@10 +3") and S-5 (cross-encoder, "overall +2"). The field carries
+`goldRanks` per question, so the ceiling of any *reordering* is one count: wrong questions whose best gold
+turn sits at rank 10 or beyond. Everything else already has its evidence inside the top ten, and no permutation
+of a list improves the position of an element that is already first.
+
+Computed on `40751394094` (`ask=enumerated`, `reviewPass=bare`, `temperature=0`, first repetition — the arm both
+pending asks are measured against):
+
+| capability | wrong | best gold rank **< 10** | best gold rank **≥ 10** | no gold surfaced |
+| ---------- | ----: | ----------------------: | ----------------------: | ---------------: |
+| IE         |    10 |                       9 |                       1 |                0 |
+| MR         |    34 |                      32 |                   **2** |                0 |
+| KU         |    11 |                      11 |                       0 |                0 |
+| TR         |    27 |                      25 |                   **2** |                0 |
+| ABS        |     1 |                       1 |                       0 |                0 |
+| **total**  |    83 |                      78 |                   **5** |                0 |
+
+**Five questions is the whole ceiling of the retrieval axis**, on a roster where 83 questions are wrong. Not the
+predicted gain of one mechanism — the sum of every mechanism that changes the *order* of what was already
+retrieved, including the two the plan still lists.
+
+**It is a ceiling in the most generous possible reading, and the stricter reading is zero.** The generous model is
+"the reader needed the gold inside its top ten"; the strict model is the one §13.123.1 measured — every gold turn of
+every wrong question is *already carried into the prompt*, so a reordering can add no evidence to any of the 83 and
+can only move turns it already delivered. Under the strict model the headroom of the entire retrieval axis is **0**
+and the 5 above counts questions whose gold is carried but positioned deep. Both numbers are stated because they
+bound the same quantity from opposite sides: a mechanism may claim at most 5 questions, and should expect 0.
+
+### 13.126.2 What it retires, restated as a ceiling rather than as a null result
+
+| registered increment          | its criterion        | ceiling from this table | verdict                                                             |
+| ----------------------------- | -------------------- | ----------------------- | ------------------------------------------------------------------- |
+| **S-1** temporal signal       | TR recall@10 **+3**  | **2** TR questions      | the criterion is unreachable *as an accuracy claim*; recall@10 and accuracy have come apart |
+| **S-5** cross-encoder rerank  | overall **+2**       | **5** questions total   | reachable, and that is the point: it can hit its prediction and cannot exceed it |
+| pool width / budget (retired) | MR ≥ +3              | 0 (no gold unsurfaced)  | a wider pool cannot help a question whose gold is already carried    |
+| S-2 / S-3 signals (registered) | +2 / +3              | ≤ 5 shared with S-5     | three signals competing for the same five questions, which is §13.125's portfolio problem arriving early |
+
+**S-1's criterion was written in the wrong unit, and this table is the proof rather than an opinion.** Its
+prediction asks for three TR questions of recall; the same three questions cannot become accurate while their gold
+turns already sit in the top ten, because the failure there is what the reader does with a turn it has. Recall and
+accuracy were allowed to diverge by the phrasing, and a dispatch that met the criterion while the roster did not
+move would have read as a mechanism that works and does not matter.
+
+### 13.126.3 The other side of the arithmetic, which is where the plan already points
+
+78 of 83 wrong questions have their best gold turn at rank **< 10**, and 0 have none surfaced. So the reading side
+owns the 78, and the two reader-side asks in flight or queued (§13.123.4 `silent`, §13.124.4 `answer-line`) are
+addressing populations of 34 and 10 questions respectively — six to seventeen times the entire retrieval headroom.
+
+That ratio is also why §13.125's instrument matters more than either number: if `silent` and `answer-line` overlap,
+the pair is worth less than the sum, and the only place that can be checked is the per-question ledger.
+
+### 13.126.4 The criterion this creates for any future retrieval proposal
+
+**A retrieval mechanism must name its ceiling before it is dispatched**, and the ceiling is computed from the same
+five columns above: the count of wrong questions in its target capability whose best gold rank is at or beyond the
+cut it operates on. A proposal with a ceiling of 2 questions may still be worth running — 2 questions is 0.4
+points — but it may not be described as a path to the threshold, and it may not be registered in the unit of
+recall.
+
