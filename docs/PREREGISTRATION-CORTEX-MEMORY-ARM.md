@@ -15138,3 +15138,88 @@ through** -- a third clause, because the first two are satisfiable by arithmetic
 where the arithmetic was written before the field existed. 4.2 whole-MR was never printed anywhere in this document until
 now, and three registered asks (`13.133`'s +1.3, `13.141.5`'s 4-of-10, `13.143`'s thresholds) were written against
 thresholds that this arithmetic says they could not have reached on the population they were written for.
+
+### 13.146 The ten are addressable now: a census delta rather than a fourth counter
+
+#### 13.146.1 What 13.145.6 left open
+
+`ablation.recovery` and `ablation.bareRetry` are `{attempted, answered}` for the **whole run**. Every
+conversion ask registered against those mechanisms therefore names a population the artifact cannot
+address, and 13.145.3's 1.7-3.8-question column was arithmetic about a set of questions nothing could
+point at.
+
+The fix could have been a flag inside the product, reset per question. It was rejected for a reason worth
+writing down: **a stateful beacon is stale for every question the mechanism did not touch.** `#lastReview`
+is reset inside `#promptSessionAware`, which only the multi-session route enters -- so a flat question read
+immediately after an MR question reports the MR question's value. The same shape in a new field would have
+produced a per-question marker that is wrong for 379 of 500 questions, and wrong in the direction that looks
+like a hit.
+
+#### 13.146.2 The instrument
+
+`traceReviewMechanisms(system, trace)` wraps the feature system and records, per question, whether
+`recoveryCensus()` advanced across that one answer:
+
+- **A delta, not a counter.** The product already states this fact three times (`abstentionReasons`,
+  `bareRetryCensus`, `recoveryCensus`); a fourth counter is a fourth thing to drift.
+- **A prototype chain, not a spread.** `Object.create(system)` and not `{ ...system }`: a class instance
+  keeps its methods on the prototype, so a spread would copy no method at all and `isSessionAware` -- which
+  tests for `answerSessions` -- would see a flat-only system. One test asserts the member survives.
+- **Every `answer*` member, by prefix.** Seven routing members today; a prefix rather than a list, so a
+  member added later is covered rather than silently untraced.
+- **Absent when the instrument is absent.** No `recoveryCensus` returns the system **unchanged**; a census
+  that throws is treated as absent, checked once and then abandoned rather than retried per question. Both
+  cases write **no field**, because `false` would say the mechanism did not fire on a run where the
+  instrument that would have known does not exist -- and `--treated` would then classify it as `untouched`
+  instead of `unknown`.
+- **Two fields, not one.** A retry that fired and declined again is `recoveryAttempted` without
+  `recoveryAnswered`, and that half is what says the mechanism ran rather than which way it went.
+
+The record fields are `recoveryAttempted` / `recoveryAnswered`, forwarded through `report-write.ts`'s
+rebuild for the reason `promptChars` is: a field the rebuild does not carry is a field a reduction silently
+drops, and this one is the only per-question statement of which questions a review pass reached.
+
+#### 13.146.3 Acceptance criteria, and how each was tested
+
+All seven are end-to-end, through `runCortexMemoryArm`, in `bench-memory-arm-census.test.ts`:
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | the trace varies **by question**, not by run | `marks which question the pass reached, not only how many times it ran` |
+| 2 | a retry that fired and declined is `attempted` without `answered` | `records a retry that fired and declined again as attempted without answered` |
+| 3 | a system with no census writes **neither** field | `writes neither field for a system that cannot be traced` |
+| 4 | a throwing census is absent, not a failed run | `treats a throwing accessor as absent rather than failing the run` |
+| 5 | a constant census marks nothing | `renders zero attempts as not-applicable rather than as a share of nothing` (the census tests above, unchanged, now also see `attempted: false` on every record) |
+| 6 | the wrapper does not drop `answerSessions` | pinned by the existing session-aware arm tests, which would fail as a flat-only system |
+| 7 | the count and the trace cannot disagree | both are read from the same accessor in the same function; criterion 4 is the case where they would have |
+
+Criterion 1's fixture is the load-bearing one. The first version of these tests used a **one-question**
+dataset, where every per-question field has exactly one value and an implementation that wrote a run-level
+number on every record would pass. The fixture now advances the census only on the second of two questions,
+so `[false, true]` is the only passing answer -- and a trace that read the final count would produce
+`[true, true]`, which is the defect with a plausible shape.
+
+Two things were caught during the change rather than after it, and both are worth recording.
+
+**The unguarded wrapper broke a rule the arm already followed.** `bench-memory-arm-census.test.ts` required a
+throwing `recoveryCensus` to leave the counts absent; the first version of the trace propagated the throw and
+turned that test into a stack trace inside `runBenchmark`. On a real dispatch that is a 2h20m run ending with
+no artifact. It was found because the wrapper sits on the accessor the count already reads.
+
+**The export census refused the change.** `traceReviewMechanisms` and `ReviewMechanismTrace` were exported so
+a unit test could import them, and `pnpm check`'s `census:check` failed with `2 NEW orphan(s) not in the
+baseline` -- correctly, because an export no production code calls is an invitation for the next reader to
+import it. The repair was not to add it to `tools/export-census-baseline.json`; it was to **drop the export
+and move the tests through the public seam**, which is how the one-question fixture above got found: the
+direct unit tests had been satisfied by a single question, and the arm-level ones could not be.
+
+#### 13.146.4 What it changes
+
+`--treated recoveryAttempted=true` now cuts the record set to the questions the pass actually reached, which
+turns 13.145.3's third and fourth rows from arithmetic into a reading **on the next dispatch**: no artifact
+written before this field exists carries it, and `ledger.mjs` reports the missing side as `unknown` rather
+than as untouched.
+
+It also gives every future mechanism ask the same seam. `bareRetryCensus()` has the same shape, and a watch
+that fires on one question and not the next is the generic case -- the wrapper is keyed on the accessor, so
+a second mechanism is one more wrapper and no change to the record type.

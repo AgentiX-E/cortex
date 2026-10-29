@@ -201,6 +201,24 @@ export type QuestionRecord = {
    */
   readonly promptChars?: number | undefined;
   /**
+   * Whether the review mechanisms acted on **this** question.
+   *
+   * `ablation.recovery` and `ablation.bareRetry` are counts for the whole run, so an ask registered
+   * against the population a review pass reaches could not name that population. §13.141.1 put the size
+   * of the gap on record: the pass reaches ten of the 121 MR questions, and a `+4` on those ten is a large
+   * effect while the same `+4` spread over 121 is inside the run's own spread (§13.145.3).
+   *
+   * Two fields and not one: a retry that fired and declined again is `attempted` without `answered`, and
+   * that half is what says the mechanism ran rather than which way it went.
+   *
+   * Absent when the system exposes no census to take a delta from. Absent is not `false` -- a system that
+   * cannot report it has not reported that nothing happened, and a reader must be able to tell the two
+   * apart (`--treated` classifies the absent case as `unknown`).
+   */
+  readonly recoveryAttempted?: boolean | undefined;
+  /** Whether the retry the mechanism fired came back with an answer. See `recoveryAttempted`. */
+  readonly recoveryAnswered?: boolean | undefined;
+  /**
    * How much of the dataset's gold evidence the reader's context contained.
    *
    * ## Why this field is the point of `§13.18`
@@ -320,6 +338,15 @@ export type QuestionRecordInput = {
    * belongs.
    */
   readonly promptChars?: number | null | undefined;
+  /**
+   * Whether the review mechanisms acted on this question, when the producer measured it.
+   *
+   * Measured as the delta of the product's own census around one answer rather than counted a second time
+   * here: a fourth counter for a fact the product states three times is a fourth counter to drift.
+   */
+  readonly recoveryAttempted?: boolean | undefined;
+  /** See {@link QuestionRecordInput.recoveryAttempted}. */
+  readonly recoveryAnswered?: boolean | undefined;
   /**
    * How much of the dataset's gold evidence `retrieved` contained, or `null`.
    *
@@ -596,6 +623,14 @@ export function buildQuestionRecords(
         ? {}
         : { promptChars: input.promptChars }),
       ...(input.goldOverlap === null ? {} : { goldOverlap: input.goldOverlap }),
+      // Written together or not at all, and only when the producer traced: a `false` here would be a
+      // statement about the mechanism rather than about the instrument.
+      ...(input.recoveryAttempted === undefined
+        ? {}
+        : {
+            recoveryAttempted: input.recoveryAttempted,
+            recoveryAnswered: input.recoveryAnswered === true,
+          }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });
   }

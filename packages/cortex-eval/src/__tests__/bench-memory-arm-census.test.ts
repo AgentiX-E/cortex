@@ -85,6 +85,29 @@ function run(feature: MemorySystem, gate: MemoryArmConfig = GATE) {
 }
 
 /**
+ * The same arm over two questions, so a per-question field has somewhere to differ.
+ *
+ * The sibling `run` uses a one-question dataset, where every per-question field has one value and an
+ * implementation that reported a run-level number for every record would pass. A field that is supposed to
+ * vary by question needs at least two questions to be falsifiable.
+ */
+function runTwo(feature: MemorySystem) {
+  const two: BenchmarkDataset = {
+    name: 'fixture',
+    questions: [
+      { id: 'q1', capability: 'IE', question: 'Question one?', expected: 'one', context: [] },
+      { id: 'q2', capability: 'IE', question: 'Question two?', expected: 'one', context: [] },
+    ],
+  };
+  return runCortexMemoryArm(two, constantSystem('reference-pipeline', 'one'), feature, {
+    runs: 1,
+    scorer: exactMatchScorer,
+    generatedAt: '1970-01-01T00:00:00.000Z',
+    memoryArmConfig: { ...GATE },
+  });
+}
+
+/**
  * The docstring that was on `systemWithCensus`, restored with the function below.
  *
  * `MemorySystem`'s conformant minimum is `{ name, answer }`, so a system that
@@ -367,6 +390,68 @@ describe('the arm records what the recovery pass did', () => {
     expect(result.markdown).toMatch(/\|\s*0\s*\|\s*0\s*\|\s*n\/a\s*\|/);
   });
 
+  it('marks which question the pass reached, not only how many times it ran', async () => {
+    // §13.145.6: the two counts above are the whole run's, so an ask registered against the population the
+    // pass reaches could not name it. The trace is the census difference around **one** answer, and this
+    // fixture advances it only on the second question -- so an implementation that read the final count, or
+    // that reported "attempted" for every question after the first, marks `q1` too and fails here.
+    const census = { attempted: 0, answered: 0 };
+    let served = 0;
+    const feature = {
+      name: 'cortex-memory',
+      answer: () => {
+        served += 1;
+        if (served > 1) {
+          census.attempted += 1;
+          census.answered += 1;
+        }
+        return 'one';
+      },
+      recoveryCensus: () => ({ ...census }),
+    } as unknown as MemorySystem;
+
+    const result = await runTwo(feature);
+
+    expect(result.report.questions?.map((record) => record.recoveryAttempted)).toEqual([
+      false,
+      true,
+    ]);
+    expect(result.report.questions?.map((record) => record.recoveryAnswered)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it('records a retry that fired and declined again as attempted without answered', async () => {
+    // The two halves are separate statements, and collapsing them would lose the one that says the mechanism
+    // ran -- which is the difference between "the pass never reached this question" and "the pass reached it
+    // and the reader declined again".
+    const census = { attempted: 0, answered: 0 };
+    const feature = {
+      name: 'cortex-memory',
+      answer: () => {
+        census.attempted += 1;
+        return 'one';
+      },
+      recoveryCensus: () => ({ ...census }),
+    } as unknown as MemorySystem;
+
+    const result = await run(feature);
+
+    expect(result.report.questions?.[0]?.recoveryAttempted).toBe(true);
+    expect(result.report.questions?.[0]?.recoveryAnswered).toBe(false);
+  });
+
+  it('writes neither field for a system that cannot be traced', async () => {
+    // Absent rather than false, because `false` would say the mechanism did not fire on a run where the
+    // instrument that would have known does not exist -- and `--treated` would classify it as untouched.
+    const result = await run(constantSystem('cortex-memory', 'one'));
+
+    const record = result.report.questions?.[0];
+    expect(record === undefined ? false : 'recoveryAttempted' in record).toBe(false);
+    expect(record === undefined ? false : 'recoveryAnswered' in record).toBe(false);
+  });
+
   it('omits the section for a system that does not carry the pass', async () => {
     // `constantSystem` has no `recoveryCensus`, which is the state every archived run is in. The
     // section must not appear, because an absent capability and a zero tally are different claims.
@@ -390,6 +475,11 @@ describe('the arm records what the recovery pass did', () => {
     );
     expect(result.report.recovery).toBeUndefined();
     expect(result.report.questions).toHaveLength(1);
+    // §13.146: the per-question trace reads the same accessor, so the same rule has to reach the record. The
+    // first version of that trace propagated the throw and turned this test into a stack trace -- the guard
+    // belongs on both readers or on neither.
+    expect('recoveryAttempted' in (result.report.questions?.[0] ?? {})).toBe(false);
+    expect('recoveryAnswered' in (result.report.questions?.[0] ?? {})).toBe(false);
   });
 });
 

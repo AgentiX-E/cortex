@@ -363,6 +363,16 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // claiming the reader was shown evidence the prompt never carried --
         // exactly the confusion the field exists to end.
         ...(record.promptChars === undefined ? {} : { promptChars: record.promptChars }),
+        // Forwarded for the reason `promptChars` is: a field the rebuild does not carry is a field a
+        // reduction silently drops, and this one is the only per-question statement of *which* questions a
+        // review pass reached (§13.145.6). Dropping it would leave a reduced artifact unable to name the
+        // population its own numbers are about, which is the defect the field exists to close.
+        ...(record.recoveryAttempted === undefined
+          ? {}
+          : {
+              recoveryAttempted: record.recoveryAttempted,
+              recoveryAnswered: record.recoveryAnswered,
+            }),
         // Forwarded, not recomputed, and that is the whole reason the input type carries
         // a measured shape rather than the gold turns: this producer's `retrieved` is
         // re-joined from the turns the bound left, so recomputing here would make the

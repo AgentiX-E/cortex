@@ -2171,6 +2171,95 @@ type AbstentionReasons = ReportAbstentionReasons;
  *    discordant pairs both return confident-looking values, so a run that graded
  *    nothing would publish an interval over nothing.
  */
+/** What one question's census delta said about the review mechanisms. */
+type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
+
+/**
+ * Wrap a system so each answer records whether the review mechanisms fired **on that question**.
+ *
+ * ## Why this exists
+ *
+ * `recoveryCensus()` and `bareRetryCensus()` answer "how many, so far". A per-question read of the same
+ * fact is a delta taken around **one** answer, which means the accessor that already exists is enough --
+ * no second counter, and nothing that can drift from the total it is part of.
+ *
+ * The alternative considered and rejected was to keep a flag inside the product and reset it per question
+ * (§13.145.6 option 1's first form): a stateful beacon is stale for every question the mechanism did not
+ * touch, so a non-MR question would report the previous MR question's value. A delta cannot be stale,
+ * because it is computed from two readings of a monotonic counter.
+ *
+ * ## Why the wrapper is a prototype chain
+ *
+ * `Object.create(system)` rather than `{ ...system }`: a class instance keeps its methods on the
+ * prototype, so a spread would copy no method at all and `isSessionAware` -- which tests for
+ * `answerSessions` -- would see a flat-only system. The wrapper is also returned unchanged when the system
+ * exposes no `recoveryCensus`, so "not measured" stays distinguishable from "did not fire".
+ *
+ * ## What it does not do
+ *
+ * It does not filter, reorder or modify an answer. The wrapper's only effect is that the returned map
+ * gains one entry per question, and it is keyed by the question string the caller passed -- the same
+ * string the record builder is handed, which is what makes the join exact rather than approximate.
+ */
+function traceReviewMechanisms(
+  system: MemorySystem,
+  trace: Map<string, ReviewMechanismTrace>,
+): MemorySystem {
+  const source = system as { recoveryCensus?: () => { attempted: number; answered: number } };
+  const census = source.recoveryCensus;
+  if (typeof census !== 'function') return system;
+  const traced = Object.create(system) as MemorySystem;
+  // A census that throws is an instrument that is not there, which is the rule the report-level readers
+  // already follow (`recoveryOf` turns a throwing accessor into an absent count rather than a failed run).
+  // Checked once and then abandoned rather than retried per question: an accessor that throws on the first
+  // read throws on the five-hundredth, and a per-question `try` would pay for the same failure every time.
+  let usable = true;
+  const readCensus = (): { attempted: number; answered: number } | null => {
+    if (!usable) return null;
+    try {
+      return census.call(system);
+    } catch {
+      usable = false;
+      return null;
+    }
+  };
+  const names = new Set<string>([
+    ...Object.getOwnPropertyNames(system),
+    ...Object.getOwnPropertyNames(Object.getPrototypeOf(system) as object),
+  ]);
+  for (const name of names) {
+    // Every member the harness can dispatch through starts with `answer`; the routing members are
+    // `answer`, `answerSessions`, `answerTemporal`, `answerAbstention`, `answerAssistant`,
+    // `answerPreference` and `answerKnowledgeUpdate`, and a member added later is covered by the prefix
+    // rather than by a list that would have to be edited in step with it.
+    if (!name.startsWith('answer')) continue;
+    const original = (system as unknown as Record<string, unknown>)[name];
+    if (typeof original !== 'function') continue;
+    (traced as unknown as Record<string, unknown>)[name] = async (
+      question: string,
+      ...rest: unknown[]
+    ) => {
+      const before = readCensus();
+      const answer = await (original as (...args: unknown[]) => unknown).call(
+        system,
+        question,
+        ...rest,
+      );
+      const after = readCensus();
+      // No entry when either read failed: the record then omits the fields, and `--treated` reports the
+      // question as `unknown` rather than as one the mechanism did not reach.
+      if (before !== null && after !== null) {
+        trace.set(question, {
+          attempted: after.attempted > before.attempted,
+          answered: after.answered > before.answered,
+        });
+      }
+      return answer;
+    };
+  }
+  return traced;
+}
+
 export async function runCortexMemoryArm(
   dataset: BenchmarkDataset,
   baseline: MemorySystem,
@@ -2202,24 +2291,33 @@ export async function runCortexMemoryArm(
   // the first answer), but a snapshot taken after the call would silently exclude it if
   // that ever changed, and the exclusion would be invisible in the artifact.
   const usageBefore = llmUsage();
-  const report = await runAblationReport(dataset, baseline, feature, {
-    ...(options.runs === undefined ? {} : { runs: options.runs }),
-    ...(options.alpha === undefined ? {} : { alpha: options.alpha }),
-    ...(options.scorer === undefined ? {} : { scorer: options.scorer }),
-    // Stamped inside `runAblationReport`, after the ablation returns -- never here.
-    //
-    // This was `generatedAt: options.generatedAt ?? new Date().toISOString()`, which is an
-    // ARGUMENT: it is evaluated when the call is made, so the stamp landed before the first
-    // question and `runAblationReport`'s own post-run default never ran. Run `40722772896`
-    // wrote `16:08:38Z` into a report whose artifact was uploaded at `18:15:55Z`, and a reader
-    // auditing that run's duration from the artifact alone gets 92 seconds for 2h08m of work.
-    // `PREREGISTRATION` §13.118.5 is where the wrong number was first read.
-    ...(options.generatedAt === undefined ? {} : { generatedAt: options.generatedAt }),
-    ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
-    memoryArmConfig: options.memoryArmConfig,
-    ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
-    ...(options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs }),
-  });
+  // §13.145.6: which questions the review mechanisms reached, taken as a census delta around each answer.
+  // The wrapper is a prototype chain and is a no-op for a system with no census, so this changes nothing
+  // about what the run measures -- it only makes the population addressable in the artifact.
+  const recoveryTrace = new Map<string, ReviewMechanismTrace>();
+  const report = await runAblationReport(
+    dataset,
+    baseline,
+    traceReviewMechanisms(feature, recoveryTrace),
+    {
+      ...(options.runs === undefined ? {} : { runs: options.runs }),
+      ...(options.alpha === undefined ? {} : { alpha: options.alpha }),
+      ...(options.scorer === undefined ? {} : { scorer: options.scorer }),
+      // Stamped inside `runAblationReport`, after the ablation returns -- never here.
+      //
+      // This was `generatedAt: options.generatedAt ?? new Date().toISOString()`, which is an
+      // ARGUMENT: it is evaluated when the call is made, so the stamp landed before the first
+      // question and `runAblationReport`'s own post-run default never ran. Run `40722772896`
+      // wrote `16:08:38Z` into a report whose artifact was uploaded at `18:15:55Z`, and a reader
+      // auditing that run's duration from the artifact alone gets 92 seconds for 2h08m of work.
+      // `PREREGISTRATION` §13.118.5 is where the wrong number was first read.
+      ...(options.generatedAt === undefined ? {} : { generatedAt: options.generatedAt }),
+      ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
+      memoryArmConfig: options.memoryArmConfig,
+      ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+      ...(options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs }),
+    },
+  );
 
   // The census is read BEFORE the Markdown is rendered, and put into the report
   // rather than returned beside it. That ordering is the whole point of this
@@ -2255,6 +2353,7 @@ export async function runCortexMemoryArm(
       ...(options.evidenceRolesRoutes === undefined ? {} : { reach: options.evidenceRolesRoutes }),
     },
     options.relevancePoolFor,
+    recoveryTrace,
   );
   // Derived from the records rather than tallied while building them, so the
   // manifest and the records it describes cannot disagree (`evidenceReductionOf`).
@@ -2439,6 +2538,23 @@ function overlapOf(
   return { ...overlap, totalAll: goldCount };
 }
 
+/**
+ * The record fields for one question's mechanism trace, or nothing when it was not traced.
+ *
+ * The absence case is the load-bearing one: a system with no `recoveryCensus` leaves the map empty, and
+ * writing `recoveryAttempted: false` for every question would turn "this instrument does not apply" into
+ * "the mechanism did not fire", which `--treated` would then classify as `untouched` instead of `unknown`.
+ */
+function traceOf(
+  trace: ReadonlyMap<string, ReviewMechanismTrace> | undefined,
+  question: string,
+): { recoveryAttempted: boolean; recoveryAnswered: boolean } | Record<string, never> {
+  const entry = trace?.get(question);
+  return entry === undefined
+    ? {}
+    : { recoveryAttempted: entry.attempted, recoveryAnswered: entry.answered };
+}
+
 function buildArmRoster(
   dataset: BenchmarkDataset,
   ablation: AblationResult,
@@ -2460,6 +2576,15 @@ function buildArmRoster(
    * the two meet at this seam.
    */
   poolFor?: (question: string) => readonly string[] | undefined,
+  /**
+   * Whether the review mechanisms fired on each question, keyed by the question text.
+   *
+   * Passed in for the reason `poolFor` above is: this function holds the records and the caller holds the
+   * trace, and a trace captured here would have to be captured after the pass, when only the last question
+   * is reachable. Empty when the system exposes no census, and a question missing from the map writes no
+   * field at all -- `false` would be a statement about the mechanism rather than about the instrument.
+   */
+  recoveryTrace?: ReadonlyMap<string, ReviewMechanismTrace>,
 ): readonly QuestionRecord[] {
   const answers = ablation.featureAnswers!;
   // Captured per question inside the answer loop and carried alongside the
@@ -2556,6 +2681,9 @@ function buildArmRoster(
       // it has no accessor for the offer, which the record then omits.
       admitted: admittedEvidence[i]!,
       promptChars: promptEvidenceChars[i] ?? null,
+      // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
+      // without `answered`, and that half is what says the mechanism ran rather than which way it went.
+      ...traceOf(recoveryTrace, question.question),
       // Measured here rather than inside `buildQuestionRecords`, because the
       // measurement needs the **pre-bound** context and this is the last place it
       // exists: the record's `turns` are what the bound left. Computing it a hop later
