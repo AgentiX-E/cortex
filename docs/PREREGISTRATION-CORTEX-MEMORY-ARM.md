@@ -13326,3 +13326,72 @@ questions. That is the same conclusion from both ends, and it settles the direct
 is not "write less" — it is "write the list and constrain the reply's shape", which is exactly `answer-line`
 (§13.124.4), dispatched against this same control at `ac9450fd`.
 
+## 13.128 `reviewPass: recover` has a population of sixteen questions, and ABS cannot be in it
+
+Registered before dispatch, and it is the first registration in this document whose population was counted **with
+the product's own predicate** rather than with a script written for the paragraph.
+
+### 13.128.1 The census
+
+`declinedItems` and `asksForCount` from `cortex-memory`, run over the control arm's 500 records (`40751394094`,
+`ask=enumerated`, `reviewPass=bare`, `T=0`, first repetition):
+
+| capability | declines | of which carry a Step 1 list | mean items listed | of those, counting questions |
+| ---------- | -------: | ---------------------------: | ----------------: | ---------------------------: |
+| ABS        |       29 |                        **0** |               0.0 |                            0 |
+| MR         |       12 |                       **10** |               1.6 |                            4 |
+| TR         |        8 |                            5 |               3.4 |                            1 |
+| KU         |        2 |                            1 |               2.0 |                            0 |
+| IE         |        1 |                            0 |               0.0 |                            0 |
+| **reachable** |     52 |                       **16** |                   |                            5 |
+
+**Sixteen questions, and every one of them is already scored wrong.** That is the whole of the pass's ceiling:
+10 MR, 5 TR, 1 KU — 3.2 points of the roster if all sixteen converted.
+
+### 13.128.2 Why this pass cannot lose on accuracy, and why that is not the same as free
+
+The gate is `declined with a non-empty list`. A decline is scored **incorrect** on every capability whose gold is
+not a decline, so the pass fires only on questions that have already lost. Three outcomes are possible for each:
+it answers correctly (gain), it answers wrongly (no change), or it declines again (no change). **There is no path
+to a loss in the roster**, which is a stronger property than a low predicted effect and is why this is worth a
+dispatch at all.
+
+What it is not: free. It costs one model call per reachable question (16 calls, plus the tokens of the quoted
+list), and §13.104.5 makes the point that a longer instruction buys declines elsewhere — which is why the prompt
+carries no evidence and the pass is gated on a decline rather than applied to every question.
+
+**ABS is excluded structurally, not by a special case.** Zero of its 29 declines carry a list: they are the bare
+token, which is the correct answer there. If a run of this pass moves a single ABS question, the guard has failed
+and the run is an assembly failure rather than a reading — the `no-list` branch is the only thing standing between
+"repair a contradiction" and "argue with a correct refusal".
+
+### 13.128.3 The prediction
+
+Dispatched against the **same** control (`40751394094`) with `review_pass=recover` as the single field:
+
+| # | claim | falsified by |
+| - | ----- | ------------ |
+| **1** | at least **5 of the 16** reachable questions convert to correct | fewer than 5 |
+| **2** | **ABS does not move** (29/30, question for question, or within the 5.0% reader floor of §13.127.2) | any ABS verdict outside the floor |
+| **3** | no question that did not decline changes verdict, beyond the reader floor | a flip on a question that answered |
+| **4** | the 5 counting questions are the ones most likely to convert, because the corrective prompt names the count explicitly | zero of the 5 convert while non-counting ones do |
+
+Claim 4 is the one that would distinguish "the reader forgot to use its own list" from "the list is shorter than
+the answer needs". The lists here average **1.6 items on MR against a gold count of 3 to 10** (§13.92 measured the
+same gap from the other side), so counting the listed items can produce a *specific wrong number* rather than the
+gold. A pass that produces five new wrong answers and one right one is not a recovery, and claim 4 is what makes
+that visible instead of folding it into a net count.
+
+### 13.128.4 The rule this adds to the register
+
+**A pass that can only fire on questions already scored wrong should be registered by the size of its recovery,
+not by the risk of its regression.** Every other increment in this document is a two-sided bet; this one is
+one-sided by construction, so a criterion phrased as "ABS must not fall" would be measuring the wrong thing
+(ABS is structurally unreachable) and a criterion phrased as "net positive" would hide a pass that repairs none
+of its sixteen and merely relabels them.
+
+### 13.128.5 Ordering
+
+It follows `answer-line` (§13.124.4) and does not share a dispatch with it: both change what the reader reads, and
+a recovery on a flat-route question could not be attributed to either. Its own control is the enumerated arm, so
+the comparison is one field and no drift is inherited.
