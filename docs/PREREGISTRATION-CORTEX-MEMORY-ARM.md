@@ -13110,6 +13110,12 @@ choice about **variance on both sides**, not a claim that the pair's difference 
 
 ## 13.126 Every retrieval-side increment in the plan has a ceiling of five questions, and it is per capability
 
+> **Amended by §13.150, before this section was acted on.** The five below is the ceiling of a **permutation** of
+> the delivered list, and it is correct as that. It is not the ceiling of the retrieval axis: a mechanism that
+> changes **which region** is delivered is bounded by the 44 wrong questions with an eligible gold outside the
+> delivery, which is **8.80 points** -- 8.8 times this number. The arithmetic in 13.126.1-13.126.3 stands; what does
+> not is reading this count as a bound on every retrieval mechanism, which is what 13.126.4 did.
+
 ### 13.126.1 The number that was in the artifact all along
 
 §13.123.1 read `goldOverlap` once, across the roster, and concluded that no wrong question was missing its
@@ -15805,3 +15811,429 @@ criterion 7 on the flow `5.05%` in the fixture.
 so its population's own conversion rate is the reading and the roster mean is not.** The corollary is the one
 this campaign needed earlier: for such a treatment, **the counterfactual is the same questions without the
 treatment**, and any comparison against `0` is comparing against a number the reader does not obey.
+
+## 13.150 The retrieval ceiling is 44 questions, not five: §13.126 measured permutations and called it retrieval
+
+§13.126 priced the retrieval axis at five questions and used that number to retire three registered increments and
+to warn off a fourth. The arithmetic in it is correct and the question it answers is not the question the plan
+needed answered. This section prices the other one, offline, from the artifact that was already on disk.
+
+The ceiling of a mechanism that changes **which region** of the pool is delivered is **44 of 83 wrong questions,
+8.80 points of the roster.** The ceiling of a mechanism that changes the **order** of what was delivered is 5. The
+two are not the same number and they were not the same mechanism, and §13.126 read the second as a statement about
+both.
+
+### 13.150.1 Why the two counts came apart
+
+`goldRanks` is a list with one entry per eligible gold turn. `carried` is how many of those turns reached the
+reader. §13.126's count is the questions whose **best** rank is at ten or beyond -- and "best" is the operative
+word:
+
+| question | golds | carried | best rank | §13.126 | this section |
+| --- | ---: | ---: | ---: | --- | --- |
+| `0a995998` (MR, wrong) | 17 | 17 | 8 | the reader had what it needed | nothing left to deliver |
+| a hypothetical with 17 golds, 12 carried, best rank 8 | 17 | 12 | 8 | the reader had what it needed | **five golds undelivered** |
+
+The first row is real and the second is why the count cannot be read as retrieval. A question can have its first
+gold near the top and five others the delivery dropped, and no permutation of a list produces a turn the list does
+not contain. §13.126.1 says as much in one sentence -- "no permutation of a list improves the position of an element
+that is already first" -- and then applies the count to mechanisms that are not permutations.
+
+### 13.150.2 The ledger, over the control's 83 wrong questions
+
+`tools/expand-resolution.mjs --artifact 40751394094`:
+
+| capability | wrong | carried = total | missing gold | of the missing: deep in pool | outside pool | region ceiling | in points |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| IE | 10 | 5 | 5 | 16 | 2 | 5 | 3.33 |
+| **MR** | **34** | **20** | **14** | **0** | **25** | **14** | **11.57** |
+| KU | 11 | 0 | 11 | 51 | 10 | 11 | 15.28 |
+| **TR** | **27** | **14** | **13** | **0** | **21** | **13** | **10.24** |
+| ABS | 1 | 0 | 1 | 5 | 0 | 1 | 3.33 |
+| **roster** | **83** | **39** | **44** | **72** | **58** | **44** | **8.80** |
+
+Three readings, and the third is the one that changes what the plan does next.
+
+**1. Thirty-nine wrong questions are beyond every retrieval mechanism, and that number is now measured rather
+than assumed.** They delivered every eligible gold they had. Whatever is wrong with them is in what the reader did
+with the text, which is where §13.123's and §13.124's populations live. §13.126 reached the same conclusion from
+the other side -- "the reading side owns the 78" -- and this table says 39 of them own it outright.
+
+**2. The cheap bucket and the expensive bucket are disjoint by capability.** MR and TR have **zero** golds that the
+index surfaced and the delivery dropped: every one of their 46 missing golds is outside the pool. KU is the
+opposite: 51 of its 61 missing golds were surfaced and not delivered, and 51 is the largest single bucket in the
+table. So "deliver more of what the index found" is a KU-and-IE mechanism and "search differently" is an MR-and-TR
+mechanism, and a dispatch that does one will move the other's column by nothing.
+
+**3. KU's 51 is a budget finding wearing a retrieval costume.** Those golds are in the pool; promoting them costs
+characters and no retrieval at all. §13.139 measured the room: 468 of 500 questions render at or above 95% of the
+48,000 ceiling and the tightest has 409 characters left. So the cheapest single bucket in the table is the one the
+budget forbids, which is §13.147's "the denominator is the binding constraint" arriving on the retrieval axis.
+
+### 13.150.3 The independent cross-check against the reference pipeline
+
+§13.137.2 records the reference's single-variable pair: same day, same levers, one flag removed. MR **85.0 → 82.0**
+with the reranker, so roughly **3.6 MR questions**. That is the *permutation* axis and it lands under §13.126's
+ceiling of 2 MR questions -- the two derivations agreeing on a small number is why §13.126's arithmetic is trusted.
+
+The `--expand` movement is a different pair and it lands on the *region* axis: MR **75.9 → 85.0 = +9.1 points =
+11.0 questions**, TR **85.7 → 94.0 = +8.3 points = 10.5 questions**. Against this section's ceilings of **14** and
+**13**, both numbers fit underneath, and they fit with room rather than filling it:
+
+| axis | mechanism | this roster's ceiling | the reference's measured movement | ratio |
+| --- | --- | ---: | ---: | ---: |
+| MR | permutation (reranker) | 2 | 3.6 | 1.8x -- over, which is why the two runs disagree by a question |
+| MR | region (`--expand`) | **14** | **11.0** | 0.79 |
+| TR | region (`--expand`) | **13** | **10.5** | 0.81 |
+
+The region rows are the useful ones. A mechanism claiming to move 11 or 10.5 questions on this roster would be
+making a claim its own ledger permits, and a mechanism claiming 20 would not. That is what a ceiling is for: it does
+not say a mechanism works, it says whether its claim is arithmetically possible.
+
+It also says the two published `--expand` movements are **consistent with a per-question count**, which is the
+first time this campaign has had a second derivation of that number from a source that did not know it was
+computing one.
+
+> **The third source below was read wrong, and §13.151 corrects it.** The paper's +7-11% is the effect of its
+> `time-aware query expansion`, and that mechanism — read from the authors' code — is a **permutation**: an LLM
+> infers a date range and the sessions inside it are moved to the front of an already-retrieved list. It is not a
+> region change, so it does not belong on this axis, and citing it here as support for a per-entity retrieval was
+> the same class of error §13.126 made in the other direction. The table is kept with its correction rather than
+> deleted, because the coincidence it describes is real and the reason it is a coincidence is the finding.
+
+**And there is a third source, which is what makes the interval an interval rather than a coincidence.**
+LongMemEval's own paper (arXiv 2410.10813) reports time-aware query expansion at **+7-11% on temporal reasoning**.
+On this roster that is **8.9-14.0 TR questions**, and the ceiling above is 13:
+
+| source | what it prices on TR | method | what it does not know |
+| --- | ---: | --- | --- |
+| the paper's ablation | **8.9-14.0 questions** | one mechanism, one benchmark, the authors' own harness | reported on the temporal category only |
+| this section's ceiling | **13 questions** | arithmetic over the control's gold ledger, no model call | an upper bound, silent on whether a rule set reaches it |
+| the reference's single-variable pair | **10.5 questions** | one flag removed, same day, same levers | it mixes three cue classes into one switch |
+
+Three derivations and three methods -- another group's ablation, a published artifact's ledger, and a
+reimplementation's paired run -- and the reference's measured movement sits inside both of the other two. That is
+the strongest form this campaign has for a number it has not dispatched: bounded from above by its own arithmetic,
+bracketed from outside by an independent ablation, matched in the middle by a build of the mechanism it is about to
+register.
+
+The same table explains why §13.126's five was never going to agree with any of them. The paper reports a
+**recall** movement at +7-11%; §13.126 counts questions whose **best** gold is already past rank ten. Both
+sentences can be true, and only one of them can price a time-aware query expansion.
+
+### 13.150.4 The first rule set measured the wrong cue, and the roster's own wording says so
+
+§13.137.3 describes `--expand` as "rules, not a model call": it parses time cues, counting cues and comparison cues
+and issues one retrieval per named thing. The first version of this tool implemented three families -- an **absolute
+named period**, a cardinality word, a conjunction -- and reported that a question could be split 9 times out of the
+44 reachable ones. That number was a measurement of the rule set and not of the mechanism, and reading the
+questions is what showed it:
+
+| cue family | wrong questions it matches (of 83) | share |
+| --- | ---: | ---: |
+| cardinality (`how many`, `total`) | 34 | 41.0% |
+| conjunction (`and`, `or`, `vs`) | 20 | 24.1% |
+| **relative period** (`last month`, `past three months`, `two weeks ago`, `most recently`) | **16** | **19.3%** |
+| ordering (`what is the order`, `earliest`, `which came first`) | 10 | 12.0% |
+| magnitude (`percentage`, `discount`, `how old`) | 8 | 9.6% |
+| **absolute period** (`in March`, `on Tuesdays`, a year) | **5** | **6.0%** |
+
+**The family the first version had, the absolute period, is the rarest one on this roster at 6.0%.** The questions
+say `How many plants did I acquire in the last month?`, `What is the total amount of money I earned from selling my
+products at the markets?`, `What was the significant business milestone I mentioned four weeks ago?` -- they name a
+period **relative to now**, and a rule that looks for month names finds almost none of them. §13.137.3's own
+description ("`analyzeQuery` resolves a named period against `now`") already said the resolution was against `now`;
+the first implementation read the first half of that clause and dropped the second.
+
+Rebuilt as six families -- adding relative period, ordering and magnitude -- the same roster reads:
+
+| capability | wrong | decomposable | share | reachable **and** decomposable |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 10 | 3 | 30.0% | 1 |
+| MR | 34 | 18 | 52.9% | **7** |
+| KU | 11 | 3 | 27.3% | 3 |
+| TR | 27 | 10 | 37.0% | 5 |
+| ABS | 1 | 1 | 100.0% | 1 |
+| roster | 83 | 35 | 42.2% | **17** |
+
+**17 of 44, up from 9.** And with that, the arithmetic against the reference stops being a contradiction: a rule set
+this size reaches 7 of MR's 14, and the reference moved 11 -- still more than the rules can address and no longer
+twice as much.
+
+### 13.150.5 The holdout that keeps a hand-written rule set honest
+
+The six families were read off the **wrong** questions' own text, so their coverage of those questions is a fitted
+quantity. Citing it as evidence that the rules work would be the §13.137 error in a new place -- a number that looks
+like a finding and is a description of how it was chosen. The tool therefore reports the same families against the
+questions the arm got **right**, on text they were not chosen against:
+
+| capability | wrong, split | share | correct, split | share | delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| IE | 3/10 | 30.0% | 37/140 | 26.4% | +3.6 |
+| MR | 18/34 | 52.9% | 48/87 | 55.2% | **-2.2** |
+| KU | 3/11 | 27.3% | 11/61 | 18.0% | +9.2 |
+| **TR** | **10/27** | **37.0%** | **78/100** | **78.0%** | **-41.0** |
+| ABS | 1/1 | 100.0% | 9/29 | 31.0% | +69.0 (n=1) |
+| roster | 35/83 | 42.2% | 183/417 | 43.9% | -1.7 |
+
+**The roster-level delta is -1.7 points, which is the answer that matters: the rules generalise.** 42.2% against
+43.9% on 500 questions is not a rule set fitted to the 83 failures; it is a description of how this dataset writes
+questions. IE, MR and KU all sit within a few points of their holdout, and ABS's +69.0 is one question and is
+reported for completeness rather than read.
+
+**TR's -41.0 is the exception, and it is the most useful number in the table.** 78% of the temporal questions the
+arm answers *correctly* are splittable, and only 37% of the ones it gets wrong are. The ordering questions --
+`What is the order of the six museums I visited from earliest to latest?` -- are the splittable ones and the arm
+already answers them. What it fails on is the other shape: `What gardening-related activity did I do two weeks
+ago?`, `What was the life event of one of my relatives that I participated in a week ago?` -- a **single** event at
+a **relative** offset, where the key is not a decomposition at all but `now - 2 weeks` resolved into a window.
+
+So TR's ceiling of 13 and MR's ceiling of 14 are close numbers produced by **different mechanisms**, and a rule set
+that raises MR's coverage does nothing for TR's:
+
+| | what the failures need | does a per-entity decomposition help |
+| --- | --- | --- |
+| MR | an item that spans sessions and has no name in the question | partly -- the period narrows it, the items still have to be enumerated |
+| TR | one event at a relative offset | **no** -- it needs `now` arithmetic and a windowed retrieval |
+| KU | a fact that changed, whose current value is the answer | no -- it needs a recency or supersession rule |
+
+**That is why this section does not register a dispatch.** The three columns want three mechanisms, and the only
+one of them a rule set addresses is MR's, partially. Registering "`expand`" as one increment would put all three
+under one switch and one number, which is the §13.125 portfolio problem and the §13.137.2 multi-variable problem
+arriving together.
+
+### 13.150.6 What the next action is, and why it is a source read rather than a run
+
+The rule set **is** the mechanism. §13.137.5's rule -- a number in a comparison table must be recomputable from the
+other side's artifacts -- has an obvious extension: a *mechanism* compared against must be readable as code before a
+reimplementation of it is registered. Three specific things are needed from that read, and each is a number this
+section cannot produce:
+
+1. **The cue list itself.** Six families reach 17 of 44; whether the reference's list reaches more is a question
+   about its source, and 11 of 14 on MR is currently explained only by "its rules are richer than mine".
+2. **What it does with the resolved period.** "One retrieval per named thing" says nothing about whether a
+   relative period is converted into a filter over turn timestamps, a boost, or a separate index.
+3. **Whether the expansion runs before or after the top-k cut**, because that is the difference between the cheap
+   bucket (72 golds the index found and the delivery dropped) and the expensive one (58 it never found), and this
+   roster's two buckets are disjoint by capability.
+
+Until then the honest statement is the one the ledger supports: **the region ceiling is 44 questions and 8.80
+points, a hand-written six-family rule set reaches 17 of them, and the reference's measured MR movement of 11 sits
+between the two.**
+
+### 13.150.7 What §13.126 said next, restated
+
+§13.126.4 wrote: "a retrieval mechanism must name its ceiling before it is dispatched, and the ceiling is computed
+from the same five columns above." The four columns were wrong for the class of mechanism the paragraph was
+warning off, and the reason is one word in the criterion:
+
+> the count of wrong questions in its target capability whose best gold rank is at or beyond the cut it operates on
+
+"best gold rank" is a permutation quantity. A mechanism that adds a delivery is not bounded by it, and a mechanism
+that adds a delivery is what the reference runs for MR and TR. The corrected criterion, which is what
+`tools/expand-resolution.mjs` computes:
+
+- **A permutation mechanism** names its ceiling as wrong questions whose **best** gold is at or beyond its cut.
+- **A region mechanism** names its ceiling as wrong questions with **at least one** eligible gold outside the
+  delivery, split into the part the index already found (cheap) and the part it never found (expensive).
+- **A mechanism that does neither** -- one that changes the instruction, the rendering or the reader -- has a
+  ceiling of the wrong questions it can address at all, and §13.126's count is not it either.
+
+### 13.150.8 The tool, and its acceptance criteria
+
+```
+node tools/expand-resolution.mjs --artifact <report.json> [--json]
+```
+
+| # | criterion | test (`tools/__tests__/test_expand_resolution.py`) |
+| - | --- | --- |
+| 1 | a question whose golds were all delivered is not in the ceiling | `test_a_question_whose_golds_were_all_delivered_is_not_reachable` |
+| 2 | a gold the index saw and the delivery dropped is the cheap bucket | `test_a_gold_the_index_saw_and_the_delivery_dropped_is_the_cheap_bucket` |
+| 3 | a gold the index never surfaced is the expensive bucket | `test_a_gold_the_index_never_surfaced_is_the_expensive_bucket` |
+| 4 | a delivery wider than the pool is read at its tight side, not as a negative | `test_a_delivery_wider_than_the_pool_is_read_at_its_tight_side` |
+| 5 | a record written before `poolGold` keeps its missing count and loses only the split | `test_a_record_without_a_pool_is_still_priced_for_its_missing_golds` |
+| 6 | a correct question never enters a ceiling | `test_a_correct_question_never_enters_the_ceiling` |
+| 7 | the two ceilings are two numbers, and region dominates permutation | `test_the_two_ceilings_are_two_numbers_and_the_region_one_dominates` |
+| 8 | all-negative ranks are a region target and not a permutation one | `test_a_question_with_no_gold_in_the_pool_is_not_a_permutation_target` |
+| 9 | the ceiling is also reported in points | `test_the_ceiling_is_reported_in_points_because_that_is_the_unit_it_is_compared_in` |
+| 10 | a question with no cue is one sub-query | `test_a_question_with_no_cue_is_one_sub_query` |
+| 11 | a named period is a temporal cue | `test_a_named_period_is_a_temporal_cue` |
+| 12 | a conjunction names two things at once | `test_a_conjunction_names_two_things_at_once` |
+| 13 | the decomposable count is over wrong questions and the reach is a subset | `test_the_decomposable_count_is_over_wrong_questions_and_the_reach_is_a_subset` |
+| 14 | `carried` above `total` is refused | `test_refuses_a_delivery_that_exceeds_its_own_denominator` |
+| 15 | a pool larger than the set it is a subset of is refused | `test_refuses_a_pool_larger_than_its_denominator` |
+| 16 | a `goldRanks` list of the wrong length is refused | `test_refuses_a_rank_list_that_does_not_match_its_denominator` |
+| 17 | a non-boolean verdict is refused | `test_refuses_a_verdict_that_is_not_a_boolean` |
+| 18 | a report with no roster is refused | `test_refuses_a_report_with_no_roster` |
+| 19 | an absent overlap is unjudgeable, not complete | `test_an_absent_overlap_is_unjudgeable_rather_than_complete` |
+| 20 | an unknown flag is a usage error | `test_an_unknown_flag_is_a_usage_error_not_a_reading` |
+| 21 | the text and machine readings agree | `test_the_text_reading_carries_the_same_population_as_the_machine_one` |
+| 22 | the holdout counts the questions the rules were not chosen against | `test_the_holdout_counts_the_questions_the_rules_were_not_chosen_against` |
+| 23 | a relative period is a cue, and it is not the same key as an absolute one | `test_a_relative_period_is_a_cue_because_the_roster_says_so` |
+| 24 | an ordering question is a different key from a cardinality one | `test_an_ordering_question_is_a_different_key_from_a_cardinality_one` |
+| 25 | the holdout is printed, not only stored | `test_the_text_reading_prints_the_holdout` |
+
+Mutation, stated so a later refactor cannot silently pass: reading `carried` as `total - missing` fails criterion
+1; treating an absent `pool` as zero fails criterion 5 (every missing gold becomes outside-pool); a
+`Math.max(0, pool - carried)` dropped in favour of the identity fails criterion 4 with a negative; computing the
+permutation ceiling from `max` instead of `min` fails criterion 7 on the `hidden` fixture; dropping the
+`relative-period` family fails criterion 23 and takes the roster's decomposable count from 35 to 24; counting a
+conjunction as one key instead of two fails criterion 12 (the fixture expects three).
+
+### 13.150.9 The rule this adds
+
+**A ceiling is priced in the unit of the mechanism, and "retrieval" is at least two mechanisms.** A count computed
+from the best rank bounds permutations; a count computed from delivered versus eligible bounds region changes; and
+the second is 8.8 times the first on this roster. Applying the smaller one to the larger class does not make the
+larger class unreachable -- it makes the plan stop looking, which is the same outcome with worse bookkeeping.
+
+And the corollary this section paid for twice: **a hand-written rule set is a measurement of the corpus's wording,
+so it has to be read back against that wording before its coverage is quoted.** The first six-line version of the
+cue table had an absolute-period family that matched 6.0% of the failures, while the relative form matched 19.3%;
+the coverage it reported was a fact about the rule, dressed as a fact about the mechanism. The holdout is what makes
+the difference visible: 42.2% of the wrong questions and 43.9% of the right ones means the rules describe the
+dataset, and TR's 37.0% against 78.0% means one capability's failures need a different mechanism rather than a
+better rule.
+
+## 13.151 The reference's time-aware expansion is a permutation, and reading its code is what said so
+
+§13.137.3 described the retrieval-side lever as "**rules, not a model call**": `analyzeQuery` parses cues and
+issues one retrieval per named thing, costing a handful of vector searches and no extra LLM call. That
+description is of `al-buddy-memory`'s `--expand` flag, which is one implementation. LongMemEval's **own**
+implementation is a different mechanism, it is public (`src/index_expansion/temp_query_search_pruning.py` in
+`xiaowu0162/LongMemEval`), and reading it settles three questions this campaign has been guessing at since
+§13.137.
+
+This section is the source read §13.150.6 said had to precede any registration. It changes the axis assignment of
+the mechanism §13.150.3 leaned on, and it hands this arm a design it can afford.
+
+### 13.151.1 What the code does, in five statements it can be held to
+
+The file is 198 lines and its mechanism is five steps:
+
+1. **An LLM call infers a date range, not a set of queries.** `infer_time_range(question, question_date)` sends a
+   system prompt plus ten worked examples to `gpt-4o` at `temperature=0` and asks for `{"start", "end"}` in
+   `YYYY/MM/DD`, or the literal string `N/A` when the question has no temporal reference. The system prompt says so
+   explicitly: *"If the question does not have any temporal references, do not attempt to guess a time range."*
+2. **The range is widened by two days at each end** before use (`increment_date(start, -2)`, `increment_date(end,
+   +2)`), which is a rounding for the fact that an event at the boundary may be logged under a neighbouring date.
+3. **Sessions whose decomposed events fall in the range are moved to the front**, and everything else is kept in
+   its original relative order: `ranked_items_new = ranked_items_new_left + ranked_items_new_right`.
+4. **No retrieval is re-run.** `ranked_items_original` is read from the retrieval file, reordered, and written
+   back. The corpus does not change; only the order does, and only the elements already in the list.
+5. **A question with no temporal reference passes through untouched** and its metrics are recorded unchanged,
+   which is why the reported effect is an average over the subset that fired rather than over the roster.
+
+### 13.151.2 What that retires, and what it confirms
+
+**Retired: "the reference's expansion is rules."** It is a model call, at `temperature=0`, with a ten-example
+few-shot prompt. The clue-based rule decomposer §13.150.4 spent its budget on is `al-buddy-memory`'s design, not
+this one. Both exist, they are different mechanisms, and §13.137.3 named one and described the other.
+
+**Retired: this mechanism belongs on the region axis.** It is a permutation of an already-delivered list, so it
+cannot produce a turn the retrieval did not return. §13.126's ceiling is the right instrument for it and §13.150's
+44-question region ceiling is not. **§13.150.3 cited the paper's +7-11% as external support for a region change and
+that citation was wrong** -- the number is a recall movement produced by reordering, and the section now carries the
+correction.
+
+**Confirmed, and this is the part that matters: the paper's own examples are this roster's TR failures.** The ten
+few-shot examples include `Where did I attend the religious activity last week?`,
+`What did I do with Rachel on the Wednesday two months ago?`, `Which pair of shoes did I clean last month?` -- and
+the four `N/A` examples are `How many months ago did I book the Airbnb`, `How long have I been using my Fitbit`,
+`How many bikes do I currently own`, `How many engineers do I lead ... how many now`. That is a split by **shape**,
+and §13.150.5 measured the same split from the other side: TR's failures are the single-event-at-a-relative-offset
+questions (37.0% decomposable) while TR's successes are the ordering questions (78.0% decomposable).
+
+**So the two implementations are not competitors for one job. They are one mechanism each for two capabilities**,
+and §13.150.4's finding that MR and TR want different things now has a published implementation on each side:
+
+| capability | what the failures need | the implementation that does it | axis | cost |
+| --- | --- | --- | --- | --- |
+| **MR** | every item, enumerated across sessions | `--expand`: one retrieval per named thing | region | ~0 LLM (rules) |
+| **TR** | one event at a relative offset | `temp_query_search_pruning`: infer the range, move it to the front | **permutation** | **+1 LLM call on the flagged subset** |
+| KU | the current value of a changed fact | neither; the paper's `session-userfact` is an **index-time** expansion | region, before the cut | index-time |
+
+### 13.151.3 What this arm would have to build, and what it already has
+
+The published mechanism needs `timestamped_facts`: an index-time decomposition of each session into
+`{date, event}` entries, built by `batch_expansion_session_temp_event.py` (19KB of extraction prompts). **This arm
+does not need it.** Its turns already carry the timestamp in the text --
+`[2023/02/15 (Wed) 01:41] user: ...` -- so a date is a prefix parse rather than an extraction, and a
+"session in range" test is `any(turn date in [start-2, end+2] for turn in session)`.
+
+That is a real advantage and it is worth stating precisely, because it is the difference between adding a mechanism
+and adding a mechanism **plus** an index-time LLM pass over 500 histories:
+
+| | the reference | this arm |
+| --- | --- | --- |
+| date source | `timestamped_facts`, extracted by an LLM at index time | the turn's own text prefix |
+| granularity available | the extracted event | the turn |
+| what has to be built | an extraction pass + a date→session map | a prefix parser + the same map |
+| risk | an extraction error is silent and permanent | a malformed prefix is a parse failure, which is countable |
+
+The prefix parser is the whole prerequisite, and the arm's own artifacts already prove the format holds: every
+`turns[]` entry in `40751394094` opens with `[YYYY/MM/DD (Day) HH:MM]`.
+
+### 13.151.4 The cost, which is why this is registrable at all
+
+A whole-roster expansion call would add 4,000 calls per dispatch, which is **+69%** on the 5,756 this arm issues
+(§13.147.1) and is not affordable. The published mechanism does not do that: it calls only on questions with a
+temporal reference, and returns early on `N/A`.
+
+The arm's own roster says how often that is. Using the two period families from §13.150.4 as a proxy for "the
+prompt would not answer `N/A`":
+
+| capability | questions with a period reference | share |
+| --- | ---: | ---: |
+| IE | 5 / 150 | 3.3% |
+| **MR** | **30 / 121** | **24.8%** |
+| KU | 4 / 72 | 5.6% |
+| **TR** | **29 / 127** | **22.8%** |
+| ABS | 2 / 30 | 6.7% |
+| roster | **70 / 500** | **14.0%** |
+
+**70 calls per pass, 560 per dispatch, +9.7%.** That is the number that makes this a candidate rather than an
+aspiration: a tenth of the bill for a mechanism aimed at the capability with the second-largest region ceiling, and
+the proxy is an over-estimate rather than an under-estimate, because the model answers `N/A` on some questions the
+cue families match (`How many months ago did I book the Airbnb` has `ago` in it and the paper's own example output
+is `N/A`).
+
+**And it cannot lower the bill, so §8's question has an answer here too.** The mechanism is a reorder, so it adds
+calls and removes none; what it can remove is the alternative -- buying a wider pool or more repetitions to reach
+the same 13 questions. That trade is priced in §13.145.3 and this is the cheaper side of it.
+
+### 13.151.5 What is registered, and the four criteria it has to meet
+
+**Registered as the next dispatch, conditional on the prefix parser's own test passing.** It is registered against
+the same control as every other read in this campaign (`40751394094`) so the ledger's cross-run mode gives the
+overlap for free.
+
+| # | criterion | what would falsify it |
+| - | --- | --- |
+| 1 | the prefix parser resolves a date on **every** turn of every question, or names the questions it cannot | any question with an unparsed turn is excluded from the reorder and reported, never silently ranked last |
+| 2 | the reorder is a **permutation**: the multiset of delivered turns is byte-identical to the control's | any question whose delivered set changed means this dispatched two mechanisms |
+| 3 | the range inference fires on 10-20% of the roster | outside that band the cost model in §13.151.4 is wrong and the mechanism is being administered more broadly than registered |
+| 4 | TR moves by **at least 5 of its 13 reachable questions**, and MR by at most 2 | TR below 5 and the mechanism is a recall movement that did not reach accuracy; MR above 2 and the effect is not the temporal one |
+| 5 | no question outside the flagged subset changes verdict beyond the 5.0% reader floor | a flow above the floor among untouched questions means the reorder perturbed something it was not supposed to touch |
+
+Criterion 2 is the one that makes this a clean experiment rather than an increment. §13.137.2's own warning is that
+`88.4 -> 92.6` was three levers at once; a permutation by construction cannot be that, because the delivered set is
+invariant and the only thing that moves is order.
+
+**It is not dispatched in this step**, for the reason §13.150.6 gave about the rule set and one more: the prefix
+parser does not exist yet, and criterion 1 is a gate on it rather than on the model. That is a code change with a
+test, not a dispatch, and it is the next step's first half.
+
+### 13.151.6 The rule this adds
+
+**A mechanism's axis is a property of its code, not of its description.** "Query expansion" names at least two
+different things -- a rule set that issues new retrievals, and a model call that reorders an existing list -- and
+they are bounded by different ceilings, cost different amounts, and address different capabilities. Reading the
+description gave this campaign the region axis for a permutation mechanism and a cost model (+1 call per question)
+that was 7 times the real one (+1 call per *flagged* question). The code gave both numbers.
+
+**Corollary, and it is the one that generalises beyond this benchmark:** when two implementations of one named
+technique disagree, the disagreement is usually about which axis the technique lives on. `--expand`'s rules and
+`temp_query_search_pruning`'s reorder are both called "query expansion", and one is a region change while the other
+is a permutation. A campaign that registers "query expansion" as one increment would be registering two axes under
+one name, and the first reading would show neither.
