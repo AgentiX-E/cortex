@@ -15040,27 +15040,35 @@ Run `40859499624`'s MR side, four repetitions each: feature 81-87 (avg 83.0), ba
 distribution is `(81, 82, 82, 87)` or `(81, 81, 83, 87)`, so `sd ≈ 2.35-2.45`. The baseline side sums to 403 and
 cannot exceed 101, so it is `(100, 101, 101, 101)`, `sd ≈ 0.43`.
 
-| reading | population | per-draw sd (arm / control) | SE of the 4-vs-4 difference | smallest difference this resolves at 80% power |
+Two comparisons are named separately below, and they are **not** the same instrument. A *within-artifact* delta
+compares the feature side against the reference side of one run, where the reference side is close to deterministic.
+A *cross-artifact* delta compares two dispatches of the **same** memory arm, so both sides carry the full per-draw
+spread. Every verdict in this document has been one or the other, and the difference is a factor of 1.4.
+
+| comparison | population | per-draw sd (arm / control) | SE of the 4-vs-4 difference | smallest difference resolved at 80% power |
 | --- | --- | --- | --- | --- |
-| whole MR | 121 | 2.45 / 0.43 | 1.24 | **4.2 questions** (3.5 pp) |
-| reachable ten, flipping at the corpus rate | 10 | 0.70 / 0.12 | 0.36 | **1.2 questions** |
-| reachable ten, each a coin flip | 10 | 1.58 / 0.12 | 0.79 | **2.7 questions** |
+| within-artifact (feature vs its reference side) | 121 | 2.45 / 0.43 | 1.24 | **4.2 questions** (3.5 pp) |
+| cross-artifact (two dispatches of one arm) | 121 | 2.45 / 2.45 | 1.73 | **5.8 questions** (4.8 pp) |
+| cross-artifact, reachable ten at the corpus rate | 10 | 0.70 / 0.70 | 0.50 | **1.7 questions** |
+| cross-artifact, reachable ten, each a coin flip | 10 | 1.58 / 1.58 | 1.12 | **3.8 questions** |
 
 The 80%-power column is `(t_{0.975,6} + t_{0.80,6}) · SE = 3.353 · SE`, with `SE = sqrt(sd_arm²/4 + sd_control²/4)`.
-The control's per-draw sd on a ten-question population is derived the same way from its own MR spread and lands at
-0.12: it is close to deterministic, which is why the control side contributes almost nothing to any of the three
-rows.
+
+**The row that matters for this campaign's conversion asks is the second one, and it is 5.8, not 4.2.** `recover`
+against `bare` is a cross-artifact comparison: both are the memory arm, both carry the 2.45 spread, so the floor is
+1.73 · 3.353 = 5.8 questions. `13.141.5`'s registered "+4 of the ten convert" is therefore **below** the resolution
+of the mean it is registered against -- not on it. A true +4 would land inside the run's own spread and would be
+reported as "not a separation" every time.
 
 Two readings follow, and they are the reason this section exists rather than a note inside 13.144:
 
 1. **Four repetitions are not the binding constraint.** `13.141.5` registered ">= 4 of the ten MR questions convert"
-   -- exactly 4.2 questions' worth of effect. It sits *on* the whole-MR threshold, not above it, so the registered
-   ask is one draw away from its own resolution and would be reported as "not a separation" half the time it was
-   true.
-2. **Narrowing the population buys more than buying repetitions.** Four more repetitions per arm would move 4.2 to
-   4.2 / sqrt(2) = 3.0 at double the cost and double the wall clock. Reading the ten reachable questions instead
-   moves the threshold to 1.2-2.7 at **no additional cost**, because the 111 questions that cannot move contribute
-   their variance and nothing else.
+   -- 4 questions against a 5.8-question floor. It is not one draw away from its own resolution; it is **below** it,
+   so the registered ask could not have been confirmed on the population it was written for even if it were true.
+2. **Narrowing the population buys more than buying repetitions.** Four more repetitions per arm move 5.8 to
+   5.8 / sqrt(2) = 4.1 at double the cost and double the wall clock. Reading the ten reachable questions instead
+   moves the floor to 1.7-3.8 at **no additional cost**, because the 111 questions that cannot move contribute their
+   variance and nothing else.
 
 The corpus rate used in the middle row is derived from the same artifact: `sd² = Σ p_i(1-p_i) = 6.0` over 121
 questions gives `p(1-p) ≈ 0.05`, i.e. about 6 MR questions change their answer between draws. The third row is the
@@ -15091,13 +15099,42 @@ whose fixture could not distinguish the behaviour it claimed to check (13.137.4'
 #### 13.145.5 What it changes for the in-flight `recover` run and for every ask after it
 
 Run `40883121464` (`review_pass=recover`, tree `ed805b2`) was dispatched before this field existed, so **its
-artifact will carry no grid** and `13.141.5` has to be read on the whole-MR mean -- the 4.2-question column. That
-is not a reason to cancel it: its control (`40859499624`) is matched on everything except the two commits that
-intentionally differ, and `13.145.3` says the reading is borderline rather than void. If it lands at 87.0 against
-83.0 the pair is at its own resolution and the honest verdict is "the mean moved by more than this instrument can
-separate, and the question-level read was not taken".
+artifact will carry no grid** and `13.141.5` has to be read on the whole-MR mean -- and, because it is a
+cross-artifact comparison, the 5.8-question floor rather than 4.2. That is not a reason to cancel it: its control
+(`40859499624`) is matched on everything except the two commits that intentionally differ. But the read has to be
+stated before it lands, so that the number cannot be given a meaning it does not have: **any MR delta below six
+questions is inside this pair's own spread**, and a result at 87.0 against 83.0 is "four questions, which this
+instrument cannot separate", not "recover bought four questions".
+
+#### 13.145.6 The ten are measurable but not yet addressable, and that is the next instrument
+
+13.145.3's middle and bottom rows price a population the artifact cannot currently name. `--treated` cuts on a
+**record field**, and the record carries no marker saying "the recovery pass acted on this question":
+
+| what the artifact carries | what it does not |
+| --- | --- |
+| `capability: 'MR'` -- 121 questions | which of them bare-declined |
+| `recovery: {attempted, answered}` -- two **counts** for the whole run | which questions those counts came from |
+| `answer: null` + `rawOutput` -- per question, and a decline is inferable from the pair | a field that says so, and no way to say "declined in the **control**" as a `--treated` value |
+
+So the 1.2-2.7 column is arithmetic about a population that would need one of two additions before a run could
+report it:
+
+1. **A per-question marker on the arm side** (`recoveryAttempted`, `recoveryAnswered`), taken as the delta of the
+   existing `recoveryCensus()` around one answer call. Arm-side is the same side `--treated` already reads, so the
+   tool needs no new semantics -- only the field. This is the smaller change and it answers "did the mechanism act
+   here", which is what a **mechanism** ask needs.
+2. **A control-side predicate** (`--treated control.answer=declined`), for asks whose population is defined by the
+   control's behaviour rather than the arm's. Larger: it introduces a side into the split's ontology, which the
+   current `bucketOfQuestion` deliberately does not have.
+
+The registered ask is therefore **not** "read the ten" but "**record which ten**". Until one of the two lands, every
+conversion ask on this axis is read at the whole-capability resolution in 13.145.3's first row, and 4.2 questions is
+the honest floor for it.
 
 The rule this adds: **any ask registered against fewer than a whole capability must state its population and its
-resolution in questions before it is dispatched.** 4.2 whole-MR was never printed anywhere in this document until
+resolution in questions before it is dispatched, and must name the artifact field that population is addressable
+through** -- a third clause, because the first two are satisfiable by arithmetic alone and this section is the case
+where the arithmetic was written before the field existed. 4.2 whole-MR was never printed anywhere in this document until
 now, and three registered asks (`13.133`'s +1.3, `13.141.5`'s 4-of-10, `13.143`'s thresholds) were written against
 thresholds that this arithmetic says they could not have reached on the population they were written for.
