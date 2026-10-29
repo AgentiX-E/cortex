@@ -34,10 +34,12 @@ Usage:
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 REPO = "AgentiX-E/cortex"
 WORKFLOW = "benchmark-cortex-memory.yml"
@@ -525,10 +527,62 @@ def remote_head() -> str:
     return req("GET", f"/repos/{REPO}/git/ref/heads/master")["object"]["sha"]
 
 
+def local_tree() -> str | None:
+    """This checkout's HEAD tree, or `None` when the script is not running inside one.
+
+    `None` rather than an exception because the script is also importable from tests and from a
+    bare copy, and a dispatch from such a directory has nothing to compare and should not be
+    blocked by that.
+    """
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
+
+
+def staleness_refusal(remote_tree: str, head_tree: str | None) -> str | None:
+    """Why this dispatch must not run, or `None` when the remote's tree is this checkout's tree.
+
+    The ref the workflow dispatches against is `master`, and a checkout that pushes to `main`
+    leaves it behind **without any error**: run `40859309993` was dispatched against `749946f7`,
+    three commits before the `derive` implementation it was meant to test, and the only signal
+    was a SHA printed in the log that nobody had a reason to compare against anything. That run
+    was cancelled eight seconds in, but the failure mode is a run that completes and measures the
+    wrong code -- which is worse, because it produces a number.
+
+    Trees rather than SHAs: `push-via-api.py` rebuilds each commit through the Git Data API, so
+    the same content arrives under a fresh SHA and a SHA comparison would refuse every dispatch.
+    """
+    if head_tree is None:
+        return None
+    if remote_tree == head_tree:
+        return None
+    return (
+        f"refusing to dispatch: master's tree is {remote_tree[:12]} and this checkout's HEAD tree is "
+        f"{head_tree[:12]}. The run would measure code this checkout does not contain. Push the branch "
+        f"the workflow reads (master) before dispatching -- pushing only main leaves master behind, "
+        f"which is how 40859309993 was dispatched against 749946f7 instead of f6b9a89's successor. "
+        f"Pass --allow-stale-tree to dispatch anyway when that is deliberate."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     inputs = apply_overrides(INPUTS, parse_argv(sys.argv[1:] if argv is None else argv))
     sha = remote_head()
-    print(f"dispatching cortex-memory A/B at master ({sha[:8]})")
+    tree = req("GET", f"/repos/{REPO}/git/commits/{sha}")["tree"]["sha"]
+    refusal = staleness_refusal(tree, local_tree())
+    if refusal is not None and "--allow-stale-tree" not in (sys.argv[1:] if argv is None else argv):
+        raise SystemExit(refusal)
+    print(f"dispatching cortex-memory A/B at master ({sha[:8]}, tree {tree[:8]})")
     # Overridden keys are marked, so the log says which values this dispatch chose rather
     # than leaving a reader to diff the output against the source.
     for key in sorted(inputs):

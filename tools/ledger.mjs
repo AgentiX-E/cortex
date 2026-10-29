@@ -128,7 +128,7 @@ if (controlPaths.length === 1 && args.length > 0) {
     .filter((label) => label.length > 0);
   process.stderr.write(
     `refusing to mix: ${mixed.join(', ')} given as a within-run increment beside --across arms. ` +
-      'A within-run increment is measured against its own artifact\'s reference arm and a cross-run one ' +
+      "A within-run increment is measured against its own artifact's reference arm and a cross-run one " +
       'against the control file, so a union of the two would be a number over two different baselines. ' +
       'Pass every arm with --across, or drop --control.\n',
   );
@@ -181,7 +181,9 @@ function verdictsOf(file) {
   for (const question of questions) {
     const id = question.questionId;
     if (typeof id !== 'string' || id.length === 0) {
-      throw new Error(`${file} has a question without a questionId, so its verdicts cannot be paired`);
+      throw new Error(
+        `${file} has a question without a questionId, so its verdicts cannot be paired`,
+      );
     }
     if (verdicts.has(id)) {
       throw new Error(`${file} names ${id} twice: a run cannot answer one question twice`);
@@ -207,7 +209,8 @@ function acrossIncrement(label, file, control) {
   const missing = ids.filter((id) => !arm.verdicts.has(id));
   const extra = [...arm.verdicts.keys()].filter((id) => !control.verdicts.has(id));
   if (missing.length > 0 || extra.length > 0) {
-    const describe = (list) => `${list.length} (${list.slice(0, 5).join(', ')}${list.length > 5 ? ', …' : ''})`;
+    const describe = (list) =>
+      `${list.length} (${list.slice(0, 5).join(', ')}${list.length > 5 ? ', …' : ''})`;
     throw new Error(
       `${label} and the control are not the same roster: the control has ${describe(missing)} id(s) the arm ` +
         `lacks and the arm has ${describe(extra)} the control lacks. A cross-run pair needs one question ` +
@@ -223,7 +226,10 @@ function acrossIncrement(label, file, control) {
     else if (before && !after) sold.push(id);
   }
   const ledger = ledgerOf(label, {
-    discordantQuestions: { baselineIncorrectFeatureCorrect: bought, baselineCorrectFeatureIncorrect: sold },
+    discordantQuestions: {
+      baselineIncorrectFeatureCorrect: bought,
+      baselineCorrectFeatureIncorrect: sold,
+    },
   });
   return { ledger, generatedAt: arm.generatedAt, split: splitOf(ids, control, arm, bought, sold) };
 }
@@ -294,7 +300,9 @@ if (asJson) {
         // Present only when there is a control to compare prompts against, because attribution is a property
         // of a pair and not of a run.
         ...(acrossMode
-          ? { reach: readings.map((reading) => ({ label: reading.ledger.label, ...reading.split })) }
+          ? {
+              reach: readings.map((reading) => ({ label: reading.ledger.label, ...reading.split })),
+            }
           : {}),
       },
       null,
@@ -355,7 +363,9 @@ function splitLines(split) {
     );
   }
   if (split.untouched.questions === 0) {
-    out.push('    no untouched question to price the noise against: this pair says nothing about attribution');
+    out.push(
+      '    no untouched question to price the noise against: this pair says nothing about attribution',
+    );
     return out;
   }
   const rate = net(split.untouched) / split.untouched.questions;
@@ -399,7 +409,7 @@ const bounds = acrossMode
   ? '- Every arm above was measured against the one control named on the first line, so these purchases are ' +
     'comparable by construction and the union is the ceiling under perfect additivity. It is still a ' +
     'ceiling and not a score: two treatments applied together can interact.'
-  : '- Each increment was measured against its OWN artifact\'s reference arm, not against a shared control, ' +
+  : "- Each increment was measured against its OWN artifact's reference arm, not against a shared control, " +
     'so this union answers "do the two runs beat the same third party on the same questions" and not "may ' +
     'these two treatments be added". Use --control with --across for the latter.';
 

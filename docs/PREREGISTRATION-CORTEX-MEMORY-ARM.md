@@ -12723,7 +12723,7 @@ The pool's own rank distribution says the same thing from the other side: `p25 =
 | ---------------------------------------- | ------------------------------------------------------------------------------------ |
 | **S-5, cross-encoder reranking**         | reranking permutes the pool. The gold is already at rank 0–18 for every wrong answer; there is no permutation of a list that improves on its first element |
 | **raising the pool width**               | 95.2% of gold is already retrieved. Even a perfect pool adds 4.8% of *units*, and those 361 units sit in questions that already have gold in the prompt |
-| **96,000-character budget** (§13.118)    | §13.118 measured it as a wash and attributed it to coverage against dilution. This is the mechanism: **there was nothing to buy.** The prompt ran at 46,622 characters of a 48,000 budget with no question at the cap, so the budget was never the constraint and doubling it could only re-arrange |
+| **96,000-character budget** (§13.118)    | §13.118 measured it as a wash and attributed it to coverage against dilution. This is the mechanism: **there was nothing to buy.** The prompt ran at 46,622 characters of a 48,000 budget **on average**, and §13.118 read that mean as "no question at the cap". **§13.139 withdraws that half**: 468 of 500 questions render at or above 95% of the ceiling and the tightest has 409 characters of headroom, so the budget is bound on almost every question and doubling it would admit roughly twice as many turns. What survives is the pool finding — 95.2% of gold is already in the pool and every wrong question has its gold inside the prompt — so there is nothing for the extra width to buy. The lever is attached; the reservoir is empty |
 
 That last row is the part worth keeping. §13.118 concluded "more evidence buys coverage and sells dilution" from a
 delta of roughly zero. The honest reading, now that the census is in hand, is narrower: **the lever was never
@@ -13959,25 +13959,50 @@ than the numbers:
   **sufficient** retrieval set rather than a relevant one. Its illustrative failure — order on 5 February, delivered
   10 February, how many days — is nearly this arm's `60bf93ed`. **It does not apply here**: that question's gold
   turns are carried 11/12, so there is nothing to re-fetch. Its value is the distinction, not the method.
-- **`al-buddy-memory`**, an open implementation, reports MR 101/133 = **75.9%** and splits its 32 misses into **25
-  missing an evidence turn** and **7 wrong with every piece present**. The 7/32 is this campaign's failure class,
-  measured by someone else on the same benchmark, and its `--chain-of-note` is `enumerated`'s idea. It is the only
-  A- comparator in the set, which makes it the only one usable for a paired reading — and §13.132's `derive` is the
-  question it leaves open: whether the join, rather than the note-taking, is what remains.
+- **`al-buddy-memory`**, an open implementation that publishes its artifacts and its dataset SHA, reports
+  **92.6%** overall on the full 500 questions under three levers (`--expand`, `--aggregate-top-k 40`,
+  `--chain-of-note`), **92.8%** re-graded by the official gpt-4o judge, and **MR 75.9% → 85.0%** between its early
+  full run and the levered one. The first version of this section quoted *"MR 101/133 = 75.9%, and 25 of its 32
+  misses missing an evidence turn"*. 75.9% is its unlevered MR, and the fraction, the 133 denominator and the 25/7
+  split are not in its artifacts; they are withdrawn here and in the whitepaper, and §13.137 records why a number
+  that cannot be recomputed from the other side's artifacts does not belong in a comparison table.
+- What it establishes is narrower and more useful than a comparator's score. Its `--chain-of-note` is
+  `enumerated`'s idea and this arm already carries it, so the two levers that separate 75.9 from 85.0 are the ones
+  this campaign has never administered: **`--expand`, which parses time and counting cues with rules and then
+  searches once per named thing**, and **`--aggregate-top-k 40`, which deepens the candidate pool for aggregation
+  questions only**. Both change **how many independent evidence blocks the reader is handed** — a third
+  reading-side axis, distinct from the permutation axis §13.126 capped at five questions and from the global
+  prompt budget — **not** unbound, as §13.139 corrects: 468 of 500 questions render within 2,400 characters of
+  the 48,000 ceiling.
+- One single-variable reading inside its artifacts is worth quoting because it is independent of ours: same day,
+  same levers, reranker removed — MR **85.0 → 82.0** while overall stayed at 92.6%. Reranking is worth about three
+  MR questions by someone else's measurement, against the two §13.126.1 computed from `goldRanks`. Two independent
+  derivations of the same small number are the best evidence this campaign has that the permutation axis is priced.
 - **MOSAIC** (arXiv 2610.29249) decomposes the pipeline into write / retrieve / deliver / read and finds the largest
   degradation in **reading and integration**. Corroborative, on a multimodal corpus, which is why it changes no
   threshold.
 
-### 13.134.3 The axis nobody has measured is the write side
+### 13.134.3 The write side is unmeasured, and it is no longer the only unmeasured axis
+
+> **Corrected by §13.137.** This subsection was written when the campaign believed it had priced both reading-side
+> axes. It had priced two of three. §13.137 records the third — **how many independent evidence blocks the reader
+> is given**, which is what `al-buddy-memory`'s `--expand` and `--aggregate-top-k` change — and withdraws the
+> numbers this subsection inherited from the section above. The paragraph below is kept as written, because the
+> reasoning error is the useful part: *"both axes are priced, therefore the next axis is the one that is not a
+> reading-side axis at all"* was a conclusion about the campaign's own coverage drawn from a search that had found
+> a source contradicting it.
 
 Every experiment in this document moves what the reader is *given* or what it is *asked*. Not one moves what was
 *stored*. `Dual-trace encoding` reports +30pp on MR by pairing each stored fact with a concrete reconstruction of the
 moment it was learned, on 99 questions, with a 95% CI of [+12.1, +29.3] overall — a C+ grade, a single paper, and a
 subgroup far smaller than the 121 MR questions here. It is not a promise and it is not registered.
 
-What makes it the next axis rather than another candidate is negative: §13.126 and §13.133 have priced both
-reading-side axes, and §13.132 is the last prompt-side run that the arithmetic leaves room for. **A register whose
-next entry is another sentence would be a register that has stopped reading its own tables.**
+What made it look like the next axis rather than another candidate is negative: §13.126 and §13.133 had priced two
+reading-side axes, and §13.132 is the last prompt-side run that the arithmetic leaves room for. That argument is
+sound only if the enumeration of reading-side axes is complete, and it was not: **§13.123's "95.2% of gold is
+already in the pool" is a statement about the pool's coverage, not about how many separate evidence blocks reach
+the reader.** A treatment that asks the same question three times, once per thing the question names, changes
+neither the pool nor the order within one search, so neither ceiling applies to it.
 
 ### 13.134.4 The discipline this adds
 
@@ -14112,3 +14137,295 @@ Both stay as registered, with one addition that this section makes mandatory: **
 requires a positive excess against the KU + ABS reference.** A +5 that arrives while the 102 untouched
 questions move +5 is a coin landing heads, and a campaign that has just priced its own floor cannot then
 accept a 1.4σ reading as mechanism evidence. It can accept it as a reason to run the pair again.
+
+## 13.136 The dispatch read a branch nobody was pushing to, and nothing errored
+
+### 13.136.1 One line of output that was wrong, and was the only thing that said so
+
+Dispatching `derive` printed:
+
+```
+dispatching cortex-memory A/B at master (749946f7)
+  cortex_memory_ask = derive *
+```
+
+`749946f7` is *feat(tools): give the ledger a cross-run mode*. The `derive` implementation is in
+`3093a7c`, three commits later. `git ls-remote` explained it in two lines:
+
+```
+9ed97f86…  refs/heads/main
+749946f7…  refs/heads/master
+```
+
+**The checkout pushes to `main`; the workflow dispatches against `master`.** Both are real branches,
+both are allowed to diverge, and the dispatch did exactly what it was told.
+
+### 13.136.2 Three successes and one wrong experiment
+
+Every step reported success:
+
+| step | what it said |
+| ---- | ------------ |
+| `git push origin HEAD:main` | `main -> main` |
+| `gh workflow run … --ref master` | accepted |
+| the run | started, green, on `749946f7` |
+| the log | `749946f7` — a SHA, print in the third line, compared against nothing |
+
+That is the whole failure: **a value that was produced, recorded and displayed, and that no code
+compared with anything.** The campaign has this shape on record three times already — §13.34.6's
+check that is not a check, §13.130's test that pins an implementation as an intention, §13.129.5's
+two layers each implementing the same predicate — and this is the first time it is the toolchain
+rather than the product.
+
+### 13.136.3 What it would have cost had it not been caught
+
+The run was cancelled 8 seconds in (`40859309993`, `conclusion: cancelled`), so it cost nothing. The
+cost is in what a completed run would have reported.
+
+With `ask=derive` against a build that has no `derive`, `readAsk` falls back to the shipped value,
+so the arm runs as `enumerated` and the artifact says `ask=derive` because that is what was
+dispatched. Predicted outcome:
+
+| claim (§13.132.5) | what a stale-tree run would report |
+| ----------------- | ---------------------------------- |
+| 1 — `askRoutes` three routes, MR `promptChars` equal to the control's | **holds exactly** — `enumerated` is the control |
+| 2 — MR declines 12 → ≤ 7 | fails, 12 → 12 |
+| 3 — ≥ 5 of ten convert | fails, 0 convert |
+| 5 — refusal vocabulary falls to ≤ 5 of 12 | fails, 12 of 12 |
+
+**The mechanism check would have passed and every effect check would have failed**, which is the
+hardest shape to diagnose: it looks like a treatment that was administered and did nothing. Two
+hours, 500 questions, four repetitions, and a readout that says the sentence did not matter — on a
+build where the sentence was never written.
+
+### 13.136.4 The gate, and why it compares trees rather than commits
+
+`staleness_refusal(remote_tree, head_tree)` runs before the dispatch and refuses unless `master`'s
+tree equals this checkout's HEAD tree.
+
+- **Trees, not SHAs.** `push-via-api.py` rebuilds each commit through the Git Data API, so the same
+  content arrives under a fresh object id. A SHA comparison would refuse every dispatch in this
+  campaign's normal workflow and be switched off within a day.
+- **`None` is "cannot tell", not "stale".** A directory that is not a checkout has no HEAD tree; the
+  script is imported by tests and copied into scratch dirs. Treating absent as a mismatch would make
+  the module unimportable outside a repository — the same absent-versus-zero rule the artifact's
+  `threshold` and `sessionBudget` are read under.
+- **A documented exit.** `--allow-stale-tree` exists because a gate with no override gets edited
+  out rather than used.
+- **The refusal names the branch.** "master's tree is X and HEAD's is Y" plus "pushing only `main`
+  leaves master behind" is actionable; "the remote does not match" sends a reader to compare SHAs
+  by hand, which is the check that did not happen.
+
+`tools/__tests__/test_dispatch_staleness.py`, 6 cases. Two mutations, both die:
+
+| mutation | caught by |
+| -------- | --------- |
+| an absent local tree treated as stale | `test_a_directory_that_is_not_a_checkout_passes` |
+| the gate always passes | 3 tests, incl. `test_the_refusal_names_the_branch_the_workflow_reads` |
+
+### 13.136.5 The branch pair is the underlying defect
+
+The gate makes a stale dispatch loud, and it does not fix the arrangement that makes it possible:
+this repository has two long-lived branches, the checkout pushes one and CI reads the other. Both
+are at `81d37e3` now because both were pushed by hand. **The gate is the guard, not the repair.** The
+repair is that a campaign checkout has one branch to push, and until that is true the `local_tree`
+comparison is the only thing standing between a typo and a two-hour measurement of the wrong code.
+
+## 13.137 A quoted number that could not be recomputed, and the third reading-side axis it was hiding
+
+### 13.137.1 The withdrawal
+
+§13.134.2 and the whitepaper's §2.3.2 both said of `al-buddy-memory`:
+
+> MR **101/133 = 75.9%**, and 25 of its 32 misses are missing an evidence turn while 7 are wrong with every piece
+> present.
+
+Reading its repository rather than a search summary: the MR capability has **121** questions, not 133; 75.9% is
+its MR **without the three levers**, not the system's MR; and the 25/7 split appears nowhere in `bench/results/`.
+Two of the three claims are withdrawn outright and the third is withdrawn as stated — 75.9% is real, and it means
+something different from what the sentence said it meant.
+
+**The rule this adds is narrower than a grading rule.** §6.1 grades a *source*; this was a *number* with no path to
+its origin. A quoted figure belongs in a comparison table only if it can be recomputed from the other side's
+published artifacts, or if it is marked unverified. Here the number could have been checked in one fetch, and the
+reason it was not is that it arrived pre-formatted, inside a sentence that already looked like a finding.
+
+### 13.137.2 What the artifacts actually report
+
+| run | levers | overall | MR | TR | KU | SSU | SSA | SSP |
+| --- | ------ | ------: | -: | -: | -: | --: | --: | --: |
+| `2026-09-29-longmemeval-full` | none | 88.4% | **75.9%** | 85.7% | 94.9% | 96–100 | — | — |
+| `2026-09-29-lme-full-all` | `--expand --aggregate-top-k 40 --chain-of-note` | **92.6%** | **85.0%** | 94.0% | 93.6% | 98.6 | 94.6 | 100.0 |
+| `2026-09-30-lme-full-fast` | the same, reranker removed | 92.6% | 82.0% | 94.0% | 97.4% | 100.0 | 96.4 | 96.7 |
+| re-grade of the above by the official judge | gpt-4o, official prompts | **92.8%** | 83.5% | 94.0% | 97.4% | 98.6 | 96.4 | 96.6 |
+
+Three readings, and only one of them is a pricing:
+
+1. **88.4 → 92.6 is not a single-variable measurement.** The early full run and the levered one differ in more than
+   one thing, so the honest claim is "this route reaches 92.6%", not "the three levers are worth 4.2 points".
+2. **The reranker pair is single-variable**, and it is the useful one: same day, same levers, one flag removed —
+   MR **85.0 → 82.0**, overall **92.6 → 92.6**. Somebody else, on their own artifact, measured the permutation axis
+   at about three MR questions. §13.126.1 computed two from `goldRanks`. Two independent derivations of the same
+   small number is the strongest evidence this campaign has that the axis really is priced.
+3. **Cross-judge stability**: 92.6% self-judged against 92.8% by the official gpt-4o judge. That is the one thing
+   this system has that most of §2.1.2's table does not.
+
+### 13.137.3 The third reading-side axis
+
+| lever | what it does | does this arm have it |
+| ----- | ------------ | --------------------- |
+| `--chain-of-note` | writes per-session date notes inside one call, then computes | **yes** — that is `enumerated` |
+| `--expand` | parses time cues (`in April`, `last Thursday`, `from July to October`) and counting/comparison cues (`how many`, `total`, `A and B`, `which came first`) with **rules**, then searches **once per named thing** from a deeper pool | **no** |
+| `--aggregate-top-k 40` | aggregation questions read 40 candidates instead of the default depth | **no** — this arm holds top-256 globally, the same depth for every question |
+
+`--expand`'s defining property is that it is **rules, not a model call**. `analyzeQuery` resolves a named period
+against `now`, prefers facts whose valid time falls inside it, removes the period from the search words, and issues
+one retrieval per named entity. It costs a handful of extra vector searches per question and **no extra LLM call**,
+which is why it is affordable at 500 questions and why it is not a prompt experiment at all.
+
+And it is exactly what the campaign's three ceilings do not cover:
+
+- §13.126's ceiling of five questions is a ceiling on **permutations** — every wrong question's gold is already at
+  rank 0–18, and no reordering of a list improves its first element.
+- §13.133's price of 1.3 questions is the price of **a rule stated in the prompt**, applied by the reader that is
+  already getting the question wrong.
+- §13.118's budget finding is **withdrawn** by §13.139: 46,622 was a mean, 468 of 500 questions render at or above
+  95% of the 48,000 ceiling, and the tightest has 409 characters of room. What that section established and what
+  stands is the **pool** result — 95.2% of gold is already in the pool and every wrong question carries its gold.
+
+`--expand` changes **how many separate evidence blocks the reader is handed**, one per named thing. §13.123's
+"95.2% of gold is already in the pool" is a statement about the pool's coverage and says nothing about this: the
+pool is not enlarged, a different **region** of it is brought in, once per entity, and the blocks arrive side by
+side instead of competing for the same top-k slots.
+
+### 13.137.4 Why it lands on exactly the two columns that are short
+
+The levers' two biggest movements are MR **75.9 → 85.0** (+9.1) and TR **85.7 → 94.0** (+8.3), and those are this
+arm's two short columns. MR's questions are cross-session counts and comparisons; TR's are date arithmetic. Those
+are the two cue classes `analyzeQuery` reads.
+
+There is a counter-consideration that keeps this from being a promise. **This arm's own reference pipeline reaches
+MR 106/121 = 87.6% on the control `40751394094` and 105/121 = 86.78% on `40824682542` — with no expansion at all,
+only a different instruction block.** So most of the MR gap is closable on the prompt side, and §13.132's `derive`
+is testing precisely that. `--expand` is a **second route**, not the only one, and it is not obviously the cheaper
+one: `derive` is a line permutation, while `expand` is a retrieval-layer feature with its own tests.
+
+The two runs' reference-arm counts differing by one question is also the third independent sighting of the noise
+floor: the same arm on the same dataset, two runs, one question apart.
+
+### 13.137.5 The rule this adds, and how it would have caught the error
+
+**A number in a comparison table must be recomputable from the other side's artifacts, or marked unverified.**
+Grading a source is not enough: §6.1 would have given this paper an A for "artifacts published", and the artifacts
+are precisely what contradicted the sentence.
+
+Applied here, the check is one table lookup: *does `bench/results/` contain a file whose MR equals 75.9%?* It does
+— `2026-09-29-longmemeval-full` — and that file's own record says which levers were off. The number was right and
+the sentence around it was wrong, which is the failure mode a grading rule cannot see.
+
+### 13.137.6 What is registered, and in what order
+
+`derive` is in flight (`40859499624`) against `40751394094`. The ordering after it settles:
+
+- **if MR ≥ 92** (five conversions), most of the gap was the licence's position, `derive` ships, and `expand`
+  demotes to a TR candidate — TR is where it has an 8.3-point external movement and MR would have little left;
+- **if MR ≤ 90**, `derive` is falsified, `expand` becomes the next registered run, and it is registered against the
+  same control so the two are comparable by construction and the ledger's cross-run mode gives the overlap.
+
+Either way the first step is **offline**, because §13.126.4's discipline applies to this axis too: compute, on the
+existing 500-question artifact, **how many sub-queries each question decomposes into** and **what each sub-query's
+best gold rank is**. If splitting the question does not change which gold turns reach the prompt, the treatment
+cannot move accuracy on this dataset and dispatching it would be buying a known zero. That check needs no model
+call, which is the point of `--expand` being rules.
+
+## 13.139 "No question reached the ceiling" was read from a mean, and the budget is binding on 468 of 500
+
+### 13.139.1 The reading that has to be withdrawn
+
+§13.118 retired the budget lever with this sentence, repeated in three places:
+
+> the prompt ran at 46,622 characters of a 48,000 budget **with no question at the cap**, so the budget was never
+> the constraint and doubling it could only re-arrange.
+
+`46,622` is a **mean**. Read the distribution instead, on the same artifact (`40751394094`):
+
+| statistic | value |
+| --------- | ----: |
+| roster median `promptChars` | **46,851** |
+| roster p95 | 47,394 |
+| roster max | **47,591** |
+| questions at or above 95% of the 48,000 ceiling (45,600) | **468 of 500** |
+| questions at or above 99% (47,520) | 5 |
+| questions exactly at 48,000 | **0** |
+
+**Ninety-four percent of the roster renders within 2,400 characters of the ceiling, and the largest question is
+409 characters short of it.** The budget is not unbound; it is bound on almost every question, and it is bound
+*by the renderer*, which is why nothing ever exceeds it.
+
+That is the error, and it is a specific one: **`promptChars` is the length after fitting, so `max < cap` is a
+property of the fitting routine and not evidence about the constraint.** The only statistic that answers "is this
+lever connected" is how many questions sit near the ceiling, and it was not computed.
+
+### 13.139.2 What survives from §13.118, and it is the part that mattered
+
+The section's other two findings are untouched, and separating them is what makes the correction useful rather
+than merely embarrassing:
+
+- **§13.123's coverage census stands**: 95.2% of gold units are in the pool, and **every** one of the 83 wrong
+  questions has its gold inside the prompt. So "raise the pool" still buys nothing — not because the budget is
+  loose, but because there is no unreached gold to buy.
+- **The permutation ceiling stands**: §13.126.1's five questions come from `goldRanks`, which is independent of
+  the budget entirely.
+
+What falls is only the third: "doubling the budget could only re-arrange". Doubling it would in fact admit
+roughly **twice as many turns** on 468 questions — it would just not admit any more **gold**, which is a different
+sentence with a different consequence. The wrong version closed an axis on the grounds that the lever was not
+attached; the right version closes it on the grounds that the lever is attached to a reservoir that is empty of
+what the arm needs.
+
+### 13.139.3 The distinction §13.118 conflated: pool depth and render width
+
+| quantity | value on `40751394094` | what it constrains |
+| -------- | ---------------------: | ------------------ |
+| `relevanceTopK` | **256** turns | how many candidates retrieval returns |
+| `evidenceTurns` on a typical question | **166** | how many of them are rendered |
+| `maxTurnChars` | 400 | how long one rendered turn may be |
+| `promptChars` | 46,851 median | what the reader actually sees |
+
+Retrieval returns 256 and the prompt shows 166, so **the pool is not the constraint and never was** — §13.118 was
+right about that, and it was right for the pool. But it then used the pool's conclusion to retire the **character
+budget**, and those are two different reservoirs. The character budget is where 90 spare turns go to die.
+
+### 13.139.4 What this does to the decomposition axis, measured before it was dispatched
+
+§13.138.4's claim 5 said a decomposition would have to fit its extra turns inside the budget, and that this could
+be tested without dispatching anything. Tested:
+
+| quantity, over the 42 cued-and-wrong MR/TR questions | value |
+| --------------------------------------------------- | ----: |
+| median `promptChars` | 46,305 |
+| max `promptChars` | 47,265 |
+| **headroom on the tightest question** | **735 characters — under two turns** |
+| questions at or above 95% of the ceiling | **42 of 42** |
+
+**The prediction is already falsified.** A treatment that adds evidence for one question at a time cannot place
+it: there is room for fewer than two additional turns on every single question it would target. So `expand` in the
+form `al-buddy-memory` implements it — one retrieval per named thing, added to what is already there — is **not
+available to this arm at this budget**, and that is known before writing a line of it.
+
+It is still available in the form this arm's own discipline already prescribes: **§8's fourth rule, that a budget
+re-spends evidence rather than appending after it.** `reviewPass` does exactly that with `fitToBudget`, selecting
+again instead of adding. A decomposition would have to do the same — replace the 166 turns with "the best turns
+for entity A, then for entity B, then for entity C", spending the same 46,851 characters — and that is a different
+treatment with a different risk profile: it can lose evidence that the single query had.
+
+### 13.139.5 The rule this adds
+
+**A constraint is measured by how close the results sit to it, not by whether they exceed it.** For any quantity
+produced by a fitting routine — `promptChars`, a fitted k, a truncated list — "the maximum is below the cap" is a
+statement about the routine. The question is the distribution's mass near the cap, and this campaign now has a
+number for the one constraint it cares most about: **468 of 500 questions at or above 95%.**
+
+Applied forward: `acceptance.ts` and every future ceiling check report the **mass near the limit**, not the max.
+The prior reading was not a careless sentence — 46,622 was a real mean on a real artifact — it was the wrong
+statistic for the question, and the wrong statistic pointed away from a live lever.
