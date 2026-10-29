@@ -148,6 +148,21 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // Flat and temporal keep `enumerated`'s block byte for byte through the same fallthrough, so
   // the single variable against an `enumerated` control is what the multi-session route reads.
   silent: ['multi-session', 'flat', 'temporal'],
+  // §13.124. The **flat route alone**, and the first ask whose reach is a route the session builder
+  // cannot name. It adds no instruction about *what* to look for — the block keeps `extractive`'s
+  // two sentences and the merging sentence — and states instead what the **reply** must look like.
+  //
+  // The measurement: IE is wrong on 10 of 150 questions and `grounded` is false on nine of them.
+  // Three replies are the evidence block copied back (31,547 and 16,766 characters), three say
+  // `No evidence items match the question` instead of declining, two are free prose and one is
+  // empty. The roster-wide count of evidence echoes is 27, of which 20 are still graded correct,
+  // which is why the aggregate never surfaced this: the judge absorbs twenty and the nine that fail
+  // sit in the capability whose gold is a short phrase.
+  //
+  // `flat` is the route IE goes down, and it is also the route `buildSessionPrompt` shares a
+  // contract with — so the branch keys on the scope as well, or an ask registered as flat-only
+  // would move MR (§13.104's defect, third arrival).
+  'answer-line': ['flat'],
 };
 
 /**
@@ -222,7 +237,8 @@ export type EvidenceAsk =
   | 'enumerated'
   | 'sweep'
   | 'aggregation'
-  | 'silent';
+  | 'silent'
+  | 'answer-line';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -736,6 +752,56 @@ const SILENT_MULTI_SESSION_INSTRUCTION = withReplacedClose(
 );
 
 /**
+ * The reply shape the flat route never had — §13.124.
+ *
+ * ## Why a shape and not a length
+ *
+ * `extractive`'s close is `Reply with the answer alone`, and that is a sentence about **how much**
+ * to say. It does not say what the reply must look like, and four failure shapes walk through the
+ * gap: the whole evidence block copied back (two IE answers in run `40751394094` are 31,547 and
+ * 16,766 characters), `No evidence items match the question` written instead of the abstention
+ * token, free prose, and an empty reply. Nine of IE's ten wrong answers are one of those four; the
+ * tenth is the only genuine knowledge miss.
+ *
+ * The reference pipeline states a shape: one line, a literal prefix, nothing before or after. The
+ * parser already accepts that prefix — `parse.ts` documents `Answer: X` as "the label shapes models
+ * emit unprompted" — so this asks for a form the reader can already be understood in, rather than a
+ * new one the parser would have to learn.
+ *
+ * ## What it keeps, and why that is the single-variable claim
+ *
+ * The block is `extractive` plus the merging sentence, exactly as `computed` renders it on this
+ * route, and the abstention token survives with its condition unchanged. The only thing added is
+ * the shape and the prohibition on explanation. §13.104 priced the merging sentence at TR +21.4
+ * when it was accidentally removed, so a guard that displaced it would be a second variable and a
+ * regression at the same time.
+ */
+const ANSWER_LINE_GUARD = [
+  'Your entire reply is one line in exactly this form, with nothing before or after it:',
+  'Answer: <a word, name, number, or short phrase>',
+  'Answer with ONLY the answer phrase (a word, name, number, or short phrase), with no explanation.',
+].join('\n');
+
+/**
+ * The close under the guard, and why it is not the block's own.
+ *
+ * `extractive`'s close says `Reply with the answer alone`, which would contradict the shape one
+ * line above it: an answer "alone" has no prefix. Stating the shape twice, once as a form and once
+ * in the position that decides (§13.56), is the same placement argument the enumeration contract
+ * makes — a rule that appears only above the close is a rule the last-line parser never sees.
+ */
+const ANSWER_LINE_CLOSE = `Reply in exactly that one-line form. If the evidence offers no answer at all, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The flat block under `answer-line`: `computed`'s, with a shape instead of a length. */
+const ANSWER_LINE_FLAT_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    ANSWER_LINE_GUARD,
+  ),
+  ANSWER_LINE_CLOSE,
+);
+
+/**
  * The sweep's two steps: a line per session, then a count of what the lines name.
  *
  * ## Why a line per session, when `enumerated` already asks for a list
@@ -927,6 +993,16 @@ function instructionsFor(
       return SILENT_MULTI_SESSION_INSTRUCTION;
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'answer-line') {
+    // §13.124. The scope test is load-bearing rather than defensive: `buildSessionPrompt` builds
+    // with `extractive` too, so a branch keyed on the contract alone would change MR under an ask
+    // registered as flat-only. The merge sentence is what `computed` gives this route, so the flat
+    // block below is `computed`'s with a reply shape added and nothing else moved.
+    if (contract === 'extractive' && scope !== 'multi-session') {
+      return ANSWER_LINE_FLAT_INSTRUCTION;
+    }
+    return own;
   }
   if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
     return withMergingSentence(own);

@@ -1018,6 +1018,11 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // control as a single variable because the other two routes are byte-identical, which is what
   // keeps TR and IE from moving under a registration that names only multi-session.
   silent: ['multi-session', 'flat', 'temporal'],
+  // §13.124's ask: the flat route alone, and the first whose reach is one route the session builder
+  // cannot name. It states a reply SHAPE where `extractive` states a reply LENGTH, written against
+  // nine of IE's ten wrong answers being the evidence block copied back, a sentence about not
+  // finding anything, free prose, or an empty reply.
+  'answer-line': ['flat'],
 };
 
 /**

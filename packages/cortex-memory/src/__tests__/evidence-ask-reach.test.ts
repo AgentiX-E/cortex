@@ -624,6 +624,94 @@ describe('the silent ask keeps the notes out of the answer, which is what the re
 });
 
 /**
+ * §13.124: the reply shape the flat route never had.
+ *
+ * ## The measurement this file was extended for
+ *
+ * IE is wrong on 10 of 150 questions, and `grounded` is false on **nine** of them. The answers say
+ * what happened: three replies are the evidence block copied back (31,547 and 16,766 characters),
+ * three say `No evidence items match the question` instead of declining, two are free prose, one is
+ * empty, and exactly one is a genuine knowledge miss. Across the whole roster 27 answers look like
+ * evidence echoes and 20 of those are still graded correct, which is why no aggregate ever showed
+ * this — the judge's tolerance absorbs twenty and the nine that fail sit in the one capability
+ * whose gold is a short phrase.
+ *
+ * The reference's flat block carries what this route does not: an exact one-line shape with a
+ * literal `Answer:` prefix, and `with no explanation`. This arm's closest sentence is `Reply with
+ * the answer alone`, which constrains **length**; only a shape is checkable, and only a shape is
+ * what `parse.ts`'s last-line rule can recover from. The parser already accepts the `Answer: X`
+ * label — it was written for the shapes models emit unprompted — so the guard asks for a form the
+ * parser can read rather than a new one it would have to learn.
+ */
+describe('the answer-line ask gives the flat route a reply shape', () => {
+  const SHAPE_LINE = 'Your entire reply is one line in exactly this form';
+  const PREFIX = 'Answer: <a word, name, number, or short phrase>';
+  const NO_EXPLANATION = 'with no explanation';
+
+  it('states a shape rather than a length', async () => {
+    const seen: string[] = [];
+    await build(seen, 'answer-line').answer('What kit did I buy?', [TEXT]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain(SHAPE_LINE);
+    expect(block).toContain(PREFIX);
+    expect(block).toContain(NO_EXPLANATION);
+    // The old close is what allowed all four failure shapes: it says how much to say and
+    // nothing about what the reply must look like.
+    expect(block).not.toContain('Reply with the answer alone.');
+  });
+
+  it('keeps the abstention token and the sentence that licenses combining', async () => {
+    // The guard is an addition to the flat block, not a replacement of it: the merging
+    // sentence is worth TR +21.4 by §13.104's accident, and the token is how a genuine
+    // no-answer is expressed.
+    const seen: string[] = [];
+    await build(seen, 'answer-line').answer('What kit did I buy?', [TEXT]);
+
+    const block = instructionsOf(seen[0]!);
+    expect(block).toContain('combining evidence from more than one turn or session');
+    expect(block).toContain('INSUFFICIENT_EVIDENCE');
+  });
+
+  it('leaves the multi-session route byte-identical to the shipped block', async () => {
+    // The flat path and `buildSessionPrompt` share the `extractive` contract, so a branch
+    // keyed on the contract alone would silently change MR under an ask registered as
+    // flat-only -- §13.104's defect arriving a third time. The control here is the SHIPPED
+    // block rather than `enumerated`, because this ask's reach is the flat route alone:
+    // MR must read what a run with no ask at all would have read.
+    const answerLine: string[] = [];
+    const shipped: string[] = [];
+    await build(answerLine, 'answer-line').answerSessions('How many kits do I own?', [[TEXT]]);
+    await build(shipped, 'route').answerSessions('How many kits do I own?', [[TEXT]]);
+
+    expect(instructionsOf(answerLine[0]!)).toBe(instructionsOf(shipped[0]!));
+  });
+
+  const UNTOUCHED_ROUTES: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> =
+    [
+      ['temporal', (m) => m.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
+      ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
+      ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
+      ['abstention', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
+    ];
+
+  for (const [name, drive] of UNTOUCHED_ROUTES) {
+    it(`leaves the ${name} route byte-identical`, async () => {
+      const answerLine: string[] = [];
+      const shipped: string[] = [];
+      await drive(build(answerLine, 'answer-line'));
+      await drive(build(shipped, 'route'));
+
+      expect(instructionsOf(answerLine[0]!)).toBe(instructionsOf(shipped[0]!));
+    });
+  }
+
+  it('declares the flat route alone, so the comparison is one route', () => {
+    expect(ASK_ROUTES['answer-line']).toEqual(['flat']);
+  });
+});
+
+/**
  * §13.92: the sweep, which is what the lists say the failure is.
  *
  * ## The measurement this file was extended for
