@@ -13900,3 +13900,57 @@ Ordering: `derive` first, because it is one dispatch with no extra model call pe
 (`promptChars` unchanged, refusal vocabulary falling) is judge-free. `recover` follows against the same control,
 and its claim 4 (§13.128.3) already asks whether the listed items can be counted into the gold — a question only a
 pass can answer.
+
+## 13.134 The reading-side ceiling is now corroborated three ways, and the only unmeasured axis is the write side
+
+This section registers no run. It records a direction, and the rule it follows is that a direction may only be
+changed by a number that has already been paid for.
+
+### 13.134.1 Three independent statements of one ceiling
+
+| source | what it says | how it was measured here |
+| ------ | ------------ | ------------------------ |
+| §13.126.1 | **five** MR questions are wrong with their best gold turn at rank ≥ 10; every gold turn of every wrong question is already carried | `goldOverlap` per question on `40751394094` |
+| §13.133.1 | three membership rules, bundled, bought **1.3** MR questions | `39641088296` against `39509698041` |
+| §13.132.1 | all **12** MR declines carry their gold turns (median 12/12, worst 6/10), so none is a coverage miss | `goldOverlap.carried` per decline |
+
+A reordering of what was already retrieved can therefore move at most five questions, and a rule stated in the prompt
+is applied by the reader that is already wrong. Two ceilings, one on each reading-side axis, and both are now
+numbers rather than arguments.
+
+### 13.134.2 What the external record adds, and the one thing it does not
+
+The retrieved literature for this half-year says the same thing from three directions, and the grades matter more
+than the numbers:
+
+- **BFR** (arXiv 2610.09348) reports LongMemEval-S judge accuracy 72.4 → 82.2 and Turn Hit 91.4% by constructing a
+  **sufficient** retrieval set rather than a relevant one. Its illustrative failure — order on 5 February, delivered
+  10 February, how many days — is nearly this arm's `60bf93ed`. **It does not apply here**: that question's gold
+  turns are carried 11/12, so there is nothing to re-fetch. Its value is the distinction, not the method.
+- **`al-buddy-memory`**, an open implementation, reports MR 101/133 = **75.9%** and splits its 32 misses into **25
+  missing an evidence turn** and **7 wrong with every piece present**. The 7/32 is this campaign's failure class,
+  measured by someone else on the same benchmark, and its `--chain-of-note` is `enumerated`'s idea. It is the only
+  A- comparator in the set, which makes it the only one usable for a paired reading — and §13.132's `derive` is the
+  question it leaves open: whether the join, rather than the note-taking, is what remains.
+- **MOSAIC** (arXiv 2610.29249) decomposes the pipeline into write / retrieve / deliver / read and finds the largest
+  degradation in **reading and integration**. Corroborative, on a multimodal corpus, which is why it changes no
+  threshold.
+
+### 13.134.3 The axis nobody has measured is the write side
+
+Every experiment in this document moves what the reader is *given* or what it is *asked*. Not one moves what was
+*stored*. `Dual-trace encoding` reports +30pp on MR by pairing each stored fact with a concrete reconstruction of the
+moment it was learned, on 99 questions, with a 95% CI of [+12.1, +29.3] overall — a C+ grade, a single paper, and a
+subgroup far smaller than the 121 MR questions here. It is not a promise and it is not registered.
+
+What makes it the next axis rather than another candidate is negative: §13.126 and §13.133 have priced both
+reading-side axes, and §13.132 is the last prompt-side run that the arithmetic leaves room for. **A register whose
+next entry is another sentence would be a register that has stopped reading its own tables.**
+
+### 13.134.4 The discipline this adds
+
+**An axis is retired by a ceiling, not by a failure.** `silent` (−26) and `answer-line` (−48) are failures and they
+retired two asks; they say nothing about prompts. What retires the prompt axis on MR is the pair of ceilings — five
+questions by reordering, one by a rule set — with the best result on the axis at +1.3. Recording the distinction
+matters because the failure-based reading would have retired the axis after §13.127, and `derive` would never have
+been written.
