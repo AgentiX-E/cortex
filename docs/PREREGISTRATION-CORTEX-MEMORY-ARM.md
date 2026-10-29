@@ -14482,6 +14482,12 @@ direction for a number that will be used to decide whether reordering a 47,000-c
 - **Whether a timed-out generation was billed.** It may have been. This is why the number is stated as a lower
   bound and not as a reconciliation.
 
+What it does measure, indirectly and usefully: **the retry multiplier.** A run over 500 questions and two sides
+issues exactly 1,000 answer calls plus a judge call per answer, so `calls` above that baseline is traffic that was
+re-sent -- and every one of those carries its own `promptTokens`. A question that timed out once and succeeded on
+the second attempt therefore appears as two priced calls, which is the number §13.140.6 needs before it can cut
+anything: the excess is not invisible here, it is priced.
+
 ### 13.140.4 Acceptance criteria, and how each was tested
 
 | # | criterion | test |
