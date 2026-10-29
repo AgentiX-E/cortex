@@ -13174,3 +13174,155 @@ cut it operates on. A proposal with a ceiling of 2 questions may still be worth 
 points — but it may not be described as a path to the threshold, and it may not be registered in the unit of
 recall.
 
+## 13.127 The reference's private-notes clause costs 26 MR questions, and the reader is not deterministic at zero
+
+Run `40792853362`, `ask=silent`, four repetitions, temperature 0, everything else at the registered configuration.
+This is the readout of §13.123.4's registration, and the registration it wrote is **refuted in the opposite
+direction**.
+
+### 13.127.1 The first check, which passed
+
+One field differs from the control `40751394094`:
+
+| field | control | silent |
+| ----- | ------- | ------ |
+| `ask` | `enumerated` | `silent` |
+
+`askRoutes` follows from the value and is not a second change. And the evidence is untouched: the **carried turn
+text is byte-identical on 445 of 500 questions**, and on IE, KU, TR and ABS the five retrieval fields
+(`goldOverlap`, `evidenceTurns`, `evidenceChars`, `promptChars`, carried turns) agree on every question.
+
+The 55 questions that differ are all MR, and the reason is mechanical rather than accidental: `silent`'s
+multi-session block is shorter (it drops the write-it-out clause), the prompt builder spends the saved room on
+evidence, and each of those 55 gains exactly one turn and up to 444 characters. That is §13.104.5's budget
+coupling — an instruction change is never purely an instruction change on the route it touches — and it is why
+the attribution below has to be split, not just reported.
+
+### 13.127.2 The second check, which failed — and what it means
+
+§13.123.4 asked for TR and IE to **reproduce question for question**, because their blocks are byte-identical
+between the two arms. They did not:
+
+| capability | prompt identical | verdict changed | correct → wrong | wrong → correct | answer text changed |
+| ---------- | ---------------- | --------------- | --------------- | --------------- | ------------------- |
+| IE         | 150 of 150        | **7**           | 3               | 4               | 41                  |
+| KU         | 72 of 72          | **4**           | 0               | 4               | 32                  |
+| TR         | 127 of 127        | **8**           | 3               | 5               | 118                 |
+| ABS        | 30 of 30          | **0**           | 0               | 0               | 0                   |
+| **all four** | 379 of 379      | **19 (5.0%)**   | 6               | 13              | **191 (50.4%)**     |
+
+This is **not** an assembly failure: the prompts are identical, checked field by field on all 379 questions. It is
+the **reader**. At `temperature = 0`, given a byte-identical prompt, DeepSeek returns different text for half the
+questions and a different verdict for one in twenty.
+
+**Nothing in this register had measured this, and the closest prior number is not it.** §13.122.2 counts **40 of
+500** verdicts differing between two arms whose configuration differed **in temperature** — a legitimate measurement
+of temperature, and usable as evidence that temperature matters (its third prediction was written as "500 identical
+verdicts ⇒ drop the arming", and 460 was read as "therefore keep it"). It is not a churn measurement: the sampling
+parameter differed, so the 40 belong at least partly to the treatment. The pair in this section is the first with
+**both** a byte-identical prompt and an identical configuration, and it puts the floor at 5.0%.
+
+**The rule this fixes.** The assembly check is *prompt identity*, never verdict identity. A registered criterion
+that says "the untouched routes must reproduce question for question" is unsatisfiable and would have failed every
+correct experiment. §13.122.1 already walked this line for retrieval fields and stopped one field short of the
+verdict.
+
+### 13.127.3 The number
+
+| arm | IE | MR | KU | TR | ABS | roster (first repetition) | roster (mean of four) |
+| --- | -- | -- | -- | -- | --- | ------------------------: | --------------------: |
+| control `enumerated` | 140 | **87** | 61 | 100 | 29 | 417 | 421.0 (83.4–84.8%) |
+| treatment `silent`   | 141 | **61** | 65 | 102 | 29 | 398 | 399.5 (78.6–81.0%) |
+
+**MR: 87 → 61, a loss of 26 questions.** The registered prediction was "MR ≥ 95", i.e. a gain of nine. Everything
+else is inside the floor of §13.127.2: IE +1, KU +4, TR +2, ABS 0, a net +7 across 379 unchanged prompts, which is
+the same order as the 19 that churned.
+
+### 13.127.4 The attribution, and why it is not the environment
+
+Three explanations are available and the artifact separates them.
+
+**1. The environment did not do it.** The four capabilities whose prompts are byte-identical — 379 questions — moved
+**+7 net**. A session-level degradation would have dragged those down too, so the loss is local to MR.
+
+**2. The extra evidence did not do it either, and here is the split:**
+
+| MR subgroup | n | control correct | silent correct | delta |
+| ----------- | -: | --------------: | -------------: | ----: |
+| carried turns byte-identical | 66 | 48 | 31 | **−17** |
+| carried turns +1 (shorter block bought a turn) | 55 | 39 | 30 | **−9** |
+
+Two thirds of the loss happens on questions where the reader received **exactly the same turns** and only the
+instruction moved. The remaining −9 coincides with one more turn of evidence per question, which is the opposite
+of the §13.104.5 direction (more evidence has always cost declines, never content) and is therefore read as small-n
+rather than as a mechanism.
+
+**3. What the wrong answers look like.** Of the 22 correct→wrong flips on identical evidence, the misses are
+**under-sums**, not declines and not prose. Four examples:
+
+| question | gold | control wrote | silent wrote |
+| -------- | ---- | ------------- | ------------ |
+| `gpt4_d84a3211` (bike expenses) | 185 | `25 + 40 + 120 = 185` | `65` |
+| `6cb6f249` (social-media breaks) | 17 days | `17` | `10` |
+| `36b9f61e` (luxury items) | 2,500 | `2500` | `2000` |
+| `gpt4_59c863d7` (model kits) | 5 | `5` | `6` |
+
+The control's own answer to the first one is the mechanism written out in the model's hand: it adds three
+numbers and shows the three. The silent arm adds two of them and shows nothing. **The written list is the state
+Step 2 counts from, and a list that is not written is not a list** — Step 1's output has nowhere to live, so
+"count the items you identified" becomes "count the items you can remember".
+
+### 13.127.5 Why the reference pipeline's clause does not transfer
+
+§13.123.3 read the reference builder correctly — it does say *write ONLY the final answer* and *do NOT write them
+out* — and drew the wrong inference from it. The clause is one of a set in that builder:
+
+- `Work in two steps, but write ONLY the final answer.`
+- `Step 1 — Silently read each turn and identify <the items>.` — **identify**, not *enumerate across sessions*
+- `Step 2 — Answer the question using ONLY those identified facts.`
+- one line, literal `Answer:` prefix, `with no explanation`
+
+This arm adopted the privacy clause while keeping its own merging sentence, which explicitly licenses combining
+evidence "from more than one turn or session", and its own Step 1 that walks **every session the prompt printed**.
+Those are different tasks. A per-session walk produces a list whose length is the answer; asking the same walk to
+happen in the model's head, with no place to put each session's line, removes precisely the artifact that made the
+count possible. The reference's version works because its Step 1 identifies items for *one* question, and the next
+sentence tells the model what to do with them; it never asks the reader to hold thirty sessions in working memory.
+
+### 13.127.6 The falsification, stated plainly
+
+§13.123.4 registered: "MR mean 86.5 → **≥ 95**; TR and IE reproduce question for question; MR declines ≤ 13; MR
+`promptChars` ≥ 45,000." Result: MR **61** (first repetition) / mean 399.5 roster against 421.0; TR and IE moved
+by 5.0% churn, which is now understood; declines were **lower**, not higher (193 against 200 model declines over
+2,000 evaluations); `promptChars` behaved as predicted.
+
+**Two of the four were right and the headline was wrong by 34 questions in the wrong direction.** §13.123.5.1's
+"ceiling of +18.75 questions" is moot: the sign was wrong before the magnitude mattered.
+
+### 13.127.7 One number that got worse while this was being read
+
+The reference pipeline's own mean across its four repetitions differs between the two dispatches: **225.8**
+(`40751394094`) against **218.0** (`40792853362`), a 7.8-question drop in the control. That is larger than the
+2-question within-run spread §13.125.7 measured, and larger than the 4-question between-dispatch difference it
+found in the temperature pair. So there are now three estimates of control drift, and they are not the same
+quantity: **within a four-repetition session ≈ 2 questions, between two dispatches 4 to 7.8 questions**.
+
+None of it threatens this readout, and the reason is worth stating because it is the design: every number above is
+paired **inside one dispatch** (the arm against the reference in the same job), or read as a **per-question** set
+difference against prompts that are byte-identical. It does threaten the weaker form — "the arm scored 84.2 and
+then 79.9" — which is a cross-run comparison of a headline and inherits every drift in this section.
+
+### 13.127.8 What the ask axis now knows
+
+| ask | mechanism | MR | verdict |
+| --- | --------- | -: | ------- |
+| `enumerated` | write the list, then compute | **87** | the adopted value |
+| `sweep` | a line per session printed | — | §13.92: lists stayed at 2.0 items, no gain |
+| `aggregation` | list with action and date, four-form arithmetic | — | §13.103: no gain |
+| `silent` | **the same steps, notes unwritten** | **61** | **−26, refuted** |
+
+Three attempts to sharpen *how the list is written* changed nothing; one attempt to stop writing it cost 26
+questions. That is the same conclusion from both ends, and it settles the direction: **the list stays.** The axis
+is not "write less" — it is "write the list and constrain the reply's shape", which is exactly `answer-line`
+(§13.124.4), dispatched against this same control at `ac9450fd`.
+
