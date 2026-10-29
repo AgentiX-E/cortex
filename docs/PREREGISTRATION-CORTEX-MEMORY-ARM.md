@@ -12805,6 +12805,30 @@ same way.
 - **2 fails**: assembly failure. The dispatch administered more than one route, and no prediction about MR is
   readable.
 
+### 13.123.5.1 The ceiling this dispatch can reach, stated before the number
+
+The reach is the multi-session route alone, so **the roster cannot move by more than the MR gap**: 121 questions,
+86.5 correct in the control, 105.25 available from the reference. Even a total transfer of that gap is **+18.75
+questions on a 500-question roster, 84.20% to 87.95%** — enough to pass S1's 85.0% threshold and to land within
+0.4 points of Raw-RAG's 87.53, and **not enough to reach the 90-plus figures**. That is the honest size of a
+single-route instruction fix, and stating it now is what stops a later reading of "`silent` worked, so we are near
+the field": the field's 90-plus numbers come from mechanisms this dispatch does not administer, and §13.123.6
+names them.
+
+Two consequences follow from the same arithmetic.
+
+**First, the dispatch after a positive result is not another ask.** It is the same ask applied to the other five
+routes, because the `temperature=0` arm is wrong on 10 IE and 27 TR questions and nothing about the silent shape is
+specific to multi-session. That is a different registration with its own reach (all six routes) and its own control
+problem: with no untouched route left, the assembly check has to move from prompt byte-identity to evidence
+byte-identity, and the dispatch must show `goldOverlap` unchanged on every question.
+
+**Second, `silent` is free in the unit that costs money.** It changes a contract, not a call count: 500
+consultations per repetition before and after, against `self_consistency`'s 1,500 and `reviewPass: audit`'s 1,000.
+§7.2's falsification of `self_consistency` at k = 3 (75% of questions split, net **+1**) makes the cheap mechanism
+also the one with the better prior. If `silent` moves MR by nine or more, the expensive one is worth re-testing
+only on the residue.
+
 ### 13.123.6 External calibration, and what it says the ceiling is
 
 The published field, restricted to figures that state their reader, on the full 500-question set:
