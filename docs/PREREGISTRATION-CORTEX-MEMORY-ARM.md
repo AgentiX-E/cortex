@@ -14562,3 +14562,236 @@ retries keep their budget: those are the case the ladder exists for.
 instrument existed is a claim about an invoice.** Applied forward: every registered treatment from here carries
 its `llmUsage` beside its accuracy delta, and a treatment that buys one question for 40% more prompt is now a
 trade a reader can price rather than a sentence about token efficiency.
+
+## 13.141 `review_pass=recover` was two mechanisms behind one field, and one of them was a withdrawal
+
+### 13.141.1 What the field actually named
+
+`review_pass` accepts four names — `none`, `audit`, `recover`, `bare` — and the arm derived a second
+option from it:
+
+```ts
+reviewBareDecline: readReviewPass(env[REVIEW_PASS_VARIABLE]) === 'bare',
+```
+
+That equality is wrong, and its wrongness is a property of the **route table**, not of the string.
+The two passes act on populations that do not overlap:
+
+| pass | where it is wired | what it fires on | routes |
+| --- | --- | --- | --- |
+| bare ladder | `#answerWithBareRetry` | a first-pass reply that is the abstention token and nothing else | `flat`, `temporal`, `assistant`, `knowledge-update` — **not** `abstention`, **not** `multi-session` |
+| recovery pass | `#promptSessionAware` | a decline whose own Step 1 list is non-empty | `multi-session` only |
+
+So `review_pass=recover` **removed** the bare ladder from four routes while adding the recovery pass to
+one. §13.128 registers that dispatch as a single-field experiment whose pass "can only ever consult on
+questions that are already wrong"; under the coupled reading that sentence is false twice — the run
+would also have measured the withdrawal of a shipped treatment, and any question the bare ladder had
+converted would have gone back to being a decline. Nothing in the artifact would have shown it: one
+field changes, and the loss arrives inside the accuracy delta.
+
+This is the §13.129.1 shape one layer up. There the assembly check found `askRoutes` had silently
+narrowed to `flat`; here the *derivation* narrows a second option. Both are a dispatch that does not
+administer the experiment its registration names.
+
+**The control's own censuses size the withdrawal**, and the number is not small:
+
+| field | control `40751394094` (`review_pass=bare`) | meaning |
+| --- | --- | --- |
+| `bareRetry` | `{attempted: 92, answered: 92}` | the ladder re-asked **92 times across 4 runs** — 23 per run — and every retry returned an answer |
+| `recovery` | `{attempted: 0, answered: 0}` | the recovery pass never fired, because it was never on |
+
+A decline is wrong on every capability whose gold is not a decline, so those 92 re-asks were 92 places
+where a null could become a correct answer. §13.128's own premise — "the pass can only ever consult on
+questions that are already wrong" — is true of the recovery pass and was about to be false of the run:
+the dispatch would have withdrawn 92 consultations to gain at most 10, and the artifact would have shown
+one field changing. That is a factor of nine in the wrong direction, invisible in the configuration line.
+
+### 13.141.2 The reach was also overstated, and for the same reason
+
+§13.128.1 counted declines that carry a Step 1 list across all six capabilities and concluded **16
+reachable (10 MR, 5 TR, 1 KU)**. The recovery pass is inside the multi-session path, and `MR` is the
+only capability routed there (`evidenceRouteOf`). `TR` goes to `answerTemporal`, `KU` to
+`answerKnowledgeUpdate`, `ABS` to `answerAbstention`, everything else to `answer`.
+
+| capability | declines | with a list | route | reached by `recover` |
+| --- | ---: | ---: | --- | --- |
+| MR | 12 | **10** | `multi-session` | **10** |
+| TR | 8 | 5 | `temporal` | 0 |
+| KU | 2 | 1 | `knowledge-update` | 0 |
+| ABS | 29 | 0 | `abstention` | 0 — structurally |
+| IE | 1 | 0 | `flat` | 0 |
+| **reachable** | 52 | 16 | | **10** |
+
+Ten questions, not sixteen: the ceiling is **2.0 points**, not 3.2. The six that the earlier count
+included were never in the treated population, which is the same error §13.132.1 records for a
+criterion computed on the wrong denominator — this time the denominator was a capability census when
+the mechanism is wired by route.
+
+### 13.141.3 The repair, at the layer where the field lives
+
+`carriesBareLadder(pass)` in `bench-memory-arm.ts`:
+
+```ts
+function carriesBareLadder(pass: string): boolean {
+  return pass === 'bare' || pass === 'recover';
+}
+```
+
+The repair is in the arm and **not** in `CortexMemory`, and that placement is the decision. The
+product keeps `reviewPass` and `reviewBareDecline` orthogonal: both, either, or neither are all
+expressible, and a product-level coupling would delete a configuration the type offers. What has one
+field is the **dispatch**, so the dispatch is what names a configuration — and the artifact already
+records both facts separately (`memoryArmConfig.reviewPass` and `memoryArmConfig.reviewBareDecline`),
+so a reader can still see which mechanism was on without reconstructing it from a coupling.
+
+`audit` stays out. It re-asks with the whole window, so a bare retry under it would make any movement
+two consultations rather than one — the same reason `CortexMemory`'s constructor refuses `audit`
+beside a vote.
+
+One more fact worth stating, because it makes the attribution sharper than the arm-level view
+suggests: `bare` is **not** a member of the product's `ReviewPass` (`'none' | 'audit' | 'recover'`).
+`run-ablation.ts` maps `bare` to "no review pass" plus `reviewBareDecline: true`, and `recover` now
+maps to `reviewPass: 'recover'` plus the same `reviewBareDecline: true`. So the product-level
+difference between the control and the treatment is **exactly one field** — `reviewPass`, absent
+against `'recover'` — and the bare ladder is identical on both sides rather than merely present on
+both sides. That is the shape the registration asked for; the equality in §13.141.1 was preventing
+it.
+
+### 13.141.4 Acceptance criteria, and how each was tested
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | `bare` still means what it meant | `review-pass-ladder.test.ts` — `reviewPass: 'bare'`, `reviewBareDecline: true` |
+| 2 | `recover` carries the bare ladder as well | same file — `recover` ⇒ both true |
+| 3 | `audit` and `none` carry neither | same file, both names |
+| 4 | the two names stay distinguishable in the artifact | `reviewPass` differs, `reviewBareDecline` equal |
+| 5 | a flat bare decline is re-asked under the union | `review-ladder.test.ts` — 2 calls, `bareRetry {1,1}`, `recovery {0,0}` |
+| 6 | a listed multi-session decline is re-asked under the union | same — 2 calls, `recovery {1,1}`, `bareRetry {0,0}` |
+| 7 | **one consultation per decline on either route** | same — two declines, two routes, exactly 4 calls |
+| 8 | `review_pass=bare` leaves MR unrecovered | same — 1 call, `recovery {0,0}`: the archived state, which §13.128 assumed was covered |
+| 9 | `recover` without the ladder leaves a flat decline unanswered | same — 1 call: exactly what the old derivation produced |
+
+Criterion 7 is the one that matters for attribution: disjointness is asserted by counting calls across
+two routes in one instance, not by reading the call graph. Criterion 9 is the regression this file
+exists to prevent, kept as a live test rather than a paragraph.
+
+Mutation: restoring `=== 'bare'` fails criteria 2 and 4 and nothing else.
+
+### 13.141.5 The predictions, restated on the population the mechanism can reach
+
+§13.128.3's four claims are kept, with the numbers their own populations imply:
+
+| # | claim | falsified by |
+| - | ----- | ------------ |
+| **1** | at least **4 of the 10** reachable MR questions convert to correct | fewer than 4 — the old "5 of 16" was a floor set on a population six of which cannot be reached |
+| **2** | **ABS does not move** (29/30 question for question) | any ABS verdict change — the abstention route is excluded in both passes |
+| **3** | no `flat`/`temporal`/`assistant`/`knowledge-update` question that declined bare changes verdict | a flip there: the ladder is carried, so a flip means the union did not reach the option |
+| **4** | the counting questions among the 10 are likelier to convert, because the corrective prompt names the count | zero of them convert while non-counting ones do |
+
+Claim 1 drops from 5 to 4 with the population, and it is worth saying why the ratio barely moves: the
+six removed are the TR and KU declines, which this pass never reaches, so the *rate* the earlier
+registration implied (5/16 = 31%) is preserved at 4/10 = 40% only because the removed questions were
+the ones least likely to convert — a flat-context decline whose list exists but whose answer needs a
+window the corrective prompt does not re-send.
+
+### 13.141.6 The rule this adds
+
+**A treatment's reach is a property of the route table, and a dispatch field that names a
+configuration must be derived by a tested function rather than by string equality.** Applied forward:
+every registered treatment from here states the route it is wired into beside the population it
+counts, and every env-var-to-option derivation that is not an identity gets a test that names the
+configuration the name covers.
+
+## 13.142 The prompt's invariant prefix is ten characters, so the cache prediction was a consequence and not a measurement
+
+### 13.142.1 What the renderer actually puts first
+
+`buildPrompt` assembles one string:
+
+```
+EVIDENCE:
+<turns, question-specific from the first byte>
+
+QUESTION: <question>
+
+<instruction block>
+```
+
+The instruction — the only text identical on every question a route answers — is **last**. `tools/prompt-anatomy.mjs`
+renders each `(contract, ask)` cell with no evidence and an empty question and reports the instruction's size
+against the roster's measured median prompt (46,851 characters, §13.139):
+
+| contract | instruction characters | share of a 46,851-char prompt |
+| --- | ---: | ---: |
+| `extractive` | 393 | 0.84% |
+| `abstention` | 315 | 0.67% |
+| `temporal` | 571 | 1.22% |
+| `assistant` | 341 | 0.73% |
+| `knowledge-update` | 512 | 1.09% |
+| `abstention-evidence-blocks` | 315 | 0.67% |
+
+So the anatomy of one prompt is: **~1% instruction, ~99% evidence and the question line.**
+
+### 13.142.2 Prediction 2 of §13.140.5, settled without a run
+
+That section registered three predictions and left the middle one to the first instrumented artifact:
+
+> 2. the prefix-cache share of the prompt is **under 5%** — falsified by a share ≥ 20%, which would make prompt
+>    ORDER a live cost lever
+
+A prefix cache matches a **prefix**. The prefix here is `EVIDENCE:\n` and it stops being question-independent
+immediately after — **ten characters, 0.02%** of the prompt. The share cannot be 20% for any provider, because
+there is nothing before the evidence to match. The prediction is not a measurement waiting for a bill; it is a
+consequence of the layout, and the tool now computes it with no model call.
+
+The decision attached to it is therefore also settled, and in the direction the section said it would go:
+
+| order | invariant prefix | share of the prompt | verdict |
+| --- | ---: | ---: | --- |
+| evidence first (shipped) | 10 chars | 0.02% | — |
+| instruction first | ≤ 571 chars | ≤ 1.22% | the **entire** prize a reordering could ever win |
+
+**Reordering the prompt to make its instruction block cacheable is worth at most 1.2% of the bill**, before
+accounting for its accuracy risk (the instruction is last because the reader reads it after the evidence, and
+`fitToBudget` shrinks evidence to keep it intact, §12.9). That is not worth a dispatch, and the tool is what makes
+that a priced decision rather than an intuition.
+
+### 13.142.3 What the bill actually is, which is the answer to "where can tokens be cut"
+
+The five cost levers this campaign could reach, priced by this measurement:
+
+| lever | size | status |
+| --- | --- | --- |
+| instruction length / prompt engineering | **0.67–1.22%** of the bill | not a lever: a 50% shorter instruction saves 0.4% |
+| prefix-cache reuse via reordering | ≤ 1.22% | not a lever (§13.142.2) |
+| evidence volume per question | **~99%** | the only lever with a prize |
+| turns per question (window policy) | scales the 99% linearly | the arm's independent variable (§13.139: 468/500 at 95% of the cap) |
+| assistant-turn share of the rendered room | **51.9%** (§13.82) | the largest addressable slice inside the 99% |
+| retry traffic (a timed-out attempt re-sends the prompt) | priced by `llmUsage.calls` above 1,000/run (§13.140.4) | registered, threshold set |
+
+The conclusion is uncomfortable and therefore worth stating plainly: **this campaign cannot buy accuracy with
+cheaper prompts.** Every ask registered in §13.1–§13.141 that lengthened the instruction lengthened the bill by
+under 1%, and every ask that shortened it saved under 1%. The cost of this arm is the evidence it renders, which
+is also the thing whose size is being varied on purpose (§13.16, §13.82, §13.139).
+
+### 13.142.4 Acceptance criteria, and how each was tested
+
+| # | criterion | test |
+| --- | --- | --- |
+| 1 | every contract × ask cell renders a non-empty instruction | `test_prompt_anatomy.py` — 66 cells |
+| 2 | the prompt begins with `EVIDENCE:\n`, and the tool refuses one that does not | the tool throws; the count is asserted as `len('EVIDENCE:\n')` for every cell |
+| 3 | the instruction is under 2% of a real prompt | every cell, against 46,851 |
+| 4 | reordering's ceiling is the instruction block, not the prompt | `prefixIfReordered == instruction` and `> prefixToday` |
+| 5 | the report names the ask under test and prints the whole grid | `--ask derive --contract temporal` |
+| 6 | an unrecognised argument is refused rather than ignored | `--nonsense` exits non-zero |
+
+Criterion 2 is the one that keeps the tool honest: its headline claim is a property of the **order**, so the tool
+asserts the order and fails loudly rather than reporting a number that a future reordering would silently invert.
+Mutation: `prefixToday: 0` fails criterion 2 and nothing else.
+
+### 13.142.5 The rule this adds
+
+**A prediction that is computable from the source is not a measurement, and spending a run to confirm one is
+spending a run on an arithmetic exercise.** Applied forward: every registered prediction is now checked against
+`tools/` before it is dispatched — if a tool can compute it, the tool computes it and the registration records the
+computation, so the dispatch is spent only on what needs a model.

@@ -815,9 +815,15 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
     reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
-    // A value of `reviewPass` rather than an input of its own: the workflow is at the dispatch-input ceiling,
-    // and these are two treatments rather than two knobs — no run should administer both.
-    reviewBareDecline: readReviewPass(env[REVIEW_PASS_VARIABLE]) === 'bare',
+    // A value of `reviewPass` rather than an input of its own: the workflow is at the dispatch-input ceiling.
+    //
+    // `bare` is not the only name that turns this on, and that correction is the whole point of the
+    // helper: the two passes act on **disjoint routes** (`bare` on the non-multi-session ones,
+    // `recover` inside the multi-session one), so deriving this from `=== 'bare'` made a dispatch of
+    // `recover` withdraw a shipped treatment on the route that did not gain anything. §13.128
+    // registers that dispatch as one `recover` against its control; under the old derivation the run
+    // would have measured a withdrawal it did not name.
+    reviewBareDecline: carriesBareLadder(readReviewPass(env[REVIEW_PASS_VARIABLE])),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
@@ -1154,9 +1160,35 @@ function readReviewPass(raw: string | undefined): string {
   return trimmed;
 }
 
+/**
+ * Whether a review-pass name carries the bare-decline ladder.
+ *
+ * ## Why this is a function and not `=== 'bare'`
+ *
+ * Because the two passes it distinguishes act on **disjoint populations**, and the equality hid that.
+ * `bare` re-asks a reply that is the abstention token and nothing else, and it is reached from every
+ * route except `abstention` and `multi-session` (`#answerWithBareRetry`). `recover` re-asks a
+ * `multi-session` decline that contradicted its own Step 1 list (`#promptSessionAware`). No question
+ * can reach both, so "the bare ladder plus the recovery pass" is one configuration rather than two
+ * treatments administered at once -- and the dispatch, which has one field, is the right place to
+ * name it.
+ *
+ * The version this replaces read `=== 'bare'`, so `review_pass=recover` silently **removed** the
+ * bare ladder from `flat`, `temporal`, `assistant` and `knowledge-update`. §13.128 registers that
+ * dispatch as a pass that "can only ever consult on questions that are already wrong"; with the
+ * ladder withdrawn, a question it had converted would go back to being a decline, and the section's
+ * no-loss property would be false for a reason nothing in the artifact would show.
+ *
+ * `audit` is excluded rather than included, and the exclusion is not an oversight: it re-asks with
+ * the whole window, so stacking a bare retry under it would make any movement two consultations
+ * rather than one. `none` is excluded by definition.
+ */
+function carriesBareLadder(pass: string): boolean {
+  return pass === 'bare' || pass === 'recover';
+}
+
 /** The variable this arm reads for §13.101's sample count. */
 const SELF_CONSISTENCY_VARIABLE = 'CORTEX_MEMORY_SELF_CONSISTENCY';
-
 /** The counts this arm can dispatch, in the order the config line spells them. */
 const SELF_CONSISTENCY_COUNTS: readonly string[] = ['none', '3'];
 
