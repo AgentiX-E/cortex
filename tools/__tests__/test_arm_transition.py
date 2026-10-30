@@ -378,3 +378,136 @@ class TestTheReading:
             assert f"  {number}  " in completed.stdout
         assert NAMED[0] in completed.stdout
         assert "applicable" in completed.stdout
+
+
+class TestWhereTheGainCameFrom:
+    """The division `§13.172.4` had to perform by hand, as a reading the tool prints.
+
+    The five criteria are registered and their thresholds are not this class's business. What this
+    class pins is the *second* number a pair produces: how much of a net gain sits on records whose
+    prompt actually changed, and how much sits on records where nothing could have reached it.
+
+    The reason it has to be a reading rather than a remark is the run that produced it. A +2.60-point
+    headline was 69% churn on 473 records with byte-identical prompts, and the artifact contained every
+    field needed to see that. A tool that printed only the headline would have let the claim stand.
+    """
+
+    def record(self, qid: str, *, correct: bool, prompt: int) -> dict:
+        """One record, built here rather than through the shared helper so ids can be synthetic.
+
+        The attribution reading does not consult the shape classifier, so these records need no real
+        question text -- and a fixture whose ids encode which population a row belongs to is one whose
+        failures name the population instead of an index.
+        """
+        return {
+            "questionId": qid,
+            "question": "How many items of clothing do I need to pick up or return from a store?",
+            "capability": "MR",
+            "groundTruth": "7",
+            "answer": "7",
+            "rawOutput": "1.",
+            "correct": correct,
+            "promptChars": prompt,
+        }
+
+    def flipping(
+        self, qid: str, *, was: bool, now: bool, prompt: int, prompt_after: int | None = None
+    ) -> tuple[dict, dict]:
+        """One question, correct `was` before and `now` after, at the given prompt sizes."""
+        return (
+            self.record(qid, correct=was, prompt=prompt),
+            self.record(qid, correct=now, prompt=prompt if prompt_after is None else prompt_after),
+        )
+
+    def pair(self, rows: list[tuple[dict, dict]], reference_only: list[str], **kwargs) -> tuple[dict, dict]:
+        return (
+            report([b for b, _ in rows], reference_only, **kwargs),
+            report([a for _, a in rows], reference_only, **kwargs),
+        )
+
+    def test_a_flip_on_a_changed_prompt_is_attributable(self, tmp_path: Path) -> None:
+        before, after = self.pair([self.flipping("0a995998", was=False, now=True, prompt=1000, prompt_after=1200)], [])
+        _, reading = run(before, after, tmp_path)
+        attribution = reading["attribution"]
+        assert attribution["changed"]["n"] == 1
+        assert attribution["changed"]["gained"] == 1
+        assert attribution["unchanged"]["n"] == 0
+
+    def test_a_flip_on_an_identical_prompt_is_churn(self, tmp_path: Path) -> None:
+        # The whole point: nothing reached this record, so its flip cannot be evidence for the
+        # treatment. Counting it as gain is the error the run made at 473-record scale.
+        before, after = self.pair([self.flipping("0a995998", was=False, now=True, prompt=1000)], [])
+        _, reading = run(before, after, tmp_path)
+        attribution = reading["attribution"]
+        assert attribution["changed"]["n"] == 0
+        assert attribution["unchanged"] == {"n": 1, "gained": 1, "lost": 0, "net": 1}
+        assert attribution["changed"]["net"] == 0
+        assert attribution["attributablePoints"] == 0.0
+        assert attribution["churnRate"] == 1.0
+
+    def test_an_unmeasured_record_is_neither_population(self, tmp_path: Path) -> None:
+        # An artifact from before the field existed has no `promptChars` on either side. Filing those
+        # as "unchanged" would report a population whose prompts were never compared as identical.
+        before, after = self.pair([self.flipping("0a995998", was=False, now=True, prompt=1000)], [])
+        del before["questions"][0]["promptChars"]
+        del after["questions"][0]["promptChars"]
+        _, reading = run(before, after, tmp_path)
+        attribution = reading["attribution"]
+        assert attribution["unmeasured"] == 1
+        assert attribution["changed"]["n"] == 0
+        assert attribution["unchanged"]["n"] == 0
+        assert attribution["measurable"] is False
+        assert attribution["attributablePoints"] is None
+
+    def test_the_run_this_was_built_from_reads_as_it_read(self, tmp_path: Path) -> None:
+        # 27 records whose prompt changed with +4/-0, and 473 identical ones with +24/-15, which is
+        # +0.80 attributable of a +2.60 headline. Built at fixture scale rather than at 500 by using
+        # 5 and 95 with the same proportions, then read as points over the records both sides hold.
+        rows = []
+        # Five records whose prompt changed: four flip from wrong to right and one does not move, which
+        # is `41039779987`'s +4/-0 on its 27.
+        for i in range(5):
+            rows.append(self.flipping(f"changed-{i}", was=i == 4, now=True, prompt=1000, prompt_after=1273))
+        # Forty-seven whose prompt is identical: three flip up and two flip down, which is the churn
+        # the same run measured at 24 up and 15 down over 473.
+        for i in range(47):
+            rows.append(
+                self.flipping(f"same-{i}", was=30 <= i < 32, now=i < 3, prompt=1000)
+            )
+        before, after = self.pair(rows, [], accuracy=0.83)
+        after["feature"]["metrics"]["abstentionAwareAccuracy"] = 0.85
+        _, reading = run(before, after, tmp_path)
+        attribution = reading["attribution"]
+        assert attribution["changed"] == {"n": 5, "gained": 4, "lost": 0, "net": 4}
+        assert attribution["unchanged"]["n"] == 47
+        assert attribution["unchanged"]["gained"] == 3
+        assert attribution["unchanged"]["lost"] == 2
+        assert attribution["attributablePoints"] == pytest.approx(4 / 52 * 100)
+        # And criterion 4 still reads the headline it was registered on, unchanged.
+        assert criterion(reading, 4)["verdict"] == "pass"
+        assert "+2.00 pt" in criterion(reading, 4)["detail"]
+        assert "attributable" in criterion(reading, 4)["detail"]
+
+    def test_the_reading_does_not_move_the_exit_code(self, tmp_path: Path) -> None:
+        # Attribution is a reading, not a criterion. A pair that meets all five registered thresholds
+        # exits 0 even when every gain it produced was churn -- the registered claims were met, and the
+        # note beside them says what they are worth.
+        gone = NAMED[:4]
+        rows = []
+        for qid in NAMED:
+            was, now = (False, True) if qid in gone else (False, False)
+            rows.append(
+                self.flipping(
+                    qid,
+                    was=was,
+                    now=now,
+                    prompt=1000,
+                    prompt_after=1200 if qid in gone else 1000,
+                )
+            )
+        before, after = self.pair(rows, [qid for qid in NAMED if qid not in gone], accuracy=0.83)
+        after["feature"]["metrics"]["abstentionAwareAccuracy"] = 0.86
+        completed, reading = run(before, after, tmp_path)
+        assert reading["attribution"]["changed"]["n"] == len(gone)
+        assert all(row["verdict"] != "fail" for row in reading["criteria"] if row["applicable"])
+        assert completed.returncode == 0

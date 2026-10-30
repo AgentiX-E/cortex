@@ -87,6 +87,74 @@ function promptCharsById(report) {
 }
 
 /**
+ * Where a pair's net gain came from, split by whether that record's prompt changed.
+ *
+ * ## The failure this reading exists to prevent
+ *
+ * `41039779987` met claim 4 with **+2.60 points**, and 69% of it was flips on records whose prompt was
+ * byte-identical on both sides: 24 gained and 15 lost across 473 untouched questions, an 8.2% churn
+ * rate, against **+4 gains and 0 losses** on the 27 records the treatment actually reached. The
+ * mechanism was worth **+0.80 point**, below the criterion's own 1.0-point bar.
+ *
+ * Every field needed to see that was in the artifact. What was missing was the division, and a criterion
+ * that reports a headline without it reports a number that does not measure its own claim. So the
+ * division is a reading the tool prints rather than an analysis a reader has to perform.
+ *
+ * ## Why `promptChars` and not the classifier
+ *
+ * It is the only per-question field that is a property of the **prompt**, so "the mechanism reached this
+ * question" is decided by whether the prompt changed, not by whether the answer's form changed. `§13.172.5`
+ * is the cost of the other choice: five questions changed class with identical prompts, which a
+ * classifier-based guard reads as a fallthrough and is in fact churn.
+ *
+ * A record missing the field on either side is counted as **unmeasured**, never as unchanged: an artifact
+ * from before the field existed has no prompt comparison at all, and filing it as "identical" would report
+ * a population whose prompts were never compared as one whose prompts held.
+ */
+export function attributionOf(before, after) {
+  const beforeById = new Map();
+  for (const record of before.questions ?? []) beforeById.set(record.questionId, record);
+  const changed = { n: 0, gained: 0, lost: 0 };
+  const unchanged = { n: 0, gained: 0, lost: 0 };
+  let unmeasured = 0;
+  let compared = 0;
+  for (const record of after.questions ?? []) {
+    const prior = beforeById.get(record.questionId);
+    if (prior === undefined) continue;
+    compared += 1;
+    if (
+      typeof prior.promptChars !== 'number' ||
+      typeof record.promptChars !== 'number' ||
+      typeof prior.correct !== 'boolean' ||
+      typeof record.correct !== 'boolean'
+    ) {
+      unmeasured += 1;
+      continue;
+    }
+    const bucket = prior.promptChars === record.promptChars ? unchanged : changed;
+    bucket.n += 1;
+    if (prior.correct !== record.correct) {
+      if (record.correct) bucket.gained += 1;
+      else bucket.lost += 1;
+    }
+  }
+  const measured = changed.n + unchanged.n;
+  const netOf = (bucket) => bucket.gained - bucket.lost;
+  return {
+    compared,
+    measured,
+    unmeasured,
+    measurable: measured > 0,
+    changed: { ...changed, net: netOf(changed) },
+    unchanged: { ...unchanged, net: netOf(unchanged) },
+    // Over the questions both artifacts hold, because that is the denominator the accuracy criterion
+    // uses and the two numbers have to be commensurable for the comparison to mean anything.
+    attributablePoints: measured === 0 ? null : (netOf(changed) / measured) * 100,
+    churnRate: unchanged.n === 0 ? null : (unchanged.gained + unchanged.lost) / unchanged.n,
+  };
+}
+
+/**
  * Read one pair of artifacts against the five criteria.
  *
  * `capability` defaults to `MR` because every registered threshold is about MR: the population, the
@@ -244,6 +312,16 @@ export function transitionOf(before, after, options = {}) {
   );
 
   const gain = accuracyBefore === undefined || accuracyAfter === undefined ? undefined : accuracyAfter - accuracyBefore;
+  const attribution = attributionOf(before, after);
+  // The registered claim reads total accuracy, and this reading does not change its verdict. What it
+  // does is print what the verdict is worth, beside it, the way criterion 3 prints the draw beside the
+  // band average: a headline met by variance and a headline met by a mechanism are the same pass and
+  // different findings.
+  const attributionNote = attribution.measurable
+    ? ` -- attributable ${attribution.attributablePoints >= 0 ? '+' : ''}${attribution.attributablePoints.toFixed(2)} pt ` +
+      `on the ${attribution.changed.n} whose prompt changed; the other ${attribution.unchanged.n} are ` +
+      `identical on both sides (${attribution.unchanged.gained}+/${attribution.unchanged.lost}-)`
+    : '';
   add(
     4,
     `overall accuracy rises by at least ${ACCURACY_MIN_GAIN_POINTS.toFixed(1)} point`,
@@ -251,7 +329,7 @@ export function transitionOf(before, after, options = {}) {
     gain !== undefined && gain >= ACCURACY_MIN_GAIN_POINTS,
     gain === undefined
       ? 'one side carries no abstention-aware accuracy'
-      : `${accuracyBefore.toFixed(2)}% -> ${accuracyAfter.toFixed(2)}% (${gain >= 0 ? '+' : ''}${gain.toFixed(2)} pt)`,
+      : `${accuracyBefore.toFixed(2)}% -> ${accuracyAfter.toFixed(2)}% (${gain >= 0 ? '+' : ''}${gain.toFixed(2)} pt)${attributionNote}`,
   );
 
   // The assembly check. `promptChars` is the only per-question field that is a property of the PROMPT
@@ -293,6 +371,7 @@ export function transitionOf(before, after, options = {}) {
     perCapability,
     rows,
     promptChars: { named: namedPrompt, outside: otherPrompt },
+    attribution,
     criteria,
     applicable: criteria.filter((row) => row.applicable).length,
     skipped: criteria.filter((row) => !row.applicable).length,
@@ -316,6 +395,24 @@ export function renderReading(reading) {
   for (const row of reading.criteria) {
     lines.push(`  ${row.registered}  ${PAD(row.verdict, 7)}  ${row.label}`);
     lines.push(`     ${' '.repeat(7)}  ${row.detail}`);
+  }
+  lines.push('');
+  if (reading.attribution.measurable) {
+    const { changed, unchanged } = reading.attribution;
+    lines.push('  attribution (the gain split by whether that record\'s prompt changed)');
+    lines.push(`  ${PAD('population', 14)}${PAD('n', 6)}${PAD('gained', 8)}${PAD('lost', 6)}net`);
+    lines.push(`  ${PAD('changed', 14)}${PAD(changed.n, 6)}${PAD(changed.gained, 8)}${PAD(changed.lost, 6)}${changed.net >= 0 ? '+' : ''}${changed.net}`);
+    lines.push(`  ${PAD('unchanged', 14)}${PAD(unchanged.n, 6)}${PAD(unchanged.gained, 8)}${PAD(unchanged.lost, 6)}${unchanged.net >= 0 ? '+' : ''}${unchanged.net}`);
+    const churn = reading.attribution.churnRate;
+    lines.push(
+      `  attributable ${reading.attribution.attributablePoints >= 0 ? '+' : ''}${reading.attribution.attributablePoints.toFixed(2)} pt` +
+        (churn === null ? '' : `; churn ${(churn * 100).toFixed(1)}% of the ${unchanged.n} identical`),
+    );
+  } else if (reading.attribution.compared > 0) {
+    lines.push(
+      `  attribution: ${reading.attribution.unmeasured} record(s) carry no promptChars on both sides, so no ` +
+        'gain can be attributed',
+    );
   }
   lines.push('');
   lines.push(`  transitions (${reading.rows.length} question(s) reference-only on either side)`);

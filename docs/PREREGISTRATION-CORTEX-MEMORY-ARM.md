@@ -18954,3 +18954,94 @@ own variance across two dispatches, and the level this arm will keep showing unt
 
 It does not claim the three remaining derivation declines are unreachable -- only that the operand the
 question needs is absent from the evidence those questions retrieved, which is a retrieval question.
+
+## 13.173 The division became a reading, and the tool prints what it cost a reader to perform by hand
+
+`§13.172.4` split `41039779987`'s net gain by whether each record's prompt changed, and the split said
+the mechanism was worth **+0.80 point** of a **+2.60** headline. That division was performed by hand,
+from fields the artifact already carried, minutes after the run landed. A reading that exists only
+because somebody thought to perform it is a reading that will be missed the next time, and the criterion
+it corrects is still registered.
+
+So `tools/arm-transition.mjs` now prints it.
+
+### 13.173.1 What it computes, and where the result lands
+
+`attributionOf(before, after)` walks the questions both artifacts hold and files each one into **changed**
+or **unchanged** by whether `promptChars` is equal, counting gains and losses in each. Its output is a
+new `attribution` field on the reading, a block in the human render, and a note appended to criterion 4's
+own line:
+
+```
+  4  pass     overall accuracy rises by at least 1.0 point
+              83.00% -> 85.60% (+2.60 pt) -- attributable +0.80 pt on the 27 whose prompt changed;
+              the other 473 are identical on both sides (24+/15-)
+
+  attribution (the gain split by whether that record's prompt changed)
+  population    n     gained  lost  net
+  changed       27    4       0     +4
+  unchanged     473   24      15    +9
+  attributable +0.80 pt; churn 8.2% of the 473 identical
+```
+
+The note is on criterion 4 rather than replacing it because the claim that was registered reads total
+accuracy, and a tool that quietly redefined a registered threshold would be doing what `§13.166.6`
+refused to do. The verdict stays the verdict; the number beside it says what the verdict is worth.
+
+### 13.173.2 Why `promptChars` and not the classifier
+
+It is the only per-question field that is a property of the **prompt**, so "did the mechanism reach this
+question" is decided by the bytes rather than by the shape of the answer. `§13.172.5` is what the other
+choice costs: five off-by-one questions changed class with byte-identical prompts, and a classifier-based
+guard reads that as a fallthrough when it is churn.
+
+Where the registered population is named by a classifier -- the seven in criterion 1 -- the tool still
+reads it from the before state's classifier, which is correct: those seven were named before the dispatch,
+and re-deriving them afterwards would let a widened classifier judge itself. Attribution is a different
+question and gets the field that answers it.
+
+### 13.173.3 A record missing the field is unmeasured, never unchanged
+
+An artifact from before `promptChars` existed has no prompt comparison at all. Filing those as
+"unchanged" would report a population whose prompts were never compared as one whose prompts held, which
+is the same collapse `question-record.ts` refuses one field over: absent is not a value. So they are
+counted in `unmeasured`, excluded from both populations, and when nothing is measurable the render says
+so in one line instead of printing a table of zeros.
+
+### 13.173.4 Why the exit code does not move
+
+The five registered criteria decide `0` and `1`. Attribution is a reading, and a pair that meets every
+registered threshold exits `0` even when all of its gain was churn -- because the registered claims *were
+met*, and the finding is what they are worth rather than whether they held. A test asserts exactly that,
+with every gain on identical prompts.
+
+### 13.173.5 The tests, and the injection that proves they bite
+
+Five tests, `TestWhereTheGainCameFrom` in `tools/__tests__/test_arm_transition.py` -- the file goes from
+19 to **24**, and the python tool layer from 891 to **896 passed / 1 skipped**:
+
+| test | what it pins |
+| --- | --- |
+| a flip on a changed prompt is attributable | the bucket rule |
+| a flip on an identical prompt is churn | the same rule from the other side, plus `churnRate` |
+| an unmeasured record is neither population | the absent-is-not-a-value rule |
+| the run this was built from reads as it read | 5 changed +4/-0 over 47 identical +3/-2 → `+7.69` attributable points, and criterion 4 still reading `+2.00 pt` |
+| the reading does not move the exit code | attribution is not a criterion |
+
+The injection: with `attributionOf` filing every record as reached, **three** of the five fail
+(`is churn`, `reads as it read`, `does not move the exit code`). The two that survive are the ones whose
+input has no unchanged record to mis-file, which is why the fixture has both populations in every case
+that matters.
+
+### 13.173.6 What this does not claim
+
+It does not make the +0.80 attributable to the operand contract rather than to the 273-759 extra evidence
+characters the shorter instruction block admitted -- `§13.172.9` registers that gap and it needs a third
+arm.
+
+It does not turn churn into a correction. Subtracting it would be a model of the noise, and this run is
+one pair; what is now mechanical is *measuring* it, not removing it.
+
+It does not replace criterion 2, which is still registered, still fires on form-class counts, and still
+cannot distinguish a fallthrough from churn. Replacing it is a registration decision, and `§13.172.8`
+records what the replacement should say.
