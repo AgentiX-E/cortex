@@ -75,8 +75,15 @@ class TestTheRealLedger:
         # ledger agree with itself more comfortably. Zep is on record at 90.2, 79.8 and 71.2.
         r = run("--json")
         data = json.loads(r.stdout)
-        zep = [row for row in data["spreads"] if row["system"] == "Zep"]
-        assert zep, "Zep must appear in the spread block"
+        # One row per dataset, so the LongMemEval reading is selected rather than assumed to be
+        # first: Zep's LoCoMo spread (30.9) is larger and would otherwise be the row this test
+        # checked while claiming it was checking the one section 3 of the analysis quotes.
+        zep = [
+            row
+            for row in data["spreads"]
+            if row["system"] == "Zep / Graphiti" and row["dataset"] == "LongMemEval"
+        ]
+        assert zep, "Zep must appear in the spread block for LongMemEval"
         assert zep[0]["harnessCount"] >= 2
         assert zep[0]["spread"] >= 10, zep[0]
 

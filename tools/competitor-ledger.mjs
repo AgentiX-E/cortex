@@ -173,6 +173,10 @@ export function spreads(entries) {
     const harnesses = new Set(list.map((entry) => entry.harness));
     out.push({
       system: list[0].system,
+      // The dataset is part of the row because one system can have a spread on each, and two rows
+      // reading `Zep 19.0` and `Zep 30.9` with nothing between them would look like an arithmetic
+      // error rather than two datasets.
+      dataset: list[0].dataset,
       readings: list.map((entry) => ({
         score: entry.score,
         harness: entry.harness,
@@ -275,7 +279,7 @@ export function render(entries) {
         ? `across ${row.harnessCount} harnesses`
         : 'within one harness -- a version difference, not a harness effect';
       lines.push(
-        `  ${row.system.padEnd(16)} ${row.spread.toFixed(1).padStart(5)} pt across ${row.readings.length} readings, ${cause}`,
+        `  ${row.system.padEnd(16)} ${row.dataset.padEnd(5)} ${row.spread.toFixed(1).padStart(5)} pt across ${row.readings.length} readings, ${cause}`,
       );
       for (const reading of row.readings) {
         lines.push(
@@ -370,7 +374,9 @@ function main(argv) {
   if (args.has('--spread')) {
     const travel = spreads(entries);
     for (const row of travel) {
-      console.log(`${row.system}  spread ${row.spread.toFixed(1)}  (${row.min} .. ${row.max})`);
+      console.log(
+        `${row.system}  ${row.dataset}  spread ${row.spread.toFixed(1)}  (${row.min} .. ${row.max})`,
+      );
     }
     return 0;
   }

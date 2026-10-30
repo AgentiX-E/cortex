@@ -16,7 +16,13 @@
     "A harness name carries its answer model when one published table mixes several. The APEX-MEM",
     "table prints its own row at Claude 4.5 Sonnet and three baselines at an unstated model; the",
     "Supermemory table prints its own row at GPT-5 and its competitors at GPT-4o. Those are two",
-    "conditions each, and naming them one would let a reader sort across the difference."
+    "conditions each, and naming them one would let a reader sort across the difference.",
+    "",
+    "Mem0 appears under three deployments -- self-hosted open source, the hosted service, and two",
+    "releases of each -- and they share a `system` so the spread block computes across them.",
+    "The deployment is in the harness name, because it is a condition and not an identity.",
+    "The deployment is a separate field rather than part of the harness name: the harness",
+    "is whose pipeline ran, and OmniMemEval ran Mem0 the same way it ran the other eight."
   ],
   "entries": [
     {
@@ -57,7 +63,8 @@
       "harness": "mem0-published",
       "kind": "self",
       "source": "Mem0's published LongMemEval figure, quoted by aiagentmemory.org and by tools/competitor-sut/mem0_driver.py",
-      "note": "The number this repository's competitor harness exists to test. A third-party reproduction of the same open-source configuration lands at 49.0%, and OmniMemEval lands at 56.0, so the publication and the reproductions disagree by 38 points."
+      "note": "The number this repository's competitor harness exists to test. A third-party reproduction of the same open-source configuration lands at 49.0%, and OmniMemEval lands at 56.0, so the publication and the reproductions disagree by 38 points.",
+      "deployment": "vendor-published configuration"
     },
     {
       "system": "Mem0",
@@ -69,10 +76,11 @@
       "harness": "mem0-v3-published",
       "kind": "self",
       "source": "contextier.com blog, 6,787 mean context tokens per query",
-      "note": "A second self-reported figure with a stated token cost, which is the only reason it is listed separately: accuracy without tokens is not a comparison."
+      "note": "A second self-reported figure with a stated token cost, which is the only reason it is listed separately: accuracy without tokens is not a comparison.",
+      "deployment": "vendor-published configuration"
     },
     {
-      "system": "Zep",
+      "system": "Zep / Graphiti",
       "score": 90.2,
       "dataset": "LongMemEval",
       "variant": "S",
@@ -168,7 +176,7 @@
       "note": "The per-type breakdown in that table is the only side-by-side split by question type this repository has found, and it is judged by GPT-4o while the table's own rows are judged by GPT-OSS-120B."
     },
     {
-      "system": "Zep",
+      "system": "Zep / Graphiti",
       "score": 71.2,
       "dataset": "LongMemEval",
       "variant": "S",
@@ -276,7 +284,7 @@
       "note": ""
     },
     {
-      "system": "Mem0 (cloud)",
+      "system": "Mem0",
       "score": 56.0,
       "dataset": "LongMemEval",
       "variant": "S",
@@ -285,7 +293,8 @@
       "harness": "OmniMemEval",
       "kind": "harness",
       "source": "OmniMemEval results snapshot, checked 2026-10-12",
-      "note": "The 38.4-point gap against the 94.4 self-report is the single most important row in this table: it is what this repository's own competitor harness is for."
+      "note": "The 38.4-point gap against the 94.4 self-report is the single most important row in this table: it is what this repository's own competitor harness is for.",
+      "deployment": "hosted service"
     },
     {
       "system": "Cognee",
@@ -298,6 +307,116 @@
       "kind": "harness",
       "source": "OmniMemEval results snapshot, checked 2026-10-12",
       "note": ""
+    },
+    {
+      "system": "Mem0",
+      "score": 49.0,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "answerModel": "unknown",
+      "judge": "unknown",
+      "harness": "mem0-open-source-third-party",
+      "kind": "third",
+      "source": "third-party reproduction of the open-source configuration, recorded in tools/competitor-sut/mem0_driver.py",
+      "note": "The second reproduction of the same code, and the reason this repository runs Mem0 itself rather than quoting it: 94.4 self-reported, 56.0 under OmniMemEval, 49.0 here.",
+      "deployment": "self-hosted open source"
+    },
+    {
+      "system": "MemOS",
+      "score": 88.83,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": ""
+    },
+    {
+      "system": "Cognee",
+      "score": 83.48,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": ""
+    },
+    {
+      "system": "Hindsight",
+      "score": 81.99,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": ""
+    },
+    {
+      "system": "Mem0",
+      "score": 77.68,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": "",
+      "deployment": "hosted service"
+    },
+    {
+      "system": "Letta",
+      "score": 77.12,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": "The same system reads 77.67 on LongMemEval under this harness, i.e. almost identical across two datasets -- which is not true of every row here."
+    },
+    {
+      "system": "Supermemory",
+      "score": 73.53,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": "Fifth on LoCoMo while second on the vendor table; the dataset changes the ranking, which is why section 8 of the analysis asks for a second dataset."
+    },
+    {
+      "system": "Zep / Graphiti",
+      "score": 63.83,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "GPT-4.1-mini",
+      "judge": "GPT-4o-mini",
+      "harness": "OmniMemEval",
+      "kind": "harness",
+      "source": "OmniMemEval results snapshot, checked 2026-10-12",
+      "note": "Self-reported 94.7 on LoCoMo; the same-harness reading is 30.9 points lower."
+    },
+    {
+      "system": "Zep / Graphiti",
+      "score": 94.7,
+      "dataset": "LoCoMo",
+      "variant": "full",
+      "answerModel": "unknown",
+      "judge": "unknown",
+      "harness": "zep-published-locomo",
+      "kind": "self",
+      "source": "Zep reported figure, quoted in aiagentmemory.org and in the OmniMemEval discussion",
+      "note": "Paired with the same-harness 63.83 below it: 30.9 points separate the publication from the reproduction, on the dataset where the publication is strongest."
     }
   ]
 }
