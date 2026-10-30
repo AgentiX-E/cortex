@@ -17383,3 +17383,54 @@ Added to §13.158.4's seven, before the work starts:
 
 The twenty-one are now named, classified, and two of them are worked end to end. What is missing is not
 knowledge; it is the resolver, and it is the one thing that must not be written while a reading is in flight.
+
+#### 13.160.5 The disposition table, measured -- and an example I got wrong in the paragraph above
+
+§13.160.2 and §13.160.3 assigned dispositions by reading the *names* in other files. That is the same
+instrument whose output is being audited, used to audit it, and it produced an error of exactly the kind
+being measured. `covers` was written up as **delete**: the barrel line at `index.ts:201`, and every other
+occurrence in the repository inside a comment. Then the test files were read with the resolver instead of
+with the name, and `knowledge/__tests__/edges.test.ts:169` calls it:
+
+```ts
+expect(covers({ start: 0, end: 10 }, { start: 0, end: 10 })).toBe(true);
+```
+
+So `covers` is a test seam, and deleting it would have broken a test that measures the behaviour the function
+exists for. The error is recorded rather than quietly repaired because it is the fourth correction in this
+section and the cause is the same each time: **a check that matches names cannot audit a claim about names.**
+
+Read properly -- each of the twenty-one asked three questions: does its own file use it, does any test
+**import** it, does a barrel re-export it -- the table is:
+
+| disposition | n | the symbols |
+| --- | --- | --- |
+| **test seam** | **17** | `covers`, `dot`, `norm`, `normalize`, `reciprocalRankFusion` (core), `unrun`, `Arm`, `Ablation`, `resolve`, `tokenize` ×2, `answerTokens`, `isAbstention`, `PROMPT_CONTRACTS`, `DEFAULT_PROMPT_CONTRACT`, `ASK_ROUTES`, `matchesAllTags` |
+| **unexport** | **4** | `sleep` (cortex-ai), `Resolution` (cortex-core), `Resolution` (cortex-eval), `TURN_CAP_ROUTES` (cortex-memory) |
+| **delete** | **0** | -- |
+| **keep with the reason** | **0** | -- |
+
+Every one of the seventeen is a symbol whose only non-incidental consumer is the test that measures it. That
+is not an accident of this repository; it is what the census's own rule produces: tests are excluded from the
+caller count, so **any export that exists to be tested directly must look dead**. The ledger already has a
+class for it -- `TEST SEAM` -- and §13.155.7 added two entries to it for the same reason.
+
+#### 13.160.6 What this does to the priority, stated now rather than discovered later
+
+The measurement changes what P1-census buys. It does **not** buy twenty-one deletions; it buys seventeen
+**truthful ledger entries**, four unexports, and a gate that stops conflating "a test measures it" with "the
+documentation mentions it" with "nothing uses it".
+
+That is worth doing and it is worth doing later. The comparison is not close:
+
+| | P1-census | P3c-2b′ |
+| --- | --- | --- |
+| what it changes | which entries the ledger lists, and why | whether the arm's mean goes up |
+| what it risks | the gate red for the length of one `pnpm check` | one two-hour dispatch |
+| what it returns | 17 entries that stop being wrong, 4 exports removed | 0 to 7 questions, measured against six registered criteria |
+
+A gate that reports seventeen false listings is a gate whose output is unread, which is a real cost -- and it
+is still the cost that can wait one dispatch. §13.158.5's three reasons not to do it now are joined by a
+fourth, which is the strongest: **the population turned out to be mostly seams, so the repair's yield is
+smaller than the measurement that found it.** The measurement was worth its hour because it repriced the
+work; the work was worth deferring because the price fell.
