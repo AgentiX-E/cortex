@@ -17019,3 +17019,114 @@ with `cwd="/workspace/cortex"`. That worked and was wrong the way a constant is 
 tool runnable from one directory on one machine, and it hid the destination from anyone reading a diff. The
 root is now derived from `__file__`, which is the same repair `push-via-api.py` carries and for the same
 reason -- a wrong destination should be unrepresentable rather than merely discouraged.
+
+### 13.157 The pair is the unit of evidence, and the diff is computed once
+
+§13.153.5 registered six criteria. Five of them are statements about what **changed**, and every instrument
+in this arm reads one artifact at a time: `window-wired.mjs` can say what the product does to a delivery,
+and cannot say what the treatment did differently from the control. So the criteria had a table and no
+instrument, which is the failure mode registered criteria exist to prevent -- a bar that is restated before
+the run and then read by whoever is holding the artifact. `tools/window-pair.mjs` is the instrument.
+
+#### 13.157.1 One diff, three partitions
+
+| criterion | the comparison, and nothing else |
+| --- | --- |
+| 2, the delivered multiset is unchanged per question | the multiset of the delivered turns, per question |
+| 3, the mechanism is administered on the temporal route and nowhere else | the capability the changed questions belong to |
+| 6, nothing outside the administered set moves beyond the reader floor | verdict flips among the untouched |
+
+Three tools would be three chances to answer three questions inconsistently, and a reader handed three
+numbers has no way to tell which one is the wrong one. One diff, partitioned three ways, cannot disagree
+with itself. The per-capability table is the whole of it: `ABS 30 / IE 150 / KU 72 / MR 121 / TR 127`, one
+row each of multiset changes, order changes and flips.
+
+#### 13.157.2 A multiset change is a comparability failure, not a result
+
+The two artifacts come from two commits. If a pool moved between them -- a retrieval change, a budget
+change, a parser change -- then a difference in delivery order no longer means the mechanism ran, and the
+reading "the reorder changed forty questions" is exactly the reading that looks like a finding. So the pair
+becomes `not comparable`, criterion 2 fails, and criterion 6 prints **not readable while criterion 2 fails**
+rather than a zero.
+
+Criterion 3 still reports, because its statement is about *where* a change landed and not whether one
+landed: a multiset change confined to TR says "not comparable, and the incomparability is on the route
+under test", which is a different situation from the same change spread over MR. The tool does not
+summarise that; it prints both verdicts and lets them both stand.
+
+#### 13.157.3 An inner join is refused by name
+
+The difference between "this question did not move" and "this question is not in that artifact" is the
+difference between a denominator of 500 and a denominator of 495, and the second number is printed nowhere.
+So `join()` fails with exit 2 and names up to ten ids per side. Ten is a compromise made deliberately: long
+enough to identify the defect (a truncated roster, an arm that wrote a subset, two capabilities' worth of
+loss), short enough that the message is a sentence and not a listing.
+
+#### 13.157.4 Criteria 4 and 5 are not properties of the pair
+
+"Reordered" is a property of the product on a question, not of the pair: a question the mechanism reorders
+can come back in the same order if the window's turns were already leading the delivery. So the population
+for criteria 4 and 5 is taken from `window-wired --json`, and the tool cross-checks the two sets -- the ids
+the replay moved and the ids the pair changed -- printing the difference in both directions. Neither
+direction is an error, because the difference is a definition and not a disagreement: replay-only means an
+administered move that did not land on this delivery, pair-only means the delivery moved for a reason the
+replay does not model. Both are worth a line, neither is worth a verdict.
+
+#### 13.157.5 `converted` means two different things in the two tools
+
+`window-wired` reports `converted` for the questions it moves that the control answers **wrong**: that is a
+population. `window-pair` reports `converted` for the ones the treatment answers **right** among that
+population: that is an outcome. The two numbers are both 7 on the control artifact and that is a
+coincidence of the control's own state, which is the kind of coincidence that gets quoted as progress in a
+status update. The detail line therefore reads `converted X of Y reachable-and-wrong (bar 4)`, never a bare
+fraction, and when `Y` is not the registered 7 it appends `-- note: the registered population is 7`, so a
+replay run against something else cannot have the registered bar applied to a population it was not
+written for and still read clean. There is a test for that note, because a warning nobody asserts is a
+warning that gets deleted by the next refactor.
+
+#### 13.157.6 The floor needs a denominator, and the first test for it was wrong
+
+Criterion 6's floor is 5.0% of the untouched questions, so a fixture has to be sized such that the ratio
+lands on the side of the floor it is meant to test. The first version of the test used ten untouched with
+one flip and asserted `met`; 1/10 is 10%, twice the floor, and the tool was right to fail it. The assertion
+was the defect. It is now two tests -- 1 of 40 is 2.5% and meets the floor, 1 of 10 is 10% and fails it --
+which is a shape worth keeping: a threshold test whose fixture sits on the wrong side of the threshold
+tests the author's arithmetic rather than the code.
+
+Thirteen tests in `tools/__tests__/test_window_pair.py`. The half worth naming are the ones that encode a
+refusal or a distinction rather than a happy path: three conversions do not meet a bar of four; one sale of
+two meets a bar of one and two would not; a delivery change on a non-temporal route fails criterion 3 while
+a reorder on a temporal question is `moved` and not `changed`; a question present in one artifact only is
+named instead of joined away.
+
+#### 13.157.7 The self-comparison, which is the only reading available before the run
+
+Feeding the tool the control artifact as both sides is not a test of the mechanism -- it is a measurement of
+the instrument, and it is the one reading that can be taken on registered evidence before the dispatch
+returns. Measured on `40751394094`'s report:
+
+| capability | questions | multiset | order | flips |
+| --- | --- | --- | --- | --- |
+| ABS | 30 | 0 | 0 | 0 |
+| IE | 150 | 0 | 0 | 0 |
+| KU | 72 | 0 | 0 | 0 |
+| MR | 121 | 0 | 0 | 0 |
+| TR | 127 | 0 | 0 | 0 |
+| **total** | **500** | **0** | **0** | **0** |
+
+Criteria 2, 3 and 6 met; exit 0. What this buys is a false-positive rate of zero on this roster for the
+comparison as written. A tool that had compared the raw turn records instead of the turn **text** would
+have reported 500 multiset changes here -- every turn carries its own metadata, and two parses of one turn
+do not produce equal objects -- and would then have failed criterion 2 on every real pair, sending the
+operator to look for an assembly defect that lives in the instrument.
+
+#### 13.157.8 The rule this adds
+
+> A criterion whose subject is a difference is read by a tool that holds both sides, and that tool must be
+> demonstrated on the case where the difference is known to be zero -- because zero is the only value whose
+> correctness can be confirmed without the run.
+
+The registration states what falsifies each criterion. It does not state what *reads* each criterion, and a
+bar with no reader is a bar whose reading is negotiated after the artifact lands. This is the reader for
+five of the six, it refuses the pairs it cannot compare instead of joining them, and criterion 1 stays with
+`window-wired` because it is a property of the product and not of the difference.
