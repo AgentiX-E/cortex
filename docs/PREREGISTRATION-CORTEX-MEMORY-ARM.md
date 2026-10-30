@@ -16710,13 +16710,14 @@ API's `{truncated, tree: [...]}` listing and the flat map -- are both accepted, 
 replayed path must compare the same thing; a tool that reads only one of them comes to pass on the path it
 was tested on and to a different answer on the other.
 
-#### 13.154.3 Four verdicts, and the middle one is why the gate stays readable
+#### 13.154.3 Five verdicts, and the two between `MATCH` and `MISMATCH`
 
 | verdict | meaning | exit |
 | --- | --- | --- |
 | `MATCH` | the run's tree is the checkout's tree | 0 |
 | `CODE-SAME` | only non-number-bearing paths differ | 0 |
-| `MISMATCH` | a number-bearing path differs | 1 |
+| `CODE-OLDER` | number-bearing files were **added** after the dispatch, none that ran changed | 0 |
+| `MISMATCH` | a number-bearing path changed, or the run has one this checkout lacks | 1 |
 | `UNKNOWN` | cannot certify: no commit, empty map, truncated listing, malformed record | 2 |
 
 `CODE-SAME` exists because **every** docs commit lands after a dispatch that was correct at the time. A gate
@@ -16726,6 +16727,21 @@ drawn where the campaign has measured it: `packages/`, `tools/`, `.github/workfl
 can move a number (`tools/readout-arm-run.py` runs *inside* the job and prints the audit and spend tables, so
 `tools/` is not readout-only), while `docs/` and anything under `__tests__/` cannot -- a test gates a merge,
 it does not enter the job that produces the number.
+
+`CODE-OLDER` was added the same day, for the situation the first run of this tool was in: the branch had
+moved on **by adding files** while the dispatch was in flight. Then every differing path is `missing` from the
+run's tree -- present here, absent there -- so every blob that actually ran is byte-identical and a file that
+did not exist when the run started cannot have been executed by it. Measured on `40984213349` after this
+section's own commit: four paths differ, one of them number-bearing, and it is
+`tools/run-identity.mjs` itself -- so the answer is `CODE-OLDER` and the honest sentence is "nothing that ran
+has changed". Reporting that as `MISMATCH` would have made the gate red for the rest of the campaign, which
+is where a gate stops being cited.
+
+Why a subset diff cannot hide a mechanism, which is the objection worth answering: a feature made only of new
+files is unreachable unless something imports it, and an import is an edit to an existing file -- `changed`,
+which stays `MISMATCH`. §13.153.10 is the worked example: twelve files missing **and** thirteen changed, and
+the thirteen are what named the mechanism. A file the run has and this checkout does not is `extra` and stays
+`MISMATCH` too, because that is code which ran and no longer exists.
 
 `UNKNOWN` is not a soft pass. A run that has not started has no `head_sha`, and so does every record whose
 field was renamed; both are states in which the tool knows nothing. It exits 2 and says which of the two it
@@ -16823,3 +16839,131 @@ needs the explanation, not the growing one.
 The reproduction, the comparison against the ledger's previous retirement -- `508fc62`, which removed
 `cortex-memory: asksForCount` because the new tool **imports** it, 395 orphaned to 394 — and the three
 conditions P1-census has to satisfy are written out in `docs/AUDIT-CENSUS-CALLER-BY-NAME.md`.
+
+### 13.155 The run died on question one, and the cause was a wrapper landed two steps earlier
+
+`40984213349` has no artifact. Its reference pipeline finished all 500 questions (+1,132s, 1,191 calls, no
+retry, judge at 121/500 = 24.2%), and the cortex-memory side then **died on its first question**
+(`id=e47becba`, +0.0s):
+
+```
+TypeError: Cannot read private member #lastRawOutput from an object whose class did not declare it
+    at CortexMemory.lastRawOutput (packages/cortex-memory/src/memory.ts:508:17)
+    at runBenchmark (packages/cortex-eval/src/benchmark.ts:442:52)
+```
+
+The arm wrote its own partial-measurement line ("INCOMPLETE, no delta") and exited 1, so the failure is
+readable rather than silent, and the readout step then failed because no report existed. That is the
+pipeline behaving correctly; what failed is code.
+
+#### 13.155.1 The chain, in three lines
+
+1. `traceReviewMechanisms` (§13.145's per-question review census, landed in `4f013cb`) returns
+   `Object.create(system)`: an object whose **prototype is the instance**, chosen so that
+   `isSessionAware`'s `'answerSessions' in system` still sees every route.
+2. `runBenchmark` resolves the raw-output accessor once, as `system.lastRawOutput.bind(system)`.
+3. `system` is the wrapper. The method is found through the chain, the call binds `this` to the wrapper,
+   and a private name is installed **on the instances of the class and not inherited by objects derived
+   from one**. So `#lastRawOutput` is not there.
+
+The wrapper copies every member whose name starts with `answer` (the routed ones it intercepts) and
+inherits the rest, which is exactly the set that cannot be inherited safely.
+
+#### 13.155.2 Why no test saw it, and the shape of that miss
+
+Every arm test builds its system as a plain object with **arrow functions** --
+`lastRawOutput: () => 'Lisbon'` appears in four suites. Against an arrow, `.bind(system)` is a no-op, so
+the wrapper is correct in all of them. The defect needs a system whose state is *private*, and no fake had
+any.
+
+> A fake cannot be less capable than the real thing and still find a capability bug.
+
+This is the failure mode the campaign's "no mocks" rule is aimed at, arriving from a direction the rule
+does not literally cover: these are not mocks of the thing under test, they are conformant `MemorySystem`
+literals, and they are *legitimate* for asserting routing. What they cannot do is express a language-level
+invariant of the real implementation, and the suite had no fixture that could.
+
+#### 13.155.3 Why it surfaced on this dispatch and not on the previous run
+
+`4f013cb` landed **after** the last full-arm run (`40883121464`), so between P2a and this dispatch no
+process had ever wrapped a real `CortexMemory` and called `runBenchmark` on it. The local gate could not
+have found it (13.155.2), the type system could not have found it (`MemorySystem` is structural; the
+wrapper satisfies it), and the identity gate would not have found it either -- it asks whether the run
+carried the committed code, and it did.
+
+> Two gates, two questions. Identity asks *did the right code run*; this run says yes. Correctness asks
+> *does that code work*; only a run says anything.
+
+So the dispatch bought something real: a defect that had been in the tree for two steps, found at the
+first opportunity a dispatch existed to find it. The price was 1,191 reference-pipeline calls and 23
+minutes with no artifact.
+
+#### 13.155.4 The fix, and why it is at the wrapper rather than at the call site
+
+Binding the two accessors the harness happens to read would leave the next one broken, and the failure
+mode is a forty-minute run that dies on question one. So `mirrorMembers` makes the wrapper own the
+problem: every function found anywhere on the chain becomes an **own** property that calls the real
+instance, and every accessor is re-defined to read and write the instance. Non-function values stay on the
+chain, because reading one does not depend on `this`.
+
+`Object.create(system)` stays, because the chain is what makes the wrapper answer `in` and `instanceof`
+like the system it wraps, and `runBenchmark` decides which routes exist by exactly those checks.
+
+#### 13.155.5 The evidence, in both directions, on the real object
+
+A unit test cannot be the whole answer here, because the unit test's fake is the thing that failed to
+express the defect. So the wrapper was measured against a system with real `#private` fields **and**
+against the real `CortexMemory` through the real `runBenchmark`:
+
+| check | old wrapper | `mirrorMembers` |
+| --- | --- | --- |
+| `runBenchmark`'s accessor read (`lastRawOutput`) | **TypeError**, the run's exact message | returns `null` |
+| state written through the intercepting `answer` | **TypeError** | `raw:first`, and the original reads it too |
+| `recoveryCensus()` called on the wrapper | **TypeError** | `{ attempted: 1, answered: 1 }` |
+| real `CortexMemory` + real `runBenchmark`, 1 question | **TypeError**, byte-identical message | answers `['Berlin']`, raw output `['Berlin']`, trace recorded |
+
+The last row is a scratch script over the built `dist`, run twice -- once with the call site reverted to
+`Object.create(system)` and once with the fix -- so the identification of the cause is a measurement and
+not an inference from the stack. `packages/cortex-eval/src/__tests__/review-trace-private-fields.test.ts`
+keeps the three unit rows: it is the only suite in the arm that builds a system with private state, and
+three of its six assertions fail against the old wrapper.
+
+#### 13.155.6 What it costs and what it changes
+
+- **P3c-2b is not read.** No artifact exists, so none of §13.153.5's six criteria has a value; the
+  dispatch is re-issued after this fix, and it is the same commit plus a wrapper repair and nothing else.
+- **Nothing in the arm's behaviour changed.** A user-visible no-op is the correct description: the fix
+  makes an instrument stop throwing, and the twelve-hundred-call reference pipeline it crashed beside is
+  untouched.
+- **The partial report is worth reading for one thing.** It shows the failure at question one rather than
+  question four hundred, which is what makes the cost one run instead of a run that looks like a result:
+  the summary line reads `INCOMPLETE, no delta` and the delta fields are absent rather than zero.
+
+#### 13.155.7 Two entries join the ledger, and rebuilding the ledger deleted a sentence — measured
+
+Exporting the wrapper makes it and its trace type new orphans, because the census excludes test files from
+the caller count and TypeScript has no package-private visibility. So `tools/export-census-baseline.json`
+gained two entries (394 to 396 orphaned; the totals also moved 903/509 to 913/517 because eight exports
+with callers had been added since the last rebuild and `--check` only compares orphans, so nothing had
+noticed).
+
+Running `tools/rebuild-export-census-baseline.py` to produce that diff then **deleted the previous step's
+rationale sentence** without a word: the tool regenerates every group's prose from its own `RATIONALE`
+dictionary, and §13.149 had hand-appended a paragraph explaining the `cortex-memory: asksForCount`
+retirement. Measured: that group's rationale went 9,982 characters to 9,472, and the missing 510 are the
+paragraph. It was restored from the pre-run copy, and the tool now needs to refuse this rather than do it
+quietly — a ledger whose prose is regenerated from the generator is a ledger whose record is whatever the
+generator remembers.
+
+Three things worth separating, because they are three different failures wearing one diff:
+
+1. **The new orphans are honest.** Two exports exist for a fixture that the old fixtures could not be, and
+   the reason is written into the group. This is the `TEST SEAM` class the ledger already carries.
+2. **The totals drift is honesty arriving late.** `--check` guards the orphan list, not the export count,
+   so eight exports with callers accumulated unrecorded. The rebuild corrected them; that correction is
+   not a change in the code.
+3. **The prose regeneration is a defect**, registered as **P1-ledger**: the rebuild must abort when an
+   existing rationale contains text the generator does not produce, with a test that appends a sentence to
+   a fixture ledger and asserts the abort. Until then `rebuild-export-census-baseline.py` is a tool that
+   silently discards the one thing the ledger exists to keep, and the only reason it is safe to run today
+   is that this paragraph says so.

@@ -2200,7 +2200,69 @@ type AbstentionReasons = ReportAbstentionReasons;
  *    nothing would publish an interval over nothing.
  */
 /** What one question's census delta said about the review mechanisms. */
-type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
+export type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
+
+/**
+ * A view of `system` whose members are all **delegated to the instance**, not inherited from it.
+ *
+ * ## The bug this replaces, and why `Object.create` alone is not enough
+ *
+ * The prototype chain was the whole implementation, and it produced a wrapper that cannot read a private
+ * field. `Object.create(system)` makes an object whose prototype is the *instance*, so a method is found
+ * on the chain and called with `this` set to the **wrapper** -- and a private name is installed on the
+ * instances of the class, not inherited by objects that derive from one. `run 40984213349` died on its
+ * first cortex-memory question with `Cannot read private member #lastRawOutput from an object whose class
+ * did not declare it`, at `CortexMemory.lastRawOutput`, for exactly this reason: `runBenchmark` resolves
+ * that accessor once as `system.lastRawOutput.bind(system)`, and `system` was the wrapper.
+ *
+ * ## Why the fix is here and not at the call site
+ *
+ * Binding the two accessors this harness happens to read would leave the next one broken, and the failure
+ * mode is a forty-minute run that dies on question one. So the wrapper owns the problem: every function
+ * found anywhere on the chain becomes an own property of the wrapper that calls it with `this` set to the
+ * real instance, and every accessor is re-defined to read and write the instance. Non-function values stay
+ * on the chain, because reading one does not depend on `this`.
+ *
+ * ## Why it keeps `Object.create(system)`
+ *
+ * The chain is what makes the wrapper answer `in` and `instanceof` like the system it wraps, and
+ * `runBenchmark` decides which routes exist by exactly those checks (`isSessionAware`). A spread would
+ * lose every method; a fresh object would lose the identity. The chain stays and the calls are delegated.
+ */
+function mirrorMembers(system: MemorySystem): MemorySystem {
+  const traced = Object.create(system) as MemorySystem;
+  const target = traced as unknown as Record<string, unknown>;
+  const seen = new Set<string>(['constructor']);
+  for (
+    let owner: object | null = system;
+    owner !== null && owner !== Object.prototype;
+    owner = Object.getPrototypeOf(owner) as object | null
+  ) {
+    for (const [name, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(owner))) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      if (descriptor.get !== undefined || descriptor.set !== undefined) {
+        // An accessor is re-defined rather than copied: invoked through the chain, its `this` would be the
+        // wrapper, which is the same defect in a second form.
+        // Built field by field because the project sets `exactOptionalPropertyTypes`: passing `get:
+        // undefined` explicitly is a different type from omitting it, and the compiler is right to say so.
+        const mirrored: PropertyDescriptor = { configurable: true };
+        if (descriptor.enumerable !== undefined) mirrored.enumerable = descriptor.enumerable;
+        if (descriptor.get !== undefined) mirrored.get = () => descriptor.get?.call(system);
+        if (descriptor.set !== undefined) {
+          mirrored.set = (value: unknown) => descriptor.set?.call(system, value);
+        }
+        Object.defineProperty(traced, name, mirrored);
+        continue;
+      }
+      const value = descriptor.value as unknown;
+      if (typeof value !== 'function') continue;
+      target[name] = (...args: unknown[]) =>
+        (value as (...a: unknown[]) => unknown).apply(system, args);
+    }
+  }
+  return traced;
+}
 
 /**
  * Wrap a system so each answer records whether the review mechanisms fired **on that question**.
@@ -2216,12 +2278,17 @@ type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
  * touch, so a non-MR question would report the previous MR question's value. A delta cannot be stale,
  * because it is computed from two readings of a monotonic counter.
  *
- * ## Why the wrapper is a prototype chain
+ * ## Why the wrapper is a prototype chain, with every member delegated
  *
  * `Object.create(system)` rather than `{ ...system }`: a class instance keeps its methods on the
  * prototype, so a spread would copy no method at all and `isSessionAware` -- which tests for
  * `answerSessions` -- would see a flat-only system. The wrapper is also returned unchanged when the system
  * exposes no `recoveryCensus`, so "not measured" stays distinguishable from "did not fire".
+ *
+ * The chain alone was not enough, and `40984213349` is the run that proved it: a method reached through
+ * the chain is called with `this` set to the wrapper, and a wrapper derived from an instance cannot read
+ * that instance's private fields. `mirrorMembers` above does the delegation, and the defect is written up
+ * there.
  *
  * ## What it does not do
  *
@@ -2229,14 +2296,14 @@ type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
  * gains one entry per question, and it is keyed by the question string the caller passed -- the same
  * string the record builder is handed, which is what makes the join exact rather than approximate.
  */
-function traceReviewMechanisms(
+export function traceReviewMechanisms(
   system: MemorySystem,
   trace: Map<string, ReviewMechanismTrace>,
 ): MemorySystem {
   const source = system as { recoveryCensus?: () => { attempted: number; answered: number } };
   const census = source.recoveryCensus;
   if (typeof census !== 'function') return system;
-  const traced = Object.create(system) as MemorySystem;
+  const traced = mirrorMembers(system);
   // A census that throws is an instrument that is not there, which is the rule the report-level readers
   // already follow (`recoveryOf` turns a throwing accessor into an absent count rather than a failed run).
   // Checked once and then abandoned rather than retried per question: an accessor that throws on the first

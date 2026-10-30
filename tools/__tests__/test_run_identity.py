@@ -149,11 +149,17 @@ def test_a_path_present_only_in_the_run_is_named_as_extra(tmp_path: Path) -> Non
 
 
 def test_a_path_present_only_in_the_checkout_is_named_as_missing(tmp_path: Path) -> None:
-    """A file added after the dispatch is the ordinary case, and it still has to be named."""
+    """A file added after the dispatch is the ordinary case, and it is named under the side it is absent from.
+
+    The verdict here is driven by the changed file beside it, not by the addition: an addition on its own is
+    `CODE-OLDER`. What this asserts is the naming, because a reader sent to fix a diff needs to know whether
+    the file is extra here or missing there.
+    """
     expected = dict(BASE, **{"packages/cortex-memory/src/new.ts": "abcd1234"})
-    completed = run_record(tmp_path, record(expected, dict(BASE)))
+    actual = dict(BASE, **{"tools/window-wired.mjs": "5678fedc"})
+    completed = run_record(tmp_path, record(expected, actual))
     assert completed.returncode == 1, completed.stdout
-    assert "packages/cortex-memory/src/new.ts" in completed.stdout
+    assert "missing packages/cortex-memory/src/new.ts" in completed.stdout
 
 
 def test_a_truncated_tree_listing_is_refused(tmp_path: Path) -> None:
@@ -242,3 +248,39 @@ def test_no_identifier_here_collides_with_a_recorded_orphan() -> None:
         if re.search(rf"(?<![A-Za-z0-9_$]){re.escape(name)}(?![A-Za-z0-9_$])", code)
     )
     assert collisions == [], f"these names are recorded orphans and appear as code in this tool: {collisions}"
+
+
+def test_a_number_bearing_file_added_after_the_dispatch_is_code_older(tmp_path: Path) -> None:
+    """The ordinary state after pushing while a long run is in flight, and it is not a mismatch.
+
+    A file that did not exist when the run started cannot have been executed by it, so a diff made only of
+    files this checkout has and the run lacks leaves every blob that ran byte-identical. Reporting this as
+    `MISMATCH` would make the gate red for the rest of the campaign, which is how a gate stops being read.
+    """
+    expected = dict(BASE, **{"tools/run-identity.mjs": "1357cafe"})
+    completed = run_record(tmp_path, record(expected, dict(BASE)))
+    assert completed.returncode == 0, completed.stdout
+    assert "verdict: CODE-OLDER" in completed.stdout
+    assert "tools/run-identity.mjs" in completed.stdout
+
+
+def test_one_changed_code_file_beside_one_added_stays_a_mismatch(tmp_path: Path) -> None:
+    """The 13.153.10 shape exactly: twelve files absent and thirteen changed, and the thirteen are the point.
+
+    An addition cannot hide a mechanism because an unreachable new file has to be imported by an existing
+    one, and that import is a change. So the mixed diff is the case that must stay red.
+    """
+    expected = dict(BASE, **{"tools/window-wired.mjs": "2468ace0"})
+    actual = dict(BASE, **{"packages/cortex-memory/src/prompt.ts": "9999bbbb"})
+    completed = run_record(tmp_path, record(expected, actual))
+    assert completed.returncode == 1, completed.stdout
+    assert "verdict: MISMATCH" in completed.stdout
+
+
+def test_code_the_run_has_and_the_checkout_lacks_is_a_mismatch(tmp_path: Path) -> None:
+    """`extra` is code that ran and no longer exists, which no subset argument can excuse."""
+    actual = dict(BASE, **{"packages/cortex-memory/src/removed.ts": "0f0f0f0f"})
+    completed = run_record(tmp_path, record(dict(BASE), actual))
+    assert completed.returncode == 1, completed.stdout
+    assert "verdict: MISMATCH" in completed.stdout
+    assert "packages/cortex-memory/src/removed.ts" in completed.stdout

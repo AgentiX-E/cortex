@@ -1,11 +1,11 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way).",
   "totals": {
-    "exports": 903,
-    "withCaller": 509,
-    "orphaned": 394,
+    "exports": 913,
+    "withCaller": 517,
+    "orphaned": 396,
     "referencedLocally": 330,
-    "unreferenced": 64
+    "unreferenced": 66
   },
   "groups": [
     {
@@ -195,7 +195,7 @@
         "cortex-memory: RecoveryPlan (packages/cortex-memory/src/abstention-recovery.ts:104)",
         "cortex-memory: SayResult (packages/cortex-memory/src/disclosure/session.ts:82)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:1317)",
-        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:2295)",
+        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:2411)",
         "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:18)",
         "cortex-storage: PgStorageOptions (packages/cortex-storage/src/storage/pg.ts:14)",
         "cortex-storage: SqliteStorageOptions (packages/cortex-storage/src/storage/sqlite.ts:21)",
@@ -303,8 +303,8 @@
     },
     {
       "category": "eval-harness-surface",
-      "count": 129,
-      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot. `PositionEffect` (step 20) joins for the same reason as the other shapes: `positionEffect` returns it and `tools/a3-review.mjs` prints it, but a type named only in a signature has no caller to count. It is recorded rather than inlined because the return shape is the thing being asserted in its six tests.",
+      "count": 131,
+      "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot. `PositionEffect` (step 20) joins for the same reason as the other shapes: `positionEffect` returns it and `tools/a3-review.mjs` prints it, but a type named only in a signature has no caller to count. It is recorded rather than inlined because the return shape is the thing being asserted in its six tests. `cortex-eval: traceReviewMechanisms` and `cortex-eval: ReviewMechanismTrace` JOINED this ledger at 13.155, and they are the clearest case in it for a TEST SEAM: the wrapper is exported so a fixture whose state is `#private` can drive it, and that is the only kind of fixture which could have expressed the defect it was fixed for. Every plain-object fake in the arm's suite passed against the broken version -- `bind` on an arrow function is a no-op -- and `run 40984213349` died on question one for the want of a system with real private state. They are locally referenced (the arm calls the wrapper) and exported only because TypeScript has no package-private visibility, which is the same shape as the census module's own group above.",
       "declarationSites": [
         "cortex-eval: A3Arm (packages/cortex-eval/src/a3.ts:36)",
         "cortex-eval: A3ArmSummary (packages/cortex-eval/src/a3.ts:51)",
@@ -326,8 +326,8 @@
         "cortex-eval: Competitor (packages/cortex-eval/src/acceptance.ts:98)",
         "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:87)",
         "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:98)",
-        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:2074)",
-        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:1943)",
+        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:2134)",
+        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:2003)",
         "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:106)",
         "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/llm-factory.ts:24)",
         "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/llm-factory.ts:25)",
@@ -357,7 +357,7 @@
         "cortex-eval: NaturalLanguageMemorySystemOptions (packages/cortex-eval/src/natural-language-memory.ts:109)",
         "cortex-eval: PairedResult (packages/cortex-eval/src/paired-test.ts:31)",
         "cortex-eval: PositionEffect (packages/cortex-eval/src/a3.ts:238)",
-        "cortex-eval: QuestionRecordInput (packages/cortex-eval/src/question-record.ts:249)",
+        "cortex-eval: QuestionRecordInput (packages/cortex-eval/src/question-record.ts:285)",
         "cortex-eval: ReadToggleOptions (packages/cortex-eval/src/env-toggle.ts:27)",
         "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
         "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:47)",
@@ -368,6 +368,7 @@
         "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:849)",
         "cortex-eval: ReviewCard (packages/cortex-eval/src/review-page.ts:32)",
         "cortex-eval: ReviewCardsFile (packages/cortex-eval/src/review-page.ts:122)",
+        "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:2203)",
         "cortex-eval: ReviewPageArgs (packages/cortex-eval/src/review-page.ts:83)",
         "cortex-eval: ReviewPageInput (packages/cortex-eval/src/review-page.ts:40)",
         "cortex-eval: ReviewPair (packages/cortex-eval/src/review-page.ts:55)",
@@ -433,6 +434,7 @@
         "cortex-eval: sessionsOf (packages/cortex-eval/src/harness.ts:209)",
         "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
         "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:160)",
+        "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:2299)",
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2820)",
         "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2716)"
       ]
@@ -698,6 +700,7 @@
     "cortex-eval: RetryFireCounts",
     "cortex-eval: ReviewCard",
     "cortex-eval: ReviewCardsFile",
+    "cortex-eval: ReviewMechanismTrace",
     "cortex-eval: ReviewPageArgs",
     "cortex-eval: ReviewPageInput",
     "cortex-eval: ReviewPair",
@@ -794,6 +797,7 @@
     "cortex-eval: sidesLandInDistinctClusters",
     "cortex-eval: timelineFor",
     "cortex-eval: toSessions",
+    "cortex-eval: traceReviewMechanisms",
     "cortex-eval: truncateSession",
     "cortex-eval: truncateText",
     "cortex-memory: ASK_CHANGES",
@@ -1094,6 +1098,7 @@
     "cortex-eval: RetryFireCounts": "referenced-locally",
     "cortex-eval: ReviewCard": "referenced-locally",
     "cortex-eval: ReviewCardsFile": "referenced-locally",
+    "cortex-eval: ReviewMechanismTrace": "unreferenced",
     "cortex-eval: ReviewPageArgs": "referenced-locally",
     "cortex-eval: ReviewPageInput": "referenced-locally",
     "cortex-eval: ReviewPair": "referenced-locally",
@@ -1190,6 +1195,7 @@
     "cortex-eval: sidesLandInDistinctClusters": "referenced-locally",
     "cortex-eval: timelineFor": "referenced-locally",
     "cortex-eval: toSessions": "unreferenced",
+    "cortex-eval: traceReviewMechanisms": "unreferenced",
     "cortex-eval: truncateSession": "unreferenced",
     "cortex-eval: truncateText": "unreferenced",
     "cortex-memory: ASK_CHANGES": "referenced-locally",
@@ -1823,10 +1829,10 @@
       "packages/cortex-eval/src/bench-memory-arm.ts:98"
     ],
     "cortex-eval: CortexMemoryArmResult": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:2074"
+      "packages/cortex-eval/src/bench-memory-arm.ts:2134"
     ],
     "cortex-eval: CortexMemoryArmRunOptions": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:1943"
+      "packages/cortex-eval/src/bench-memory-arm.ts:2003"
     ],
     "cortex-eval: Criterion": [
       "packages/cortex-eval/src/acceptance.ts:106"
@@ -1949,7 +1955,7 @@
       "packages/cortex-eval/src/recall-curve.ts:45"
     ],
     "cortex-eval: QuestionRecordInput": [
-      "packages/cortex-eval/src/question-record.ts:249"
+      "packages/cortex-eval/src/question-record.ts:285"
     ],
     "cortex-eval: QuestionVectorComparison": [
       "packages/cortex-eval/src/variance.ts:101"
@@ -2007,6 +2013,9 @@
     ],
     "cortex-eval: ReviewCardsFile": [
       "packages/cortex-eval/src/review-page.ts:122"
+    ],
+    "cortex-eval: ReviewMechanismTrace": [
+      "packages/cortex-eval/src/bench-memory-arm.ts:2203"
     ],
     "cortex-eval: ReviewPageArgs": [
       "packages/cortex-eval/src/review-page.ts:83"
@@ -2296,6 +2305,9 @@
     "cortex-eval: toSessions": [
       "packages/cortex-eval/src/competitor.ts:160"
     ],
+    "cortex-eval: traceReviewMechanisms": [
+      "packages/cortex-eval/src/bench-memory-arm.ts:2299"
+    ],
     "cortex-eval: truncateSession": [
       "packages/cortex-eval/src/natural-language-memory.ts:2820"
     ],
@@ -2348,7 +2360,7 @@
       "packages/cortex-memory/src/prompt.ts:1317"
     ],
     "cortex-memory: truncateCodePointSafe": [
-      "packages/cortex-memory/src/prompt.ts:2295"
+      "packages/cortex-memory/src/prompt.ts:2411"
     ],
     "cortex-storage: BrowserStorage": [
       "packages/cortex-storage/src/browser/opfs.ts:35"

@@ -33,21 +33,27 @@
  * run the same code, and two commits with different SHAs but the same tree are the ordinary state of this
  * repository after any push.
  *
- * ## The four verdicts, and the line between the middle two
+ * ## The five verdicts, and the two that are not `MISMATCH`
  *
  * | verdict | meaning | exit |
  * | --- | --- | --- |
  * | `MATCH` | the run's tree is the expected tree | 0 |
  * | `CODE-SAME` | only non-number-bearing paths differ | 0 |
- * | `MISMATCH` | a number-bearing path differs | 1 |
+ * | `CODE-OLDER` | number-bearing files were added after the dispatch, none that ran changed | 0 |
+ * | `MISMATCH` | a number-bearing path differs, or the run has one this checkout lacks | 1 |
  * | `UNKNOWN` | the tool cannot certify: no commit, or no map | 2 |
  *
- * The middle row is the one that keeps the gate usable. **Every** docs commit lands after a dispatch that
- * was correct at the time, so a gate that reds on a paragraph is red most of the time, and a gate that is
- * usually red is a gate that gets explained away -- at which point it is worse than absent, because it is
- * still cited. A paragraph cannot change a measured number; `packages/`, `tools/`, `.github/workflows/`
- * and the root lockfile can. Tests sit on the non-number-bearing side for the same reason the docs do:
- * they gate a merge, they do not enter the job that produces the number.
+ * The two rows between `MATCH` and `MISMATCH` are what keep the gate usable. **Every** docs commit lands
+ * after a dispatch that was correct at the time, so a gate that reds on a paragraph is red most of the
+ * time, and a gate that is usually red is a gate that gets explained away -- at which point it is worse
+ * than absent, because it is still cited. A paragraph cannot change a measured number; `packages/`,
+ * `tools/`, `.github/workflows/` and the root lockfile can. Tests sit on the non-number-bearing side for
+ * the same reason the docs do: they gate a merge, they do not enter the job that produces the number.
+ *
+ * `CODE-OLDER` extends the same argument to additions. A file that did not exist when the run started
+ * cannot have been executed by it, so a diff made only of files this checkout has and the run lacks leaves
+ * every blob that ran byte-identical. That is the ordinary state after pushing anything while a long run is
+ * in flight, and reporting it as `MISMATCH` would make the gate red for the rest of the campaign.
  *
  * The default for a path this file does not recognise is **number-bearing**. A list of exceptions that a
  * new directory can silently join is a list that fails open, and failing open here means attributing a
@@ -105,7 +111,9 @@ usage:
 verdicts and exit codes:
   MATCH      0   the run's tree is the expected tree
   CODE-SAME  0   only non-number-bearing paths differ (docs, tests); the code is identical
-  MISMATCH   1   a number-bearing path differs; this run's number belongs to other code
+  CODE-OLDER 0   number-bearing files were ADDED after the dispatch and none that ran has changed,
+                 so the run's tree is a strict subset of this one
+  MISMATCH   1   a number-bearing path changed, or the run has one this checkout does not
   UNKNOWN    2   cannot certify: no head_sha, an empty map, a truncated listing, a malformed record
 
 The comparison is on blob maps rather than commit SHAs because this repository is pushed through the Git
@@ -203,9 +211,27 @@ export function compareTrees(expected, actual) {
   return differing;
 }
 
+/**
+ * The verdict, from the diff alone.
+ *
+ * `CODE-OLDER` is the fifth verdict and it exists for one situation: the checkout moved on **by adding
+ * files** after the dispatch. Then every differing path is `missing` from the run's tree -- present here,
+ * absent there -- so every blob that actually ran is byte-identical to this checkout's, and a file that did
+ * not exist when the run started cannot have been executed by it.
+ *
+ * Why a subset diff cannot hide a mechanism, which is the objection worth answering: a feature that is new
+ * files only is unreachable unless something imports it, and an import is an edit to an existing file --
+ * `changed`, which stays `MISMATCH`. The 13.153.10 dispatch is the worked example: it had twelve files
+ * *missing* and thirteen *changed*, and the thirteen are what named the mechanism. A file that appears in
+ * the run and not here is `extra` and stays `MISMATCH` too, because that is code which ran and no longer
+ * exists.
+ */
 export function verdictOf(differing) {
   if (differing.length === 0) return 'MATCH';
-  return differing.some((entry) => entry.numberBearing) ? 'MISMATCH' : 'CODE-SAME';
+  const code = differing.filter((entry) => entry.numberBearing);
+  if (code.length === 0) return 'CODE-SAME';
+  if (code.every((entry) => entry.kind === 'missing')) return 'CODE-OLDER';
+  return 'MISMATCH';
 }
 
 /**
@@ -263,7 +289,7 @@ function report({ verdict, reason, run, headSha, differing }) {
   return text;
 }
 
-const EXIT = { MATCH: 0, 'CODE-SAME': 0, MISMATCH: 1, UNKNOWN: 2 };
+const EXIT = { MATCH: 0, 'CODE-SAME': 0, 'CODE-OLDER': 0, MISMATCH: 1, UNKNOWN: 2 };
 
 /** Certified verdicts, or a refusal rendered as `UNKNOWN` with its own sentence. */
 function decide(record) {
@@ -277,7 +303,9 @@ function decide(record) {
       ? `all ${expected.size} blobs are byte-identical, so the run executed this content`
       : verdict === 'CODE-SAME'
         ? `no number-bearing path differs; ${differing.length} doc or test path(s) moved after the dispatch`
-        : `${differing.filter((entry) => entry.numberBearing).length} number-bearing path(s) differ, so the number belongs to other code`;
+        : verdict === 'CODE-OLDER'
+          ? `${differing.filter((entry) => entry.numberBearing).length} number-bearing file(s) were added after the dispatch and none that ran has changed`
+          : `${differing.filter((entry) => entry.numberBearing).length} number-bearing path(s) differ, so the number belongs to other code`;
   return { verdict, reason, run: record.run, headSha, differing };
 }
 
