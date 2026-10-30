@@ -17864,3 +17864,27 @@ demonstrated reach of MR enumeration is twenty questions for zero new model call
 One thing is explicitly **not** registered here: "make the memory arm behave like the reference on
 MR". That is not a mechanism, it is a direction, and a direction cannot fail. The census in
 criterion 1 is the step that turns it into one.
+
+#### 13.164.6 One finding that came from writing the fix rather than from reading the artifact
+
+While wiring the window replay into the audit step, the dispatch input was interpolated directly
+into the `run:` block:
+
+```yaml
+if [ "${{ github.event.inputs.cortex_memory_query_expansion }}" = "window" ]; then
+```
+
+GitHub substitutes that expression **into the script text before bash parses it**, so a value
+containing a quote or a semicolon changes the program rather than a variable -- and this input is
+free text from a workflow_dispatch form. Every other step in this file already passes inputs
+through `env`; this one did not, and the pattern is now stated where it was written.
+
+The guard that should have caught it does not, and that is the entry worth keeping.
+`tools/check-shell-interpolation.py` reports **8 fragments clean** on this repository, and its
+docstring states its scope plainly: `tools/*.py` and fenced `sh` blocks in `docs/*.md`. It does
+not read `.github/workflows/*.yml`.
+
+So a green run of that guard is not a statement about the workflows, and until this paragraph
+existed nothing said so. The check is not wrong; its name and its output line are both shorter
+than its scope. Registered as P1-workflow-guard: extend the guard to the `run:` blocks, and make
+its output line name what it scanned rather than only how many fragments it passed.
