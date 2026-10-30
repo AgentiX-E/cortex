@@ -19175,3 +19175,27 @@ hash at all — `===` on two strings is exact and cheaper than a collision argum
   `field promptVariants did not survive the reduction`, 1 failed / 27 passed.
 - `cortex-eval` coverage: all files **99.51 / 99.04 / 99.43 / 99.51**; `ablation.ts`, `benchmark.ts`,
   `metrics.ts`, `prompt-digest.ts`, `report-write.ts` all **100**.
+
+### 13.174.8 The next dispatch, registered before it ran
+
+`41090564131` was dispatched at `cac56f1d` with the same payload as `41039779987` — `ask: operands`,
+`relevance-hybrid` at `top_k: 256`, `max_prompt_chars: 48000`, `review_pass: bare`, 4 repetitions,
+temperature 0, `limit: 0` — and it is a **second draw of the same treatment** rather than a new one. The
+reason is the gate this section amended: criterion 4 now reads `+0.80` on the reached population, and a
+figure one conversion below a threshold cannot be judged without knowing what the figure's own variance is.
+`41039779987` supplies one draw; this run supplies a second, and the difference between them is the noise
+the threshold has to clear.
+
+What the run is expected to settle, in order:
+
+| reading | passes when | fails when |
+| --- | --- | --- |
+| row 6, first ever | ≥ 95% of measured questions carry `promptVariants == 1` | the arm sent more than one prompt per question; every cost column in the run is then unreadable rather than wrong |
+| row 4, second draw | attributable ≥ +1.0 pt | below, and the two draws together bound how far `+0.80` was a draw |
+| row 2 | unchanged: 0 losses on the reached population | any loss beyond 5% of it |
+| row 5 | unchanged: 20 of 114 outside records moved is still a fail | — |
+
+Row 5 is expected to fail again and is not a reason to stop: it is the assembly check reporting that the
+operand contract moved prompt sizes on records the registration did not name, which `§13.172.3` already
+read as the mechanism's true reach being 27 rather than 7. The row is kept because a fail that is understood
+and stable is the cheapest possible record of a registration that named the wrong population.
