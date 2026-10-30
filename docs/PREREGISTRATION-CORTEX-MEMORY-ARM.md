@@ -18804,3 +18804,153 @@ made of those parts.
 It does not claim 64 bits is a proof. Equality means equal in 64 bits, and with about a thousand
 records per run the chance of a collision among distinct prompts is on the order of 1e-14 — smaller
 than the chance the run itself is comparable to the last one.
+
+## 13.172 The operand ask converted four of seven and lost nothing, and the headline it produced is churn
+
+`41039779987` dispatched `ask: 'operands'` against `40989420944`, same 500 questions, same reference arm,
+same judge. The step that failed on the previous run -- `Audit the artifact against itself` -- passed here,
+so this is the first artifact since `40989420944` that the pipeline did not reject on its own terms.
+
+### 13.172.1 The five criteria, as the tool printed them
+
+`tools/arm-transition.mjs --before 40989420944 --after 41039779987 --capability MR`:
+
+| # | verdict | reading |
+| - | ------- | ------- |
+| **1** | **pass** | **4 of 7** left reference-only: `157a136e`, `92a0aa75`, `ba358f49`, `e6041065`. `a1cc6108`, `c18a7dc8`, `d905b33f` still decline |
+| **2** | **fail** | **5 of 10** off-by-one questions changed class: `88432d0a`, `gpt4_7fce9456`, `gpt4_31ff4165`, `2788b940`, `bf659f65` |
+| **3** | **pass** | ABS 29→29, IE +0.75, KU +1, **MR +3.25**, TR −1.75 — no capability loses more than 2 |
+| **4** | **pass** | 83.00% → **85.60%**, +2.60 points (+13 questions) |
+| **5** | **fail** | `promptChars` moved on 7/7 named **and on 20 of the other 114** MR records |
+
+Two falsifiers fired, and the reading of this run is that they are the most valuable thing it produced.
+
+### 13.172.2 Claim 1 passed at its registered floor, and every conversion was correct
+
+Four of seven is the bar, not a margin: `§13.166.6` set it at 4/7 because the untreated rate on the same
+route is 20.8% and P(X ≥ 4 | n = 7, p = 0.208) = 0.038. The run landed exactly on the bar.
+
+What the bar did not say, and the artifact does: all four conversions became **correct**, not merely
+non-declining. A decline that turns into a wrong number would satisfy claim 1's letter and be a loss.
+The decomposition below is what establishes that this did not happen.
+
+### 13.172.3 The reach is 27, not 7, and criterion 5 is what measured it
+
+Criterion 5 was registered as an assembly check -- "the treatment changes what the reader is asked on
+seven questions and nothing about what it is shown" -- and it failed by reporting 20 records whose
+`promptChars` moved. Reading the movement directly, rather than the criterion's count:
+
+| quantity | value |
+| --- | ---: |
+| records whose `promptChars` changed | **27** |
+| of them, by capability | **MR 27** (IE 150, KU 72, TR 127, ABS 30 unchanged) |
+| direction of every change | positive: **+273 to +759 characters of evidence** |
+| records with any `promptChars` at all | 500 of 500 |
+
+So the operand contract reaches **27 MR questions**, not the seven the registration named, and it moves
+the evidence budget in one direction only. The mechanism is a prompt whose instruction block is *shorter*
+than `enumerated`'s on a derivation question, so `fitToBudget` has more room and carries more evidence --
+which is why `promptChars` is the field that sees it, and why the number is positive rather than negative.
+
+The seven were the population the **census** could see: it files *reference-only failures*, and 24 of the
+27 derivation questions were not failing. The registration inherited that population and called it the
+mechanism's reach. That is the defect, and it is the third of its kind (`§13.70`, `§13.93.5`): the
+registration, not the run.
+
+### 13.172.4 Where the +2.60 came from: four questions, and nine accidents
+
+Splitting every correctness flip by whether that record's prompt actually changed:
+
+| population | n | gained | lost | net |
+| --- | -: | -: | -: | -: |
+| `promptChars` **changed** (the treatment's real reach) | 27 | **4** | **0** | **+4** |
+| `promptChars` **identical** (untouched) | 473 | 24 | 15 | **+9** |
+| total | 500 | 28 | 15 | **+13** |
+
+The mechanism's own contribution is **+4 questions = +0.80 point**, which is *below* claim 4's 1.0-point
+bar. The headline +2.60 is 69% churn: on 473 questions whose prompt is byte-identical, 39 flipped
+correctness — **8.2%**, which is the instrument's own rate (`§13.143` measured the reader moving 15% of
+its verdicts under a prompt permutation; this is the same phenomenon at a smaller amplitude).
+
+So claim 4 passed **on a number that does not measure the claim**. It is the cleanest instance in this
+archive of a threshold being met by variance, and the artifact contained the means to see it all along:
+the population field and the correctness vector are both in it. What was missing was the division.
+
+### 13.172.5 Claim 2 failed, and its stated cause is false
+
+The five off-by-one movers are the ones the registration called a fallthrough: "they read the control's
+bytes, so a movement there is a fallthrough defect". Their `promptChars` are **identical** on both sides.
+Nothing reached them; the treatment could not have moved them, and did not.
+
+What moved is the **class**, not the prompt. `off-by-one` is a form class: it asks whether both sides are
+one number and differ by exactly one, so an answer that changes from `3` to `3.0`, or from `3` to a
+sentence, leaves the class without changing anything a reader cares about. Three of the five became
+correct (`gpt4_7fce9456`, `gpt4_31ff4165`, `2788b940`) and two stayed wrong (`88432d0a`, `bf659f65`), so
+the class moved in both directions on identical input.
+
+The lesson is about the guard, not the arm: **a criterion whose threshold is a count over a form class is
+a churn detector**, and 3-of-10 is below this instrument's own churn. Claim 5 already measures the thing
+claim 2 was trying to measure -- whether the treatment reached a question -- and it does so per record,
+from the artifact, without a classifier in between.
+
+### 13.172.6 What the census says now
+
+`tools/mr-failure-census.mjs` on the new artifact, MR:
+
+| class | `40989420944` | `41039779987` |
+| --- | -: | -: |
+| decline | 10 | **8** |
+| off-by-one | 10 | **7** |
+| aggregation | 6 | **2** |
+| other | 0 | 3 |
+| **sum** | **26** | **20** |
+
+The eight remaining declines are all `list`-shaped -- zero bare, zero absence-only -- and only three of
+them are derivation-shaped (`d905b33f`, `a1cc6108`, `c18a7dc8`). Those three are the population the
+operand contract was supposed to convert and did not, and the reason is in their own replies: the operand
+the question needs is not in the evidence. No prompt can supply a number the retrieval never returned,
+which makes them a **retrieval** population wearing a prompt population's clothes.
+
+The four derivations `§13.166.8` named as missed are no longer a coherent target either: `dd2973ad` did
+not fail this run, while `60bf93ed`, `a4996e51` and `d6062bb9` still decline -- and none of the four was
+ever in the 27, so none of them was touched by this ask.
+
+### 13.172.7 What the run cost
+
+| quantity | `40989420944` | `41039779987` | change |
+| --- | ---: | ---: | ---: |
+| calls | 5,747 | 5,702 | −45 |
+| prompt tokens | 31,373,746 | 31,207,194 | **−0.5%** |
+| completion tokens | 305,449 | 335,274 | +9.8% |
+| of the prompt, served from cache | 3,499,804 (11.16%) | 3,315,602 (**10.62%**) | −0.54 pt |
+
+The ask is free: a shorter instruction block returns roughly the characters it saves as evidence. The
+cache share did not move, which is the third artifact in a row reading 6.47%, 11.16%, 10.62% against a
+registered 60-80% -- and the field that would explain it (`§13.171`'s fingerprint) is not in this
+artifact, because the run checked out a ref from before it existed.
+
+### 13.172.8 The verdict this run licenses
+
+- **The mechanism stands.** On its true population of 27, it converted 4 and lost 0, and its four
+  conversions were among the six declines it was aimed at. That is the reading claim 1 was for.
+- **The headline does not stand.** +2.60 points is not evidence for the ask; +0.80 is, and the difference
+  is measurable from the artifact rather than arguable from it.
+- **Two criteria need replacing, not repairing.** Claim 2 is a churn detector on a form class and its
+  threshold is below the churn it reads. Claim 4 needs the population split as a **stated** requirement
+  rather than something a reader has to perform: "the net gain on the population whose prompt changed".
+- **The next registration carries the churn rate as a number.** This run measured it: 39 flips in 473
+  untouched records. A bar expressed as a count over a 10-question class was always going to be decided by
+  that number, and now it is on record instead of inferred.
+
+### 13.172.9 What this does not claim
+
+It does not claim the four conversions are attributable to the operand contract rather than to the extra
+evidence the shorter instruction block admitted. Both moved together on the same 27 records, and this
+artifact cannot separate "asked for operands" from "carried 273-759 more characters". Separating them
+needs a third arm with the operand wording at the old budget, and it is not in this dispatch.
+
+It does not claim the nine churn points are noise in the sense of being removable. They are the reader's
+own variance across two dispatches, and the level this arm will keep showing until the reader is fixed.
+
+It does not claim the three remaining derivation declines are unreachable -- only that the operand the
+question needs is absent from the evidence those questions retrieved, which is a retrieval question.
