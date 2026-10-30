@@ -18463,3 +18463,78 @@ experiment run backwards.**
 This is what the artifact was missing and what `§13.168.5` registers: without an arm-level and role-level
 split, a better selection and a smaller budget produce the same total, and the two are the opposite of each
 other in every other respect.
+
+## 13.169 The five criteria became a tool, before there was a run to apply them to
+
+`§13.166.6` registered five rows with thresholds. Reading them by hand against two artifacts means
+comparing two printers question by question while holding five conditions at once, and the failure mode
+of that is not a wrong verdict — it is a **confident** one. The population that converts is exactly the
+population a reader is looking at, so the seven questions that moved get noticed and the hundred and
+fourteen that must not move get assumed.
+
+So `tools/arm-transition.mjs` was written and tested before `41039779987` landed. It takes
+`--before` and `--after`, prints the five verdicts, the transitions behind them, and exits non-zero only
+on a criterion this pair actually poses.
+
+### 13.169.1 What each criterion reads, and from where
+
+| # | reads | from |
+| --- | --- | --- |
+| 1 | how many of the named seven left the reference-only population | `ablation.discordantQuestions` on both sides, classified by the census's own rule |
+| 2 | how many of the ten off-by-one questions changed class | the same, filtered to `off-by-one` in the before-state |
+| 3 | each capability's correct count, and `ABS` | `ablation.featureByCapability.*.avg` |
+| 4 | abstention-aware accuracy in points | `feature.metrics.abstentionAwareAccuracy` |
+| 5 | `promptChars` on the named seven and on every other MR record | `questions[].promptChars`, compared per id |
+
+Criterion 5 is the one that cannot be a judgement call, and it is why the tool exists. It is an assembly
+check rather than an outcome: the prompt must move on the seven and be **equal** on every other MR
+record. A change that helps and a change that leaks differ in exactly that column, and no summary that
+reports a total can tell them apart.
+
+### 13.169.2 The classification is imported, never restated
+
+`classify` and `censusOf` come from `mr-failure-census.mjs` — the rule `§13.166.3` registered and
+`§13.166.7` pinned against the product's own shape classifier. A second copy in this tool would let it
+disagree with the census about the population it is measuring, and the disagreement would present as an
+effect.
+
+### 13.169.3 Two refusals, and why they are `skipped` rather than `fail`
+
+- **A population that is not the registered one.** "At least four of the seven" is 57%; a tool that
+  rescaled it for a six- or eight-question population would report a verdict about a criterion nobody
+  registered, and one that failed it would report a defect where the truth is that the question was not
+  asked. The same applies to "the ten off-by-one questions": the tool counts them and skips if the count
+  is not ten.
+- **The named set is read from the BEFORE state.** The registration named it before the dispatch, so an
+  after-state that widened its own classifier cannot enlarge the denominator it is judged on.
+
+The count of skipped criteria is printed beside the verdicts, because a reading in which two of five
+were skipped is a different document from one where five passed, and the exit code alone cannot say so.
+
+### 13.169.4 The one statistical choice, stated
+
+Criterion 3 reads `featureByCapability.*.avg`, not `feature.metrics.perCapability.*.correct`. The latter
+is one draw of four, and `40989420944`'s MR band is `83..86` — so a `-3` on the chosen draw can be inside
+the spread the arm already has and would be reported as a loss the mechanism caused. Both numbers are
+printed side by side (`MR 84.75->84.75 (+0 avg; 87->84 this draw)`), which is what makes the difference
+visible rather than hidden in a choice.
+
+### 13.169.5 What was verified
+
+`pytest tools/__tests__/test_arm_transition.py` → **19 passed**, one per way a criterion can be made to
+answer wrongly: four leaving passes and three fails; the before-state defines the population; a
+six-question population skips rather than rescales; two off-by-one moves pass and three fail; a
+three-question average drop fails; a `-3` draw under a held average passes; `ABS` moving at all fails;
+`+1.00` point passes and `+0.99` fails; a clean assembly passes; one prompt outside the population fails
+and names the record; one named prompt that did not move fails; a record outside the capability is
+ignored; a question crossing the other way appears in the table; the exit code ignores skips; a missing
+argument is exit 2 with a usage line; and the human reading names all five criteria.
+
+`pnpm check` → **EXIT=0**, including the export census.
+
+### 13.169.6 What this does not claim
+
+The tool applies the registration; it does not decide whether the registration was the right one. If
+criteria 1 and 5 pass and 4 fails, the reading is "the mechanism reached the population and the arm did
+not gain" — and what to do about that is `§13.166.6`'s consequence column, written before the numbers,
+not this tool's business.
