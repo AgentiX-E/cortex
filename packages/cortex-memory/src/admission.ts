@@ -27,6 +27,77 @@ export type AdmittedTurn = MemoryValue & {
   ordinal: number;
 };
 
+/**
+ * A turn's identity, derived from the turn instead of drawn at random.
+ *
+ * ## The defect this replaces, and how it was found
+ *
+ * `createMemory` defaults `id` to `crypto.randomUUID()`, so every turn admitted got a fresh identifier
+ * each time it was admitted. Nothing downstream reads an id by lookup, so this looked harmless -- and
+ * it was, until a prompt started citing its sources. `formatEvidenceWithSources` renders
+ * `${index}. [${turn.id}] ${content}`, so the ids are **in the prompt**, and the same turns admitted
+ * twice produced two different prompts that were otherwise identical.
+ *
+ * The measurement that named it: run `41144910162` carried the `§13.176` witness, and the witness
+ * reported four passes agreeing on the **first 14 bytes** of a 94,674-byte prompt. Stripping the UUID
+ * tokens from those four texts made them **byte-identical** -- 90,628 of 94,674 characters matched,
+ * and every mismatch was a turn id. Two consequences followed, both already visible in the artifacts:
+ *
+ *   - `promptVariants == 4` on all 500 questions, so `§13.174`'s repeat premise never held and every
+ *     cache figure the campaign quoted was a reading of this defect;
+ *   - a prefix cache can reuse nothing after byte 14, which is the whole explanation for a 10.4% cache
+ *     share against a 60-80% prediction. Four passes with the same request would have shared 75% of
+ *     their prompt tokens; four passes with a different first turn share none of it.
+ *
+ * ## Why content-addressing is the right fix rather than a bench-only override
+ *
+ * A random id makes admission **non-idempotent**: re-admitting the same turn twice creates two
+ * identities for one fact. That is wrong on its own terms -- consolidation keys memories by id, and a
+ * store that cannot tell "the same turn again" from "a second turn like it" is the bug this project
+ * spends its time finding in other people's systems. Deriving the id from the turn makes admission a
+ * function of its input, which is also what makes a prompt reproducible: same turns, same bytes,
+ * same cache entry.
+ *
+ * ## Why it is four 32-bit hashes and not `node:crypto`
+ *
+ * `cortex-memory` runs in a browser, and its entry graph is guarded against host APIs
+ * (`tools/entry-guard.mjs`). A 128-bit digest from four FNV-1a streams with distinct offset bases is
+ * not cryptographic -- it does not need to be. The requirement is a label that is stable, well
+ * distributed and collision-free for realistic inputs; guessing one buys nothing, because an id is
+ * not a secret and never was.
+ *
+ * The ordinal is mixed in, so two identical turns at different positions stay distinct -- the one
+ * thing a content-only hash would merge.
+ *
+ * Deliberately **not exported**: its only caller is the line below, and an export with one internal
+ * caller and one test caller is the orphan that `tools/export-census.mjs --check` exists to refuse.
+ * The properties worth pinning are reachable through `admitTurns`, which is what the suite drives.
+ */
+function turnIdFor(content: string, ordinal: number): string {
+  const text = `${ordinal}\u0000${content}`;
+  const parts = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b].map((basis) => {
+    let hash = basis >>> 0;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    // A final avalanche, because FNV alone leaves the low bits of short inputs weakly mixed and the
+    // last group of the formatted id is entirely low bits.
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 0x85ebca6b) >>> 0;
+    // `>>> 0` after the last shift, because `^` returns a signed 32-bit value and `toString(16)` then
+    // emits a leading minus sign -- which turned a fixed-width id into a 30-character one for one input
+    // in eight. Found by the shape assertion in `turn-identity.test.ts`, which is why that assertion
+    // checks the length and not just the pattern.
+    hash = (hash ^ (hash >>> 13)) >>> 0;
+    return hash.toString(16).padStart(8, '0');
+  });
+  const hex = parts.join('');
+  // Version nibble `8` (a caller-defined id, which is what this is) and variant `8`, so the shape is a
+  // UUID to every consumer that only validates the shape, and never mistaken for a v4 random id.
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 /** The subset of {@link GateOptions} admission reads. */
 export type AdmissionOptions = {
   /** Epoch milliseconds, injected so value is a function of a pinned clock. */
@@ -206,6 +277,9 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
     // from two places -- and the default is the compatibility guarantee, so it has
     // exactly one owner: `createMemory`.
     const memory = createMemory({
+      // Derived, not drawn: see {@link turnIdFor}. A random id put a different 36-character token in
+      // every pass's prompt, which is what made four "repeats" four different requests.
+      id: turnIdFor(content, ordinal),
       content,
       createdAt: options.now,
       lastAccessedAt: options.now,

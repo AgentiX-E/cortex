@@ -98,3 +98,59 @@ describe('the prompt is a function of its inputs, so a drift in it is a drift in
     expect(seen[0]!.length).toBe(47869);
   });
 });
+
+describe('the sourced rendering, which is the one that carries identity into the prompt', () => {
+  /**
+   * The route the first three cases could not reach.
+   *
+   * `formatEvidenceWithSources` renders `${index}. [${turn.id}] …`, and a turn's id came from
+   * `crypto.randomUUID()` inside `createMemory`. So on this route -- and only on this route -- four
+   * passes of the same question sent four different prompts, which is what `41144910162`'s witness
+   * showed: four prompts agreeing on their first **14 bytes** and differing afterwards, byte-identical
+   * once the UUID tokens were stripped.
+   *
+   * These two cases are the fix's contract: the same question over the same turns must send the same
+   * bytes, citation labels included, or the prefix cache has nothing to reuse and every "repeat" in
+   * every artifact is a different treatment.
+   */
+  it('flat route: four passes send one prompt, citation labels included', async () => {
+    const memory = new CortexMemory({
+      now: NOW,
+      llm: llm(),
+      gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: Number.POSITIVE_INFINITY },
+      promptContract: 'abstention-evidence-blocks',
+    });
+    const context = turns(20, 300);
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      await memory.answer('How many trips did I take?', context);
+      seen.push(memory.lastPromptText() ?? '');
+    }
+    expect(new Set(seen).size).toBe(1);
+    // The citation is present, so the assertion above is about ids rather than about their absence.
+    expect(seen[0]).toMatch(/\[[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}\]/);
+  });
+
+  it('multi-session route: four passes send one prompt, citation labels included', async () => {
+    const memory = new CortexMemory({
+      now: NOW,
+      llm: llm(),
+      gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: Number.POSITIVE_INFINITY },
+      relevanceFor: (_q: string, _t: string) => 0.5,
+      evidenceRoles: ['user'],
+      roleOf: (content: string) => (content.includes('user:') ? 'user' : 'assistant'),
+      evidenceRolesRoutes: ['multi-session', 'temporal'],
+      maxTurnChars: 400,
+      maxTurnCharsRoutes: ['multi-session', 'temporal'],
+      maxPromptChars: 48000,
+      promptContract: 'abstention-evidence-blocks',
+    });
+    const sessions = [0, 1, 2, 3, 4].map((s) => turns(30, 500).map((t) => `s${s} ${t}`));
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      await memory.answerSessions('How much did I spend in total?', sessions);
+      seen.push(memory.lastPromptText() ?? '');
+    }
+    expect(new Set(seen).size).toBe(1);
+  });
+});

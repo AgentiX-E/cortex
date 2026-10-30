@@ -1,0 +1,30 @@
+{
+  "note": "Written by tools/bundle-guard.mjs --write. Byte counts are gzipped esbuild output for platform: browser; a re-run must reproduce them.",
+  "esbuild": "0.28.2",
+  "entries": {
+    ".": {
+      "gzip": 20,
+      "bytes": 0
+    },
+    "./idb": {
+      "gzip": 1349,
+      "bytes": 3054
+    },
+    "./opfs": {
+      "gzip": 3813,
+      "bytes": 10068
+    },
+    "./opfs/worker": {
+      "gzip": 1273,
+      "bytes": 2833
+    },
+    "./pg": {
+      "gzip": 1105,
+      "bytes": 2712
+    },
+    "./sqlite": {
+      "gzip": 7037,
+      "bytes": 21333
+    }
+  }
+}

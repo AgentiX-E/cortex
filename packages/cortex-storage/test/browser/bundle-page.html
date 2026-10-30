@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>cortex-storage bundle probe</title>
+  </head>
+  <body>
+    <pre id="log"></pre>
+    <script type="module">
+      /**
+       * The same package, after a bundler: does the browser tier still open, and which deployment does?
+       *
+       * ## What this page can see that `page.html` cannot
+       *
+       * `page.html` imports `/dist/browser/opfs.js` as a module, which is the *unbundled* deployment.
+       * There, `new URL('./opfs-worker.js', import.meta.url)` resolves next to the served file and the
+       * worker starts. A consumer almost never runs that shape: they bundle, the bundle lands at a
+       * path of the bundler's choosing, and `./opfs-worker.js` then names a file nobody emitted.
+       *
+       * So this page imports `/bundle/main.js` -- an esbuild output of the same `dist/` -- and asks
+       * the question in both forms:
+       *
+       *   1. the default worker URL, which the docstring used to claim works under esbuild;
+       *   2. an explicit `workerUrl` at a file the build *did* emit from the `./opfs/worker` subpath.
+       *
+       * Check 1 is expected to fail. It is written as a check rather than as a comment because the
+       * failure text is the product's actual behaviour, and a claim about behaviour that is not
+       * exercised is how the docstring got it wrong in the first place.
+       */
+      import { openBrowserStorage, openOpfsStorage } from '/bundle/main.js';
+
+      const SQLITE = '/vendor/index.mjs';
+      const log = (line) => {
+        document.getElementById('log').textContent += `${line}\n`;
+      };
+
+      function digestOf(values) {
+        let hash = 0x811c9dc5;
+        for (const value of values) {
+          const text = JSON.stringify(value);
+          for (let index = 0; index < text.length; index += 1) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+          }
+        }
+        return { hash: hash >>> 0, count: values.length };
+      }
+
+      const payloadFor = (index) => {
+        const stem = `row-${String(index).padStart(6, '0')}`;
+        return { index, stem, body: 'x'.repeat(200 - stem.length) };
+      };
+
+      const checks = [];
+      async function check(name, fn) {
+        try {
+          const detail = await fn();
+          checks.push({ name, ok: true, detail: detail === undefined ? '' : String(detail) });
+        } catch (error) {
+          checks.push({ name, ok: false, detail: String((error && error.message) || error) });
+        }
+      }
+
+      const assert = (condition, message) => {
+        if (!condition) throw new Error(message);
+      };
+
+      window.__run = async ({ rows = 200 } = {}) => {
+        checks.length = 0;
+        const facts = {};
+
+        // 1. The default worker URL, from a bundle. Expected: a named failure, not a hang.
+        await check('the default worker URL does not resolve from a bundle', async () => {
+          const started = Date.now();
+          let failure = null;
+          try {
+            const opened = await openOpfsStorage({
+              sqliteModuleUrl: SQLITE,
+              startupTimeoutMs: 5_000,
+            });
+            await opened.storage.close();
+          } catch (error) {
+            failure = {
+              name: String(error && error.name),
+              message: String((error && error.message) ?? ''),
+              stack: String((error && error.stack) ?? '').split('\n').slice(0, 5).join(' | '),
+            };
+          }
+          facts.defaultWorkerError = failure;
+          assert(failure !== null, 'the default worker URL started, so the expectation is wrong');
+          assert(
+            /failed to start|timed out/.test(failure.message),
+            `the failure did not name the worker: ${JSON.stringify(failure)}`,
+          );
+          return `${failure.message} (after ${Date.now() - started} ms)`;
+        });
+
+        // 2. The recipe: the worker bundled as a second entry, its URL passed in.
+        await check('an explicit workerUrl from the second entry opens the OPFS tier', async () => {
+          const opened = await openOpfsStorage({
+            sqliteModuleUrl: SQLITE,
+            workerUrl: '/bundle/worker.js',
+            databasePath: 'bundle-probe.sqlite3',
+            poolName: 'bundle-probe',
+          });
+          facts.tier = opened.tier;
+          facts.engine = opened.engine;
+          assert(opened.tier === 'opfs', `opened ${opened.tier} instead of opfs`);
+          await opened.storage.close();
+          return `${opened.tier}: ${opened.engine}`;
+        });
+
+        // 3. The same bundle, one call higher: a consumer who follows the recipe gets the tier they
+        //    asked for rather than a silent fall back to IndexedDB.
+        await check('openBrowserStorage picks OPFS when the worker URL is supplied', async () => {
+          const opened = await openBrowserStorage({
+            sqliteModuleUrl: SQLITE,
+            workerUrl: '/bundle/worker.js',
+            databasePath: 'bundle-probe.sqlite3',
+            poolName: 'bundle-probe',
+          });
+          facts.chosenTier = opened.tier;
+          assert(opened.tier === 'opfs', `picked ${opened.tier} instead of opfs`);
+          assert(
+            opened.refused.length === 0,
+            `refused a tier first: ${JSON.stringify(opened.refused)}`,
+          );
+          await opened.storage.close();
+          return opened.tier;
+        });
+
+        // 4. Bytes through the bundled worker, so "the tier opened" is not the whole claim.
+        await check('a write and a read round trip through the bundled worker', async () => {
+          const opened = await openOpfsStorage({
+            sqliteModuleUrl: SQLITE,
+            workerUrl: '/bundle/worker.js',
+            databasePath: 'bundle-probe.sqlite3',
+            poolName: 'bundle-probe',
+          });
+          const values = Array.from({ length: rows }, (_, index) => payloadFor(index));
+          const started = performance.now();
+          await opened.storage.transaction(async (tx) => {
+            for (const value of values) await tx.put('bundle', value.stem, value);
+          });
+          const readBack = await opened.storage.query('bundle');
+          const writeMs = performance.now() - started;
+          const written = digestOf(values);
+          const read = digestOf(readBack);
+          facts.roundTrip = { rows, written: written.hash, read: read.hash, count: read.count, writeMs };
+          await opened.storage.close();
+          assert(read.count === rows, `read ${read.count} of ${rows} rows`);
+          assert(read.hash === written.hash, `digest ${read.hash} != ${written.hash}`);
+          return `${rows} rows, digest ${read.hash}, ${writeMs.toFixed(0)} ms`;
+        });
+
+        return { checks, facts };
+      };
+
+      window.__ready = true;
+      log('bundle probe ready');
+    </script>
+  </body>
+</html>

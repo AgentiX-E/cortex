@@ -27,13 +27,34 @@ const MIME = {
   '.map': 'application/json',
 };
 
-export function serveDist(port = 0) {
+/**
+ * A directory mounted at a prefix, for a suite that has to serve files it generated at run time.
+ *
+ * The bundle probe writes an esbuild output into a temporary directory and serves it from
+ * `/bundle/`, because the point of that suite is what a consumer's build produces -- serving
+ * `dist/` instead would test the sources it came from and pass while the bundle is broken.
+ */
+function mountFor(pathname, mounts) {
+  return mounts.find((mount) => pathname.startsWith(mount.prefix));
+}
+
+export function serveDist(port = 0, extraMounts = []) {
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
     let file;
 
     if (url.pathname === '/' || url.pathname === '/page.html') {
       file = join(HERE, 'page.html');
+    } else if (url.pathname === '/bundle-page.html') {
+      // The bundle probe's page: the same origin, a different module graph.
+      file = join(HERE, 'bundle-page.html');
+    } else if (mountFor(url.pathname, extraMounts) !== undefined) {
+      const mount = mountFor(url.pathname, extraMounts);
+      const name = normalize(url.pathname.slice(mount.prefix.length)).replace(
+        /^([.][.][/\\])+/,
+        '',
+      );
+      file = join(mount.dir, name);
     } else if (url.pathname.startsWith('/dist/')) {
       file = join(PACKAGE, normalize(url.pathname));
     } else if (url.pathname.startsWith('/vendor/')) {

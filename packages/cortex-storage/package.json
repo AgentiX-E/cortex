@@ -24,6 +24,10 @@
       "types": "./dist/browser/opfs.d.ts",
       "import": "./dist/browser/opfs.js"
     },
+    "./opfs/worker": {
+      "types": "./dist/browser/opfs-worker.d.ts",
+      "import": "./dist/browser/opfs-worker.js"
+    },
     "./idb": {
       "types": "./dist/browser/idb.d.ts",
       "import": "./dist/browser/idb.js"
@@ -39,7 +43,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "guard": "node ../../tools/entry-guard.mjs --package .",
     "clean": "rm -rf dist *.tsbuildinfo coverage",
-    "test:browser": "node test/browser/probe.mjs"
+    "test:browser": "node test/browser/probe.mjs && node test/browser/bundle-probe.mjs"
   },
   "dependencies": {
     "@agentix-e/cortex-core": "workspace:*"

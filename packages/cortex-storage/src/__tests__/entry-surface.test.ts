@@ -74,7 +74,14 @@ describe('manifest', () => {
     // This list is the published contract, so it is written out rather than derived: adding a
     // backend is supposed to be a deliberate edit here and in `exports`, in that order. The test
     // below catches the other direction -- a subpath that names a file which does not exist.
-    expect(subpaths.sort()).toEqual(['./idb', './opfs', './pg', './sqlite']);
+    //
+    // `./opfs/worker` is not a backend. It is the OPFS engine's other half, and it is exported
+    // because a consumer bundling this package has no other supported way to obtain it: esbuild has
+    // no worker support, so `new URL('./opfs-worker.js', import.meta.url)` points at a file their
+    // build never emits. Naming it as a subpath is what turns "copy a file out of node_modules into
+    // your public directory" into "add a second entry point" (`tools/bundle-guard.mjs` reports the
+    // difference, `test/browser/bundle-probe.mjs` runs both).
+    expect(subpaths.sort()).toEqual(['./idb', './opfs', './opfs/worker', './pg', './sqlite']);
     for (const [key, target] of Object.entries(manifest.exports)) {
       expect(target.types, key).toMatch(/\.d\.ts$/);
       expect(target.import, key).toMatch(/\.js$/);

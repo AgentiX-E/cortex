@@ -19361,3 +19361,134 @@ is the cheapest way to test it.
 Row 2 is the campaign's first genuinely paired accuracy criterion. Every previous accuracy row compared a run
 against an archived run, and `§13.175.5` is the bill for that: two dispatches of one payload differ by 2.2
 points, which is larger than most of the increments this document has claimed.
+
+### 13.177 The ceiling run: reach bought TR twelve, cost KU eight, and the witness named a defect in the arm
+
+`41144910162` ran at `01a0cf0c` with `maxPromptChars` raised 48,000 → 96,000 and every other field identical to
+`cac56f1d`. It completed `success` at `01:34:46Z` in 2h04m. Its six criteria were registered in `§13.176.5`
+**before** it ran, and they were chosen so that a null result would be as readable as a positive one.
+
+#### 13.177.1 The reading
+
+| row                        | verdict               | what it said                                                                                                  |
+| -------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1 reach                    | **pass**              | MR `promptChars` min 58,987 / median **67,133** / max 75,356, against a 60,000 bar and a 46,264 median before |
+| 2 accuracy (in-run paired) | **fail**              | MR **87/121 (71.9%)** against the reference arm's **100–102/121 (82.6–84.3%)** on the same run                |
+| 3 damage                   | **fail**              | KU **64 → 56 (−8)**; MR 89 → 87 (−2, at the bar); IE +1; TR **+12**; ABS 0; overall 417 → 420                 |
+| 4 cost                     | **pass**              | 50,301,437 prompt tokens, **1.618×** the before draw's 31,078,387, against a 2.1× ceiling                     |
+| 5 witness                  | **pass**              | witness present; the four passes agree on **14 bytes** of 94,674                                              |
+| 6 premise (diagnostic)     | **fail, as retained** | 0/500 questions sent one prompt; `promptVariants == 4` on all 500                                             |
+
+Cache share fell 10.37% → **8.70%**, which row 6 says is not a fact about the provider.
+
+#### 13.177.2 The trade the ceiling bought, and why it is not the default
+
+Sixteen of 121 MR questions reached evidence they could not reach before (median prompt 46,264 → 67,133 bytes),
+and the temporal route gained **12 questions** — the largest single capability move this campaign has recorded
+from a budget change. The bill is 62% more prompt tokens and **eight lost KU questions**, and the net is +3
+questions overall (83.40% → 84.00%). That is a bad trade at list price and a _good_ one if the repair in
+`§13.177.4` makes the extra bytes cacheable, which is exactly why the next dispatch is registered against it
+rather than against the shipping budget.
+
+The KU loss also has a mechanism worth stating before it is re-measured: a larger budget admits more low-value
+turns, and `knowledge-update` is the capability whose answer depends on **which** of two contradictory turns is
+in the window, so more evidence is not neutral there — it is a chance to deliver the superseded fact as well.
+
+#### 13.177.3 The witness answered its own question, and the answer was not the bench
+
+`§13.176` shipped a witness because a count could only say "the passes were not repeats". The first run carrying
+it says:
+
+```
+witness `e47becba` (position 0); bytes per pass 94,674 / 94,674 / 94,674 / 94,674
+leading bytes shared with pass 1: 1=— 2=14 3=14 4=14
+```
+
+Four passes, one length, fourteen shared bytes. The divergence window is the first line of the evidence block:
+
+```
+pass 1: EVIDENCE:\n1. [fefd0244-4f1f-4c76-818f-4c492fe652bc] [2023/05/20 (Sat) 03:51] use…
+pass 2: EVIDENCE:\n1. [9ad00d6c-2051-4743-9c0c-bb3d0b0d9d55] [2023/05/20 (Sat) 03:51] use…
+```
+
+Strip the UUID tokens from the four texts and they are **byte-identical**: 90,628 of 94,674 characters matched,
+and every mismatch was a turn id. Fourteen bytes is `EVIDENCE:\n1. [`.
+
+#### 13.177.4 The defect: a turn's identity was drawn, not derived
+
+`createMemory` defaults `id` to `crypto.randomUUID()`, so every admitted turn got a **new identifier every time
+it was admitted**. Nothing reads an id by lookup, which is why this survived eleven iterations of cost analysis.
+But `formatEvidenceWithSources` renders `${index}. [${turn.id}] ${content}`, and the arms run with
+`promptContract: 'abstention-evidence-blocks'` on all six routes — so the ids are **in every prompt**, and the
+same turns admitted twice produced two prompts that differed in 4% of their characters.
+
+Three measured consequences, all previously attributed to something else:
+
+- **The cache premise was false, and so was its refutation.** `§13.175` withdrew the 60–80% prediction because
+  four prompts "were never repetitions". That was right and incomplete: they were never repetitions _because of
+  this_. Four passes of one request share 75% of their prompt tokens by construction; four passes whose first
+  evidence line differs share none after byte 14. The 8.70% is the defect, not the provider.
+- **`promptVariants == 4` was not a property of the arm's statefulness.** `prompt-determinism.test.ts` was right
+  that the arm is a function of its inputs; the inputs included a random id.
+- **Admission was not idempotent.** Re-admitting one turn created two identities for one fact. That is the defect
+  this project keeps finding in other systems — two rows, one memory — and it was here.
+
+#### 13.177.5 The fix, and the four properties it has to have
+
+`admission.ts` now derives the id: four FNV-1a streams with distinct offset bases over `ordinal\0content`,
+avalanched, formatted as a UUID with the **version-8** nibble so it can never be mistaken for a v4 random id. Not
+`node:crypto`: `cortex-memory` runs in a browser and its entry graph is guarded against host APIs. An id is not a
+secret.
+
+The first version of that hash emitted a leading minus sign for one input in eight — `^` returns a signed int32
+and `toString(16)` prints the sign — which turned a fixed-width id into a 30-character one. `turn-identity.test.ts`
+caught it on its first run, from the shape assertion.
+
+| property                                       | why the cheap alternative fails             | test                             |
+| ---------------------------------------------- | ------------------------------------------- | -------------------------------- |
+| stable across calls                            | a counter is not stable across processes    | same turn hashed twice           |
+| separates equal content at different positions | a content-only hash merges duplicates       | `same words` at 0 and 1          |
+| separates different content at one position    | a position-only id merges everything        | `a` vs `b`                       |
+| fixed-width, version 8                         | `Math.random` and v4 both look reproducible | pattern **and** `id[14] === '8'` |
+
+- `turn-identity.test.ts` (new, 8): the four properties, a 2,000-turn collision sweep, boundary inputs (empty,
+  `"0"`, `"\u0000"`), and admission idempotence. Written through `admitTurns` rather than the private function,
+  so the test also proves the derivation is _used_.
+- `prompt-determinism.test.ts` 3 → **5**: the sourced rendering on the flat and multi-session routes, four
+  passes, one prompt. These are the cases the first three could not reach — they ran without
+  `promptContract`, and the sourced renderer is the only one that cites an id.
+- Injection: removing `id: turnIdFor(content, ordinal)` fails **exactly those two** and leaves the original three
+  green, which is the route distinction stated as a measurement.
+- `cortex-memory` 715 → **725 passed**, coverage **100 / 100 / 100 / 100**.
+
+#### 13.177.6 The next dispatch, registered before it runs
+
+Payload: identical to `41144910162` (`maxPromptChars 96000`, `ask: operands`, `relevance-hybrid`, `top_k: 256`,
+`review_pass: bare`, contract `abstention-evidence-blocks`, 4 repetitions, temperature 0, `limit: 0`) on the fix
+commit. One variable moved — the id derivation — and it moves the _bytes_, which is what makes the predictions
+below falsifiable rather than hopeful.
+
+| prediction         | passes when                                                                | falsified when                                                                                      |
+| ------------------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| row 6, the premise | ≥ 95% of questions carry `promptVariants == 1`                             | below; the id fix did not reach every route                                                         |
+| cache share        | ≥ 60% of prompt tokens report a cache hit                                  | below 60%, and the 60–80% prediction was about the provider after all                               |
+| witness            | `commonPrefix` equals the full length on ≥ 95% of passes                   | any pass diverges, and the offset names what else moves                                             |
+| billed cost        | `promptTokens × (1 − 0.9 × cacheShare)` ≤ 0.7× the previous draw's 28.18 M | above; then the extra ceiling is not affordable even when cached                                    |
+| accuracy           | MR first repetition ≥ 87 and overall within ±2.2 pt of 84.00%              | below either; cosmetic ids should not move accuracy, and if they do the citations were load-bearing |
+| within-run spread  | MR's four passes span ≤ 2 questions (they spanned 84–93)                   | above, and the residual variance is the reader rather than the prompt                               |
+
+The last row is the one that costs the campaign something if it passes. If four passes of one request return
+near-identical answers, `runs: 4` stops measuring model variance — it becomes a determinism check — and every
+future noise estimate has to come from a second dispatch or from a deliberately perturbed prompt. `§13.175.5`
+measured a 2.2-point band between two dispatches of one payload; with random ids in every prompt, part of that
+band was this defect, and the next two dispatches will say how much.
+
+#### 13.177.7 What this section does not claim
+
+- **Not that 96,000 is the right budget.** Reach passed, accuracy and damage failed; the trade is −8 KU and +12
+  TR for 1.62× the tokens, and the correct budget is a question for a cached run.
+- **Not that the id fix improves accuracy.** Ids are cosmetic; the prediction is "no change beyond the band", and
+  a change would be the interesting outcome.
+- **Not that the cache prediction will hold.** It is registered as 60%, derived from "three of four passes resend
+  identical bytes" — a provider that declines to cache is still a live explanation for a miss, and this time the
+  instrument can tell the two apart.

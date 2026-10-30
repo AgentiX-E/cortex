@@ -1,0 +1,57 @@
+{
+  "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
+  "origin": "http://127.0.0.1:44393",
+  "rows": 200,
+  "built": {
+    "main": "main.js",
+    "worker": "worker.js",
+    "mainInputs": 5,
+    "workerInputs": 2
+  },
+  "checks": [
+    {
+      "name": "the default worker URL does not resolve from a bundle",
+      "ok": true,
+      "detail": "the storage worker failed to start: http://127.0.0.1:44393/bundle/opfs-worker.js -- the module did not load (a bundler that does not emit worker assets needs `workerUrl`, see the `@agentix-e/cortex-storage/opfs/worker` subpath) (after 6 ms)"
+    },
+    {
+      "name": "an explicit workerUrl from the second entry opens the OPFS tier",
+      "ok": true,
+      "detail": "opfs: sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)"
+    },
+    {
+      "name": "openBrowserStorage picks OPFS when the worker URL is supplied",
+      "ok": true,
+      "detail": "opfs"
+    },
+    {
+      "name": "a write and a read round trip through the bundled worker",
+      "ok": true,
+      "detail": "200 rows, digest 2868196997, 97 ms"
+    }
+  ],
+  "facts": {
+    "defaultWorkerError": {
+      "name": "RpcError",
+      "message": "the storage worker failed to start: http://127.0.0.1:44393/bundle/opfs-worker.js -- the module did not load (a bundler that does not emit worker assets needs `workerUrl`, see the `@agentix-e/cortex-storage/opfs/worker` subpath)",
+      "stack": "RpcError: the storage worker failed to start: http://127.0.0.1:44393/bundle/opfs-worker.js -- the module did not load (a bundler that does not emit worker assets needs `workerUrl`, see the `@agentix-e/cortex-storage/opfs/worker` subpath) |     at EngineRpcSession.abort (http://127.0.0.1:44393/bundle/main.js:358:16) |     at Worker.onError (http://127.0.0.1:44393/bundle/main.js:441:13)"
+    },
+    "tier": "opfs",
+    "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
+    "chosenTier": "opfs",
+    "roundTrip": {
+      "rows": 200,
+      "written": 2868196997,
+      "read": 2868196997,
+      "count": 200,
+      "writeMs": 97.30000019073486
+    }
+  },
+  "summary": {
+    "checks": 4,
+    "passed": 4,
+    "failed": 0,
+    "defaultWorkerRefused": true
+  },
+  "note": "One run, one Chromium. The failure text in check 1 is the product behaviour the docstring used to deny; it is quoted rather than paraphrased so a change in the wording is visible."
+}

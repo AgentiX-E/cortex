@@ -76,9 +76,28 @@ const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 /**
  * Open the OPFS tier.
  *
- * The worker URL defaults to the file next to this module, which is the only path that works under
- * a bundler without configuration: `import.meta.url` is rewritten by Vite, webpack 5 and esbuild, so
- * the emitted worker is found where the emitted module lives.
+ * ## The worker URL, and the claim this docstring used to get wrong
+ *
+ * The default is the file next to this module. That is correct for the deployment it is written
+ * for -- native ESM, module served as published -- and it is the only default that needs no
+ * configuration there. It was documented as also working under a bundler, on the grounds that
+ * `import.meta.url` "is rewritten by Vite, webpack 5 and esbuild". **Two of those three are true.**
+ * esbuild has no worker support, so `new URL('./opfs-worker.js', import.meta.url)` survives into the
+ * consumer's output verbatim; the emitted bundle then asks for a file the bundler never wrote, the
+ * worker 404s, and this function throws `the storage worker failed to start`. Vite and webpack 5 do
+ * emit the asset, because both have first-class worker handling.
+ *
+ * So there are two supported deployments, and the second one is a build step the consumer writes:
+ *
+ *   - **Unbundled** (the default): serve the package as published. `dist/browser/opfs-worker.js` sits
+ *     next to `opfs.js` and resolves relative to it.
+ *   - **Bundled**: add `@agentix-e/cortex-storage/opfs/worker` as a *second entry point* of the same
+ *     build, so the worker becomes its own emitted file, and pass its URL as `workerUrl`. Copying
+ *     `opfs-worker.js` on its own is not enough and never was -- it imports `./rpc.js`.
+ *
+ * `tools/bundle-guard.mjs` reports `worker: ./opfs-worker.js NOT emitted` for the second case instead
+ * of leaving it to a runtime 404, and `test/browser/bundle-probe.mjs` runs both deployments in a real
+ * Chromium so the recipe above is measured rather than asserted.
  */
 export async function openOpfsStorage(options: OpfsOptions): Promise<BrowserStorage> {
   if (typeof Worker === 'undefined') {
@@ -105,8 +124,26 @@ export async function openOpfsStorage(options: OpfsOptions): Promise<BrowserStor
   });
 
   // A worker whose module fails to load never speaks, so the only signal is its `error` event.
-  const onError = (event: ErrorEvent): void => {
-    session.abort(event.message === '' ? 'the storage worker failed to start' : event.message);
+  //
+  // That event is not an `ErrorEvent` in practice. Chrome dispatches a plain `Event` for a module
+  // script whose fetch 404s, so `event.message` is `undefined` rather than `''` -- and the first
+  // version of this handler tested `=== ''`, which let `undefined` through into `new Error(undefined)`
+  // and handed the caller an `RpcError` whose `message` was empty. The empty message was found by
+  // `test/browser/bundle-probe.mjs`, on the one path the surrounding docstring warns about, which is
+  // the worst place for a failure to be silent: the reader is looking at exactly this error.
+  //
+  // The URL is in the message because that is the fact a reader can act on. Three-quarters of the
+  // reasons for this event are "the file is not at the path the URL names", and the path is the
+  // difference between "my bundler did not emit the worker" and "I passed the wrong workerUrl".
+  const workerDescription = `${url.origin}${url.pathname}`;
+  const onError = (event: Event): void => {
+    const reported = (event as Partial<ErrorEvent>).message;
+    const detail =
+      typeof reported === 'string' && reported !== ''
+        ? reported
+        : 'the module did not load (a bundler that does not emit worker assets needs `workerUrl`, ' +
+          'see the `@agentix-e/cortex-storage/opfs/worker` subpath)';
+    session.abort(`the storage worker failed to start: ${workerDescription} -- ${detail}`);
   };
   worker.addEventListener('error', onError);
 
@@ -120,10 +157,18 @@ export async function openOpfsStorage(options: OpfsOptions): Promise<BrowserStor
           // Named rather than silent: the two plausible causes lead to different fixes, and a
           // generic "timed out" would make the reader guess which one they have.
           session.abort(
-            `the storage worker did not answer within ${timeoutMs} ms: either its module failed to ` +
-              `load or the OPFS pool is blocked`,
+            `the storage worker did not answer within ${timeoutMs} ms (${workerDescription}): either ` +
+              `its module failed to load or the OPFS pool is blocked`,
           );
-          reject(new RpcError('storage worker startup timed out', 'channel-error'));
+          // The thrown error carries the same facts as the aborted request, because which of the
+          // two settles the race is an implementation detail and a caller should not have to know.
+          reject(
+            new RpcError(
+              `storage worker startup timed out after ${timeoutMs} ms: did not answer (${workerDescription}); ` +
+                'either its module failed to load or the OPFS pool is blocked',
+              'channel-error',
+            ),
+          );
         }, timeoutMs);
       }),
     ]);
