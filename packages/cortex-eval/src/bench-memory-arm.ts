@@ -49,6 +49,7 @@ import { llmUsage, usageDelta, type UsageSnapshot } from '@agentix-e/cortex-ai';
 import { readToggle } from './env-toggle.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds, RerankIdentity } from './rerank-factory.js';
+import { promptDigest } from './prompt-digest.js';
 import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
@@ -2726,6 +2727,17 @@ function buildArmRoster(
   // honestly stands in for it -- `§13.16` records that a zero would read as a system
   // that admitted nothing, which is the opposite of what an absent accessor says.
   const admittedEvidence = ablation.featureAdmittedEvidence!;
+  // The prompt text, captured under the same flag on the same line as the three above.
+  // Read with `!` for the same reason, and mapped per question for the same reason: a
+  // `null` entry means the system exposes no prompt, and there is no fingerprint that
+  // honestly stands in for one -- `promptDigest('')` would be a claim about a request
+  // that was never sent.
+  //
+  // Hashed here rather than in `ablation.ts` or in the benchmark loop because this is the
+  // only hop that already imports from `node`, and `prompt-digest.ts` is the only file in
+  // this package that imports `node:crypto`. Keeping the hash at the edge keeps the
+  // package entry point's import graph host-free.
+  const promptTexts = ablation.featurePromptTexts!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -2788,6 +2800,11 @@ function buildArmRoster(
       // it has no accessor for the offer, which the record then omits.
       admitted: admittedEvidence[i]!,
       promptChars: promptEvidenceChars[i] ?? null,
+      // `§13.168.8`. The fingerprint of the bytes this question's reader was sent, so a
+      // reader of two artifacts can tell four repetitions from four prompts. `null` when
+      // the system exposes no prompt, which the record renders as absent rather than as
+      // the digest of an empty string.
+      promptDigest: promptDigest(promptTexts[i] ?? null),
       // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
       // without `answered`, and that half is what says the mechanism ran rather than which way it went.
       ...traceOf(recoveryTrace, question.question),

@@ -44,6 +44,7 @@
  * mis-assembled instrument produces a number that looks like an answer.
  */
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
@@ -2629,6 +2630,172 @@ describe('the prompt-carried evidence size reaches the record', () => {
     expect(report.evidenceReduction).toBeDefined();
     expect(record.promptChars).toBe(27);
     expect(record.turns.length).toBeLessThan(record.evidenceTurns!);
+  });
+});
+
+/**
+ * The record carries a fingerprint of the prompt that was sent.
+ *
+ * ## What it is for, and why the end of the chain is where it has to be proved
+ *
+ * `§13.168.8` registers the field to answer a question two artifacts raised without
+ * being able to settle: why the provider's prefix cache credited 6.47% and 11.16% of
+ * the prompt tokens where `§13.147.3` predicted 60-80%. Equal fingerprints across
+ * passes mean the requests really were repetitions and the provider is the
+ * explanation; unequal ones mean the passes never were repetitions, which is an arm
+ * defect and a cheaper finding.
+ *
+ * The value is computed in `cortex-memory`, captured by the benchmark loop, carried
+ * on `ScoredEvaluation` and `AblationResult`, hashed here, and finally written onto a
+ * record. Every hop is a place it can be dropped or paired with the wrong question,
+ * and a dropped field renders as absent -- identical to a system that cannot report
+ * it. So the assertions are made on the artifact, and the oracle is `node:crypto`
+ * rather than the helper the arm itself calls: a test that compared the field to
+ * `promptDigest(text)` would agree with the arm even if the arm hashed the question
+ * instead of the prompt.
+ */
+describe('the record carries a fingerprint of the prompt', () => {
+  function datasetOf(questions: readonly { id: string; question: string }[]): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: questions.map((q) => ({
+        id: q.id,
+        capability: 'IE',
+        questionType: 'single-session-user',
+        question: q.question,
+        expected: 'Lisbon',
+        context: [],
+        sessions: [],
+      })),
+    } as unknown as BenchmarkDataset;
+  }
+
+  const GATE = {
+    threshold: 0,
+    retrievalThreshold: 0,
+    sessionBudget: null,
+    sourceTrust: 0.5,
+    confidenceSignal: 'none',
+    promptContract: 'abstention',
+    relevanceSignal: 'none',
+    relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+    renderingRoutes: [],
+    ask: 'route',
+    askRoutes: [],
+    reviewPass: 'none',
+    reviewBareDecline: false,
+  } as const;
+
+  /** A system that reports one prompt text per question, in order. */
+  function promptingSystem(prompts: readonly string[]): MemorySystem {
+    let call = 0;
+    return {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      lastRetrievedContext: () => ['turn 0', 'turn 1', 'turn 2', 'turn 3', 'turn 4', 'turn 5'],
+      lastPromptEvidenceChars: () => 64,
+      lastAdmittedEvidence: () => ({ turns: 6, chars: 64 }),
+      lastRawOutput: () => 'Lisbon',
+      lastPromptText: () => prompts[call++] ?? null,
+    } as unknown as MemorySystem;
+  }
+
+  const expected = (text: string): string =>
+    createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 16);
+
+  it('writes the digest of the prompt, and not of the question or the evidence', async () => {
+    const prompt =
+      'Instructions\n\nQ: Where?\n\nEVIDENCE:\n1. turn 0\n\nReply with the answer only.';
+    const { report } = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([prompt]),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+
+    const record = report.questions![0]!;
+    expect(record.promptDigest).toBe(expected(prompt));
+    // The two neighbouring candidate values, excluded by name: hashing the question
+    // or the evidence would satisfy "there is a 16-character field" and answer a
+    // different question than the one registered.
+    expect(record.promptDigest).not.toBe(expected('Where?'));
+    expect(record.promptDigest).not.toBe(expected('turn 0'));
+    expect(record.promptDigest).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('gives two identical prompts the same digest and two different ones different digests', async () => {
+    // The reading itself: one character apart is not a repetition, and byte-identical
+    // is. Both halves in one test because either alone is satisfiable by a constant.
+    const shared = 'Instructions\n\nQ: Where?\n\nEVIDENCE:\n1. turn 0';
+    const { report } = await runCortexMemoryArm(
+      datasetOf([
+        { id: 'q1', question: 'Where?' },
+        { id: 'q2', question: 'Where was it?' },
+      ]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([shared, `${shared}.`]),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+
+    const [first, second] = report.questions!;
+    expect(first!.promptDigest).not.toBe(second!.promptDigest);
+    expect(first!.promptDigest).toBe(expected(shared));
+    // And the second follows the SECOND question's prompt, which is the pairing a
+    // capture read after the loop would get wrong for every record.
+    expect(second!.promptDigest).toBe(expected(`${shared}.`));
+  });
+
+  it('omits the field when the system cannot report the prompt', async () => {
+    // Absent, not a hash of the empty string: a system with no accessor has not sent
+    // an empty request, and `§13.168.8`'s null-versus-empty distinction has to survive
+    // the hop to the artifact or the fingerprint reports a request that never happened.
+    const { report } = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      constantSystem('cortex-memory', 'Lisbon'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+
+    expect(report.questions![0]!.promptDigest).toBeUndefined();
+    expect(Object.hasOwn(report.questions![0]!, 'promptDigest')).toBe(false);
+  });
+
+  it('survives a reduction, so a bounded artifact does not lose the fingerprint', async () => {
+    // The reducer rebuilds every record through `buildQuestionRecords`, so a field it
+    // does not forward is a field a reduction silently drops -- the defect
+    // `withEvidenceBound` already carried once for `featureConfig`.
+    const prompt = 'Instructions\n\nQ: Where?\n\nEVIDENCE:\n1. turn 0\n\n2. turn 1\n\n3. turn 2';
+    const { report } = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([prompt]),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+        evidenceBound: { maxTurnsPerRecord: 2 },
+      },
+    );
+
+    expect(report.evidenceReduction).toBeDefined();
+    expect(report.questions![0]!.turns.length).toBeLessThan(report.questions![0]!.evidenceTurns!);
+    expect(report.questions![0]!.promptDigest).toBe(expected(prompt));
   });
 });
 

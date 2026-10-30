@@ -711,6 +711,23 @@ export type AblationResult = {
    * Optional for the same reason as the other captures, and `readonly` likewise.
    */
   featureAdmittedEvidence?: readonly (AdmittedEvidence | null)[];
+  /**
+   * The prompt the feature side's reader was sent, per question.
+   *
+   * ## Why the ablation carries the text and not a fingerprint
+   *
+   * `§13.168.8` wants a fingerprint per record, and the two candidate layers are this
+   * one and the arm that writes the artifact. `cortex-memory` cannot hash -- it imports
+   * no host API -- so the text has to reach a Node-side consumer either way. Hashing
+   * here would work, but this file's `feature*` vectors are the ablation's own record of
+   * what happened, and a digest is a lossy projection chosen for artifact size rather
+   * than a measurement: the arm that decides how much of each prompt to keep is the arm
+   * that should decide how to fingerprint it.
+   *
+   * Optional for the reason the other captures are, and `readonly` likewise. A `null`
+   * entry means the system exposes no prompt, which is not an empty prompt.
+   */
+  featurePromptTexts?: readonly (string | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

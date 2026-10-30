@@ -562,6 +562,12 @@ export async function runAblation(
     // roughly 150-160.
     featurePromptEvidenceChars: featFirst.promptEvidenceChars!,
     featureAdmittedEvidence: featFirst.admittedEvidence!,
+    // The prompt each question's reader was sent, carried under the same flag on the same
+    // call. Text rather than a digest here because `cortex-memory` -- which owns the prompt
+    // -- imports no host API, and because this vector's consumer (`bench-memory-arm.ts`)
+    // is the hop that already has `node:crypto`. `§13.168.8` reads the fingerprint built
+    // from it to decide whether four passes were four repetitions or four prompts.
+    featurePromptTexts: featFirst.promptTexts!,
     perCapability,
   };
 }

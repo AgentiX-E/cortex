@@ -233,6 +233,7 @@ type BenchmarkRetrievedCallback = (
   retrieved: RetrievedTurns | null,
   promptChars: number | null,
   admitted: AdmittedEvidence | null,
+  promptText: string | null,
 ) => void;
 
 /**
@@ -335,6 +336,18 @@ export async function runBenchmark(
         ? (
             system as { lastAdmittedEvidence: () => AdmittedEvidence | null }
           ).lastAdmittedEvidence.bind(system)
+        : undefined;
+  // The prompt itself, resolved under the same rule and for a reason the three above
+  // cannot serve: `§13.168.8` asks whether two passes sent the same bytes, and every
+  // other accessor here reports a size or a subset. It travels as text rather than as a
+  // digest because this module is host-free -- the consumer that writes the artifact
+  // hashes it -- and because hashing here would put `node:crypto` in the entry point's
+  // import graph.
+  const promptText =
+    onRetrieved === undefined
+      ? undefined
+      : 'lastPromptText' in system
+        ? (system as { lastPromptText: () => string | null }).lastPromptText.bind(system)
         : undefined;
   // Every branch below routes through this, rather than calling `answers.push`
   // itself. Seven branches are seven chances to forget the sink, and the routing
@@ -451,6 +464,7 @@ export async function runBenchmark(
         retrievedContext === undefined ? null : retrievedContext(),
         promptEvidence === undefined ? null : promptEvidence(),
         admittedEvidence === undefined ? null : admittedEvidence(),
+        promptText === undefined ? null : promptText(),
       );
     }
   }
@@ -475,6 +489,12 @@ export async function runBenchmark(
  * are never wanted apart: the captured context is what the reader was shown and
  * `promptEvidenceChars` is how much of it reached the prompt. See
  * `BenchmarkRetrievedCallback` for why neither is interpretable alone.
+ *
+ * A third vector comes from the same hook since `§13.168.8` -- the prompt text itself,
+ * so the artifact can carry a fingerprint per question. It is taken under the same flag
+ * because it is the same capture, and it is a fourth argument rather than a second hook
+ * for the reason the first three travel together: a question's prompt, evidence and the
+ * size of that evidence describe one request.
  */
 export async function evaluateWithScorerDetailed(
   dataset: BenchmarkDataset,
@@ -492,6 +512,7 @@ export async function evaluateWithScorerDetailed(
   const retrievedContexts: (RetrievedTurns | null)[] = [];
   const promptEvidenceChars: (number | null)[] = [];
   const admittedEvidence: (AdmittedEvidence | null)[] = [];
+  const promptTexts: (string | null)[] = [];
   const answers = await runBenchmark(
     dataset,
     system,
@@ -499,10 +520,11 @@ export async function evaluateWithScorerDetailed(
     run,
     captureRawOutput ? (raw) => rawOutputs.push(raw) : undefined,
     captureRetrievedContext
-      ? (retrieved, chars, admitted) => {
+      ? (retrieved, chars, admitted, prompt) => {
           retrievedContexts.push(retrieved);
           promptEvidenceChars.push(chars);
           admittedEvidence.push(admitted);
+          promptTexts.push(prompt);
         }
       : undefined,
     onAnswer,
@@ -516,5 +538,6 @@ export async function evaluateWithScorerDetailed(
     captureRetrievedContext ? retrievedContexts : undefined,
     captureRetrievedContext ? promptEvidenceChars : undefined,
     captureRetrievedContext ? admittedEvidence : undefined,
+    captureRetrievedContext ? promptTexts : undefined,
   );
 }

@@ -356,6 +356,39 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #lastPromptEvidenceChars: number | null = null;
 
   /**
+   * The text handed to the model on the most recent call, or `null`.
+   *
+   * ## Why the text travels instead of a digest
+   *
+   * `§13.168.8` registers a fingerprint of the prompt on every record, to answer a
+   * question two artifacts raised and neither could settle: why the provider's
+   * prefix cache credited 6.47% and 11.16% of the prompt tokens where `§13.147.3`
+   * predicted 60-80%. Equal fingerprints mean the four passes really did resend the
+   * same request and the provider is the explanation; unequal ones mean the passes
+   * were never repetitions.
+   *
+   * The digest itself is computed by `packages/cortex-eval/src/prompt-digest.ts`, and
+   * not here, because this package imports no host API -- no `node:crypto`, no
+   * `node:fs` -- which is the property the browser feasibility study rests on. The
+   * text is one prompt, bounded by the evidence budget plus the instruction block,
+   * and it lives exactly as long as this slot, so carrying it costs what
+   * `#lastPromptEvidenceChars` already costs.
+   *
+   * ## Why this is not `#lastRetrievedContext` rejoined
+   *
+   * A rejoin reproduces the evidence section and loses the rest: the instruction
+   * block, the question and the section headers are all part of what the provider
+   * sees, and a fingerprint over the evidence alone would report "same request" for
+   * two calls that differ in the question. `assembled.prompt` is the object the
+   * model was handed, so this is the only value that can be hashed without a
+   * reconstruction step that could disagree with it.
+   *
+   * `null` means no prompt has been built -- a decline before a reader was reached --
+   * for the same reason and with the same distinction as the two accessors above.
+   */
+  #lastPromptText: string | null = null;
+
+  /**
    * How much evidence admission produced for the most recent call, or `null`.
    *
    * ## Why the offer needs its own slot, and why §13.15 is the reason
@@ -604,6 +637,22 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * The text handed to the model on the most recent call, or `null`.
+   *
+   * The exact bytes, so a consumer can fingerprint what was sent rather than what
+   * could be rebuilt from the parts. `§13.168.8` reads it to separate "the passes
+   * were byte-identical and the cache did not serve them" from "the passes were
+   * never byte-identical", which is the difference between a provider question and
+   * an arm defect.
+   *
+   * `null` when no prompt has been built: a decline before the reader was reached is
+   * not an empty prompt.
+   */
+  lastPromptText(): string | null {
+    return this.#lastPromptText;
+  }
+
+  /**
    * How much evidence admission produced for the most recent call, or `null`.
    *
    * The **offer**, as against `lastPromptEvidenceChars`'s delivery. Two numbers, and
@@ -671,6 +720,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
    *   - nothing else. A reader wanting "did retrieval find it" from the delivery
    *     alone would read a budget cut as a retrieval failure.
    *
+   * A fourth value is taken here since `§13.168.8` and it is not a measurement of the
+   * evidence: `assembled.prompt` itself (`lastPromptText`). It is recorded at this
+   * call site for the reason the others are -- this is the last point where the exact
+   * bytes handed to the model are in hand -- and it exists so a consumer can
+   * fingerprint the request instead of rebuilding one and hoping the rebuild matches.
+   *
    * `§13.15` recorded only the delivery, and run `38142407062` showed the cost: the
    * record's `evidenceTurns` is derived from the captured context, so it fell from
    * 3,016-4,528 to a median of 141 and the artifact could no longer say how much
@@ -705,10 +760,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #recordEvidence(
     admitted: readonly AdmittedTurn[],
-    assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried'>,
+    assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried' | 'prompt'>,
   ): void {
     this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content);
     this.#lastPromptEvidenceChars = assembled.evidenceChars;
+    this.#lastPromptText = assembled.prompt;
     this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
   }
 

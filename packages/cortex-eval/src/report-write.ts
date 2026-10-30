@@ -371,6 +371,12 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // claiming the reader was shown evidence the prompt never carried --
         // exactly the confusion the field exists to end.
         ...(record.promptChars === undefined ? {} : { promptChars: record.promptChars }),
+        ...(record.promptDigest === undefined ? {} : { promptDigest: record.promptDigest }),
+        // Forwarded for exactly that reason: the reduction rebuilds every record through
+        // `buildQuestionRecords`, and a fingerprint it does not carry is one the reduced
+        // artifact silently loses. `§13.168.8` reads two artifacts for equality across
+        // passes, and a bound applied to one of them would otherwise make every kept
+        // record look unfingerprinted -- indistinguishable from a system with no prompt.
         // Forwarded for the reason `promptChars` is: a field the rebuild does not carry is a field a
         // reduction silently drops, and this one is the only per-question statement of *which* questions a
         // review pass reached (§13.145.6). Dropping it would leave a reduced artifact unable to name the

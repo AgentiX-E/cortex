@@ -192,6 +192,22 @@ export type ScoredEvaluation = {
    * fabricated zero would read as a system that admitted nothing.
    */
   admittedEvidence?: (AdmittedEvidence | null)[];
+  /**
+   * The prompt each question's reader was sent, per question, in the same order.
+   *
+   * Captured with the other three and carried as **text** rather than as a digest,
+   * because the package that owns the prompt (`cortex-memory`) imports no host API and
+   * so cannot hash it, and this package's entry point is host-free today. The consumer
+   * that writes the artifact hashes it (`prompt-digest.ts`), one hop later.
+   *
+   * `§13.168.8` is what wants it: passes 2-4 of a dispatch were predicted to resend
+   * byte-identical requests and crediting 60-80% of the prompt tokens, and two artifacts
+   * read 6.47% and 11.16%. A length cannot separate "the same prompt" from "a prompt
+   * that changed within its budget", and that separation is the whole question.
+   *
+   * `null` per question means the system exposes no prompt, which is not an empty one.
+   */
+  promptTexts?: (string | null)[];
 };
 
 /**
@@ -494,6 +510,7 @@ export async function scoreEvaluation(
   retrievedContexts?: (RetrievedTurns | null)[],
   promptEvidenceChars?: (number | null)[],
   admittedEvidence?: (AdmittedEvidence | null)[],
+  promptTexts?: (string | null)[],
 ): Promise<ScoredEvaluation> {
   if (dataset.questions.length !== answers.length) {
     throw new Error(
@@ -561,6 +578,7 @@ export async function scoreEvaluation(
     ...(retrievedContexts === undefined ? {} : { retrievedContexts }),
     ...(promptEvidenceChars === undefined ? {} : { promptEvidenceChars }),
     ...(admittedEvidence === undefined ? {} : { admittedEvidence }),
+    ...(promptTexts === undefined ? {} : { promptTexts }),
   };
 }
 

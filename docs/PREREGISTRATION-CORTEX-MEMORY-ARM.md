@@ -18688,3 +18688,119 @@ it needs write access to reach. It does not claim the list is complete either �
 not name would pass, and the list is the mechanism rather than a proof. And it does not claim the guard
 now reads everything a workflow can execute: `env:` values, `with:` inputs to actions, and composite
 actions in `.github/actions/` are still outside its scope, and none of them is registered as covered.
+
+## 13.171 The fingerprint reaches the record, and four hops can drop it
+
+`§13.168.5` registered four acceptance rows and said the fourth -- a hash of the prompt on every
+record -- is checked **first**, because the other three presuppose that repetitions are repetitions.
+This section builds that row.
+
+### 13.171.1 Where the hash is taken, and the property that decided it
+
+Two packages were candidates and one of them is not allowed to hash:
+
+| package | host imports in `src` | may import `node:crypto`? |
+| --- | --- | --- |
+| `cortex-memory` | **none** | no — it is the package the browser feasibility study rests on, and its docstrings treat "no host API" as a property rather than an accident |
+| `cortex-eval`, entry point `src/index.ts` | none in the re-export graph | avoidable, and today it is true: `node:fs`/`node:path` live in `bench-memory-arm.ts` and `review-page.ts`, neither of which `index.ts` re-exports |
+| `cortex-eval`, `bench-memory-arm.ts` | `node:fs` already | yes — it is the hop that writes the artifact |
+
+So `prompt-digest.ts` is the only file in this package importing `node:crypto`, it is imported by the
+arm, and the package's entry-point graph stays host-free. That is not a preference: a browser build of
+`@agentix-e/cortex-eval` works today, and putting a digest in the benchmark loop would have broken it
+in a way no test in this repo would have noticed.
+
+### 13.171.2 Why the text travels and not the digest
+
+`cortex-memory` gains `lastPromptText()`, recorded in `#recordEvidence` beside the other three -- the
+one call site where the exact bytes handed to the model are still in hand. It returns
+`assembled.prompt`, not a rejoin of the carried turns: a rejoin reproduces the evidence section and
+loses the instruction block and the question, so a fingerprint over it would report "same request" for
+two calls that differ in what was asked.
+
+The text then travels through `ScoredEvaluation.promptTexts` and `AblationResult.featurePromptTexts`
+and is hashed at the arm. Retaining it is not a new class of cost: `featureRetrievedContexts` already
+holds up to 24,000 characters per question, and this holds one prompt of the same order.
+
+The rejected alternative was a dependency-free digest implemented in `cortex-memory` — a hand-rolled
+SHA-256 or an FNV variant. It would have kept the text out of the eval layer and cost nothing at the
+artifact. It was rejected because the only defence of a hand-written hash in a product path is "the
+vectors pass", while `node:crypto` is verifiable against FIPS and carries no such claim to defend.
+
+### 13.171.3 The four hops, and the null rule at each
+
+| hop | carries | what a dropped value would look like |
+| --- | --- | --- |
+| `cortex-memory.lastPromptText()` | the exact prompt, or `null` before any call | a decline would report the previous question's prompt |
+| `ScoredEvaluation.promptTexts` | one entry per question, `null` when the system has no accessor | the vector absent — "not requested" |
+| `AblationResult.featurePromptTexts` | copied with `!`, never defaulted | an unbuildable ablation |
+| `QuestionRecord.promptDigest` | 16 hex characters, or the field **absent** | a record that reads as a system with no prompt |
+
+The rule at the last hop is the one `promptChars` uses: `null` and `undefined` both render as absent,
+because a system that cannot report a prompt has not reported an empty one. `promptDigest('')` is
+therefore never written — the empty string's digest exists in the unit tests precisely so that its
+absence from the artifact is a decision rather than an oversight.
+
+### 13.171.4 An assertion that cannot agree with itself
+
+The arm-level test computes its expectation with `node:crypto` directly instead of calling
+`promptDigest()`. Calling the helper would make the test agree with the arm even if the arm hashed the
+**question** instead of the prompt, which is the one wrong value that would still produce sixteen
+characters. Two neighbouring candidate values are excluded by name (`expected('Where?')`,
+`expected('turn 0')`).
+
+The pairing test uses two questions whose prompts differ by one trailing character, and asserts that
+the second record carries the **second** prompt's digest. A capture read after the loop instead of per
+question satisfies "there is a digest on every record" and fails exactly there.
+
+The digest's own tests pin the algorithm with FIPS vectors — `sha256("abc")` truncated to
+`ba7816bf8f01cfea`, the empty string to `e3b0c44298fc1c14` — and then cross-check two hundred
+pseudo-random ASCII strings against `node:crypto`, because four published vectors only prove the
+implementation agrees with itself on strings somebody chose while looking at it.
+
+### 13.171.5 The forwarding check, proved to bite
+
+`report-write.ts` re-lists every field by hand when it rebuilds a record, and this rebuild has dropped
+a field four times: `featureConfig`, `promptChars`, `recoveryAttempted`, `questionDate`. `§13.160`
+replaced the per-field assertions with one loop that walks the record's own keys, so a new field enters
+the check by existing. Adding `promptDigest` to that fixture is the whole change — and the change was
+then removed to confirm the loop bites:
+
+```
+… removed the forward line, ran report-write.test.ts
+× forwards every optional per-question field
+  → field promptDigest did not survive the reduction   1 failed | 27 passed
+… restored
+  28 passed
+```
+
+### 13.171.6 What was verified
+
+- `cortex-memory`: **44 files / 712 tests**, of which 6 are new (`prompt-text.test.ts`) — exact-byte
+  equality against the prompt the stub model recorded, the budgeted prompt when the budget binds, the
+  session route, replacement rather than accumulation across two questions, `null` before any call,
+  and `null` on a decline that never reaches a reader.
+- `cortex-eval`: **100 files / 2,475 tests**, of which 7 are new in `prompt-digest.test.ts` and 4 in
+  the arm's new block, plus one extended fixture in `report-write.test.ts`.
+- `tsc --noEmit` clean for the package, and `pnpm check` green end to end — after `prettier` was run on
+  two of the new files, which the format gate caught before the commit rather than after it.
+
+### 13.171.7 What this does not claim
+
+It does not answer the cache question. It makes the question answerable by the next run that carries
+the field, and **every artifact in the archive so far has no `promptDigest`** — so `§13.169`'s
+criterion 5 (`promptChars` equal outside the population) remains the only mechanism check available on
+old artifacts, and the fingerprint's first reading is a future one.
+
+It does not claim the passes are byte-identical, and it cannot: the field exists to find out. What it
+claims is that a run carrying it will be able to say which of the three explanations in `§13.168.8`
+holds, at a cost of 16 bytes per record.
+
+It does not build rows 1-3 of `§13.168.5` — the arm split and the role split. Those stay registered
+and unbuilt, and the reason for stopping here is the ordering the registration itself states: if two
+passes are not repetitions, an attribution built on that assumption measures a total that was never
+made of those parts.
+
+It does not claim 64 bits is a proof. Equality means equal in 64 bits, and with about a thousand
+records per run the chance of a collision among distinct prompts is on the order of 1e-14 — smaller
+than the chance the run itself is comparable to the last one.

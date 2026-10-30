@@ -219,6 +219,32 @@ export type QuestionRecord = {
    */
   readonly promptChars?: number | undefined;
   /**
+   * A 64-bit fingerprint of the prompt this question's reader was sent.
+   *
+   * ## Why a fingerprint is on the record at all
+   *
+   * `§13.147.3` registered a prediction that rested on a premise: passes 2-4 of a
+   * four-run dispatch send **byte-identical** requests, so a provider serving prefix
+   * caches should credit 60-80% of the prompt tokens. Two artifacts read 6.47%
+   * (`§13.148`) and 11.16% (`§13.168.1`), and neither could say why, because
+   * `promptChars` is a length: a prompt that changed within its budget and a prompt
+   * that did not have the same length.
+   *
+   * Three explanations fit and the artifact separates none of them: the prompts differ
+   * between passes, the provider's cache does not survive the interval between them, or
+   * the passes are not the shape the cache model assumes. Equal fingerprints across
+   * passes rule out the first and leave the provider; unequal ones make it an arm
+   * defect, which is the cheaper finding and the one nobody had measured.
+   *
+   * ## Why it is optional, and why `null` never reaches the record
+   *
+   * Optional because a system under test need not expose its prompt, and absent is the
+   * honest rendering: a digest of the empty string would be a claim about a request that
+   * was never sent. `buildQuestionRecords` omits it for `null` and `undefined` alike,
+   * which is the rule `promptChars` follows.
+   */
+  readonly promptDigest?: string | undefined;
+  /**
    * Whether the review mechanisms acted on **this** question.
    *
    * `ablation.recovery` and `ablation.bareRetry` are counts for the whole run, so an ask registered
@@ -358,6 +384,15 @@ export type QuestionRecordInput = {
    * belongs.
    */
   readonly promptChars?: number | null | undefined;
+  /**
+   * A 64-bit fingerprint of the prompt this question's reader was sent, or `null`.
+   *
+   * See {@link QuestionRecord.promptDigest} for what it is for. `null` means the system
+   * exposes no prompt to fingerprint, which is not the digest of an empty prompt; both
+   * `null` and `undefined` reach the record as **absent**, so a reader never sees a
+   * placeholder where a fingerprint belongs.
+   */
+  readonly promptDigest?: string | null | undefined;
   /**
    * Whether the review mechanisms acted on this question, when the producer measured it.
    *
@@ -646,6 +681,12 @@ export function buildQuestionRecords(
       ...(input.promptChars === undefined || input.promptChars === null
         ? {}
         : { promptChars: input.promptChars }),
+      // One rule for both absences, for the reason `promptChars` gives: a system that
+      // cannot report a prompt has not reported an empty one, and a digest of the empty
+      // string would be exactly the fabricated value this field exists to avoid.
+      ...(input.promptDigest === undefined || input.promptDigest === null
+        ? {}
+        : { promptDigest: input.promptDigest }),
       ...(input.goldOverlap === null ? {} : { goldOverlap: input.goldOverlap }),
       // Written together or not at all, and only when the producer traced: a `false` here would be a
       // statement about the mechanism rather than about the instrument.

@@ -404,6 +404,10 @@ describe('serializeReportOrReduce', () => {
         answer: 'a fact',
         rawOutput: `raw ${i}`,
         promptChars: 4242,
+        // §13.168.8's fingerprint, populated here so the derived-key loop above covers it:
+        // the fifth field this rebuild could drop is the one nobody would think to assert
+        // by name, which is exactly why the loop reads the record's own keys.
+        promptDigest: '0f1e2d3c4b5a6978',
         recoveryAttempted: true,
         recoveryAnswered: false,
         goldOverlap: { carried: 2, total: 3 },
