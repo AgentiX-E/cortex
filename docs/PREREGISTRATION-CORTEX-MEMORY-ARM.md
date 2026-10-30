@@ -15542,6 +15542,10 @@ What the number settles does not depend on that attribution, and this is the air
   a lower bound on the within-pass part of it already exists (the retry path), so whatever the across-pass share
   turns out to be, it is at most 6.47% and the repetition price cannot move by more than that. §13.145.2's cost
   column stands, and "buy more repetitions to beat the noise floor" is expensive in the way it was assumed to be.
+  **Erratum (`§13.168.8`):** 6.47% is the share of prompt *tokens* served from cache, not the share of the bill
+  the cache removes, because a cached token still bills at a tenth. Under the price model `§13.147.3` registered,
+  the money credit is `0.9 × 6.47% = 5.82%`, so the bound is **94.2%, not 93.5%** — the sentence above is
+  conservative rather than wrong, and the conclusion it supports does not move by the correction.
 - **Per-pass spend is the instrument that would close the residual 6.47%**, and it is worth building for the
   attribution rather than for the decision: the decision it could change is bounded by six percent of a bill.
 - **Prompt ordering is settled negative, by derivation rather than by a run.** The only prefix stable across
@@ -18418,6 +18422,13 @@ the next increment, not this one, and it is registered with its acceptance test:
 | the artifact splits prompt and completion tokens by arm | sum of the arm deltas equals the process total, asserted in the audit step |
 | the artifact splits them by role: reader vs grader | a run with `runs: 1` and no retries has `reader == 2 × questions` and grader calls equal to the distinct triples |
 | the split is taken at the call site, not by a label threaded through the `LLM` contract | `cortex-core`'s `LLM` type is unchanged; a `diff` of the public surface shows no new member |
+| the artifact carries a **hash of the prompt** on every record | two records for the same question and arm carry the same hash, and a one-character mutation in a fixture changes it — asserted, not observed |
+
+The last row is checked **first**, ahead of the arm split, because the other three presuppose that repetitions
+are repetitions. `§13.168.8` registers why: the cache-hit share came back at 11.16% where the registration
+predicted 60-80%, and if the per-question hashes differ across passes then the arm has been sending four
+different prompts and calling them repetitions — in which case attribution is measuring a total that was never
+made of the parts it assumes. One field decides whether rows 1-3 are worth building.
 
 ### 13.168.6 The price of this bill was measured on the way in, and it was paid deliberately
 
@@ -18463,6 +18474,62 @@ experiment run backwards.**
 This is what the artifact was missing and what `§13.168.5` registers: without an arm-level and role-level
 split, a better selection and a smaller budget produce the same total, and the two are the opposite of each
 other in every other respect.
+
+### 13.168.8 The one place a free saving could be, and the artifact cannot see it
+
+`§13.147.3` registered a prediction before the first `llmUsage` artifact existed. Its premise: `now` is fixed
+at construction, retrieval is deterministic over a cached embedding store, and the reader runs at temperature
+0 — so passes 2-4 of a four-run dispatch send **byte-identical requests**, and if the provider serves prefixes
+the hit share should land in **60-80%**. The threshold was registered with its consequence: the marginal
+repetition costs about a tenth of the prompt, and "eight repetitions cost double" would be wrong.
+
+`ablation.ts` confirms the premise's shape — repetitions 1-3 call `evaluateWithScorerDetailed(dataset, ...)`
+with the same dataset and the same systems, so nothing in the loop varies the request.
+
+Two artifacts have now read the share, and both falsify it: **6.47%** (`§13.148`) and **11.16%** here.
+`tools/readout-arm-run.py --spend` says so in its own line — 5-20% is *"inside none of the three registered
+bands"*, which is the tool being honest about a band table that did not anticipate the reading.
+
+The arithmetic of what is at stake, with the registration's own price model (cached prompt tokens bill at a
+tenth, `§13.147.3`), so the two rows are computed the same way — `1 − 0.9 × share`:
+
+| share | billed prompt, as a fraction of gross |
+| --- | --- |
+| 75% (registered) | `1 − 0.9 × 0.75` = 25% at full price + 7.5% for the rest at a tenth = **32.5%** |
+| 11.16% (measured) | `1 − 0.9 × 0.1116` = 88.84% full price + 1.12% cached = **89.96%, i.e. ~90.0%** |
+
+An earlier draft of this table wrote **88.8%** for the second row, which is `1 − share` — the cached tokens
+counted as free instead of at a tenth, so the two rows used different price models and the gap looked larger
+than it is. The correct gap is **57.5 points, not 60**: still "up to about 58% of the prompt bill — and
+therefore of the whole bill — potentially recoverable at zero accuracy cost", because the tokens are the same
+tokens and only the billing path differs. This is the one saving that would not trade anything, and it is the
+one the artifact cannot see. The error is recorded rather than quietly fixed because it is the same error the
+section is about: a number that looks like a measurement and is one multiplication away from being one.
+
+Three explanations fit and the artifact distinguishes none of them:
+
+1. **the prompts are not byte-identical across passes** — something in the build varies, and the "identical
+   request" premise is false;
+2. **the provider's cache does not survive the interval** between passes, which at this run's length is
+   ~25 minutes;
+3. **the four passes are not the shape assumed** — the sides interleave differently than the cache model does.
+
+The instrument that separates them is cheap and does not need the provider's cooperation: **a hash of the
+prompt on every record.** One field. If pass 2's hash equals pass 1's for the same question and the share is
+still 11%, the provider is the explanation; if the hashes differ, the arm has been sending four different
+prompts and calling them repetitions. That goes into `§13.168.5`'s registration as a fourth row, ahead of the
+arm-level split, because it is the row that decides whether there is anything to save at all.
+
+### 13.168.9 The qualifier this section owes 13.168.7
+
+`§13.168.7` closed by saying there is no free saving, and that is true of the prompt's **content**. It is not
+true of the **billing path**, and the difference is this section's whole content: the same 31.4M prompt tokens
+were billed at 90.0% of full price where the registration predicted 32.5%, and the gap is invisible from every
+field the artifact carries.
+
+So the honest summary of the cost question is: **the content has no fat, and the bill is still 2.8× what the
+registered price model says it could be** (90.0% against 32.5%). Both statements come from the same artifact,
+and only one of them was measurable before this section.
 
 ## 13.169 The five criteria became a tool, before there was a run to apply them to
 
