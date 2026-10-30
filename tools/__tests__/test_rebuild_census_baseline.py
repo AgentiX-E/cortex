@@ -112,3 +112,44 @@ def test_the_ledger_is_built_through_the_merge() -> None:
     assert not re.search(r'"rationale":\s*RATIONALE\[', body), (
         "main() still reads RATIONALE directly, which is the defect this file is written against"
     )
+
+
+GENERATED_NOTE = "Debt ledger for the census gate. Records the exports with no non-test caller."
+
+
+def test_the_note_survives_a_rebuild() -> None:
+    """The same defect as the rationale, one field over, measured rather than predicted.
+
+    On 2026-10-30 the ledger's `note` carried 1,171 characters recording two instrument
+    corrections -- `stripStringContent` and the line grid -- and the paragraph named the six
+    entries those corrections restored. `note` was written from a literal on every rebuild, so a
+    run would have deleted the only account of why the population moved. Nothing would have
+    warned: `--check` passes against whatever the tool writes.
+    """
+    module = load()
+    recorded = GENERATED_NOTE + " A rebuild deleted this paragraph once; the six entries it names are gone."
+    assert module.merge_note(GENERATED_NOTE, recorded) == recorded
+
+
+def test_an_absent_note_is_written_from_the_generator() -> None:
+    """First run: there is no record to protect."""
+    assert load().merge_note(GENERATED_NOTE, None) == GENERATED_NOTE
+
+
+def test_a_note_that_does_not_start_with_the_generators_text_is_refused() -> None:
+    """The generator's own text changed, so the two accounts cannot both be current."""
+    module = load()
+    with pytest.raises(module.RationaleConflict) as raised:
+        module.merge_note(GENERATED_NOTE, "An older accounting of this ledger.")
+    assert "note" in str(raised.value)
+
+
+def test_main_builds_the_note_through_the_merge() -> None:
+    """Wiring, because the failure mode is `main` writing the literal again and passing every test above."""
+    import re
+
+    source = SCRIPT.read_text(encoding="utf-8")
+    body = source.split("def main()", 1)[1]
+    assert re.search(r"merged_note\s*=\s*merge_note\(", body), "main() must merge the note"
+    assert re.search(r'"note":\s*merged_note', body), "the document must take the merged note"
+    assert not re.search(r'"note":\s*\(', body), "main() still carries the literal inline"

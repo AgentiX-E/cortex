@@ -234,7 +234,43 @@ def key(orphan: str) -> str:
 
 
 class RationaleConflict(Exception):
-    """The recorded rationale and the generator's disagree in a way no tool should resolve alone."""
+    """The recorded prose and the generator's disagree in a way no tool should resolve alone."""
+
+
+def merge_note(generated: str, existing: str | None) -> str:
+    """The ledger's `note`, under the same three-case rule as a group's rationale.
+
+    ## Why the note needs the rule too
+
+    The defect §13.156 fixed was a rebuild deleting a hand-appended paragraph from a group's
+    `rationale`. The `note` field has the identical shape and the identical failure: it is
+    written from a literal in this file on every rebuild, it carries the ledger's account of
+    what the census measures and which corrections have moved it, and each round appends a
+    paragraph to it.
+
+    Measured on 2026-10-30, immediately after the string-body and line-grid corrections:
+    rebuilding the ledger with this tool would have discarded 1,171 characters recording that
+    `stripStringContent` exists and why, and that `stripComments` was renumbering every file
+    it read. The six entries those corrections restored are listed only in that paragraph.
+
+    So the rule is applied to the field rather than to the paragraph: a rebuild keeps recorded
+    prose that extends the generator's text, and refuses when the two disagree. Appending the
+    paragraph to the literal here instead would have worked once and taught nothing.
+    """
+    return _merge_prose('note', generated, existing)
+
+
+def _merge_prose(field: str, generated: str, existing: str | None) -> str:
+    """The shared three-case rule, with the field named so a refusal says which one to read."""
+    if existing is None or existing == generated:
+        return generated
+    if existing.startswith(generated.rstrip()):
+        return existing
+    raise RationaleConflict(
+        f"{field}: the recorded prose does not start with the generator's text "
+        f"({len(existing)} characters recorded, {len(generated)} generated). Merge them by hand and "
+        f"re-run: this tool will not choose between two accounts of one {field}."
+    )
 
 
 def merge_rationale(category: str, generated: str, existing: str | None) -> str:
@@ -271,6 +307,39 @@ def merge_rationale(category: str, generated: str, existing: str | None) -> str:
     )
 
 
+GENERATED_NOTE = (
+    "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had "
+    "no non-test caller when the gate was introduced. This is NOT an allowlist of "
+    "acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any "
+    "orphan ABSENT from this file, so its only job is to stop new ones appearing silently. "
+    "Removing an entry requires deleting the export or giving it a caller; adding one "
+    "requires a reason recorded here. "
+    "`knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number "
+    "changes when any unrelated line above it moves; this is the list the checker consults. "
+    "`locations` maps each key to every file:line that declares it. "
+    "`groups` carries the rationale, and its `declarationSites` are counted per site, so "
+    "their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one "
+    "name, several declaration lines, one identity. "
+    "`totals.referencedLocally` and `totals.unreferenced` split the orphan count by "
+    "whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. "
+    "`orphanClass` maps each key to its class: `referenced-locally` means the symbol has a "
+    "live call site and only the `export` keyword is unnecessary, `unreferenced` means "
+    "nothing mentions it anywhere and it is a dead-code candidate. "
+    "The ledger was rebuilt once to correct the caller matcher, and the size of that "
+    "correction is the reason it is recorded here. The matcher used to test a symbol's "
+    "name against each file's raw text, so a name written in a comment counted as a call: "
+    "`referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered "
+    "the list the moment comments stopped counting. Every one of the 21 had ONLY comment "
+    "matches outside its declaring file -- verified by diffing raw-text matches against "
+    "comment-stripped matches for each. The worst part of the old behaviour was its "
+    "direction: documenting a symbol silently retired its finding, so the report looked "
+    "cleanest on the code someone had taken most trouble to explain. `stripComments` in "
+    "`export-census.ts` now blanks comments before matching while copying string and "
+    "template literals through verbatim, because template literals hold real calls "
+    "(`hashText` is called six times that way)."
+)
+
+
 LEDGER_PATH = ROOT / "tools" / "export-census-baseline.json"
 
 
@@ -288,6 +357,16 @@ def _recorded_rationales() -> dict[str, str]:
     except json.JSONDecodeError as error:
         raise SystemExit(f"{LEDGER_PATH} is not valid JSON ({error}); refusing to overwrite it") from error
     return {group["category"]: group["rationale"] for group in document.get("groups", [])}
+
+
+def _recorded_note() -> str | None:
+    """The ledger's `note` as committed, or None when there is no ledger yet."""
+    if not LEDGER_PATH.exists():
+        return None
+    try:
+        return json.loads(LEDGER_PATH.read_text(encoding="utf-8")).get("note")
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"{LEDGER_PATH} is not valid JSON ({error}); refusing to overwrite it") from error
 
 
 def main() -> int:
@@ -328,6 +407,13 @@ def main() -> int:
             + "\n  ".join(conflicts)
         )
 
+    try:
+        merged_note = merge_note(GENERATED_NOTE, _recorded_note())
+    except RationaleConflict as conflict:
+        raise SystemExit(
+            "NOTE CONFLICT -- nothing written, the ledger still holds the previous note:\n  " + str(conflict)
+        ) from conflict
+
     ledger = [
         {
             "category": name,
@@ -340,37 +426,7 @@ def main() -> int:
     ]
 
     document = {
-        "note": (
-            "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had "
-            "no non-test caller when the gate was introduced. This is NOT an allowlist of "
-            "acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any "
-            "orphan ABSENT from this file, so its only job is to stop new ones appearing silently. "
-            "Removing an entry requires deleting the export or giving it a caller; adding one "
-            "requires a reason recorded here. "
-            "`knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number "
-            "changes when any unrelated line above it moves; this is the list the checker consults. "
-            "`locations` maps each key to every file:line that declares it. "
-            "`groups` carries the rationale, and its `declarationSites` are counted per site, so "
-            "their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one "
-            "name, several declaration lines, one identity. "
-            "`totals.referencedLocally` and `totals.unreferenced` split the orphan count by "
-            "whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. "
-            "`orphanClass` maps each key to its class: `referenced-locally` means the symbol has a "
-            "live call site and only the `export` keyword is unnecessary, `unreferenced` means "
-            "nothing mentions it anywhere and it is a dead-code candidate. "
-            "The ledger was rebuilt once to correct the caller matcher, and the size of that "
-            "correction is the reason it is recorded here. The matcher used to test a symbol's "
-            "name against each file's raw text, so a name written in a comment counted as a call: "
-            "`referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered "
-            "the list the moment comments stopped counting. Every one of the 21 had ONLY comment "
-            "matches outside its declaring file -- verified by diffing raw-text matches against "
-            "comment-stripped matches for each. The worst part of the old behaviour was its "
-            "direction: documenting a symbol silently retired its finding, so the report looked "
-            "cleanest on the code someone had taken most trouble to explain. `stripComments` in "
-            "`export-census.ts` now blanks comments before matching while copying string and "
-            "template literals through verbatim, because template literals hold real calls "
-            "(`hashText` is called six times that way)."
-        ),
+        "note": merged_note,
         "totals": {
             "exports": report["totalSymbols"],
             "withCaller": report["totalSymbols"] - report["orphanCount"],

@@ -314,21 +314,24 @@ function declarationSpanEnd(lines: readonly string[], declarationLine: number): 
  * itself and self-recursion does not count as a reference from outside. Every
  * other line, before or after the declaration, does count.
  *
- * A mention in a comment does NOT count; a mention in a string or template
- * literal does. Comments are blanked by `stripComments` before this runs, so
- * documenting a symbol no longer retires its finding — the previous version of
- * this function counted comments, which meant prose could silently change what
- * the census measured. An earlier draft of this file named four orphans in its
- * own documentation and made all four read as called, and the response at the
- * time was a rule that prose must never name an orphan. That rule is withdrawn:
- * it was a workaround for a matcher bug, and its cost was that the tool hid dead
- * code exactly when somebody took the trouble to describe it.
+ * A mention in a comment does NOT count, and neither does a mention in a string
+ * body; a mention in a `${...}` substitution does, because that is code.
+ * Comments are blanked by `stripComments` and string bodies by
+ * `stripStringContent` before this runs, so documenting a symbol no longer
+ * retires its finding — the previous version of this function counted comments,
+ * which meant prose could silently change what the census measured. An earlier
+ * draft of this file named four orphans in its own documentation and made all
+ * four read as called, and the response at the time was a rule that prose must
+ * never name an orphan. That rule is withdrawn: it was a workaround for a
+ * matcher bug, and its cost was that the tool hid dead code exactly when
+ * somebody took the trouble to describe it.
  *
- * Strings and template literals are still counted, and that is deliberate
- * rather than tolerated. The text-hashing helper in cortex-eval is called six
- * times inside template literals, so treating those as unreferences would
- * reclassify a live, heavily-used symbol as dead — and a census that reports
- * live code as dead is one its readers stop believing.
+ * String bodies were counted here for one round longer than comments were, on
+ * the argument that the text-hashing helper in cortex-eval is called six times
+ * inside template literals. That argument was about substitutions, not bodies —
+ * `` `t-${hashText(turn)}` `` — and `stripStringContent` keeps substitutions, so
+ * the feared regression did not exist. The cost of counting bodies was real: see
+ * that function's note on `Comparability`.
  *
  * @param symbol the symbol to classify; `symbol.line` is 1-based.
  * @param declaringFileText the full text of the file that declares it.
@@ -357,20 +360,20 @@ export function isReferencedLocally(symbol: ExportedSymbol, declaringFileText: s
  * `\b` would not treat as a word character.
  *
  * This deliberately does not parse imports, and it does not distinguish a call
- * from any other mention. A symbol referenced only inside a string or template
- * literal counts as called; a symbol named only in a comment does not, because
- * comments are blanked first. The remaining over-count is in the safe direction
- * *for a gate*: the tool's job is to find definitely-unused symbols, and a false
- * positive (flagging live code) trains its readers to ignore it, whereas a false
- * negative simply leaves one more symbol in the reported list where a reviewer
- * can see it.
+ * from any other mention *inside code*. A symbol named only in a comment has no
+ * caller, and so does a symbol named only inside a string body: comments are
+ * blanked by `stripComments` and string bodies by `stripStringContent`, while
+ * `${...}` substitutions inside template literals survive as the code they are.
+ * See `stripStringContent` for the two measurements that forced the second
+ * blanking, including the sentence that retired `Comparability` from the ledger.
  *
- * The comment case was the exception, and it was not safe. It produced false
- * **negatives** — the direction that hides a finding and reports a clean run —
- * and it did so in response to the one action that ought to be encouraged:
- * writing down what a symbol is for. Matching prose made a symbol disappear from
- * the orphan report. `stripComments` closes that, and the design note on it
- * records the measurement.
+ * Both blankings remove false **negatives** — the direction that hides a finding
+ * and reports a clean run. What remains is the opposite risk, a computed-property
+ * access that reads as dead; it is documented on `stripStringContent` and no such
+ * access exists here today. The earlier draft of this comment argued the reverse,
+ * that counting strings was "the safe direction", and the argument was wrong for
+ * the same reason the comment-counting rule was wrong: a gate that cannot see a
+ * dead symbol is not conservative, it is blind.
  *
  * A zero here is then split in two by `isReferencedLocally`, because "no caller"
  * conflates two very different findings — a symbol that is used but needlessly
@@ -397,7 +400,12 @@ export function countCallers(
     // counted as called. See `stripComments` for the measurement that motivated
     // this; the short version is that describing an export in a comment used to
     // remove it from the orphan report.
-    .map((file) => ({ path: file.path, text: stripComments(file.text) }));
+    //
+    // String bodies are blanked for the same reason and after the comments, in
+    // that order: a comment can contain a quote and a string can contain a
+    // comment marker, so the comment scanner must decide what is a comment while
+    // the strings are still intact. See `stripStringContent`.
+    .map((file) => ({ path: file.path, text: stripStringContent(stripComments(file.text)) }));
   return symbols.map((symbol) => {
     const pattern = identifierPattern(symbol.name);
     const callers = countable
@@ -418,12 +426,15 @@ export function countCallers(
       symbol,
       callerCount: callers.length,
       callers,
-      // The declaring file is stripped for the same reason: `isReferencedLocally`
+      // The declaring file is normalised for the same reason: `isReferencedLocally`
       // asks whether the symbol is used *as code* inside its own file, and a
-      // doc comment restating the name is not a use. Without this, extracting a
-      // guarded body into a helper and documenting it would classify the helper
-      // as locally referenced even if nothing called it.
-      referencedLocally: isReferencedLocally(symbol, stripComments(declaringFile.text)),
+      // doc comment or a thrown message restating the name is not a use. Without
+      // this, extracting a guarded body into a helper and documenting it would
+      // classify the helper as locally referenced even if nothing called it.
+      referencedLocally: isReferencedLocally(
+        symbol,
+        stripStringContent(stripComments(declaringFile.text)),
+      ),
     };
   });
 }
@@ -475,13 +486,11 @@ export function identifierPattern(name: string): RegExp {
  * body (`// don't`) must not open a string. Handling strings *inside* comment
  * skipping is what makes the second case safe.
  *
- * A consequence worth stating: a symbol named inside a string literal *is*
- * counted as referenced. That is deliberate. Template literals are how this
- * repository's tooling builds dynamic imports and prompt text, so refusing to
- * look inside them would drop real references. The trade-off is that a name in a
- * prompt string counts as a caller, which is the same conservative direction the
- * rest of this census takes — an over-count hides dead code one symbol at a
- * time, whereas an under-count floods the gate and gets it switched off.
+ * A consequence worth stating: this function never makes a string body stop
+ * counting, because that is not its job — offsets must survive and the scanner
+ * must not confuse a quote for a comment or the reverse. `stripStringContent`
+ * runs after it and blanks the bodies, so a name in a prompt string is a mention
+ * rather than a caller. The two are layered, not redundant.
  *
  * @param text the file's full text.
  * @returns text of the same length with comments blanked out.
@@ -549,13 +558,27 @@ export function stripComments(text: string): string {
       out.push('  ');
       index += 2;
       while (index < length && !(text[index] === '*' && text[index + 1] === '/')) {
-        out.push(' ');
+        // Newlines inside a block comment are preserved. Every symbol carries a
+        // 1-based line that is read back out of this function's output, so
+        // blanking them renumbered the file: measured on this very file, 909
+        // lines were reported as 511, and `stripStringContent` — declared at 663,
+        // called at 186 in the shortened grid — was classified as referenced
+        // nowhere, because line 663 did not exist and the out-of-range guard
+        // answered "no local reference". A line grid that differs from the file's
+        // makes every line-keyed judgement a guess, including the declaration
+        // span that decides which lines are allowed to count.
+        out.push(text[index] === '\n' ? '\n' : ' ');
         index += 1;
       }
       // A block comment is blanked including its delimiters, so the slash that
       // would otherwise start a fresh `//` inside the replacement cannot appear.
-      out.push('  ');
-      index += 2;
+      // A file that ends inside a comment has no closing delimiter, and emitting
+      // two characters for one that is not there would lengthen the output and
+      // shift every offset after it.
+      if (text[index] === '*' && text[index + 1] === '/') {
+        out.push('  ');
+        index += 2;
+      }
       continue;
     }
     if (ch === '/' && regexCanStart(text, index)) {
@@ -604,6 +627,164 @@ export function stripComments(text: string): string {
     out.push(ch);
     index += 1;
   }
+  return out.join('');
+}
+
+/**
+ * Replaces the body of every string literal with spaces, keeping `${...}` code.
+ *
+ * `stripComments` leaves string literals intact on purpose, and for its own job
+ * that is right: keeping them is what stops `'a // b'` from opening a comment and
+ * an apostrophe in a comment from opening a string. But a string body is not a
+ * reference, and counting it as one produces false **negatives** — the direction
+ * that hides a finding behind a clean run. Two measurements, both from this
+ * repository:
+ *
+ * - `tools/competitor-ledger.mjs` prints the sentence "Comparability is a
+ *   five-tuple…". `cortex-eval` exports a type called `Comparability` that no
+ *   source file imports. The census read that printed sentence as a caller,
+ *   retired the type from the orphan ledger, and moved the population from 396 to
+ *   395 without a single line of code changing. The ledger shrank because
+ *   somebody wrote a sentence, which is the failure the standing audit against a
+ *   silently shrinking denominator exists to catch.
+ * - Six names lose their last apparent caller when strings stop counting:
+ *   `Comparability` itself, plus `covers`, `unrun`, `Arm`, `Ablation` and
+ *   `TransformersEmbedding` — English words and short type names that appear in
+ *   prose the code prints. Not one of them is referenced by any expression.
+ *
+ * ## Why substitutions survive
+ *
+ * A template literal is two different things at once. `` `t-${hashText(turn)}` ``
+ * is a string whose *body* is `t-` and whose *substitution* is a call to
+ * `hashText`. Blanking the whole literal would report that heavily-used helper as
+ * dead, and a census that reports live code as dead is one its readers stop
+ * believing. So the scanner tracks template substitution braces and copies the
+ * code inside them through verbatim, recursing for nested literals and nested
+ * templates. `${` is a reference site; the characters before it are not.
+ *
+ * ## What it deliberately does not do
+ *
+ * A symbol reached only through a computed property (`table['parseTags']`) is
+ * reported as having no caller. That is a false positive and it is accepted
+ * knowingly: a name built as data cannot be found by reading, and pretending
+ * otherwise would mean counting every string again — which is the defect above.
+ * No such access exists in this repository today; if one appears, the ledger is
+ * where it is recorded.
+ *
+ * @param text the file's text, with comments either present or already blanked.
+ * @returns text of the same length with string bodies blanked out.
+ */
+export function stripStringContent(text: string): string {
+  // `split('')` rather than `[...text]`: the spread iterates code points, so an
+  // astral character would occupy one slot where the file has two UTF-16 units and
+  // every index after it would address the wrong character. The rest of the census
+  // counts offsets in UTF-16 units, and this function's contract is to keep them.
+  const out = text.split('');
+  const length = text.length;
+  const blankAt = (at: number): void => {
+    // Newlines are preserved so that a caller reading line-by-line still sees the
+    // original line structure; blanking them would merge two lines into one and
+    // let a pattern match across the join.
+    if (at < length && out[at] !== '\n') out[at] = ' ';
+  };
+  let index = 0;
+
+  /** Consumes a quoted literal, leaving its delimiters and blanking its body. */
+  function skipQuoted(quote: string): void {
+    index += 1;
+    while (index < length) {
+      const ch = text[index] as string;
+      if (ch === '\\') {
+        blankAt(index);
+        blankAt(index + 1);
+        index += 2;
+        continue;
+      }
+      if (ch === quote) {
+        index += 1;
+        return;
+      }
+      blankAt(index);
+      index += 1;
+    }
+  }
+
+  /**
+   * Consumes code, blanking any literal it meets. With `stopAtBrace`, returns at
+   * the `}` that closes the substitution this frame was entered for.
+   */
+  function skipCode(stopAtBrace: boolean): void {
+    let depth = 0;
+    while (index < length) {
+      const ch = text[index] as string;
+      if (ch === "'" || ch === '"') {
+        skipQuoted(ch);
+        continue;
+      }
+      if (ch === '`') {
+        skipTemplate();
+        continue;
+      }
+      if (ch === '/' && regexCanStart(text, index)) {
+        // A regex is not a string: `/'/` must not open a literal, or every
+        // character after it reads as string body and the file's later code
+        // disappears from the census.
+        index += 1;
+        let inClass = false;
+        while (index < length) {
+          const inner = text[index] as string;
+          if (inner === '\\') {
+            index += 2;
+            continue;
+          }
+          if (inner === '\n') break;
+          index += 1;
+          if (inner === '[') inClass = true;
+          else if (inner === ']') inClass = false;
+          else if (inner === '/' && !inClass) break;
+        }
+        continue;
+      }
+      if (stopAtBrace) {
+        if (ch === '{') depth += 1;
+        else if (ch === '}') {
+          if (depth === 0) {
+            index += 1;
+            return;
+          }
+          depth -= 1;
+        }
+      }
+      index += 1;
+    }
+  }
+
+  /** Consumes a template literal: blank chunks, keep `${...}` substitutions. */
+  function skipTemplate(): void {
+    index += 1;
+    while (index < length) {
+      const ch = text[index] as string;
+      if (ch === '\\') {
+        blankAt(index);
+        blankAt(index + 1);
+        index += 2;
+        continue;
+      }
+      if (ch === '`') {
+        index += 1;
+        return;
+      }
+      if (ch === '$' && text[index + 1] === '{') {
+        index += 2;
+        skipCode(true);
+        continue;
+      }
+      blankAt(index);
+      index += 1;
+    }
+  }
+
+  skipCode(false);
   return out.join('');
 }
 

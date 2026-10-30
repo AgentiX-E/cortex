@@ -34,6 +34,7 @@ import {
   countCallers,
   identifierPattern,
   stripComments,
+  stripStringContent,
   censusPackage,
   buildCensusReport,
   listOrphans,
@@ -337,6 +338,72 @@ describe('counting callers', () => {
       ['unused', 0],
     ]);
   });
+
+  it('does NOT count a name printed by a tool, which is how Comparability left the ledger', () => {
+    // THE REGRESSION TEST. `tools/competitor-ledger.mjs` prints the sentence
+    // "Comparability is a five-tuple…" as a line of user-facing output. The tool
+    // imports nothing from cortex-eval. Counting that sentence as a caller moved
+    // the orphan population from 396 to 395 without a code change, which is a
+    // ledger shrinking because somebody wrote a sentence — the exact failure the
+    // standing audit against a silently shrinking denominator exists to catch.
+    const entry = entryFor(
+      {
+        name: 'Comparability',
+        file: 'packages/cortex-eval/src/competitor.ts',
+        line: 1,
+        kind: 'type',
+      },
+      [
+        file(
+          'packages/cortex-eval/src/competitor.ts',
+          'export type Comparability = { readonly same: boolean };',
+        ),
+        file(
+          'tools/competitor-ledger.mjs',
+          "lines.push('Comparability is a five-tuple: dataset | variant | answer model.');",
+        ),
+      ],
+    );
+    expect(entry.callerCount).toBe(0);
+    expect(entry.callers).toEqual([]);
+  });
+
+  it('still counts a call made inside a template substitution', () => {
+    // The counterweight, and the reason the fix blanks bodies rather than
+    // literals wholesale. `hashText` is called six times in this shape; treating
+    // template literals as opaque text would report a live helper as dead.
+    const entry = entryFor(
+      { name: 'hashText', file: 'packages/cortex-eval/src/hash.ts', line: 1, kind: 'function' },
+      [
+        file(
+          'packages/cortex-eval/src/hash.ts',
+          'export function hashText(t: string): string { return t; }',
+        ),
+        file('packages/cortex-eval/src/use.ts', 'const key = `t-${hashText(turn)}`;'),
+      ],
+    );
+    expect(entry.callerCount).toBe(1);
+  });
+
+  it('does NOT count a name that appears only in a prompt string', () => {
+    // The prompt text is the largest body of prose in this repository, and it
+    // names concepts constantly. A concept type must not be kept alive by being
+    // explained to a model.
+    const entry = entryFor(
+      { name: 'Ablation', file: 'packages/cortex-eval/src/report.ts', line: 1, kind: 'type' },
+      [
+        file(
+          'packages/cortex-eval/src/report.ts',
+          'export type Ablation = { readonly arm: string };',
+        ),
+        file(
+          'packages/cortex-eval/src/prompt.ts',
+          "export const SYSTEM = 'Report every Ablation you ran, one line each.';",
+        ),
+      ],
+    );
+    expect(entry.callerCount).toBe(0);
+  });
 });
 
 describe('whole-identifier matching', () => {
@@ -466,6 +533,49 @@ describe('stripping comments before matching a name', () => {
     expect(stripComments(source)).toBe(source);
   });
 
+  it('keeps the line grid of a file with a multi-line block comment', () => {
+    // THE REGRESSION TEST for the renumbering defect. Every symbol carries a
+    // 1-based line, and `isReferencedLocally` reads that line back out of this
+    // function's output. Blanking the newlines inside a block comment therefore
+    // renumbered every file that has one: measured on `export-census.ts` itself,
+    // 909 lines were reported as 511, and a symbol declared at line 663 could not
+    // be found — the out-of-range guard answered "no local reference", so live,
+    // locally-called code was reported as referenced nowhere. 91 of 396 entries
+    // were classified differently once the grid was restored, 62 of them from
+    // "nothing mentions it" to "the file calls it".
+    const source = ['/* one', '   two', '   three */', 'const after = 1;'].join('\n');
+    const stripped = stripComments(source);
+    expect(stripped.split('\n')).toHaveLength(source.split('\n').length);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped.split('\n')[3]).toBe('const after = 1;');
+  });
+
+  it('classifies a declaration that follows a multi-line comment, by its own line', () => {
+    // The same defect end to end. The comment is long enough that the blanked
+    // line grid used to end before the declaration's line number.
+    const source = [
+      '/* one',
+      '   two',
+      '   three */',
+      'export function fuseRerank() {}',
+      'const x = fuseRerank();',
+    ].join('\n');
+    const entry = entryFor(
+      { name: 'fuseRerank', file: 'packages/a/src/x.ts', line: 4, kind: 'function' },
+      [file('packages/a/src/x.ts', source)],
+    );
+    expect(entry.referencedLocally).toBe(true);
+  });
+
+  it('does not lengthen the output when a block comment never closes', () => {
+    // The closing delimiter was pushed unconditionally, so a file truncated
+    // inside a comment grew by two characters and every offset after the cut
+    // shifted — the one property this function exists to keep.
+    const truncated = 'const a = 1;\n/* unterminated';
+    const stripped = stripComments(truncated);
+    expect(stripped).toHaveLength(truncated.length);
+  });
+
   it('survives a string whose escape runs off the end of the file', () => {
     // The `?? ''` on the escape's second character. It is reachable: a file
     // truncated mid-string ends with a lone backslash, and reading one past the
@@ -564,6 +674,97 @@ describe('stripping comments before matching a name', () => {
       ),
     ]);
     expect(real.referencedLocally).toBe(true);
+  });
+});
+
+describe('blanking string bodies before matching a name', () => {
+  it('blanks a quoted body, keeps both delimiters and the length', () => {
+    // Length and delimiters are the contract: the result is read line by line by
+    // `isReferencedLocally`, and a caller that reports a match must still be able
+    // to locate it in the original text at the same offset.
+    const source = "const a = 'needle';\n";
+    const stripped = stripStringContent(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).not.toContain('needle');
+    expect(stripped.match(/'/g)).toHaveLength(2);
+  });
+
+  it('blanks a double-quoted body as well', () => {
+    expect(stripStringContent('const a = "needle";')).not.toContain('needle');
+  });
+
+  it('keeps a template substitution, which is a call and not text', () => {
+    // The whole reason bodies and substitutions are handled separately. `hashText`
+    // is called six times in exactly this shape in cortex-eval; blanking it would
+    // report a live, heavily-used helper as dead code.
+    const stripped = stripStringContent('const k = `t-${hashText(turn)}`;');
+    expect(stripped).toContain('hashText');
+    expect(stripped).not.toContain('t-');
+  });
+
+  it('keeps a nested template inside a substitution', () => {
+    const stripped = stripStringContent('const k = `${wrap(`inner ${deep(x)}`)}`;');
+    expect(stripped).toContain('deep');
+    expect(stripped).toContain('wrap');
+    expect(stripped).not.toContain('inner');
+  });
+
+  it('keeps code after a substitution closes, including a second one', () => {
+    // The brace counter. Without it the first `}` ends the literal and the rest of
+    // the file reads as string body — which hides every later reference.
+    const stripped = stripStringContent('const k = `${a} text ${b}`;\nconst after = tail();');
+    expect(stripped).toContain('a');
+    expect(stripped).toContain('b');
+    expect(stripped).toContain('tail');
+    expect(stripped).not.toContain('text');
+  });
+
+  it('does not let a quote inside a regex open a string', () => {
+    // `/[A-Za-z']/` is a real regex in this repository. A scanner that read the
+    // apostrophe as an opening quote would blank the remainder of the file and
+    // report every later symbol as uncalled.
+    const source = "const re = /[A-Za-z']/;\nconst later = needle();";
+    const stripped = stripStringContent(source);
+    expect(stripped).toContain('needle');
+    expect(stripped).toContain('[A-Za-z');
+  });
+
+  it('does not close a literal on an escaped delimiter', () => {
+    const source = "const a = 'it\\'s needle';\nconst later = after();";
+    const stripped = stripStringContent(source);
+    expect(stripped).not.toContain('needle');
+    expect(stripped).toContain('after');
+  });
+
+  it('preserves newlines, so line-oriented readers keep their coordinates', () => {
+    const source = "const a = 'one\ntwo';\nconst b = 2;";
+    const stripped = stripStringContent(source);
+    expect(stripped.split('\n')).toHaveLength(source.split('\n').length);
+    expect(stripped.split('\n')[2]).toBe('const b = 2;');
+  });
+
+  it('survives an escape that runs off the end of the file', () => {
+    const truncated = "const s = 'unterminated\\";
+    const stripped = stripStringContent(truncated);
+    expect(stripped).toHaveLength(truncated.length);
+    expect(stripped).not.toContain('undefined');
+  });
+
+  it('counts in UTF-16 units, so an astral character does not shift the rest', () => {
+    // `[...text]` iterates code points: an emoji outside the BMP is one slot there
+    // and two UTF-16 units in the file, so every index after it addresses the wrong
+    // character and the blanking lands one place off, eating the closing quote and
+    // reaching into the code that follows.
+    const source = 'const g = "x🎯 needle";\nconst after = tail();';
+    const stripped = stripStringContent(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped.endsWith(';\nconst after = tail();')).toBe(true);
+    expect(stripped).not.toContain('needle');
+  });
+
+  it('is a fixed point on code with no literals', () => {
+    const source = 'export function f(a: number): number {\n  return a + 1;\n}';
+    expect(stripStringContent(source)).toBe(source);
   });
 });
 

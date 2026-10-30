@@ -17888,3 +17888,162 @@ So a green run of that guard is not a statement about the workflows, and until t
 existed nothing said so. The check is not wrong; its name and its output line are both shorter
 than its scope. Registered as P1-workflow-guard: extend the guard to the `run:` blocks, and make
 its output line name what it scanned rather than only how many fragments it passed.
+
+### 13.165 The gate went red on one entry, and that entry was a sentence
+
+The round ended with `pnpm check` red on a single assertion: the census gate wanted
+**396** orphans and the tool reported **395**. One entry had left the population since the
+ledger was committed, and the obvious repair was to delete one line from the ledger, since
+the entry was still an entry and the count is the count.
+
+Deleting the line would have been the wrong fix, and the reason is the entry. It was:
+
+```
+cortex-eval: Comparability
+```
+
+`Comparability` is a type in `competitor.ts` and nothing imports it. It is not called by
+anything in this repository. What retired it was `tools/competitor-ledger.mjs` -- written this
+same round -- whose `render()` begins:
+
+```js
+lines.push('Comparability is a five-tuple: dataset | variant | answer model | judge | harness.');
+```
+
+A printed sentence. The census matched each symbol's name against the text of every non-test,
+non-barrel file, and it had already been taught that comments are not code
+(`stripComments`, §13.161-era). It had not been taught the same about **string bodies**, and
+its own doc defended that as the safe direction: an over-count "hides dead code one symbol at
+a time, whereas an under-count floods the gate and gets it switched off". That argument is
+wrong in the same way the comment-counting rule was wrong, and for the same reason: a gate
+that cannot see a dead symbol is not conservative, it is blind. The ledger shrinking because
+somebody wrote a sentence is precisely the failure the standing audit against a silently
+shrinking denominator exists to catch, and here the sentence was mine.
+
+#### 13.165.1 What "keeps template literals" actually protected
+
+`stripComments` copies string and template literals through verbatim, and the stated
+justification was `hashText`: "called six times inside template literals", so blanking them
+"would reclassify a live, heavily-used symbol as dead". That is true of
+`` `t-${hashText(turn)}` `` and false of the literal it sits in. A template is two things:
+a body, which is text, and a `${...}` substitution, which is code. The justification named a
+call inside a substitution and then protected the body with it.
+
+`stripStringContent` separates them. Bodies are blanked to spaces, delimiters and offsets are
+preserved, `${...}` is scanned as code with a brace counter so nested literals, nested
+templates and a second substitution all survive. The regex guard is reused from
+`stripComments`, because `/'/` must not open a literal.
+
+#### 13.165.2 Six names whose last apparent caller was prose
+
+Blanking bodies moves six entries back into the population. Each is named here so the next
+reader can check the claim rather than trust the count:
+
+| entry | last apparent caller | what it actually is |
+|---|---|---|
+| `cortex-eval: Comparability` | a printed sentence in `competitor-ledger.mjs` | type used only in its own file |
+| `cortex-core: covers` | prose in `runner.ts`, `competitor-harness.mjs`, `ledger.mjs` | exported through the barrel, called nowhere |
+| `cortex-eval: unrun` | prose in `acceptance-check.mjs` | status literal, mentioned in messages |
+| `cortex-eval: Arm` | report headings built with template literals | type used only in its own file |
+| `cortex-eval: Ablation` | the same headings | type used only in its own file |
+| `cortex-ai: TransformersEmbedding` | a label in `test/parity/run.mjs` | class its own test asserts is **not** in the root export |
+
+`covers` and `unrun` are English words, and `Arm` and `Ablation` are short type names that the
+report prints. The general lesson is not "strings are dangerous" but something narrower and
+more useful: **the shorter and more common a name is, the more likely its prose shadows it.**
+A census that matches text cannot distinguish a symbol from a word.
+
+#### 13.165.3 The line grid that belonged to no file
+
+Fixing that exposed a second defect, one that had been silently reshaping the split between
+`referenced-locally` and `unreferenced` for the whole life of the ledger.
+
+`stripComments` blanked the **newlines inside a block comment**. Its output therefore had the
+same length as the file and a different line grid. Measured on `export-census.ts` itself:
+**909 lines read as 511**. Every symbol carries a 1-based line, and `isReferencedLocally` reads
+that line back out of this output to decide which lines are the declaration and which lines are
+allowed to count as a reference. With a shortened grid, a declaration at 663 either landed on
+an unrelated line or fell off the end, where the out-of-range guard answered *"no local
+reference"* -- an honest answer to the wrong question.
+
+`stripStringContent` is what made it visible: the new export was reported as
+`referencedLocally: false` while `countCallers` in the same file called it twice. Neither
+half was wrong; the grid was.
+
+The repair is one line -- preserve `\n` inside a block comment -- and it moves the split from
+**329 local / 66 nowhere** to **366 / 36**. Against the previous ledger, **91 of 396 entries
+changed class**: 62 from `unreferenced` to `referenced-locally`, 29 the other way. Both
+directions were enumerated by name before the diff was read, and four were checked by hand in
+each direction:
+
+| entry | direction | verified by |
+|---|---|---|
+| `clampAwayFromZero` | → local | called at `stats.ts:282,288,289,293,294` |
+| `identifierPattern` | → local | called at `export-census.ts:344` and `:410` |
+| `stripComments` | → local | called by `countCallers` |
+| `packageOf` | → local | used in the tool's own grouping |
+| `sinkhorn` | → nowhere | its only in-file mentions are two thrown message strings |
+| `findContradictions` | → nowhere | declared, never mentioned again in the file |
+| `consolidate` | → nowhere | declared, never mentioned again in the file |
+| `l2Distance` | → nowhere | declared, never mentioned again in the file |
+
+Two of the eight are worth stating as findings rather than as samples. `sinkhorn` was
+classified *referenced locally* because it throws `'sinkhorn: histograms must be non-empty'`:
+a function keeping itself alive by naming itself in an error message is the same defect as a
+sentence keeping a type alive, one layer down. And `identifierPattern` being classified
+*referenced nowhere* is the sharpest possible statement that the grid was wrong -- it is called
+twice, twelve lines above its own declaration, in the file that does the counting.
+
+#### 13.165.4 The census now asserts both properties
+
+Three tests, each verified to fail when its line is reverted:
+
+- a printed sentence is not a caller (the `Comparability` case, as a fixture);
+- a `${...}` call **is** a caller (`hashText`, as a fixture) -- the counterweight, so the fix
+  cannot drift into reporting live code as dead;
+- a file with a multi-line block comment keeps its line count, and a declaration after such a
+  comment is classified by its own line -- end to end through `countCallers`.
+
+The ledger was rebuilt from `node tools/export-census.mjs --json` rather than edited by hand:
+every field except `groups[].rationale` is copied out of the tool's own output, so a
+hand-written total cannot survive a run. Totals are now **914 exports / 512 with a caller /
+402 orphan sites / 402 identities (366 local, 36 nowhere)**.
+
+#### 13.165.5 What this changes about the plan
+
+Nothing about P0-MR, and that is the point of writing it down. §13.164 registered the MR
+enumeration gap as the arm's largest opportunity -- 26 questions, **-20 points**, p = 0.00054
+-- and this round's work was a detour forced by a red gate. The detour was worth taking
+because the instrument it repaired is the one that would have certified the MR work as clean:
+a census that counts sentences retires a symbol when you describe it, and 62 entries were
+being reported as dead code candidates that their own files call. Fixing the ruler before
+measuring the thing that matters is not a distraction from the measurement.
+
+Both repairs are in `cortex-core`, covered by `export-census.test.ts` (79 tests) and
+`export-census-gate.test.ts` (21), with the ledger's own `note` recording the two rebuilds and
+the names in each direction.
+
+#### 13.165.6 A rebuild would have deleted the record of the rebuild
+
+The ledger is generated by `tools/rebuild-export-census-baseline.py`, and §13.156 had already
+taught it that a group's `rationale` is a record: a rebuild keeps recorded prose that extends
+the generator's text and refuses when the two disagree. It had not been taught the same about
+the `note`.
+
+`note` was written from a literal in the generator on every run. This round appended 1,171
+characters to it -- the paragraph naming `stripStringContent`, the line-grid defect and the six
+entries they restored -- so the next rebuild would have deleted the only account of why the
+population moved, silently, with `--check` green both before and after, because the tool's
+output is consistent with itself.
+
+That is §13.156's defect exactly, one field over, which is why the repair is the rule rather
+than the paragraph: `merge_note` applies the same three cases (absent → write the generator's;
+extends it → keep the record; disagrees → refuse and name the field), and four tests hold it,
+including a wiring assertion that `main` does not carry the literal inline any more. Appending
+the paragraph to the generator's literal would have worked once and taught nothing.
+
+The rebuild was then run for real, and it reproduced the hand-built ledger exactly -- except
+for the line numbers, which the generator re-derives and which were stale in the hand-built one
+because the census source had moved under them. That is the argument for using the sanctioned
+expression instead of a script that looks equivalent: the six totals agreed and four
+`declarationSites` coordinates did not.
