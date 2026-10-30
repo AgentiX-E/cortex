@@ -952,7 +952,69 @@ def spend_section(report: dict) -> str:
     return '\n'.join(lines)
 
 
-def audit_section(report: dict, questions: list[dict]) -> tuple[str, int]:
+def _window_reordered(question: dict) -> bool:
+    """Whether this record says the window mechanism reached it.
+
+    Read through `featureConfig`, which is where the arm writes the mechanism's own flags
+    (`§13.161.2`). A record that carries no `featureConfig` at all is the same answer as one
+    that carries `windowReorder: false`: neither says the delivery was reordered, and the
+    audit's question is what the artifact asserts, not what it omits.
+    """
+    feature = question.get('featureConfig')
+    return isinstance(feature, dict) and feature.get('windowReorder') is True
+
+
+def _window_fingerprint(replay: dict | None) -> tuple[bool, str]:
+    """Whether a replay of the promotion finds the delivery already carrying it.
+
+    ## Why the flag is not enough, and what replaces it
+
+    `windowReorder: true` is written by the same code whose correctness the audit is asking
+    about. A run that set the knob, wrote the flag and then crashed before reordering
+    anything would publish a perfectly consistent artifact, and no arrangement of the
+    artifact's own fields could tell. That is not hypothetical: `40984213349` died on its
+    first question after writing its configuration.
+
+    The replay closes it because it is computed FROM the delivered order rather than from
+    any claim about it. Re-running the promotion on a delivery that already carries the
+    partition finds nothing to move -- the operation is idempotent -- so `fired > 0` with
+    `moved == 0` is the fingerprint of an administered run, and `moved > 0` is the control's
+    own reading (`§13.161.2` measured 9 on it).
+
+    `fired > 0` is a conjunct and not decoration: zero fired with zero moved is idempotent
+    too, and it is exactly what a run that never reached the ladder prints.
+    """
+    if replay is None:
+        return (
+            False,
+            'no replay supplied, so the flag above is the run\'s own word for having run; '
+            'pass --wired with the output of tools/window-wired.mjs --json',
+        )
+    total = replay.get('total') if isinstance(replay, dict) else None
+    if not isinstance(total, dict):
+        return (False, 'the replay has no total block, so it measured nothing')
+    fired = total.get('fired')
+    moved = total.get('moved')
+    if not isinstance(fired, int) or not isinstance(moved, int):
+        return (False, f'the replay reports fired={fired!r} moved={moved!r}, which is not a count')
+    if fired == 0:
+        return (
+            False,
+            'the replay fired on no question, so this run never reached the ladder and the '
+            'zero it moved is the absence of a mechanism rather than its idempotence',
+        )
+    if moved != 0:
+        return (
+            False,
+            f'the replay fires on {fired} question(s) and still moves {moved}, so this '
+            'delivery does not carry the promotion it claims; the control moves 9',
+        )
+    return (True, f'replay: fired {fired}, moved 0 -- the delivery already carries the partition')
+
+
+def audit_section(
+    report: dict, questions: list[dict], replay: dict | None = None
+) -> tuple[str, int]:
     """Check one artifact's fields against each other, and report the failures.
 
     ## Why the configuration line has to be auditable
@@ -1062,15 +1124,47 @@ def audit_section(report: dict, questions: list[dict]) -> tuple[str, int]:
             + (' -- a zeroed census claims a mechanism that never ran' if vote_total == 0 and isinstance(vote, dict) else ''),
         )
 
-    # 6. The expansion counts exist exactly when the run expanded, and name every MR question.
+    # 6. The knob that was set left the trace that knob can leave.
+    #
+    # `queryExpansion` carries two mechanisms that do different things. `llm` expands a
+    # question into phrases BEFORE retrieval and records how many it expanded; `window`
+    # expands nothing, parses a date range and stable-partitions the delivered turns, so its
+    # counter is `None` by construction and always will be (§13.153, §13.161.7). Reading one
+    # field for both mechanisms meant a correct window dispatch failed the audit --
+    # `40989420944` did, on `queryExpansion=window reporting None question(s) expanded`.
+    #
+    # The repair is not "skip the check when the knob says window". It is to check the trace
+    # the knob actually leaves, which for this mechanism is two things: a per-record flag, and
+    # a replay whose verdict is a conjunction. A flag is a claim the run makes about itself;
+    # the replay is a measurement. Accepting the flag alone would restore exactly the hole the
+    # audit exists to close, because the flag is written by the same code that would be broken.
     expansion = config.get('queryExpansionCounts')
-    expanding = (config.get('queryExpansion') or 'none') != 'none'
-    if expanding:
+    expansion_mode = config.get('queryExpansion') or 'none'
+    if expansion_mode == 'window':
+        flagged = [str(q.get('questionId')) for q in questions if not _window_reordered(q)]
+        if not flagged:
+            detail = 'every record carries featureConfig.windowReorder'
+        elif len(flagged) == len(questions):
+            detail = (
+                'no record carries featureConfig.windowReorder, so nothing in this artifact '
+                'distinguishes a reordered run from one that was dispatched to reorder and never '
+                'reached it'
+            )
+        else:
+            detail = f'{len(flagged)} record(s) without windowReorder, first {flagged[0]}'
+        if expansion is not None:
+            detail = (
+                f'queryExpansionCounts is published on a window dispatch, which expands '
+                f'nothing; the count cannot be a measurement here. {detail}'
+            )
+        fingerprint, why = _window_fingerprint(replay)
+        check('windowReorder', not flagged and expansion is None and fingerprint, f'{detail}. {why}')
+    elif expansion_mode != 'none':
         named = expansion.get('questions') if isinstance(expansion, dict) else None
         check(
             'expansion',
             named == len(mr_texts),
-            f'queryExpansion={config.get("queryExpansion")} reporting '
+            f'queryExpansion={expansion_mode} reporting '
             f'{named} question(s) expanded; the roster has {len(mr_texts)} distinct MR texts',
         )
     else:
@@ -2626,6 +2720,14 @@ def main(argv: list[str]) -> int:
         help='print per-capability answer agreement between BEFORE and this report',
     )
     parser.add_argument(
+        '--wired',
+        type=Path,
+        metavar='REPLAY',
+        help='the JSON that tools/window-wired.mjs --json printed for this artifact; the audit '
+        'uses it to read the window mechanism idempotence fingerprint, which is the only '
+        'statement about that mechanism the artifact cannot make about itself',
+    )
+    parser.add_argument(
         '--spend',
         action='store_true',
         help='print the provider spend this artifact reports, and read its prefix-cache share '
@@ -2688,7 +2790,14 @@ def main(argv: list[str]) -> int:
         return 0
 
     if args.audit:
-        block, failed = audit_section(report, questions)
+        replay = None
+        if args.wired is not None:
+            try:
+                replay = json.loads(args.wired.read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError) as error:
+                print(f'{args.wired}: {error}', file=sys.stderr)
+                return 2
+        block, failed = audit_section(report, questions, replay)
         print(block)
         return 1 if failed else 0
 

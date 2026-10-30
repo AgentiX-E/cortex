@@ -382,6 +382,100 @@ describe('serializeReportOrReduce', () => {
     expect(parsed.questions![0]!.turns.length).toBeLessThan(parsed.questions![0]!.evidenceTurns!);
   });
 
+  it('forwards every optional per-question field, checked in one pass rather than one assertion at a time', () => {
+    // `withEvidenceBound` re-lists each field by hand, so the defect mode is a field that
+    // exists on the record and not on the rebuild. It has now happened four times --
+    // `featureConfig`, `promptChars`, `recoveryAttempted` and `questionDate` -- and each
+    // was found one at a time, by a reader who happened to need the field. A per-field
+    // assertion cannot catch the fifth, because the fifth is the field nobody thought to
+    // assert.
+    //
+    // So this one populates EVERY optional field the record carries, reduces, and diffs
+    // the whole record. A field added to `QuestionRecord` and not forwarded here fails on
+    // the field list, not on a reader's discovery. The list of keys is derived from the
+    // record itself, so it grows the moment the type does.
+    const base = reportWithEvidence(5, 2);
+    const filled = {
+      ...base,
+      questions: base.questions!.map((record, i) => ({
+        ...record,
+        questionDate: '2023/05/20 (Sat) 10:00',
+        groundTruth: 'a fact',
+        answer: 'a fact',
+        rawOutput: `raw ${i}`,
+        promptChars: 4242,
+        recoveryAttempted: true,
+        recoveryAnswered: false,
+        goldOverlap: { carried: 2, total: 3 },
+      })),
+    } as unknown as AblationReport;
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 4"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+    const result = serializeReportOrReduce(filled, exploding, { maxTurnsPerRecord: 2 });
+    const parsed = JSON.parse(result.json) as AblationReport;
+    expect(result.reduced).toBe(true);
+
+    const before = filled.questions![0]!;
+    const after = parsed.questions![0]!;
+    // Every key the record had is still there, with the same value except the two the
+    // bound is allowed to move (`turns`, which it truncates). Derived from the object
+    // rather than listed, so a new field enters this check by existing.
+    const moved = new Set(['turns']);
+    for (const key of Object.keys(before) as (keyof typeof before)[]) {
+      if (moved.has(key as string)) continue;
+      expect(
+        { key, value: after[key] },
+        `field ${String(key)} did not survive the reduction`,
+      ).toEqual({
+        key,
+        value: before[key],
+      });
+    }
+    // And the reduction did happen, so nothing above passes by leaving the report alone.
+    expect(after.turns.length).toBeLessThan(after.evidenceTurns!);
+  });
+
+  it('carries the question date through a reduction, because a window cannot be read without it', () => {
+    // The fourth field this rebuild has to forward, and the first one whose absence is not
+    // visible in the reduced artifact itself: `promptChars` going missing makes a record
+    // claim an offer it cannot price, but `questionDate` going missing makes the record
+    // look like a producer that never reported a date. Both arms of a pair then read as
+    // undated even though one of them carried the date at capture time, and every
+    // population computed against it silently falls back to a substituted reference --
+    // which is what `§13.161.4` had to reconcile after the fact.
+    const base = reportWithEvidence(5, 2);
+    const dated = {
+      ...base,
+      questions: base.questions!.map((record) => ({
+        ...record,
+        questionDate: '2023/05/20 (Sat) 10:00',
+      })),
+    } as unknown as AblationReport;
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 4"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(dated, exploding, { maxTurnsPerRecord: 2 });
+    const parsed = JSON.parse(result.json) as AblationReport;
+
+    expect(result.reduced).toBe(true);
+    expect(parsed.questions!.map((q) => q.questionDate)).toEqual([
+      '2023/05/20 (Sat) 10:00',
+      '2023/05/20 (Sat) 10:00',
+    ]);
+    // The reduction still happened, so this is not passing by leaving the report alone.
+    expect(parsed.questions![0]!.turns.length).toBeLessThan(parsed.questions![0]!.evidenceTurns!);
+  });
+
   it('states a report defect rather than an empty run when the bound cannot change the outcome', () => {
     // The case: the full report fails to serialize, but bounding the evidence
     // does not change the text at all -- so a reduced attempt succeeds only

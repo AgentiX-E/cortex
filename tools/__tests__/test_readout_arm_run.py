@@ -2160,6 +2160,111 @@ class TestTheArtefactAudit:
         assert r.returncode == 1
         assert 'vote' in r.stdout
 
+    def _window_artifact(self) -> dict:
+        """A window dispatch, with every record saying so.
+
+        `window` reuses the expansion knob but expands nothing: it parses a date range and
+        stable-partitions the delivered turns. So the trace it must leave is not a count of
+        expanded questions -- that counter is `None` by construction on this path -- but the
+        per-record flag the arm writes (`§13.161.2`).
+        """
+        artifact = self._artifact()
+        artifact['memoryArmConfig']['queryExpansion'] = 'window'
+        for question in artifact['questions']:
+            question['featureConfig'] = {'cortexMemory': True, 'windowReorder': True}
+        return artifact
+
+    def _audit_with_replay(
+        self, tmp_path: Path, artifact: dict, replay: dict | None
+    ) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(artifact), encoding='utf-8')
+        argv = [sys.executable, str(TOOL), '--audit', str(path)]
+        if replay is not None:
+            wired = tmp_path / 'wired.json'
+            wired.write_text(json.dumps(replay), encoding='utf-8')
+            argv += ['--wired', str(wired)]
+        return subprocess.run(argv, capture_output=True, text=True, check=False)
+
+    @staticmethod
+    def _replay(fired: int, moved: int, promoted_mean: float = 0.0) -> dict:
+        return {
+            'control': 'report.json',
+            'questions': 5,
+            'referenceSubstituted': 0,
+            'total': {
+                'questions': 5,
+                'fired': fired,
+                'moved': moved,
+                'converted': 0,
+                'sold': 0,
+                'broken': 0,
+            },
+            'promotedTurns': {'mean': promoted_mean, 'min': 0, 'max': 0},
+            'byCapability': {},
+            'broken': [],
+            'moved': [],
+        }
+
+    def test_a_window_run_whose_records_do_not_say_so_fails(self, tmp_path: Path) -> None:
+        # The register's premise, unchecked: `queryExpansion=window` is set but the arm wrote
+        # no per-record trace, so nothing in the artifact distinguishes this run from one
+        # dispatched to reorder and never reached it. This is the defect `§13.161.7` records --
+        # the old check read `queryExpansionCounts`, a field the window path cannot produce.
+        artifact = self._window_artifact()
+        for question in artifact['questions']:
+            del question['featureConfig']
+        r = self._audit_with_replay(tmp_path, artifact, self._replay(19, 0))
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'windowReorder' in r.stdout
+
+    def test_a_window_run_with_a_record_that_disagrees_fails(self, tmp_path: Path) -> None:
+        # One record without the flag is enough: a partially administered run is a run whose
+        # effect cannot be attributed, and the audit is the only place that can notice.
+        artifact = self._window_artifact()
+        artifact['questions'][2]['featureConfig'] = {'cortexMemory': True}
+        r = self._audit_with_replay(tmp_path, artifact, self._replay(19, 0))
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'windowReorder' in r.stdout
+        assert 'm2' in r.stdout
+
+    def test_a_window_run_with_no_replay_fingerprint_fails(self, tmp_path: Path) -> None:
+        # A flag is a claim; the replay is the evidence. Without it the audit would be
+        # accepting the run's own word for having run, which is the shape that let
+        # `queryExpansion=window` pass on an artifact that had never been reordered.
+        r = self._audit_with_replay(tmp_path, self._window_artifact(), None)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'windowReorder' in r.stdout or 'replay' in r.stdout
+
+    def test_a_window_delivery_that_still_moves_under_replay_fails(self, tmp_path: Path) -> None:
+        # The idempotence fingerprint. Replaying the promotion on a delivery that already
+        # carries it finds nothing to move; a delivery that still moves was never
+        # administered, whatever its records say. `moved = 9` is what the control prints.
+        r = self._audit_with_replay(tmp_path, self._window_artifact(), self._replay(19, 9, 22.9))
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'windowReorder' in r.stdout or 'replay' in r.stdout
+
+    def test_a_window_run_that_fired_on_nothing_fails(self, tmp_path: Path) -> None:
+        # Zero fired and zero moved is also idempotent, and it is the shape a run that never
+        # reached the ladder prints. The fingerprint has to be a conjunction, not a zero.
+        r = self._audit_with_replay(tmp_path, self._window_artifact(), self._replay(0, 0))
+        assert r.returncode == 1, r.stdout + r.stderr
+
+    def test_a_window_run_with_the_fingerprint_passes(self, tmp_path: Path) -> None:
+        r = self._audit_with_replay(tmp_path, self._window_artifact(), self._replay(19, 0))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'FAIL' not in r.stdout
+
+    def test_a_window_run_publishing_expansion_counts_fails(self, tmp_path: Path) -> None:
+        # The window path expands nothing, so a count is either zero -- which reads as "the
+        # mechanism did nothing" -- or invented. Both are worse than the field's absence, and
+        # the absence is already asserted by the `none` branch of the same check.
+        artifact = self._window_artifact()
+        artifact['memoryArmConfig']['queryExpansionCounts'] = {'questions': 4}
+        r = self._audit_with_replay(tmp_path, artifact, self._replay(19, 0))
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'windowReorder' in r.stdout
+
     def test_a_prompt_over_the_declared_budget_fails(self, tmp_path: Path) -> None:
         artifact = self._artifact()
         artifact['questions'][0]['promptChars'] = 48_500

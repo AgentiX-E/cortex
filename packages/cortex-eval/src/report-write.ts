@@ -335,6 +335,14 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         questionId: record.questionId,
         question: record.question,
         capability: record.capability,
+        // Forwarded, and this is the one whose loss is invisible in the reduced artifact:
+        // a dropped `promptChars` leaves a record claiming an offer it cannot price, but a
+        // dropped `questionDate` leaves a record that reads exactly like a producer which
+        // never reported a date. An arm that carried the date at capture time would then
+        // publish a reduced artifact indistinguishable from the control's undated one, and
+        // every population read from it would fall back to a substituted reference --
+        // which is the reconciliation `§13.161.4` had to perform after the fact.
+        ...(record.questionDate === undefined ? {} : { questionDate: record.questionDate }),
         ...(record.groundTruth === undefined ? {} : { groundTruth: record.groundTruth }),
         ...(record.answer === undefined ? {} : { answer: record.answer }),
         ...(record.rawOutput === undefined ? {} : { rawOutput: record.rawOutput }),

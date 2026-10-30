@@ -529,11 +529,36 @@ jobs:
       # and the artifact is still there to be read. A red job with a recoverable report is the
       # right pair; a green job with a self-contradicting report is how the last three defects
       # reached a document.
+      #
+      # The window dispatch needs one more thing, and it needs it here rather than in the
+      # reading step: its trace is not a counter. `queryExpansion=window` expands nothing --
+      # it parses a date range and stable-partitions the delivered turns -- so the audit used
+      # to fail this mechanism on a field it cannot produce (run 40989420944 failed on
+      # `queryExpansion=window reporting None question(s) expanded` while its artifact was
+      # complete and its six criteria readable). The trace it does leave has two halves: a
+      # per-record flag, which the run writes about itself, and a replay computed FROM the
+      # delivered order, which it cannot. Only the second is evidence, so the replay is
+      # produced here and handed to the audit.
+      #
+      # A replay that cannot be produced is a failure and not a skipped check: the audit's
+      # question is whether the mechanism reached the delivery, and without the replay there
+      # is no way to answer it. Failing closed is the same rule `window-pair` follows when it
+      # refuses to join two artifacts whose rosters differ.
       - name: Audit the artifact against itself
         if: always()
         run: |
-          python3 tools/readout-arm-run.py --audit \
-            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          report=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          replay=/tmp/window-replay.json
+          extra=()
+          if [ "${{ github.event.inputs.cortex_memory_query_expansion }}" = "window" ]; then
+            if ! node tools/window-wired.mjs --control "$report" --json > "$replay"; then
+              echo "::error::the window replay could not be produced, so the audit cannot"
+              echo "::error::establish that the mechanism reached this delivery"
+              exit 1
+            fi
+            extra+=(--wired "$replay")
+          fi
+          python3 tools/readout-arm-run.py --audit "$report" "${extra[@]}"
       # Beside the audit, in the same `if: always()` tail as the upload. The artifact carries the
       # same numbers, but the log is what a reader sees when the artifact has expired, and the bands
       # of 13.147.3 are applied here rather than remembered by whoever reads the JSON six weeks
