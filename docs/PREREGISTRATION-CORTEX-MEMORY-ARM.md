@@ -17581,3 +17581,286 @@ Three things are now unambiguously the next work, in order:
    something about the mechanism (§13.161.7).
 3. **A floor above the null** for any criterion of the form "outside the administered set". 5.0% was below
    the reader's own 11.8% and the registration said so in the same paragraph that set it.
+
+### 13.162 Two repairs the reading asked for, and the second one was found by asking what the audit was reading
+
+§13.161.7 registered two fixes: a control artifact that records `questionDate`, and an audit that
+reads the trace the window knob actually leaves. Both are done. The first turned out to be a
+defect rather than a missing field, and the way it turned out is the reason it is written up
+separately from the second.
+
+#### 13.162.1 `questionDate` was being dropped by a reduction, not omitted by a producer
+
+The registered repair was "let the control artifact record the date". The treated artifact
+recorded it on 500 of 500 and the control on 0 of 500, so the natural reading was that the
+control predates the field. It does -- and that is not the whole story, because the field is also
+dropped on a path both artifacts can take.
+
+`withEvidenceBound` rebuilds every record through `buildQuestionRecords` when the report is too
+large to serialize, and it forwards each field by hand. `questionDate` was not on the list. So a
+run that carried the date at capture time and then had to reduce its evidence would publish an
+artifact whose records read exactly like a producer that never reported a date -- and the
+difference between those two states is the difference between "this run cannot price a window"
+and "this run chose not to".
+
+The test was written first and failed for the right reason:
+
+```
+-   "2023/05/20 (Sat) 10:00",
++   undefined,
++   undefined,
+```
+
+#### 13.162.2 The fourth time, so the check stops being per-field
+
+`featureConfig`, `promptChars`, `recoveryAttempted`, `questionDate`. Four fields, four separate
+discoveries, each by a reader who happened to need the field and noticed it was absent. A
+per-field assertion cannot catch the fifth, because the fifth is the field nobody thought to
+assert.
+
+So the second test populates **every** optional field the record carries, reduces, and diffs the
+whole record with the key list derived from the record itself:
+
+```ts
+for (const key of Object.keys(before) as (keyof typeof before)[]) {
+  if (moved.has(key as string)) continue;
+  expect({ key, value: after[key] }, `field ${String(key)} did not survive the reduction`).toEqual({
+    key,
+    value: before[key],
+  });
+}
+```
+
+A field added to `QuestionRecord` and not forwarded now fails on the field list rather than on a
+reader's discovery. Both tests were confirmed red against the pre-repair build and green after,
+and the exhaustive one was confirmed red **alone** with the forwarding line removed -- otherwise
+the two would only prove that between them something covers the field.
+
+#### 13.162.3 The audit now reads a conjunction, and refuses when it cannot
+
+§13.161.7 said the repair is to read `featureConfig.windowReorder` "and the idempotence
+fingerprint of §13.161.2". Written into `readout-arm-run.py`, that is:
+
+| what the audit reads | what it establishes |
+| --- | --- |
+| `featureConfig.windowReorder === true` on every record | the run says it administered the mechanism |
+| `queryExpansionCounts` absent | the count a window dispatch cannot produce is not invented |
+| `--wired` replay: `fired > 0` **and** `moved == 0` | the delivery actually carries the partition |
+
+The third is the only one that is evidence rather than a claim: the flag is written by the same
+code whose correctness is in question. `fired > 0` is a conjunct and not decoration -- zero fired
+with zero moved is idempotent too, and it is exactly what a run that never reached the ladder
+prints.
+
+The replay comes from `tools/window-wired.mjs --json`, produced by the workflow immediately before
+the audit, and a replay that cannot be produced **fails the step** rather than being skipped. The
+alternative -- run the audit without it and let the flag stand in -- is the hole the audit exists
+to close.
+
+Measured on `40989420944`:
+
+| invocation | verdict |
+| --- | --- |
+| `--audit` with the artifact's own replay (`fired 19, moved 0`) | **all seven checks PASS, exit 0** |
+| `--audit` with the control's replay (`moved 9`) | **FAIL** -- "the replay fires on 19 question(s) and still moves 9, so this delivery does not carry the promotion it claims" |
+| `--audit` with no replay | **FAIL** -- "the flag above is the run's own word for having run" |
+
+The run that failed this audit at dispatch time now passes it, with a check that is strictly
+stronger than the one that failed it.
+
+Seven tests, and the ones worth naming are the refusals: a partially administered run (one record
+without the flag) fails and names the question; a run that published an expansion count on a
+window dispatch fails; a replay that fired on nothing fails.
+
+### 13.163 Which published number may be quoted beside which, and the injection that proved nothing
+
+Every claim this arm makes about a competitor is a number produced by someone else under
+conditions this repository did not choose. The natural artifact -- one table sorted descending --
+is the one that produces statements like "83.0 would be second", and that sentence is a fact about
+the harnesses read as a fact about the systems. `tools/competitor-ledger.mjs` exists so the
+sentence cannot be produced.
+
+#### 13.163.1 The unit is a five-tuple, not a dataset
+
+Two numbers are ordered only when they agree on all of `dataset | variant | answer model | judge |
+harness`. The first two say what was asked, the middle two say who answered and who marked it, and
+the last says whose pipeline decided what reached the answer model at all.
+
+`harness` is part of the key rather than derived from the other two, because two harnesses can
+share an answer model and a judge and still differ in what they retrieve, how they truncate, and
+what they call a correct answer. Grouping more coarsely than the truth can split a table that was
+in fact comparable; it cannot merge two that were not.
+
+Applied to the 23 entries the ledger currently carries, `--gap 83.0` reports **no comparable
+group** and names the three groups that are equally near, each with the fields that differ. That
+is the honest statement, and it is the one a ranking would have replaced with a number.
+
+#### 13.163.2 One system, three readings, nineteen points
+
+| system | readings | harnesses | spread |
+| --- | --- | --- | --- |
+| Zep | 90.2 / 79.8 / 71.2 | 3 | **19.0** |
+| Supermemory | 84.6 / 66.07 | 2 | **18.5** |
+| Mem0 | 94.4 / 93.4 | 1 (two releases) | 1.0 |
+| full context | 62.2 / 60.2 | 2 | 2.0 |
+
+The last two rows are the ones that make the table readable. Mem0's 1.0-point difference is one
+author's two releases, so quoting it as evidence that "the harness barely matters" would be the
+same error as the one the first two rows demonstrate. The tool labels which is which and sorts
+harness differences first, because a reader takes the first row as the largest finding.
+
+The `full context` row is worth its own sentence: a system with no memory at all travels 2.0
+points across two harnesses. That is the floor of the effect, and every memory system's spread
+should be read against it.
+
+#### 13.163.3 The comparison tables are not comparable either
+
+The ledger's first draft failed its own check, and the failure was the finding:
+
+```
+apex-mem-published: members disagree about answerModel (Claude 4.5 Sonnet, unknown)
+supermemory-published: members disagree about answerModel (GPT-5, GPT-4o)
+```
+
+The APEX-MEM table prints its own row at Claude 4.5 Sonnet and three baselines at an unstated
+model; the Supermemory table prints its own row at GPT-5 and its competitors at GPT-4o. A
+third-party comparison table is a **collection of conditions**, not one condition, and the vendor
+whose row is at the stronger model is the one that compiled it. The repair was to name the
+harnesses by their answer model rather than to relax the check -- the check was right.
+
+#### 13.163.4 The injection that proved nothing, which is the entry worth keeping
+
+The eight checks were demonstrated the usual way: break the implementation, confirm the tests go
+red. Two defects were injected at once -- `judge` removed from the five-tuple, and the spread
+ordering replaced with a plain magnitude sort -- and the suite came back **23 passed**. The
+natural conclusion is that the tests are weak. The actual one is worse: the second injection had
+silently failed to apply, because the string it searched for had already been rewrapped by
+prettier, and `str.replace` on a missing needle is not an error.
+
+Injected properly, each defect fails exactly one test:
+
+| injected defect | tests failed |
+| --- | --- |
+| `judge` dropped from the key | `test_a_group_that_differs_only_in_judge_cannot_provide_a_rank` |
+| spread ordering replaced by magnitude | `test_harness_differences_sort_above_version_drift` |
+
+> An injection that does not apply produces the same reading as a test suite that cannot fail, and
+> the two are distinguished by nothing except checking that the defect landed.
+
+This is the §13.154 rule one level down. The identity gate exists because a run's output cannot
+certify which code produced it; this is the same defect in a five-line fixture. From here, a
+negative control is confirmed by reading back the file it edited, not by trusting the edit.
+
+#### 13.163.5 What the ledger refuses and what it prints
+
+| reading | behaviour |
+| --- | --- |
+| an entry with no `source` | refused, listed with every other problem in one run |
+| a group whose members disagree about `answerModel` or `judge` | refused, naming the field and the two values |
+| one system labelled as a same-harness reading | refused -- the label is earned by the systems it covers |
+| an invalid ledger, with no `--check` | refuses to print any table, on stderr |
+| a system read by two harnesses | printed, with the spread and the harness names |
+
+The last row is the point. A spread is not a defect to be rejected; it is the measurement of how
+much of a published score belongs to the pipeline, and the tool's job is to make it impossible to
+read a number without it.
+
+### 13.164 The largest opportunity in this arm is twenty questions the memory arm loses to its own control
+
+Every registration since §13.152 has been about a mechanism adding questions: the window ladder
+(ceiling 2, §13.161.8), the model fallback (12 reachable-and-wrong, §13.159.1). Both are small.
+The reading of `40989420944` contains something an order of magnitude larger, and it was visible
+in a table this arm has printed for months without anyone reading the column.
+
+#### 13.164.1 The per-capability table, read against the control rather than against zero
+
+| capability | n | feature | reference | delta | discordant (ref-only / feature-only) | exact McNemar p |
+| --- | --- | --- | --- | --- | --- | --- |
+| IE | 150 | 141 = 94.0% | 1 = 0.7% | **+140** | 0 / 140 | < 1e-30 |
+| KU | 72 | 62 = 86.1% | 0 = 0.0% | **+62** | 0 / 62 | < 1e-18 |
+| TR | 127 | 99 = 78.0% | 84 = 66.1% | **+15** | 7 / 22 | 0.0081 |
+| **MR** | **121** | **84 = 69.4%** | **104 = 86.0%** | **−20** | **26 / 6** | **0.00054** |
+| ABS | 30 | 29 = 96.7% | 30 = 100.0% | −1 | 1 / 0 | 1.0 |
+| **total** | **500** | **415 = 83.00%** | **219 = 43.80%** | **+196** | 34 / 230 | 6.3e-37 |
+
+The MR row is the finding. The mechanism this arm exists to measure is **significantly worse than
+its own reference pipeline on the capability with the second-largest question count**, at
+p = 5.4e-4, and that is not a null result being over-read: 26 questions the reference answers and
+the arm does not, against 6 the other way.
+
+The same asymmetry holds on the control run (`40751394094`: 87 against 106, −19), so it is a
+property of the arm and not of this dispatch.
+
+#### 13.164.2 The 26 are one failure, and it is the failure §13.96 already named
+
+Eight of the twenty-six, read one at a time:
+
+| question | gold | the arm's answer |
+| --- | --- | --- |
+| How many items of clothing do I need to pick up or return from a store? | `3` | `2` |
+| How much total money have I spent on bike-related expenses since the start of the year? | `$185` | `65` |
+| How many movie festivals that I attended? | `4` | `3` |
+| How many times did I bake something in the past two weeks? | `4` | `3` |
+| How many babies were born to friends and family members in the last few months? | `5` | `6` |
+| How many properties did I view before making an offer on the townhouse? | `4` | `5` |
+| How many hours of jogging and yoga did I do last week? | `0.5` | `30` |
+| What time did I go to bed on the day before I had a doctor's appointment? | `2 AM` | abstained |
+
+Seven of the eight are enumerations that come out **one member wrong**: five short by one, two
+long by one, and one whose unit was aggregated instead of summed. That is not a reader failure and
+not a retrieval failure in the ordinary sense -- the arm reached the sessions and read them. It is
+a **membership decision**: which mentions count as instances of the thing being counted. §13.96
+named that as the diagnosis three prompt-side attempts failed to move, and moved the arm's effort
+to the window mechanism instead. The window mechanism is now closed with a ceiling of 2 (§13.161.8),
+and this table says the diagnosis was right and the effort was aimed at the smaller half of it.
+
+#### 13.164.3 Why this dominates everything else on the list
+
+| candidate | population it could convert | what it costs |
+| --- | --- | --- |
+| **MR enumeration** | **20 net, all 20 already answered correctly by a system in this repository** | one mechanism, measured against the same artifact |
+| model fallback (P3c-3) | 12 upper bound, discounted under 6 (§13.159.2) | 68 model calls per run |
+| window ladder (P3c-2b′) | 2, measured ceiling (§13.161.8) | 0 |
+| P1-census | 0 questions; 17 ledger entries and 4 unexports | one `pnpm check` |
+
+The MR row is different in kind from the other three. They are *reachable* populations -- questions
+the arm might convert if a new mechanism works. The MR twenty are **demonstrated**: a pipeline
+built from this repository's own components answers them correctly on the same haystack, the same
+reader and the same judge. Nothing has to be invented to reach them; what has to be found is what
+the reference does that the arm does not.
+
+That is also the reason it is the cheapest to verify. The 26 are named, the 6 are named, and a
+repair is separated by whether those ids move.
+
+#### 13.164.4 What is registered, before any of the work
+
+Not a mechanism -- a diagnosis with a criterion, because the first thing to establish is that the
+eight are representative rather than a convenient sample.
+
+| # | criterion |
+| --- | --- |
+| 1 | the 26 are classified exhaustively into: enumeration off by one (either direction), unit or aggregation error, abstention on an answerable question, and **none of the above**. The four counts are stated and they sum to 26 |
+| 2 | "off by one" is read from the gold and the answer, not inferred from the question text -- a classifier that decides what kind of question it is has already assumed the answer |
+| 3 | whichever class dominates names the mechanism to try, and the registration for that mechanism is written **after** this census, not before |
+| 4 | the 6 questions the arm gets and the reference does not are read the same way, so a repair cannot be scored by the 20 while silently costing the 6 |
+| 5 | on re-dispatch, the MR discordant pair moves toward the reference: at minimum 10 of the 26 stop being reference-only, and the feature-only set does not grow by more than 2 |
+| 6 | overall accuracy rises by at least 1.5 points, and no other capability loses more than 2 questions |
+
+Criterion 1 is what makes this a measurement rather than a hypothesis. The eight above were
+selected because they were the first eight in the roster's own order, which is a reason but not a
+sample; the census decides whether "off by one" is one class or six.
+
+Criterion 5's floor is deliberate: converting 10 of 26 takes MR from 69.4% to 77.7% and the arm
+from 83.0% to 85.0%, which is inside the run-to-run band this arm measures (§13.100.2) -- so the
+bar is stated as "half the population", not as a number chosen to be reached.
+
+#### 13.164.5 What this changes about the plan
+
+P3c-3 stays registered and moves behind this. §13.161.8 argued it should move *ahead* of the free
+ladder because 12 is larger than 2; that comparison was between two mechanisms and missed the
+question the per-capability table answers. The ordering is now by demonstrated reach, and the
+demonstrated reach of MR enumeration is twenty questions for zero new model calls.
+
+One thing is explicitly **not** registered here: "make the memory arm behave like the reference on
+MR". That is not a mechanism, it is a direction, and a direction cannot fail. The census in
+criterion 1 is the step that turns it into one.
