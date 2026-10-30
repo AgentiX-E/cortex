@@ -8,6 +8,14 @@ import json
 import subprocess
 import sys
 from collections import defaultdict
+from pathlib import Path
+
+# The checkout this file lives in, rather than a literal `/workspace/cortex`.
+#
+# The literal worked and was wrong in the way a constant is always wrong: it made the tool runnable only
+# from one directory on one machine, and it made the destination invisible to anyone reading a diff of the
+# output. `push-via-api.py` carries the same repair for the same reason.
+ROOT = Path(__file__).resolve().parents[1]
 
 RATIONALE = {
     "census-tool-public-api": (
@@ -225,6 +233,63 @@ def key(orphan: str) -> str:
     return f"{pkg}: {name}"
 
 
+class RationaleConflict(Exception):
+    """The recorded rationale and the generator's disagree in a way no tool should resolve alone."""
+
+
+def merge_rationale(category: str, generated: str, existing: str | None) -> str:
+    """The prose a rebuild may write for one group.
+
+    ## Why this exists
+
+    This tool regenerated every `rationale` from `RATIONALE`, and the ledger's prose is not the
+    generator's prose: each step appends a sentence when an entry joins or leaves, and those sentences are
+    the only statement of why the numbers are what they are. On 2026-10-30 a rebuild run to record two new
+    entries deleted the paragraph §13.149 had appended -- 9,982 characters to 9,472 -- and nothing warned.
+    `--check` passed before and after, because the tool's output was consistent with itself.
+
+    ## The three cases
+
+    1. No existing ledger: write the generator's text. There is no record to protect.
+    2. The ledger **starts with** the generator's text: write the ledger's, so every hand-added sentence
+       survives. This is the case that failed, and it is the ordinary one.
+    3. The two disagree some other way: raise. That means the generator's own text was edited, so the
+       recorded sentences may now be duplicated, superseded or contradicted, and no tool can say which of
+       two accounts of the same group is current.
+
+    No `--force`. An escape hatch would be used on the first inconvenient Tuesday and the defect would come
+    back with a flag in front of it. The manual merge is: edit `RATIONALE`, run the tool, read the diff.
+    """
+    if existing is None or existing == generated:
+        return generated
+    if existing.startswith(generated.rstrip()):
+        return existing
+    raise RationaleConflict(
+        f"{category}: the recorded rationale does not start with the generator's text "
+        f"({len(existing)} characters recorded, {len(generated)} generated). Merge them by hand in "
+        f"RATIONALE and re-run: this tool will not choose between two accounts of one group."
+    )
+
+
+LEDGER_PATH = ROOT / "tools" / "export-census-baseline.json"
+
+
+def _recorded_rationales() -> dict[str, str]:
+    """The rationales currently in the ledger, by category. Empty when there is no ledger yet.
+
+    Read rather than assumed: an absent file is the first run, and a file that does not parse is a
+    corrupted ledger. The second is not the first, and continuing on either would let this tool overwrite
+    the record it exists to extend.
+    """
+    if not LEDGER_PATH.exists():
+        return {}
+    try:
+        document = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"{LEDGER_PATH} is not valid JSON ({error}); refusing to overwrite it") from error
+    return {group["category"]: group["rationale"] for group in document.get("groups", [])}
+
+
 def main() -> int:
     # The census output is large; capture it through a file rather than a pipe,
     # which truncates at the OS buffer size and produced a JSON parse error.
@@ -233,7 +298,7 @@ def main() -> int:
             ["node", "tools/export-census.mjs", "--json"],
             stdout=sink,
             check=True,
-            cwd="/workspace/cortex",
+            cwd=str(ROOT),
         )
     with open("/tmp/export-census-raw.json") as source:
         payload = json.load(source)
@@ -245,11 +310,29 @@ def main() -> int:
     for orphan in orphans:
         groups[category(orphan)].append(orphan)
 
+    # Collected before the ledger is built so one run reports every conflict rather than the first one:
+    # a rebuild that stops at group one makes the operator iterate five times to learn five things.
+    recorded = _recorded_rationales()
+    conflicts: list[str] = []
+    merged: dict[str, str] = {}
+    for name in GROUP_ORDER:
+        if name not in groups:
+            continue
+        try:
+            merged[name] = merge_rationale(name, RATIONALE[name], recorded.get(name))
+        except RationaleConflict as conflict:
+            conflicts.append(str(conflict))
+    if conflicts:
+        raise SystemExit(
+            "RATIONALE CONFLICT -- nothing written, the ledger still holds the previous prose:\n  "
+            + "\n  ".join(conflicts)
+        )
+
     ledger = [
         {
             "category": name,
             "count": len(groups[name]),
-            "rationale": RATIONALE[name],
+            "rationale": merged[name],
             "declarationSites": sorted(groups[name]),
         }
         for name in GROUP_ORDER
@@ -304,7 +387,7 @@ def main() -> int:
         "locations": _locations(orphans),
     }
 
-    with open("/workspace/cortex/tools/export-census-baseline.json", "w") as handle:
+    with open(LEDGER_PATH, "w", encoding="utf-8") as handle:
         json.dump(document, handle, indent=2)
         handle.write("\n")
     print(

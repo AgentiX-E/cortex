@@ -16967,3 +16967,55 @@ Three things worth separating, because they are three different failures wearing
    a fixture ledger and asserts the abort. Until then `rebuild-export-census-baseline.py` is a tool that
    silently discards the one thing the ledger exists to keep, and the only reason it is safe to run today
    is that this paragraph says so.
+
+### 13.156 The rebuild tool is not allowed to edit the record it extends
+
+§13.155.7 ends by registering this. It is small enough to do now, and it is the second instrument defect
+this step found by using the instrument.
+
+#### 13.156.1 What it did
+
+`tools/rebuild-export-census-baseline.py` regenerated every group's `rationale` from its own `RATIONALE`
+dictionary. The ledger's prose is **not** the generator's prose: each step appends a sentence when an entry
+joins or leaves, and those sentences are the only statement of why the numbers are what they are. Running
+the tool to record two new entries therefore deleted the paragraph §13.149 had added -- measured, that
+group went 9,982 characters to 9,472 -- and nothing warned. `--check` passed before and after, because the
+tool's output was consistent with itself.
+
+#### 13.156.2 The rule, in three cases
+
+1. **No ledger yet** -- write the generator's text. There is no record to protect.
+2. **The ledger starts with the generator's text** -- write the ledger's. Every hand-added sentence
+   survives, and this is the ordinary case.
+3. **The two disagree some other way** -- refuse, naming the group and both lengths. It means the
+   generator's own text was edited, so the recorded sentences may now be duplicated, superseded or
+   contradicted, and no tool can say which of two accounts of one group is current.
+
+All conflicts are collected before anything is written, so one run reports all of them; a tool that stops
+at the first makes the operator iterate five times to learn five things.
+
+**No `--force`.** An escape hatch would be used on the first inconvenient Tuesday and the defect would come
+back with a flag in front of it. The manual merge is: edit `RATIONALE`, run the tool, read the diff.
+
+#### 13.156.3 The verification, and the one that matters most
+
+| check | result |
+| --- | --- |
+| 6 unit assertions on `merge_rationale` (`test_rebuild_census_baseline.py`) | pass; 6 of 6 fail against the old code |
+| a hand-appended sentence survives | preserved verbatim |
+| a rewritten generator text | `RationaleConflict`, naming group and both lengths |
+| `main` builds the ledger through the merge | asserted on the source, the way `test_push_blobs.py` asserts verify-then-publish |
+| **the real ledger after a real rebuild** | **byte-identical** -- `diff` reports no change at all |
+
+The last row is the one worth the run. Before the fix the same command removed two paragraphs; after it,
+the ledger comes back byte-for-byte and both the §13.149 sentence and this step's own §13.155.7 sentence are
+still in it. A tool that regenerates prose cannot be tested only on its prose -- it has to be run against
+the file it is about.
+
+#### 13.156.4 One more constant, removed
+
+The tool wrote to the literal `/workspace/cortex/tools/export-census-baseline.json` and ran its subprocess
+with `cwd="/workspace/cortex"`. That worked and was wrong the way a constant is always wrong: it made the
+tool runnable from one directory on one machine, and it hid the destination from anyone reading a diff. The
+root is now derived from `__file__`, which is the same repair `push-via-api.py` carries and for the same
+reason -- a wrong destination should be unrepresentable rather than merely discouraged.
