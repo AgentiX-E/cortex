@@ -60,6 +60,24 @@ export type QuestionRecord = {
   readonly question: string;
   readonly capability: string;
   /**
+   * The date the question was asked on, `YYYY/MM/DD`, when the dataset states one.
+   *
+   * ## Why this is persisted rather than re-derived
+   *
+   * A time qualifier is resolved **against the question date** -- "two weeks ago" is a
+   * different window for a question asked in March and one asked in June -- so an
+   * artifact that omits it cannot price an order mechanism that keys on that window, and
+   * a reader has to substitute the last delivered turn's date for a value the run knew
+   * exactly. §13.152.2 records the size of the substitution on the control run: the
+   * delivered span's last turn is within the run's own lifetime of the question date but
+   * is not the question date, so every window read from an archived artifact is an
+   * approximation that a dispatch does not have to make.
+   *
+   * Omitted, never defaulted: a producer that does not know the date writes no field, and
+   * a reader that meets an absent field must say so rather than substitute silently.
+   */
+  readonly questionDate?: string;
+  /**
    * The dataset's gold answer. `string | number` because LongMemEval stores some
    * golds as JSON numbers, and coercing here would make `85` and `"85"`
    * indistinguishable downstream. `null` is a gold of "no answer", which is a
@@ -268,6 +286,8 @@ export type QuestionRecordInput = {
   readonly questionId: string;
   readonly question: string;
   readonly capability: string;
+  /** The date the question was asked on, when the producer's dataset states one. */
+  readonly questionDate?: string;
   readonly groundTruth?: string | number | null;
   readonly answer?: string | number | null;
   /** The system's raw model output, when a caller captured it. */
@@ -604,6 +624,10 @@ export function buildQuestionRecords(
       questionId: input.questionId,
       question: input.question,
       capability: input.capability,
+      // Written only when the producer knew it: an absent date is a producer that does not
+      // report one, and a substituted date would be this layer inventing a term of the
+      // window the reader is being asked to price.
+      ...(input.questionDate === undefined ? {} : { questionDate: input.questionDate }),
       ...(input.groundTruth === undefined ? {} : { groundTruth: input.groundTruth }),
       ...(input.answer === undefined ? {} : { answer: input.answer }),
       ...(input.rawOutput === undefined ? {} : { rawOutput: input.rawOutput }),

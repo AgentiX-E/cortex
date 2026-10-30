@@ -308,6 +308,11 @@ export {
   type TemporalEvent,
   type TimeRange,
 } from './temporal-engine.js';
+// The values only: `TurnStamp` and `TurnClockCensus` are the return and census shapes of the four
+// readers below, and every caller in this checkout either infers them or imports them from the
+// module. Re-exporting a type nothing names is what `tools/export-census.mjs` reports as an orphan,
+// and it is right to: an unused type export is a second public spelling of a shape one module owns.
+export { readTurnStamp, readTurnClocks, partitionByWindow, deliveredWindow } from './turn-clock.js';
 export {
   timelineFor,
   currentObject,

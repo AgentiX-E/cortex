@@ -2637,6 +2637,11 @@ function buildArmRoster(
       questionId: question.id,
       question: question.question,
       capability: question.capability,
+      // Carried through when the question states one, because a time qualifier resolves
+      // against this date and nothing else in the artifact records it (§13.152.2). A run
+      // whose artifact omits it leaves every window read from that artifact an
+      // approximation; the field costs one line here and removes that.
+      ...(question.questionDate === undefined ? {} : { questionDate: question.questionDate }),
       groundTruth: question.expected,
       answer: answers[i]!,
       rawOutput: rawOutputs[i]!,

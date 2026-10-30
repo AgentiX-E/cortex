@@ -16220,6 +16220,12 @@ Criterion 2 is the one that makes this a clean experiment rather than an increme
 `88.4 -> 92.6` was three levers at once; a permutation by construction cannot be that, because the delivered set is
 invariant and the only thing that moves is order.
 
+> **Criteria 3, 4 and 5 are restated in §13.152.4, and the restatement is what the dispatch is registered against.**
+> The three were written before the population had been counted, and counting it (§13.152.3) found two things: the
+> reach is 8 TR questions rather than 13, and the range inference does not need a model call on 24% of the population
+> at all. A bar quoted against a population that moved is the §13.141.5 shape, and the response there was to restate
+> it once, in the registration, before the run rather than after it. That is what §13.152.4 does.
+
 **It is not dispatched in this step**, for the reason §13.150.6 gave about the rule set and one more: the prefix
 parser does not exist yet, and criterion 1 is a gate on it rather than on the model. That is a code change with a
 test, not a dispatch, and it is the next step's first half.
@@ -16237,3 +16243,189 @@ technique disagree, the disagreement is usually about which axis the technique l
 `temp_query_search_pruning`'s reorder are both called "query expansion", and one is a region change while the other
 is a permutation. A campaign that registers "query expansion" as one increment would be registering two axes under
 one name, and the first reading would show neither.
+
+## 13.152 The prefix parses on all 60,438 delivered turns, and the range does not need a model on a quarter of its population
+
+§13.151.5 made the dispatch conditional on the prefix parser existing and its test passing, and §13.151.4 priced the
+range inference from a **proxy** -- the share of questions whose text carries a period reference -- at 70 calls per
+pass, +9.7% per dispatch. This section reports the parser, and replaces the proxy with a measurement on the control
+artifact. The measurement changes the shape of the increment: the arm already owns a deterministic window resolver, so
+the reference's model call is a **fallback** here rather than the mechanism.
+
+### 13.152.1 The parse, read on the control run's own turns
+
+`packages/cortex-eval/src/turn-clock.ts` reads a turn's `[YYYY/MM/DD (Day) HH:MM]` prefix. On `40751394094`, over
+every question's delivered turns:
+
+| reading | value |
+| --- | ---: |
+| delivered turns | 60,438 |
+| turns with a readable date | **60,438 (100.0000%)** |
+| questions with at least one unreadable turn | **0** |
+| questions with no readable turn at all | **0** |
+| stamps whose weekday label disagrees with the date's calendar | **0** |
+| distinct minutes-of-day in the corpus | 1,440 |
+
+The fifth row is why the reader validates rather than truncates. A stamp carries two encodings of one fact -- the
+date and its weekday -- and they agree on all 60,438 turns, so a disagreement is not noise: it is a renderer that
+moved one of the two, and a reorder acting on the moved date would front-load the wrong turns. Refusing costs nothing
+(the turn stays where it was) and turns a silent misordering into a count. The other refusals are the same argument
+one level down: `2023/02/30`, `2023/00/10`, `24:00` and `(Xyz)` are all shapes this renderer cannot produce, and
+`Date.UTC` would silently roll the first two into a different day rather than reject them.
+
+**§13.151.5's first criterion is met, and it is met on the artifact rather than on the dataset.** The artifact is what
+the mechanism will see; a parse that held on the raw corpus and failed on the rendering would be a fact about a
+dataset. The 100% is also stronger than "the pattern matched": `[2023/02/15]` and `[2023/02/15 23:59]` are refused
+only if they are inconsistent with themselves, so the reader accepts the two renderings `formatStructuredContext`
+already produces while still refusing a corrupted one.
+
+### 13.152.2 The artifact could not say when its question was asked
+
+A time qualifier resolves **against the question date** -- "last Saturday" is a different day for a question asked on
+a Tuesday than on a Sunday -- and the per-question record did not carry it. `Question.questionDate` was in the type
+and reached `answerTemporal`, but `QuestionRecord` had no field for it, so every window read from an archived artifact
+has to substitute something. That is a recording gap of the §13.145 shape: the run knew the value and the artifact
+could not report it.
+
+The repair is three lines with a comment each -- the field on `QuestionRecord`, the field on `QuestionRecordInput`,
+and one conditional spread at the arm's record construction -- and it is written **only when the dataset states a
+date**, because a substituted date is this layer inventing a term of the window it is asking a reader to price.
+`tools/window-reach.mjs` therefore reports the substitution rate as its own number: on this control run it is
+**500 of 500**, since the run predates the field.
+
+The substitution is sound for the *firing* count (a qualifier either parses against a valid date or does not) and
+approximate for the *window* (the delivered span's last turn is not the question date). Every window in the tables
+below is therefore a lower bound on precision, and the dispatch -- which runs with the real date -- is the exact
+reading. Stated because a later section quoting these windows as exact would be quoting an approximation.
+
+### 13.152.3 Three populations, and what the proxy got wrong
+
+The population is defined by something the arm already owns rather than by a new grammar: `classifyTemporalQuestion`
+returns `eventLookup` ("what was X at that time") or `relative` ("how long ago was that one event") for exactly the
+questions answered from **one** point in time, which is the only thing a single window can express. `interval`
+("between X and Y") and `ordering` are excluded by construction: one window would span both events or match one of
+them, and promoting half of a two-event question is a claim the mechanism cannot make.
+
+| capability | questions | window-wanting | ladder-fired | fires and splits | wrong and splittable |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| IE | 150 | 22 | 1 | 0 | 0 |
+| MR | 121 | 14 | 2 | 1 | **1** |
+| KU | 72 | 8 | 1 | 0 | 0 |
+| **TR** | 127 | **45** | **18** | **14** | **8** |
+| ABS | 30 | 1 | 0 | 0 | 0 |
+| **roster** | **500** | **90 (18.0%)** | **22 (4.4%)** | **15 (3.0%)** | **9** |
+
+**The proxy was close in size and wrong in composition.** §13.151.4 estimated 70 calls per pass from the two period
+families; the measured window-wanting population is 90. But the ladder resolves 22 of those 90 with no call at all,
+so the model's bill is **68**, not 90 -- and the 20-question difference is not a rounding: the cue families counted
+questions the ladder already answers (`two weeks ago`, `a month ago`) and missed questions that want a window while
+carrying no period reference at all (`What time did I reach the clinic on Monday?`, `What is the artist that I started
+to listen to last Friday?`). A proxy built from surface cues approximates neither the population nor the cost.
+
+**Two numbers, two different jobs, and §13.151.4 used one for both.** `window-wanting` is the *reach*; `ladder-fired`
+is the *free path*; `model-fallback` is the *bill*. Only the third is a cost, and it is 68 calls per run -- 544 per
+dispatch at §13.151.4's own multiplier of 8, which is **+9.5%** against 5,756 rather than the +9.7% registered. The
+two-tier resolver is strictly cheaper than the mechanism §13.151 registered, and the reason is that the arm already
+had half of it.
+
+### 13.152.4 The reach, restated, and the risk the original bar did not contemplate
+
+**Reachable** means: wrong in the control, window-wanting, and the resolved window actually splits the delivered list.
+The third clause is not decoration -- a window entirely outside the delivered span reorders nothing, and counting it
+as a reach is a mechanism that ran and could not have had an effect.
+
+| id | capability | kind | in/out of the delivered list | window (substituted reference) |
+| --- | --- | --- | --- | --- |
+| `73d42213` | MR | eventLookup | 36 / 192 (18.8%) | 2023/05/29 .. 2023/05/29 |
+| `gpt4_e061b84g` | TR | eventLookup | 51 / 205 (24.9%) | 2023/05/31 .. 2023/06/06 |
+| `b46e15ee` | TR | eventLookup | 73 / 188 (38.8%) | 2023/02/12 .. 2023/02/26 |
+| `gpt4_d6585ce9` | TR | eventLookup | 12 / 163 (7.4%) | 2023/04/08 .. 2023/04/08 |
+| `gpt4_1e4a8aec` | TR | eventLookup | 17 / 172 (9.9%) | 2023/04/04 .. 2023/04/10 |
+| `gpt4_59149c78` | TR | eventLookup | 6 / 185 (3.2%) | 2022/12/29 .. 2023/01/04 |
+| `gpt4_4929293b` | TR | eventLookup | 6 / 177 (3.4%) | 2023/06/05 .. 2023/06/11 |
+| `gpt4_fa19884d` | TR | eventLookup | 4 / 191 (2.1%) | 2023/03/24 .. 2023/03/24 |
+| `eac54add` | TR | eventLookup | 11 / 172 (6.4%) | 2023/01/29 .. 2023/02/04 |
+
+All nine are `eventLookup`, which is the shape the paper's own few-shot examples are written for (§13.151.2), and the
+in-window share runs from 2.1% to 38.8% -- in every case a small slice of a 160-200 turn list moved to the front,
+which is the mechanism's whole effect.
+
+**The bar, restated.** §13.151.5 asked for "at least 5 of TR's 13 reachable questions". Counting the population
+gives 8, not 13, and §13.141.5 is the precedent for what happens when a registered bar meets a population that
+shrank: restate it once, in the registration, before the run. The registration this section dispatches against is:
+
+| # | criterion | what would falsify it |
+| - | --- | --- |
+| 1 | the parse resolves every delivered turn, or names the questions it cannot | **met on the control artifact**: 60,438 of 60,438, 0 questions named |
+| 2 | the delivered multiset is byte-identical to the control's, per question | any question whose delivered set changed means the dispatch ran two mechanisms |
+| 3 | the mechanism administers 10-20% of the roster | measured **18.0%** (90/500); the ladder's own 4.4% is a cost number and is not this criterion |
+| 4 | TR converts **at least 4 of its 8 reachable questions**, and MR at most 2 of its 1 | the bar is half the reachable set, which on a population this size is far outside the reader's own churn |
+| 5 | no question outside the fired set moves beyond the 5.0% reader floor | a flow above the floor among untouched questions is a perturbation of something the reorder does not reach |
+| 6 | **of the 12 questions the ladder fires on that are already correct, at most 2 are sold** | this is the risk the original bar did not contemplate: 6 of those 12 split, so the reorder touches six correct verdicts as well as nine wrong ones |
+
+Criterion 6 is the one the measurement added. §13.151.5 was written as if the firing population were the wrong
+population, and on this artifact it is not: **12 of the 22 firings are on questions the control already answers**, and
+6 of those 12 have a list the window splits. A front-loading that buys 4 and sells 4 would read as a mechanism with
+no effect while having had two; the sell bound is what keeps the reading honest.
+
+### 13.152.5 What fires and cannot move
+
+Of 22 firings, 15 split and **7 do not** (6 correct, 1 wrong). A window that does not intersect the delivered span is
+either the substitution of §13.152.2 -- the span's end is not the question date, so the resolved window is displaced
+by however long after the haystack the question was asked -- or a resolver that picked a unit the question did not
+state. Both are worth a count and neither is worth a guess: the dispatch runs with the real date, and this tool will
+report the number again on the treated run.
+
+That is also the argument for why the fire/inert/move split is three numbers rather than two: "fired but inert" is
+the population where a mechanism could claim a reach it never had, and on an artifact with a substituted reference
+date it is exactly the population a bad substitution lands in.
+
+### 13.152.6 What is registered, and what is deliberately not
+
+**Registered: the ladder-only reorder.** Zero model calls, 22 questions administered, 9 wrong-and-splittable
+candidates, and a bill of nothing. Everything this section prices is in place for it: the parse (§13.152.1), the
+date it resolves against (§13.152.2), the population (§13.152.3), the criteria as six numbered claims (§13.152.4),
+and the tool that checks all six on a pair of artifacts (`tools/window-reach.mjs`, §13.152.7).
+
+**Not registered in this step: the model fallback.** It is 68 calls per run for 12 wrong questions, 6 of them TR, and
+it is only worth buying once the free path's conversion rate is known -- because the fallback's question set
+overlaps the ladder's population and a fallback that duplicated the ladder's successes would double a bill to buy
+nothing. §13.151.4's lesson was that the mechanism is affordable; this section's is that the cheaper half has to be
+measured first.
+
+**And not registered: a window on `interval`/`ordering` questions.** Fourteen wrong TR questions are
+`interval`/`ordering` (`How many days passed between X and Y`, `Which three events happened in this order`). A single
+window is the wrong instrument for all fourteen, and the temptation to widen the mechanism until the bar is met is
+the §13.126 mistake in the other direction -- a criterion that fits the mechanism rather than a mechanism that meets
+the criterion.
+
+### 13.152.7 The tool, and what it refuses
+
+`tools/window-reach.mjs --control <report.json> [--treatment <report.json>]` reads; it dispatches nothing. Without a
+treatment it prices the mechanism; with one it also checks criteria 2 and 5 by pairing the two artifacts by question
+id. Twenty-nine checks in `tools/__tests__/test_window_reach.py` hold it, and the refusals are the load-bearing half:
+
+- exit 2 for a malformed invocation (no `--control`, two `--treatment`s, the same file as both arms, unreadable JSON,
+  no `questions` array, a record with no question text, a duplicate id, a `turns` field that is not a list, a turn
+  that is neither text nor `{text}`) -- each replaces a plausible number with one wrong in a direction nobody notices;
+- exit 1 for a well-formed artifact that answers nothing here (no question wants a window), which is a different fix
+  from a different command;
+- a turn it cannot read is **refused**, never skipped: skipping shrinks the delivered span, and every window decision
+  is a comparison against that span;
+- the substitution rate is printed rather than hidden, because a reader who does not know the reference date was
+  substituted cannot tell an approximate window from an exact one.
+
+### 13.152.8 The rule this adds
+
+**A free path in front of a paid one changes what the criterion is about.** §13.151.5's "fires on 10-20% of the
+roster" existed to police a bill -- one call per firing -- and the arm then turned out to own a resolver that answers
+24.4% of the population for nothing. Keeping the band pointed at the firing rate would have failed a mechanism that
+is strictly cheaper than the one the band was written for, and pointing it at the population instead is not a
+relaxation: 18.0% is inside the same band. The criterion was right about the risk (a mechanism administered more
+broadly than registered) and wrong about the quantity that measures it, and only a measurement of the population
+could tell the two apart.
+
+**Corollary.** A proxy is a hypothesis about a population, so it has to be replaced by a count before it is used to
+price anything. §13.151.4's 70 calls were within 3 of the truth for the wrong reason -- it counted questions the
+free path already answers and missed questions that want a window without naming a period -- and a cost model that is
+right by accident cannot be re-derived when the implementation changes, which is precisely what happened here.
