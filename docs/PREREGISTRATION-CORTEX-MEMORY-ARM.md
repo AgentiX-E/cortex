@@ -17434,3 +17434,150 @@ is still the cost that can wait one dispatch. §13.158.5's three reasons not to 
 fourth, which is the strongest: **the population turned out to be mostly seams, so the repair's yield is
 smaller than the measurement that found it.** The measurement was worth its hour because it repriced the
 work; the work was worth deferring because the price fell.
+
+### 13.161 The reading: the mechanism ran, it converted one of two, and the bar was written for a population of seven
+
+`40989420944` finished at `12abb060e504` in 127 minutes and its conclusion is **failure** -- the benchmark
+step succeeded, the report uploaded, and step 14, the artifact audit, failed on one check. §13.161.7 is that
+check. Everything below is read from the artifact, and the first two subsections exist because a reading has
+to establish the thing before it prices it.
+
+#### 13.161.1 Identity: the dispatch-time record certifies, a fresh run today does not
+
+| when | verdict | why |
+| --- | --- | --- |
+| at dispatch (`--run`, `in_progress`) | **MATCH** | 569 blobs byte-identical; the record is at `run-40989420944.identity.json` |
+| replayed from that record (`--record`) | **MATCH** | same 569 blobs, 0 differ |
+| a fresh `--run` today | **MISMATCH** | 3 number-bearing paths differ: `tools/rebuild-export-census-baseline.py` changed, `tools/window-pair.mjs` missing, `tools/window-reach.mjs` changed |
+
+The three are the work of §13.157 through §13.160, all committed **after** the dispatch. None of them is
+executed by this job: its fourteen steps are checkout, toolchain setup, `pnpm build`, dataset download, cache
+restore, the A/B run, cache save, report upload, the audit, and the spend report. `tools/` enters none of them.
+So the fresh `MISMATCH` is the gate answering its own question correctly -- *is this checkout the commit that
+ran?* -- and the answer is no, without any of the differences being able to reach the artifact. **The record is
+what makes the reading possible**, which is the one thing §13.154.6 claimed for it, and this is the first time
+the claim was load-bearing.
+
+#### 13.161.2 The mechanism ran, and the artifact now proves it two ways
+
+| evidence | control | treated |
+| --- | --- | --- |
+| `featureConfig.windowReorder` | absent | `true` on **500 of 500** |
+| `questionDate` recorded | **0 of 500** | **500 of 500** |
+| replayed on its own deliveries: `fired` | 19 | 19 |
+| replayed on its own deliveries: `moved` | 9 | **0** |
+| mean turns promoted by that replay | 22.9 | **0** |
+
+The last two rows are a new invariant and they are the strongest statement in this section: **the promotion is
+idempotent**, so replaying it on a delivery that has already been reordered finds nothing to move. `fired = 19`
+with `moved = 0` is the fingerprint of an administered run; a run that had *not* been administered would print
+`moved = 9` on itself. This is also what the artifact audit should be checking instead of the field it does
+check (§13.161.7).
+
+#### 13.161.3 The six criteria
+
+| # | criterion | verdict | number |
+| --- | --- | --- | --- |
+| 1 | the parse resolves every delivered turn | **met** | 0 unreadable turns, 0 broken questions on both artifacts |
+| 2 | the delivered multiset is unchanged, per question | **met** | 0 of 500; prompt characters identical on all 500 |
+| 3 | administered on the temporal route and nowhere else | **met** | 18 deliveries changed, **all 18 TR**; IE, KU, MR, ABS unchanged |
+| 4 | TR converts at least 4 of its 7 reachable-and-wrong | **FAILED** | converted **1**, and the population is **2**, not 7 (§13.161.4) |
+| 5 | TR sells at most 1 of the 2 it reorders and the control gets right | **met** | sold **0** of 2 |
+| 6 | no question outside the administered set moves beyond the 5.0% floor | **FAILED** | 36 of 482 = 7.5% (§13.161.5) |
+
+#### 13.161.4 Criterion 4's denominator was computed with a substitute, and the true population is two
+
+The control artifact records **no `questionDate`** -- 0 of 500 -- because it was produced before the arm wrote
+that field. `window-wired` therefore substituted each question's reference date from its delivered span, and
+printed so: `substituted from the delivered span: 500`. The registered populations came from that replay:
+19 fired, 9 moved, 7 reachable-and-wrong, 2 sold.
+
+The treated artifact records the real date on all 500. Joined onto the control's deliveries, the same replay
+gives:
+
+| replay input | fired | moved | reachable-and-wrong | sold |
+| --- | --- | --- | --- | --- |
+| control artifact alone (substituted dates) | 19 | 9 | **7** | 2 |
+| control deliveries + the treated artifact's dates | 19 | **4** | **2** | 2 |
+
+So the bar "at least 4 of its 7" was applied to a population of **2**, and 4 of 2 is unreachable by
+construction. The tool said so without being told: `converted 1 of 2 reachable-and-wrong (bar 4) -- note: the
+registered population is 7`. §13.157.5 wrote that note for exactly this failure and this is its first
+production firing.
+
+**What the criterion actually measured, then, is 1 of 2.** One conversion out of a population of two is 50%,
+which is not a null result -- and it is not four, which is what was registered. Both statements are true and
+neither may be used to cancel the other: **the criterion failed**, and its bar was written against a
+population that does not exist.
+
+#### 13.161.5 Criterion 6 failed against a bar set below the null
+
+36 of the 482 untouched questions flipped, 7.5%, against a 5.0% floor. Two facts about that number, in order:
+
+1. **§13.100.2 measures the reader's judgement flipping on 11.8% of questions between two runs of the same
+   configuration.** A 5.0% floor is below the null, so the criterion fails on noise alone. The registration's
+   own justification paragraph cites the 59-of-500 figure and then sets a floor at 25 of 500 -- the
+   inconsistency is inside the paragraph, and it was there before the run.
+2. **This run carries its own control for that noise.** The reference pipeline moved from 225 to 219 correct
+   -- **six questions** -- with no mechanism touching it. The feature side moved from 417 to 415, two.
+
+So the mechanism's whole effect, −2 questions, is one third of the swing the untouched side took by itself.
+
+#### 13.161.6 The net, stated three ways because one of them is the only honest one
+
+| reading | feature | reference | delta |
+| --- | --- | --- | --- |
+| accuracy | 415/500 = 83.00% | 219/500 = 43.80% | feature **−0.40 pt**, reference **−1.20 pt** |
+| per capability | IE +1, KU +1, TR **−1**, MR **−3**, ABS 0 | -- | -- |
+| the mechanism's own reach | 2 reachable-and-wrong, 1 converted, 0 sold | -- | -- |
+
+The per-capability row is worth reading against §13.153.5 criterion 3: the mechanism is confined to TR by
+construction and by measurement, and TR moved by **one question** while MR -- a route it cannot touch -- moved
+by **three**. That is the reader's churn in its most legible form.
+
+#### 13.161.7 The audit failed, and it failed on a field this mechanism never writes
+
+Step 14 prints `FAIL expansion -- queryExpansion=window reporting None question(s) expanded; the roster has
+121 distinct MR texts`. The check's premise is the reusable knob: setting `queryExpansion` must make the run
+report what it expanded. The window path expands nothing -- it reorders the delivered turns -- so the counter
+is `None` and always will be, and the artifact's actual trace of the mechanism is a different field:
+`featureConfig.windowReorder` on all 500.
+
+Three things follow, and only the first is about the audit:
+
+1. **The check is right in form and wrong in its predicate.** "A knob that is set must leave a trace" is the
+   invariant worth having; the trace it looks for belongs to the expand path. The repair is to read
+   `featureConfig.windowReorder` when the value is `window`, and to assert the idempotence fingerprint of
+   §13.161.2 -- `fired > 0` **and** `moved = 0` on the artifact's own delivery -- which is a stronger
+   statement than a counter, because it cannot be satisfied by writing a number.
+2. **A red conclusion on a green artifact.** The run's conclusion is `failure` while the artifact is complete
+   and its six criteria are readable. That is the intended shape of a post-hoc audit (it must not be able to
+   hide), but it means the run's colour is not the mechanism's verdict and must never be quoted as one.
+3. **The knob is named for the wrong thing.** `queryExpansion=window` is a reused enum value that now means
+   "reorder the delivered turns"; the audit's confusion is downstream of the name. Registering that as a
+   separate rename would be a change with no measurement attached, so it is recorded here and not done.
+
+#### 13.161.8 The verdict, and what P3c is worth
+
+**P3c-2b′ is not separated.** Criterion 4 failed; the net is −2 questions against a −6 swing on the side the
+mechanism cannot reach; and the population that made the criterion registrable was measured with a substitute
+date. This is the same verdict P0 (`recover`) got, reached the same way, and it closes the free ladder:
+
+> Under true reference dates, **exactly two questions** on this roster are wrong, window-wanting, parsed, and
+> actually split by their window. The ladder converted one of them for zero calls, and two is its ceiling.
+
+That ceiling is the number P3c has been missing since §13.152. It also **reverses the ordering the plan has
+carried**: the paid path's population is twelve wrong questions (§13.159.1) and the free path's is two, so
+P3c-3 is now the larger opportunity rather than the fallback to it. The next registration is written against
+twelve, with the discount measured here applied to it -- one of two is a 50% conversion on a population of two,
+which is the only conversion rate this corpus has produced and too small a denominator to be a prior.
+
+Three things are now unambiguously the next work, in order:
+
+1. **A control artifact that records `questionDate`.** Every population in this arm is computed against the
+   control, and every one of them was computed against a substitute. This is a one-line registration and it
+   makes the next reading exact instead of reconciled after the fact.
+2. **The artifact audit reads `windowReorder` and the idempotence fingerprint**, so a run's colour means
+   something about the mechanism (§13.161.7).
+3. **A floor above the null** for any criterion of the form "outside the administered set". 5.0% was below
+   the reader's own 11.8% and the registration said so in the same paragraph that set it.
