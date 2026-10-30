@@ -257,21 +257,6 @@ function readQuestion(record) {
   };
 }
 
-/** Counts over a subset, keyed by capability, keeping the denominators that matter. */
-function tally(rows, predicate) {
-  const byCapability = new Map();
-  let total = 0;
-  for (const row of rows) {
-    if (!predicate(row)) continue;
-    total += 1;
-    const entry = byCapability.get(row.record.capability) ?? { count: 0, wrong: 0 };
-    entry.count += 1;
-    if (row.record.correct !== true) entry.wrong += 1;
-    byCapability.set(row.record.capability, entry);
-  }
-  return { total, byCapability };
-}
-
 /** A capability table as one line per capability, alphabetically. */
 function table(rows, label) {
   const capabilities = [...new Set(rows.map((row) => row.record.capability))].sort();
