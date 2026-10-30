@@ -211,6 +211,24 @@ def test_puts_a_window_wanting_question_the_ladder_cannot_read_in_the_fallback(t
     assert data['fallback'] == 1
 
 
+def test_prices_the_fallback_population_by_how_many_of_it_is_wrong(tmp_path):
+    """The paid path's ceiling is the wrong half of the population it would be paid for.
+
+    A fallback question is one the free ladder cannot read, so a model would have to produce a window
+    for it. Only the ones the control answers wrong can convert, and even those are an upper bound --
+    producing a window is not the same as moving the list. Reporting the fallback's size without its
+    wrong count would price the mechanism by the calls it costs and never by what it could buy.
+    """
+    body = [
+        record('wrong-unread', 'How many weeks ago did I meet my aunt?', correct=False),
+        record('right-unread', 'How many months ago did I buy the kettle?', correct=True),
+    ] + filler(4)
+    data = reading(tmp_path, artifact(body))
+    assert data['fallback'] == 2
+    assert data['fallbackWrong']['total'] == 1
+    assert data['fallbackWrong']['byCapability'] == {'TR': {'questions': 2, 'wrong': 1}}
+
+
 def test_separates_fired_from_moved(tmp_path):
     # The window resolves to January 2023 and the delivered list is entirely in May: the reorder has
     # nothing to move, and a run that counted this as a move would claim an effect it cannot have.

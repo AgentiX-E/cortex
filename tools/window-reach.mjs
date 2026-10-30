@@ -145,7 +145,9 @@ if (controls.length !== 1 || treatments.length > 1) {
 }
 
 if (treatments.length === 1 && controls[0] === treatments[0]) {
-  fail('the control and the treatment are the same file, so every flow would be zero by construction');
+  fail(
+    'the control and the treatment are the same file, so every flow would be zero by construction',
+  );
 }
 
 /** One artifact's per-question records, validated on the fields this reading reads. */
@@ -204,7 +206,10 @@ function turnTexts(record) {
  * turn is not the question date), which is why the two are counted separately.
  */
 function referenceDate(record, span) {
-  if (typeof record.questionDate === 'string' && /^\d{4}\/\d{2}\/\d{2}$/.test(record.questionDate)) {
+  if (
+    typeof record.questionDate === 'string' &&
+    /^\d{4}\/\d{2}\/\d{2}$/.test(record.questionDate)
+  ) {
     return { date: record.questionDate, source: 'record' };
   }
   return span === undefined ? null : { date: span.end, source: 'delivered-span' };
@@ -276,7 +281,9 @@ function table(rows, label) {
     const wide = mine.filter((row) => row.wantsWindow).length;
     const fired = mine.filter((row) => row.fired).length;
     const moved = mine.filter((row) => row.fired && row.moves).length;
-    const wrongReach = mine.filter((row) => row.record.correct !== true && row.fired && row.moves).length;
+    const wrongReach = mine.filter(
+      (row) => row.record.correct !== true && row.fired && row.moves,
+    ).length;
     lines.push(
       `  ${capability.padEnd(4)} n=${String(mine.length).padStart(3)}  window-wanting=${String(wide).padStart(3)}` +
         `  ladder-fired=${String(fired).padStart(3)}  moves=${String(moved).padStart(3)}` +
@@ -296,7 +303,9 @@ if (rows.length === 0) {
 
 const windowWanting = rows.filter((row) => row.wantsWindow);
 if (windowWanting.length === 0) {
-  unsupported('control: no question wants a time window, so this artifact cannot price the mechanism');
+  unsupported(
+    'control: no question wants a time window, so this artifact cannot price the mechanism',
+  );
 }
 
 const treatment = treatments.length === 1 ? loadReport(treatments[0], 'treatment') : null;
@@ -326,6 +335,27 @@ const unreadable = rows.filter((row) => row.unreadable);
 const ladderFired = rows.filter((row) => row.fired);
 const ladderMoved = rows.filter((row) => row.fired && row.moves);
 const fallback = windowWanting.filter((row) => !row.fired);
+// The paid population, priced before it is paid for. A fallback question is one the free ladder
+// cannot read, so a model would have to produce a window for it; only the ones the control answers
+// wrong can convert, and even those are an upper bound, because producing a window is not the same
+// as moving the list. Reporting the fallback's size without this count would price the mechanism by
+// what it costs and never by what it could buy.
+//
+// Counted here rather than with `tally`, whose `count` is the number of rows that *matched* the
+// predicate and not the size of the population it was given: reusing it printed "questions=1" beside
+// a fallback of two, which is the same class of error as a denominator that silently shrinks.
+const fallbackWrong = { total: 0, byCapability: {} };
+for (const row of fallback) {
+  const entry = (fallbackWrong.byCapability[row.record.capability] ??= {
+    questions: 0,
+    wrong: 0,
+  });
+  entry.questions += 1;
+  if (row.record.correct !== true) {
+    entry.wrong += 1;
+    fallbackWrong.total += 1;
+  }
+}
 const reachableWrong = rows.filter((row) => row.record.correct !== true && row.fired && row.moves);
 const trReachable = reachableWrong.filter((row) => row.record.capability === 'TR');
 const mrReachable = reachableWrong.filter((row) => row.record.capability === 'MR');
@@ -333,7 +363,8 @@ const mrReachable = reachableWrong.filter((row) => row.record.capability === 'MR
 const claims = [];
 claims.push({
   id: 1,
-  statement: 'every delivered turn carries a readable stamp, or the questions that do not are named',
+  statement:
+    'every delivered turn carries a readable stamp, or the questions that do not are named',
   measured:
     `${rows.length - undated.length}/${rows.length} questions fully dated; ` +
     `${unreadable.length} with no readable turn at all`,
@@ -381,7 +412,8 @@ if (treatment !== null) {
   const population = new Set(ladderFired.map((row) => row.record.questionId));
   const outside = rows.filter((row) => !population.has(row.record.questionId));
   const outsideMoved = outside.filter(
-    (row) => flow.bought.includes(row.record.questionId) || flow.sold.includes(row.record.questionId),
+    (row) =>
+      flow.bought.includes(row.record.questionId) || flow.sold.includes(row.record.questionId),
   );
   const outsideShare = outside.length === 0 ? 0 : outsideMoved.length / outside.length;
 
@@ -434,6 +466,10 @@ if (asJson) {
         ladderFired: ladderFired.length,
         ladderMoved: ladderMoved.length,
         fallback: fallback.length,
+        fallbackWrong: {
+          total: fallbackWrong.total,
+          byCapability: fallbackWrong.byCapability,
+        },
         reachableWrong: reachableWrong.map((row) => row.record.questionId),
         claims,
         pair: pairReading,
@@ -448,20 +484,47 @@ if (asJson) {
 const lines = [];
 lines.push(`Window reorder, priced on ${controls[0]}`);
 lines.push('');
-lines.push(`Questions: ${rows.length}. Reference date from the record: ${rows.length - substitutions}; substituted from the delivered span: ${substitutions}.`);
+lines.push(
+  `Questions: ${rows.length}. Reference date from the record: ${rows.length - substitutions}; substituted from the delivered span: ${substitutions}.`,
+);
 lines.push('');
 lines.push('Prefix coverage (§13.151.5 criterion 1):');
-lines.push(`  turns dated: ${rows.reduce((sum, row) => sum + (row.record.turns.length - row.undatedTurns), 0)} of ${rows.reduce((sum, row) => sum + row.record.turns.length, 0)}`);
-lines.push(`  questions with an unreadable turn: ${undated.length}${undated.length === 0 ? '' : ` -> ${undated.map((row) => row.record.questionId).join(', ')}`}`);
+lines.push(
+  `  turns dated: ${rows.reduce((sum, row) => sum + (row.record.turns.length - row.undatedTurns), 0)} of ${rows.reduce((sum, row) => sum + row.record.turns.length, 0)}`,
+);
+lines.push(
+  `  questions with an unreadable turn: ${undated.length}${undated.length === 0 ? '' : ` -> ${undated.map((row) => row.record.questionId).join(', ')}`}`,
+);
 lines.push(`  questions with no readable turn at all: ${unreadable.length}`);
 lines.push('');
 lines.push(...table(rows, 'per capability:'));
 lines.push('');
 lines.push('The mechanism, in three populations that price differently:');
-lines.push(`  window-wanting (eventLookup | relative): ${windowWanting.length} = ${((100 * windowWanting.length) / rows.length).toFixed(1)}% of the roster`);
+lines.push(
+  `  window-wanting (eventLookup | relative): ${windowWanting.length} = ${((100 * windowWanting.length) / rows.length).toFixed(1)}% of the roster`,
+);
 lines.push(`  ladder-fired (free, no model call):      ${ladderFired.length}`);
 lines.push(`  ladder-fired and actually splitting:     ${ladderMoved.length}`);
 lines.push(`  model fallback (one call each, per run): ${fallback.length}`);
+lines.push('');
+lines.push('The paid population, priced before paying:');
+lines.push(
+  `  fallback questions the control answers wrong: ${fallbackWrong.total} of ${fallback.length}`,
+);
+for (const [capability, entry] of Object.entries(fallbackWrong.byCapability).sort()) {
+  lines.push(
+    `    ${capability.padEnd(4)} questions=${String(entry.questions).padStart(3)}  wrong=${String(entry.wrong).padStart(3)}`,
+  );
+}
+lines.push(
+  '  ceiling, not a forecast: a fallback question has no parsed window, so the model has to produce',
+);
+lines.push(
+  "  one and it has to split the delivered list before it can convert anything. The ladder's own",
+);
+lines.push(
+  '  conversion rate on the questions it did read is the only measured basis for discounting this.',
+);
 lines.push('');
 lines.push('The reach that matters -- wrong in the control and splittable by the window:');
 for (const entry of reachableWrong) {
@@ -474,9 +537,15 @@ for (const entry of reachableWrong) {
 lines.push('');
 if (pairReading !== null) {
   lines.push('Paired against the treatment:');
-  lines.push(`  bought ${pairReading.bought}, sold ${pairReading.sold}, unchanged ${rows.length - pairReading.bought - pairReading.sold - pairReading.missing.length}${pairReading.missing.length === 0 ? '' : `, missing ${pairReading.missing.length}`}`);
-  lines.push(`  delivered set changed on ${pairReading.changedSet.length} questions${pairReading.changedSet.length === 0 ? '' : ` -> ${pairReading.changedSet.join(', ')}`}`);
-  lines.push(`  outside the population: ${pairReading.outside.moved}/${pairReading.outside.count} = ${(100 * pairReading.outside.share).toFixed(1)}% (floor 5.0%)`);
+  lines.push(
+    `  bought ${pairReading.bought}, sold ${pairReading.sold}, unchanged ${rows.length - pairReading.bought - pairReading.sold - pairReading.missing.length}${pairReading.missing.length === 0 ? '' : `, missing ${pairReading.missing.length}`}`,
+  );
+  lines.push(
+    `  delivered set changed on ${pairReading.changedSet.length} questions${pairReading.changedSet.length === 0 ? '' : ` -> ${pairReading.changedSet.join(', ')}`}`,
+  );
+  lines.push(
+    `  outside the population: ${pairReading.outside.moved}/${pairReading.outside.count} = ${(100 * pairReading.outside.share).toFixed(1)}% (floor 5.0%)`,
+  );
   lines.push('');
 }
 lines.push('Registered claims, read against this artifact:');

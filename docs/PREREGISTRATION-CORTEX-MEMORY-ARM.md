@@ -17230,3 +17230,68 @@ Three reasons, in order of weight.
 `tools/export-census.mjs --check` keeps its current behaviour until then. The one thing this section changes
 today is that a reader of the gate now knows its over-count hides findings rather than merely adding noise, and
 knows how many.
+
+### 13.159 The paid path has a ceiling, and it is twelve questions for sixty-eight calls
+
+§13.153.8 registered P3c-3 -- the model fallback -- with an increment of "the questions that want a window
+and that the ladder cannot parse", and admitted the price was known while the **reach** was not. That is
+backwards for a mechanism: the calls are the cost and the conversion is the reason, and a registration that
+knows only the cost cannot be ordered against anything. This is the reach, read offline from the control
+artifact at zero calls.
+
+#### 13.159.1 The three populations, with the third one now split
+
+`window-reach.mjs` has always reported window-wanting (90), ladder-fired (22) and fallback (68). The third
+number was a price. It now carries the half that makes it a candidate:
+
+| reading | count |
+| --- | --- |
+| window-wanting (`eventLookup` or `relative`) | 90 = 18.0% of the roster |
+| ladder-fired, free | 22 |
+| ladder-fired and actually splitting the delivery | 15 |
+| fallback, one model call each per run | 68 |
+| **fallback questions the control answers wrong** | **12** |
+
+Per capability, because the aggregate hides where the mechanism has room: `ABS 0 of 1`, `IE 2 of 21`,
+`KU 0 of 7`, `MR 4 of 12`, `TR 6 of 27`. Arithmetic: 90 − 22 = 68, and 12 of those 68 are wrong.
+
+The figure of 26 that §13.153.8 carried for this population is superseded. It is not reproduced by any
+partition of this artifact, and the population is stated here with the subtraction that produces it.
+
+#### 13.159.2 Twelve is a ceiling, and the reason is three separate requirements
+
+A wrong fallback question has to clear three gates before it converts, and the control artifact witnesses
+only the first:
+
+1. **wrong in the control** -- 12 do.
+2. **the model must produce a window the ladder did not** -- that is the whole premise, and it is untested.
+   A question the ladder cannot read is a harder question, not a random one.
+3. **the produced window must split the delivered list**, and the answer must then flip.
+
+The free path shows what discounting looks like on this corpus: the ladder fired on 22, split on 15 (68%),
+and `window-wired` measures 7 of the 9 wrong-and-moved questions as converting (78%). Applied to the paid
+path's 12, the honest prior is under 6 -- and the free path buys its 7 for **zero calls** while the paid
+path spends 68 calls per run for a chance at the same order of magnitude. P3c-3 stays behind the free
+path's reading, and it now says so with numbers rather than with an adjective.
+
+#### 13.159.3 The tool reused a counter that counts the wrong thing
+
+The first implementation reused `tally(fallback, (row) => row.record.correct !== true)`, and printing it
+gave `questions=1` beside a fallback population of two, because `tally`'s `count` is the number of rows that
+**matched the predicate**, not the size of the population it was handed. The test caught it in one run --
+it asserts both the population and the wrong count, which is exactly the assertion that distinguishes the
+two meanings. The counter is now built per capability with a field named `questions`, and the docblock says
+why `tally` was not reused.
+
+This is the third time in this arm that a reused helper carried a meaning narrower than its name (§13.153.4's
+`converted`, §13.157.5's `converted` again). The rule the three of them add: **a count printed beside a
+population has to be produced by the same expression that produces the population.**
+
+#### 13.159.4 What changed in the tool and what did not
+
+- `window-reach.mjs` gains one block and two JSON fields (`fallbackWrong.total`, `.byCapability`).
+- Its 29 acceptance tests become 30; the new one pins both meanings of the number.
+- No registered criterion moves. §13.153.5's six are about the ladder path, and nothing here touches it.
+- The caveat is printed, not just documented: the block ends by saying this is a ceiling and that the
+  ladder's own conversion rate is the only measured basis for discounting it. A number a reader will quote
+  needs its dissuasion next to it.
