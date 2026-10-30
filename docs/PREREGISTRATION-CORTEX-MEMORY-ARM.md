@@ -17130,3 +17130,103 @@ The registration states what falsifies each criterion. It does not state what *r
 bar with no reader is a bar whose reading is negotiated after the artifact lands. This is the reader for
 five of the six, it refuses the pairs it cannot compare instead of joining them, and criterion 1 stays with
 `window-wired` because it is a property of the product and not of the difference.
+
+### 13.158 P1-census, measured: the name rule hides twenty-one exports, and the comment says the opposite
+
+§13.154.8 registered this from a single instance -- `IdentityRefusal` retired `cortex-storage: Refusal` because the
+word appeared in a file that imported nothing. That was one instance found by accident. This is the
+measurement of the class, taken before writing any of the fix, because the fix's criterion was registered
+against a population nobody had counted.
+
+#### 13.158.1 What was measured, and with what
+
+A throwaway resolver, not a shipped tool: it walks every `.ts`/`.mts`/`.mjs` outside `node_modules`, `dist`,
+`coverage` and `.git`; blanks comments with the same rule the census uses; parses `import` statements
+(including `import type`, aliases and multi-line lists); and resolves a specifier by four rules -- relative
+with `.js`→`.ts`, a `dist/` path back to its `src/` file, a bare package name to that package's `src/index.ts`,
+and a subpath entry to its target. Then, for each of the **517** exports the census says has a caller, it asks
+whether any of those callers actually imports the symbol.
+
+| reading | count |
+| --- | --- |
+| exports with a caller | 517 |
+| every caller imports the symbol | 450 |
+| some callers import it, others merely name it | 37 |
+| **no caller imports it** | **30** |
+
+#### 13.158.2 The thirty, classified
+
+The thirty are not thirty findings. They are six kinds of thing, and telling them apart is the whole work:
+
+| kind | n | example | what an import-aware rule must do |
+| --- | --- | --- | --- |
+| a second declaration of the same name, or a local shadow | 10 | `reciprocalRankFusion` exists in **both** `cortex-core/retrieval/fuse.ts` and `cortex-eval/retrieval.ts`; the eval callers all mean eval's | report ours as an orphan -- this is the finding |
+| a property, a parameter, a key, or a string literal | 11 | `normalize: true` is an option key; `'unrun'` is a status string; `new Promise((resolve) => ...)` | report as an orphan -- this is the finding |
+| an ambient global declared in a `.d.ts` | 4 | `env`, `pipeline`, `AutoTokenizer`, `AutoModelForSequenceClassification` | **exempt**: these are declarations of the environment, not exports of ours |
+| re-exported, never called | 2 | `rerank.ts` re-exports `CrossEncoderRerankerOptions`; `natural-language-memory.ts` re-exports `clearEmbeddingCache` | **count as use**: a re-export is how a public surface is composed, not a dead end |
+| imported through a subpath entry point | 2 | `makeRerankPipelineFactory` via `@agentix-e/cortex-ai/local` | resolve `package.json#exports` subpaths, or it becomes a false orphan |
+| imported dynamically | 1 | `const { TransformersEmbedding } = await import(entry)` | cannot be resolved statically: fail closed, count as a caller |
+
+So **21 exports are currently reported as live whose only callers mean something else**, and 9 are artifacts of
+the measurement or of a rule that has to be written. The first of the twenty-one is worth naming: `cortex-core`
+and `cortex-eval` each define `reciprocalRankFusion`, the eval one is the one everything calls, and the core one
+has no caller anywhere outside its own test file. It has been on no list since it was written, because two files
+in another package say its name.
+
+#### 13.158.3 The doc comment says the over-count is safe, and the over-count is the unsafe direction
+
+`countCallers` records its own trade-off:
+
+> The remaining over-count is in the safe direction *for a gate*: the tool's job is to find definitely-unused
+> symbols, and a false positive (flagging live code) trains its readers to ignore it, whereas a false negative
+> simply leaves one more symbol in the reported list where a reviewer can see it.
+
+The first clause is right and the second is backwards, and the sentence got them the wrong way round. Two
+different errors are being called by one pair of names:
+
+- **Counting a caller that is not one** makes a dead export look live. That is a **false negative on the
+  finding**: nothing is reported, and the reviewer sees a clean run. It is the defect this section is about.
+- **Failing to count a real caller** makes a live export look dead. That is a false positive *in the report*:
+  the symbol appears in a list a human reads, and the cost is attention.
+
+The comment describes the second while arguing for the first, and it does not notice that the rule it is
+describing produces the first. §13.154.8 caught one instance. This measurement says there are twenty-one, and
+the reason nobody looked is that the note said the direction was safe.
+
+#### 13.158.4 The registered criterion is corrected before the work, and it grows
+
+§13.154.8 registered: *"the entry count is still 394 minus the ones that genuinely died, and every removed entry
+names the import that explains it; the 118 cross-package readings do not change."* That criterion can only be
+satisfied by a change that **shrinks** the ledger, so it would have been met -- and read as success -- by a
+repair that also created twenty-one new orphans and said nothing about them.
+
+Restated, and this is the last restatement before the dispatch:
+
+| # | criterion |
+| --- | --- |
+| 1 | the population **moves in both directions**, and both directions are enumerated by name before the diff is read: every entry that leaves names the import that explains it, every entry that arrives names the same-named thing that used to hide it |
+| 2 | the 21 above are the *predicted* arrivals. The count may differ; a difference is a finding, not a tolerance |
+| 3 | the four ambient `.d.ts` declarations do not arrive, because a `.d.ts` is exempt |
+| 4 | the two re-exports do not arrive, because a re-export is use |
+| 5 | the three subpath and dynamic callers do not arrive, because they are live |
+| 6 | an unresolvable specifier counts as a caller. Failing closed here is the difference between one false orphan and a hundred |
+| 7 | nothing outside the census changes: 913 symbols, 517 with callers, and the 118 cross-package readings hold |
+
+Criterion 2 is the one that makes this a measurement rather than a refactor: the population is predicted
+**before** the tool is written, so a repair that produces a different set is telling us the resolver's rules are
+wrong in a way the twenty-one did not predict.
+
+#### 13.158.5 Why this is registered and not done
+
+Three reasons, in order of weight.
+
+1. **It is an instrument change in the middle of a reading.** The dispatch that measures §13.153.5's six
+   criteria is running, and the census gate is part of `pnpm check`. A resolver that is subtly wrong turns the
+   gate red for everyone at once, mid-measurement, and the pressure at that moment is to make it pass.
+2. **The fix has four rules that each need their own tests**, and this window's budget belongs to the reading.
+3. **The measurement above is the valuable half.** It converts "the name rule is imprecise" -- which is a
+   comment -- into "twenty-one exports, named, in six kinds" -- which is a work item with a predicted outcome.
+
+`tools/export-census.mjs --check` keeps its current behaviour until then. The one thing this section changes
+today is that a reader of the gate now knows its over-count hides findings rather than merely adding noise, and
+knows how many.
