@@ -544,13 +544,20 @@ jobs:
       # question is whether the mechanism reached the delivery, and without the replay there
       # is no way to answer it. Failing closed is the same rule `window-pair` follows when it
       # refuses to join two artifacts whose rosters differ.
+      #
+      # The dispatch input reaches the shell through `env` and never through interpolation. A
+      # `${{ }}` inside `run:` is substituted into the script text before bash parses it, so a
+      # value containing a quote or a semicolon changes the program rather than the variable --
+      # and this input is free text from a workflow_dispatch form.
       - name: Audit the artifact against itself
         if: always()
+        env:
+          EXPANSION: ${{ github.event.inputs.cortex_memory_query_expansion }}
         run: |
           report=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
           replay=/tmp/window-replay.json
           extra=()
-          if [ "${{ github.event.inputs.cortex_memory_query_expansion }}" = "window" ]; then
+          if [ "$EXPANSION" = "window" ]; then
             if ! node tools/window-wired.mjs --control "$report" --json > "$replay"; then
               echo "::error::the window replay could not be produced, so the audit cannot"
               echo "::error::establish that the mechanism reached this delivery"
