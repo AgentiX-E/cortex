@@ -401,9 +401,25 @@ class TestPayloadInterpolationIsStillInterpolation:
     careful in one direction the shell rule is not: `${HOME}` is a correct shell
     expansion, so it is legitimate inside `sh -c '...'` — a payload that really is
     shell — and must keep passing. Only a payload for a language with no such
-    expansion (`node -e`, `python3 -c`) makes the body's non-expansion-ness a
-    defect. Banning `${...}` in payloads outright would reject correct programs,
-    which is the overshoot that gets a guard deleted rather than obeyed.
+    expansion (`python3 -c`, `ruby -e`, `perl -e`) makes the body's
+    non-expansion-ness a defect. Banning `${...}` in payloads outright would reject
+    correct programs, which is the overshoot that gets a guard deleted rather than
+    obeyed.
+
+    ## The JavaScript family, which this class used to get wrong
+
+    This docstring named `node -e` as a language with no `${...}` construct. That is
+    false: `` `${rows.length}` `` is a template literal and is JavaScript's own
+    interpolation. The claim survived because no `node -e` payload in `tools/*.py` or
+    `docs/*.md` used one, so the rule was never checked against a true negative -- and
+    the workflow scan found two of them in `competitor-retrieval.yml` on its first run.
+
+    The rule cannot be repaired by parsing harder. Deciding whether a `${...}` in a
+    JavaScript payload is a template literal or a syntax error requires the payload's
+    tokens, and this guard has no JavaScript parser; a heuristic would be a guess
+    dressed as a verdict. So the rule is scoped to the languages whose premise holds,
+    and the direction that actually breaks a command -- a LIVE payload, where the shell
+    expands first -- is covered by the other rule, which is unaffected.
     """
 
     def test_catches_the_seventh_recurrence(self) -> None:
@@ -414,17 +430,20 @@ class TestPayloadInterpolationIsStillInterpolation:
         assert 'cut.toFixed(3)' in violations[0]
 
     @pytest.mark.parametrize(
-        'interpreter', ['node', 'python3', 'python3.11', 'deno', 'ruby', 'perl']
+        'interpreter', ['python3', 'python3.11', 'ruby', 'perl']
     )
     def test_catches_it_for_every_known_interpreter(self, interpreter: str) -> None:
         # The rule keys off the interpreter list, so a payload that Python rejects
-        # must not slip through merely because it was addressed to node.
+        # must not slip through merely because it was addressed to ruby.
         #
         # Parametrised rather than looped: a loop reports one test name for six
         # checks, so a failure says "the rule is broken" instead of which interpreter
         # it is broken for. The list is written out rather than derived from
         # `_INTERPRETER` because a test that reads the implementation's own table
         # cannot notice the table losing an entry.
+        #
+        # `node`, `nodejs`, `deno` and `bun` are absent by decision, not by omission --
+        # see the class docstring and `test_a_js_template_literal_...` below.
         fragment = f"{interpreter} -e 'x = {hazard('a.b')}'\n"
         assert len(guard.scan(fragment, 'probe.sh')) == 1
 
@@ -442,14 +461,48 @@ class TestPayloadInterpolationIsStillInterpolation:
         assert guard.scan(fragment, 'probe.sh') == []
 
     def test_a_real_expansion_in_a_non_shell_payload_is_still_reported(self) -> None:
-        # `node -e 'x = ${HOME}'` is a defect with the opposite shape from the
-        # recurrence: the body happens to be a valid shell expansion, but node has
-        # no expansion at all, so this is not what the author meant. The inner
-        # language, not the shell, decides here.
-        fragment = "node -e 'x = " + hazard('HOME') + "'\n"
+        # `python3 -c 'x = ${HOME}'` is a defect with the opposite shape from the
+        # recurrence: the body happens to be a valid shell expansion, but Python has no
+        # expansion at all, so this is not what the author meant. The inner language,
+        # not the shell, decides here.
+        #
+        # This test used to be written with `node`, and the substitution is the honest
+        # form of the JavaScript exemption: for Python the sentence the report prints --
+        # "either it fails to parse or the text is taken literally" -- is true, and for
+        # JavaScript it was false. A test that keeps node here would be asserting a
+        # message about node that node contradicts.
+        fragment = "python3 -c 'x = " + hazard('HOME') + "'\n"
         violations = guard.scan(fragment, 'probe.sh')
         assert len(violations) == 1
         assert 'HOME' in violations[0]
+
+    def test_a_js_template_literal_in_a_single_quoted_payload_is_clean(self) -> None:
+        # The two lines the workflow scan found in `competitor-retrieval.yml`, in their
+        # own shape: a `node -e` program in SINGLE quotes, printing a template literal.
+        # The shell cannot reach it, and `${rows.length}` is exactly JavaScript's syntax.
+        # Reporting it was wrong twice -- once by saying the shell would expand it, once
+        # by saying the language had no such construct.
+        fragment = "node -e 'console.log(`n: " + hazard('rows.length') + "`)'\n"
+        assert guard.scan(fragment, 'probe.sh') == []
+
+    def test_a_js_template_literal_in_a_live_payload_is_still_a_violation(self) -> None:
+        # The other half, and why the exemption is scoped to quoting rather than to the
+        # language: double-quoted, the shell really does expand the sequence before node
+        # is started, and that is the direction that kills the command.
+        fragment = 'node -e "console.log(`n: ' + hazard('rows.length') + '`)"\n'
+        violations = guard.scan(fragment, 'probe.sh')
+        assert len(violations) == 1
+        assert 'has not yet handed over' in violations[0]
+
+    def test_a_shell_expansion_in_a_js_payload_is_not_the_language_rule(self) -> None:
+        # `${HOME}` in a single-quoted node payload: the guard cannot decide this one.
+        # Inside a template literal it is a reference to a JavaScript name; outside one
+        # it is a syntax error; and telling which requires a JavaScript parser this tool
+        # does not have. It is therefore not reported, and that is a deliberate trade of
+        # a guess for silence -- the dangerous direction (a live payload) is the rule
+        # above, and it still fires.
+        fragment = "node -e 'x = " + hazard('HOME') + "'\n"
+        assert guard.scan(fragment, 'probe.sh') == []
 
     def test_a_payload_spanning_lines_is_still_one_payload(self) -> None:
         fragment = "python3 -c '\nx = " + hazard('cut.toFixed(3)') + "\n'\n"
@@ -574,5 +627,153 @@ class TestEndToEnd:
         (tmp_path / 'tools').mkdir()
         (tmp_path / 'docs' / 'a.md').write_text(
             '```sh\necho "' + hazard('name') + '"\n```\n'
+        )
+        assert guard.main(['prog', str(tmp_path)]) == 0
+
+
+class TestArraySubscripts:
+    """`${a[@]}` is valid shell, and the classifier used to refuse it.
+
+    The grammar required a bare name plus an optional operator, so a subscript had no
+    route through it. Nothing in `tools/*.py` or `docs/*.md` used one, which is why the
+    gap survived until the workflow scan widened the corpus and this guard's own
+    `benchmark-cortex-memory.yml` audit step was reported as a violation of itself.
+
+    The distinction matters for the guard's credibility rather than for its coverage: a
+    rule that refuses correct shell teaches its reader to skip the report, and the next
+    report is the one that aborts a job at 03:00.
+    """
+
+    @pytest.mark.parametrize(
+        'body',
+        [
+            'extra[@]',
+            'argv[*]',
+            'a[0]',
+            'a[i+1]',
+            'a[@]:-fallback',
+            'a[0]##*/',
+        ],
+    )
+    def test_accepts_a_subscript(self, body: str) -> None:
+        assert guard.VALID_EXPANSION.fullmatch(body) is not None
+
+    def test_a_subscript_is_clean_in_a_live_region(self) -> None:
+        assert guard.scan('python3 tools/x.py "' + hazard('extra[@]') + '"\n', 'p.sh') == []
+
+    def test_widening_the_grammar_did_not_reopen_the_first_draft(self) -> None:
+        # The hole this file was written for: an alternative that matched anything. A
+        # subscript is `[` first, so it must still be a name first, and a call is not.
+        assert guard.VALID_EXPANSION.fullmatch('String(t).padEnd(5)') is None
+        assert guard.VALID_EXPANSION.fullmatch('[0]') is None
+
+
+class TestWorkflowRunBlocks:
+    """The only shell in this repository that runs unattended, scanned at last.
+
+    `§13.161`'s eleventh recurrence was a `run:` block that interpolated a dispatch input
+    straight into bash. The guard's scope said "shell fragments recorded in this
+    repository" and read `tools/*.py` and `docs/*.md` -- so the recurrence happened in the
+    one place the guard had never looked. These tests pin both halves of the repair: the
+    scope, and the line numbers that make a report usable.
+    """
+
+    def _workflow(self, tmp_path: Path, body: str) -> Path:
+        workflows = tmp_path / '.github' / 'workflows'
+        workflows.mkdir(parents=True)
+        path = workflows / 'bench.yml'
+        path.write_text(body)
+        return path
+
+    def test_a_block_scalar_body_is_extracted(self, tmp_path: Path) -> None:
+        path = self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - name: x\n        run: |\n          echo hi\n',
+        )
+        masked, blocks = guard._workflow_run_blocks(path)
+        assert blocks == 1
+        assert 'echo hi' in masked
+
+    def test_a_one_line_scalar_is_extracted(self, tmp_path: Path) -> None:
+        path = self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - name: x\n        run: pnpm build\n',
+        )
+        masked, blocks = guard._workflow_run_blocks(path)
+        assert blocks == 1
+        assert 'pnpm build' in masked
+        assert 'name: x' not in masked
+
+    def test_the_mask_preserves_the_file_coordinates(self, tmp_path: Path) -> None:
+        # The property every report depends on: masking must not change the length of
+        # any line, or `path:line` would name a place the reader cannot find.
+        body = 'jobs:\n  a:\n    steps:\n      - run: |\n          echo hi\n'
+        path = self._workflow(tmp_path, body)
+        masked, _ = guard._workflow_run_blocks(path)
+        assert [len(x) for x in masked.split('\n')] == [len(x) for x in body.split('\n')]
+        assert masked.count('\n') == body.count('\n')
+
+    def test_a_violation_is_reported_at_its_own_line(self, tmp_path: Path) -> None:
+        path = self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - name: x\n        run: |\n'
+            '          ok=1\n          echo "' + hazard('f(1)') + '"\n',
+        )
+        masked, _ = guard._workflow_run_blocks(path)
+        violations = guard.scan(masked, str(path))
+        assert len(violations) == 1
+        assert violations[0].startswith(f'{path}:7:')
+
+    def test_a_github_expression_is_not_shell_text(self, tmp_path: Path) -> None:
+        # `${{ ... }}` is resolved by the runner before bash starts. Without the mask
+        # `${` would match inside `${{`, and every workflow using the syntax would be
+        # reported -- which is how a guard becomes something people disable.
+        path = self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          mkdir -p "${{ github.workspace }}/data"\n'
+            '          echo "${{ github.event.inputs.arm }}"\n',
+        )
+        masked, _ = guard._workflow_run_blocks(path)
+        assert guard.scan(masked, str(path)) == []
+
+    def test_an_input_handed_to_bash_through_env_is_clean(self, tmp_path: Path) -> None:
+        # The shape §13.161's repair produced, and the one the guard should reward.
+        path = self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          if [ "$ARM" = "window" ]; then echo yes; fi\n'
+            '        env:\n          ARM: ${{ github.event.inputs.arm }}\n',
+        )
+        masked, _ = guard._workflow_run_blocks(path)
+        assert guard.scan(masked, str(path)) == []
+
+    def test_a_step_after_the_block_is_not_swallowed(self, tmp_path: Path) -> None:
+        # The bound is indentation, and the failure it prevents is the other direction:
+        # a body that runs to the end of the file would scan comments and `env:` values
+        # as shell and report hazards that no shell will ever see.
+        path = self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n          echo hi\n'
+            '        env:\n          X: "' + hazard('prose(x)') + '"\n',
+        )
+        masked, _ = guard._workflow_run_blocks(path)
+        assert guard.scan(masked, str(path)) == []
+
+    def test_the_entry_point_reads_a_workflow(self, tmp_path: Path) -> None:
+        (tmp_path / 'tools').mkdir()
+        (tmp_path / 'docs').mkdir()
+        self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n          echo "' + hazard('f(1)') + '"\n',
+        )
+        assert guard.main(['prog', str(tmp_path)]) == 1
+
+    def test_the_entry_point_passes_a_clean_workflow(self, tmp_path: Path) -> None:
+        (tmp_path / 'tools').mkdir()
+        (tmp_path / 'docs').mkdir()
+        self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n          echo "' + hazard('name') + '"\n',
         )
         assert guard.main(['prog', str(tmp_path)]) == 0

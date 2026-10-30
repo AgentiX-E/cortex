@@ -18204,3 +18204,117 @@ the pattern, because the mechanism being dispatched is the reference's verbatim 
 would make the treatment "our classifier and our prompt". They are a registered population for a later
 increment, and naming them now is what keeps the seven honest: a reach that quietly grew to eleven
 would be a number nobody could attribute.
+
+## 13.167 The tool guard was pointed at the corpus it already passed, and the first new file made it wrong
+
+This section is not about the arm. It is about the instrument that reads the arm's workflows, and it is
+here because three of the four defects it found were in the instrument rather than in what it audited.
+
+### 13.167.1 Why this is a P1 and not housekeeping
+
+`§13.161`'s eleventh recurrence was a workflow `run:` block that interpolated a dispatch input straight
+into bash. That is the same collision `docs/OPS-SHELL-INTERPOLATION.md` records eleven times, in the one
+kind of file the guard had never read: it scanned `tools/*.py` and `docs/*.md` and stopped. The stated
+scope was "shell fragments recorded in this repository", and a `run:` block is the most consequential
+shell this repository records — it is the only shell that executes unattended, with the provider keys in
+its environment.
+
+So the registered repair was to widen the *files* rather than the rules, and to make the widening a gate
+rather than a habit: `pnpm test:tools` already runs the guard over `.`, and `pnpm check` runs
+`test:tools`, so an extractor that lives in the guard is a gate the moment it is written.
+
+### 13.167.2 The measurement, taken before any rule was changed
+
+The extractor was written first, and the corpus was scanned with every rule untouched:
+
+| workflow | `run:` blocks | reported |
+| --- | --- | --- |
+| `benchmark-cortex-memory.yml` | 7 | 1 |
+| `benchmark.yml` | 6 | 0 |
+| `competitor-retrieval.yml` | 12 | 2 |
+| `measure-models.yml` | 13 | 0 |
+| `verify.yml` | 3 | 0 |
+
+Forty-one blocks, three reports, and **none of the three was a defect in a workflow**. This is the first
+false positive in twelve rounds of this guard, and it took one new file to produce it — which is the
+asymmetry worth registering: a false negative hides until the input changes, a false positive appears the
+instant it does.
+
+### 13.167.3 Defect A: the expansion grammar refused valid bash
+
+The memory workflow's own audit step ends in `python3 tools/readout-arm-run.py --audit "$report"
+"${extra[@]}"`, and the guard called that "not a shell parameter expansion". It is one. `_PATTERN`
+required a name followed by an optional *operator*, and a subscript starts with `[`, which no
+alternative accepted.
+
+The gap survived because nothing in `tools/*.py` or `docs/*.md` uses an array variable. The first file
+that did was the one the guard had never been pointed at.
+
+The repair adds one optional group, `(?: \[[^\]]*\] )?`, immediately after the name. It does not reopen
+the hole this guard was written for — its first draft accepted `${String(t).padEnd(5)}` because an
+alternative matched any text at all — because a name is still mandatory and still first, and
+`test_widening_the_grammar_did_not_reopen_the_first_draft` asserts both facts in one place.
+
+### 13.167.4 Defect B: two false sentences about JavaScript, in one message
+
+`competitor-retrieval.yml` runs its corpus check through `node -e '...'`, **single-quoted**, and that
+program prints `` `instances: ${rows.length}` `` and `...: ${annotated.length}`. The guard reported both,
+and both of the sentences it printed were false:
+
+- *"sits inside an interpreter payload that the shell has not yet handed over"* — the payload is single
+  quoted, so the shell hands it over exactly as typed. The shell rule is answering a question it was not
+  asked.
+- *"that language has no such construct"* — `${...}` **is** JavaScript's interpolation. It is the correct
+  syntax there, and the guard called the correct spelling a defect.
+
+The second sentence was not a coding slip. It was a premise, written into `_INTERPRETER`'s comment
+("everything else ... is a language with its own interpolation, where a `${...}` is at best the wrong
+syntax") and then asserted in two tests. It survived for the same reason Defect A did: no `node -e`
+payload in the scanned corpus used a template literal, so the premise was never tested against a true
+negative.
+
+### 13.167.5 Why the repair is a scope exemption and not a better message
+
+A reworded message would be true — "in a JavaScript payload this is a template literal; if you meant the
+shell's value it will not be substituted" — and it would fire on correct code. A guard that fires on
+correct code is the guard the OPS document already describes as the one people delete, taking the rules
+that do work with it.
+
+Deciding template-literal-ness needs the payload's tokens. This tool has no JavaScript parser. A
+heuristic would be a guess presented as a verdict, which is `§13.167`'s whole complaint about Defects A
+and B: a mechanism asserting something it did not measure.
+
+So `_JS_INTERPOLATION_LANGUAGES = {node, nodejs, deno, bun}` is skipped by the payload-*language* rule,
+and only by that rule. The branch that fires on a **live** payload — double-quoted or unquoted, where
+the shell really does expand first — never consulted that set and still reports. The residual gap is
+named rather than hidden: a single-quoted `node -e` payload containing a shell-shaped `${HOME}` is now
+silent, because the tool cannot distinguish it from a template literal without parsing the program.
+
+### 13.167.6 Two existing tests were rewritten, and that is the load-bearing part
+
+| test | asserted | now |
+| --- | --- | --- |
+| `test_catches_it_for_every_known_interpreter` | `node` and `deno` report `${a.b}` in a single-quoted payload | the four JavaScript names are absent from the parametrisation, by decision |
+| `test_a_real_expansion_in_a_non_shell_payload_is_still_reported` | `node -e 'x = ${HOME}'` is reported | rewritten with `python3`, where the printed sentence is true |
+
+Both asserted a claim about node that node contradicts. Leaving them would have left a false sentence in
+the tool's vocabulary with a test defending it, which is worse than an untested false sentence — and each
+removal is replaced by three tests that state the exemption, the live-payload direction that still fires,
+and the case the exemption gives up.
+
+### 13.167.7 What was verified
+
+- `python3 tools/check-shell-interpolation.py .` → `13 fragment(s) clean (41 workflow run block(s) among
+  them)`, exit 0. Seven tool fragments, one document, five workflow views.
+- `pytest tools/__tests__/test_check_shell_interpolation.py` → **104 passed**, from 86: twenty cases
+  added, two removed with the JavaScript parametrisation.
+- The extractor returns the block count as well as the text, and the report prints it, because zero
+  blocks and zero violations are the same output otherwise — a workflow whose `run:` keys stopped being
+  recognised would pass as a file with nothing in it.
+
+### 13.167.8 What this does not claim
+
+Forty-one blocks is the corpus this repository has, not the corpus the shape admits. A `run:` written as
+a YAML anchor or alias, a `run:` whose body a matrix expression produces, and a shell command assembled
+inside an `env:` value are all outside what the extractor reads, and none of them is registered as
+covered. Zero reports is the absence of these three defects, not the absence of hazards.

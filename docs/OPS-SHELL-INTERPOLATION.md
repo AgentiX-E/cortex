@@ -1040,3 +1040,138 @@ state at that moment. When the message is decidable, decide it in code.**
 That is what `tools/diagnose-bad-substitution.py` is. It is small on purpose: the
 only durable part of eleven rounds of investigation is the mapping, which is
 seven lines, and everything else was the cost of arriving at it by hand.
+
+## 4l. The twelfth recurrence: the guard was looking in the wrong place, and the first look made it wrong twice
+
+Sections 4a through 4k are all false *negatives*. Something hazardous was written,
+nothing said a word, and the repair was to teach a rule or a tool to see it. This
+section is the first false *positive*, and it was produced by the same act that
+closed the scope gap: the moment the guard was pointed at
+`.github/workflows/*.yml`, it reported three violations, and **all three were the
+guard's fault.**
+
+### What happened, and what did not
+
+No command failed. The section exists because §4k's own conclusion — "a diagnosis
+produced by reading a message is only as reliable as the reader's state" — has a
+mirror image that had not been checked: **a guard's scope is only as good as the
+set of files it was pointed at**, and this one had never been pointed at a
+workflow.
+
+The eleventh recurrence (§4k, and `§13.161` in the pre-registration document) was
+a workflow step. The step interpolated a dispatch input into bash. The guard's
+stated scope was "shell fragments recorded in this repository", it read
+`tools/*.py` and `docs/*.md`, and the recurrence happened in the one kind of file
+the phrase covers and the code did not. The scope was wrong, not any rule.
+
+### The measurement, before any change was made
+
+The extractor was written first and run over the corpus with **no rule changed**:
+
+| Workflow | `run:` blocks | Reported |
+| --- | --- | --- |
+| `benchmark-cortex-memory.yml` | 7 | 1 |
+| `benchmark.yml` | 6 | 0 |
+| `competitor-retrieval.yml` | 12 | 2 |
+| `measure-models.yml` | 13 | 0 |
+| `verify.yml` | 3 | 0 |
+
+Three reports, and the two classes they fall into are both the guard's.
+
+### Defect A: `${extra[@]}` — the grammar was too strict
+
+`benchmark-cortex-memory.yml`'s own audit step passes
+`--audit "$report" "${extra[@]}"`, and the guard called it "not a shell parameter
+expansion". It is one: a bash array expansion, which the shell resolves exactly as
+written. The grammar was `_NAME` followed by an optional *operator*, and a
+subscript begins with `[`, which no alternative accepted.
+
+The gap survived because nothing in `tools/*.py` or `docs/*.md` uses an array. The
+first file that did was the one the guard had never read. That is the shape worth
+keeping: **a false negative is invisible until the input changes; a false positive
+appears the instant it does.**
+
+### Defect B: a JavaScript template literal, reported twice and wrongly twice
+
+`competitor-retrieval.yml` runs a program through `node -e '...'`, in **single
+quotes**, and that program prints `` `instances: ${rows.length}` ``. The guard
+reported both sequences, and both sentences it printed were false:
+
+1. "sits inside an interpreter payload that the shell has not yet handed over" —
+   the payload is single-quoted, so the shell hands it over untouched;
+2. "that language has no such construct" — `${...}` is JavaScript's own
+   interpolation. It is the *correct* syntax there.
+
+Sentence 2 was not a slip in the code. It was written into
+`_INTERPRETER`'s comment ("everything else ... is a language with its own
+interpolation, where a `${...}` is at best the wrong syntax"), and then asserted in
+two tests. It was believed because no `node -e` payload in the scanned corpus used
+a template literal — the same absence that hid Defect A.
+
+### Why B is fixed by scoping the rule, not by rewording it
+
+The tempting repair is a better message: "in a JavaScript payload this is a
+template literal; if you meant the shell's value it will not be substituted." That
+message is true. It is also unusable as a gate, because it fires on correct code —
+and a guard that fires on correct code is the guard described in the previous
+paragraph of this document, the one that gets deleted rather than obeyed.
+
+Deciding whether a `${...}` in a JavaScript payload is a template literal or a
+syntax error requires the payload's tokens. This tool has no JavaScript parser. A
+heuristic would be a guess wearing a verdict's clothes, which is the *eleventh*
+recurrence's failure mode promoted into a mechanism.
+
+So the payload-language rule now skips the JavaScript family
+(`_JS_INTERPOLATION_LANGUAGES`), and nothing else changes. The direction that
+actually kills a command — a **live** payload, double-quoted or unquoted, where the
+shell expands first — is a different branch that never consulted that set, and it
+still fires. The residual risk is named rather than hidden: a single-quoted `node
+-e` payload containing a shell-shaped `${HOME}` is now silent, and it is silent
+because the tool genuinely cannot tell the two cases apart.
+
+### The two tests that had to be rewritten, and why that is not a loosening
+
+| Test | Asserted | Now |
+| --- | --- | --- |
+| `test_catches_it_for_every_known_interpreter` | node and deno report `${a.b}` in a single-quoted payload | node, nodejs, deno, bun are absent from the parametrisation, by decision |
+| `test_a_real_expansion_in_a_non_shell_payload_is_still_reported` | `node -e 'x = ${HOME}'` is reported | rewritten with `python3`, where the printed sentence is true |
+
+Both asserted a claim about node that node contradicts. Keeping them would have
+meant keeping a false sentence in the tool's own vocabulary, which is the defect
+this file documents eleven times over. The replacement tests state the exemption
+*and* the live-payload direction *and* the residual gap, so a future reader cannot
+"restore" the old behaviour believing it was coverage.
+
+### What was verified
+
+- `python3 tools/check-shell-interpolation.py .` → `13 fragment(s) clean (41
+  workflow run block(s) among them)`, exit 0. Seven tool fragments, one document,
+  five workflows.
+- `pytest tools/__tests__/test_check_shell_interpolation.py` → **104 passed**, from
+  86. Twenty cases were added and two removed with the JavaScript parametrisation,
+  which is why the net is eighteen and not twenty. The new cases cover: six
+  subscript spellings, the mask preserving line lengths, a violation reported at
+  its own line, `${{ ... }}` not being shell text, an `env:` value below a block
+  not being swallowed, both JavaScript quoting directions, the residual gap, and
+  the entry point reading a workflow at all.
+- The guard runs in `pnpm test:tools`, which `pnpm check` runs, so the scope is
+  gated rather than remembered.
+
+### What is not claimed
+
+Zero reports is not zero hazards. 41 blocks is the corpus this repository has, not
+the corpus the shapes can take: a `run:` written as an anchor/alias, a `run:` whose
+body is produced by a matrix interpolation, and a shell string built inside a
+workflow's `env:` are all outside what the extractor reads. The extractor reports
+its block count precisely so that a workflow whose `run:` keys stop being
+recognised shows up as fewer blocks rather than as clean.
+
+### The generalisation
+
+Sections 4a-4k each conclude "teach the detector one more shape". The twelfth
+concludes something about the shape of the detector's *input*:
+
+**A guard is only as correct as its corpus is broad, and the cost of a false
+positive is paid in a currency the guard cannot see — the reader's attention.**
+Eleven rounds of widening the rules found nothing here. One round of widening the
+*files* found three defects in an hour, two of them in the guard itself.

@@ -56,10 +56,23 @@ from pathlib import Path
 #
 # The anchor is therefore structural rather than a matter of care: a name is
 # required, and only the operator that follows it is optional.
+#
+# The subscript is the twelfth recurrence, and it is the opposite kind of miss: the
+# anchor was too strict rather than too loose. `${extra[@]}` is a bash array expansion
+# the shell resolves correctly, and this grammar refused it because `_NAME` stops at
+# the name and no alternative begins with `[`. Nothing in `tools/*.py` or `docs/*.md`
+# used one, so the gap was invisible until the workflow scan below widened the corpus
+# and `benchmark-cortex-memory.yml` reported its own audit step as a violation. A guard
+# that refuses valid shell is not cautious, it is wrong, and it is the version people
+# turn off -- taking the rules that do work with it.
+#
+# Subscript support does not reopen the hole the first draft had: the name is still
+# mandatory and still first, so `${String(t).padEnd(5)}` has no route through it.
 _NAME = r"(?:\#?[A-Za-z_][A-Za-z0-9_]*|!?[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[@*])"
 _PATTERN = (
     _NAME
     + r"""
+    (?: \[[^\]]*\] )?                   # ${a[@]} ${a[0]} ${a[i+1]} -- a subscript
     (?:
         [:-=+?][^}]*                    # ${name:-word} ${name:offset:len}
       | \#\#?[^}]*                      # ${name##pat} ${name#pat}
@@ -100,6 +113,23 @@ _INTERPRETER = re.compile(
 # taking the rules that do work with it. The question is not "is there a payload", it
 # is "whose language is the payload written in".
 _SHELL_INTERPRETERS = frozenset({'sh', 'bash', 'zsh', 'dash', 'ksh'})
+
+# Interpreters whose payload language spells interpolation as `${...}` itself. The
+# paragraph above claims that every non-shell payload language treats `${...}` as "at
+# best the wrong syntax"; that claim is FALSE for the JavaScript family, where
+# `` `${rows.length}` `` is a template literal and is the correct syntax. The rule is
+# therefore scoped to the languages for which its premise holds, and the twelfth
+# recurrence is where the false premise was found: `competitor-retrieval.yml` passes a
+# `node -e` program in SINGLE quotes, so the shell never touches it and the sequence is
+# valid JavaScript -- and the guard called it a violation twice over, once by claiming
+# the shell would expand it and once by claiming JavaScript has no such construct.
+#
+# This is a correction and not a relaxation. A live (double-quoted or unquoted) JS
+# payload is still reported, because the shell really does expand `${...}` there before
+# `node` ever sees the program -- that report comes from the payload-hazard branch,
+# which does not consult this set. What the set removes is only the second, wrong
+# report about a program the shell cannot reach.
+_JS_INTERPOLATION_LANGUAGES = frozenset({'node', 'nodejs', 'deno', 'bun'})
 
 # The interpreter name as matched, for the message. Kept as a second capture-free match
 # over the same prefix rather than a group swap, so `_INTERPRETER` stays the one place
@@ -664,8 +694,12 @@ def scan(fragment: str, origin: str) -> list[str]:
     # program. When the program's language has no such construct the sequence is
     # wrong regardless of quoting, and the seventh recurrence is exactly this -- a
     # Python program written as though interpolation were a shell feature.
+    #
+    # The rule's premise is per-language, which is why `_JS_INTERPOLATION_LANGUAGES`
+    # is exempt: JavaScript's template literal IS `${...}`, so the sentence "that
+    # language has no such construct" is simply not true of it. See that set's comment.
     for start, end, interpreter in payloads:
-        if interpreter in _SHELL_INTERPRETERS:
+        if interpreter in _SHELL_INTERPRETERS or interpreter in _JS_INTERPOLATION_LANGUAGES:
             continue
         for offset, body in _interpolations(stripped_heredocs, start, end):
             if offset in comment_offsets:
@@ -956,6 +990,107 @@ def _markdown_shell_blocks(path: Path) -> list[tuple[str, str]]:
     return results
 
 
+# `run:` at the start of a line, optionally behind a list dash. The indent is captured
+# because a block scalar's body is defined by being MORE indented than its key, and the
+# two branches below need that number rather than a guess.
+_WORKFLOW_RUN_KEY = re.compile(r'^(?P<indent>[ ]*)(?:-\s+)?run:(?P<rest>.*)$')
+# A GitHub Actions expression. It is `${{ ... }}` -- two braces -- and it is resolved by
+# the runner BEFORE bash is started, so it is not shell text and must not be judged as
+# any. Blanking it is not cosmetic: without it, `${` matches inside `${{` and the body
+# reads `{ github.workspace `, which is not a valid expansion and would be reported on
+# every workflow that uses the expression syntax. `re.S` because an expression may wrap.
+_GITHUB_EXPRESSION = re.compile(r'\$\{\{.*?\}\}', re.DOTALL)
+
+
+def _blank(match: re.Match[str]) -> str:
+    """Replace a match with spaces, keeping newlines so offsets and lines survive."""
+    return ''.join(ch if ch == '\n' else ' ' for ch in match.group(0))
+
+
+def _workflow_run_blocks(path: Path) -> tuple[str, int]:
+    """The shell a workflow runs, in a view whose offsets are the file's own.
+
+    ## Why the workflows are scanned at all
+
+    `docs/OPS-SHELL-INTERPOLATION.md` counts eleven recurrences, and the eleventh was a
+    workflow step (`§13.161`): a `run:` block interpolated a dispatch input directly
+    into bash, which is the same collision in a place this guard did not look. The
+    guard's stated scope was "shell fragments recorded in this repository", and a
+    workflow's `run:` block is the most consequential shell this repository records --
+    it is the only shell that runs unattended, on a machine no one is watching, with
+    the provider keys in the environment. So the scope was wrong, not the rule.
+
+    ## Why the file is masked instead of excerpted
+
+    Every report this module writes is `path:line`. Excerpting a block into its own
+    string would renumber the lines and the number would then point at the wrong place
+    in the file the reader opens -- which `_violation`'s own docblock calls worse than
+    printing no number at all. Masking keeps one coordinate space: the text handed to
+    `scan` is the file, character for character, with everything outside a `run:` body
+    replaced by spaces. Comments, `env:` values and other steps stay visible to a
+    editor and invisible to the scanner, and a line number is a line number.
+
+    ## Why the block body is taken by indentation and not by the `|`
+
+    `run: |` and `run: >` are block scalars whose body is "the lines indented deeper
+    than the key", and `run: cmd` is a one-line scalar. Both shapes occur in this
+    repository. The body therefore ends at the first non-blank line indented no deeper
+    than the key, which is also what stops a body from swallowing the next step.
+
+    Returns the masked text and the number of blocks found, because a workflow whose
+    blocks were not recognised must not report clean -- zero blocks is a statement
+    about the extractor, and the caller prints it.
+    """
+    text = _GITHUB_EXPRESSION.sub(_blank, path.read_text(encoding='utf-8'))
+    lines = text.split('\n')
+    keep = [[False] * len(line) for line in lines]
+    blocks = 0
+    i = 0
+    while i < len(lines):
+        match = _WORKFLOW_RUN_KEY.match(lines[i])
+        if match is not None and not any(keep[i]):
+            rest = match.group('rest')
+            stripped = rest.strip()
+            if stripped[:1] in ('|', '>'):
+                # A block scalar. The body is the run of lines indented deeper than the
+                # key; blank lines inside it belong to the body and are skipped rather
+                # than treated as the end, because a blank line does not end a YAML
+                # block scalar.
+                key_indent = len(match.group('indent'))
+                body_indent: int | None = None
+                j = i + 1
+                while j < len(lines):
+                    line = lines[j]
+                    if line.strip() == '':
+                        j += 1
+                        continue
+                    indent = len(line) - len(line.lstrip(' '))
+                    if body_indent is None:
+                        if indent <= key_indent:
+                            break
+                        body_indent = indent
+                    if indent < body_indent:
+                        break
+                    keep[j] = [True] * len(line)
+                    j += 1
+                blocks += 1
+                i = j
+                continue
+            if stripped:
+                # A one-line scalar. The command starts after `run:` and runs to the end
+                # of the line -- there is no continuation to find, because a `run:` that
+                # continued would have been written as a block scalar.
+                start = match.end('rest') - len(stripped)
+                keep[i] = [k >= start for k in range(len(lines[i]))]
+                blocks += 1
+        i += 1
+    masked = '\n'.join(
+        ''.join(ch if keep_it else ' ' for ch, keep_it in zip(line, flags))
+        for line, flags in zip(lines, keep)
+    )
+    return masked, blocks
+
+
 def main(argv: list[str]) -> int:
     # `--fragment FILE` (or `-` for stdin) checks ONE shell fragment instead of a
     # tree. This is the mode that matters most, and the mode the first version
@@ -1033,6 +1168,21 @@ def main(argv: list[str]) -> int:
     for path in sorted((root / 'docs').glob('*.md')):
         fragments.extend(_markdown_shell_blocks(path))
 
+    # §13.161's eleventh recurrence happened in a workflow, and the guard had never read
+    # one. Each workflow contributes ONE masked view rather than one entry per `run:`
+    # block, because the view's offsets are the file's offsets and splitting it would
+    # make `path:line` mean `path:line-within-a-block`. The block count is carried
+    # separately for the summary line, so a workflow whose `run:` keys stopped being
+    # recognised cannot pass silently as "a file with nothing in it".
+    workflow_blocks = 0
+    for pattern in ('*.yml', '*.yaml'):
+        for path in sorted((root / '.github' / 'workflows').glob(pattern)):
+            masked, blocks = _workflow_run_blocks(path)
+            if blocks == 0:
+                continue
+            workflow_blocks += blocks
+            fragments.append((f'{path} (run: blocks)', masked))
+
     violations: list[str] = []
     for origin, text in fragments:
         violations.extend(scan(text, origin))
@@ -1049,7 +1199,10 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    print(f"shell-interpolation guard: {len(fragments)} fragment(s) clean")
+    print(
+        f"shell-interpolation guard: {len(fragments)} fragment(s) clean "
+        f"({workflow_blocks} workflow run block(s) among them)"
+    )
     return 0
 
 
