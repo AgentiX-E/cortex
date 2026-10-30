@@ -19045,3 +19045,133 @@ one pair; what is now mechanical is *measuring* it, not removing it.
 It does not replace criterion 2, which is still registered, still fires on form-class counts, and still
 cannot distinguish a fallthrough from churn. Replacing it is a registration decision, and `§13.172.8`
 records what the replacement should say.
+
+## 13.174 The two criteria were measuring the instrument, and the repeats were never verified
+
+`41039779987` was read twice. The first reading was the one `§13.166.6` registered and `§13.169` mechanised:
+five rows, two of which failed. The second reading is this section: the same artifact, the same pair, judged
+by rows that measure the claim instead of a proxy for it. The verdict changes in one place and the change is
+the finding.
+
+### 13.174.1 The six rows, as the tool now prints them
+
+| # | claim | threshold | verdict on `40989420944` → `41039779987` |
+| --- | --- | --- | --- |
+| 1 | named questions stop being reference-only | at least 4 of 7 | **pass** — 4 of 7 left, and all four converted to *correct* |
+| 2 | the reached population carries no systematic loss | losses ≤ 5% of it, net ≥ 0 | **pass** — 0 lost of 27, net +4 |
+| 3 | no capability loses more than 2; ABS unchanged | band average | **pass** — MR 84.75 → 88.00, TR −1.75, ABS 29 → 29 |
+| 4 | the reached population buys at least 1.0 point | attributable points | **fail** — +0.80 pt on the 27, of a +2.60 headline |
+| 5 | the mechanism is visible in the prompt column | moves on the named, equal outside | **fail** — 20 of 114 outside moved |
+| 6 | the repetitions were repetitions | ≥ 95% of measured questions sent one prompt | **skipped** — no record carries `promptVariants`; this run predates it |
+
+Rows 1, 3 and 5 are the rows `§13.166.6` wrote. Rows 2, 4 and 6 are not.
+
+### 13.174.2 Row 2 counted a form classifier and called it a leak
+
+The registered row read: *the ten off-by-one questions do not move by more than two*. Five of them moved, the
+row failed, and the failure was reported as "3 or more flips among them: they read the control's bytes, so a
+movement there is a fallthrough defect".
+
+The premise is false in a way the artifact can check. All five movers have **byte-identical `promptChars`** to
+their before-state. Nothing reached them. `off-by-one` is not a property of the request; it is a class the
+failure classifier assigns from the pair (gold, answer) — `3` becoming `"3.0"` moves a question from
+`off-by-one` to `answered` with no prompt involved. So the row counted form churn and its threshold — 2 of 10 —
+sat *below* the instrument's own churn, which the same artifact measures at 39 flips in 473 untouched records
+(8.2%). A count whose threshold is under its noise floor will pass or fail on the draw.
+
+What the row was for is damage where the treatment applies. That is measurable without a classifier: among the
+records whose prompt actually changed, how many lost. A prompt that grew can distract a reader, so a band is
+honest — 5% — but a **net** loss inside that band is still a net loss on the only questions the treatment can
+be blamed for. Both halves are in the row, and neither of them consults the failure taxonomy.
+
+### 13.174.3 Row 4 was satisfied by a variance
+
+The registered row read: *overall accuracy rises by at least 1.0 point*. It rose 2.60 and the row passed. Of
+those 2.60 points, **+0.80** came from the 27 questions whose prompt changed and the remaining **+1.80** came
+from 24 gains against 15 losses on 473 records that received byte-identical prompts.
+
+That is not a mechanism with a lucky draw attached; it is a draw with a mechanism somewhere inside it. A row
+that a variance can satisfy is a row that cannot fail for the reason it exists, and the consequence of the old
+reading was worse than a miss: it converted a null result into a pass and made the next dispatch look
+justified. The replacement reads the population the treatment reached and divides by the whole run, so the
+number is commensurable with the headline and still attributable: `net(changed) / measured × 100`.
+
+### 13.174.4 The run does not clear the amended accuracy gate
+
+| | registered row 4 | amended row 4 |
+| --- | --- | --- |
+| reading | `83.00% → 85.60% (+2.60 pt)` | `attributable +0.80 pt on the 27` |
+| verdict | pass | **fail** |
+
+Both numbers come from one artifact and neither is wrong. The difference is what each is a statement about.
+The operand ask **does** what it was registered to do — it reaches 27 questions, converts 4, and loses none —
+and it does **not** buy the point that would justify calling it a win on the run's own scale. The next
+dispatch is therefore a question about reach, not about wording: at 4 conversions in 500 questions the gate is
+one conversion away, and at the run's own rate (4 of 27) that one conversion costs 34 reached questions.
+
+### 13.174.5 `promptVariants`: the premise, measured inside one run
+
+`§13.171`'s `promptDigest` compares two **artifacts**: same digest, same bytes. The cache prediction `§13.147.3`
+made is about two **passes of one run**, and a digest taken from pass 1 says nothing about what passes 2-4 sent.
+That is a defect in the instrument built to test the prediction, and it is the reason three explanations
+(requests not byte-identical / provider does not cache across ~25 minutes / the four passes are not the shape
+the cache model assumes) survived two artifacts.
+
+`promptVariants` is one integer per question: how many **distinct** prompts that question cost across the
+passes. `1` everywhere means the repeats were repeats; `4` means the arm sent four prompts and called them
+repetitions. The four hops:
+
+| hop | what it does | why there |
+| --- | --- | --- |
+| `benchmark.ts` | captures `lastPromptText` on every pass of the **feature** arm | the accessor already exists and the flag that carries it is the one that means "what the reader saw" |
+| `ablation.ts` | folds each pass's text into a per-question set of distinct values, then drops the pass's vectors | the comparison is the only thing that needs the bytes; the artifact must not grow by `runs` |
+| `AblationResult` | carries `featurePromptVariants` | a report shape, not a live evaluation |
+| `bench-memory-arm.ts` | writes `promptVariants` on the record | the record is where a reader of the JSON looks |
+
+Three rules, each with a test:
+
+- **absent at `runs: 1`.** A distinct count over one sample is the constant `1`, and printing it would let a
+  reader compare a one-pass artifact with a four-pass one as if both had measured repetition. This is the rule
+  `featureCorrectByRun` already follows.
+- **`null` if any pass declined to report.** A system that says "no prompt" on pass 3 has not shown that pass 3
+  matched pass 1, and the count of prompts we happened to see is not the count of prompts that were sent.
+- **per question, not per run.** A single run-level flag would erase the shape most likely to be true: a
+  handful of questions whose prompt diverges because their evidence assembly is not deterministic.
+
+The hash stays at the arm and the comparison stays in the engine, which is a division of labour rather than a
+preference: `cortex-memory` imports no host API and the entry-point graph of `cortex-eval` is host-free today,
+so `prompt-digest.ts` remains the only file in the package that imports `node:crypto`. Distinctness needs no
+hash at all — `===` on two strings is exact and cheaper than a collision argument.
+
+### 13.174.6 What this section does not claim
+
+- **It does not settle the cache question.** Every artifact in the archive predates the field. Criterion 6 is
+  `skipped` on all of them, and it will stay skipped until a run carries `promptVariants` — which the next
+  dispatch does at no extra cost, because the capture rides a pass the run already pays for.
+- **It does not make the operand ask a success.** Under the amended rows the run fails the accuracy gate. What
+  it establishes is narrower and stronger: the treatment does not damage what it touches.
+- **It does not separate the mechanism from the 273–759 characters it adds.** Criterion 2 says the reached
+  population is unharmed and criterion 4 says it is not yet worth a point; neither says whether the +0.80 is
+  the operand wording or the extra text. `§13.172.9` named that gap and this section does not close it: it
+  needs a third arm with the wording at the old budget.
+- **It does not re-register rows 1, 3 and 5.** They were falsifiable, they were tested, and two of them failed
+  on this run for reasons that have nothing to do with the amendment.
+
+### 13.174.7 Verification
+
+- `tools/arm-transition.mjs`: criteria 2 and 4 replaced, 6 added, `criteriaSource` printed so a reading cannot
+  be mistaken for the registration it is not. The off-by-one table survives as a diagnostic and no longer
+  carries a verdict.
+- `tools/__tests__/test_arm_transition.py` 24 → **33**. The new tests pin the two boundaries that matter
+  (`1 of 20` passes, `2 of 20` fails; `+1.00` passes, `+0.99` fails), the churn shape of the run that caused
+  the amendment (27 changed +4/−0, 473 identical +24/−15 → `+0.80`), and the premise row's arithmetic
+  (`38/40` passes, `18/20` fails, `null` counts against).
+- Three injections — `CHANGED_MAX_LOSS_SHARE = 0.10`, `ATTRIBUTABLE_MIN_POINTS = 0.0`,
+  `REPEAT_PREMISE_MIN_SHARE = 0.5` — fail **5** tests. The tool layer is **905 passed / 1 skipped**.
+- `prompt-variants.test.ts` (7 tests) plus one arm-level pairing test: the count is 1 when the passes agree, 2
+  when one differs, 4 when none does, `null` when a pass declines, absent at one pass, and the exported text
+  vector stays at pass 1 while the count reaches 4.
+- `report-write`'s derived-key loop covers `promptVariants`, proved by removing the forward:
+  `field promptVariants did not survive the reduction`, 1 failed / 27 passed.
+- `cortex-eval` coverage: all files **99.51 / 99.04 / 99.43 / 99.51**; `ablation.ts`, `benchmark.ts`,
+  `metrics.ts`, `prompt-digest.ts`, `report-write.ts` all **100**.

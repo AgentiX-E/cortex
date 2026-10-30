@@ -2775,6 +2775,59 @@ describe('the record carries a fingerprint of the prompt', () => {
     expect(Object.hasOwn(report.questions![0]!, 'promptDigest')).toBe(false);
   });
 
+  it('counts the prompt variants a question cost, beside the digest of the first one', async () => {
+    // Two fields, two halves of `§13.168.8`'s question: the digest compares this artifact's prompt with
+    // another artifact's, and the count compares this run's passes with each other. A run whose repeats
+    // differed is the reading that voids a cache claim, and a digest cannot produce it -- both records
+    // below carry a digest, and only one of them sent four different prompts.
+    const prompt = 'Instructions\n\nQ: Where?\n\nEVIDENCE:\n1. turn 0';
+    const steady = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([prompt, prompt, prompt]),
+      {
+        runs: 3,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+    expect(steady.report.questions![0]!.promptVariants).toBe(1);
+    expect(steady.report.questions![0]!.promptDigest).toBe(expected(prompt));
+
+    const drifting = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([prompt, prompt, `${prompt}.`]),
+      {
+        runs: 3,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+    expect(drifting.report.questions![0]!.promptVariants).toBe(2);
+    // The digest is still the first pass's, because the record's other prompt fields are first-pass
+    // fields and a digest taken from the last pass would silently describe a different request.
+    expect(drifting.report.questions![0]!.promptDigest).toBe(expected(prompt));
+  });
+
+  it('omits the variant count at one pass, where it would be a constant', async () => {
+    const { report } = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem(['Instructions\n\nQ: Where?']),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+    expect(report.questions![0]!.promptVariants).toBeUndefined();
+    expect(Object.hasOwn(report.questions![0]!, 'promptVariants')).toBe(false);
+  });
+
   it('survives a reduction, so a bounded artifact does not lose the fingerprint', async () => {
     // The reducer rebuilds every record through `buildQuestionRecords`, so a field it
     // does not forward is a field a reduction silently drops -- the defect

@@ -372,6 +372,7 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // exactly the confusion the field exists to end.
         ...(record.promptChars === undefined ? {} : { promptChars: record.promptChars }),
         ...(record.promptDigest === undefined ? {} : { promptDigest: record.promptDigest }),
+        ...(record.promptVariants === undefined ? {} : { promptVariants: record.promptVariants }),
         // Forwarded for exactly that reason: the reduction rebuilds every record through
         // `buildQuestionRecords`, and a fingerprint it does not carry is one the reduced
         // artifact silently loses. `§13.168.8` reads two artifacts for equality across

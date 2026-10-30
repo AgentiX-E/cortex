@@ -2738,6 +2738,10 @@ function buildArmRoster(
   // this package that imports `node:crypto`. Keeping the hash at the edge keeps the
   // package entry point's import graph host-free.
   const promptTexts = ablation.featurePromptTexts!;
+  // §13.174. The same prompt measured across the run's own passes instead of across artifacts. Absent
+  // when the ablation ran one pass, and `null` per question when a pass declined to report; both reach
+  // the record as absent, which is the rule `promptDigest` follows one field over.
+  const promptVariantCounts = ablation.featurePromptVariants;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -2805,6 +2809,9 @@ function buildArmRoster(
       // the system exposes no prompt, which the record renders as absent rather than as
       // the digest of an empty string.
       promptDigest: promptDigest(promptTexts[i] ?? null),
+      // The within-run half: how many different prompts this question cost. `undefined` at one pass,
+      // which the record renders as absent rather than as the constant it would otherwise print.
+      promptVariants: promptVariantCounts?.[i] ?? null,
       // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
       // without `answered`, and that half is what says the mechanism ran rather than which way it went.
       ...traceOf(recoveryTrace, question.question),

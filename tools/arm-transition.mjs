@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 /**
- * The five criteria `§13.166.6` registered, applied to a pair of artifacts.
+ * The criteria `§13.166.6` registered and `§13.174` amended, applied to a pair of artifacts.
+ *
+ * Six rows, not five. Two of the original five were replaced after the run they judged
+ * (`41039779987`) showed what they were measuring: row 2 counted class movements among ten off-by-one
+ * questions and reported five, all of which had byte-identical prompts; row 4 read total accuracy and
+ * passed on +2.60 points of which +0.80 was attributable to the treatment and the rest was churn on
+ * records the treatment never reached. Row 6 is new and measures the premise every cost column rests on --
+ * that the repetitions resent the same bytes.
  *
  * ## Why this is a tool and not a paragraph of instructions
  *
@@ -36,13 +43,28 @@
 import { readFileSync } from 'node:fs';
 import { censusOf } from './mr-failure-census.mjs';
 
-/** The registered thresholds, named once. `§13.166.6` is the only place they may change. */
+/** The registered thresholds, named once. `§13.166.6` and its `§13.174` amendments are where they change. */
 const NAMED_MIN = 4;
 const NAMED_POPULATION = 7;
-const OFF_BY_ONE_POPULATION = 10;
-const OFF_BY_ONE_MAX_MOVES = 2;
 const CAPABILITY_MAX_LOSS = 2;
-const ACCURACY_MIN_GAIN_POINTS = 1.0;
+/** `§13.174.3`. Losses allowed on the population the treatment actually reached, as a share of it. */
+const CHANGED_MAX_LOSS_SHARE = 0.05;
+/** `§13.174.4`. Net gain required on that same population, in points of the whole run. */
+const ATTRIBUTABLE_MIN_POINTS = 1.0;
+/** `§13.174.5`. Share of questions that must have sent one prompt on every pass. */
+const REPEAT_PREMISE_MIN_SHARE = 0.95;
+
+/**
+ * Which registration this reading applies, printed rather than assumed.
+ *
+ * Two of the five rows were replaced after `41039779987` falsified them, and a tool that kept the old
+ * numbers under the old name would let a later reader believe the run was judged by the registration it
+ * was dispatched under. The row numbers are kept because they are the slots; the rules behind two of them
+ * are not the rules the first registration stated.
+ */
+const CRITERIA_SOURCE =
+  '§13.166.6 rows 1, 3, 5 as registered; row 2 superseded by §13.174.3 (losses on the reached population), ' +
+  'row 4 by §13.174.4 (attributable points), row 6 new in §13.174.5 (the repeats were repeats)';
 
 /**
  * A capability's correct count, as the average over the run's repeats.
@@ -75,6 +97,23 @@ function featureCorrectRun(report, capability) {
 function accuracyPoints(report) {
   const value = report.feature?.metrics?.abstentionAwareAccuracy;
   return typeof value === 'number' ? value * 100 : undefined;
+}
+
+/**
+ * `promptVariants` by question id, for the records that carry the field.
+ *
+ * A missing key and a `null` value are different statements and both matter: missing means the run had one
+ * pass, `null` means a pass declined to report its prompt. The first cannot be judged, the second is
+ * evidence against the premise, so only the first is dropped.
+ */
+function promptVariantsById(report) {
+  const map = new Map();
+  for (const record of report.questions ?? []) {
+    if (!Object.hasOwn(record, 'promptVariants')) continue;
+    const value = record.promptVariants;
+    map.set(record.questionId, typeof value === 'number' ? value : null);
+  }
+  return map;
 }
 
 /** `promptChars` by question id, from the record list rather than from the census. */
@@ -210,16 +249,20 @@ export function transitionOf(before, after, options = {}) {
     };
   });
 
-  const offByOneBefore = beforeCensus.rows.filter((row) => row.klass === 'off-by-one').map((row) => row.id);
-  const offByOneRows = offByOneBefore.map((id) => {
-    const to = afterById.get(id);
-    return {
-      id,
-      after: to?.klass ?? null,
-      moved: (to?.klass ?? 'answered') !== 'off-by-one',
-      answerAfter: to?.answer ?? null,
-    };
-  });
+  // Kept as a diagnostic, not as a criterion: `§13.174.3` retired the count over this class and kept the
+  // table, because a reader comparing two readings still wants to know which questions sat in it.
+  const offByOneRows = beforeCensus.rows
+    .filter((row) => row.klass === 'off-by-one')
+    .map((row) => row.id)
+    .map((id) => {
+      const to = afterById.get(id);
+      return {
+        id,
+        after: to?.klass ?? null,
+        moved: (to?.klass ?? 'answered') !== 'off-by-one',
+        answerAfter: to?.answer ?? null,
+      };
+    });
 
   const capabilities = Object.keys(before.ablation?.featureByCapability ?? {}).sort();
   const perCapability = capabilities.map((name) => {
@@ -265,6 +308,11 @@ export function transitionOf(before, after, options = {}) {
     });
   };
 
+  // The division `§13.172.4` performed by hand, hoisted above the criteria because two of them now read it:
+  // row 2 asks what the treatment did to the population it reached, and row 4 asks what that population
+  // bought. Both are statements about the same two buckets, so they are computed once.
+  const attribution = attributionOf(before, after);
+
   const namedLeft = namedRows.filter((row) => row.left).length;
   add(
     1,
@@ -276,26 +324,43 @@ export function transitionOf(before, after, options = {}) {
           .map((row) => `${row.id}${row.left ? '=left' : `=${row.after ?? 'answered'}`}`)
           .join(' ')}`
       : `the registered population is ${NAMED_POPULATION}; this pair has ${named.length}, so the ` +
-        `threshold does not describe this reading`,
+          `threshold does not describe this reading`,
   );
 
-  const moved = offByOneRows.filter((row) => row.moved);
+  // `§13.174.3`. The row this replaces counted class movements among ten off-by-one questions, and
+  // `41039779987` showed what that counts: all five movers had byte-identical prompts, so the movement was
+  // a form classifier reacting to `"3.0"` where it had seen `"3"`, not a leak reaching a question the ask
+  // never touched. A count over a form class cannot detect a leak the classifier does not model -- the
+  // failure mode is the classifier's own shape space, and it is silent in exactly the direction that
+  // matters (a leak the classifier calls `answered`).
+  //
+  // What the row is for is the population the treatment applied to. A prompt that grew can distract a
+  // reader, so a small loss band is honest; a systematic one is a treatment that does harm where it works,
+  // and a net loss inside that band is still a net loss on the only questions it can be blamed for.
+  const changedShare =
+    attribution.changed.n === 0 ? null : attribution.changed.lost / attribution.changed.n;
   add(
     2,
-    `the ${OFF_BY_ONE_POPULATION} off-by-one questions do not move by more than ${OFF_BY_ONE_MAX_MOVES}`,
-    offByOneBefore.length === OFF_BY_ONE_POPULATION,
-    moved.length <= OFF_BY_ONE_MAX_MOVES,
-    offByOneBefore.length === OFF_BY_ONE_POPULATION
-      ? `${moved.length} of ${offByOneBefore.length} moved: ${
-          moved.map((row) => `${row.id}->${row.after ?? 'answered'}`).join(' ') || 'none'
-        }`
-      : `the registered set is ${OFF_BY_ONE_POPULATION}; this pair has ${offByOneBefore.length}`,
+    `the ${attribution.changed.n} reached question(s) carry at most ${(CHANGED_MAX_LOSS_SHARE * 100).toFixed(0)}% ` +
+      'losses and no net loss',
+    attribution.measurable && attribution.changed.n > 0,
+    changedShare !== null && changedShare <= CHANGED_MAX_LOSS_SHARE && attribution.changed.net >= 0,
+    !attribution.measurable
+      ? 'no record carries a prompt size on both sides, so no question can be filed as reached'
+      : attribution.changed.n === 0
+        ? "no question's prompt moved, so the treatment reached nothing to damage"
+        : `${attribution.changed.lost} lost of ${attribution.changed.n} (${(changedShare * 100).toFixed(1)}%), ` +
+          `net ${attribution.changed.net >= 0 ? '+' : ''}${attribution.changed.net}; the other ` +
+          `${attribution.unchanged.n} are identical on both sides and are not evidence about the treatment`,
   );
 
-  const losses = perCapability.filter((row) => row.delta !== null && row.delta < -CAPABILITY_MAX_LOSS);
+  const losses = perCapability.filter(
+    (row) => row.delta !== null && row.delta < -CAPABILITY_MAX_LOSS,
+  );
   const absBefore = featureCorrect(before, 'ABS');
   const absAfter = featureCorrect(after, 'ABS');
-  const absHeld = absBefore === undefined || absAfter === undefined ? undefined : absBefore === absAfter;
+  const absHeld =
+    absBefore === undefined || absAfter === undefined ? undefined : absBefore === absAfter;
   add(
     3,
     `no capability loses more than ${CAPABILITY_MAX_LOSS}, and ABS is unchanged`,
@@ -308,28 +373,37 @@ export function transitionOf(before, after, options = {}) {
           `${row.capability} ${row.before}->${row.after} (${row.delta >= 0 ? '+' : ''}${row.delta} ` +
           `avg; ${row.runBefore}->${row.runAfter} this draw)`,
       )
-      .join(', ')}${absHeld === false ? ` -- ABS moved ${absBefore}->${absAfter}, which the ask cannot reach` : ''}`,
+      .join(
+        ', ',
+      )}${absHeld === false ? ` -- ABS moved ${absBefore}->${absAfter}, which the ask cannot reach` : ''}`,
   );
 
-  const gain = accuracyBefore === undefined || accuracyAfter === undefined ? undefined : accuracyAfter - accuracyBefore;
-  const attribution = attributionOf(before, after);
-  // The registered claim reads total accuracy, and this reading does not change its verdict. What it
-  // does is print what the verdict is worth, beside it, the way criterion 3 prints the draw beside the
-  // band average: a headline met by variance and a headline met by a mechanism are the same pass and
-  // different findings.
-  const attributionNote = attribution.measurable
-    ? ` -- attributable ${attribution.attributablePoints >= 0 ? '+' : ''}${attribution.attributablePoints.toFixed(2)} pt ` +
-      `on the ${attribution.changed.n} whose prompt changed; the other ${attribution.unchanged.n} are ` +
-      `identical on both sides (${attribution.unchanged.gained}+/${attribution.unchanged.lost}-)`
-    : '';
+  const gain =
+    accuracyBefore === undefined || accuracyAfter === undefined
+      ? undefined
+      : accuracyAfter - accuracyBefore;
+  // `§13.174.4`. The row this replaces read total accuracy, and `41039779987` met it: +2.60 points, of which
+  // +0.80 came from the 27 questions whose prompt changed and the rest from 39 flips on 473 records that
+  // received byte-identical prompts. A row that a variance can satisfy is not a row about the treatment,
+  // and the headline it satisfied was 69% churn.
+  //
+  // The headline is still printed, because a reader comparing this reading with the product's own claims
+  // needs it, and because the gap between it and the attributable figure is the finding.
   add(
     4,
-    `overall accuracy rises by at least ${ACCURACY_MIN_GAIN_POINTS.toFixed(1)} point`,
-    gain !== undefined,
-    gain !== undefined && gain >= ACCURACY_MIN_GAIN_POINTS,
-    gain === undefined
-      ? 'one side carries no abstention-aware accuracy'
-      : `${accuracyBefore.toFixed(2)}% -> ${accuracyAfter.toFixed(2)}% (${gain >= 0 ? '+' : ''}${gain.toFixed(2)} pt)${attributionNote}`,
+    `the reached population buys at least ${ATTRIBUTABLE_MIN_POINTS.toFixed(1)} point`,
+    attribution.measurable,
+    attribution.attributablePoints !== null &&
+      attribution.attributablePoints >= ATTRIBUTABLE_MIN_POINTS,
+    !attribution.measurable
+      ? 'no record carries a prompt size on both sides, so no gain can be attributed to the treatment'
+      : `attributable ${attribution.attributablePoints >= 0 ? '+' : ''}${attribution.attributablePoints.toFixed(2)} pt ` +
+          `on the ${attribution.changed.n} whose prompt changed` +
+          (gain === undefined
+            ? ''
+            : `; headline ${accuracyBefore.toFixed(2)}% -> ${accuracyAfter.toFixed(2)}% ` +
+              `(${gain >= 0 ? '+' : ''}${gain.toFixed(2)} pt) of which the rest is churn on the ` +
+              `${attribution.unchanged.n} identical (${attribution.unchanged.gained}+/${attribution.unchanged.lost}-)`),
   );
 
   // The assembly check. `promptChars` is the only per-question field that is a property of the PROMPT
@@ -344,13 +418,59 @@ export function transitionOf(before, after, options = {}) {
     namedChanged.length === named.length && outsideChanged.length === 0,
     `${namedChanged.length}/${named.length} named moved; ${outsideChanged.length}/${otherPrompt.length} ` +
       `outside moved${outsideChanged.length === 0 ? '' : ` (first ${outsideChanged[0].id} ${outsideChanged[0].before}->${outsideChanged[0].after})`}` +
-      `${namedChanged.length === named.length ? '' : `; named still equal: ${namedPrompt
-        .filter((row) => row.delta === 0)
-        .map((row) => row.id)
-        .join(' ') || 'none'}`}`,
+      `${
+        namedChanged.length === named.length
+          ? ''
+          : `; named still equal: ${
+              namedPrompt
+                .filter((row) => row.delta === 0)
+                .map((row) => row.id)
+                .join(' ') || 'none'
+            }`
+      }`,
+  );
+
+  // `§13.174.5`. The premise the cost columns rest on, measured instead of assumed. `§13.147.3` predicted a
+  // 60-80% prefix-cache hit share because passes 2-4 were taken to resend pass 1's bytes; two artifacts read
+  // 6.47% and 11.16% and neither could say whether the provider declined to cache or the arm had sent four
+  // prompts. A run that fails this row makes its own token arithmetic unreadable rather than wrong, which is
+  // a different defect and is reported as one.
+  const variants = promptVariantsById(after);
+  const variantRows = [...variants.entries()].filter(([id]) => {
+    const row = after.questions?.find((record) => record.questionId === id);
+    return row === undefined || row.capability === capability;
+  });
+  const repeated = variantRows.filter(([, value]) => value === 1).length;
+  const unverifiable = variantRows.filter(([, value]) => value === null).length;
+  const divergent = variantRows.length - repeated - unverifiable;
+  const repeatShare = variantRows.length === 0 ? null : repeated / variantRows.length;
+  add(
+    6,
+    `at least ${(REPEAT_PREMISE_MIN_SHARE * 100).toFixed(0)}% of the ${variantRows.length} measured ` +
+      'question(s) sent one prompt on every pass',
+    variantRows.length > 0,
+    repeatShare !== null && repeatShare >= REPEAT_PREMISE_MIN_SHARE,
+    variantRows.length === 0
+      ? 'no record carries promptVariants: the run had one pass, or predates §13.174'
+      : `${repeated}/${variantRows.length} sent one prompt (${(repeatShare * 100).toFixed(1)}%); ` +
+          `${divergent} divergent (${
+            variantRows
+              .filter(([, value]) => typeof value === 'number' && value > 1)
+              .slice(0, 3)
+              .map(([id, value]) => `${id}=${value}`)
+              .join(' ') || 'none'
+          }), ${unverifiable} unverifiable`,
   );
 
   return {
+    criteriaSource: CRITERIA_SOURCE,
+    repeatPremise: {
+      measured: variantRows.length,
+      repeated,
+      divergent,
+      unverifiable,
+      share: repeatShare,
+    },
     capability,
     before: {
       population: beforeCensus.population,
@@ -385,9 +505,10 @@ const PAD = (text, width) => String(text).padEnd(width);
 export function renderReading(reading) {
   const lines = [];
   lines.push(
-    `registered criteria, capability ${reading.capability}: ` +
+    `criteria: capability ${reading.capability}: ` +
       `${reading.applicable} applicable, ${reading.skipped} skipped, ${reading.failed} failed`,
   );
+  lines.push(`  ${reading.criteriaSource}`);
   lines.push(`  before ${reading.before.generation}  population ${reading.before.population}`);
   lines.push(`  after  ${reading.after.generation}  population ${reading.after.population}`);
   lines.push('');
@@ -399,14 +520,20 @@ export function renderReading(reading) {
   lines.push('');
   if (reading.attribution.measurable) {
     const { changed, unchanged } = reading.attribution;
-    lines.push('  attribution (the gain split by whether that record\'s prompt changed)');
+    lines.push("  attribution (the gain split by whether that record's prompt changed)");
     lines.push(`  ${PAD('population', 14)}${PAD('n', 6)}${PAD('gained', 8)}${PAD('lost', 6)}net`);
-    lines.push(`  ${PAD('changed', 14)}${PAD(changed.n, 6)}${PAD(changed.gained, 8)}${PAD(changed.lost, 6)}${changed.net >= 0 ? '+' : ''}${changed.net}`);
-    lines.push(`  ${PAD('unchanged', 14)}${PAD(unchanged.n, 6)}${PAD(unchanged.gained, 8)}${PAD(unchanged.lost, 6)}${unchanged.net >= 0 ? '+' : ''}${unchanged.net}`);
+    lines.push(
+      `  ${PAD('changed', 14)}${PAD(changed.n, 6)}${PAD(changed.gained, 8)}${PAD(changed.lost, 6)}${changed.net >= 0 ? '+' : ''}${changed.net}`,
+    );
+    lines.push(
+      `  ${PAD('unchanged', 14)}${PAD(unchanged.n, 6)}${PAD(unchanged.gained, 8)}${PAD(unchanged.lost, 6)}${unchanged.net >= 0 ? '+' : ''}${unchanged.net}`,
+    );
     const churn = reading.attribution.churnRate;
     lines.push(
       `  attributable ${reading.attribution.attributablePoints >= 0 ? '+' : ''}${reading.attribution.attributablePoints.toFixed(2)} pt` +
-        (churn === null ? '' : `; churn ${(churn * 100).toFixed(1)}% of the ${unchanged.n} identical`),
+        (churn === null
+          ? ''
+          : `; churn ${(churn * 100).toFixed(1)}% of the ${unchanged.n} identical`),
     );
   } else if (reading.attribution.compared > 0) {
     lines.push(

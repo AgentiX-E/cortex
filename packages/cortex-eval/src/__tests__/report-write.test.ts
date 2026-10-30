@@ -408,6 +408,9 @@ describe('serializeReportOrReduce', () => {
         // the fifth field this rebuild could drop is the one nobody would think to assert
         // by name, which is exactly why the loop reads the record's own keys.
         promptDigest: '0f1e2d3c4b5a6978',
+        // §13.174's within-run count, on the same argument: a field added to the record and not to
+        // this list is a field this loop cannot notice a rebuild dropping.
+        promptVariants: 2,
         recoveryAttempted: true,
         recoveryAnswered: false,
         goldOverlap: { carried: 2, total: 3 },

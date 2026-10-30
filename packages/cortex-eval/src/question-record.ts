@@ -245,6 +245,19 @@ export type QuestionRecord = {
    */
   readonly promptDigest?: string | undefined;
   /**
+   * How many distinct prompts this question cost across the run's repetitions.
+   *
+   * The within-run complement of `{@link QuestionRecord.promptDigest}`: a fingerprint compares this
+   * artifact with another, this count compares this run's passes with each other. `1` means every pass
+   * resent the same bytes, which is the premise the cache prediction of `§13.147.3` rests on; a larger
+   * number means the arm sent that many requests and called them repetitions.
+   *
+   * Absent at one repetition -- where the count is the constant `1` and would read as a measurement --
+   * and absent for a question any pass declined to report, which `buildQuestionRecords` renders the same
+   * way for the reason `promptChars` gives.
+   */
+  readonly promptVariants?: number | undefined;
+  /**
    * Whether the review mechanisms acted on **this** question.
    *
    * `ablation.recovery` and `ablation.bareRetry` are counts for the whole run, so an ask registered
@@ -393,6 +406,18 @@ export type QuestionRecordInput = {
    * placeholder where a fingerprint belongs.
    */
   readonly promptDigest?: string | null | undefined;
+  /**
+   * How many distinct prompts this question cost across the run's repetitions, or `null`.
+   *
+   * The other half of `{@link QuestionRecord.promptDigest}`'s question, and the half a digest cannot answer:
+   * a fingerprint compares two artifacts, this count compares one run's passes with each other. `1` means
+   * every pass resent the same bytes -- the premise `§13.147.3`'s cache prediction rests on and the one
+   * `§13.148`'s 6.47% and `§13.168`'s 11.16% could not test.
+   *
+   * Absent at `runs: 1`, where the count is the constant `1` and would read as a measurement; `null` when
+   * any pass reported no prompt, which is not the same as reporting the same one.
+   */
+  readonly promptVariants?: number | null | undefined;
   /**
    * Whether the review mechanisms acted on this question, when the producer measured it.
    *
@@ -687,6 +712,11 @@ export function buildQuestionRecords(
       ...(input.promptDigest === undefined || input.promptDigest === null
         ? {}
         : { promptDigest: input.promptDigest }),
+      // Same rule, same reason: a question whose prompt was never measured across passes is not a
+      // question that sent one prompt on every pass.
+      ...(input.promptVariants === undefined || input.promptVariants === null
+        ? {}
+        : { promptVariants: input.promptVariants }),
       ...(input.goldOverlap === null ? {} : { goldOverlap: input.goldOverlap }),
       // Written together or not at all, and only when the producer traced: a `false` here would be a
       // statement about the mechanism rather than about the instrument.

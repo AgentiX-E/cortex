@@ -48,7 +48,9 @@ NAMED = sorted(set(DERIVATION) | set(DERIVATION_AGGREGATION))
 def question(qid: str, answer, gold: str, capability: str = "MR", prompt: int = 1000) -> dict:
     return {
         "questionId": qid,
-        "question": (DERIVATION | DERIVATION_AGGREGATION | ENUMERATION)[qid],
+        # Synthetic ids fall back to a real MR question text: the shape classifier reads the words, and a
+        # test whose fixtures are named `a00`.. is a test of the criterion rather than of the classifier.
+        "question": (DERIVATION | DERIVATION_AGGREGATION | ENUMERATION).get(qid, ENUMERATION["0a995998"]),
         "capability": capability,
         "groundTruth": gold,
         "answer": answer,
@@ -159,48 +161,74 @@ class TestTheNamedPopulation:
         assert "does not describe this reading" in criterion(reading, 1)["detail"]
 
 
-class TestTheOffByOneSet:
-    """Criterion 2: the ten controls are not permitted to move by more than two."""
+class TestTheChangedPopulation:
+    """Criterion 2, as amended by `13.174.3`: the population the mechanism reached carries no systematic loss.
 
-    def _pair(self, moved: int):
-        ids = [f"c{i:02d}" for i in range(10)]
-        before_qs = [dict(question("0a995998", "2", "3")) | {"questionId": qid} for qid in ids]
-        after_qs = []
-        after_ids = []
-        for index, qid in enumerate(ids):
-            row = dict(question("0a995998", "2", "3")) | {"questionId": qid}
-            if index < moved:
-                row["answer"] = "3"
-                row["correct"] = True
-            else:
-                after_ids.append(qid)
-            after_qs.append(row)
-        return report(before_qs, ids), report(after_qs, after_ids)
+    The superseded row counted class movements among ten off-by-one questions. `41039779987` falsified it:
+    all five movers had byte-identical prompts, so the movement was form churn rather than a leak, and a
+    count over a form class cannot detect a leak that the classifier does not model. What the row was for is
+    the population the treatment actually applied to, and the loss there is a fact about the treatment
+    rather than about a classifier: a prompt that grew can distract, so a small band is allowed and a
+    systematic one is not.
+    """
 
-    def test_two_moving_passes(self, tmp_path: Path) -> None:
-        before, after = self._pair(2)
-        _, reading = run(before, after, tmp_path)
+    def _pair(self, rows: list[tuple[str, bool, bool, int, int]]):
+        """`(id, was_correct, now_correct, prompt_before, prompt_after)` per question."""
+        before = [dict(question(qid, "7", "7", prompt=was_prompt)) | {"correct": was} for qid, was, _, was_prompt, _ in rows]
+        after = [dict(question(qid, "7", "7", prompt=now_prompt)) | {"correct": now} for qid, _, now, _, now_prompt in rows]
+        return report(before, []), report(after, [])
+
+    def test_a_clean_changed_population_passes(self, tmp_path: Path) -> None:
+        rows = [(f"a{i:02d}", False, True, 1000, 1300) for i in range(20)]
+        before, after = self._pair(rows)
+        completed, reading = run(before, after, tmp_path)
         assert criterion(reading, 2)["verdict"] == "pass"
+        assert completed.returncode == 0
 
-    def test_three_moving_fails(self, tmp_path: Path) -> None:
-        before, after = self._pair(3)
+    def test_two_losses_in_twenty_fails(self, tmp_path: Path) -> None:
+        # 10% of the reached population, against a 5% band: this is damage on the questions the
+        # enrichment touched, which is the claim the row exists to falsify.
+        rows = [(f"a{i:02d}", False, True, 1000, 1300) for i in range(18)]
+        rows += [(f"b{i:02d}", True, False, 1000, 1300) for i in range(2)]
+        before, after = self._pair(rows)
         completed, reading = run(before, after, tmp_path)
         assert criterion(reading, 2)["verdict"] == "fail"
         assert completed.returncode == 1
 
-    def test_the_control_set_is_sized_before_the_run(self, tmp_path: Path) -> None:
-        # Eight controls is not the registered ten. A `moved <= 2` on a set of eight would be a
-        # different test, so the criterion is skipped and the detail says why.
-        before, after = self._pair(3)
-        before["ablation"]["discordantQuestions"]["baselineCorrectFeatureIncorrect"] = [
-            qid for qid in before["ablation"]["discordantQuestions"]["baselineCorrectFeatureIncorrect"]
-        ][:8]
+    def test_one_loss_in_twenty_is_at_the_boundary_and_passes(self, tmp_path: Path) -> None:
+        rows = [(f"a{i:02d}", False, True, 1000, 1300) for i in range(19)]
+        rows += [("b00", True, False, 1000, 1300)]
+        before, after = self._pair(rows)
+        _, reading = run(before, after, tmp_path)
+        assert criterion(reading, 2)["verdict"] == "pass"
+
+    def test_a_net_loss_fails_even_inside_the_loss_band(self, tmp_path: Path) -> None:
+        # 1% of a hundred is inside the band, and it is still a net loss on the only population the
+        # treatment can be credited or blamed for.
+        rows = [(f"a{i:02d}", False, False, 1000, 1300) for i in range(99)]
+        rows += [("b00", True, False, 1000, 1300)]
+        before, after = self._pair(rows)
+        completed, reading = run(before, after, tmp_path)
+        assert criterion(reading, 2)["verdict"] == "fail"
+        assert "net" in criterion(reading, 2)["detail"]
+        assert completed.returncode == 1
+
+    def test_a_pair_with_no_changed_prompt_skips_rather_than_rescales(self, tmp_path: Path) -> None:
+        # The mechanism reached nothing, so its population has no size and the row has no verdict.
+        rows = [(f"a{i:02d}", False, True, 1000, 1000) for i in range(20)]
+        before, after = self._pair(rows)
         _, reading = run(before, after, tmp_path)
         assert criterion(reading, 2)["verdict"] == "skipped"
 
 
 class TestCapabilitiesAndAccuracy:
-    """Criteria 3 and 4, on the band average rather than on one draw."""
+    """Criterion 3 on the band average rather than on one draw, and criterion 4 on the reached population."""
+
+    def _pair(self, rows: list[tuple[str, bool, bool, int, int]]):
+        """`(id, was_correct, now_correct, prompt_before, prompt_after)` per question."""
+        before = [dict(question(qid, "7", "7", prompt=was_prompt)) | {"correct": was} for qid, was, _, was_prompt, _ in rows]
+        after = [dict(question(qid, "7", "7", prompt=now_prompt)) | {"correct": now} for qid, _, now, _, now_prompt in rows]
+        return report(before, []), report(after, [])
 
     def test_a_three_question_drop_in_the_average_fails(self, tmp_path: Path) -> None:
         before = report(declines(), NAMED, capabilities={"ABS": 29, "IE": 142.5, "KU": 63.25, "MR": 84.75, "TR": 101})
@@ -229,15 +257,35 @@ class TestCapabilitiesAndAccuracy:
         assert criterion(reading, 3)["verdict"] == "fail"
         assert "cannot reach" in criterion(reading, 3)["detail"]
 
-    def test_a_gain_of_one_point_passes_and_a_hair_under_fails(self, tmp_path: Path) -> None:
-        before = report(declines(), NAMED, accuracy=0.83)
-        after = report(declines(), NAMED, accuracy=0.84)
+    def test_one_attributable_gain_in_a_hundred_passes_and_a_hair_under_fails(self, tmp_path: Path) -> None:
+        # `13.174.4`. The superseded row read total accuracy, and `41039779987` met it by +2.60 points of
+        # which +0.80 was attributable: a headline 69% made of churn on records whose prompt never
+        # changed. The claim the ask makes is about the questions it reached, so the row reads them.
+        rows = [(f"a{i:02d}", False, i == 0, 1000, 1300) for i in range(100)]
+        before, after = self._pair(rows)
         _, reading = run(before, after, tmp_path)
         assert criterion(reading, 4)["verdict"] == "pass"
 
-        under = report(declines(), NAMED, accuracy=0.8399)
+        hair_under = [(f"a{i:02d}", False, i == 0, 1000, 1300) if i != 99 else ("a99", True, False, 1000, 1300) for i in range(100)]
+        before, under = self._pair(hair_under)
         _, reading = run(before, under, tmp_path)
         assert criterion(reading, 4)["verdict"] == "fail"
+
+    def test_a_headline_met_by_churn_fails_the_row_it_no_longer_satisfies(self, tmp_path: Path) -> None:
+        # The exact shape of the run that produced this amendment: accuracy rises 2.60 points, the
+        # reached population contributes 0.40 of them, and the rest is 39 flips on identical prompts.
+        # 27 reached with +4/-0, and 473 untouched with +24/-15 -- the second group's losses are part of
+        # its 473, not an extra population, which is what makes the denominator 500.
+        rows = [(f"c{i:03d}", False, i < 4, 1000, 1300) for i in range(27)]
+        rows += [(f"u{i:03d}", 24 <= i < 39, i < 24, 1000, 1000) for i in range(473)]
+        before, after = self._pair(rows)
+        after["feature"]["metrics"]["abstentionAwareAccuracy"] = 0.856
+        before["feature"]["metrics"]["abstentionAwareAccuracy"] = 0.830
+        _, reading = run(before, after, tmp_path)
+        row = criterion(reading, 4)
+        assert row["verdict"] == "fail"
+        assert "attributable" in row["detail"]
+        assert "+0.80" in row["detail"]
 
 
 class TestTheAssemblyCheck:
@@ -305,6 +353,58 @@ class TestTheAssemblyCheck:
         assert [row["id"] for row in reading["promptChars"]["outside"]] == ["a4996e51"]
 
 
+class TestTheRepeatPremise:
+    """Criterion 6, new in `13.174.5`: the repetitions were repetitions.
+
+    `13.147.3` predicted a 60-80% prefix-cache hit share on the premise that passes 2-4 resend pass 1's
+    bytes. Two artifacts read 6.47% and 11.16% and neither could separate "the provider did not cache" from
+    "the arm sent four prompts". `13.174` measures the second directly, per question, so the premise is now
+    a criterion instead of an assumption -- and a run that fails it makes its own cost numbers unreadable
+    rather than wrong.
+    """
+
+    def _pair(self, variants: list[int | None]):
+        rows = [dict(question(f"a{i:02d}", "7", "7")) | {"promptVariants": value} for i, value in enumerate(variants)]
+        return report(rows, []), report(rows, [])
+
+    def test_one_prompt_per_question_passes(self, tmp_path: Path) -> None:
+        before, after = self._pair([1] * 20)
+        _, reading = run(before, after, tmp_path)
+        assert criterion(reading, 6)["verdict"] == "pass"
+
+    def test_two_divergent_questions_in_twenty_fails(self, tmp_path: Path) -> None:
+        before, after = self._pair([1] * 18 + [2, 4])
+        completed, reading = run(before, after, tmp_path)
+        assert criterion(reading, 6)["verdict"] == "fail"
+        assert completed.returncode == 1
+
+    def test_the_boundary_is_ninety_five_percent(self, tmp_path: Path) -> None:
+        before, after = self._pair([1] * 38 + [2, 3])
+        _, reading = run(before, after, tmp_path)
+        assert criterion(reading, 6)["verdict"] == "pass"
+
+    def test_an_unverifiable_question_counts_against_the_premise(self, tmp_path: Path) -> None:
+        # `null` is a pass that declined to say what it sent. It is not evidence for the premise, so it
+        # joins the divergent side; two of twenty is 90% and fails.
+        before, after = self._pair([1] * 18 + [None, None])
+        _, reading = run(before, after, tmp_path)
+        assert criterion(reading, 6)["verdict"] == "fail"
+        assert "unverifiable" in criterion(reading, 6)["detail"]
+
+    def test_an_artifact_without_the_field_skips(self, tmp_path: Path) -> None:
+        # Every artifact in the archive before `13.174` is this case, and a verdict on it would be a
+        # verdict about the tool's default rather than about the run.
+        rows = [question(f"a{i:02d}", "7", "7") for i in range(20)]
+        _, reading = run(report(rows, []), report(rows, []), tmp_path)
+        assert criterion(reading, 6)["verdict"] == "skipped"
+
+    def test_the_reading_names_the_amendment_it_applies(self, tmp_path: Path) -> None:
+        before, after = self._pair([1] * 20)
+        _, reading = run(before, after, tmp_path)
+        assert "13.174" in reading["criteriaSource"]
+        assert "13.166.6" in reading["criteriaSource"]
+
+
 class TestTheReading:
     """The transitions table, the exit code, and the two refusals of the entry point."""
 
@@ -331,7 +431,7 @@ class TestTheReading:
         # the fixture.
         gone = NAMED[:4]
         after = report(
-            [question(qid, "7", "7", prompt=1200) if qid in gone else question(qid, None, "7", prompt=1200)
+            [dict(question(qid, "7", "7", prompt=1200), correct=True) if qid in gone else question(qid, None, "7", prompt=1200)
              for qid in NAMED]
             + [question("0a995998", "2", "3")],
             [qid for qid in NAMED if qid not in gone] + ["0a995998"],
@@ -357,7 +457,7 @@ class TestTheReading:
         gone = NAMED[:4]
         before = report(declines() + [question("0a995998", "2", "3")], NAMED + ["0a995998"], accuracy=0.83)
         after = report(
-            [question(qid, "7", "7", prompt=1200) if qid in gone else question(qid, None, "7", prompt=1200)
+            [dict(question(qid, "7", "7", prompt=1200), correct=True) if qid in gone else question(qid, None, "7", prompt=1200)
              for qid in NAMED]
             + [question("0a995998", "2", "3")],
             [qid for qid in NAMED if qid not in gone] + ["0a995998"],

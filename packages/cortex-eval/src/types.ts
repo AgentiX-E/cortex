@@ -728,6 +728,21 @@ export type AblationResult = {
    * entry means the system exposes no prompt, which is not an empty prompt.
    */
   featurePromptTexts?: readonly (string | null)[];
+  /**
+   * How many distinct prompts each question cost across the repetitions, in dataset order.
+   *
+   * `1` means every pass resent the same bytes for that question, which is the premise `§13.147.3`'s 60-80%
+   * prefix-cache prediction rests on. The premise was falsified twice -- 6.47% (`§13.148`) and 11.16%
+   * (`§13.168`) -- and neither artifact could say whether the arm had sent four prompts or the provider had
+   * declined to cache one, because a fingerprint per record is taken from one pass and a length is not a
+   * identity.
+   *
+   * Absent at `runs: 1`, where the count would be the constant `1` and would read as a measurement. `null`
+   * for a question where any pass reported no prompt: a system that answered "no prompt" once has not shown
+   * that it matched. Present per question rather than as one number for the run, because a divergence on a
+   * handful of questions is the shape most likely to be true and the one a run-level flag would erase.
+   */
+  featurePromptVariants?: readonly (number | null)[];
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };
