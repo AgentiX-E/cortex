@@ -1072,6 +1072,13 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // session and cannot be merged", "does not state the user's age"), which is what `MERGING_SENTENCE`
   // licenses and what `enumerated` buries six lines above its closing rule.
   derive: ['multi-session', 'flat', 'temporal'],
+  // §13.166's ask: derivation-shaped questions read an operand-identification block on the
+  // multi-session route, and every other question on every route reads `enumerated`'s bytes. Same
+  // reach as `enumerated` and a conditional change set, which is why the arm reports `askRoutes`
+  // here and the population itself is counted by `tools/mr-failure-census.mjs` through the product's
+  // own classifier -- a dispatch field cannot express "for some questions", so the artifact must not
+  // pretend it does.
+  operands: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

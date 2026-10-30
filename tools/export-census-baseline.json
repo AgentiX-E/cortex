@@ -1,11 +1,11 @@
 {
-  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count.",
+  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read.",
   "totals": {
-    "exports": 914,
-    "withCaller": 512,
-    "orphaned": 402,
-    "referencedLocally": 366,
-    "unreferenced": 36
+    "exports": 917,
+    "withCaller": 516,
+    "orphaned": 401,
+    "referencedLocally": 364,
+    "unreferenced": 37
   },
   "groups": [
     {
@@ -35,7 +35,7 @@
     {
       "category": "core-llm-node-surface",
       "count": 169,
-      "rationale": "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-ai/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. THE THREE ENTRIES OF cortex-ai ARE ONE LIBRARY WITH THREE DEPENDENCY PROFILES: `.` (remote providers, needs only fetch), `./local` (transformers.js, an optional peer) and `./web` (the browser's built-in model). Almost every export in this group is part of that surface and is called by a consumer, not by this repository -- the repository ships no application. Two of them are worth naming because they look like internal helpers and are not: `createFeatureExtractor` and `createRerankClassifier` are the loading layer that pins `dtype` and reads raw logits, and `test/parity/run.mjs` drives both against real weights. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. THE SAME APPLIES TO THE TRIAGE SURFACE from implementation steps 5 and 6 (`TriageWriter`, `CardQueue`, `RULE_TABLE`, `classify`, `destinationOf`, `assertRuleTable`, `TriageError`, `RuleTableError` and their types): it is the write side of the boundary and the queue that fills the shared store, called internally and by the four test files that measure the sixty labelled utterances, the card lifecycle and the output guard. `OutputGuard` (step 7) is the same table read in the other direction -- what may be said rather than what may be stored -- and it is called by a product that does not exist in this repository yet. THE PROPOSAL LAYER (step 9: `TriageProposer`, `groundedIn`, `buildProposerPrompt`, `PROPOSER_PROMPT_VERSION`, `MAX_FACTS`, `MAX_FACT_CHARS` and their types) is the same kind of entry: its only in-repository callers are the proposer\u2019s own gates and the card queue\u2019s `attach`, and the thing that will call it in production is an application that does not exist here. It is exported so the four gates can be driven from a test one at a time and so a caller can build the same prompt it will validate against -- `buildProposerPrompt` is exported for exactly that reason, and a card renderer needs `MAX_FACTS` to say \"3 of 8\" without inventing a second constant. THE ECHO SURFACE (step 11) is three entries and one removal worth naming: `hashWindow` is called by `EchoCorpus.contains` in its own file and by the corpus tests, so it is a test seam in the same sense as `clampAwayFromZero`; `DEFAULT_ECHO_WIDTH` and `EchoCorpusStats` are a constant and the shape `stats` returns, with no caller yet. And `OutputGuard` LEFT this ledger, which is the honest record of what happened in this step: the guard finally has a caller, and that caller is `packages/cortex-core/test/echo/run.mjs` -- a measurement script, not a product. It is the first time the output side has been driven from outside a test file, and it is still not a shipped path. THE PROFILE SURFACE (step 14) is eight entries with one caller between them: `resolveLlmProfile`, `describeProfile`, `readApiKey` and `PROFILE_ENV` are called by the two tools, and the five types (`LlmProfile`, `LocalProfile`, `RemoteProfile`, `ProfileRequest`, `ProfileEnv`), `DEFAULT_LOCAL_MODEL` and `DEFAULT_WEIGHT_HOST` are named in those tools' signatures and docs but not called. That is the honest shape of a configuration module: the values exist so that a failure message and a document can cite the same string, and nothing in the library decides anything with them. `cortex-ai: CrossEncoderRerankerOptions` LEFT this ledger for a dull reason worth one line: it moved to `rerank/cross-encoder.ts`, and the census resolves a re-exported type to its declaration site, which is now reached from `./local` -- the same file, a different path, so it counts as used. Not a change in behaviour. THE REVIEW PAGE (step 16) adds one entry with a caller -- `renderA3ReviewPage`, called by `tools/a3-review-page.mjs` -- and five that exist for the test suite: `planReview` and `resumeKey` are called inside their own file and by the tests, so they are test seams in the sense this ledger already uses for `hashWindow`; the four types (`ReviewCard`, `ReviewPageInput`, `ReviewPair`, `ReviewPlan`) are the shapes those signatures use. `trialLine` was written, exported, and then removed: its only caller was a test, and a one-line wrapper around JSON.stringify does not earn an export -- the test stringifies the trial itself and asserts the same thing. Three more joined when the command line moved out of the tool and into this package: `parseReviewPageArgs`, `readReviewCards` and `resolveOutPath` are called by `tools/a3-review-page.mjs`, so they have a caller and are not in this ledger at all -- they are named here only because the move is the interesting part. The first version of that logic lived in the tool, whose test ran before `pnpm build` and therefore failed on every clean checkout. A tool that needs `dist` cannot be tested by the step that runs before `dist` exists. THE ABSTENTION GATE (step 23) adds three entries, down from four when step 24 gave `declinedItems` a caller outside the tests: `test/mr-census/run.mjs` imports it so that the census and the gate cannot drift apart, which is why that entry left this ledger rather than being rationalised. `planAbstentionRecovery` and `buildRecoveryPrompt` have their caller in `memory.ts`; `asksForCount` is called by `buildRecoveryPrompt` for that same reason, so it is a test seam in the sense this ledger already uses for `hashWindow`. `DECLINE_TOKEN` is exported because a test couples it to `ABSTAIN_TOKEN` across a layer that cannot share a constant, and `RecoveryPlan` is a shape named only in a signature. None of them is a deletion candidate: the module exists so that the decision \"is this decline honest\" is one function called from one place, rather than a regex written twice. THE GROUNDING CHANGE (step 21) adds four entries and gives the others callers. `contentGrounded` is called by `TriageProposer.filter` and by `CardQueue.attach`, and `distillationOf` by `tools/a3-review.mjs`; `isVerbatimRun` and `looksTemporal` are called inside `grounding.ts` and by its tests, so they are test seams in the sense this ledger already uses for `hashWindow`. The two types are shapes named only in signatures. They are exported rather than inlined because the reading and the gate must call the same functions: a reading that re-implemented \"is this a verbatim run\" would produce a number about a different question than the one the product asks. THE CLAIMS GATE (step 18) adds ONE entry and gives the other two callers: `claimsIn` is called by `CardQueue.open`, which is the path that decides whether a turn becomes a question at all; `splitSentences` is called by `test/card-volume/run.mjs`, the same way `OutputGuard` left this ledger when `test/echo/run.mjs` started driving it; `isClaim` is called only inside `claims.ts` and by `claims.test.ts`, so it lands here as a test seam in the sense this ledger already uses for `hashWindow`. The three exist as a module rather than as private helpers because the reading, the tests and the queue must call the same predicate: a reading that re-implemented the gate would measure a different gate. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly. THE SPEND INSTRUMENT (13.140) adds ONE entry: `LlmUsage` is the shape `parseUsage` returns and `recordUsage` takes, and neither of those two names it at a call site -- the adapter passes the parser's result straight through -- so the type is named only in two signatures. It is exported because a signature that returns a private name cannot be declared, and it is NOT inlined into `UsageSnapshot` because the two are different facts: a per-response report has no call count, and a ledger total has no single response it describes. Merging them would let a caller pass a total where a report belongs. `cortex-memory: asksForCount` LEFT this ledger when `tools/recovery-reach.mjs` started importing it (13.149): the reading that counts the abstention-recovery pass's population has to use the same predicate as `buildRecoveryPrompt`, for the same reason `declinedItems` left it at step 24 -- a tool that re-implemented the count would report a population the pass does not have. It is named here rather than silently dropped because a ledger whose entries vanish without a sentence is a ledger nobody can audit.",
+      "rationale": "Library surface of cortex-core, cortex-ai and cortex-storage. An export with no caller in this repository is either a genuinely unused helper or a deliberate extension point of a library whose consumers would be external. This repository is private and publishes nothing, so a consumer outside it does not exist today; `cortex-ai/src/retry.ts` alone contributes 13, which suggests its helpers are used as building blocks internally rather than called by name. THE THREE ENTRIES OF cortex-ai ARE ONE LIBRARY WITH THREE DEPENDENCY PROFILES: `.` (remote providers, needs only fetch), `./local` (transformers.js, an optional peer) and `./web` (the browser's built-in model). Almost every export in this group is part of that surface and is called by a consumer, not by this repository -- the repository ships no application. Two of them are worth naming because they look like internal helpers and are not: `createFeatureExtractor` and `createRerankClassifier` are the loading layer that pins `dtype` and reads raw logits, and `test/parity/run.mjs` drives both against real weights. ONE GROUP IS NOT DEBT: the federation surface added in implementation step 2 (`FederatedStorage`, `ReadSideAssembler`, `ScopeViolation`, `FederationError`, `scopeOf` and their types) is the code the remaining steps wire up -- the read-side assembler builds the evidence window at step 3 and the card queue calls it at step 6. It shows as orphaned because the repository has no caller YET; it is recorded rather than deleted because deleting it would delete the next step. If those steps are abandoned, this paragraph is the first thing to remove. THE SAME APPLIES TO THE TRIAGE SURFACE from implementation steps 5 and 6 (`TriageWriter`, `CardQueue`, `RULE_TABLE`, `classify`, `destinationOf`, `assertRuleTable`, `TriageError`, `RuleTableError` and their types): it is the write side of the boundary and the queue that fills the shared store, called internally and by the four test files that measure the sixty labelled utterances, the card lifecycle and the output guard. `OutputGuard` (step 7) is the same table read in the other direction -- what may be said rather than what may be stored -- and it is called by a product that does not exist in this repository yet. THE PROPOSAL LAYER (step 9: `TriageProposer`, `groundedIn`, `buildProposerPrompt`, `PROPOSER_PROMPT_VERSION`, `MAX_FACTS`, `MAX_FACT_CHARS` and their types) is the same kind of entry: its only in-repository callers are the proposer’s own gates and the card queue’s `attach`, and the thing that will call it in production is an application that does not exist here. It is exported so the four gates can be driven from a test one at a time and so a caller can build the same prompt it will validate against -- `buildProposerPrompt` is exported for exactly that reason, and a card renderer needs `MAX_FACTS` to say \"3 of 8\" without inventing a second constant. THE ECHO SURFACE (step 11) is three entries and one removal worth naming: `hashWindow` is called by `EchoCorpus.contains` in its own file and by the corpus tests, so it is a test seam in the same sense as `clampAwayFromZero`; `DEFAULT_ECHO_WIDTH` and `EchoCorpusStats` are a constant and the shape `stats` returns, with no caller yet. And `OutputGuard` LEFT this ledger, which is the honest record of what happened in this step: the guard finally has a caller, and that caller is `packages/cortex-core/test/echo/run.mjs` -- a measurement script, not a product. It is the first time the output side has been driven from outside a test file, and it is still not a shipped path. THE PROFILE SURFACE (step 14) is eight entries with one caller between them: `resolveLlmProfile`, `describeProfile`, `readApiKey` and `PROFILE_ENV` are called by the two tools, and the five types (`LlmProfile`, `LocalProfile`, `RemoteProfile`, `ProfileRequest`, `ProfileEnv`), `DEFAULT_LOCAL_MODEL` and `DEFAULT_WEIGHT_HOST` are named in those tools' signatures and docs but not called. That is the honest shape of a configuration module: the values exist so that a failure message and a document can cite the same string, and nothing in the library decides anything with them. `cortex-ai: CrossEncoderRerankerOptions` LEFT this ledger for a dull reason worth one line: it moved to `rerank/cross-encoder.ts`, and the census resolves a re-exported type to its declaration site, which is now reached from `./local` -- the same file, a different path, so it counts as used. Not a change in behaviour. THE REVIEW PAGE (step 16) adds one entry with a caller -- `renderA3ReviewPage`, called by `tools/a3-review-page.mjs` -- and five that exist for the test suite: `planReview` and `resumeKey` are called inside their own file and by the tests, so they are test seams in the sense this ledger already uses for `hashWindow`; the four types (`ReviewCard`, `ReviewPageInput`, `ReviewPair`, `ReviewPlan`) are the shapes those signatures use. `trialLine` was written, exported, and then removed: its only caller was a test, and a one-line wrapper around JSON.stringify does not earn an export -- the test stringifies the trial itself and asserts the same thing. Three more joined when the command line moved out of the tool and into this package: `parseReviewPageArgs`, `readReviewCards` and `resolveOutPath` are called by `tools/a3-review-page.mjs`, so they have a caller and are not in this ledger at all -- they are named here only because the move is the interesting part. The first version of that logic lived in the tool, whose test ran before `pnpm build` and therefore failed on every clean checkout. A tool that needs `dist` cannot be tested by the step that runs before `dist` exists. THE ABSTENTION GATE (step 23) adds three entries, down from four when step 24 gave `declinedItems` a caller outside the tests: `test/mr-census/run.mjs` imports it so that the census and the gate cannot drift apart, which is why that entry left this ledger rather than being rationalised. `planAbstentionRecovery` and `buildRecoveryPrompt` have their caller in `memory.ts`; `asksForCount` is called by `buildRecoveryPrompt` for that same reason, so it is a test seam in the sense this ledger already uses for `hashWindow`. `DECLINE_TOKEN` is exported because a test couples it to `ABSTAIN_TOKEN` across a layer that cannot share a constant, and `RecoveryPlan` is a shape named only in a signature. None of them is a deletion candidate: the module exists so that the decision \"is this decline honest\" is one function called from one place, rather than a regex written twice. THE GROUNDING CHANGE (step 21) adds four entries and gives the others callers. `contentGrounded` is called by `TriageProposer.filter` and by `CardQueue.attach`, and `distillationOf` by `tools/a3-review.mjs`; `isVerbatimRun` and `looksTemporal` are called inside `grounding.ts` and by its tests, so they are test seams in the sense this ledger already uses for `hashWindow`. The two types are shapes named only in signatures. They are exported rather than inlined because the reading and the gate must call the same functions: a reading that re-implemented \"is this a verbatim run\" would produce a number about a different question than the one the product asks. THE CLAIMS GATE (step 18) adds ONE entry and gives the other two callers: `claimsIn` is called by `CardQueue.open`, which is the path that decides whether a turn becomes a question at all; `splitSentences` is called by `test/card-volume/run.mjs`, the same way `OutputGuard` left this ledger when `test/echo/run.mjs` started driving it; `isClaim` is called only inside `claims.ts` and by `claims.test.ts`, so it lands here as a test seam in the sense this ledger already uses for `hashWindow`. The three exist as a module rather than as private helpers because the reading, the tests and the queue must call the same predicate: a reading that re-implemented the gate would measure a different gate. NOT triaged entry by entry, with one exception recorded here so the next reader does not have to re-derive it: `cortex-core: clampAwayFromZero` and `cortex-core: degenerateDfPValue` are TEST SEAMS. Both are called from `betaContinuedFraction` and `welchTTest` in their own file, so they are live code; the `export` keyword exists only so `src/__tests__/stats-degenerate.test.ts` can drive the degenerate branches directly. That matters because the census excludes test files from the caller count by design, so a test-facing export is reported as an orphan no matter how well covered it is -- the `referenced-locally` class it lands in does not distinguish a test caller from an in-file one. They were extracted from six inline guards that carried `c8 ignore next` while still counting against the 95% floor, and neither `c8 ignore` nor `v8 ignore` was honoured by `@vitest/coverage-v8`, so extraction was the only way to keep the protection AND earn the coverage honestly. THE SPEND INSTRUMENT (13.140) adds ONE entry: `LlmUsage` is the shape `parseUsage` returns and `recordUsage` takes, and neither of those two names it at a call site -- the adapter passes the parser's result straight through -- so the type is named only in two signatures. It is exported because a signature that returns a private name cannot be declared, and it is NOT inlined into `UsageSnapshot` because the two are different facts: a per-response report has no call count, and a ledger total has no single response it describes. Merging them would let a caller pass a total where a report belongs. `cortex-memory: asksForCount` LEFT this ledger when `tools/recovery-reach.mjs` started importing it (13.149): the reading that counts the abstention-recovery pass's population has to use the same predicate as `buildRecoveryPrompt`, for the same reason `declinedItems` left it at step 24 -- a tool that re-implemented the count would report a population the pass does not have. It is named here rather than silently dropped because a ledger whose entries vanish without a sentence is a ledger nobody can audit. ONE ENTRY ARRIVES WITH ITS READER NAMED: `cortex-memory: ASK_CHANGES_WHEN_DERIVATION` (`13.166`) is the change set `ask: 'operands'` claims on a **derivation-shaped** question, and its only caller is `ask-changes.test.ts` -- a test seam of the same kind `ASK_CHANGES` and `ASK_CONTROLS` beside it already are, and for the same reason: the table IS the registration, so the oracle that checks an ask's fallthrough has to be the table rather than a copy of it. It is not wired into the product because nothing in the product reads a change set; the product reads the branch the table describes, and the table exists so a test can require the branch and the declaration to agree.",
       "declarationSites": [
         "cortex-ai: AvailabilityReport (packages/cortex-ai/src/web/platform-language-model.ts:56)",
         "cortex-ai: ChatMessage (packages/cortex-ai/src/local/llm.ts:36)",
@@ -183,12 +183,12 @@
         "cortex-core: sinkhorn (packages/cortex-core/src/math/ot.ts:25)",
         "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
         "cortex-core: studentTCdf (packages/cortex-core/src/math/stats.ts:119)",
-        "cortex-memory: ASK_CHANGES (packages/cortex-memory/src/prompt.ts:256)",
-        "cortex-memory: ASK_CONTROLS (packages/cortex-memory/src/prompt.ts:233)",
+        "cortex-memory: ASK_CHANGES (packages/cortex-memory/src/prompt.ts:270)",
+        "cortex-memory: ASK_CHANGES_WHEN_DERIVATION (packages/cortex-memory/src/prompt.ts:1230)",
+        "cortex-memory: ASK_CONTROLS (packages/cortex-memory/src/prompt.ts:246)",
         "cortex-memory: CheckOptions (packages/cortex-memory/src/disclosure/session.ts:88)",
         "cortex-memory: CortexSessionProviderOptions (packages/cortex-memory/src/provider.ts:81)",
-        "cortex-memory: DECLINE_TOKEN (packages/cortex-memory/src/abstention-recovery.ts:116)",
-        "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:500)",
+        "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:519)",
         "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:52)",
         "cortex-memory: ProviderHit (packages/cortex-memory/src/provider.ts:68)",
         "cortex-memory: ProviderIngestReport (packages/cortex-memory/src/provider.ts:70)",
@@ -197,8 +197,8 @@
         "cortex-memory: ProviderTurn (packages/cortex-memory/src/provider.ts:60)",
         "cortex-memory: RecoveryPlan (packages/cortex-memory/src/abstention-recovery.ts:104)",
         "cortex-memory: SayResult (packages/cortex-memory/src/disclosure/session.ts:82)",
-        "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:1317)",
-        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:2411)",
+        "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:1443)",
+        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:2542)",
         "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:18)",
         "cortex-storage: PgStorageOptions (packages/cortex-storage/src/storage/pg.ts:14)",
         "cortex-storage: SqliteStorageOptions (packages/cortex-storage/src/storage/sqlite.ts:21)",
@@ -308,7 +308,7 @@
     },
     {
       "category": "eval-harness-surface",
-      "count": 132,
+      "count": 131,
       "rationale": "Evaluation harness internals. This is the largest bucket and the one most likely to hold genuine defects: most of the repository's orphaned exports are here. Some are reached only through indirection the census does not follow (dynamic property access, options objects passed as data). Triaged entry by entry: 221 of 277 were referenced inside their own declaring file and NOT ONE was unreferenced everywhere, so this bucket contains no dead code and its members are unnecessary `export` keywords, not deletions. The gate's value is preventing growth, not certifying this snapshot. `PositionEffect` (step 20) joins for the same reason as the other shapes: `positionEffect` returns it and `tools/a3-review.mjs` prints it, but a type named only in a signature has no caller to count. It is recorded rather than inlined because the return shape is the thing being asserted in its six tests. `cortex-eval: traceReviewMechanisms` and `cortex-eval: ReviewMechanismTrace` JOINED this ledger at 13.155, and they are the clearest case in it for a TEST SEAM: the wrapper is exported so a fixture whose state is `#private` can drive it, and that is the only kind of fixture which could have expressed the defect it was fixed for. Every plain-object fake in the arm's suite passed against the broken version -- `bind` on an arrow function is a no-op -- and `run 40984213349` died on question one for the want of a system with real private state. They are locally referenced (the arm calls the wrapper) and exported only because TypeScript has no package-private visibility, which is the same shape as the census module's own group above.",
       "declarationSites": [
         "cortex-eval: A3Arm (packages/cortex-eval/src/a3.ts:36)",
@@ -331,8 +331,8 @@
         "cortex-eval: Competitor (packages/cortex-eval/src/acceptance.ts:98)",
         "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:87)",
         "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:98)",
-        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:2134)",
-        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:2003)",
+        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:2141)",
+        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:2010)",
         "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:106)",
         "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/llm-factory.ts:24)",
         "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/llm-factory.ts:25)",
@@ -373,7 +373,7 @@
         "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:849)",
         "cortex-eval: ReviewCard (packages/cortex-eval/src/review-page.ts:32)",
         "cortex-eval: ReviewCardsFile (packages/cortex-eval/src/review-page.ts:122)",
-        "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:2203)",
+        "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:2210)",
         "cortex-eval: ReviewPageArgs (packages/cortex-eval/src/review-page.ts:83)",
         "cortex-eval: ReviewPageInput (packages/cortex-eval/src/review-page.ts:40)",
         "cortex-eval: ReviewPair (packages/cortex-eval/src/review-page.ts:55)",
@@ -395,7 +395,6 @@
         "cortex-eval: buildTemporalEventLookupPrompt (packages/cortex-eval/src/natural-language-memory.ts:2193)",
         "cortex-eval: buildTemporalQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:2153)",
         "cortex-eval: buildTemporalQueryExpansionPrompt (packages/cortex-eval/src/natural-language-memory.ts:3005)",
-        "cortex-eval: classifyAggregationKind (packages/cortex-eval/src/natural-language-memory.ts:2589)",
         "cortex-eval: clearJudgeCache (packages/cortex-eval/src/judge.ts:46)",
         "cortex-eval: compareRecords (packages/cortex-eval/src/paired-test.ts:84)",
         "cortex-eval: computeMetrics (packages/cortex-eval/src/metrics.ts:44)",
@@ -439,7 +438,7 @@
         "cortex-eval: sessionsOf (packages/cortex-eval/src/harness.ts:209)",
         "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
         "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:160)",
-        "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:2299)",
+        "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:2306)",
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2820)",
         "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2716)",
         "cortex-eval: unrun (packages/cortex-eval/src/acceptance.ts:736)"
@@ -746,7 +745,6 @@
     "cortex-eval: buildTemporalQaPrompt",
     "cortex-eval: buildTemporalQueryExpansionPrompt",
     "cortex-eval: candidateSpanCount",
-    "cortex-eval: classifyAggregationKind",
     "cortex-eval: classifyCurveMembership",
     "cortex-eval: classifyExclusion",
     "cortex-eval: clearJudgeCache",
@@ -813,10 +811,10 @@
     "cortex-eval: truncateText",
     "cortex-eval: unrun",
     "cortex-memory: ASK_CHANGES",
+    "cortex-memory: ASK_CHANGES_WHEN_DERIVATION",
     "cortex-memory: ASK_CONTROLS",
     "cortex-memory: CheckOptions",
     "cortex-memory: CortexSessionProviderOptions",
-    "cortex-memory: DECLINE_TOKEN",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS",
     "cortex-memory: DisclosureSessionOptions",
     "cortex-memory: ProviderHit",
@@ -1150,7 +1148,6 @@
     "cortex-eval: buildTemporalQaPrompt": "referenced-locally",
     "cortex-eval: buildTemporalQueryExpansionPrompt": "referenced-locally",
     "cortex-eval: candidateSpanCount": "unreferenced",
-    "cortex-eval: classifyAggregationKind": "referenced-locally",
     "cortex-eval: classifyCurveMembership": "referenced-locally",
     "cortex-eval: classifyExclusion": "referenced-locally",
     "cortex-eval: clearJudgeCache": "unreferenced",
@@ -1217,10 +1214,10 @@
     "cortex-eval: truncateText": "referenced-locally",
     "cortex-eval: unrun": "unreferenced",
     "cortex-memory: ASK_CHANGES": "unreferenced",
+    "cortex-memory: ASK_CHANGES_WHEN_DERIVATION": "unreferenced",
     "cortex-memory: ASK_CONTROLS": "unreferenced",
     "cortex-memory: CheckOptions": "referenced-locally",
     "cortex-memory: CortexSessionProviderOptions": "referenced-locally",
-    "cortex-memory: DECLINE_TOKEN": "referenced-locally",
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": "referenced-locally",
     "cortex-memory: DisclosureSessionOptions": "referenced-locally",
     "cortex-memory: ProviderHit": "referenced-locally",
@@ -1862,10 +1859,10 @@
       "packages/cortex-eval/src/bench-memory-arm.ts:98"
     ],
     "cortex-eval: CortexMemoryArmResult": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:2134"
+      "packages/cortex-eval/src/bench-memory-arm.ts:2141"
     ],
     "cortex-eval: CortexMemoryArmRunOptions": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:2003"
+      "packages/cortex-eval/src/bench-memory-arm.ts:2010"
     ],
     "cortex-eval: Criterion": [
       "packages/cortex-eval/src/acceptance.ts:106"
@@ -2048,7 +2045,7 @@
       "packages/cortex-eval/src/review-page.ts:122"
     ],
     "cortex-eval: ReviewMechanismTrace": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:2203"
+      "packages/cortex-eval/src/bench-memory-arm.ts:2210"
     ],
     "cortex-eval: ReviewPageArgs": [
       "packages/cortex-eval/src/review-page.ts:83"
@@ -2151,9 +2148,6 @@
     ],
     "cortex-eval: candidateSpanCount": [
       "packages/cortex-eval/src/candidate-context.ts:201"
-    ],
-    "cortex-eval: classifyAggregationKind": [
-      "packages/cortex-eval/src/natural-language-memory.ts:2589"
     ],
     "cortex-eval: classifyCurveMembership": [
       "packages/cortex-eval/src/recall-curve.ts:220"
@@ -2339,7 +2333,7 @@
       "packages/cortex-eval/src/competitor.ts:160"
     ],
     "cortex-eval: traceReviewMechanisms": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:2299"
+      "packages/cortex-eval/src/bench-memory-arm.ts:2306"
     ],
     "cortex-eval: truncateSession": [
       "packages/cortex-eval/src/natural-language-memory.ts:2820"
@@ -2351,10 +2345,13 @@
       "packages/cortex-eval/src/acceptance.ts:736"
     ],
     "cortex-memory: ASK_CHANGES": [
-      "packages/cortex-memory/src/prompt.ts:256"
+      "packages/cortex-memory/src/prompt.ts:270"
+    ],
+    "cortex-memory: ASK_CHANGES_WHEN_DERIVATION": [
+      "packages/cortex-memory/src/prompt.ts:1230"
     ],
     "cortex-memory: ASK_CONTROLS": [
-      "packages/cortex-memory/src/prompt.ts:233"
+      "packages/cortex-memory/src/prompt.ts:246"
     ],
     "cortex-memory: CheckOptions": [
       "packages/cortex-memory/src/disclosure/session.ts:88"
@@ -2362,11 +2359,8 @@
     "cortex-memory: CortexSessionProviderOptions": [
       "packages/cortex-memory/src/provider.ts:81"
     ],
-    "cortex-memory: DECLINE_TOKEN": [
-      "packages/cortex-memory/src/abstention-recovery.ts:116"
-    ],
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
-      "packages/cortex-memory/src/prompt.ts:500"
+      "packages/cortex-memory/src/prompt.ts:519"
     ],
     "cortex-memory: DisclosureSessionOptions": [
       "packages/cortex-memory/src/disclosure/session.ts:52"
@@ -2393,10 +2387,10 @@
       "packages/cortex-memory/src/disclosure/session.ts:82"
     ],
     "cortex-memory: formatEvidence": [
-      "packages/cortex-memory/src/prompt.ts:1317"
+      "packages/cortex-memory/src/prompt.ts:1443"
     ],
     "cortex-memory: truncateCodePointSafe": [
-      "packages/cortex-memory/src/prompt.ts:2411"
+      "packages/cortex-memory/src/prompt.ts:2542"
     ],
     "cortex-storage: BrowserStorage": [
       "packages/cortex-storage/src/browser/opfs.ts:35"

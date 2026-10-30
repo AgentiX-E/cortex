@@ -18047,3 +18047,160 @@ for the line numbers, which the generator re-derives and which were stale in the
 because the census source had moved under them. That is the argument for using the sanctioned
 expression instead of a script that looks equivalent: the six totals agreed and four
 `declarationSites` coordinates did not.
+
+## 13.166 The census 13.164 registered corrects the sample it was registered to check, and it produces a tie
+
+§13.164.4 asked for an exhaustive partition of the twenty-six before any repair, with four counts that
+sum to twenty-six, and for the class that dominates to name the mechanism. The census has run, on two
+dispatches, and it says three things the eight-question sample did not.
+
+### 13.166.1 The partition, on both dispatches
+
+`tools/mr-failure-census.mjs` reads a report and files every reference-only failure in one of four
+classes, decided from the **gold and the answer** rather than from the question's wording:
+
+| class | the test |
+| --- | --- |
+| `decline` | the arm produced no answer |
+| `off-by-one` | both sides are one number, and they differ by exactly one |
+| `aggregation` | both sides are one number, and they differ by more |
+| `other` | everything left |
+
+| capability | run | n | decline | off-by-one | aggregation | other |
+| --- | --- | -: | -: | -: | -: | -: |
+| MR | `40989420944` | 26 | **10** | **10** | 6 | 0 |
+| MR | `40751394094` (control) | 24 | **10** | 8 | 5 | 1 |
+
+The sum line is checked by the tool's exit code, not by a reader: a partition that does not add up
+exits non-zero, because a table whose totals come from a different walk than its rows is the defect
+`§13.165` spent a round repairing in `export-census`.
+
+### 13.166.2 The sample overstated its own finding by twenty-six points
+
+§13.164.2 read eight of the twenty-six and found **seven** enumeration errors, which was the basis for
+"this dominates everything else on the list". The census says the true share is ten of twenty-six —
+38%, not 88% — and that a class the sample never saw is **the same size**: ten declines, in both
+dispatches, on a roster whose declines are otherwise the small tail.
+
+That is not a refutation of the earlier reading; it is what the earlier reading was missing, and the
+missing half is the larger half by cost. An off-by-one failure is one member from correct and its
+mechanisms are exhausted (§13.103 +1.3, `deterministic counting` −42 by simulation, `audit` −14,
+`silent` −26, three prompt sharpenings worth one question between them). A decline is a question the
+arm read and refused, and the mechanism for that shape exists in this repository.
+
+### 13.166.3 The tie, and the rule that breaks it — stated before the choice
+
+Two classes tie at ten. §13.164.4's criterion 3 says "whichever class dominates names the mechanism",
+and a tie is the case it did not anticipate. The tie-break was written down before it was applied, and
+it is not "the bigger effect":
+
+**Prefer the class whose mechanism has not been dispatched on this population.** A class whose
+mechanisms are all refuted is a class whose next attempt needs a new idea; a class with a measured
+mechanism that has never been run against *these questions* needs a run.
+
+By that rule the tie resolves to **declines**, and the reason is a fact about the record rather than a
+preference: `reviewPass: 'recover'` was dispatched (`40883121464`) and returned MR **net 0**, 2 of its
+10 reachable questions converted against 5 of 111 it could not reach (§13.148.3, §13.149). But that
+pass re-asks a declining reader with its own list; it does not change what the reader was asked the
+first time. The question §13.166.5 registers is the other one.
+
+### 13.166.4 The decline population is stable across two dispatches, which is what a registration needs
+
+| quantity | `40989420944` | `40751394094` |
+| --- | -: | -: |
+| MR declines | 12 | 12 |
+| of which reference-only | 10 | 10 |
+| of which carry a Step 1 list | 8 | 8 |
+| of which are derivation-shaped | **6** | **6** |
+
+The counts are equal, not merely close, and the same six questions are named: `e6041065`, `d905b33f`,
+`a1cc6108`, `ba358f49`, `157a136e`, `c18a7dc8`. Two dispatches three days apart, on a roster whose
+reader moves 15% of its verdicts under a prompt permutation (§13.143), produce the same decline set and
+the same six derivations. Whatever else is noise in this instrument, this population is not.
+
+### 13.166.5 The mechanism: ask for the operands, not the items
+
+The multi-session route gives every question one Step 1 — *list every item in the evidence that
+matches the question* — and for a derivation question that instruction names a set that does not
+exist. "How many years older is my grandma than me" has no items; it has two ages and a subtraction,
+and neither age is stated as the answer. The six replies say so in their own words:
+
+| question | gold | the reply |
+| --- | --- | --- |
+| `a1cc6108` | `11` | "The evidence states Alex is 21, but it **does not state the user's age**" |
+| `157a136e` | `43` | "No item in the evidence states the user's age or the grandma's age" |
+| `c18a7dc8` | `7` | "No item in the evidence states the user's age at college graduation" |
+| `d905b33f` | `20%` | "states the book was originally priced at $30 but **does not state the sale price**" |
+| `e6041065` | `40%` | "the exact total number of shoes packed is **not stated**" |
+| `ba358f49` | `33` | derives from the wedding date and the current age, then declines at the join |
+
+The reference pipeline does not have this failure on these questions, and the difference is in its
+source: `classifyAggregationKind` routes derivation questions to `buildDerivationQaPrompt`, whose
+Step 1 asks for the **operands** — *"identify the specific numbers the question needs"* — and whose
+Step 2 names the arithmetic. Its own docblock states the diagnosis in the same words: the enumeration
+framing "makes the model look for items to list, find none, and abstain". That decision is measured on
+its side of the wall (declines 35.42% → 18.75% on derivation questions, §13.127.5's citation), and it
+has never been administered on this arm.
+
+§13.132.7 named it as the next step if position alone did not convert. Position did not: `derive`
+reproduced its mechanism to the character and **lost six questions** (§13.143). So this is the
+registered sentence, with a population counted before dispatch.
+
+### 13.166.6 What is registered, before dispatch
+
+`ask: 'operands'` — the operand contract for derivation-shaped questions on the multi-session route,
+and `enumerated`'s bytes for everything else. The classifier is `classifyQuestionShape` in
+`cortex-memory`, a **literal copy** of the reference's pattern, because the dependency runs the other
+way; `tools/mr-failure-census.mjs` checks the two against each other on every question of a report
+before it prints a reach, so a drift is a failed run rather than a quiet difference.
+
+| capability | population of `ask: operands`, `40989420944` |
+| --- | -: |
+| MR, decline | **6** (`e6041065` `d905b33f` `a1cc6108` `ba358f49` `157a136e` `c18a7dc8`) |
+| MR, aggregation | **1** (`92a0aa75` — the role's tenure instead of the company's) |
+| MR, off-by-one | 0 |
+| **total** | **7 of 26** |
+
+| # | claim | falsified by |
+| - | ----- | ------------ |
+| **1** | at least **4 of the 7** named questions stop being reference-only | fewer than 4 |
+| **2** | the **ten** off-by-one questions do not move by more than 2 | 3 or more flips among them: they read the control's bytes, so a movement there is a fallthrough defect |
+| **3** | no capability loses more than 2 questions, and ABS stays at 29/30 | any capability −3, or an ABS verdict change (the abstention route is outside the ask's reach) |
+| **4** | overall accuracy rises by at least 1.0 point | less than +5 questions net |
+| **5** | the mechanism is visible: `promptChars` moves on the 7 and is **equal** on the other 114 MR records | any record outside the population whose `promptChars` differs |
+
+Claim 1's floor is 4/7 = 57%. The untreated rate on the same route, measured by the recovery dispatch,
+is 20.8% (5 of 111), and P(X ≥ 4 | n = 7, p = 0.208) = **0.038**: the bar is a threshold the reader's
+own churn reaches about one time in twenty-six. Claim 2 is the fallthrough guard, stated as a count
+because the five previous fallthrough defects were all invisible in the configuration line.
+
+Claim 5 is the assembly check §13.129.1 established: the treatment changes what the reader is asked on
+seven questions and nothing about what it is shown.
+
+### 13.166.7 What the tool itself settles
+
+Three properties of the census are now instrument facts rather than intentions:
+
+- **the partition is total.** A class list that is nearly total is a list with a hidden remainder, and
+  the remainder is where an inconvenient population would sit. `other` is a class, it is reported, and
+  the arithmetic is an exit code.
+- **the classifier's boundary is the reference's**, checked on every question of the report rather than
+  on a corpus chosen for the test. `classifyQuestionShape` has a caller in the product and one in the
+  tool, which is why `cortex-eval: classifyAggregationKind` and `cortex-memory: DECLINE_TOKEN` left the
+  orphan population in the same round — the two symbols whose duplication the guard exists to police are
+  the two it imports.
+- **a decline's shape is read through the product's own predicates.** `bare` / `absence-only` / `list` /
+  `prose` is not a taxonomy written for this paragraph: `planAbstentionRecovery` decides, and the count
+  it produces (8 of 26 would be re-asked) is the mechanism's reach rather than a reading of its docblock.
+  `ABS` is the control the shape split needs and gets: 29 declines, **29 bare**, 0 with a list, so a rule
+  about lists cannot reach the capability whose gold is a decline.
+
+### 13.166.8 What this does not licence
+
+The other four declines are derived values the pattern **misses**: a bedtime read off an appointment
+date, elapsed days between purchase and arrival, weekly hours during a peak season, and a sum of view
+counts. They are asserted as `enumeration` in `question-shape.test.ts` rather than quietly widened into
+the pattern, because the mechanism being dispatched is the reference's verbatim and a wider pattern
+would make the treatment "our classifier and our prompt". They are a registered population for a later
+increment, and naming them now is what keeps the seven honest: a reach that quietly grew to eleven
+would be a number nobody could attribute.

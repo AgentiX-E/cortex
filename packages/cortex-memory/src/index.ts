@@ -95,6 +95,16 @@ export {
 
 // parse
 export { parseAnswer, isAbstention, ABSTAIN_TOKEN } from './parse.js';
+/**
+ * The two readings a question can call for, and the test that decides between them.
+ *
+ * Exported because the reach of an ask is a property of the **dataset**, not only of the dispatcher:
+ * `ask: 'operands'` changes the block on derivation-shaped questions, so a run that cannot count its
+ * own population cannot state what it treated. `tools/mr-failure-census.mjs` reads this function to
+ * print that population rather than re-deriving it, which is the rule §13.141.6 states for every
+ * treatment from here.
+ */
+export { classifyQuestionShape, type QuestionShape } from './question-shape.js';
 export {
   asksForCount,
   buildRecoveryPrompt,

@@ -35,7 +35,13 @@ import { describe, expect, it } from 'vitest';
 import type { LLM } from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
-import { ASK_CHANGES, ASK_CONTROLS, ASK_ROUTES, type EvidenceAsk } from '../prompt.js';
+import {
+  ASK_CHANGES,
+  ASK_CHANGES_WHEN_DERIVATION,
+  ASK_CONTROLS,
+  ASK_ROUTES,
+  type EvidenceAsk,
+} from '../prompt.js';
 
 const NOW = 1_759_470_000_000;
 
@@ -83,22 +89,41 @@ function instructionsOf(prompt: string): string {
  * rendered. A missing driver would silently shrink the check to the routes somebody remembered,
  * which is the same class of omission this file is about.
  */
-const ROUTES: ReadonlyArray<readonly [string, (m: CortexMemory) => Promise<unknown>]> = [
-  ['abstention', (m) => m.answerAbstention('What is my passport number?', [TEXT])],
-  ['multi-session', (m) => m.answerSessions('How many kits do I own?', [[TEXT]])],
-  ['temporal', (m) => m.answerTemporal('How long ago?', [TEXT], '2023/06/01')],
-  ['knowledge-update', (m) => m.answerKnowledgeUpdate('How many kits now?', [TEXT])],
-  ['assistant', (m) => m.answerAssistant('What did you say about the kit?', [TEXT])],
-  ['flat', (m) => m.answer('What kit did I buy?', [TEXT])],
+const ROUTES: ReadonlyArray<
+  readonly [string, (m: CortexMemory, question: string) => Promise<unknown>]
+> = [
+  ['abstention', (m, question) => m.answerAbstention(question, [TEXT])],
+  ['multi-session', (m, question) => m.answerSessions(question, [[TEXT]])],
+  ['temporal', (m, question) => m.answerTemporal(question, [TEXT], '2023/06/01')],
+  ['knowledge-update', (m, question) => m.answerKnowledgeUpdate(question, [TEXT])],
+  ['assistant', (m, question) => m.answerAssistant(question, [TEXT])],
+  ['flat', (m, question) => m.answer(question, [TEXT])],
 ];
+
+/**
+ * Two questions per route, because an ask's change set is no longer a function of the route alone.
+ *
+ * §13.166's `operands` changes the multi-session block on derivation questions and changes nothing on
+ * enumeration ones. Rendering each route under one question would have called that ask a no-op, and
+ * the table it was declared in would have passed while claiming nothing -- which is the shape of every
+ * fallthrough defect this file was written to catch, arriving from the other direction.
+ *
+ * The enumeration question is the one the drivers used before this pair existed, so every ask's
+ * declared set is still asserted on the render it was originally registered against.
+ */
+const QUESTIONS = {
+  enumeration: 'How many kits do I own?',
+  derivation: 'How many years older is my grandma than me?',
+} as const;
 
 /** The instruction block one route reads under one ask. */
 async function blockUnder(
   ask: EvidenceAsk,
-  route: (m: CortexMemory) => Promise<unknown>,
+  route: (m: CortexMemory, question: string) => Promise<unknown>,
+  question: string,
 ): Promise<string> {
   const seen: string[] = [];
-  await route(build(seen, ask));
+  await route(build(seen, ask), question);
   expect(seen).toHaveLength(1);
   return instructionsOf(seen[0]!);
 }
@@ -107,17 +132,34 @@ describe('every ask changes exactly the routes it declares', () => {
   const asks = Object.keys(ASK_CONTROLS) as EvidenceAsk[];
 
   for (const ask of asks) {
-    it(`${ask} changes exactly ${JSON.stringify(ASK_CHANGES[ask])}`, async () => {
-      const control = ASK_CONTROLS[ask];
-      const moved: string[] = [];
-      for (const [name, drive] of ROUTES) {
-        const under = await blockUnder(ask, drive);
-        const against = await blockUnder(control, drive);
-        if (under !== against) moved.push(name);
-      }
-      expect(moved.sort()).toEqual([...ASK_CHANGES[ask]].sort());
-    });
+    for (const [shape, question] of Object.entries(QUESTIONS)) {
+      it(`${ask} changes exactly ${JSON.stringify(ASK_CHANGES[ask])} on ${shape}`, async () => {
+        const control = ASK_CONTROLS[ask];
+        const moved: string[] = [];
+        for (const [name, drive] of ROUTES) {
+          const under = await blockUnder(ask, drive, question);
+          const against = await blockUnder(control, drive, question);
+          if (under !== against) moved.push(name);
+        }
+        // The shape-specific table overrides the route table where it speaks; an ask absent from it
+        // claims the same set on both shapes, which is every ask before `operands`.
+        const expected =
+          shape === 'derivation'
+            ? (ASK_CHANGES_WHEN_DERIVATION[ask] ?? ASK_CHANGES[ask])
+            : ASK_CHANGES[ask];
+        expect(moved.sort()).toEqual([...expected].sort());
+      });
+    }
   }
+
+  it('declares a shape-specific change set for exactly the asks that have one', () => {
+    // `ASK_CHANGES_WHEN_DERIVATION` is an override, so an entry for an ask whose block does not read
+    // the question would be a claim with no render behind it. The loop above would catch that as a
+    // mismatch; this states the reason the table has one key rather than growing quietly.
+    const shapeSpecific = Object.keys(ASK_CHANGES_WHEN_DERIVATION) as EvidenceAsk[];
+    expect(shapeSpecific).toEqual(['operands']);
+    for (const ask of shapeSpecific) expect(asks).toContain(ask);
+  });
 
   it('names a control for every ask, and every control is itself an ask', () => {
     // A table is only an oracle if it is total: a value added to the union without a control would
@@ -149,8 +191,8 @@ describe('the two flat-route asks are separated by the ask value, not by their r
     // A reader of two artifacts sees the same `askRoutes` and must be able to separate them by
     // `ask` alone -- the argument `enumerated` and `computed` already make.
     for (const [name, drive] of ROUTES) {
-      const answerLine = await blockUnder('answer-line', drive);
-      const recommend = await blockUnder('recommend', drive);
+      const answerLine = await blockUnder('answer-line', drive, QUESTIONS.enumeration);
+      const recommend = await blockUnder('recommend', drive, QUESTIONS.enumeration);
       if (name === 'flat') expect(answerLine).not.toBe(recommend);
       else expect(answerLine).toBe(recommend);
     }

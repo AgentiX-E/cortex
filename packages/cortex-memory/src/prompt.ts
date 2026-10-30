@@ -9,6 +9,7 @@
 import type { AdmittedTurn } from './admission.js';
 import type { AdmittedSession } from './sessionize.js';
 import { ABSTAIN_TOKEN } from './parse.js';
+import { classifyQuestionShape, type QuestionShape } from './question-shape.js';
 
 /** The distinct asks `runBenchmark`'s routes correspond to. */
 export type PromptContract =
@@ -199,6 +200,18 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // reaches `multi-session` only to *reorder* it: the licence to combine evidence is in both blocks,
   // and it is the last thing read in this one.
   derive: ['multi-session', 'flat', 'temporal'],
+  // §13.166. The same three routes as `enumerated`, and the block changes on the multi-session
+  // route for **one kind of question**: a derivation question reads an operand-identification block,
+  // and an enumeration question reads `enumerated`'s block byte for byte.
+  //
+  // A conditional ask is a new shape in this table and it is why `ASK_CHANGES_WHEN_DERIVATION`
+  // exists beside `ASK_CHANGES`: the render is a function of (route, question), so the oracle has to
+  // be too. Seven routes rendered under every ask and one question each would have called this ask a
+  // no-op; the second question per route is what makes the claim checkable.
+  //
+  // The reach is one route for the reason every ask above has one: MR is the only capability routed
+  // to `multi-session`, and the six derivation questions this addresses are all MR.
+  operands: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -242,6 +255,7 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   'answer-line': 'enumerated',
   recommend: 'enumerated',
   derive: 'enumerated',
+  operands: 'enumerated',
 };
 
 /**
@@ -269,6 +283,10 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // flat and temporal. That equality is the single-variable claim and `derive-licence.test.ts`
   // states it as a line-multiset comparison rather than as a description.
   derive: ['multi-session'],
+  // §13.166. Nothing changes on an enumeration question -- the ask's whole content is the other
+  // shape -- so the change set for "a question this ask does nothing for" is empty. The set it does
+  // claim lives in `ASK_CHANGES_WHEN_DERIVATION` below, and `ask-changes.test.ts` renders both.
+  operands: [],
 };
 
 /**
@@ -346,7 +364,8 @@ export type EvidenceAsk =
   | 'silent'
   | 'answer-line'
   | 'recommend'
-  | 'derive';
+  | 'derive'
+  | 'operands';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -852,6 +871,69 @@ const ENUMERATED_MULTI_SESSION_INSTRUCTION = withReplacedClose(
  * wording — and §13.104 is the case for why a bundled prompt edit is not attributable even when
  * every part of it is right. It is the *next* registered step if position alone does not convert.
  */
+/**
+ * The two-step contract `operands` gives a derivation question.
+ *
+ * Step 1 asks for numbers with their meaning attached, because a bare number is unlabelled and Step 2
+ * cannot tell a price from a count. Step 2 names the operations rather than the answer, which is the
+ * part `enumerated` has no line for: its Step 2 says "the number of distinct items, the total of the
+ * durations or amounts, or the single value or event it names", and none of those is a difference
+ * between two ages.
+ */
+const OPERAND_CONTRACT = [
+  'Work in two steps, and write both of them out.',
+  'Step 1 — identify the numbers this question needs, one per line: what each number means, and the number itself. Identify only the numbers the question compares or combines, and take them from the evidence even when the answer they produce is not stated anywhere.',
+  'Step 2 — compute the answer from those numbers, using the operation the question names: a difference, a sum, an average, a percentage, an elapsed time, or a date read from the evidence.',
+  // The licence, stated as the rule rather than as an exception to a nearer rule. §13.132 measured
+  // what happens when the licence sits above a prohibition: the model quotes the prohibition back.
+  // Here there is no prohibition to quote -- Step 1 asks for operands, so nothing says two facts may
+  // not be combined.
+  `Do not reply ${ABSTAIN_TOKEN} because no single statement gives the answer. The answer is computed from the numbers you identified in Step 1; it is not expected to appear in the evidence as a stated value.`,
+].join('\n');
+
+/** The closing line `operands` gives the multi-session block, in place of the control's. */
+const OPERAND_CLOSE = `Reply with the Step 2 value alone. If Step 1 found none of the numbers the question needs, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/**
+ * The multi-session block under `operands`: ask for the numbers, not the items.
+ *
+ * ## What it is for, and what it is not
+ *
+ * `enumerated` gives every question one Step 1: *list every item that matches the question*. For a
+ * derivation question that instruction names a set that does not exist. "How many years older is my
+ * grandma than me" has no items; it has two ages and a subtraction, and neither age is stated as an
+ * answer. A reader that fills Step 1 with the facts it did find then has to decide whether those
+ * facts *are* the answer, and run `40989420944`'s six derivation declines all decide that they are
+ * not -- in their own words: *"does not state the user's age"*, *"does not state the sale price"*,
+ * *"the exact total number of shoes packed is not stated"*.
+ *
+ * This block asks for the **operands** and names the operations. It keeps `enumerated`'s two-step
+ * shape, its demand that both steps be written out, and a closing rule the parser can read, because
+ * those are the parts of the contract that a previous four asks measured and did not find wanting.
+ *
+ * ## Why the structure is the reference pipeline's and the wording is not
+ *
+ * The reference pipeline routes derivation questions to an operand prompt and scores 86.0% on MR
+ * over a *smaller* window; its classifer's docblock states the reason in the same terms -- the
+ * enumeration framing "makes the model look for items to list, find none, and abstain". That
+ * decision is measured on its own dataset (declines 35.42% -> 18.75% on derivation questions from
+ * the prompt swap alone), which is why this run copies the **structure** and writes its own words:
+ * copying its text would carry the arithmetic vocabulary of a dataset whose derivation questions are
+ * mostly money and durations, and this arm's are mostly ages and percentages.
+ *
+ * ## Why the four questions this cannot reach are left out of the pattern
+ *
+ * Ten MR declines, six of them derivation-shaped by this same pattern. The other four -- a bedtime
+ * derived from an appointment date, elapsed days between purchase and arrival, weekly hours, a sum
+ * of view counts -- are derived in the same sense and the pattern misses them. Widening it in this
+ * run would make the treatment "our classifier plus our prompt" and no reading could say which part
+ * converted a question, so the four are a registered population for a later increment.
+ */
+const OPERANDS_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(CONTRACT_INSTRUCTIONS.extractive(undefined), OPERAND_CONTRACT),
+  OPERAND_CLOSE,
+);
+
 const DERIVE_MULTI_SESSION_INSTRUCTION = withReplacedClose(
   withInsertedBeforeClose(
     withInsertedBeforeClose(CONTRACT_INSTRUCTIONS.extractive(undefined), ENUMERATION_CONTRACT),
@@ -1131,6 +1213,25 @@ const SWEEP_MULTI_SESSION_INSTRUCTION = withReplacedClose(
 const AGGREGATE_ASK_INSTRUCTION = withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined));
 
 /**
+ * The change set an ask claims on a **derivation-shaped** question.
+ *
+ * `ASK_CHANGES` says which routes an ask's bytes may differ on. For every ask before §13.166 that is
+ * a property of the route alone, because the block was a function of the route. `operands` is the
+ * first ask whose block is a function of the **question** as well, and the honest way to keep the
+ * oracle total is a second table rather than a special case in the test:
+ *
+ *   - an ask absent here claims `ASK_CHANGES[ask]` on both shapes, whatever it is;
+ *   - `operands` claims nothing on an enumeration question and `multi-session` on a derivation one.
+ *
+ * That is the whole of the single-variable claim: dispatch `operands` against an `enumerated` control
+ * and 114 MR questions plus every question on every other route read the control's bytes, while the
+ * seven derivation questions read a different block.
+ */
+export const ASK_CHANGES_WHEN_DERIVATION: Partial<Record<EvidenceAsk, readonly string[]>> = {
+  operands: ['multi-session'],
+};
+
+/**
  * The instruction block a route emits, honouring the run's ask.
  *
  * The one place `EvidenceAsk` is resolved, called by every builder, for the reason
@@ -1163,6 +1264,16 @@ function instructionsFor(
    * this argument -- the default is "an unnamed route", which is what `buildPrompt` is.
    */
   scope?: 'multi-session',
+  /**
+   * Whether the question asks for computed value or for a count of listed things.
+   *
+   * Only the session builder can supply this, because only it has the question at the point where
+   * the instruction is rendered, and only `operands` reads it. Every other caller omits it, which is
+   * the same arrangement `scope` has and for the same reason: a builder that guessed the shape would
+   * be a second classifier, and two classifiers is how a reach report comes to describe the
+   * dispatcher rather than the prompt.
+   */
+  shape?: QuestionShape,
 ): string {
   const own = CONTRACT_INSTRUCTIONS[contract](date);
   if (ask === 'extractive') {
@@ -1246,6 +1357,21 @@ function instructionsFor(
     // TR 12 under a registration that named neither.
     if (scope === 'multi-session' && contract === 'extractive') {
       return DERIVE_MULTI_SESSION_INSTRUCTION;
+    }
+    return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'operands') {
+    // §13.166. One branch, two questions, and the enumeration half is `enumerated`'s block **by
+    // reference** rather than by a second copy of the same text: the single-variable claim is that
+    // a non-derivation question reads the control's bytes, and the only way to be sure of that is
+    // to return the control's constant.
+    //
+    // The other routes are `enumerated`'s fallthrough for the reason §13.124 wrote the same three
+    // statements: the fallthrough is the other half of the claim, and it has been wrong four times.
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return shape === 'derivation'
+        ? OPERANDS_MULTI_SESSION_INSTRUCTION
+        : ENUMERATED_MULTI_SESSION_INSTRUCTION;
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
@@ -2206,7 +2332,12 @@ export function buildSessionPrompt(
 
   const body = render(flat);
 
-  const instruction = instructionsFor('extractive', undefined, options.ask, 'multi-session');
+  // The shape is resolved here, from the question, because this builder is the only site that has
+  // both the question and the knowledge that the route is multi-session. `operands` reads it; every
+  // other ask ignores it, and the classifier is not called unless the ask can use the answer --
+  // a classification per question that no block reads would be work done to support a report.
+  const shape = options.ask === 'operands' ? classifyQuestionShape(question) : undefined;
+  const instruction = instructionsFor('extractive', undefined, options.ask, 'multi-session', shape);
 
   // `SESSION_NOTE` is passed to the allocator rather than left in the fit path's
   // section list. Leaving it there was a defect: the note was assembled only when
