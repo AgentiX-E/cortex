@@ -17295,3 +17295,91 @@ population has to be produced by the same expression that produces the populatio
 - The caveat is printed, not just documented: the block ends by saying this is a ceiling and that the
   ladder's own conversion rate is the only measured basis for discounting it. A number a reader will quote
   needs its dissuasion next to it.
+
+### 13.160 The twenty-one, one decision at a time -- and the decision the resolver must make first
+
+§13.158 counted them. §13.158.5 said the fix waits for the budget. That leaves one thing that can be done
+now, offline, and that has to be done *before* the resolver is written: **classify the twenty-one**, because
+the classification determines the population the criteria are written against.
+
+#### 13.160.1 Fifteen of the twenty-one are re-exported by their package barrel
+
+| where the name appears | n |
+| --- | --- |
+| re-exported by `packages/<pkg>/src/index.ts` | 15 |
+| nowhere else at all | 6 |
+
+That is the policy question, and it is not a detail. Today a barrel is **excluded from the caller count**
+(`isBarrelFile`), which is deliberate: the census exists to find dead exports, and `index.ts` is the standard
+place a dead export hides -- `export { thing } from './thing.js'` is exactly what a half-finished refactor
+leaves behind. So a re-export does not confer life today, and all twenty-one are orphans.
+
+The alternative is worse than it looks. If a barrel re-export counted as use, then every symbol anybody ever
+added to `index.ts` would be immortal, `export *` would make a whole module immortal, and the census would
+report only symbols that were never exported from a barrel at all -- which is close to saying it reports
+nothing. **The exclusion stays**, and this is the sentence that says so before anyone has an incentive to
+change it.
+
+Note that §13.158.2's "re-exported, never called" row is a *different* case: those two are re-exported by a
+non-barrel module (`rerank.ts`, `natural-language-memory.ts`), which is how a public surface is composed
+across files. A barrel is a re-export whose only purpose is re-export, and a barrel line pointing at nothing
+is the finding.
+
+#### 13.160.2 The six that are not in a barrel: five local, one test-only
+
+| package | symbol | declared | used at | disposition |
+| --- | --- | --- | --- | --- |
+| cortex-storage | `matchesAllTags` | `storage/sql.ts:160` | `storage/sql.ts:182`; `storage/pg.ts:151` declares its **own** private copy | unexport |
+| cortex-eval | `Arm` | `assumption-ablation.ts:66` | `:575`, `:582`, `:642` | unexport |
+| cortex-eval | `Ablation` | `assumption-ablation.ts:69` | `:84`, `:582`, `:642` | unexport |
+| cortex-eval | `Resolution` | `assumption-ablation.ts:603` | `:619`, `:642` | unexport |
+| cortex-eval | `resolve` | `assumption-ablation.ts:642` | `:700` | unexport |
+| cortex-eval | `unrun` | `acceptance.ts:736` | **only** `__tests__/acceptance.test.ts:154` | keep and record as a `TEST SEAM`, or delete with its test |
+
+The sixth is the interesting one and it was found by checking rather than by assuming. `unrun()` is a real
+function -- it returns the criteria whose value is `unrun` -- and its only caller in the repository is a test.
+Since the census excludes test callers, a symbol kept alive by its own test is a fifth class, and the ledger
+already has a name for it: `TEST SEAM`. So the disposition vocabulary is four, not three:
+
+- **delete** -- nothing anywhere uses it;
+- **unexport** -- its own file uses it;
+- **test seam** -- only its own test uses it, kept deliberately and recorded, because the test is the reason it
+  exists;
+- **keep with the reason** -- something outside the name rule explains it, and the reason goes in the ledger.
+
+Five of the six are the second case, and that case is the one the census **cannot currently report**, because
+`isReferencedLocally` runs only when the caller count is zero.
+
+The census splits a zero into two findings -- "exported but only used locally" and "not referenced anywhere"
+-- through `isReferencedLocally`, which **only runs when the caller count is zero**. So a single incidental
+mention anywhere in the repository suppresses *both* findings at once: the symbol is neither reported as an
+orphan nor reported as needlessly exported. The over-count does not hide one finding; it hides two, and the
+second one is the easier cleanup.
+
+#### 13.160.3 Two worked dispositions, to fix what "done" looks like
+
+**`cortex-core: covers`** -- an English word exported as an identifier, re-exported at `index.ts:201`, and
+every other occurrence in the repository is **inside a comment**: `retry.ts:105`, `llm-reranker.ts:13`,
+`local/llm.ts:55`, `triage/writer.ts:163` are all prose. Nothing calls it. Disposition: delete the function
+and the barrel line. The name rule could not see this for the same reason a spell-checker cannot: the word is
+common, and the corpus is English.
+
+**`cortex-storage: matchesAllTags`** -- exported from `sql.ts` and used at `sql.ts:182`, with a second,
+private copy in `pg.ts`. Disposition: drop the `export` keyword. Not delete: the function is live inside its
+file, and deleting it would break the module. This is the `isReferencedLocally` case the census should have
+reported and cannot while the caller count is non-zero.
+
+So "done" for one entry is one of the four in §13.160.2, named per entry. A repair that produced a list of
+twenty-one orphans without a disposition per entry would move the problem from the gate to the reviewer and
+call it a day.
+
+#### 13.160.4 The eighth criterion
+
+Added to §13.158.4's seven, before the work starts:
+
+| # | criterion |
+| --- | --- |
+| 8 | every one of the twenty-one carries one of §13.160.2's four dispositions, the count of each is stated, and nothing is resolved by adding it to the ledger without a reason. A repair that moves them from one list to another without disposing of them has changed which tool ignores them |
+
+The twenty-one are now named, classified, and two of them are worked end to end. What is missing is not
+knowledge; it is the resolver, and it is the one thing that must not be written while a reading is in flight.
