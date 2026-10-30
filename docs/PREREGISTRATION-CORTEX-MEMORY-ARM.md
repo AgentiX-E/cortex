@@ -18318,3 +18318,148 @@ Forty-one blocks is the corpus this repository has, not the corpus the shape adm
 a YAML anchor or alias, a `run:` whose body a matrix expression produces, and a shell command assembled
 inside an `env:` value are all outside what the extractor reads, and none of them is registered as
 covered. Zero reports is the absence of these three defects, not the absence of hazards.
+
+## 13.168 What the bill is made of, and why there is nothing to trim
+
+`llmUsage` was registered in `§13.140` so that a run could state what it cost. `40989420944` is the first
+artifact in this archive that carries the block — three earlier ones checked
+(`40751394094`, `40792853362`, `40824682542`) have no `llmUsage` key at all, which is what an instrument
+added after them looks like from the outside. This section reads the block. The question it answers is not
+"how much" — the number is one line — but **"is any of it waste"**, because a run that cannot answer that
+cannot tell a prompt change from a cheaper provider.
+
+### 13.168.1 The shape: the bill is input, and almost all of it is one block
+
+| quantity | value | share |
+| --- | --- | --- |
+| calls | 5,747 | — |
+| prompt tokens | 31,373,746 | 99.03% |
+| completion tokens | 305,449 | 0.97% |
+| of the prompt, served from the provider's prefix cache | 3,499,804 | 11.16% |
+| calls per graded answer (2,000 = 500 × 4) | 2.87 | — |
+| prompt tokens per call | 5,459 | — |
+
+Completion is under one percent. Every lever that tries to shorten answers is aimed at a rounding error;
+the whole question is what goes into the prompt.
+
+### 13.168.2 Per answer, the prompt is the cap, and the cap is nearly all evidence
+
+The 500 records carry `promptChars`, measured on the **feature** arm's own reader prompt. Against
+`maxPromptChars: 48000`:
+
+| statistic | chars |
+| --- | --- |
+| mean | 46,622 |
+| median | 46,852 |
+| minimum | 37,735 |
+| maximum | 47,591 |
+| records within 1,000 of the cap | 216 of 500 |
+
+So the budget is not approximately spent, it is **spent to the ceiling**, and the ceiling binds on nearly
+every question. Splitting those bytes against the turns the record says the reader actually received:
+
+| component | chars | share of the prompt |
+| --- | --- | --- |
+| delivered turns | 22,436,686 | **96.25%** |
+| instruction block and question | 874,198 | 3.75% |
+
+And inside the delivered turns, by what the renderer adds:
+
+| component | chars | share of the turns |
+| --- | --- | --- |
+| turn body | 20,538,318 | 91.55% |
+| `[YYYY/MM/DD (Ddd) HH:MM] ` prefix | 1,510,950 | 6.73% |
+| `user: ` / `assistant: ` prefix | 389,418 | 1.74% |
+
+Three point seven five percent is the total surface on which prompt wording could save anything, and it
+is carrying the contract, the question and the abstention licence. There is no fat to trim; there is a
+budget being spent completely.
+
+### 13.168.3 The one place the budget is lossy, and it is not the budget
+
+60,438 turns were delivered across the 500 questions, mean 120.9. Of them, **9,559 (15.8%) are at or over
+395 characters**, which is what a turn looks like after `maxTurnChars: 400` has cut it. A sixth of the
+evidence the reader saw is a truncated sentence, and the record cannot say what was cut — the cap is
+applied at render time and the turn reaches the record already cut.
+
+That number matters for the cost argument in the direction opposite to the obvious one: raising the cap
+would not free anything, it would spend more on the same turns. The tokens in a truncated turn are
+already paid for; the information behind the cut is not purchased at all.
+
+### 13.168.4 Two things that were checked and are not defects
+
+- **Duplicate turns.** Zero records deliver the same turn `index` twice, so nothing in the ranking or
+  the window promotion emits a turn it has already emitted. 318 delivered texts across 134 records are
+  byte-identical to another turn in the same record, and that is the corpus: chat logs repeat
+  greetings and acknowledgements. Deduplicating them would save 0.5% of the evidence and change what
+  the reader was shown.
+- **The abstention path.** 206 of the 2,000 answers declined at the model, and each of those paid for a
+  full prompt before saying so. That is 10.3% of the reader calls, and it is not avoidable from the
+  prompt: the arm cannot know a question will be declined without asking it.
+
+### 13.168.5 The instrument cannot attribute the bill, and that is the finding
+
+`llmUsage` is read as one delta around the whole ablation (`§13.140`), so the artifact states the total
+and nothing else. It cannot say which arm spent it, which role spent it, or which question spent it.
+
+The arithmetic that *looks* like attribution is not: `5,747 − (2,000 + 2,000 + 94) = 1,653` is the count
+left for the grader, and it is an inference, not a measurement. It assumes the baseline arm makes exactly
+one reader call per question — the bare-retry census counts only the feature arm — so 1,653 is an upper
+bound on grader calls, not a count of them. And because `promptChars` covers one arm's one run while
+`promptTokens` covers both arms' four, the artifact cannot even pin the characters-per-token ratio that
+would let a reader reconstruct either side.
+
+This is the same shape `§13.140` recorded when the block was dropped entirely — a value produced and then
+not carried to the one hop where it would have been compared — one layer down. The fix registered here is
+the next increment, not this one, and it is registered with its acceptance test:
+
+| requirement | how it is checked |
+| --- | --- |
+| the artifact splits prompt and completion tokens by arm | sum of the arm deltas equals the process total, asserted in the audit step |
+| the artifact splits them by role: reader vs grader | a run with `runs: 1` and no retries has `reader == 2 × questions` and grader calls equal to the distinct triples |
+| the split is taken at the call site, not by a label threaded through the `LLM` contract | `cortex-core`'s `LLM` type is unchanged; a `diff` of the public surface shows no new member |
+
+### 13.168.6 The price of this bill was measured on the way in, and it was paid deliberately
+
+The tempting conclusion — "halve the budget, halve the bill, see whether accuracy holds" — is not available
+here, and the reason is in this document already. `§13.81` registered `maxPromptChars` 24,000 → 48,000 as
+a single variable and `39260774611` read it (`§13.82`):
+
+| reading | at 24,000 | at 48,000 |
+| --- | --- | --- |
+| MR delivered share | 72.9% | **86.92%** |
+| roster | 394 | **403** |
+| union | 438 | **444** |
+| registered statistic | +33.50pp | **+35.10pp** |
+| turns carried on MR | 68 | **144** |
+| characters spent on MR | 22,180 | **46,165** |
+
+The adoption is `§13.82.5`. So the 96% block this section measured is not an accident of assembly — it is
+**the purchased quantity**, and reverting the budget is a reverted experiment whose accuracy is known rather
+than a free saving. The bill is the price of a gain that was taken on evidence.
+
+That leaves the cost question answered in two units and not one:
+
+- **wall clock: nearly free.** `§13.82.4` measured `2h02m36s` against `1h58m` — four minutes for double the
+  evidence, because prefill is not the binding cost on this workload and decode is one short answer either
+  way. A budget that scales the prompt does not scale the run.
+- **money: proportional to the block.** Which is exactly what `llmUsage` now prices, and what no artifact
+  before this one could. Halving the budget would remove roughly half of the 96%, i.e. about 45% of the total
+  bill — and about 8 points of MR delivery with it.
+
+### 13.168.7 The one lever that is both a saving and a gain is not a prompt change
+
+`§13.82.3` settled what the budget cannot do: **coverage is not a sufficient statistic.** The same 86.9%
+delivery bought 68.6% accuracy at 146 turns and 64.5% at 72.9%, and the band table has to be recomputed on
+every run rather than carried forward. So more room buys more gold *and* more noise, and the two are within
+one question of cancelling outside the crossing group (`§13.82.2`: the already-covered group lost one).
+
+The lever that does not have that property is the composition of the window — the same 46,000 characters
+spent on turns that matter rather than on turns that arrived. That is the arm's remaining line of work
+(`§13.16`), and the cost section of it is now measurable in the right unit: **a selection change that holds
+accuracy while moving `promptChars` down is a saving; a budget change that moves both down is the §13.82
+experiment run backwards.**
+
+This is what the artifact was missing and what `§13.168.5` registers: without an arm-level and role-level
+split, a better selection and a smaller budget produce the same total, and the two are the opposite of each
+other in every other respect.
