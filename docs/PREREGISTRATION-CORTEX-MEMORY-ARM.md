@@ -16429,3 +16429,214 @@ could tell the two apart.
 price anything. §13.151.4's 70 calls were within 3 of the truth for the wrong reason -- it counted questions the
 free path already answers and missed questions that want a window without naming a period -- and a cost model that is
 right by accident cannot be re-derived when the implementation changes, which is precisely what happened here.
+
+## 13.153 The reorder is wired, and it administers 19 questions of which 9 actually move
+
+§13.152 registered the ladder-only reorder against six criteria and priced it offline. This section is the
+implementation, and the implementation changed one number and one criterion:
+
+- **fired is not moved.** 19 questions resolve a window and **9** come back in a different order. The other
+  ten promoted a block that was already at the front, so their prompt is byte-identical to the control's.
+  §13.152.3 counted "the window splits the delivered list" (22) and §13.152.4 counted the splits that were
+  wrong (9); both are **ceilings**, and the reach is the smaller number.
+- **the population is the route, not the classifier.** At runtime a question is administered if
+  `resolveTimeRange` answers, and only the route that is handed a reference date can ask. That is the
+  temporal route, whose capability is TR. §13.152.3 defined its population with `classifyTemporalQuestion`
+  (`eventLookup` + `relative`, 90 questions) because that was the only instrument available offline; the
+  wired mechanism's gate is the resolver, and the two disagree on one question (`0bc8ad93`, whose shape the
+  classifier calls `other` and whose text names a period). Three numbers, three meanings, and the table in
+  §13.153.3 is the one the dispatch is read against.
+
+### 13.153.1 What is wired, and where
+
+Four files, and each owns one thing:
+
+| file | what it now does |
+| --- | --- |
+| `cortex-memory/src/prompt.ts` | `EvidenceOrdering` (a predicate: should this turn lead), `partitionLead` (a stable partition, so the result is a permutation **by construction**), and a fifth parameter on `buildPrompt` |
+| `cortex-memory/src/types.ts` | `WindowOrdering`: two readers, `dateOf(content)` and `windowOf(question, questionDate)`. The product still knows nothing about dates |
+| `cortex-memory/src/memory.ts` | `#orderingFor`, which resolves a window **per question** and returns the predicate -- or `undefined` |
+| `cortex-memory/bench/run-ablation.ts` | builds the two readers from `cortex-eval`'s turn clock and range resolver, and records `windowReorder` in `featureConfig` |
+
+Two structural decisions are worth stating because the alternative was easier and wrong.
+
+**The ordering is a fifth parameter, not a `PromptOptions` field.** `buildSessionPrompt` renders session
+blocks, where the unit of order is the block: reordering turns inside a block says nothing, and reordering
+the blocks would destroy the boundaries. A field on the shared options would therefore be a knob the
+multi-session route accepts and ignores -- the inert configuration this file has audited the product for
+twice. As a parameter it cannot reach that builder at all, so the reach is a **signature**, and the
+mechanism is administered on exactly the five single-block routes.
+
+**The product takes a predicate, not a date range.** A product that parsed `[2023/02/15 (Wed) 01:41]` would
+make the product's behaviour a fact about one dataset's rendering, which is the argument `roleOfTurn` and
+`relevanceFor` already settle. The consequence is the one that matters here: because the predicate is
+boolean, the operation is a **stable partition**, and a stable partition of a list is a permutation of it.
+Criterion 2 is therefore not a property the run has to hope for -- there is no expression of this mechanism
+that changes the delivered multiset.
+
+### 13.153.2 The promotion runs on the delivered set, and the clip path is the one place it is not exactly length-preserving
+
+`buildPrompt` promotes `carried`, never `turns`. Before the budget, a promotion changes which turns survive
+the cut: the delivered set moves and the reading can no longer be attributed to order. After it, the
+promoted list is a permutation of a set the control also delivers.
+
+The selection is also handed the **unpermuted** window, deliberately: `chooseEvidence` breaks ties by
+position, so a permuted input would make the delivered set a function of the mechanism.
+
+**The rendering is length-invariant under the permutation.** `formatEvidence` numbers turns by position,
+and a permutation of `n` turns assigns the same multiset of numbers `1..n`, so the rendered length is
+identical and the `prompt.length <= maxChars` decision is the same one the control takes. The fits path and
+the budget path therefore cannot disagree about which branch a question is on -- which is what makes the
+byte-identical claim in §13.153.4 possible for the inert ten.
+
+**One path is not exactly length-preserving, and it is named rather than discovered.** The character clip
+(`relevanceFor` absent) can end inside a turn; `carried` there is the largest prefix of **whole** turns, so
+re-rendering it drops the partial tail. The delivered *turns* are unchanged and the prompt gets strictly
+shorter. The registered configuration never takes that path -- §13.27 put a ranking on every route -- but a
+later dispatch could, and a byte-count difference attributed to the ordering would then be wrong.
+
+### 13.153.3 What the product does on the control artifact
+
+`tools/window-wired.mjs` replays all 500 questions of `40751394094` through `CortexMemory` twice, readers
+absent and readers supplied, with a stub reader that never leaves the process:
+
+| capability | questions | fired | moved | converted | sold | multiset broken |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| IE | 150 | 0 | 0 | 0 | 0 | 0 |
+| MR | 121 | 0 | 0 | 0 | 0 | 0 |
+| KU | 72 | 0 | 0 | 0 | 0 | 0 |
+| ABS | 30 | 0 | 0 | 0 | 0 | 0 |
+| **TR** | **127** | **19** | **9** | **7** | **2** | **0** |
+| **roster** | **500** | **19 (3.8%)** | **9 (1.8%)** | **7** | **2** | **0** |
+
+**The delivered multiset is unchanged on 500 of 500.** That is criterion 2 measured on the product rather
+than on a reimplementation of it, and it is the one number in this table that a defect would move.
+
+**Seven of the nine reorders are on questions the control answers wrong, and two are on questions it
+answers right.** That is a better sell bound than §13.152.4 could estimate: it counted 12 firings on correct
+questions with 6 splittable, and 6 of those 12 turn out to promote a block that is already at the front. The
+risk criterion 6 exists for is real and **smaller** than the ceiling suggested -- and the ceiling is exactly
+what an offline instrument can see.
+
+**What the nine look like.** Delivered lists of 90-115 turns (this run caps each turn at 400 characters
+against a 48,000-character budget), and the promoted block runs from 4 to 58 turns with a mean of 22.9:
+
+| id | correct | kind | delivered | promoted |
+| --- | --- | --- | ---: | ---: |
+| `b46e15ee` | no | eventLookup | 102 | 58 |
+| `gpt4_e061b84g` | no | eventLookup | 115 | 51 |
+| `9a707b82` | **yes** | eventLookup | 97 | 31 |
+| `6e984302` | **yes** | eventLookup | 94 | 27 |
+| `gpt4_d6585ce9` | no | eventLookup | 90 | 12 |
+| `eac54add` | no | eventLookup | 91 | 11 |
+| `gpt4_59149c78` | no | eventLookup | 105 | 6 |
+| `0bc8ad93` | no | other | 93 | 6 |
+| `gpt4_fa19884d` | no | eventLookup | 111 | 4 |
+
+**The reference date on this artifact is substituted on all 500 questions**, because the run predates
+§13.152.2's field. Every window in the table is therefore displaced by however long after the haystack the
+question was asked, and every count is a **lower bound**. The dispatch runs with the real date.
+
+### 13.153.4 Fired, moved, converted: three numbers, three meanings
+
+The campaign has now used four different quantities for "the population" of this mechanism, and the
+distinctions are worth a table because each one was measured with a different instrument:
+
+| quantity | value | instrument | what it answers |
+| --- | ---: | --- | --- |
+| wants a window | 90 | `classifyTemporalQuestion` (offline) | how many questions are answered from one point in time |
+| names a resolvable period | 19 | `resolveTimeRange` on the wired route | how many the mechanism is **administered** to |
+| the window splits the delivery | 14 (TR) | `window-reach.mjs` (offline) | how many could be reordered if the admitted block were not already first |
+| the delivery is **reordered** | **9** | `window-wired.mjs` (product) | how many it actually reorders |
+
+**Only the last one is the reach.** The others are ceilings, and a bar written against a ceiling is passed
+by a mechanism that does nothing: §13.152.4's criterion 4 asked for "at least 4 of TR's 8 reachable", where
+8 was a ceiling and 7 is the reach. The difference is one question, and the reason to write it down is that
+on a different corpus the difference would not be one.
+
+### 13.153.5 The criteria, restated against the wired instrument -- and this is the last restatement
+
+§13.141.5's rule is that a registered bar meeting a population that shrank is restated **once, in the
+registration, before the run**. §13.152 did that and got the population wrong for a reason §13.152 could not
+see: it priced a mechanism nobody had built yet, so "splits" was the closest available proxy for "moves".
+The dispatch is registered against this table:
+
+| # | criterion | what would falsify it |
+| - | --- | --- |
+| 1 | the parse resolves every delivered turn, or names the questions it cannot | **met on the control artifact**: 60,438 of 60,438, 0 questions named (§13.152.1) |
+| 2 | the delivered multiset is unchanged, per question, on the treated run | **met on the control artifact 500/500**; a non-zero on the treated pair is an assembly failure, not a result |
+| 3 | the mechanism is administered on the temporal route and **nowhere else** | any MR, IE, KU or ABS question whose delivery changes means a mechanism reached a route it has no window on |
+| 4 | TR converts **at least 4 of its 7** reachable-and-wrong questions | the bar is over half the reach. The reader's own churn is the floor to beat: two runs of one configuration differ on 59 of 500 states (§13.100.2), so 1 of 7 is inside the noise and 4 of 7 is not |
+| 5 | TR sells **at most 1 of the 2** questions it reorders and the control gets right | a front-loading that buys 4 and sells 4 reads as zero while having had two effects |
+| 6 | no question outside the administered set moves beyond the 5.0% reader floor | a flow above the floor among untouched questions is a perturbation of something the reorder cannot reach |
+
+Criterion 3 replaced §13.152.4's "10-20% of the roster", and the replacement is a **shape** rather than a
+band. 19/500 is 3.8%, below the band, and the band was wrong for a reason the measurement produced: the
+mechanism is not administered by a knob, it is administered by the route that is handed a reference date.
+A percentage cannot police a reach that is a signature. What can police it is the statement that no other
+capability moved at all -- which is checkable on the pair, and false the moment a second route gains a date.
+
+### 13.153.6 The tool, and what it deliberately cannot price
+
+`tools/window-wired.mjs --control <report.json> [--json]` replays each question's **delivery** through the
+product twice. That is the right input for this mechanism, whose claim is about the delivery, and it is the
+wrong input for the region axis: an artifact holds only the region the control chose, so a mechanism that
+changed *which* region is delivered cannot be replayed from a delivery at all. `expand-resolution.mjs`
+stays the instrument for that axis (§13.150).
+
+Twenty-two checks in `tools/__tests__/test_window_wired.py`, and the refusals are the load-bearing half:
+
+- exit 2 for a malformed artifact (no `questions`, a record with no id, a duplicate id, no question text, no
+  `turns` array, a turn that is neither text nor `{text}`, unreadable JSON) -- each replaces a plausible
+  number with one wrong in a direction nobody notices;
+- exit 1 for a well-formed artifact in which no question resolves a window, which is a different fix from a
+  different command;
+- a turn the reader cannot date is **not promoted**, and one of the tests is a turn whose weekday label
+  disagrees with its date -- the fixture I wrote by hand first called 2023/02/14 a Wednesday, and the reader
+  refused it. That is §13.152.1's validation catching its own author, which is the strongest evidence the
+  check is load-bearing rather than decorative.
+
+### 13.153.7 Cost: zero, and the comparison that matters
+
+The reference's mechanism is one gpt-4o call per question with a period reference (§13.151.1). This one is
+`resolveTimeRange` -- a pure function over a regex ladder -- plus a partition. The bill for the dispatch is
+the bill of the control: 5,756 calls, unchanged.
+
+That is the whole product argument for the increment, and the arithmetic changed twice on the way here. The
+proxy estimated 70 calls; §13.152.3 counted 90 questions wanting a window and 68 the ladder could not
+resolve; the registered mechanism administers **19 and pays for 0**. The reason is not that the ladder covers
+more than §13.152.3 thought -- it covers 19 of the 45 TR questions that want a window, which is what
+§13.152.3 said within rounding. It is that the mechanism registered here is **only** the ladder's own
+population: the 26 questions that want a window and name a period the ladder cannot resolve are not
+administered at all, so there is nothing for a paid path to do until one is registered for them
+(§13.153.8). A free path in front of a paid one discounts the bill; a mechanism that *is* the free path has
+none.
+
+### 13.153.8 What this does not do, and why not doing it is the discipline
+
+**No model fallback.** §13.152.6 declined to buy 68 calls before knowing the free path's conversion rate.
+That rate is now knowable from the dispatch: 7 wrong questions are in reach and the ladder moves all 7. A
+fallback that resolved the 26 questions the ladder cannot (45 want a window, 19 resolve) would be a
+different population, and buying it beside this one would make a single reading of two mechanisms.
+
+**No window on `interval`/`ordering` questions.** 14 wrong TR questions are that shape, a single window is
+the wrong instrument for them, and the temptation to widen the mechanism until the bar is met is the
+§13.126 mistake in the other direction.
+
+**No session route.** MR has 14 window-wanting questions and the block structure is the unit of order there.
+Reordering blocks would destroy the boundaries the route exists to draw; reordering inside a block says
+nothing. A separate mechanism would have to be registered for it, and it is not this one.
+
+### 13.153.9 The rule this adds
+
+**A bar written against an offline proxy must be restated against the wired instrument, and "the population"
+is not one number.** §13.152's six criteria were an honest attempt to price an unbuilt mechanism and three
+of them were written against ceilings: 22 firings, 9 splittable wrong, 12 firings on correct questions. The
+built mechanism administers 19, reorders 9, converts 7 and sells 2. Every one of the four numbers is larger
+than the one below it in the wrong direction -- the ceiling over-states the reach and over-states the risk.
+The correction is not a looser bar; it is a different quantity, and only the product could produce it.
+
+**Corollary.** A criterion that a route list satisfies is stronger than a criterion a percentage satisfies,
+when the reach is a signature. "10-20% of the roster" was written for a mechanism administered by a knob.
+This one is administered by which call site passes a date, so the criterion is "no other capability moved",
+which a percentage can never express and which is false the first time a second route gains a date.

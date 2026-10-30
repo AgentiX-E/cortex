@@ -1379,12 +1379,66 @@ function formatEvidenceWithSources(turns: readonly AdmittedTurn[], maxTurnChars?
 }
 
 /**
- * Build the prompt for one question.
+ * How the delivered set is ordered before it is rendered.
  *
- * `options.questionDate` reaches only the temporal contract: handing a date to
- * the flat path would be a routing leak, because the flat path is chosen
- * precisely when the caller wants no date reasoning.
+ * ## Why the product takes a predicate rather than a date range
+ *
+ * The reference pipeline's time-aware expansion (`temp_query_search_pruning.py`, §13.151.1) infers a
+ * date range from the question and moves the items inside it to the front of the list retrieval already
+ * produced. That move is a **permutation**: the delivered set is invariant, so the only thing a reading
+ * can attribute movement to is order, and the mechanism is registrable on its own (§13.151.5).
+ *
+ * This package could implement the range itself, and that would be wrong for the reason `roleOfTurn` is a
+ * parameter: a product that parsed `[2023/02/15 (Wed) 01:41]` would make the product's behaviour a fact
+ * about one dataset's rendering. So the caller supplies "should this turn lead", and the product owns only
+ * the operation that is safe for any predicate: a **stable partition**.
+ *
+ * ## Why a stable partition, and not "sort by the predicate then by rank"
+ *
+ * A boolean predicate admits exactly two classes, so a partition is total and its result is a permutation
+ * of the input **by construction** -- no verification needed, and no way for a caller to change the
+ * delivered set by supplying a bad ordering. Stability on both sides is the part that carries meaning: the
+ * promoted turns keep the retrieval's ranking among themselves, and the rest keep it among themselves. A
+ * sort would destroy one of those and a `reverse` would destroy both.
  */
+export type EvidenceOrdering = {
+  /**
+   * Whether this turn belongs in the leading block.
+   *
+   * Called once per delivered turn, after the budget has decided which turns those are. A turn the caller
+   * cannot decide about (an undated turn, a window it could not resolve) must answer `false` rather than
+   * being omitted from the call: `false` leaves it exactly where the retrieval ranked it, which says
+   * nothing about it, while omission is not expressible.
+   */
+  readonly leadWhen: (turn: AdmittedTurn) => boolean;
+};
+
+/**
+ * The delivered set with the turns {@link EvidenceOrdering.leadWhen} accepts moved to the front, both
+ * blocks keeping their own order.
+ *
+ * Returns its argument unchanged when nothing is promoted, so a window that matches no delivered turn
+ * leaves the prompt **byte-identical** to the one the same configuration produces without an ordering.
+ * That is what makes "the mechanism fired and had no effect" a distinct reading from "the mechanism ran":
+ * the first leaves no trace in the prompt at all, and the count that distinguishes them is the partition's
+ * own output rather than a second measurement.
+ */
+function partitionLead(
+  turns: readonly AdmittedTurn[],
+  leadWhen: (turn: AdmittedTurn) => boolean,
+): readonly AdmittedTurn[] {
+  const lead: AdmittedTurn[] = [];
+  const rest: AdmittedTurn[] = [];
+  for (const turn of turns) {
+    if (leadWhen(turn)) lead.push(turn);
+    else rest.push(turn);
+  }
+  // Also unchanged when *every* turn is promoted: a permutation that moves nothing is not a reordering,
+  // and returning the input keeps the no-effect case from being spelled two ways.
+  if (lead.length === 0 || rest.length === 0) return turns;
+  return [...lead, ...rest];
+}
+
 /**
  * What assembling a prompt produced.
  *
@@ -1488,11 +1542,26 @@ export function buildRetryPrompt(
   ].join('\n');
 }
 
+/**
+ * Build the prompt for one question.
+ *
+ * `options.questionDate` reaches only the temporal contract: handing a date to
+ * the flat path would be a routing leak, because the flat path is chosen
+ * precisely when the caller wants no date reasoning.
+ *
+ * `ordering` is a separate parameter rather than a `PromptOptions` field, and the reason is structural:
+ * `buildSessionPrompt` renders session blocks, where the unit of order is the **block** and reordering
+ * turns inside it says nothing while reordering the blocks themselves would destroy the boundaries. A
+ * field on the shared options would therefore be a knob the multi-session route accepts and ignores --
+ * the inert-configuration defect this file has been audited for twice. As a parameter it cannot reach
+ * that builder at all.
+ */
 export function buildPrompt(
   question: string,
   turns: readonly AdmittedTurn[],
   contract: PromptContract,
   options: PromptOptions = {},
+  ordering?: EvidenceOrdering,
 ): AssembledPrompt {
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const date = contract === 'temporal' ? options.questionDate : undefined;
@@ -1506,7 +1575,18 @@ export function buildPrompt(
       ? formatEvidenceWithSources(picked, options.maxTurnChars)
       : formatEvidence(picked, capOption(options.maxTurnChars));
 
-  const evidence = render(turns);
+  // The ordering is applied to the **carried** set, and this is the only place it can be applied without
+  // becoming a second variable. Before the budget, a promotion changes which turns survive the cut --
+  // the delivered multiset would move and the reading could no longer be attributed to order. After it,
+  // the promoted list is a permutation of a set the control also delivers, which is §13.152.4's second
+  // criterion stated as a property of the code rather than as a hope about the run.
+  //
+  // The rendering is length-invariant under this permutation: `formatEvidence` numbers the turns by
+  // position, and a permutation of `n` turns assigns the same multiset of numbers `1..n`. So the
+  // `prompt.length` decision below is the same one the control takes, and the fits path and the budget
+  // path cannot disagree about which branch this question is on.
+  const ordered = ordering === undefined ? turns : partitionLead(turns, ordering.leadWhen);
+  const evidence = render(ordered);
   const evidenceBlock =
     evidence.length === 0 ? `EVIDENCE:\n${NO_EVIDENCE}` : `EVIDENCE:\n${evidence}`;
 
@@ -1520,7 +1600,10 @@ export function buildPrompt(
   const prompt = [evidenceBlock, '', `QUESTION: ${question}`, '', instruction].join('\n');
 
   if (prompt.length <= maxChars) {
-    return { prompt, evidenceChars: evidence.length, carried: turns };
+    // `ordered`, not `turns`: this path carries every admitted turn, so the promoted list is the whole
+    // set and reporting the unrereordered one would make the artifact describe a prompt the model did
+    // not read. The set is identical, which is why nothing above this line depends on the choice.
+    return { prompt, evidenceChars: evidence.length, carried: ordered };
   }
 
   // Over budget: shrink the evidence, never the question, and never the
@@ -1529,9 +1612,13 @@ export function buildPrompt(
     question,
     instruction,
     {
+      // The **unpermuted** window, deliberately. The selection below decides which turns the budget buys,
+      // and its tie-breaks read position; handing it the promoted order would make the delivered set a
+      // function of the mechanism, which is the one thing this increment may not be.
       turns,
       render,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
+      ...(ordering === undefined ? {} : { ordering }),
     },
     maxChars,
     'EVIDENCE:\n',
@@ -1578,6 +1665,15 @@ type EvidencePlan = {
   readonly sessionOf?: readonly number[];
   /** The unit the room is spent in. See `PromptOptions.relevanceUnits`. */
   readonly relevanceUnits?: RelevanceUnits;
+  /**
+   * How the selected set is ordered before its final rendering. Absent is arrival order.
+   *
+   * On the plan rather than on the call so that the stage has one position: the budget decides the
+   * **set**, this decides the **order**, and neither can be read as the other's input. See
+   * {@link EvidenceOrdering} for why the operation is a stable partition and why `plan.turns` above is
+   * deliberately the unpermuted list.
+   */
+  readonly ordering?: EvidenceOrdering;
 };
 
 /** The sentence that stands in for evidence when nothing was admitted. */
@@ -1675,15 +1771,30 @@ function fitToBudget(
     return { prompt: `${instruction}${SEPARATOR}${questionLine}`, evidenceChars: 0, carried: [] };
   }
 
-  const head = `${header}${selected.evidence}`;
+  // The selecting path knows its set, so it hands it over rather than having the
+  // set re-derived from the text it just produced.
+  const carried = selected.carried ?? wholeTurnsIn(plan, selected.evidence.length);
+
+  // §13.153's stage, and it is last on purpose: the set is final here, so a permutation cannot change it.
+  // The re-render is not a second selection -- `render` is a function of the turns alone -- and it cannot
+  // exceed the room, because a permutation of `n` numbered blocks has the same total length.
+  //
+  // The one path where that equality is not exact is the character clip, whose delivered text can end
+  // inside a turn. `carried` there is the largest prefix of **whole** turns, so re-rendering it drops the
+  // partial tail: the delivered *turns* are unchanged and the prompt gets strictly shorter. Recorded here
+  // rather than left to be discovered, because the difference is a byte count a reader could otherwise
+  // attribute to the ordering.
+  const ordered =
+    plan.ordering === undefined ? carried : partitionLead(carried, plan.ordering.leadWhen);
+  const evidence = plan.ordering === undefined ? selected.evidence : plan.render(ordered);
+
+  const head = `${header}${evidence}`;
   const sections = noteText.length === 0 ? [head] : [head, noteText];
 
   return {
     prompt: [...sections, questionLine, instruction].join(SEPARATOR),
-    evidenceChars: selected.evidence.length,
-    // The selecting path knows its set, so it hands it over rather than having the
-    // set re-derived from the text it just produced.
-    carried: selected.carried ?? wholeTurnsIn(plan, selected.evidence.length),
+    evidenceChars: evidence.length,
+    carried: ordered,
   };
 }
 

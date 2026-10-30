@@ -3624,6 +3624,44 @@ describe('query expansion options (§13.97)', () => {
     ).toThrow(/CORTEX_MEMORY_QUERY_EXPANSION/);
   });
 
+  it('reads the time-window reorder as a third implementation of the same stage', () => {
+    // §13.153. `window` is the reference pipeline's own index expansion implemented without a model, so it
+    // is a value of this field rather than a field of its own -- and the projection is what the product is
+    // handed, so the two must not be able to disagree.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_QUERY_EXPANSION: ' WINDOW ',
+    });
+    expect(options.queryExpansion).toBe('window');
+    expect(toMemoryArmConfig(options).queryExpansion).toBe('window');
+  });
+
+  it('names every control in the config line, so the artifact cannot be mistaken for the treatment', () => {
+    // Both other values are controls for this mechanism. The config line always states the mode, which is
+    // what keeps "the reorder was not administered" from being the same bytes as "the field predates the
+    // run" -- the ambiguity `reviewBareDecline` is recorded unconditionally to avoid.
+    for (const named of [undefined, 'llm'] as const) {
+      const options = cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        ...(named === undefined ? {} : { CORTEX_MEMORY_QUERY_EXPANSION: named }),
+      });
+      expect(options.queryExpansion).toBe(named ?? 'none');
+    }
+
+    const rendered = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_QUERY_EXPANSION: 'window' }),
+      ),
+    });
+    expect(rendered).toContain('queryExpansion=window');
+  });
+
   it('projects the measured reach beside the mode, and omits it for the control', () => {
     const options = cortextMemoryArmOptions({
       CORTEX_MEMORY: '1',

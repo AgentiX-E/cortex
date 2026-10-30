@@ -48,6 +48,12 @@ import {
   resolveEmbeddingProvenance,
   describeFailure,
   retrieveTopKByQueriesHybrid,
+  // §13.153's two readers. Both are the arm's to supply because both are facts about a corpus: the
+  // turn stamp is this corpus's rendering, and the range inference is the reference's own arithmetic
+  // (`temporal-engine.ts`), not the product's.
+  readTurnStamp,
+  resolveTimeRange,
+  EXTENDED_ENGINE_OPTIONS,
   type Retrieval,
 } from '@agentix-e/cortex-eval';
 import { retryStats, type RetryExhaustion } from '@agentix-e/cortex-ai';
@@ -86,6 +92,11 @@ import {
   type PromptContract,
   type ReviewPass,
   type TurnCapRoute,
+  // Named at this boundary rather than inferred from the literal below: the two readers are the product's
+  // injection point, so the shape belongs to the product's public surface and this file only supplies an
+  // instance of it. Inferred, the type would have no caller outside its own module and
+  // `tools/export-census.mjs` would report it as an export nothing names.
+  type WindowOrdering,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -448,6 +459,31 @@ async function main(): Promise<void> {
   // it never consulted -- the ambiguity §13.115 registers as unreadable rather than negative.
   const rerankRecord = toRerankRecord(rerankIdentity, rerankBounds, relevance?.rerank);
 
+  // §13.153's mechanism. One decision, read by the two places that need it -- the product's readers and the
+  // artifact's feature line -- and stated once for the reason `reviewBareDecline` is derived in the arm
+  // rather than here: two reads of the same field cannot disagree about whether the mechanism was on.
+  const windowReorder = armOptions.queryExpansion === 'window';
+
+  // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
+  // configuration hands the product nothing it could reorder by.
+  //
+  // `EXTENDED_ENGINE_OPTIONS` rather than the default engine options, because the language the profile
+  // was derived under is the extended one (the same options `answerTemporal`'s own reach was measured
+  // with); the default profile would leave a third of the period families unresolved and the mechanism
+  // would then be administered on a population nobody registered.
+  const windowOrdering: WindowOrdering | undefined = windowReorder
+    ? {
+        dateOf: (content: string) => readTurnStamp(content)?.date,
+        // `?? undefined` rather than a fallback range: `resolveTimeRange` answers `null` for a
+        // question that names no period, and substituting the corpus span would promote the whole
+        // delivered list -- a permutation that moves nothing while reporting that it fired.
+        windowOf: (question: string, questionDate: string | undefined) =>
+          questionDate === undefined
+            ? undefined
+            : (resolveTimeRange(question, questionDate, EXTENDED_ENGINE_OPTIONS) ?? undefined),
+      }
+    : undefined;
+
   const feature = new CortexMemory({
     llm,
     now: Date.now(),
@@ -508,6 +544,10 @@ async function main(): Promise<void> {
     // Same conditional shape as `reviewPass`: absent is the shipped behaviour, and a present-but-false key would
     // make "the control ran" indistinguishable from "the switch was configured off" to a `!== undefined` check.
     ...(armOptions.reviewBareDecline === true ? { reviewBareDecline: true } : {}),
+    // §13.153. Same conditional shape and for the same reason: absent is the shipped behaviour, and a
+    // present-but-empty reader pair would read as configured to a `!== undefined` check while resolving
+    // no window at all -- an artifact then claiming a treatment the product never administered.
+    ...(windowOrdering === undefined ? {} : { windowOrdering }),
     // §13.101's sample count. `none` IS one consultation and is expressed by NOT passing the key, for
     // the reason every conditional spread here is: every archived artifact was produced with one
     // consultation, and a present-but-inert key would make the option indistinguishable from a
@@ -657,7 +697,10 @@ async function main(): Promise<void> {
       // control" and "predates the field" as the same bytes.
       rerankRecord,
     ),
-    featureConfig: { cortexMemory: true },
+    // §13.153's mechanism is recorded beside the flag that says the arm ran at all, because the two
+    // artifacts this dispatch compares differ by exactly this entry: the config line is the only place
+    // a reader of the JSON can see that the treatment was administered rather than merely dispatched.
+    featureConfig: { cortexMemory: true, windowReorder },
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the
     // environment the pre-registration guard compares against `§10.3`.

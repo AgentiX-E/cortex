@@ -9,7 +9,15 @@
  */
 
 // types
-export type { GateOptions, CortexMemoryOptions, ReviewPass, TurnCapRoute } from './types.js';
+export type {
+  GateOptions,
+  CortexMemoryOptions,
+  ReviewPass,
+  TurnCapRoute,
+  // §13.153: the arm constructs both readers from `cortex-eval`'s turn clock and window
+  // resolver, and the type has to be nameable at that boundary or the arm would restate it.
+  WindowOrdering,
+} from './types.js';
 // The vocabulary as a value, so a caller can name every route without restating the six names --
 // and so `test_ask_table_parity.py` has one product-side list to compare against the arm's copy.
 export { TURN_CAP_ROUTES } from './types.js';
@@ -80,6 +88,7 @@ export {
   // readable result and a misleading one.
   ASK_ROUTES,
   type EvidenceAsk,
+  type EvidenceOrdering,
   type PromptContract,
   type PromptOptions,
 } from './prompt.js';

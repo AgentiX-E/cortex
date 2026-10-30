@@ -214,6 +214,17 @@ export type CortexMemoryArmOptions = {
    * Optional, and `none` is the identity: every archived artifact was produced without it, so
    * a missing field cannot mean a treatment that was not administered. `toMemoryArmConfig`
    * normalises it so the artifact always states a value.
+   *
+   * ## `window` reaches a different route, and that is not a widening of `llm`
+   *
+   * `llm` writes phrases for the **multi-session** question and can only move the ranking that route
+   * builds before answering. `window` reorders the **delivered** set inside `buildPrompt`, and it is
+   * administered only on the questions the harness gives a reference date -- on this roster that is
+   * the temporal route, whose capability is TR (§13.152.3, §13.153.3). Written down because a reader
+   * comparing the two artifacts would otherwise take the different populations for a different
+   * mechanism's effect, and because a run may not administer both: `#orderingFor` would resolve a
+   * window for a question whose ranking `llm` had already rewritten, and the two would then be one
+   * reading of two stages.
    */
   queryExpansion?: string | undefined;
   /**
@@ -1225,8 +1236,17 @@ function readSelfConsistency(raw: string | undefined): string {
 /** The variable this arm reads for §13.97's query expansion. */
 const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
 
-/** The expansions this arm can dispatch, in the order the config line spells them. */
-const QUERY_EXPANSIONS: readonly string[] = ['none', 'llm'];
+/**
+ * The expansions this arm can dispatch, in the order the config line spells them.
+ *
+ * `window` is the reference pipeline's own index expansion (§13.151.1, §13.153): the same stage as
+ * `llm`, implemented without a model. Its `temp_query_search_pruning.py` spends one gpt-4o call to
+ * infer a date range and then moves the items inside it to the front of the list retrieval already
+ * produced; this arm resolves the range with `resolveTimeRange` and moves them with a stable
+ * partition of the delivered set. So the three values are three implementations of **one stage**
+ * rather than three stages, and a run can administer one of them -- which is what one field says.
+ */
+const QUERY_EXPANSIONS: readonly string[] = ['none', 'llm', 'window'];
 
 /**
  * Read the query expansion, rejecting anything this arm does not implement.

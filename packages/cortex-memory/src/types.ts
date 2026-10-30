@@ -438,6 +438,64 @@ export type CortexMemoryOptions = {
    * attribute -- the same rule `evidenceRoles` follows when it is named without a classifier.
    */
   selfConsistency?: number;
+  /**
+   * The reference pipeline's time-window reorder, as two injections.
+   *
+   * `windowOf` resolves the window a question names against the date it was asked, and `dateOf`
+   * reads the date a delivered turn carries. The product owns neither: a product that parsed
+   * `[2023/02/15 (Wed) 01:41]` would make the product's behaviour a fact about one dataset's
+   * rendering, which is the argument `roleOfTurn` and `relevanceFor` already settle.
+   *
+   * ## What the product does with them
+   *
+   * A **stable partition of the delivered set** -- the turns the window admits first, both blocks in
+   * their original order. That is `temp_query_search_pruning.py`'s `ranked_items_new = left + right`
+   * without its inference call, and it is a permutation by construction, so the mechanism can be
+   * registered as an increment of its own (§13.151.5, §13.153): the delivered multiset is invariant
+   * and the only thing a reading can attribute movement to is order.
+   *
+   * ## Why it is applied after the budget and not before
+   *
+   * Before the budget, a promotion changes which turns survive the cut -- the delivered set moves and
+   * the mechanism is no longer a reordering. `buildPrompt` therefore promotes `carried`, the set the
+   * budget already bought, and never `turns`.
+   *
+   * ## Why an absent window is not an error
+   *
+   * Most questions name no period at all. `windowOf` returning `undefined` is the ordinary case and
+   * leaves the prompt byte-identical to a run without this option, which is what keeps "the mechanism
+   * fired and moved nothing" distinguishable from "the mechanism was administered".
+   */
+  windowOrdering?: WindowOrdering;
+};
+
+/**
+ * The two readers {@link CortexMemoryOptions.windowOrdering} needs.
+ *
+ * Both are pure and synchronous, and both are supplied by the caller because both are facts about a
+ * corpus: `dateOf` reads whatever stamp a turn's rendering carries, and `windowOf` turns a qualifier
+ * plus the question's own date into an inclusive `YYYY/MM/DD` range.
+ */
+export type WindowOrdering = {
+  /**
+   * The date a delivered turn carries, or `undefined` when it carries none.
+   *
+   * `undefined` is the ordinary answer for a turn this corpus renders without a prefix, and it must
+   * stay an answer rather than becoming a `'1970/01/01'`: a defaulted date would put every undated
+   * turn inside every window that spans the epoch, which is the direction that silently promotes.
+   */
+  readonly dateOf: (content: string) => string | undefined;
+  /**
+   * The window the question names, or `undefined` when it names none.
+   *
+   * `questionDate` is `undefined` on the routes that are not given one, and a resolver must answer
+   * `undefined` there rather than substituting a clock: a qualifier resolves against the date the
+   * question was asked and nothing else.
+   */
+  readonly windowOf: (
+    question: string,
+    questionDate: string | undefined,
+  ) => { readonly start: string; readonly end: string } | undefined;
 };
 
 /**

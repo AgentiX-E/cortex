@@ -37,6 +37,7 @@ import {
   buildRetryPrompt,
   buildSessionPrompt,
   type AssembledPrompt,
+  type EvidenceOrdering,
   type PromptContract,
   type PromptOptions,
 } from './prompt.js';
@@ -1051,10 +1052,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const options = this.#promptOptions(route);
     const kept = this.#turnsForRoute(turns, route);
     if (kept.length === 0) return this.#declinedEmpty();
-    const assembled = buildPrompt(question, kept, contract, {
-      ...options,
-      ...(questionDate === undefined ? {} : { questionDate }),
-    });
+    const ordering = this.#orderingFor(question, questionDate);
+    const assembled = buildPrompt(
+      question,
+      kept,
+      contract,
+      {
+        ...options,
+        ...(questionDate === undefined ? {} : { questionDate }),
+      },
+      ordering,
+    );
     this.#recordEvidence(kept, assembled);
     // §13.107: the outcome is recorded once per question, here rather than inside `#consult`, so a route that
     // consults twice does not enter the census twice.
@@ -1085,6 +1093,45 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const second = await this.#consult(buildRetryPrompt(question, assembled.carried, options));
     if (second !== null) this.#bareRetries.answered += 1;
     return this.#recordOutcome(second);
+  }
+
+  /**
+   * The time-window reorder for one question, or `undefined` when it does not apply.
+   *
+   * ## Why it is resolved here rather than configured once
+   *
+   * A window is a property of the **question** -- "last week" is a different range for every question
+   * and is undefined for most of them -- so an ordering resolved at construction would be one window
+   * imposed on five hundred questions. Resolving per call is what makes the mechanism's population a
+   * measured set rather than the whole roster.
+   *
+   * ## Why the route does not appear in this method
+   *
+   * The reference date does. `#answerWithBareRetry` is shared by every single-block route, and the
+   * routes that are not given a `questionDate` cannot resolve a window through
+   * {@link WindowOrdering.windowOf} -- they answer `undefined` and the mechanism is absent. Spelling
+   * a route list here would be a second statement of which routes carry a date, and the first one is
+   * the call site that passes the date.
+   *
+   * ## Why `false` for a turn the reader cannot date
+   *
+   * `false` is `partitionLead`'s "leave it where the retrieval ranked it", which is the only answer
+   * that says nothing about an undated turn. Omitting the call would be indistinguishable from a
+   * window that excluded it, and promoting it would be a claim the reader never made.
+   */
+  #orderingFor(question: string, questionDate: string | undefined): EvidenceOrdering | undefined {
+    const readers = this.#options.windowOrdering;
+    if (readers === undefined) return undefined;
+    const window = readers.windowOf(question, questionDate);
+    if (window === undefined) return undefined;
+    return {
+      leadWhen: (turn) => {
+        // Lexicographic comparison, correct for `YYYY/MM/DD` and the reason that format was chosen.
+        // Both bounds inclusive, matching the `TimeRange` the resolver returns.
+        const date = readers.dateOf(turn.content);
+        return date !== undefined && date >= window.start && date <= window.end;
+      },
+    };
   }
 
   async #promptWithDate(
