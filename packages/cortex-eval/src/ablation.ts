@@ -212,6 +212,25 @@ function questionsByCapability(dataset: BenchmarkDataset): Record<string, number
   return counts;
 }
 
+/**
+ * How many leading bytes each pass shares with the first one.
+ *
+ * `null` at position `0` because a pass agrees with itself everywhere and the length written there would be
+ * read as a measurement; `null` wherever either text is `null`, because a pass that reported no prompt has
+ * not been shown to match. Plain string comparison rather than a hash: the answer is an offset, and a
+ * digest would destroy exactly the quantity this field exists to report.
+ */
+function commonPrefixByPass(texts: readonly (string | null)[]): (number | null)[] {
+  const first = texts[0] ?? null;
+  return texts.map((text, i) => {
+    if (i === 0 || text === null || first === null) return null;
+    const limit = Math.min(text.length, first.length);
+    let offset = 0;
+    while (offset < limit && text.charCodeAt(offset) === first.charCodeAt(offset)) offset++;
+    return offset;
+  });
+}
+
 export async function runAblation(
   dataset: BenchmarkDataset,
   baseline: MemorySystem,
@@ -405,6 +424,23 @@ export async function runAblation(
     promptVariants === null
       ? null
       : featFirst.promptTexts!.map((text) => (text === null ? null : [text]));
+  // §13.176. One question's prompt kept **textually** for every repetition, so the next reading can say
+  // which bytes moved instead of only that some did.
+  //
+  // `featurePromptVariants` answered the first question and stopped there: run `41090564131` reported `4` on
+  // all 500 questions, while the same configuration dispatched twice delivered identical evidence (same
+  // turns, same order, same character count) with `0/500` equal digests. A count cannot name the part of the
+  // prompt that is not the evidence, and that is the only part left once the evidence is equal.
+  //
+  // The witness is the first dataset position whose first pass reported a prompt, because a witness is read
+  // by diffing passes against each other and any answered question serves -- the first is the only choice
+  // that needs no seed. Bounded by the prompt budget, not the roster.
+  const witnessIndex =
+    runs > 1 && featFirst.promptTexts !== undefined
+      ? featFirst.promptTexts.findIndex((text) => text !== null)
+      : -1;
+  const witnessTexts: (string | null)[] =
+    witnessIndex < 0 ? [] : [featFirst.promptTexts![witnessIndex] ?? null];
   for (let i = 1; i < runs; i++) {
     // `run: i` rather than the default, so a repeated pass is distinguishable in
     // the progress stream from the first one. Both sides take the same ordinal:
@@ -509,6 +545,7 @@ export async function runAblation(
         promptVariants[q] = seen.length;
       }
     }
+    if (witnessIndex >= 0) witnessTexts.push(f.promptTexts?.[witnessIndex] ?? null);
     completed.push({
       run: i,
       baselineAnswers: baselineThisRun,
@@ -616,6 +653,16 @@ export async function runAblation(
     // number means this arm sent that many requests and called them repetitions. Absent at one repetition;
     // `null` for a question whose prompt the system did not always expose.
     ...(promptVariants === null ? {} : { featurePromptVariants: promptVariants }),
+    ...(witnessIndex < 0
+      ? {}
+      : {
+          featurePromptRepeatWitness: {
+            index: witnessIndex,
+            questionId: dataset.questions[witnessIndex]!.id,
+            texts: witnessTexts,
+            commonPrefix: commonPrefixByPass(witnessTexts),
+          },
+        }),
     perCapability,
   };
 }

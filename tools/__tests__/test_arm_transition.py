@@ -611,3 +611,83 @@ class TestWhereTheGainCameFrom:
         assert reading["attribution"]["changed"]["n"] == len(gone)
         assert all(row["verdict"] != "fail" for row in reading["criteria"] if row["applicable"])
         assert completed.returncode == 0
+
+
+class TestThePromptRepeatWitness:
+    """`13.176`: the witness names the bytes, where `13.174`'s count could only name the fact.
+
+    `41090564131` read `4` variants on all 500 questions while two dispatches of the identical
+    configuration delivered identical evidence -- same turns, same order, same character count, `0/500`
+    equal digests. That combination leaves only the invariant part of the prompt, and a count cannot point
+    at it. The witness is one question's prompts in full, plus how far each pass agrees with the first.
+    """
+
+    def _pair(self, witness: dict | None):
+        rows = [dict(question(f"a{i:02d}", "7", "7")) | {"promptVariants": 4} for i in range(20)]
+        before = report(rows, [])
+        after = report(rows, [])
+        if witness is not None:
+            after["ablation"]["featurePromptRepeatWitness"] = witness
+        return before, after
+
+    def test_the_divergence_offset_is_the_first_byte_the_passes_do_not_share(self, tmp_path: Path) -> None:
+        before, after = self._pair(
+            {
+                "index": 0,
+                "questionId": "a00",
+                "texts": ["EVIDENCE:\n1. a\n\nQUESTION: q\n\nANSWER NOW", "EVIDENCE:\n1. a\n\nQUESTION: q\n\nANSWER LATER"],
+                "commonPrefix": [None, 36],
+            }
+        )
+        _, reading = run(before, after, tmp_path)
+        witness = reading["promptRepeatWitness"]
+        assert witness["questionId"] == "a00"
+        shared = len("EVIDENCE:\n1. a\n\nQUESTION: q\n\nANSWER ")
+        assert witness["divergence"]["offset"] == shared
+        # The window is 60 bytes each way, so at this offset it reaches back to byte 0 rather than
+        # starting mid-token. Both sides are shown, because an offset alone names no bytes.
+        assert "ANSWER NOW" in witness["divergence"]["before"]
+        assert "ANSWER LATER" in witness["divergence"]["after"]
+
+    def test_a_prefix_the_bytes_do_not_support_is_reported_rather_than_trusted(self, tmp_path: Path) -> None:
+        # The stored figure is the writer's claim. A tool that printed it could not tell a wrong claim from
+        # a right one, so the offset is recomputed and the disagreement is named.
+        before, after = self._pair(
+            {"index": 0, "questionId": "a00", "texts": ["abcdef", "abcxyz"], "commonPrefix": [None, 1]}
+        )
+        _, reading = run(before, after, tmp_path)
+        assert reading["promptRepeatWitness"]["divergence"]["offset"] == 3
+        assert reading["promptRepeatWitness"]["misreportedPasses"] == [1]
+
+    def test_identical_passes_report_no_divergence_rather_than_a_zero(self, tmp_path: Path) -> None:
+        before, after = self._pair(
+            {"index": 0, "questionId": "a00", "texts": ["same", "same"], "commonPrefix": [None, 4]}
+        )
+        _, reading = run(before, after, tmp_path)
+        assert reading["promptRepeatWitness"]["divergence"] is None
+
+    def test_a_pass_with_no_prompt_is_reported_as_such_not_as_a_prefix(self, tmp_path: Path) -> None:
+        before, after = self._pair(
+            {"index": 0, "questionId": "a00", "texts": ["same", None], "commonPrefix": [None, None]}
+        )
+        _, reading = run(before, after, tmp_path)
+        assert reading["promptRepeatWitness"]["divergence"]["reason"] == "a pass reported no prompt"
+        assert reading["promptRepeatWitness"]["divergence"]["offset"] is None
+
+    def test_an_artifact_without_a_witness_says_absent_instead_of_printing_nothing(self, tmp_path: Path) -> None:
+        before, after = self._pair(None)
+        _, reading = run(before, after, tmp_path)
+        assert reading["promptRepeatWitness"] is None
+
+    def test_the_witness_is_read_from_the_run_and_not_from_a_record(self, tmp_path: Path) -> None:
+        # A top-level witness is a second address for one field, and a reader that accepted both would
+        # report a witness on an artifact that carries none in the place the writer puts it.
+        before, after = self._pair(None)
+        after["featurePromptRepeatWitness"] = {
+            "index": 0,
+            "questionId": "a00",
+            "texts": ["same", "same"],
+            "commonPrefix": [None, 4],
+        }
+        _, reading = run(before, after, tmp_path)
+        assert reading["promptRepeatWitness"] is None

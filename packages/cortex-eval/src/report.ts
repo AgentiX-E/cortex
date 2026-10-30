@@ -1295,6 +1295,32 @@ export function formatAblationReport(report: AblationReport): string {
         `(min ${pct(spread.min)}, max ${pct(spread.max)})`,
     );
   }
+  // §13.176. One question's prompt per repetition. The per-record `promptVariants` count is what a reader
+  // checks first, and it is exactly the field that cannot say **what** moved: run `41090564131` read `4` on
+  // all 500 questions while two dispatches delivered identical evidence. Rendering the witness here is what
+  // turns that count into an addressable question rather than a verdict with no address.
+  if (ab.featurePromptRepeatWitness !== undefined) {
+    const witness = ab.featurePromptRepeatWitness;
+    lines.push('', '## Prompt repeats (`§13.176` witness)', '');
+    lines.push(
+      `Question \`${witness.questionId}\` at dataset position ${witness.index}, one prompt per repetition.`,
+      '',
+      '| pass | bytes | leading bytes shared with pass 1 |',
+      '|---|---|---|',
+    );
+    witness.texts.forEach((text, i) => {
+      const shared = witness.commonPrefix[i] ?? null;
+      lines.push(
+        `| ${i + 1} | ${text === null ? '—' : text.length} | ${shared === null ? '—' : shared} |`,
+      );
+    });
+    lines.push(
+      '',
+      "A `1` in a record's `promptVariants` means the passes resent the same request; this table is what a",
+      'reader opens when it says otherwise, because a count cannot name the bytes that moved and `—` at pass 1',
+      'is the pass agreeing with itself rather than a measurement.',
+    );
+  }
   lines.push('', '## Per-capability paired significance (McNemar + Wilson CI)', '');
   lines.push(
     '| Capability | Total | Baseline acc | Feature acc | b✓f✗ | b✗f✓ | McNemar p | Significant |',

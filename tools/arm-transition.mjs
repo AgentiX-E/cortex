@@ -126,6 +126,108 @@ function promptCharsById(report) {
 }
 
 /**
+ * The witness's own reading: which bytes the passes do not share.
+ *
+ * A count says the prompts diverged; this says **where**, and the difference between the two is the
+ * difference between a verdict and an address. `41090564131` reported `4` variants on all 500 questions
+ * while two dispatches of the same configuration delivered byte-identical evidence — same turns, same
+ * order, same character count — so whatever moved sits in the invariant part of the prompt, and only the
+ * bytes can name it.
+ *
+ * The window is 60 characters on each side of the first offset, because a diff that starts mid-token is
+ * still readable and a diff reported as a bare offset is not.
+ */
+function repeatWitnessReading(report) {
+  // Inside `ablation`, because the witness is a property of the run rather than of a record and
+  // `AblationResult` is where this artifact keeps the run's captures. The per-question records sit at the
+  // top level; reading the witness from there would be a second address for one field.
+  const witness = report.ablation?.featurePromptRepeatWitness;
+  if (witness === undefined) return null;
+  const first = witness.texts[0] ?? null;
+  // Recomputed from the texts rather than read from `commonPrefix`, and the recomputation is the reading
+  // rather than a redundancy: the stored figure is the writer's claim, and a tool that repeated it could
+  // not tell a wrong claim from a right one. A disagreement is reported instead of silently resolved.
+  const stored = witness.commonPrefix ?? [];
+  const recomputed = witness.texts.map((text, pass) => {
+    if (pass === 0 || text === null || first === null) return null;
+    const limit = Math.min(text.length, first.length);
+    let offset = 0;
+    while (offset < limit && text.charCodeAt(offset) === first.charCodeAt(offset)) offset++;
+    return offset;
+  });
+  const misreported = recomputed.filter((value, pass) => value !== (stored[pass] ?? null));
+  const rows = witness.texts.map((text, pass) => ({
+    pass,
+    bytes: text === null ? null : text.length,
+    shared: recomputed[pass],
+  }));
+  let divergence = null;
+  for (let pass = 1; pass < witness.texts.length && divergence === null; pass++) {
+    const other = witness.texts[pass] ?? null;
+    if (first === null || other === null) {
+      divergence = {
+        pass,
+        offset: null,
+        before: '',
+        after: '',
+        reason: 'a pass reported no prompt',
+      };
+      break;
+    }
+    const shared = recomputed[pass] ?? null;
+    if (shared === null) continue;
+    if (shared === first.length && shared === other.length) continue;
+    const window = 60;
+    const from = Math.max(0, shared - window);
+    divergence = {
+      pass,
+      offset: shared,
+      before: first.slice(from, shared + window),
+      after: other.slice(from, shared + window),
+      reason: null,
+    };
+  }
+  return {
+    questionId: witness.questionId,
+    index: witness.index,
+    rows,
+    divergence,
+    // Non-empty when the artifact's own prefix lengths disagree with the bytes it carried, which is a
+    // finding about the writer rather than about the run.
+    misreportedPasses:
+      misreported.length === 0
+        ? []
+        : rows.filter((row, i) => recomputed[i] !== (stored[i] ?? null)).map((row) => row.pass),
+  };
+}
+
+/** Render {@link repeatWitnessReading} as lines, so the caller's output stays one shape. */
+function repeatWitnessLines(reading) {
+  const lines = [
+    `witness \`${reading.questionId}\` (position ${reading.index}); leading bytes shared with pass 1: ` +
+      reading.rows.map((row) => `${row.pass + 1}=${row.shared ?? '—'}`).join(' '),
+  ];
+  if (reading.misreportedPasses.length > 0) {
+    lines.push(
+      `  the stored prefix disagrees with the bytes on pass(es) ${reading.misreportedPasses
+        .map((pass) => pass + 1)
+        .join(', ')}: the writer's figure was not used`,
+    );
+  }
+  const d = reading.divergence;
+  if (d === null) {
+    lines.push('  every pass sent the same bytes — the repeats were repeats on this question');
+  } else if (d.reason !== null) {
+    lines.push(`  pass ${d.pass + 1}: ${d.reason}`);
+  } else {
+    lines.push(`  pass ${d.pass + 1} diverges at byte ${d.offset}:`);
+    lines.push(`    pass 1: …${d.before.replace(/\n/g, '\\n')}…`);
+    lines.push(`    pass ${d.pass + 1}: …${d.after.replace(/\n/g, '\\n')}…`);
+  }
+  return lines;
+}
+
+/**
  * Where a pair's net gain came from, split by whether that record's prompt changed.
  *
  * ## The failure this reading exists to prevent
@@ -462,8 +564,11 @@ export function transitionOf(before, after, options = {}) {
           }), ${unverifiable} unverifiable`,
   );
 
+  const witness = repeatWitnessReading(after);
+
   return {
     criteriaSource: CRITERIA_SOURCE,
+    promptRepeatWitness: witness,
     repeatPremise: {
       measured: variantRows.length,
       repeated,
@@ -540,6 +645,13 @@ export function renderReading(reading) {
       `  attribution: ${reading.attribution.unmeasured} record(s) carry no promptChars on both sides, so no ` +
         'gain can be attributed',
     );
+  }
+  lines.push('');
+  if (reading.promptRepeatWitness === null) {
+    lines.push('  prompt repeat witness: absent (the run had one pass, or predates §13.176)');
+  } else {
+    lines.push('  prompt repeat witness (§13.176)');
+    for (const line of repeatWitnessLines(reading.promptRepeatWitness)) lines.push(`  ${line}`);
   }
   lines.push('');
   lines.push(`  transitions (${reading.rows.length} question(s) reference-only on either side)`);

@@ -22,6 +22,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { runAblation } from '../ablation.js';
+import { formatAblationReport, runAblationReport } from '../report.js';
 import { exactMatchScorer } from '../metrics.js';
 import type { AblationResult, BenchmarkDataset, MemorySystem } from '../types.js';
 
@@ -148,5 +149,128 @@ describe('promptVariants: one integer per question, read over the passes that ra
       },
     );
     expect(variantsOf(result)).toEqual([1, 1, 1]);
+  });
+});
+
+/**
+ * The witness: one question's prompts in full, so a reading can name the bytes that moved.
+ *
+ * `§13.174` shipped the count, and the first run that carried it answered its own question in the most
+ * useless way available: `41090564131` reported `4` on all 500 questions, while two dispatches of the
+ * identical configuration delivered **byte-identical evidence** -- same turns, same order, same character
+ * count -- and `0/500` equal digests. A count says "the passes were not repeats". It cannot say which part
+ * of the prompt refuses to repeat, and the part that is not the evidence is the only part left.
+ *
+ * These tests pin the four properties the witness has to have to be readable at all:
+ *
+ *   - it is one question, not a vector, because four prompts at the registered budget is already 190,000
+ *     characters and the artifact is 75 MB before anything else is added;
+ *   - it witnesses the **first** question that reported a prompt, which is the only choice that reproduces
+ *     without a seed and the only one a second run can be compared against;
+ *   - it is absent at `runs: 1`, where there is no second pass to diff against;
+ *   - the prefix length is `null` rather than a number where a pass reported no prompt or where the pass is
+ *     the first, because a pass agrees with itself everywhere and that number would read as a measurement.
+ */
+describe('the prompt repeat witness: one question, every pass, in full', () => {
+  it('keeps each pass of the first question and how far each agrees with the first', async () => {
+    const result = await runAblation(
+      dataset,
+      constant('base'),
+      promptScripted((pass, q) => `${q}: EVIDENCE block, pass ${pass}`),
+      { runs: 3, scorer: exactMatchScorer },
+    );
+    const witness = result.featurePromptRepeatWitness;
+    expect(witness).toBeDefined();
+    expect(witness!.index).toBe(0);
+    expect(witness!.questionId).toBe('q1');
+    expect(witness!.texts).toEqual([
+      'Q1: EVIDENCE block, pass 0',
+      'Q1: EVIDENCE block, pass 1',
+      'Q1: EVIDENCE block, pass 2',
+    ]);
+    // "Q1: EVIDENCE block, pass " is 25 bytes and the ordinal is the first difference.
+    expect(witness!.commonPrefix).toEqual([null, 25, 25]);
+  });
+
+  it('reports a full-length prefix when the passes really did resend one request', async () => {
+    const result = await runAblation(
+      dataset,
+      constant('base'),
+      promptScripted(() => 'one prompt'),
+      {
+        runs: 3,
+        scorer: exactMatchScorer,
+      },
+    );
+    expect(result.featurePromptRepeatWitness!.commonPrefix).toEqual([null, 10, 10]);
+    expect(variantsOf(result)).toEqual([1, 1, 1]);
+  });
+
+  it('is absent at one pass, where there is nothing to compare against', async () => {
+    const result = await runAblation(
+      dataset,
+      constant('base'),
+      promptScripted(() => 'one prompt'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+      },
+    );
+    expect(result.featurePromptRepeatWitness).toBeUndefined();
+    expect(Object.hasOwn(result, 'featurePromptRepeatWitness')).toBe(false);
+  });
+
+  it('witnesses the first question that reported a prompt, not the first question', async () => {
+    const result = await runAblation(
+      dataset,
+      constant('base'),
+      promptScripted((_pass, q) => (q === 'Q1' ? null : `${q}-prompt`)),
+      { runs: 2, scorer: exactMatchScorer },
+    );
+    expect(result.featurePromptRepeatWitness!.questionId).toBe('q2');
+    expect(result.featurePromptRepeatWitness!.index).toBe(1);
+  });
+
+  it('refuses a prefix length for a pass that reported no prompt', async () => {
+    const result = await runAblation(
+      dataset,
+      constant('base'),
+      promptScripted((pass, q) => (pass === 1 && q === 'Q1' ? null : `${q}-prompt`)),
+      { runs: 3, scorer: exactMatchScorer },
+    );
+    // Pass 2 reported a prompt, pass 1 did not: that comparison is unknowable rather than "equal", and the
+    // pass that did report one is judged on its own bytes.
+    expect(result.featurePromptRepeatWitness!.commonPrefix).toEqual([null, null, 9]);
+  });
+});
+
+describe('the witness reaches the document a human reads', () => {
+  it('renders the per-pass byte counts and the prefix each pass shares with the first', async () => {
+    const report = await runAblationReport(
+      dataset,
+      constant('base'),
+      promptScripted((pass, q) => `${q}: EVIDENCE block, pass ${pass}`),
+      { runs: 2, scorer: exactMatchScorer, generatedAt: '1970-01-01T00:00:00.000Z' },
+    );
+    const markdown = formatAblationReport(report);
+    expect(markdown).toContain('## Prompt repeats (`§13.176` witness)');
+    expect(markdown).toContain('Question `q1` at dataset position 0');
+    // Pass 1 shares nothing and is shown as such; pass 2 agrees up to the ordinal.
+    expect(markdown).toContain('| 1 | 26 | — |');
+    expect(markdown).toContain('| 2 | 26 | 25 |');
+  });
+
+  it('renders no witness section for a single pass, rather than an empty table', async () => {
+    const report = await runAblationReport(
+      dataset,
+      constant('base'),
+      promptScripted(() => 'one'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+      },
+    );
+    expect(formatAblationReport(report)).not.toContain('Prompt repeats');
   });
 });
