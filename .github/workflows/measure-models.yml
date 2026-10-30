@@ -52,6 +52,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      # The two dispatch inputs enter through the environment rather than through script text.
+      # `§13.161` is the recurrence: the runner substitutes an expression into a `run:` block BEFORE
+      # bash parses it, so a quote in the value edits the program. `--limit "$CARDS"` cannot.
+      CARDS: ${{ inputs.cards }}
+      SENTENCES: ${{ inputs.sentences }}
       # The three names `resolveLlmProfile` reads, filled from the org secret. Nothing else in this
       # workflow sees the value: no `echo`, no `run:` that prints the environment, and the profile
       # that gets printed is a type that has no field for it.
@@ -97,7 +102,7 @@ jobs:
           mkdir -p readings
           node tools/a3-review.mjs prepare \
             --out readings/cards-remote.json \
-            --limit "${{ inputs.cards }}" \
+            --limit "$CARDS" \
             --llm remote 2>&1 | tee readings/prepare-remote.log
           node tools/a3-review.mjs dosage --cards readings/cards-remote.json \
             2>&1 | tee readings/dosage-remote.txt
@@ -107,7 +112,7 @@ jobs:
           set -o pipefail
           node packages/cortex-ai/test/proposer/run.mjs \
             --llm remote \
-            --limit "${{ inputs.sentences }}" \
+            --limit "$SENTENCES" \
             --out "${GITHUB_WORKSPACE}/readings/live-result-remote.json" \
             2>&1 | tee readings/gates-remote.log
 
@@ -176,6 +181,10 @@ jobs:
           if-no-files-found: warn
 
   publish:
+    env:
+      # The model name reached a double-quoted `git commit -m` string as script text. Quoted or not,
+      # the runner substitutes first, so `$( )` in the value would have run.
+      MODEL: ${{ inputs.model }}
     name: Commit the readings
     needs: [generation, embedding]
     if: always()
@@ -213,7 +222,7 @@ jobs:
             echo "nothing to commit: no reading was produced" >&2
             exit 1
           fi
-          git commit -m "readings: dispatch ${{ github.run_id }} (${{ inputs.model }}, ${branch})"
+          git commit -m "readings: dispatch ${{ github.run_id }} ($MODEL, ${branch})"
           git push origin "$branch"
           echo "committed to $branch"
 

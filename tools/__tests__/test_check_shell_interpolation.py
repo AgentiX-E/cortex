@@ -690,7 +690,7 @@ class TestWorkflowRunBlocks:
             tmp_path,
             'jobs:\n  a:\n    steps:\n      - name: x\n        run: |\n          echo hi\n',
         )
-        masked, blocks = guard._workflow_run_blocks(path)
+        masked, blocks, _ = guard._workflow_run_blocks(path)
         assert blocks == 1
         assert 'echo hi' in masked
 
@@ -699,7 +699,7 @@ class TestWorkflowRunBlocks:
             tmp_path,
             'jobs:\n  a:\n    steps:\n      - name: x\n        run: pnpm build\n',
         )
-        masked, blocks = guard._workflow_run_blocks(path)
+        masked, blocks, _ = guard._workflow_run_blocks(path)
         assert blocks == 1
         assert 'pnpm build' in masked
         assert 'name: x' not in masked
@@ -709,7 +709,7 @@ class TestWorkflowRunBlocks:
         # any line, or `path:line` would name a place the reader cannot find.
         body = 'jobs:\n  a:\n    steps:\n      - run: |\n          echo hi\n'
         path = self._workflow(tmp_path, body)
-        masked, _ = guard._workflow_run_blocks(path)
+        masked, _, _ = guard._workflow_run_blocks(path)
         assert [len(x) for x in masked.split('\n')] == [len(x) for x in body.split('\n')]
         assert masked.count('\n') == body.count('\n')
 
@@ -719,7 +719,7 @@ class TestWorkflowRunBlocks:
             'jobs:\n  a:\n    steps:\n      - name: x\n        run: |\n'
             '          ok=1\n          echo "' + hazard('f(1)') + '"\n',
         )
-        masked, _ = guard._workflow_run_blocks(path)
+        masked, _, _ = guard._workflow_run_blocks(path)
         violations = guard.scan(masked, str(path))
         assert len(violations) == 1
         assert violations[0].startswith(f'{path}:7:')
@@ -734,7 +734,7 @@ class TestWorkflowRunBlocks:
             '          mkdir -p "${{ github.workspace }}/data"\n'
             '          echo "${{ github.event.inputs.arm }}"\n',
         )
-        masked, _ = guard._workflow_run_blocks(path)
+        masked, _, _ = guard._workflow_run_blocks(path)
         assert guard.scan(masked, str(path)) == []
 
     def test_an_input_handed_to_bash_through_env_is_clean(self, tmp_path: Path) -> None:
@@ -745,7 +745,7 @@ class TestWorkflowRunBlocks:
             '          if [ "$ARM" = "window" ]; then echo yes; fi\n'
             '        env:\n          ARM: ${{ github.event.inputs.arm }}\n',
         )
-        masked, _ = guard._workflow_run_blocks(path)
+        masked, _, _ = guard._workflow_run_blocks(path)
         assert guard.scan(masked, str(path)) == []
 
     def test_a_step_after_the_block_is_not_swallowed(self, tmp_path: Path) -> None:
@@ -757,7 +757,7 @@ class TestWorkflowRunBlocks:
             'jobs:\n  a:\n    steps:\n      - run: |\n          echo hi\n'
             '        env:\n          X: "' + hazard('prose(x)') + '"\n',
         )
-        masked, _ = guard._workflow_run_blocks(path)
+        masked, _, _ = guard._workflow_run_blocks(path)
         assert guard.scan(masked, str(path)) == []
 
     def test_the_entry_point_reads_a_workflow(self, tmp_path: Path) -> None:
@@ -777,3 +777,100 @@ class TestWorkflowRunBlocks:
             'jobs:\n  a:\n    steps:\n      - run: |\n          echo "' + hazard('name') + '"\n',
         )
         assert guard.main(['prog', str(tmp_path)]) == 0
+
+
+class TestExpressionInjection:
+    """A GitHub expression inside a `run:` block is substituted BEFORE bash parses it.
+
+    This is `§13.161`'s eleventh recurrence as a rule. The shell rules in this file cannot see it: by
+    the time bash runs the block, the value is not a variable, it is source. Quoting does not repair
+    it either — `--limit "${{ inputs.limit }}"` breaks on a value containing a double quote — which is
+    why the rule has no quoted/unquoted distinction and why the repair is always `env:`.
+
+    The first run of this rule over this repository found fourteen sites across two workflows, all of
+    them a dispatch input or a model name handed to a command as script text.
+    """
+
+    def _workflow(self, tmp_path: Path, body: str) -> Path:
+        workflows = tmp_path / '.github' / 'workflows'
+        workflows.mkdir(parents=True)
+        path = workflows / 'bench.yml'
+        path.write_text(body)
+        return path
+
+    def _violations(self, tmp_path: Path, body: str) -> list[str]:
+        path = self._workflow(tmp_path, body)
+        masked, _, expressions = guard._workflow_run_blocks(path)
+        found = guard.scan(masked, str(path))
+        return found + guard._expression_injection_violations(expressions, str(path))
+
+    def test_a_dispatch_input_in_a_run_block_is_reported(self, tmp_path: Path) -> None:
+        found = self._violations(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          node harness.mjs --limit "${{ inputs.limit }}"\n',
+        )
+        assert len(found) == 1
+        assert 'inputs.' in found[0]
+        assert 'BEFORE bash parses' in found[0]
+
+    def test_quoting_is_not_repair(self, tmp_path: Path) -> None:
+        # The double quotes are the shape a reader reaches for, and they are exactly the shape that
+        # fails: a value containing `"` closes the quote and continues the command.
+        found = self._violations(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          x="${{ github.event.inputs.arm }}"\n',
+        )
+        assert len(found) == 1
+
+    def test_the_env_handoff_is_clean(self, tmp_path: Path) -> None:
+        # The repair, and the shape `207e19d` produced in the one workflow that had already been fixed.
+        found = self._violations(
+            tmp_path,
+            'jobs:\n  a:\n    env:\n      LIMIT: ${{ inputs.limit }}\n    steps:\n      - run: |\n'
+            '          node harness.mjs --limit "$LIMIT"\n',
+        )
+        assert found == []
+
+    def test_a_runner_provided_value_is_not_an_input(self, tmp_path: Path) -> None:
+        # `github.workspace` and `github.run_id` are generated by the runner. Flagging them would
+        # refuse valid workflows, which is the twelfth recurrence's failure in the other direction.
+        found = self._violations(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          mkdir -p "${{ github.workspace }}/data"\n'
+            '          echo "${{ github.run_id }}"\n',
+        )
+        assert found == []
+
+    def test_a_pull_request_title_is_an_input(self, tmp_path: Path) -> None:
+        # The classic, and the reason the list is not just dispatch inputs: a branch name or a PR
+        # title reaches the same substitution with no operator involved at all.
+        found = self._violations(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          echo "${{ github.event.pull_request.title }}"\n',
+        )
+        assert len(found) == 1
+        assert 'pull_request' in found[0]
+
+    def test_the_shell_rules_do_not_also_report_the_same_expression(self, tmp_path: Path) -> None:
+        # One sequence is one defect. The shell view blanks the expression, so the shell rules see a
+        # hole rather than an invalid expansion — without that, every workflow using the syntax would
+        # be reported twice for one construct.
+        found = self._violations(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n'
+            '          echo "${{ inputs.cards }}"\n',
+        )
+        assert len(found) == 1
+
+    def test_the_entry_point_fails_on_an_injected_input(self, tmp_path: Path) -> None:
+        (tmp_path / 'tools').mkdir()
+        (tmp_path / 'docs').mkdir()
+        self._workflow(
+            tmp_path,
+            'jobs:\n  a:\n    steps:\n      - run: |\n          echo "${{ inputs.cards }}"\n',
+        )
+        assert guard.main(['prog', str(tmp_path)]) == 1

@@ -18538,3 +18538,86 @@ The tool applies the registration; it does not decide whether the registration w
 criteria 1 and 5 pass and 4 fails, the reading is "the mechanism reached the population and the arm did
 not gain" — and what to do about that is `§13.166.6`'s consequence column, written before the numbers,
 not this tool's business.
+
+## 13.170 The other half of 13.167's criterion: fourteen inputs interpolated into shell source
+
+`13.167.8` closed by saying that zero reports is "the absence of these three defects, not the absence of
+hazards". This section is the hazard it was pointing at, and it was in the corpus the whole time.
+
+### 13.170.1 The gap, stated as a gap rather than as a nuance
+
+The registered criterion in `13.164.6` had two halves: the guard should read workflows, **and** any
+`${{ ... }}` inside a `run:` block should fail. `13.167` delivered the first half plus a set of shell
+rules the guard already had, and left the second half undone. Its write-up said "41 blocks, 13 fragments
+clean", which is true of the rules that were run and says nothing about the rule that was not.
+
+That is the defect this repository has recorded five times: a number that is correct about what it
+measured, reported as if it were correct about what it was asked.
+
+### 13.170.2 Why it is a different rule, not a stricter one
+
+The shell rules ask what bash will do with a piece of text. A `${{ ... }}` is not shell text: the runner
+substitutes it into the script **before bash parses the block**, so what reaches the shell is source. By
+then there is no `$` to examine and no rule in `scan` can apply.
+
+That is why quoting does not repair it, which is the part that reads as counter-intuitive:
+
+```
+node harness.mjs --limit "${{ inputs.limit }}"     # a value containing " ends the quote
+if [ "${{ inputs.x }}" = "0" ]; then               # a value containing ] ; ends the test
+```
+
+Both are quoted. Both are injectable. The repair has to move the value out of the script text entirely.
+
+### 13.170.3 The measurement
+
+The rule reports an expression whose body reads a context an operator or a pull request controls. Run
+over the corpus before anything was repaired:
+
+| workflow | sites |
+| --- | --- |
+| `competitor-retrieval.yml` | 11 |
+| `measure-models.yml` | 3 |
+| **total** | **14** |
+
+The worst is not a command argument. `competitor-retrieval.yml` guards its reading stage with
+`if [ "${{ github.event.inputs.read_questions || '100' }}" = "0" ]`, where a value containing `] ; `
+turns a skip test into two commands. The values are dispatch inputs, so reaching them needs write
+access — which is an argument about who can exploit the line, not about whether the line is correct, and
+`13.161` had already settled that this class matters here.
+
+### 13.170.4 The repair, and why the boundary of the rule is drawn where it is
+
+All fourteen move to `env:` and are read as variables, the same repair `207e19d` applied to the one site
+that had already been fixed. The defaults moved with them, to one job-level block per job, so a missing
+input has one place to be wrong rather than eleven.
+
+The rule's list is a list because the boundary is not a pattern:
+
+- **flagged**: `inputs.*`, `github.event.inputs.*`, `github.head_ref`, the
+  `github.event.{pull_request,issue,comment,discussion,review,workflow_run}.*` families, `client_payload`;
+- **not flagged**: `github.workspace` (6 sites), `github.run_id` (2), `secrets.*`, `vars.*` — the runner
+  generates the first two and the other two are not inputs to the shell text in this sense.
+
+Flagging those eight would have been the twelfth recurrence's defect in the mirror: a rule that refuses
+correct workflows is a rule people switch off, taking the ten that work with it.
+
+### 13.170.5 What was verified
+
+- the rule, before repair → **14 violations**, each naming the file, the line and the context it read;
+- after repair → **0**, with the expression syntax still in use in both files and all five workflows
+  parsing as YAML (`jobs`, and each job's `env` keys, read back with a parser rather than by eye);
+- `pytest tools/__tests__/test_check_shell_interpolation.py` → **111 passed**, from 86 — twenty-five
+  added, two removed with the JavaScript parametrisation. Seven of the new ones are this rule: an input
+  reported, quoting not being repair, the `env:` handoff clean, a runner-generated value not reported, a
+  pull-request title reported, one construct reported once rather than twice, and the entry point failing
+  on it;
+- `pnpm check` gates it: `test:tools` runs the guard over `.`.
+
+### 13.170.6 What this does not claim
+
+It does not claim the fourteen were exploitable by an anonymous party: every one is a dispatch input, so
+it needs write access to reach. It does not claim the list is complete either — a context this list does
+not name would pass, and the list is the mechanism rather than a proof. And it does not claim the guard
+now reads everything a workflow can execute: `env:` values, `with:` inputs to actions, and composite
+actions in `.github/actions/` are still outside its scope, and none of them is registered as covered.

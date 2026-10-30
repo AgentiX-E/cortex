@@ -69,6 +69,17 @@ concurrency:
 jobs:
   retrieval:
     runs-on: ubuntu-22.04
+    # Dispatch inputs enter through the environment, never through the script text.
+    #
+    # `§13.161`'s eleventh recurrence was the other spelling, one file over: an input interpolated
+    # into a `run:` block is substituted by the runner BEFORE bash parses the block, so a value
+    # containing a quote or a `;` changes the program rather than a variable. Declared here, the
+    # value reaches bash as data and `--questions "$QUESTIONS"` cannot be anything else. The defaults
+    # live here rather than at every use site, so there is one place a missing input can be wrong.
+    env:
+      QUESTIONS: ${{ github.event.inputs.questions || '100' }}
+      LIMIT: ${{ github.event.inputs.limit || '10' }}
+      READ_QUESTIONS: ${{ github.event.inputs.read_questions || '100' }}
     # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
     # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
     # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question
@@ -134,13 +145,13 @@ jobs:
         run: |
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.questions || '100' }}" \
-            --limit "${{ github.event.inputs.limit || '10' }}" \
+            --questions "$QUESTIONS" \
+            --limit "$LIMIT" \
             | tee competitor-sample.txt
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.questions || '100' }}" \
-            --limit "${{ github.event.inputs.limit || '10' }}" \
+            --questions "$QUESTIONS" \
+            --limit "$LIMIT" \
             --json > competitor-sample.json
 
       # The system under test. Its own code, our data, our top-k and our embedding space, so the row is a
@@ -161,8 +172,8 @@ jobs:
         run: |
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.questions || '100' }}" \
-            --limit "${{ github.event.inputs.limit || '10' }}" \
+            --questions "$QUESTIONS" \
+            --limit "$LIMIT" \
             --sut "$SUT" \
             | tee "competitor-sut-$(echo "$SUT" | tr '/' '-').txt"
 
@@ -180,7 +191,7 @@ jobs:
             node tools/competitor-harness.mjs \
               --data "$LONGMEMEVAL_PATH" \
               --questions 500 \
-              --limit "${{ github.event.inputs.limit || '10' }}" \
+              --limit "$LIMIT" \
               --budget-tokens "$tokens" \
               | tee -a competitor-full.txt
           done
@@ -200,7 +211,7 @@ jobs:
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
           ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
         run: |
-          if [ "${{ github.event.inputs.read_questions || '100' }}" = "0" ]; then
+          if [ "$READ_QUESTIONS" = "0" ]; then
             echo "reading stage skipped by input"
             exit 0
           fi
@@ -210,7 +221,7 @@ jobs:
           # is why `--json-out` exists.
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.read_questions || '100' }}" \
+            --questions "$READ_QUESTIONS" \
             --limit 10 \
             --budget-tokens 2800 \
             --read $ARMS \
@@ -231,7 +242,7 @@ jobs:
         run: |
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.read_questions || '100' }}" \
+            --questions "$READ_QUESTIONS" \
             --limit 10 \
             --budget-tokens 2800 \
             --read \
@@ -255,7 +266,7 @@ jobs:
         run: |
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
-            --questions "${{ github.event.inputs.read_questions || '100' }}" \
+            --questions "$READ_QUESTIONS" \
             --limit 10 \
             --budget-tokens 2800 \
             --read \
