@@ -711,6 +711,81 @@ export type AblationResult = {
    * Optional for the same reason as the other captures, and `readonly` likewise.
    */
   featureAdmittedEvidence?: readonly (AdmittedEvidence | null)[];
+  /**
+   * The prompt the feature side's reader was sent, per question.
+   *
+   * ## Why the ablation carries the text and not a fingerprint
+   *
+   * `§13.168.8` wants a fingerprint per record, and the two candidate layers are this
+   * one and the arm that writes the artifact. `cortex-memory` cannot hash -- it imports
+   * no host API -- so the text has to reach a Node-side consumer either way. Hashing
+   * here would work, but this file's `feature*` vectors are the ablation's own record of
+   * what happened, and a digest is a lossy projection chosen for artifact size rather
+   * than a measurement: the arm that decides how much of each prompt to keep is the arm
+   * that should decide how to fingerprint it.
+   *
+   * Optional for the reason the other captures are, and `readonly` likewise. A `null`
+   * entry means the system exposes no prompt, which is not an empty prompt.
+   */
+  featurePromptTexts?: readonly (string | null)[];
+  /**
+   * How many distinct prompts each question cost across the repetitions, in dataset order.
+   *
+   * `1` means every pass resent the same bytes for that question, which is the premise `§13.147.3`'s 60-80%
+   * prefix-cache prediction rests on. The premise was falsified twice -- 6.47% (`§13.148`) and 11.16%
+   * (`§13.168`) -- and neither artifact could say whether the arm had sent four prompts or the provider had
+   * declined to cache one, because a fingerprint per record is taken from one pass and a length is not a
+   * identity.
+   *
+   * Absent at `runs: 1`, where the count would be the constant `1` and would read as a measurement. `null`
+   * for a question where any pass reported no prompt: a system that answered "no prompt" once has not shown
+   * that it matched. Present per question rather than as one number for the run, because a divergence on a
+   * handful of questions is the shape most likely to be true and the one a run-level flag would erase.
+   */
+  featurePromptVariants?: readonly (number | null)[];
+  /**
+   * One question's prompt, kept textually for every repetition, so a reader can see the bytes that moved.
+   *
+   * ## Why a count is not enough, and §13.175 is why the count is not enough
+   *
+   * `featurePromptVariants` answers *whether* the passes resent the same request. It cannot answer *what
+   * moved*, and the first run that carried it reported `4` on every one of the 500 questions while two
+   * dispatches of the identical configuration delivered **byte-identical evidence** -- same turns, same
+   * order, same character count, `0/500` digests equal. That combination leaves only the invariant part of
+   * the prompt, and no count can point at it.
+   *
+   * A witness is the cheapest object that can: one question, all of its passes, in full. It is bounded by
+   * the prompt budget rather than by the roster (`4 x 48,000` characters at the registered settings), which
+   * is why it is one question and not a vector.
+   *
+   * ## Which question
+   *
+   * The first dataset position whose first pass reported a prompt. Not a random draw and not the worst
+   * case: a witness is read by diffing passes against each other, so any question that was answered twice
+   * serves, and the first one is the only choice that is reproducible without a seed.
+   *
+   * Absent at `runs: 1`, where there is no second pass to compare against.
+   */
+  featurePromptRepeatWitness?: {
+    /** Dataset position of the witnessed question, so the two texts can be joined to a record. */
+    readonly index: number;
+    readonly questionId: string;
+    /** One entry per repetition, in repetition order. */
+    readonly texts: readonly (string | null)[];
+    /**
+     * Leading bytes shared with `texts[0]`, per repetition.
+     *
+     * `null` at index `0` by construction: a pass agrees with itself everywhere, and writing the length
+     * there would read as a measurement of agreement. `null` wherever either pass reported no prompt,
+     * because a pass that sent nothing has not been shown to match.
+     *
+     * Stored rather than derived by every reader, because the comparison is the whole cost of this field
+     * and the artifact is read far more often than it is written. The lengths also make the document
+     * self-describing: `0` says the passes diverge at the first byte, which cannot be told by eye from a
+     * pair of 48,000-character blobs.
+     */
+    readonly commonPrefix: readonly (number | null)[];
+  };
   /** Paired significance statistics broken down per capability. */
   perCapability: Record<Capability, PerCapabilityPairedStats>;
 };

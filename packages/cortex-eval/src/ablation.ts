@@ -212,6 +212,25 @@ function questionsByCapability(dataset: BenchmarkDataset): Record<string, number
   return counts;
 }
 
+/**
+ * How many leading bytes each pass shares with the first one.
+ *
+ * `null` at position `0` because a pass agrees with itself everywhere and the length written there would be
+ * read as a measurement; `null` wherever either text is `null`, because a pass that reported no prompt has
+ * not been shown to match. Plain string comparison rather than a hash: the answer is an offset, and a
+ * digest would destroy exactly the quantity this field exists to report.
+ */
+function commonPrefixByPass(texts: readonly (string | null)[]): (number | null)[] {
+  const first = texts[0] ?? null;
+  return texts.map((text, i) => {
+    if (i === 0 || text === null || first === null) return null;
+    const limit = Math.min(text.length, first.length);
+    let offset = 0;
+    while (offset < limit && text.charCodeAt(offset) === first.charCodeAt(offset)) offset++;
+    return offset;
+  });
+}
+
 export async function runAblation(
   dataset: BenchmarkDataset,
   baseline: MemorySystem,
@@ -386,6 +405,42 @@ export async function runAblation(
   // Seeded with the first repetition, which is the one the roster records.
   const baselineCorrect: boolean[][] = [baseFirst.correct];
   const featureCorrectPerRun: boolean[][] = [featFirst.correct];
+  // §13.174. The distinct prompts each question cost, accumulated from the repetitions below.
+  //
+  // `null` for the whole vector at one repetition, because a distinct count over a single sample is not a
+  // measurement of repetition -- it is the number one, and a reader would have to know that to avoid
+  // reading four `1`s as four matched repetitions. That is the rule `featureCorrectByRun` follows one field
+  // over, applied to a quantity whose trivial value is more misleading.
+  //
+  // Per question, the **distinct texts** are held rather than all of them: at `runs` repetitions the set is
+  // at most `runs` long, and the count is its size. A question whose prompt is unknowable on any pass
+  // becomes `null` and stays there -- a system that answered "no prompt" on pass 3 has not shown that pass 3
+  // matched pass 1.
+  const promptVariants: (number | null)[] | null =
+    runs > 1 && featFirst.promptTexts !== undefined
+      ? featFirst.promptTexts.map((text) => (text === null ? null : 1))
+      : null;
+  const distinctPrompts: (string[] | null)[] | null =
+    promptVariants === null
+      ? null
+      : featFirst.promptTexts!.map((text) => (text === null ? null : [text]));
+  // §13.176. One question's prompt kept **textually** for every repetition, so the next reading can say
+  // which bytes moved instead of only that some did.
+  //
+  // `featurePromptVariants` answered the first question and stopped there: run `41090564131` reported `4` on
+  // all 500 questions, while the same configuration dispatched twice delivered identical evidence (same
+  // turns, same order, same character count) with `0/500` equal digests. A count cannot name the part of the
+  // prompt that is not the evidence, and that is the only part left once the evidence is equal.
+  //
+  // The witness is the first dataset position whose first pass reported a prompt, because a witness is read
+  // by diffing passes against each other and any answered question serves -- the first is the only choice
+  // that needs no seed. Bounded by the prompt budget, not the roster.
+  const witnessIndex =
+    runs > 1 && featFirst.promptTexts !== undefined
+      ? featFirst.promptTexts.findIndex((text) => text !== null)
+      : -1;
+  const witnessTexts: (string | null)[] =
+    witnessIndex < 0 ? [] : [featFirst.promptTexts![witnessIndex] ?? null];
   for (let i = 1; i < runs; i++) {
     // `run: i` rather than the default, so a repeated pass is distinguishable in
     // the progress stream from the first one. Both sides take the same ordinal:
@@ -418,7 +473,8 @@ export async function runAblation(
         i,
         // No capture on a repeat: the artifact records the first repetition's raw output and
         // evidence, and capturing every repetition would multiply the artifact by `runs` for
-        // vectors no reader pairs with a record.
+        // vectors no reader pairs with a record. The feature side below is the one exception and
+        // it does not reach the artifact -- see the comment on its capture flag.
         false,
         false,
         (answer) => baselineThisRun.push(answer),
@@ -444,7 +500,12 @@ export async function runAblation(
         options.onProgress,
         i,
         false,
-        false,
+        // The one capture a repetition does take, and the reason is `§13.168.8`: a cache prediction is a
+        // statement about **bytes**, so "were the repetitions repetitions" is answerable only by looking at
+        // what each of them sent. The vectors this pulls in are dropped in the loop below, before anything
+        // is returned, and the only thing that survives is a count per question -- so the artifact does not
+        // grow by `runs`, which is what the baseline's flag above is protecting.
+        true,
         (answer) => featureThisRun.push(answer),
         options.budgetMs,
       );
@@ -466,6 +527,25 @@ export async function runAblation(
     // moved MR by seven questions between two runs and the artifact could not say so.
     baselineCorrect.push(b.correct);
     featureCorrectPerRun.push(f.correct);
+    // §13.174. Fold this repetition's prompts into the distinct sets, then drop them: the vectors `f`
+    // carries are one repetition's worth of text and evidence, and nothing downstream asks for them.
+    if (distinctPrompts !== null && promptVariants !== null) {
+      for (let q = 0; q < distinctPrompts.length; q++) {
+        const seen = distinctPrompts[q];
+        if (seen === null || seen === undefined) continue;
+        const text = f.promptTexts?.[q];
+        if (text === null || text === undefined) {
+          // Unknowable from here on, and `null` rather than the count so far: the number of distinct
+          // prompts is not the number of distinct prompts we happened to see.
+          distinctPrompts[q] = null;
+          promptVariants[q] = null;
+          continue;
+        }
+        if (!seen.includes(text)) seen.push(text);
+        promptVariants[q] = seen.length;
+      }
+    }
+    if (witnessIndex >= 0) witnessTexts.push(f.promptTexts?.[witnessIndex] ?? null);
     completed.push({
       run: i,
       baselineAnswers: baselineThisRun,
@@ -562,6 +642,27 @@ export async function runAblation(
     // roughly 150-160.
     featurePromptEvidenceChars: featFirst.promptEvidenceChars!,
     featureAdmittedEvidence: featFirst.admittedEvidence!,
+    // The prompt each question's reader was sent, carried under the same flag on the same
+    // call. Text rather than a digest here because `cortex-memory` -- which owns the prompt
+    // -- imports no host API, and because this vector's consumer (`bench-memory-arm.ts`)
+    // is the hop that already has `node:crypto`. `§13.168.8` reads the fingerprint built
+    // from it to decide whether four passes were four repetitions or four prompts.
+    featurePromptTexts: featFirst.promptTexts!,
+    // `§13.174`. How many different prompts each question cost across the repetitions, which is the number
+    // the cache prediction is a claim about: `1` everywhere means the repeats were repeats, and a larger
+    // number means this arm sent that many requests and called them repetitions. Absent at one repetition;
+    // `null` for a question whose prompt the system did not always expose.
+    ...(promptVariants === null ? {} : { featurePromptVariants: promptVariants }),
+    ...(witnessIndex < 0
+      ? {}
+      : {
+          featurePromptRepeatWitness: {
+            index: witnessIndex,
+            questionId: dataset.questions[witnessIndex]!.id,
+            texts: witnessTexts,
+            commonPrefix: commonPrefixByPass(witnessTexts),
+          },
+        }),
     perCapability,
   };
 }
