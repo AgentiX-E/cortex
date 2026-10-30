@@ -16640,3 +16640,186 @@ The correction is not a looser bar; it is a different quantity, and only the pro
 when the reach is a signature. "10-20% of the roster" was written for a mechanism administered by a knob.
 This one is administered by which call site passes a date, so the criterion is "no other capability moved",
 which a percentage can never express and which is false the first time a second route gains a date.
+
+### 13.153.10 The first dispatch ran the wrong commit, and the failure was correct behaviour
+
+The dispatch was issued against `main`. The push tool sends to `master`, because that is the branch it
+reads off `origin`, and `main` was **seven commits behind** -- every commit of §13.148 through §13.153,
+including the mechanism. So the first run of this dispatch (`40983733341`) executed code that did not
+contain `window`, and `readQueryExpansion` rejected the value at parse time and the job failed.
+
+**The rejection is the part that worked.** Had the arm defaulted an unrecognised value, that run would have
+completed a full 500-question benchmark with `queryExpansion=none` and published it under the treatment's
+name -- the exact defect `readQueryExpansion`'s docstring is written against, caught here by the rule it
+states rather than by anyone noticing.
+
+Two repairs:
+
+1. `main` was fast-forwarded to the pushed commit (`47ca967`). It was a strict ancestor, so this is a
+   fast-forward and not a rewrite; both branches now point at the same tree.
+2. The dispatch was re-issued (`40984213349`) and its `head_sha` is checked against the pushed commit
+   **before** the run is read. Every later push fast-forwards `main` onto `master` for the same reason: the
+   two branches were only ever different because nothing compared them. That check is the general form of the defect and it belongs in the
+   readout tooling rather than in a habit: `tools/ledger.mjs` and the run's own `memoryArmConfig` cannot
+   tell whether the code that produced an artifact contains the mechanism, because a control artifact's
+   config is what a stale-code run of a treatment would also print.
+
+**The rule.** *A dispatch is a commit, not an intention.* "I pushed and dispatched" is two facts, and the
+second one is unverified until the run's `head_sha` is compared with the pushed SHA. The campaign has
+already paid for this shape of error once -- §13.110 records two artifacts 7.20 points apart with identical
+config blocks -- and the cost here was a cancelled run rather than a wrong number only because the arm
+refuses values it does not implement.
+
+**Corollary.** The refusal is worth more than the value. `readQueryExpansion` throwing on `window` is what
+turned a silent control into a five-minute failure; a parser that defaulted to `none` would have produced
+the most expensive kind of artifact -- a plausible one.
+
+### 13.154 The identity gate: a dispatch is a commit, and the commit is compared as content
+
+§13.153.10 ends with the general form of the defect it records. This is the tool, and the three decisions
+that make it a gate rather than a formality.
+
+#### 13.154.1 The artifact cannot certify itself, and the SHA cannot be compared
+
+Two facts fix the shape before any code is written.
+
+**The artifact is silent on this question.** A report carries `memoryArmConfig`, which records what the arm
+was *told*. It does not record what the arm *was*. The gap is not hypothetical: the failed first dispatch
+(`40983733341`) would have produced a complete, plausible, correctly-configured artifact of the control
+pipeline had it been told `none` instead of `window` -- the only reason it did not is that
+`readQueryExpansion` refuses values it does not implement, which turns a silent control into a five-minute
+failure. A check that reads the config block is a check that agrees with whatever the run printed.
+
+**The SHA cannot be compared, and would be the wrong property if it could.** This repository is pushed
+through the Git Data API, which rebuilds the commit and re-roots the same blobs under a new tree object;
+`push-via-api.py` verifies content rather than trees for exactly that reason. The local `HEAD` and the remote
+commit therefore have **different SHAs for byte-identical content**, so `local SHA == run head_sha` reports
+`MISMATCH` on every correct dispatch and `MATCH` only by accident. And on the other side, a SHA says nothing
+a reader wants: the property that makes a number attributable is *the same code ran*, which is tree identity,
+not commit identity.
+
+#### 13.154.2 Identity is the blob map
+
+`tools/run-identity.mjs` compares two path->blob-SHA maps: the run's commit tree, read over the API, and the
+checkout's tree, read by `git ls-tree -r`. Same tree means same code, whatever the commit object is called.
+
+Directory entries are dropped on the way in. A tree object has a SHA like any blob, so keeping them makes
+every directory a path the other side is missing and the diff fills with `packages`, `packages/cortex-memory`,
+... until the one file that matters scrolls off the top. The two shapes that reach the comparison -- the
+API's `{truncated, tree: [...]}` listing and the flat map -- are both accepted, because the live path and the
+replayed path must compare the same thing; a tool that reads only one of them comes to pass on the path it
+was tested on and to a different answer on the other.
+
+#### 13.154.3 Four verdicts, and the middle one is why the gate stays readable
+
+| verdict | meaning | exit |
+| --- | --- | --- |
+| `MATCH` | the run's tree is the checkout's tree | 0 |
+| `CODE-SAME` | only non-number-bearing paths differ | 0 |
+| `MISMATCH` | a number-bearing path differs | 1 |
+| `UNKNOWN` | cannot certify: no commit, empty map, truncated listing, malformed record | 2 |
+
+`CODE-SAME` exists because **every** docs commit lands after a dispatch that was correct at the time. A gate
+that reds on a paragraph is red most of the time, and a gate that is usually red is a gate that gets
+explained away -- at which point it is worse than absent, because it is still cited in a reading. The line is
+drawn where the campaign has measured it: `packages/`, `tools/`, `.github/workflows/` and the root manifests
+can move a number (`tools/readout-arm-run.py` runs *inside* the job and prints the audit and spend tables, so
+`tools/` is not readout-only), while `docs/` and anything under `__tests__/` cannot -- a test gates a merge,
+it does not enter the job that produces the number.
+
+`UNKNOWN` is not a soft pass. A run that has not started has no `head_sha`, and so does every record whose
+field was renamed; both are states in which the tool knows nothing. It exits 2 and says which of the two it
+is, because "no commit named" and "no map" are the same verdict and different repairs.
+
+#### 13.154.4 The default fails closed
+
+A path this tool does not recognise is **number-bearing**. The alternative -- a default of "probably docs" --
+means a new directory silently joins the benign side, and the failure mode of that is a number attributed to
+code that did not produce it. The recognised set is deliberately short and lives at the top of the file, so
+adding to it is a deliberate act with a diff.
+
+#### 13.154.5 The two measurements, before and after the repair
+
+| run | head_sha | verdict | paths that differ | number-bearing |
+| --- | --- | --- | ---: | ---: |
+| `40983733341` | `82cf305f8706` | **MISMATCH** | 25 (13 changed, 12 missing) | **15** |
+| `40984213349` | `47ca9678bcc5` | **MATCH** -- 565 blobs byte-identical | 0 | 0 |
+
+The failed run's 15 are the mechanism, named: `packages/cortex-memory/src/prompt.ts`, `memory.ts`,
+`types.ts`, `index.ts`, `bench/run-ablation.ts`, `packages/cortex-eval/src/bench-memory-arm.ts`, the workflow
+itself, and four tools that do not exist in that tree at all (`window-wired.mjs`, `window-reach.mjs`,
+`expand-resolution.mjs`, `recovery-reach.mjs`). The remaining ten are docs and tests, and the split is what
+makes the verdict actionable: the same tool that says *this number belongs to other code* also says *which*
+code, which is the difference between a gate and an alarm.
+
+The second row was taken on `40984213349` **while it was still `in_progress`**. That is the point of a
+pre-check -- it runs before the artifact exists, not after it has been read.
+
+#### 13.154.6 What it certifies, and the one thing that makes the record necessary
+
+It certifies **code**, not inputs. Two runs of the same tree with different `cortex_memory_query_expansion`
+values are the same code and different arms; the tool says `MATCH` for both, correctly, because the arm is
+the dispatch's input and is recorded in the artifact's own config block. Code identity and input identity are
+the two halves and this tool is one of them.
+
+The live comparison is against the *checkout*, so it is only valid while the checkout has not moved past the
+dispatch. Any later commit that touches `tools/` makes a correct dispatch report `MISMATCH` -- not a false
+positive by the tool's own definition, since the local tree genuinely is no longer the run's tree, but a
+useless answer for reading that run. So `--emit` writes the record that was compared, and the record is the
+durable object: `--record` replays it offline, and the replay is what a reading cites once the branch moves.
+That is also why this section is committed after `40984213349` was dispatched and why the reading of that run
+cites `/workspace/run-40984213349.identity.json` rather than a fresh live comparison.
+
+#### 13.154.7 The rule this adds
+
+*A dispatch is a commit, not an intention, and identity is content rather than a hash.*
+
+The campaign's most expensive class of error is not a wrong mechanism; it is a correct-looking artifact of
+the wrong code (§13.110: two artifacts 7.20 points apart with identical config blocks; §13.153.10: a run of a
+tree seven commits behind). Both were caught by a number that looked wrong, not by a gate. The two rules that
+come out of this are cheap and they are both checks rather than habits:
+
+1. Before a run's artifact is read, the run's commit is compared with the checkout, and the verdict is one of
+   four words with an exit code a script can read.
+2. After the branch moves, the comparison of record is the one that was emitted at dispatch.
+
+#### 13.154.8 A name is enough to retire an orphan, and the tool found that by failing a test
+
+The error class in this tool was called `Refusal`. `cortex-storage` exports a `Refusal` of its own. The
+export census counts a caller as a **whole-word occurrence of the name in any repository file** that is not
+a test and not a barrel, and it parses no imports -- deliberately, because scoping the caller search to the
+declaring package yields 314 orphans out of 435 exports where the repository-wide search yields 196, and a
+gate that is 27% false positives gets turned off within a week.
+
+The consequence arrived as a red test rather than as a thought: adding this file took the census from **394
+recorded orphans to 393**, and `export-census-gate.test.ts` failed naming the missing one --
+`cortex-storage: Refusal`. Nothing imported anything. A tool that reports on run identity happened to use
+one English noun that another package had already exported.
+
+Three things follow, and only the first is local.
+
+1. **The class was renamed** to `IdentityRefusal`. The prefix keeps the two identifiers disjoint under
+   whole-word matching (`y` is an identifier character, so there is no boundary before `Refusal`), and the
+   docblock on the class says why the name is not cosmetic, so the next tidy-up meets the reason rather
+   than the rule.
+2. **A test now holds it.** `test_run_identity.py` extracts every recorded orphan name from the baseline and
+   fails if one appears as code in this tool. It runs on the code shape rather than the raw text, because a
+   docblock that explains the collision has to be able to name the symbol -- which is the same reason the
+   census blanks comments. Verified in both directions before being relied on: the prefixed identifier is
+   not flagged and a bare `Refusal` is.
+3. **The instrument defect is registered, not repaired here.** A file that never imports a package can
+   retire that package's orphan, so an orphan can leave the report without a line of code changing in the
+   package -- the one direction the campaign's coverage rules exist to prevent. The repair is import-aware
+   caller detection, which would move the baseline by the 118 cross-package uses the wide scope was chosen
+   to count correctly; that is a whole increment, measured on its own, not a slip into this one. It is
+   registered in the plan as **P1-census** with its own bar: the same 394 minus the genuinely dead ones,
+   with every removed entry naming the import that now accounts for it.
+
+**The rule, stated so it can be applied elsewhere.** *A file outside a package is a caller of that package
+until proven otherwise, and the proof is an import.* Until P1-census lands, the census's orphan count is an
+under-estimate that any new bench or tool file can move, and a shrinking orphan ledger is the direction that
+needs the explanation, not the growing one.
+
+The reproduction, the comparison against the ledger's previous retirement -- `508fc62`, which removed
+`cortex-memory: asksForCount` because the new tool **imports** it, 395 orphaned to 394 — and the three
+conditions P1-census has to satisfy are written out in `docs/AUDIT-CENSUS-CALLER-BY-NAME.md`.
