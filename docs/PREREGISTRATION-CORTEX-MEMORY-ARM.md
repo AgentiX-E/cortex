@@ -11827,12 +11827,21 @@ declines less but because it declines in prose:
 | `deepseek-chat`   | 51       | 23 (45.1%)          | **23**              |
 | `deepseek-v4-pro` | 53       | 7 (13.2%)           | **7**               |
 
+**Erratum, §13.192.4.2.** The third and fourth columns above are right and the second is the wrong denominator.
+`23` and `7` are `bareRetry.attempted` — a **first-pass** count on the four non-`abstention` routes — while
+`51` and `53` are **final** declines over all five, and the retry's converted questions are not in them
+(`answered == attempted` on both runs). So `45.1%` and `13.2%` are exact arithmetic over two disjoint
+populations. Rebuilt on the population the reach actually partitions (first-pass declines outside `ABS`):
+**45 → 23 bare / 22 prose (48.9%)** against **30 → 7 bare / 23 prose (76.7%)**. The conclusion below is
+unchanged and its size is larger than published.
+
 **The rule this hands the next increment.** A retry keyed on an exact token measures the reader's
 formatting, not its uncertainty. Two consequences, both actionable and neither implemented:
 
-1. **The population is not the phenomenon.** 22 of 51 declines on the shipped reader, and 46 of 53 on this
-   one, are declines _with content_ — prose that says the evidence does not answer the question. Whether
-   those are also recoverable is unmeasured, and it is the larger population on both readers.
+1. **The population is not the phenomenon.** 22 of the shipped reader's 45 first-pass non-`ABS` declines, and
+   23 of this one's 30, are declines _with content_ — prose that says the evidence does not answer the
+   question. Whether those are also recoverable is unmeasured, and it is the larger population on both
+   readers.
 2. **A predicate on content is portable; a predicate on shape is not.** "The reply asserts nothing about
    the question" is checkable against either reader; "the reply is exactly `INSUFFICIENT_EVIDENCE`" is a
    property of how one model was trained to close. §13.92's `recover` value already keys on structure (a
@@ -20886,19 +20895,27 @@ because that run's artifact would not download twice and this file therefore has
 | **roster** | **417 (83.40%)** | **381 (76.20%)** | **−36 (−7.20)** |
 
 Four capabilities moved in one direction and the mechanism is in the artifact rather than in the model's
-quality: the whitepaper's figure is a median answer of **19 → 60 characters** on a block whose closing line is
-*"Reply with the Step 2 number alone"*, and a bare-token share of declines falling **45.1% → 13.2%**.
+quality. Both artifacts were opened for this registration — the `deepseek-v4-pro` one had refused to download
+twice earlier and is read here from the copy that did arrive — and **every reading §6.1.6 states reproduces
+exactly**, once each is given its denominator. §13.192.4 is that accounting, and it also carries a correction
+to the previous commit of this section, which claimed the opposite:
 
-**The 19 could not be reproduced, and that is recorded rather than smoothed.** Recomputing from
-`40698867439`'s own records gives a median `answer` length of **30** over its 449 answered questions (and
-251.5 over `rawOutput` on all 500), so either the whitepaper's population is narrower than "all answers"
-(IE's median in that artifact is 17 and KU's 23) or it was measured from a different field. The direction
-of the mechanism does not depend on it — 60 against either 19 or 30 is the same finding — but a number in a
-registration has to be one this file can point at, so the next reader is told which measurement reproduces
-and which does not. The
-sampled errors are enumeration and arithmetic — a charity total of `8,750` against a gold of `$3,750`, a
-rollercoaster count of `7` against `10` with an activity missing from the model's own list — which is to say the
-larger model **followed the contract less well and reasoned no better on this task**.
+| reading, recomputed from the two artifacts        |        `deepseek-chat` (417) |      `deepseek-v4-pro` (381) |
+| ------------------------------------------------- | ---------------------------: | ---------------------------: |
+| `feature.metrics.correct`                         |                **417 / 500** |                **381 / 500** |
+| declines (no `answer`), all routes                |                           51 |                           53 |
+| — of which MR / TR / ABS                          |                  9 / 11 / 29 |              **13** / 7 / 30 |
+| §6.1.6's "median answer length"                   |                       **19** |                       **60** |
+| — same population, `method='higher'` p90          |                      **715** |                      **513** |
+| answers longer than the decline token             | 449 answered · median **30** | 447 answered · median **90** |
+| median `rawOutput` length, all 500                |                    **251.5** |                    **236.0** |
+| `bareRetry.attempted` → `answered`                |                  **23** → 23 |                    **7** → 7 |
+| final replies that are the token and nothing else |      29 of 51, **all `ABS`** |      30 of 53, **all `ABS`** |
+| `memoryArmConfig.reader` present?                 |                       **no** |                       **no** |
+
+So the mechanism is **three times the answer length** and **four more MR declines**, and the sampled arithmetic
+error reproduces exactly: `d851d5ba` has a gold of `$3,750` and the arm writes `The distinct charity
+fundraising amounts are $1,000, $250, …` and totals them to `8,750`.
 
 So the selector "bigger model" is refuted on this arm, and the published straddle (Mastra 10.64 points across
 three readers, Agent Zero 3.4 across eight) says only that the axis is large and its **sign is not a function of
@@ -20941,3 +20958,138 @@ the axis is closed for reasons that have nothing to do with accuracy.
 3. **It does not move the MR ceiling.** §13.187 closed the 96-question target arithmetically — fixing all
    seventeen durable misses without losing a lead is 101/121 = 83.5%, still below the arm that does no memory at
    all — so a reader that adds MR points is welcome and cannot reach the reference pipeline.
+
+#### 13.192.4 The denominators, and the ratio that is exact without being a share
+
+This subsection exists because §13.192.1's first commit (`c6ec828`) recorded that the whitepaper's median "could
+not be reproduced". **That was wrong, and the error was mine rather than the whitepaper's** — I recomputed the
+median over the 449 _answered_ questions and got 30, where §6.1.6's population is all 500 with a decline
+counted as length 0, which gives **19**. Same artifact, same field, two defensible questions, and the difference
+between them is not a discrepancy. The rule the mistake hands the next reader of this file: **when a published
+reading fails to reproduce, vary the denominator before doubting the source.** A median over "answers" and a
+median over "questions" are different measurements, and the second is the one a contract-compliance claim wants
+— a reader that declines more is complying more, and answered-only silently removes those declines from the
+denominator it is judged by.
+
+Every reading §6.1.6 states therefore reproduces, and each one only under its own denominator:
+
+| §6.1.6's reading                            | value                  | population                                                      | statistic             | reproduces?                                  |
+| ------------------------------------------- | ---------------------- | --------------------------------------------------------------- | --------------------- | -------------------------------------------- |
+| median answer length                        | 19 / 60                | **all 500 questions**, decline = 0 chars                        | median                | **yes, exactly**                             |
+| p90 answer length (§13.110's parenthetical) | 715 / 513              | same                                                            | `method='higher'`     | **yes, exactly**                             |
+| bare-token declines                         | 23 / 7 (45.1% / 13.2%) | **non-`abstention` routes, first pass** (`bareRetry.attempted`) | count, then ÷ 51 / 53 | **arithmetic yes, meaning no** (§13.192.4.2) |
+| decline count                               | 51 / 53                | all 500, final record                                           | count                 | **yes**                                      |
+| roster                                      | 417 / 381              | 500                                                             | count                 | **yes**                                      |
+
+##### 13.192.4.1 The two readers differ in the _record_, and only `ABS` is bare there
+
+Counting the final records directly — `rawOutput` reduced by the same rule `isBareDecline` uses, decoration
+stripped and the token removed, nothing but wrappers left — gives **29 of 51 on the shipped reader and 30 of 53
+on `v4-pro`**, and **every one of them is an `ABS` question**. Non-`ABS` bare declines in the final record:
+**zero, on both readers.** That is not a surprise once the route gate is read: `#answerWithBareRetry` returns
+early on `route === 'abstention'` precisely because "`ABS`'s gold is a decline and 29 of its 30 answers are this
+exact bare token — a treatment reaching it would spend a call to convert a correct answer into a wrong one". So
+`ABS` is bare **by design on both readers** (29 of 30, then 30 of 30), and the bare rate on the other four
+capabilities is measured somewhere the record cannot show.
+
+##### 13.192.4.2 Why 45.1% is exact and still not a share
+
+`bareRetry.attempted` reads **23** and **7**, so `23 / 51 = 45.1%` and `7 / 53 = 13.2%` are exact — and the
+numerator and the denominator are not from the same population:
+
+- the **numerator** is a first-pass count on the four non-`abstention` routes, **before** the retry;
+- the **denominator** is a final count over all five routes, **after** the retry.
+
+Both halves of that mismatch are mechanical rather than editorial. The gate removes `ABS` from the numerator;
+and `#answerWithBareRetry` ends in `this.#recordOutcome(second)`, so a question the retry _converted_ keeps the
+second reply and never appears among the declines at all — `answered` equals `attempted` on both runs (23/23 and
+7/7), which is to say **every** bare first-pass decline on those routes became an answer. The 51 declines
+therefore contain none of the 23. What §6.1.6's row is a ratio of is two numbers that do not overlap.
+
+Rebuilt on a population that does exist — first-pass declines outside `ABS`, which is what the retry's own reach
+partitions — the same two counts become a share, and the whitepaper's conclusion survives intact:
+
+| reader                  | first-pass non-`ABS` declines | bare → retried → answered | prose → final decline | prose share |
+| ----------------------- | ----------------------------: | ------------------------: | --------------------: | ----------: |
+| `deepseek-chat` (417)   |                        **45** |                        23 |                    22 |   **48.9%** |
+| `deepseek-v4-pro` (381) |                        **30** |                         7 |                    23 |   **76.7%** |
+
+Two readings come out of this that the 45.1% / 13.2% pair could not give:
+
+1. **§13.111's title is right and its arithmetic was a category error.** "The retry's population is a property of
+   the reader" holds at 23 against 7 — a factor of 3.3 in `isBareDecline`'s reach on the same questions and the
+   same routes — while the ratio that was published to say so divided one population by another. The corrected
+   statement is stronger, not weaker: the two readers decline **about as often** outside `ABS` (45 against 30 is
+   partly the retry, but 22 against 23 prose declines is a wash), and what separates them is **how they spell
+   it** — 51.1% of the shipped reader's non-`ABS` declines are recoverable by an exact-token predicate and only
+   23.3% of this one's are.
+2. **The retry's reach is a formatting statistic, and it is now quantified as one.** On this reader pair the
+   predicate's reach moves by 28 points while the decline count it is supposed to explain moves by 2. Anything
+   that reports `bareRetry.attempted` as a share of declines inherits a 29-question `ABS` block in the
+   denominator that the numerator is forbidden to touch — which is why the artifact's own census is the number
+   to quote and the ratio is not.
+
+##### 13.192.4.3 What this changes in the record, and what it does not
+
+- **§13.110's parenthetical is confirmed, not corrected.** `p90 513 against 715` reproduces character for
+  character with `method='higher'` over the same all-500 population, including its direction — the _shipped_
+  reader has the longer p90 and the _probed_ reader the shorter one, which is the same tail the 19 → 60 median
+  hides: `v4-pro` writes a great many medium-length answers where `deepseek-chat` writes either 19 characters
+  or a full list.
+- **§13.111's table is corrected to the right denominators**, and its "22 of 51 … 46 of 53" becomes the 22 and
+  23 prose columns above; the conclusion it draws (a shape predicate does not port) is untouched.
+- **§6.1.6 keeps its numbers and loses one label.** "其中仅有弃权 token 23 (45.1%)" is `bareRetry.attempted`, a
+  reach outside `ABS`, and the row should say so — recorded in `cortex-docs` as a whitepaper erratum rather than
+  edited silently, because the white paper is an external document and this one is the internal source it
+  points at.
+- **§13.192's plan does not move.** Nothing here touches the compliance probe: the probe asks a new reader's
+  _answer_ shape, which is the 19 → 60 axis and reproduces; the retry population is a different axis that the
+  probe was never going to read.
+
+#### 13.192.5 The readings got a command, so the probe's three numbers are one of its outputs
+
+§13.192.2 says the compliance probe's reading is "the one `§6.1.6` already knows how to take from an
+artifact". That reading was prose in two documents and arithmetic in a shell history, which is how it came to be
+recomputed on the wrong denominator and published as an erratum. It is now `tools/reader-shape.mjs`:
+
+```
+node tools/reader-shape.mjs \
+  --report <40698867439>/benchmark-cortex-memory-ablation-report.json --label deepseek-chat \
+  --report <40698883428>/benchmark-cortex-memory-ablation-report.json --label deepseek-v4-pro
+```
+
+Run on the two artifacts this section is about, it prints — and this is the whole point — **both denominators
+for the same field, each labelled with its population**:
+
+| line the tool prints                                                                  |     `deepseek-chat` |   `deepseek-v4-pro` |
+| ------------------------------------------------------------------------------------- | ------------------: | ------------------: |
+| `answer length, all questions (a decline counts as 0 chars)` · median / p90           |        **19 / 715** |        **60 / 513** |
+| `answer length, answered only (this denominator removes the declines)` · median / p90 |            30 / 778 |            90 / 547 |
+| `bare declines in the final record`                                                   | 29 of 51, all `ABS` | 30 of 53, all `ABS` |
+| `bareRetry: attempted, answered`                                                      |              23, 23 |                7, 7 |
+| `first-pass non-ABS declines = attempted + prose finals` · prose share                |          45 · 48.9% |          30 · 76.7% |
+| `invariant non-ABS bare finals <= attempted - answered`                               |       held (0 vs 0) |       held (0 vs 0) |
+
+Three things this settles that argument could not:
+
+1. **The published figures reproduce, and the tool is the thing that says so.** `19` and `715` are printed with
+   the population in the label, so the next reader who wants a median sees which question they are answering
+   before they answer it. §13.192.4's correction has an instrument behind it now, not a paragraph.
+2. **The ratio is retired from the tool's vocabulary.** The line says `attempted / declines is NOT a share` and
+   prints the population that is one. A future artifact cannot quietly have the old ratio recomputed from it.
+3. **The one reading whose failure is a bug is an exit code.** `bareRetry` is gated on
+   `route === 'abstention'`, so a non-`ABS` bare decline can only survive the pass when the second reply also
+   declined bare. `non-ABS bare finals <= attempted - answered` must therefore hold, and the tool exits 1 with
+   the offending `questionId`s instead of printing a number. It holds at `0 vs 0` on both artifacts, which is the
+   arithmetic form of `answered == attempted`.
+
+**What this does to the probe.** `P0-reader-probe` no longer needs a reading designed for it: the three numbers
+it was registered to take — median answer length against the routed block's closing line, the bare-token count,
+and the parse failures (`empty replies among the declines`) — are a single invocation on the probe's artifact.
+What remains is the dispatch itself and the rule that twenty questions are a shape reading and not a ranking,
+which `13.192.3` already fixes.
+
+**What the tool does not do.** It reads no accuracy, and its `--json` has no cross-artifact comparison beyond
+one pair block whose deltas are printed for legibility and are not a test statistic. It also does not decide
+which denominator a claim should use — it prints both so that the choice is made in the open, which is the only
+repair available for a mistake that was made by choosing silently.
