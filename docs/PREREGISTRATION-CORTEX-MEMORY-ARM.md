@@ -20525,6 +20525,42 @@ ask was written for (`§13.166` names both), and both still decline under it.
 **Falsified if** all five carry the gold numeral in their prompt — which would move them from
 retrieval to reader and make the decline class a reader defect instead.
 
+**D. A silent truncation manufactures a refusal, so the cut needs a marker behind an option.**
+The prediction in C is met five of five, and reading the prompts for the reason found a defect rather
+than a reader failure. `a4996e51`'s turn ends at exactly `maxTurnChars` with
+
+```
+... analyzing engagement metrics. During peak campaign seasons, I increase my work hours
+```
+
+and the next turn in the same session asks how to phrase those hours — the corpus confirming the fact was
+in the elided tail. `contentFor` → `truncateCodePointSafe` adds **no marker**, so the reader sees a
+sentence that stops and the contracts tell it to decline when an operand is missing: **the truncation
+manufactures the refusal.**
+
+Two of the other four declines carry a decoy numeral of the gold's own value in an unrelated turn (`20%` on
+Zara jeans for a question about a book; `5 days a week` for a question about a parcel), which is why the
+check has to be numeral-in-context and why a numeral count would have reported two reader failures.
+
+**Not fixed silently.** `prompt-turn-cap.test.ts` protects *"every archived prompt stays reproducible from
+the code"*, so a marker cannot be an edit to `truncateCodePointSafe`. The change is:
+
+1. `PromptOptions.turnCutMarker?: 'none' | 'ellipsis'`, default `'none'` — the current bytes;
+2. when `'ellipsis'`, cut to `maxChars - 1`, back off to the last whitespace inside the final 20% of the
+   window if one exists, trim the tail, append `…`; total length still `≤ maxChars`;
+3. forward it through `CortexMemoryOptions` and `#promptOptions` (`§7.4`: a field the arm can set and the
+   prompt can ignore is the side-channel defect);
+4. workflow input `turn_cut_marker`, echoed in the artifact's config line;
+5. TDD: default-off byte equality against the current prompts; `'ellipsis'` ends a capped turn with `…`
+   and never exceeds the cap; a mid-word cut backs off; a surrogate pair is still never split.
+
+> **Prediction:** with `turnCutMarker: 'ellipsis'` and everything else fixed, at least one of the five
+> durable declines is answered, and the other four are unchanged — the marker tells the reader the text
+> continues, and it cannot tell it what the missing text said.
+
+**Falsified if** no durable decline moves, or more than two move in either direction, or any uncapped
+prompt changes one byte (the option must be inert when the cap is absent).
+
 #### 13.187.7 What this does not say
 
 1. `durable` is a property of the code only when the repetitions share a prompt. Here they do

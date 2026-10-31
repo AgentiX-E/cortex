@@ -924,5 +924,16 @@
     "`agreed-wrong` is a ceiling of the harness and not of the capability: a question both arms miss may be one a different prompt, window or reader wins. What the reading says is that resembling the reference arm cannot win it.",
     "The census classes are read from the gold and the answer, which is `tools/mr-failure-census.mjs`'s classifier and shares its blindness: a wrong answer that keeps the gold's number is invisible, and a gold that spells its number is read from the first number in the sentence.",
     "`feature.metrics.correct` is repetition 0 (419 of 419/417/425/427), so a reader who divides it by the question count reads one repetition of four. The tool says so at the top of its output because the artifact cannot: no field records which repetition the headline came from."
+  ],
+  "predictionResults": [
+    {
+      "name": "at least one of the five durable declines is a retrieval miss, and it can be named without a model",
+      "registeredAs": "predictions[2] (`\u00a713.187.6C`)",
+      "verdict": "met, and stronger than predicted: five of five",
+      "detail": "Read from the stored `featurePromptTexts`, with the surrounding turn quoted rather than a numeral counted. a4996e51 truncates at maxTurnChars mid-sentence ('I increase my work hours') and the next turn asks how to phrase those hours; d905b33f carries only 20% on Zara jeans and 500% on a campaign; d6062bb9 carries only one of the two view counts; 60bf93ed carries the arrival date but no purchase date; c18a7dc8 has 'college' only inside the question.",
+      "refinement": "Two of the five carry a decoy numeral of the gold's own value in an unrelated turn (`20%` on Zara jeans for a book question, `5 days a week` for a parcel question), so a numeral count would have reported two reader failures that are not. The check has to be numeral-in-context.",
+      "consequence": "The decline class is a retrieval class on the durable subset, which contradicts the framing `\u00a713.166` used for the operands ask ('7 of this arm's 10 MR declines are questions whose evidence states the operands').",
+      "newDefect": "a4996e51's cut is a product defect: `contentFor` -> `truncateCodePointSafe` adds no marker, so the reader receives a sentence that stops and the contracts tell it to decline when an operand is missing. Registered as `\u00a713.187.6D` behind `turnCutMarker`, default 'none', because `prompt-turn-cap.test.ts` protects the byte-reproducibility of every archived prompt."
+    }
   ]
 }

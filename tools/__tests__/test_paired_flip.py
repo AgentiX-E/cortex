@@ -261,3 +261,21 @@ def test_the_reading_is_reproducible(tmp_path: Path) -> None:
     ids = [row["questionId"] for row in reading["reading"]["MR"]["durableMiss"]]
     assert ids == list(dict.fromkeys(ids)), "a durable miss is listed once"
     assert len(ids) == 17
+
+
+def test_the_registered_prediction_is_recorded_with_its_refinement() -> None:
+    """A prediction that is met must still say how it was nearly read wrong.
+
+    The check was registered as "the gold's numeral is absent from the prompt". Five of five are absent,
+    so it is met — but two of the five contain the gold's own numeral in an unrelated turn (`20%` on Zara
+    jeans, `5 days a week`), and a numeral count would have called both a reader failure. The refinement is
+    the finding; the verdict alone would not survive a reader who repeated the check naively.
+    """
+    reading = json.loads((REPO / "tools" / "paired-flip-reading.json").read_text())
+    (result,) = reading["predictionResults"]
+    assert result["verdict"].startswith("met"), result["verdict"]
+    assert "decoy numeral" in result["refinement"]
+    # And the defect the reading found is recorded as an option with the current bytes as its default,
+    # because the test suite protects the byte-reproducibility of every archived prompt.
+    assert "turnCutMarker" in result["newDefect"]
+    assert "default 'none'" in result["newDefect"]

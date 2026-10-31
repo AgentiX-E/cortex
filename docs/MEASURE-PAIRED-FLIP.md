@@ -137,3 +137,52 @@ longer a registration.
 4. **`feature.metrics.correct` is repetition 0.** 419 of 419 / 417 / 425 / 427. The tool prints that
    sentence above every number, because the artifact cannot: no field records which repetition produced
    the headline, and `runs: 4` sits in the same object.
+
+## 8. The five declines are not refusals: all five are missing evidence, and one is a silent truncation
+
+`§13.187.6C` registered a free check: search the stored `featurePromptTexts` for the fact each durable
+decline needs. It was not free in the way predicted — a numeral search would have called two of the five
+reader failures, because both contain a decoy number of the gold's own value in an unrelated turn.
+
+| id         | the fact the gold needs      | in the prompt?                                        | verdict |
+| ---------- | ---------------------------- | ----------------------------------------------------- | ------- |
+| `a4996e51` | the weekly hours at peak     | the turn **stops mid-sentence** at "I increase my work hours" | **truncated at `maxTurnChars`** |
+| `d905b33f` | the book's discount          | only `20%` on Zara jeans and `500%` on a campaign — decoys, not the book | absent |
+| `d6062bb9` | both videos' view counts     | only `1,456 views` (the TikTok one); the other is absent | absent |
+| `60bf93ed` | the purchase date            | "It arrived on 1/20" is present; every `bought`/`purchased` turn is about souvenirs | absent |
+| `c18a7dc8` | the graduation year          | `college` appears only inside the question | absent |
+
+**Five of five.** The registered prediction was "at least three", so it is met, and the refinement is the
+part worth keeping: **`20%` and `5 days` are both present in the wrong sentence**, so any instrument that
+searched for the gold's numeral would have reported two reader failures that are not. The check has to be
+numeral-in-context, and that is why the table above quotes the surrounding turn rather than a count.
+
+The consequence for the campaign is that the **decline class is a retrieval class**. `§13.166` framed the
+operands ask around "7 of this arm's 10 MR declines are questions whose evidence states the operands";
+on the durable subset that framing does not hold, because the evidence does not state them.
+
+### 8.1 The truncation, which is a product defect and not a benchmark artefact
+
+`a4996e51`'s turn ends exactly like this, and the next turn begins:
+
+```
+... analyzing engagement metrics. During peak campaign seasons, I increase my work hours
+
+3. [75eb4761-...] [2023/05/29 (Mon) 02:54] user: ... I'm still not sure how to phrase my work
+hours during peak campaign seasons, though.
+```
+
+`contentFor` cuts at `maxTurnChars` through `truncateCodePointSafe`, which **adds no marker**. So the
+reader receives a sentence that stops, and the `enumerated` / `operands` contracts tell it to decline when
+an operand is missing. The truncation does not merely hide the answer — **it manufactures the refusal**,
+and the very next turn in the same session asks how to phrase those hours, which is the corpus confirming
+the fact was there.
+
+That is a defect in the product independent of any benchmark: a memory assistant that shows a user half a
+sentence and no indication that the rest exists is wrong in the same way a truncated citation is wrong.
+
+**Not fixed here, and deliberately.** `prompt-turn-cap.test.ts` protects the opposite invariant — *"every
+archived prompt stays reproducible from the code"* — so a marker cannot be a silent edit to
+`truncateCodePointSafe`; it has to be an option whose default is the current behaviour, exactly as
+`maxTurnChars` itself is absent by default. The design is registered in `§13.187.6D` with its wiring
+points, so the next iteration implements rather than rediscovers it.
