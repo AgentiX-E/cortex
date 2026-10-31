@@ -1,0 +1,928 @@
+{
+  "artifact": "41159983913",
+  "tool": "tools/paired-flip.mjs",
+  "note": "Read from the artifact alone: `ablation.baselineCorrectByRun` and `ablation.featureCorrectByRun` are four correctness masks per arm, one character per dataset question. No model, no key, no new dispatch.",
+  "headline": {
+    "known": true,
+    "metricsCorrect": 419,
+    "firstRepetition": 419,
+    "isFirstRepetition": true,
+    "perRepetition": [
+      419,
+      417,
+      425,
+      427
+    ],
+    "meanOfRepetitions": 422,
+    "baselineMetricsCorrect": 220
+  },
+  "runs": 4,
+  "whatItReplaces": [
+    "The tracking report and 03 \u00a714.2 quote `87.25` against `103.75` as `16 questions behind` for MR. Both are averages over four repetitions, and every plan row calls the comparison 'paired' while quoting the difference of two means: same run, not same question.",
+    "The two masks were added to the artifact for exactly this reading - the field's own docblock says a spread 'cannot separate one question flapping four times from four questions flapping once each'. Nothing in the repository read them until this tool.",
+    "A difference of means cannot say whether a 16-question gap is 16 questions the other arm wins every time, 16 questions nobody decides, or the residue of a much larger two-sided disagreement. On MR it is the third: the arms disagree on 29 and 8 of 121 questions in the first repetition."
+  ],
+  "reading": {
+    "ABS": {
+      "total": 30,
+      "baselinePerRun": [
+        30,
+        30,
+        30,
+        30
+      ],
+      "featurePerRun": [
+        29,
+        29,
+        29,
+        29
+      ],
+      "gapPerRun": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "baselineOnlyPerRun": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "featureOnlyPerRun": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "durableMissCount": 1,
+      "durableWinCount": 0,
+      "agreedWrong": [],
+      "contested": 0,
+      "flapping": {
+        "baseline": [],
+        "feature": []
+      },
+      "durableMissIds": [
+        "6456829e_abs"
+      ],
+      "durableWinIds": []
+    },
+    "IE": {
+      "total": 150,
+      "baselinePerRun": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "featurePerRun": [
+        141,
+        143,
+        144,
+        144
+      ],
+      "gapPerRun": [
+        -140,
+        -142,
+        -143,
+        -143
+      ],
+      "baselineOnlyPerRun": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "featureOnlyPerRun": [
+        140,
+        142,
+        143,
+        143
+      ],
+      "durableMissCount": 0,
+      "durableWinCount": 136,
+      "agreedWrong": [
+        "0edc2aef",
+        "09d032c9",
+        "57f827a0",
+        "1da05512"
+      ],
+      "contested": 9,
+      "flapping": {
+        "baseline": [],
+        "feature": [
+          {
+            "questionId": "06878be2",
+            "runs": 3
+          },
+          {
+            "questionId": "75832dbd",
+            "runs": 3
+          },
+          {
+            "questionId": "35a27287",
+            "runs": 3
+          },
+          {
+            "questionId": "caf03d32",
+            "runs": 3
+          },
+          {
+            "questionId": "06f04340",
+            "runs": 3
+          },
+          {
+            "questionId": "38146c39",
+            "runs": 2
+          },
+          {
+            "questionId": "d6233ab6",
+            "runs": 3
+          },
+          {
+            "questionId": "a89d7624",
+            "runs": 2
+          },
+          {
+            "questionId": "1c0ddc50",
+            "runs": 2
+          }
+        ]
+      },
+      "durableMissIds": [],
+      "durableWinIds": [
+        "e47becba",
+        "118b2229",
+        "51a45a95",
+        "58bf7951",
+        "1e043500",
+        "c5e8278d",
+        "6ade9755",
+        "6f9b354f",
+        "58ef2f1c",
+        "f8c5f88b",
+        "5d3d2817",
+        "7527f7e2",
+        "c960da58",
+        "3b6f954b",
+        "726462e0",
+        "94f70d80",
+        "66f24dbb",
+        "ad7109d1",
+        "af8d2e46",
+        "dccbc061",
+        "c8c3f81d",
+        "8ebdbe50",
+        "6b168ec8",
+        "75499fd8",
+        "21436231",
+        "95bcc1c8",
+        "0862e8bf",
+        "853b0a1d",
+        "a06e4cfe",
+        "37d43f65",
+        "b86304ba",
+        "d52b4f67",
+        "25e5aa4f",
+        "caf9ead2",
+        "8550ddae",
+        "60d45044",
+        "3f1e9474",
+        "86b68151",
+        "577d4d32",
+        "ec81a493",
+        "15745da0",
+        "e01b8e2f",
+        "bc8a6e93",
+        "ccb36322",
+        "001be529",
+        "b320f3f8",
+        "19b5f2b3",
+        "4fd1909e",
+        "545bd2b5",
+        "8a137a7f",
+        "76d63226",
+        "86f00804",
+        "8e9d538c",
+        "311778f1",
+        "c19f7a0b",
+        "4100d0a0",
+        "29f2956b",
+        "1faac195",
+        "faba32e5",
+        "f4f1d8a4",
+        "c14c00dd",
+        "36580ce8",
+        "3d86fd0a",
+        "a82c026e",
+        "8a2466db",
+        "32260d93",
+        "195a1a1b",
+        "afdc33df",
+        "54026fce",
+        "6b7dfb22",
+        "1a1907b4",
+        "d24813b1",
+        "95228167",
+        "505af2f5",
+        "75f70248",
+        "fca70973",
+        "b6025781",
+        "b0479f84",
+        "1d4e3b97",
+        "07b6f563",
+        "0a34ad58",
+        "7161e7e2",
+        "c4f10528",
+        "89527b6b",
+        "e9327a54",
+        "4c36ccef",
+        "6ae235be",
+        "7e00a6cb",
+        "1903aded",
+        "ceb54acb",
+        "f523d9fe",
+        "0e5e2d1a",
+        "fea54f57",
+        "cc539528",
+        "dc439ea3",
+        "18dcd5a5",
+        "488d3006",
+        "58470ed2",
+        "8cf51dda",
+        "1d4da289",
+        "8464fc84",
+        "71a3fd6b",
+        "2bf43736",
+        "70b3e69b",
+        "8752c811",
+        "3249768e",
+        "1b9b7252",
+        "1568498a",
+        "6222b6eb",
+        "e8a79c70",
+        "d596882b",
+        "e3fc4d6e",
+        "51b23612",
+        "3e321797",
+        "e982271f",
+        "352ab8bd",
+        "fca762bc",
+        "7a8d0b71",
+        "a40e080f",
+        "8b9d4367",
+        "5809eb10",
+        "41275add",
+        "4388e9dd",
+        "4baee567",
+        "561fabcd",
+        "b759caee",
+        "ac031881",
+        "28bcfaac",
+        "16c90bf4",
+        "c8f1aeed",
+        "eaca4986",
+        "c7cf7dfd",
+        "e48988bc",
+        "1de5cff2",
+        "65240037",
+        "778164c6"
+      ]
+    },
+    "KU": {
+      "total": 72,
+      "baselinePerRun": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "featurePerRun": [
+        60,
+        59,
+        61,
+        61
+      ],
+      "gapPerRun": [
+        -60,
+        -59,
+        -61,
+        -61
+      ],
+      "baselineOnlyPerRun": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "featureOnlyPerRun": [
+        60,
+        59,
+        61,
+        61
+      ],
+      "durableMissCount": 0,
+      "durableWinCount": 58,
+      "agreedWrong": [
+        "ce6d2d27",
+        "c4ea545c",
+        "7a87bd0c",
+        "ed4ddc30",
+        "59524333",
+        "69fee5aa",
+        "7401057b",
+        "a2f3aa27",
+        "3ba21379",
+        "07741c45"
+      ],
+      "contested": 4,
+      "flapping": {
+        "baseline": [],
+        "feature": [
+          {
+            "questionId": "830ce83f",
+            "runs": 1
+          },
+          {
+            "questionId": "852ce960",
+            "runs": 3
+          },
+          {
+            "questionId": "9ea5eabc",
+            "runs": 2
+          },
+          {
+            "questionId": "50635ada",
+            "runs": 3
+          }
+        ]
+      },
+      "durableMissIds": [],
+      "durableWinIds": [
+        "6a1eabeb",
+        "6aeb4375",
+        "945e3d21",
+        "d7c942c3",
+        "71315a70",
+        "89941a93",
+        "07741c44",
+        "a1eacc2a",
+        "184da446",
+        "031748ae",
+        "4d6b87c8",
+        "0f05491a",
+        "08e075c7",
+        "f9e8c073",
+        "41698283",
+        "2698e78f",
+        "b6019101",
+        "45dc21b6",
+        "5a4f22c0",
+        "6071bd76",
+        "e493bb7c",
+        "618f13b2",
+        "72e3ee87",
+        "01493427",
+        "6a27ffc2",
+        "2133c1b5",
+        "18bc8abd",
+        "db467c8c",
+        "e61a7584",
+        "1cea1afa",
+        "8fb83627",
+        "b01defab",
+        "22d2cb42",
+        "0e4e4c46",
+        "4b24c848",
+        "7e974930",
+        "603deb26",
+        "5831f84d",
+        "eace081b",
+        "affe2881",
+        "e66b632c",
+        "0ddfec37",
+        "f685340e",
+        "cc5ded98",
+        "dfde3500",
+        "cf22b7bf",
+        "c7dc5443",
+        "06db6396",
+        "9bbe84a2",
+        "10e09553",
+        "dad224aa",
+        "ba61f0b9",
+        "42ec0761",
+        "5c40ec5b",
+        "c6853660",
+        "26bdc477",
+        "0977f2af",
+        "89941a94"
+      ]
+    },
+    "MR": {
+      "total": 121,
+      "baselinePerRun": [
+        105,
+        104,
+        104,
+        102
+      ],
+      "featurePerRun": [
+        84,
+        86,
+        87,
+        92
+      ],
+      "gapPerRun": [
+        21,
+        18,
+        17,
+        10
+      ],
+      "baselineOnlyPerRun": [
+        29,
+        23,
+        24,
+        18
+      ],
+      "featureOnlyPerRun": [
+        8,
+        5,
+        7,
+        8
+      ],
+      "durableMissCount": 17,
+      "durableWinCount": 4,
+      "agreedWrong": [
+        "gpt4_2f8be40d",
+        "gpt4_ab202e7f",
+        "gpt4_731e37d7",
+        "bf659f65",
+        "gpt4_372c3eed",
+        "9ee3ecd6",
+        "37f165cf",
+        "8e91e7d9"
+      ],
+      "contested": 20,
+      "flapping": {
+        "baseline": [
+          {
+            "questionId": "d23cf73b",
+            "runs": 3
+          },
+          {
+            "questionId": "gpt4_7fce9456",
+            "runs": 2
+          },
+          {
+            "questionId": "73d42213",
+            "runs": 2
+          }
+        ],
+        "feature": [
+          {
+            "questionId": "6d550036",
+            "runs": 3
+          },
+          {
+            "questionId": "gpt4_59c863d7",
+            "runs": 3
+          },
+          {
+            "questionId": "3a704032",
+            "runs": 3
+          },
+          {
+            "questionId": "gpt4_f2262a51",
+            "runs": 3
+          },
+          {
+            "questionId": "6cb6f249",
+            "runs": 2
+          },
+          {
+            "questionId": "46a3abf7",
+            "runs": 2
+          },
+          {
+            "questionId": "28dc39ac",
+            "runs": 2
+          },
+          {
+            "questionId": "d23cf73b",
+            "runs": 2
+          },
+          {
+            "questionId": "7024f17c",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_5501fe77",
+            "runs": 3
+          },
+          {
+            "questionId": "gpt4_2ba83207",
+            "runs": 2
+          },
+          {
+            "questionId": "00ca467f",
+            "runs": 3
+          },
+          {
+            "questionId": "2788b940",
+            "runs": 2
+          },
+          {
+            "questionId": "5a7937c8",
+            "runs": 3
+          },
+          {
+            "questionId": "51c32626",
+            "runs": 3
+          },
+          {
+            "questionId": "ef66a6e5",
+            "runs": 1
+          },
+          {
+            "questionId": "6c49646a",
+            "runs": 3
+          },
+          {
+            "questionId": "60159905",
+            "runs": 3
+          }
+        ]
+      },
+      "durableMiss": [
+        {
+          "questionId": "0a995998",
+          "class": "off-by-one",
+          "detail": "3 -> 2 (-1)",
+          "gold": "3",
+          "answer": "2"
+        },
+        {
+          "questionId": "gpt4_a56e767c",
+          "class": "off-by-one",
+          "detail": "4 -> 3 (-1)",
+          "gold": "I attended four movie festivals.",
+          "answer": "3"
+        },
+        {
+          "questionId": "2e6d26dc",
+          "class": "off-by-one",
+          "detail": "5 -> 6 (+1)",
+          "gold": "5",
+          "answer": "6"
+        },
+        {
+          "questionId": "88432d0a",
+          "class": "off-by-one",
+          "detail": "4 -> 3 (-1)",
+          "gold": "4",
+          "answer": "3"
+        },
+        {
+          "questionId": "60bf93ed",
+          "class": "decline",
+          "detail": "no answer",
+          "gold": "5 days. 6 days (including the last day) is also acceptable.",
+          "answer": ""
+        },
+        {
+          "questionId": "a9f6b44c",
+          "class": "aggregation",
+          "detail": "2 -> 4 (+2)",
+          "gold": "2",
+          "answer": "4"
+        },
+        {
+          "questionId": "edced276",
+          "class": "aggregation",
+          "detail": "15 -> 5 (-10)",
+          "gold": "15 days",
+          "answer": "The New York City trip lasted 5 days. The Hawaii trip is mentioned but no duration is given anywhere in the evidence, so it contributes no number of days. The total that can be computed from the listed durations is 5.\n\n5"
+        },
+        {
+          "questionId": "2b8f3739",
+          "class": "aggregation",
+          "detail": "495 -> 375 (-120)",
+          "gold": "$495",
+          "answer": "$225 (jam) + (20 \u00d7 $7.5 = $150) (herb plants) = $375. The third item's total is not stated in the evidence, so it cannot be added.\n\n375"
+        },
+        {
+          "questionId": "gpt4_2f91af09",
+          "class": "off-by-one",
+          "detail": "23 -> 22 (-1)",
+          "gold": "23",
+          "answer": "22"
+        },
+        {
+          "questionId": "d905b33f",
+          "class": "decline",
+          "detail": "no answer",
+          "gold": "20%",
+          "answer": ""
+        },
+        {
+          "questionId": "7405e8b1",
+          "class": "other",
+          "detail": "gold=not a number answer=20",
+          "gold": "Yes.",
+          "answer": "20"
+        },
+        {
+          "questionId": "a4996e51",
+          "class": "decline",
+          "detail": "no answer",
+          "gold": "50",
+          "answer": ""
+        },
+        {
+          "questionId": "5025383b",
+          "class": "other",
+          "detail": "gold=not a number answer=2",
+          "gold": "photography and cooking",
+          "answer": "2"
+        },
+        {
+          "questionId": "92a0aa75",
+          "class": "aggregation",
+          "detail": "17 -> 73 (+56)",
+          "gold": "1 year and 5 months",
+          "answer": "6 years and 1 month"
+        },
+        {
+          "questionId": "d6062bb9",
+          "class": "decline",
+          "detail": "no answer",
+          "gold": "1,998",
+          "answer": ""
+        },
+        {
+          "questionId": "c18a7dc8",
+          "class": "decline",
+          "detail": "no answer",
+          "gold": "7",
+          "answer": ""
+        },
+        {
+          "questionId": "21d02d0d",
+          "class": "off-by-one",
+          "detail": "2 -> 1 (-1)",
+          "gold": "2",
+          "answer": "1"
+        }
+      ],
+      "durableWin": [
+        {
+          "questionId": "129d1232",
+          "gold": "$5,850",
+          "answer": "5850"
+        },
+        {
+          "questionId": "d851d5ba",
+          "gold": "$3,750",
+          "answer": "$1,000 + $250 + $500 + $2,000 = $3,750\n\n$3,750"
+        },
+        {
+          "questionId": "10d9b85a",
+          "gold": "3 days",
+          "answer": "3"
+        },
+        {
+          "questionId": "1a8a66a6",
+          "gold": "2",
+          "answer": "Current subscriptions: The New Yorker (active), Architectural Digest (active). Forbes was canceled, so it is not current. National Geographic was a single-issue purchase, not a subscription.\n\n2"
+        }
+      ]
+    },
+    "TR": {
+      "total": 127,
+      "baselinePerRun": [
+        84,
+        83,
+        83,
+        83
+      ],
+      "featurePerRun": [
+        105,
+        100,
+        104,
+        101
+      ],
+      "gapPerRun": [
+        -21,
+        -17,
+        -21,
+        -18
+      ],
+      "baselineOnlyPerRun": [
+        5,
+        6,
+        6,
+        7
+      ],
+      "featureOnlyPerRun": [
+        26,
+        23,
+        27,
+        25
+      ],
+      "durableMissCount": 3,
+      "durableWinCount": 20,
+      "agreedWrong": [
+        "9a707b81",
+        "gpt4_7abb270c",
+        "370a8ff4",
+        "gpt4_e061b84g",
+        "gpt4_d6585ce9",
+        "gpt4_f420262d",
+        "gpt4_59149c78",
+        "gpt4_e414231f",
+        "gpt4_fa19884d",
+        "0bc8ad93",
+        "a3838d2b",
+        "gpt4_2c50253f",
+        "gpt4_2f56ae70"
+      ],
+      "contested": 17,
+      "flapping": {
+        "baseline": [
+          {
+            "questionId": "b46e15ee",
+            "runs": 1
+          }
+        ],
+        "feature": [
+          {
+            "questionId": "gpt4_1d80365e",
+            "runs": 1
+          },
+          {
+            "questionId": "gpt4_7f6b06db",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_a1b77f9c",
+            "runs": 3
+          },
+          {
+            "questionId": "gpt4_1916e0ea",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_d6585ce8",
+            "runs": 3
+          },
+          {
+            "questionId": "gpt4_f420262c",
+            "runs": 1
+          },
+          {
+            "questionId": "b46e15ee",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_4929293b",
+            "runs": 1
+          },
+          {
+            "questionId": "eac54add",
+            "runs": 2
+          },
+          {
+            "questionId": "6e984302",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_93159ced",
+            "runs": 1
+          },
+          {
+            "questionId": "gpt4_65aabe59",
+            "runs": 3
+          },
+          {
+            "questionId": "982b5123",
+            "runs": 3
+          },
+          {
+            "questionId": "c9f37c46",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_9a159967",
+            "runs": 2
+          },
+          {
+            "questionId": "gpt4_7de946e7",
+            "runs": 2
+          },
+          {
+            "questionId": "d01c6aa8",
+            "runs": 2
+          }
+        ]
+      },
+      "durableMissIds": [
+        "gpt4_e414231e",
+        "gpt4_7ca326fa",
+        "gpt4_cd90e484"
+      ],
+      "durableWinIds": [
+        "gpt4_4fc4f797",
+        "gpt4_45189cb4",
+        "gpt4_e061b84f",
+        "gpt4_af6db32f",
+        "gpt4_b0863698",
+        "71017277",
+        "gpt4_1e4a8aec",
+        "9a707b82",
+        "gpt4_8279ba03",
+        "gpt4_b5700ca0",
+        "gpt4_2655b836",
+        "gpt4_76048e76",
+        "08f4fc43",
+        "gpt4_385a5000",
+        "bbf86515",
+        "b9cfe692",
+        "gpt4_4edbafa2",
+        "c8090214",
+        "cc6d1ec1",
+        "gpt4_0a05b494"
+      ]
+    }
+  },
+  "gapDecomposition": {
+    "MR": {
+      "meanGapQuestions": 16.5,
+      "durableReachable": 13,
+      "durableMisses": 17,
+      "durableWins": 4,
+      "agreedWrong": 8,
+      "contested": 20,
+      "flapping": {
+        "baseline": 3,
+        "feature": 18
+      },
+      "note": "17 durable misses and 4 durable wins are 13 of the 16.50; the remaining 3.5 is flapping asymmetry. Eight questions are wrong in both arms in every repetition, so no amount of resembling the reference pipeline wins them."
+    }
+  },
+  "ceiling": {
+    "reachable": 13,
+    "closedOnFirstRepetition": "97/121 = 80.2%",
+    "durableClasses": {
+      "off-by-one": 6,
+      "decline": 5,
+      "aggregation": 4,
+      "other": 2
+    },
+    "offByOneDirection": {
+      "under": 5,
+      "over": 1
+    },
+    "note": "The 84 the arm reports on the first repetition already contains the four durable wins. Closing every durable miss and losing nothing is 84 + 17 = 101/121 = 83.5%; closing them while losing the four wins \u2014 which is what 'become more like the reference arm' means, since those four are questions it loses in every repetition \u2014 is 84 + 13 = 97/121 = 80.2%. Both are below the 96/121 this campaign has been targeting, so the registered target was above the ceiling of the strategy that named it. Reaching 96 requires winning questions the reference arm also loses, which is a different class of work and is not on any current plan row.",
+    "asymmetryWarning": "Five of the six off-by-one misses are UNDER-counts and one is an over-count (2e6d26dc, 5 -> 6), and the aggregation class carries a second over-count (a9f6b44c, 2 -> 4). Any treatment that pushes the arm toward inclusion moves five questions up and may move two down, so the net of a purely directional fix is three at best. That constraint is stated before the experiment, not after."
+  },
+  "withdrawn": {
+    "claim": "The next step is `PREREG-MR-SESSION-CHANNEL` (session-granularity relevance, MR >= 96/121), registered and not yet dispatched.",
+    "why": "It was dispatched. `docs/PREREG-MR-SESSION-CHANNEL.md` \u00a76 records run `40498191604` with the gate line confirming `relevanceSignal=retrieval-session`, and MR read 83/121 = 68.60% against the control's 84/121. P2 was refuted by 13 questions, and \u00a76.2 closed the retrieval-unit axis on two independent lines: the gold turn reaches the rendered prompt for 500 of 500 questions, and the one operation the reference pipeline performs and this arm could not moved MR by -1.",
+    "whereItWasStated": "Reported to the user as the next step at the end of iteration 2, and left in `04` \u00a79.134.7. Both are corrected here and in `04` \u00a79.135.",
+    "whatItCosts": "One iteration of planning aimed at a registration that had already returned a null result. The cost is not the arithmetic - the arithmetic was right about the wrong thing - it is that the plan and the registration file disagreed and nobody cross-checked them."
+  },
+  "predictions": [
+    {
+      "name": "the ABS column has one durable defect, on the route the operands ask does not reach",
+      "statement": "Question `6456829e_abs` is the single ABS failure, it is wrong in all four repetitions while the reference arm is right in all four, its gold is `None` (a false premise), and the arm answers `5 tomato plants` - one operand of a conjunction. The `ask: operands` contract reaches multi-session, flat and temporal; the abstention route keeps its own block. Registering now: extending the missing-operand check to the abstention route takes ABS to 30/30 and leaves MR, IE, KU and TR byte-identical.",
+      "falsifiedIf": "ABS does not reach 30/30, or any of the four other capabilities moves a single question, or its prompts move one byte",
+      "status": "registered, not dispatched"
+    },
+    {
+      "name": "the durable set is the right unit for the next MR experiment",
+      "statement": "An MR treatment that is read only at the level of a mean cannot be distinguished from noise: this arm's four repetitions span 84 to 92 with a byte-identical prompt, so any first-repetition movement under eight questions is inside the observed range. The next MR dispatch therefore commits to a paired criterion instead: it must move at least three of the seventeen named durable misses and lose at most one durable win, counted on the masks, not on the mean.",
+      "falsifiedIf": "the next MR artifact cannot be read at question level, or the treated set and the durable set do not intersect",
+      "status": "registration"
+    },
+    {
+      "name": "at least one of the five durable declines is a retrieval miss, and it can be named without a model",
+      "statement": "Four of the five durable declines have numeric golds (`5 days`, `20%`, `50`, `1,998`) and one has `7`. `d905b33f` and `c18a7dc8` are the two the operands ask was written for (`\u00a713.166` named both), and both still decline under it, which means the operand the answer needs is not in the window rather than not being looked for. Prediction: searching the stored `featurePromptTexts` for the gold's own numeral finds it absent for at least three of the five.",
+      "falsifiedIf": "all five carry the gold numeral in their prompt",
+      "status": "registered, cheap to check: the prompts are already in the artifact"
+    }
+  ],
+  "whatItChanges": [
+    "`16 questions behind` becomes `21, 18, 17, 10` by repetition, of which 13 is durable, 8 questions are lost in both arms, and 3.5 is the asymmetry of 18 flapping questions against 3.",
+    "The 96/121 target registered in `PREREG-MR-SESSION-CHANNEL` \u00a75 was above the ceiling of matching the reference arm (97/121) and is retired with it. A target that a transplant cannot reach is not a target.",
+    "`MR is judge-limited` was already withdrawn (`\u00a713.185`, `\u00a713.186`) on the numeric channel; this reading removes the last place that annotation still applied, because the 16.50 it multiplied by 19.38% was never a paired count.",
+    "The MR work list becomes seventeen ids with a class each, not a capability with a deficit."
+  ],
+  "limits": [
+    "The masks are per repetition, so a verdict is a property of the code only if the four repetitions share their prompt. On this artifact `promptVariants` is 1 for 500 of 500 questions, so they do; on an artifact where it is 4, `durable` would mean '_durable across four different prompts_' and would understate what a fix can reach.",
+    "`agreed-wrong` is a ceiling of the harness and not of the capability: a question both arms miss may be one a different prompt, window or reader wins. What the reading says is that resembling the reference arm cannot win it.",
+    "The census classes are read from the gold and the answer, which is `tools/mr-failure-census.mjs`'s classifier and shares its blindness: a wrong answer that keeps the gold's number is invisible, and a gold that spells its number is read from the first number in the sentence.",
+    "`feature.metrics.correct` is repetition 0 (419 of 419/417/425/427), so a reader who divides it by the question count reads one repetition of four. The tool says so at the top of its output because the artifact cannot: no field records which repetition the headline came from."
+  ]
+}

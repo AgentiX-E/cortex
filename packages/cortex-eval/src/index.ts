@@ -71,6 +71,17 @@ export { nameScreen } from './mr-entity-recheck.js';
 // report accuracy for a capability without the instrument under audit.
 export { numericScreen } from './numeric-recheck.js';
 
+// The pairing the campaign kept quoting from averages. `featureCorrectByRun` and
+// `baselineCorrectByRun` have been in the artifact since they were added to answer exactly one
+// question — whether a spread is one question flapping or several moving once — and `§13.187` is the
+// first reading of them. The verdicts separate what an intervention can reach (`durable-miss`) from
+// what needs a repeat (`contested`) and from what neither arm wins (`agreed-wrong`, a ceiling rather
+// than a gap), which a difference of means cannot do. Exported for the reason the screens are:
+// `tools/paired-flip.mjs` is a shell over it. The per-question predicate stays in the module:
+// the tool reads verdicts from the summary, and a barrel export the tool never calls is the
+// advertisement the export census refuses.
+export { summarisePaired } from './paired-flip.js';
+
 // The reading stage of the competition harness. Only the factory is exported: the tool needs a reader, and the
 // prompt, the renderer and the refusal phrase are its internals — a second caller reaching for them would be
 // building a second reader, which is the thing this module exists to prevent. The tests import the module

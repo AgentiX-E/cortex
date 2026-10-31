@@ -20399,3 +20399,140 @@ moves 121 answers can now be checked for whether it moved them by being right ra
 accepted — and if the reference arm's 100–102 contains false accepts of its own, the gap is smaller than
 16 and the target of 96 is easier than it looks. That check is `--capability all` on both arms, and it
 needs no key.
+
+### 13.187 The gap was never a constant: the masks were read, and the plan's next step was one that had already run
+
+**Registered 2026-10-31, on artifact `41159983913`, with no new dispatch.** Reading
+`tools/paired-flip-reading.json`; instrument `packages/cortex-eval/src/paired-flip.ts`;
+shell `tools/paired-flip.mjs`; accounting `tools/__tests__/test_paired_flip.py` (8 tests) and
+`packages/cortex-eval/src/__tests__/paired-flip.test.ts` (14).
+
+#### 13.187.1 What was never read
+
+`AblationResult.featureCorrectByRun` and `baselineCorrectByRun` are four correctness masks per arm, one
+character per dataset question, run-major. The field's own docblock gives the purpose and names the
+failure it was added for: a spread *"cannot separate one question flapping four times from four
+questions flapping once each"*. It has been in the artifact since that comment was written.
+
+**No tool in this repository read it.** Every capability comparison in the campaign — including the
+`15 to 25 questions, paired, in every run` of `PREREG-MR-SESSION-CHANNEL` §1 — subtracted two means.
+"Paired" there meant *same run*, and the distinction that matters is *same question*.
+
+#### 13.187.2 The reading
+
+| capability | n | baseline per repetition | feature per repetition | gap per repetition |
+| --- | --: | ---: | ---: | ---: |
+| MR | 121 | 105, 104, 104, 102 | 84, 86, 87, 92 | **21, 18, 17, 10** |
+| TR | 127 | 84, 83, 83, 83 | 105, 100, 104, 101 | −21, −17, −21, −18 |
+| IE | 150 | 1, 1, 1, 1 | 141, 143, 144, 144 | −140, −142, −143, −143 |
+| KU | 72 | 0, 0, 0, 0 | 60, 59, 61, 61 | −60, −59, −61, −61 |
+| ABS | 30 | 30, 30, 30, 30 | 29, 29, 29, 29 | 1, 1, 1, 1 |
+
+| capability | durable-miss | durable-win | agreed-wrong | contested | flapping (b/f) |
+| --- | --: | --: | --: | --: | --: |
+| MR | **17** | **4** | 8 | 20 | 3 / 18 |
+| TR | 3 | 20 | 13 | 17 | 1 / 17 |
+| IE | 0 | 136 | 4 | 9 | 0 / 9 |
+| KU | 0 | 58 | 10 | 4 | 0 / 4 |
+| ABS | **1** | 0 | 0 | 0 | 0 / 0 |
+
+MR's sixteen-question gap is a mean over gaps of 21, 18, 17 and 10, and the number it subtracts is
+itself unstable (105, 104, 104, 102). The decomposition is **17 durable misses − 4 durable wins = 13**,
+plus 3.5 of flapping asymmetry — from **37 disagreements** (29 and 8) out of 121, with 72 agreed-right
+and 8 agreed-wrong.
+
+#### 13.187.3 The ceiling, and the target that was above it
+
+The 84 already contains the four durable wins, so the arithmetic is closed at both ends:
+
+- fix all 17 misses, lose nothing: **101/121 = 83.5%**;
+- fix all 17, lose the 4 wins — which is what *resembling the reference arm* means, since those four
+  are questions it loses every time: **97/121 = 80.2%**.
+
+`PREREG-MR-SESSION-CHANNEL` §5 registered **96/121**. That number is above the ceiling of the strategy
+it named, and it was never reachable by transplanting the reference pipeline. Reaching 96 requires
+winning questions the reference arm also loses, i.e. the `agreed-wrong` 8 plus part of the 20 contested.
+
+**This is a withdrawal of a target, not of a measurement.** 96 was a floor set before anyone had read
+the pairing, and a floor that no version of the named treatment can clear is not a floor.
+
+#### 13.187.4 The seventeen, and the direction that makes a fix net three
+
+Composition: **off-by-one 6, decline 5, aggregation 4, other 2**, listed by id in
+`tools/paired-flip-reading.json` and in `MEASURE-PAIRED-FLIP.md` §4.
+
+Five of the six off-by-one misses are **under-counts** (`3→2`, `4→3`, `4→3`, `23→22`, `2→1`), one is an
+**over-count** (`2e6d26dc`, `5→6`), and the aggregation class carries a second over-count (`a9f6b44c`,
+`2→4`). A treatment that pushes the arm toward inclusion therefore buys five and may sell two:
+**net three, not seven.** That constraint is registered before the experiment so it cannot be read
+afterwards as an explanation.
+
+Two of the seventeen name their own missing operand in prose — `edced276` ("the Hawaii trip is
+mentioned but no duration is given anywhere in the evidence") and `2b8f3739` ("the third item's total
+is not stated") — and the reference arm produces the gold for both. An answer that names its own
+missing operand is the most informative failure in the set, because it cannot be a miscount.
+
+#### 13.187.5 Withdrawn: the next step was a registration with a result section
+
+The previous iteration closed by naming
+
+> the next experiment is `PREREG-MR-SESSION-CHANNEL` (session-granularity relevance, `MR ≥ 96/121`)
+
+and wrote the same into `04` §9.134.7 and `03` §14.2. That registration has a `§6 Result`: run
+`40498191604`, gate line `relevanceSignal=retrieval-session`, **MR 83/121 = 68.60%** against the
+control's 84, P2 refuted by thirteen questions, and §6.2 closing the retrieval-unit axis because the
+gold turn reaches the rendered prompt for 500 of 500 questions.
+
+**A registration that has a result section is not a registration**, and the file is in the same
+repository as the plan that cited it. The cost is not the arithmetic — the arithmetic was right about
+the wrong thing — it is that two documents disagreed and nothing compared them.
+
+#### 13.187.6 Registered now, both cheap and both falsifiable
+
+**A. The ABS defect, which is one question and one route.** `6456829e_abs` is wrong in 4 of 4
+repetitions while `reference-pipeline` is right in 4 of 4. Gold `None` (a false premise), answer
+`5 tomato plants`: the question asks for **tomatoes and chili peppers** and the reply answers one
+operand. `ask: operands` reaches the **`multi-session` route alone** (`prompt.ts`'s reach map says one
+route even though its gate admits three), and `classifyQuestionShape` runs only under that ask — so the
+abstention route is outside the reach of the one mechanism in this repository that asks a reader whether
+every operand of a question is present. The route whose whole job is to notice an unanswerable question
+is the route the missing-operand check cannot see.
+
+> **Prediction:** extending the missing-operand check to the abstention route takes ABS to **30/30**
+> and leaves MR, IE, KU and TR byte-identical.
+
+**Falsified if** ABS does not reach 30/30, or any other capability moves a single question, or its
+prompts move one byte.
+
+**B. The next MR experiment is read on the masks, not on the mean.** This arm's four repetitions span
+84 to 92 with `promptVariants == 1` for all 500 questions, so a first-repetition movement under eight
+questions is inside the observed range and cannot be attributed to a treatment.
+
+> **Prediction / criterion:** the next MR dispatch must move **at least three of the seventeen named
+> durable misses** and lose **at most one durable win**, counted on `featureCorrectByRun`, and its
+> report must carry the mask comparison rather than the difference of means.
+
+**Falsified if** the artifact cannot be read at question level, or the treated population does not
+intersect the durable set.
+
+**C. One free check the artifact already supports.** Four of the five durable declines have numeric
+golds (`5 days`, `20%`, `50`, `1,998`) and one has `7`. `d905b33f` and `c18a7dc8` are two the operands
+ask was written for (`§13.166` names both), and both still decline under it.
+
+> **Prediction:** searching the stored `featurePromptTexts` for the gold's own numeral finds it absent
+> for at least three of the five.
+
+**Falsified if** all five carry the gold numeral in their prompt — which would move them from
+retrieval to reader and make the decline class a reader defect instead.
+
+#### 13.187.7 What this does not say
+
+1. `durable` is a property of the code only when the repetitions share a prompt. Here they do
+   (`promptVariants` 1 for 500 of 500); on an artifact where it is 4, the verdict would mean "durable
+   across four different prompts" and would understate what a fix can reach.
+2. `agreed-wrong` is a ceiling of this harness, not of the capability: 8 MR questions may be winnable by
+   a different prompt, window or reader. What is ruled out is winning them by resembling the reference arm.
+3. The classes come from `tools/mr-failure-census.mjs`'s classifier, read from the gold and the answer,
+   and inherit its blindness: a wrong answer that keeps the gold's number is invisible to it.
+4. `feature.metrics.correct` is repetition 0 (419 of 419/417/425/427) and no field says so. The tool
+   prints that sentence above every number for that reason.
