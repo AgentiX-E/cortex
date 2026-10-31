@@ -1,0 +1,299 @@
+{
+  "firefox": "/opt/firefox/firefox",
+  "engine": "firefox",
+  "origin": "http://127.0.0.1:39777",
+  "rows": 2000,
+  "phases": {
+    "matrix": {
+      "mode": "matrix",
+      "checks": [
+        {
+          "name": "opfs tier was obtained",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: put then get",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: rewrite the same key",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: delete",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: tags are ANDed",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: a prefix is literal, not a pattern",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: an expired row is invisible",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: a transaction commits",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: a throwing body rolls back",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: a nested transaction is refused",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "opfs: an outside write during a transaction is refused",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb tier was obtained",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: put then get",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: rewrite the same key",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: delete",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: tags are ANDed",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: a prefix is literal, not a pattern",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: an expired row is invisible",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "idb: a transaction is refused rather than faked",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "a broken sqlite module falls back to idb, and says why",
+          "ok": true,
+          "detail": "OPFS storage is unavailable: error loading dynamically imported module: http://127.0.0.1:39777/vendor/does-not-exist.mjs"
+        },
+        {
+          "name": "a missing sqliteModuleUrl throws instead of downgrading",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "no requested tiers is an error, not an empty storage",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "a closed storage refuses further use",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "tiers": {
+        "opfs": {
+          "tier": "opfs",
+          "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
+          "refused": []
+        },
+        "idb": {
+          "tier": "idb",
+          "engine": "indexeddb"
+        }
+      }
+    },
+    "write": {
+      "mode": "write",
+      "tier": "opfs",
+      "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
+      "refused": [],
+      "rows": 2000,
+      "writeMs": 124949,
+      "rowsPerSecond": 16.00653066451112,
+      "transactionWriteMs": 270,
+      "transactionRowsPerSecond": 7407.407407407407,
+      "digest": {
+        "hash": 4000247205,
+        "count": 2000
+      },
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:159.0) Gecko/20100101 Firefox/159.0"
+    },
+    "read": {
+      "mode": "read",
+      "tier": "opfs",
+      "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
+      "refused": [],
+      "rows": 2000,
+      "readMs": 15,
+      "digest": {
+        "hash": 4000247205,
+        "count": 2000
+      },
+      "matches": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:159.0) Gecko/20100101 Firefox/159.0"
+    }
+  },
+  "note": "One run. The throughput numbers are engine surface, not a criterion: they are cited as a range across runs and never compared with Chromium. The tier, the check count, the check names and the digest are what this file is for.",
+  "summary": {
+    "checks": 24,
+    "passed": 24,
+    "failed": 0,
+    "digestMatches": true
+  },
+  "checks": [
+    {
+      "name": "opfs tier was obtained",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: put then get",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: rewrite the same key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: delete",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: tags are ANDed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a prefix is literal, not a pattern",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: an expired row is invisible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a transaction commits",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a throwing body rolls back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a nested transaction is refused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: an outside write during a transaction is refused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb tier was obtained",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: put then get",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: rewrite the same key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: delete",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: tags are ANDed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: a prefix is literal, not a pattern",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: an expired row is invisible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: a transaction is refused rather than faked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a broken sqlite module falls back to idb, and says why",
+      "ok": true,
+      "detail": "OPFS storage is unavailable: error loading dynamically imported module: http://127.0.0.1:39777/vendor/does-not-exist.mjs"
+    },
+    {
+      "name": "a missing sqliteModuleUrl throws instead of downgrading",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no requested tiers is an error, not an empty storage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a closed storage refuses further use",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rows survive a browser restart with an identical digest",
+      "ok": true,
+      "detail": "wrote 4000247205, read 4000247205 (2000 rows)"
+    }
+  ],
+  "failures": []
+}

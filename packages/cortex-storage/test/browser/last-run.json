@@ -1,6 +1,7 @@
 {
   "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-  "origin": "http://127.0.0.1:35585",
+  "engine": "chromium",
+  "origin": "http://127.0.0.1:45835",
   "rows": 2000,
   "phases": {
     "matrix": {
@@ -104,7 +105,7 @@
         {
           "name": "a broken sqlite module falls back to idb, and says why",
           "ok": true,
-          "detail": "OPFS storage is unavailable: Failed to fetch dynamically imported module: http://127.0.0.1:35585/vendor/does-not-exist.m"
+          "detail": "OPFS storage is unavailable: Failed to fetch dynamically imported module: http://127.0.0.1:45835/vendor/does-not-exist.m"
         },
         {
           "name": "a missing sqliteModuleUrl throws instead of downgrading",
@@ -140,10 +141,10 @@
       "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
       "refused": [],
       "rows": 2000,
-      "writeMs": 122935.89999961853,
-      "rowsPerSecond": 16.268640812050883,
-      "transactionWriteMs": 221.80000019073486,
-      "transactionRowsPerSecond": 9017.132544094313,
+      "writeMs": 120443.5999994278,
+      "rowsPerSecond": 16.605282472539027,
+      "transactionWriteMs": 207.80000019073486,
+      "transactionRowsPerSecond": 9624.639067200413,
       "digest": {
         "hash": 4000247205,
         "count": 2000
@@ -156,7 +157,7 @@
       "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
       "refused": [],
       "rows": 2000,
-      "readMs": 22.90000057220459,
+      "readMs": 15.800000190734863,
       "digest": {
         "hash": 4000247205,
         "count": 2000
@@ -171,5 +172,128 @@
     "passed": 24,
     "failed": 0,
     "digestMatches": true
-  }
+  },
+  "checks": [
+    {
+      "name": "opfs tier was obtained",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: put then get",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: rewrite the same key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: delete",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: tags are ANDed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a prefix is literal, not a pattern",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: an expired row is invisible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a transaction commits",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a throwing body rolls back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: a nested transaction is refused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "opfs: an outside write during a transaction is refused",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb tier was obtained",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: put then get",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: rewrite the same key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: delete",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: tags are ANDed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: a prefix is literal, not a pattern",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: an expired row is invisible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idb: a transaction is refused rather than faked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a broken sqlite module falls back to idb, and says why",
+      "ok": true,
+      "detail": "OPFS storage is unavailable: Failed to fetch dynamically imported module: http://127.0.0.1:45835/vendor/does-not-exist.m"
+    },
+    {
+      "name": "a missing sqliteModuleUrl throws instead of downgrading",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no requested tiers is an error, not an empty storage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a closed storage refuses further use",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rows survive a browser restart with an identical digest",
+      "ok": true,
+      "detail": "wrote 4000247205, read 4000247205 (2000 rows)"
+    }
+  ],
+  "failures": []
 }

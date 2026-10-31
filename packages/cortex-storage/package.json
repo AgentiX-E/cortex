@@ -43,7 +43,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "guard": "node ../../tools/entry-guard.mjs --package .",
     "clean": "rm -rf dist *.tsbuildinfo coverage",
-    "test:browser": "node test/browser/probe.mjs && node test/browser/bundle-probe.mjs"
+    "test:browser": "node test/browser/probe.mjs && node test/browser/bundle-probe.mjs",
+    "test:browser:firefox": "node test/browser/probe-firefox.mjs"
   },
   "dependencies": {
     "@agentix-e/cortex-core": "workspace:*"

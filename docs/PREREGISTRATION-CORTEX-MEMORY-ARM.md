@@ -19492,3 +19492,149 @@ band was this defect, and the next two dispatches will say how much.
 - **Not that the cache prediction will hold.** It is registered as 60%, derived from "three of four passes resend
   identical bytes" — a provider that declines to cache is still a live explanation for a miss, and this time the
   instrument can tell the two apart.
+
+### 13.178 Gate 2: the persistence has to reproduce on a second engine, and a second Chromium is not one
+
+`§10.2` gate 2 of the execution plan reads: *"`[POC-1]`'s persistence reproduces on **at least two browser
+engines** (Chromium + one more)"*. `13.177`'s sibling work closed gate 1 (the size guard, in `pnpm check`, and the
+subpaths resolving in a real bundler). Gate 2 is the other half of the same claim, and until it is a reading, the
+sentence "the browser tier persists" is a statement about **one** implementation.
+
+#### 13.178.1 Why the second engine cannot be a second Chromium profile
+
+A second Chromium run on a second profile reproduces the *suite* and not the *claim*. The thing that can fail is
+`FileSystemSyncAccessHandle`, and Chromium has exactly one implementation of it — the same VFS, the same SQLite
+build, the same bug surface, the same quota accounting. Two Chromium profiles agreeing tells you the suite is
+deterministic. It cannot tell you the API contract is the one the specification describes.
+
+Firefox is the cheap second implementation and was already installed for this: **Firefox 159.0** at
+`/opt/firefox/firefox`. It is also the harder of the two to automate, which is the cost of the answer.
+
+#### 13.178.2 The suite is one module, so the engines can only differ where they really differ
+
+`test/browser/restart-suite.mjs` runs the whole four-phase flow — matrix, deterministic write, **restart**, read,
+digest compare — and a caller supplies only `open(origin)`: launch the browser on the profile, navigate, wait for
+`window.__ready`, return `{ evaluate, close }`. Which modes run, how many rows, whether the digest matches, and the
+24th check are therefore **not** per-engine code. The alternative — a Firefox probe that reimplemented the two-phase
+flow — would eventually disagree with the Chromium one about something that is not the engine: the row count, the
+digest function, or (the silent one) whether the second launch reuses the origin. OPFS is per-origin storage, so a
+second launch on a fresh port reads an empty database and **passes**.
+
+`test/browser/bidi.mjs` is the Firefox half: find the binary, launch headless with `--remote-debugging-port`, speak
+WebDriver BiDi over the WebSocket Node already has. No Playwright, for the same reason `cdp.mjs` has none.
+
+#### 13.178.3 The one thing that costs an hour if it is not written down
+
+Firefox removed CDP in 129 and kept the W3C standard. It prints
+
+```
+WebDriver BiDi listening on ws://127.0.0.1:PORT
+```
+
+and then answers **`200 OK` with an `httpd.js` welcome page** to a WebSocket handshake at that exact URL, because the
+root is the HTTP endpoint and the upgrade lives one segment down at **`/session`**. The failure reads as
+`non-101 status code`, which looks like a protocol bug and is a path bug. `curl` cannot settle it either: a GET
+returns `200`, a POST returns *"the handshake request must use GET method"*. The session is created **inside** the
+socket by the first `session.new`, so the connection *is* the readiness test and no HTTP probe can substitute for it.
+
+#### 13.178.4 The criteria, registered before the run
+
+Payload: `CORTEX_ROWS=2000` (the same default the Chromium reading used), the shipped `dist/` served by the same
+`server.mjs`, one profile directory across both launches, one origin across both launches.
+
+| # | criterion                | passes when                                                                        | falsified when                                                                                         |
+| - | ------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1 | the tier                 | Firefox obtains `tier === 'opfs'` (not a fall back to `idb`)                        | `refused` names opfs: Firefox declines `createSyncAccessHandle`, and gate 2 is a **gap**, not a pass     |
+| 2 | the check count          | 24 checks, 0 failed — the 23 matrix checks plus the restart check                   | fewer than 24, and a check went missing or was replaced by the "matrix was not run" placeholder         |
+| 3 | the names                | the 24 check names are **identical strings** to the Chromium run                    | any renamed, added or absent name: a suite that renames per engine cannot be diffed between engines     |
+| 4 | the digest               | 2,000 rows read back as **`4000247205`**, the same integer Chromium produced         | any other value: the rows, or their order, are not preserved across a Firefox restart                   |
+| 5 | the refusal path         | `a broken sqlite module falls back to idb, and says why` passes on Firefox as well  | it fails there, and the startup timeout — not the module load — is what closed that path on Chromium    |
+
+Criterion 4 is the load-bearing one and it is deliberately exact: the digest is FNV-1a over
+`JSON.stringify` of the rows in query order, pure integer arithmetic with no engine surface, so "same rows, same
+order" implies "same integer". A different integer is a **result**, not a tolerance.
+
+Explicitly **not** criteria: the throughput numbers. They move by ~15% between runs on one host and have no shared
+meaning across engines; the documents cite them as a range, and a gate on them would fire on a legitimate run
+(`§11.4`).
+
+#### 13.178.5 What this will not claim, whichever way it reads
+
+- **Not Safari.** WebKit's OPFS has no persistent profile in the WebDriver session model this suite uses, so the
+  third engine needs a real device and a real profile; that stays listed as a boundary in `§10.1.1`.
+- **Not multi-tab concurrency, not private browsing, not quota exhaustion.** None is exercised by either probe.
+- **Not that Firefox is supported.** Obtaining the tier and surviving a restart is the API contract; a product
+  statement about Firefox (quota, eviction, sync-handle contention under many tabs) is a different sentence.
+- **Not that the two engines agree on speed.** They do not, and no criterion here reads it.
+
+#### 13.178.6 The reading: gate 2 closed, and the run that closed it was not the run that proved anything
+
+`probe-firefox.mjs` at 2,000 rows, Firefox **159.0** (`rv:159.0`, `Gecko/20100101`), same `dist/`, same
+`server.mjs`, one profile, one origin, two launches:
+
+| # | criterion       | reading                                                                     | verdict |
+| - | --------------- | --------------------------------------------------------------------------- | ------- |
+| 1 | the tier        | `tier === 'opfs'`, engine `sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)`, `refused: []` — **the same engine string Chromium reports** | **pass** |
+| 2 | the check count | 24 checks, 24 passed, 0 failed; digest check row included                    | **pass** |
+| 3 | the names       | the 24 names are identical **in order and in string** to `last-run.json`     | **pass** |
+| 4 | the digest      | wrote `4000247205`, read `4000247205`, 2,000 rows, `matches: true`           | **pass** |
+| 5 | the refusal path| `a broken sqlite module falls back to idb, and says why` passes, reason `error loading dynamically imported module: …/vendor/does-not-exist.mjs` | **pass** |
+
+Row 4 is the one worth the wall-clock: two engines, two implementations of `createSyncAccessHandle`, two
+storage backends underneath, and the same 2,000 rows come back in the same order with the same integer.
+That is the claim gate 2 was asking about, and it is now a reading rather than an assumption.
+
+Two engine differences that the suite deliberately does not depend on:
+
+| surface        | Chromium                              | Firefox                                  | why it is not a check                                                      |
+| -------------- | ------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| failed import  | `Failed to fetch dynamically imported module` | `error loading dynamically imported module` | the check asserts that a refusal is **reported**, not its wording; a text assertion here would be engine coupling |
+| speed, 2,000 rows | 120,444 ms commit-per-row (17/s), 208 ms one transaction (9,625/s), read 15.8 ms | 124,949 ms (16/s), 270 ms (7,407/s), read 15.0 ms | within the ~15% run-to-run band; `13.178.4` excludes it on purpose |
+
+#### 13.178.7 The first run failed, and what it proved was not a storage bug
+
+The first Firefox attempt died with
+
+```
+TypeError: Cannot read properties of undefined (reading 'hash')
+    at runRestartSuite (restart-suite.mjs:40:42)
+```
+
+three lines into the **shared** module, on `phases.write.digest.hash`. OPFS on Firefox was fine and had never been
+asked. The cause is in the protocol, and it is worth stating in the form it will be met again:
+
+> WebDriver BiDi does not send an object as an object. `script.evaluate` returns
+> `{ type: 'object', value: [ ['hash', { type: 'number', value: 4000247205 }], … ] }` — an ordered list of
+> `[key, RemoteValue]` pairs. `evaluate` returned `outcome.result.value`, so the suite held the pair list.
+
+Measured, not read off the specification: a live round trip of `({ hash: 4000247205, count: 2000, arr: [1,"a",null],
+nested: {ok:true}, u: undefined, nan: NaN, neg: -0 })` also settled the three shapes that would have been "obvious"
+guesses — `NaN` arrives as the **string** `'NaN'`, `-0` as `'-0'`, and `undefined` as a type with **no `value` field**.
+
+The conversion is now `deserialize` + `valueOf` in `bidi.mjs`, with `evaluate` reduced to six lines of transport, and
+the branch that was wrong is covered without a browser:
+
+- `bidi.mjs --self-test` — **8 cases**, fixtures transcribed from that live round trip: a number, the pair list, an
+  array with a null, `undefined` (and that the key still exists), the four numbers JSON cannot carry, an object with
+  no pairs, a nested pair list inside an array, and an exception. `8 passed, 0 failed`.
+- `tools/__tests__/test_bidi_deserialize.py` — **4 tests**, inside `pnpm check`: the self-test passes, every case is
+  reported **by name** (deleting one is a coverage loss, not a smaller count), importing the module runs no test
+  (the guard is on which file is the entry point), and a **mutation** that reverts the object branch to
+  `return remote.value;` fails **by name** — `4 passed, 4 failed`, the four cases whose result is an object. The
+  mutation test is the one that keeps the fix from being tidied away.
+
+Two further facts this cost, both now comments where they are needed: `browsingContext.getTree` is refused with
+*"System access is required. Start Firefox with the MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1"*, so the tab id is exposed as a
+read-only accessor (`connection.context`) rather than rediscovered; and the entry-point guard cannot be
+`argv[1].endsWith('bidi.mjs')`, because a mutation fixture under another name would then skip the self-test — it is
+`import.meta.url === pathToFileURL(argv[1]).href`.
+
+#### 13.178.8 What closing this gate changes, and what it does not
+
+`§10.2` was four conditions on a public sentence. **Now 2 of 4 are closed**: gate 1 (size guard in `pnpm check`, three
+browser subpaths resolving in a real bundler) and gate 2 (persistence on two engines, 24/24 each, one digest).
+
+The remaining two are the ones that need something this host does not have: **gate 3**, a false-share upper bound
+≤5%, needs a corpus and a reader; **gate 4**, the LongMemEval reading with run id, configuration row and per-question
+records, is the accuracy campaign's own output and is the same table `§13.177` reports against. So the sentence
+"browser-capable, privacy-safe" is still not publishable, and the reason is now two named rows rather than four.
