@@ -20781,20 +20781,81 @@ operand is still declined for the shipped reason as well as the new one.
 
 Reach and change set are the same single route, which no ask before this one manages: the abstention route
 is the only route that reads `CONTRACT_INSTRUCTIONS.abstention`, so MR, IE, KU and TR read the shipped block
-**by construction**. Their `promptChars` in the artifact are a check on that claim rather than a hope about
-it, and the dispatch is readable against the shipped arm at the same load because nothing else in the
-campaign changes these bytes.
+**by construction**.
+
+**Dispatched as `41188431321`**, load copied field for field from `41185512391` with `ask` the only field
+changed (`operands` → `operand-gap`; `maxPromptChars 96000`, `maxTurnChars 400:ellipsis` on
+`multi-session,temporal`, `promptContract abstention-evidence-blocks`, `reviewPass bare`, `runs 4`,
+`limit 0`, commit `9cd56e8`). That makes the comparison per capability rather than whole-run, and each
+line of it is checkable in the two artifacts:
+
+| capability | route | control `41185512391` reads | this run reads | readable? |
+| --- | --- | --- | --- | --- |
+| **ABS** | abstention | shipped block | shipped block, closing line replaced | **yes — one variable** |
+| IE | flat | shipped block | shipped block | yes — prompts must be byte-identical |
+| KU | knowledge-update | shipped block | shipped block | yes — prompts must be byte-identical |
+| TR | temporal | shipped block | shipped block | yes — prompts must be byte-identical |
+| MR | multi-session | `operands` block on 7 derivation questions | shipped block | **no** — two asks, and this registration does not read MR |
+
+The marker does not enter this comparison: `turnCutMarker` rides on the turn cap, the cap's reach in both
+runs is `multi-session,temporal`, and the abstention route is outside it — so both runs' ABS prompts are
+marker-free and the only difference in them is the line this ask replaces.
 
 That makes ABS's criterion directional: **30 of its 30 golds are declines**, so the only way this treatment
 can lose a point is by converting a correct decline into an answer. The prediction is therefore about one
 question and not about a headline:
 
 > **Prediction:** `6456829e_abs` declines in the feature arm, in all four repetitions; the other 29 ABS
-> questions keep declining; ABS reads **30/30** per repetition; MR/IE/KU/TR `promptChars` are equal between
-> the arms on every question; no capability's headline falls by more than the 2.2-point noise floor; the
-> added characters are one 60-word line on 30 questions, which is below the run's rounding.
+> questions keep declining; ABS reads **30/30** per repetition; IE, KU and TR read prompts byte-identical to
+> `41185512391`'s on every question, which is the reach table checked against an artifact rather than
+> against itself; MR is unread here; the added characters are one 60-word line on 30 questions, which is
+> below the run's rounding.
 
 **Falsified if** `6456829e_abs` answers again — then the per-part clause is not the variable, the chain's
 prose half is wrong, and the next candidate is the retrieval half (§13.190.3 item 1) — or if any ABS
-question that declined in the control answers here, or if any of the four other capabilities moves by more
-than the noise floor, which would mean the reach table is not what the renderer does.
+question that declined in the control answers here, or if any of IE, KU and TR shows a single prompt whose
+bytes moved, which would mean the reach table is not what the renderer does.
+
+### 13.191 The pair tool read lengths where it should have read digests — and criterion 3 was vacuous for an ask
+
+**Registered 2026-10-31, as an instrument.** `tools/window-pair.mjs` gains `promptIdentity`: a three-state
+reading of `promptDigest` across the two artifacts (`digest-equal` / `digest-differs` / `unmeasured`), a
+per-capability count, and one line — `length is not identity` — counting the questions whose prompts changed
+**bytes at the same length**. The JSON summary gains the four id lists. Accounting: `test_window_pair.py`
+13 → **16**, tools 989 → **992**.
+
+#### 13.191.1 Two fields were measured and neither was reported
+
+`promptCharsEqual` was computed in `compare()` and printed nowhere. That is the shape this campaign keeps
+finding one level up: a number that exists in the code and not on the page is a number no reading can use, and
+it reads as coverage. `promptDigest` had the same history for a different reason — §13.171 built it to answer
+"did the prompt move" and, from the day it landed until now, **no tool read it**.
+
+#### 13.191.2 What criterion 3 was actually asserting, and where it is vacuous
+
+Criterion 3 is *"the mechanism is administered on the temporal route and nowhere else"*. Its evidence was the
+**delivered turns**: a route whose turns did not reorder was treated as a route whose prompt did not move. For
+`13.153`'s window reorder that is exact — the mechanism *is* a reorder. For an instruction-block ask it is
+vacuous by construction: an ask changes no turn, so every question reads as untouched, criterion 3 passes, and
+it would pass identically on a run where the ask reached all six routes. §13.190 is the first ask whose single
+claim is exactly "five routes read the same bytes", so the instrument has to read bytes.
+
+#### 13.191.3 Why `unmeasured` is a state and not a default
+
+An artifact written before §13.171 has no digest. Folding "no digest" into "equal" would report an identity
+nobody checked, on the archived runs — which are precisely where a cross-run prompt comparison is most
+tempting, because they are the only control artifacts a new dispatch has. The tool prints the count and says
+in words that a missing field is not a match.
+
+#### 13.191.4 What the new line is for
+
+`length is not identity` is not a diagnostic of the tool; it is a diagnostic of **every earlier reading**. A
+swapped instruction line of the same length was invisible to `promptChars`, and every reach table in this
+campaign was asserted against it. On the two artifacts this line will first be pointed at (`41185512391` and
+`41188431321`) the expectation is **0**: three of the four capabilities should have identical digests and
+identical lengths, and ABS should differ on both, because the replaced closing line is a different length.
+
+**Falsified if** any IE, KU or TR question reports `digest-differs` between those two runs — then the reach
+table is not what the renderer does, and §13.190.4's single-variable claim is false for a reason that has
+nothing to do with prompt wording. Also falsified if the tool reports `unmeasured` on those two runs, which
+would mean the digest is not being written on the path that produces the artifacts.

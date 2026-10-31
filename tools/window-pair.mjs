@@ -28,6 +28,24 @@
  * says `not comparable` and criterion 2 fails, rather than printing an order count that a reader would
  * attribute to the mechanism.
  *
+ * ## The prompt reading, and why it was added after the criteria
+ *
+ * "Nothing outside the administered set moved" is a claim about **prompts**, and this tool's evidence for it
+ * was the delivered turns: a route whose turns did not reorder was treated as a route whose prompt did not
+ * move. That is true for the mechanism this file was written for and false in general -- an instruction-block
+ * ask changes no turn at all, so every one of its questions reads as untouched and the criterion becomes
+ * vacuous exactly where it is most needed.
+ *
+ * `promptDigest` (§13.171) is the field that answers the question directly, and until now no tool read it.
+ * It is reported as three states, because an artifact written before the field existed has no digest and
+ * "no measurement" must not render as "equal" -- the archived runs are precisely where a cross-run prompt
+ * comparison is most tempting.
+ *
+ * The line `length is not identity` is the reason the digest is worth a section. Every reach table in this
+ * campaign was asserted against `promptChars`, and a swapped instruction line of the same length is invisible
+ * to it. When that count is non-zero, a comparison somebody called "byte-identical" was a comparison of
+ * lengths.
+ *
  * ## Two words that mean different things in the two tools
  *
  * `window-wired.mjs` reports `converted` for the questions it moves that the control answers **wrong** --
@@ -59,8 +77,9 @@ usage:
   --wired    optional: the JSON summary from window-wired --json, to cross-check the moved set and to read
              criteria 4 and 5, whose populations are the questions that tool identifies
 
-prints, per capability and in total: questions, multiset changes, order changes, untouched flips, and then
-one line per criterion with its denominator. Exit 0 when every criterion it can read is met, 1 when one is
+prints, per capability and in total: questions, multiset changes, order changes, untouched flips, the
+prompt identity (digest-equal / digest-differs / unmeasured, with the count of pairs whose prompts changed
+bytes at the same length), and then one line per criterion with its denominator. Exit 0 when every criterion it can read is met, 1 when one is
 not, 2 when the pair cannot be compared at all.
 `;
 
@@ -131,11 +150,48 @@ function join(control, treated) {
     .map((id) => ({ id, control: left.get(id), treated: right.get(id) }));
 }
 
-/** One row per question: what the delivery did, and what the verdict did. */
+/**
+ * Whether the two runs sent the same prompt, read from the digest and never from the length.
+ *
+ * ## Why this is three states and not a boolean
+ *
+ * `promptChars` was the campaign's proxy for "did the prompt move" for a dozen rounds, and it cannot answer
+ * the question: a run that swaps one instruction line for another of the same length reports an unchanged
+ * prompt under it, which is the shape every reach table is asserted in. §13.171 added `promptDigest` for
+ * exactly this and no tool read it -- `promptCharsEqual` was computed here and printed nowhere, which is an
+ * instrument that measures a fact and reports none.
+ *
+ * The third state is not tidiness. An artifact written before the field existed has no digest, and folding
+ * "no digest" into "equal" would report an identity nobody checked -- on the archived runs, which are
+ * precisely where a cross-run prompt comparison is most tempting.
+ *
+ * ## Why the length is kept beside it
+ *
+ * Because the interesting case is a pair that agrees on length and differs on bytes: that is a change no
+ * previous reading of this campaign could see, and printing its count is how the next reader learns that the
+ * old proxy was blind rather than merely coarse.
+ */
+function promptIdentity(control, treated) {
+  const left = control.promptDigest;
+  const right = treated.promptDigest;
+  const measured =
+    typeof left === 'string' && left !== '' && typeof right === 'string' && right !== '';
+  const lengthEqual =
+    typeof control.promptChars === 'number' && typeof treated.promptChars === 'number'
+      ? control.promptChars === treated.promptChars
+      : undefined;
+  return {
+    state: measured ? (left === right ? 'digest-equal' : 'digest-differs') : 'unmeasured',
+    lengthEqual,
+  };
+}
+
+/** One row per question: what the delivery did, what the prompt did, and what the verdict did. */
 function compare(row) {
   const before = delivered(row.control);
   const after = delivered(row.treated);
   const sortJoin = (turns) => [...turns].sort().join('\u0000');
+  const identity = promptIdentity(row.control, row.treated);
   return {
     id: row.id,
     capability: row.treated.capability ?? row.control.capability ?? 'unknown',
@@ -143,7 +199,10 @@ function compare(row) {
     orderChanged: before.join('\u0000') !== after.join('\u0000'),
     controlCorrect: row.control.correct === true,
     treatedCorrect: row.treated.correct === true,
-    promptCharsEqual: row.control.promptChars === row.treated.promptChars,
+    promptIdentity: identity.state,
+    // Kept as a reading in its own right -- and printed only where it disagrees with the digest, because a
+    // length that agrees with identity tells a reader nothing they do not already have.
+    promptCharsEqual: identity.lengthEqual,
   };
 }
 
@@ -157,10 +216,16 @@ function tally(rows) {
       orderChanged: 0,
       untouchedFlips: 0,
       untouched: 0,
+      promptEqual: 0,
+      promptMoved: 0,
+      promptUnmeasured: 0,
     };
     entry.questions += 1;
     if (row.multisetChanged) entry.multisetChanged += 1;
     if (row.orderChanged) entry.orderChanged += 1;
+    if (row.promptIdentity === 'digest-equal') entry.promptEqual += 1;
+    else if (row.promptIdentity === 'digest-differs') entry.promptMoved += 1;
+    else entry.promptUnmeasured += 1;
     if (!row.multisetChanged && !row.orderChanged) {
       entry.untouched += 1;
       if (row.controlCorrect !== row.treatedCorrect) entry.untouchedFlips += 1;
@@ -188,6 +253,13 @@ function main() {
   const orderChanged = rows.filter((row) => row.orderChanged);
   const untouched = rows.filter((row) => !row.multisetChanged && !row.orderChanged);
   const untouchedFlips = untouched.filter((row) => row.controlCorrect !== row.treatedCorrect);
+
+  // The prompt reading, and the one number in it that no previous instrument in this campaign could produce:
+  // a pair whose prompts have the same length and different bytes.
+  const promptEqual = rows.filter((row) => row.promptIdentity === 'digest-equal');
+  const promptMoved = rows.filter((row) => row.promptIdentity === 'digest-differs');
+  const promptUnmeasured = rows.filter((row) => row.promptIdentity === 'unmeasured');
+  const lengthBlind = promptMoved.filter((row) => row.promptCharsEqual === true);
 
   // Criterion 3 is about the route the mechanism reached, so the offenders are the changed questions on any
   // capability other than the temporal one -- and a multiset change on an untouched route is the same
@@ -275,6 +347,12 @@ function main() {
           multisetChanged: multisetChanged.map((row) => row.id),
           orderChanged: orderChanged.map((row) => row.id),
           untouchedFlips: untouchedFlips.map((row) => row.id),
+          promptIdentity: {
+            digestEqual: promptEqual.map((row) => row.id),
+            digestDiffers: promptMoved.map((row) => row.id),
+            unmeasured: promptUnmeasured.map((row) => row.id),
+            lengthIsNotIdentity: lengthBlind.map((row) => row.id),
+          },
           byCapability: totals,
           comparisons,
           wiredCross,
@@ -305,6 +383,27 @@ function main() {
     `multiset changes: ${multisetChanged.length}`,
     `order changes: ${orderChanged.length}`,
     `untouched flips: ${untouchedFlips.length} of ${untouched.length}`,
+    `prompt identity: ${promptEqual.length} digest-equal, ${promptMoved.length} digest-differs, ${promptUnmeasured.length} unmeasured`,
+  );
+  for (const entry of totals) {
+    lines.push(
+      `  ${entry.capability.padEnd(9)}${String(entry.promptEqual).padStart(6)}/${String(entry.questions).padEnd(6)} digest-equal`,
+    );
+  }
+  if (lengthBlind.length > 0) {
+    lines.push(
+      `length is not identity: ${lengthBlind.length} question(s) changed bytes at the same length: ${lengthBlind
+        .slice(0, 10)
+        .map((row) => `${row.id} (${row.capability})`)
+        .join(', ')}`,
+    );
+  }
+  if (promptUnmeasured.length > 0) {
+    lines.push(
+      `prompt identity is unmeasured on ${promptUnmeasured.length} question(s) -- no digest on at least one side, which is a missing field and not a match`,
+    );
+  }
+  lines.push(
     '',
     'criterion 1: not read here (a product property, measured by window-wired on the control artifact)',
   );

@@ -38,9 +38,10 @@ def record(
     capability: str = "TR",
     correct: bool = True,
     prompt_chars: int = 1000,
+    prompt_digest: str | None = None,
     turns: list[str] | None = None,
 ) -> dict:
-    return {
+    body = {
         "questionId": question_id,
         "question": f"question {question_id}",
         "capability": capability,
@@ -48,6 +49,11 @@ def record(
         "promptChars": prompt_chars,
         "turns": [turn(text) for text in (turns if turns is not None else ["a", "b", "c"])],
     }
+    # Absent rather than empty when the caller names none: "this artifact has no digest" and "this artifact's
+    # digest is the hash of nothing" are different states, and only one of them is a measurement.
+    if prompt_digest is not None:
+        body["promptDigest"] = prompt_digest
+    return body
 
 
 def report(records: list[dict]) -> dict:
@@ -222,3 +228,47 @@ def test_a_population_that_is_not_the_registered_seven_is_named(tmp_path: Path) 
     completed = run(tmp_path, control, treated, wired_body=wired(moved))
     assert "converted 5 of 5 reachable-and-wrong (bar 4)" in completed.stdout
     assert "note: the registered population is 7" in completed.stdout
+
+
+def test_two_prompts_of_the_same_length_are_not_the_same_prompt(tmp_path: Path) -> None:
+    """The reason `promptDigest` exists at all, read as a criterion-free line.
+
+    Every reading this campaign has taken of "did the prompt move" compared `promptChars`, and a treatment
+    that changes bytes without changing length -- a swapped instruction line, a reordered block -- reads as
+    unchanged under that comparison. §13.171 added the digest for exactly this, and until now no tool read it:
+    `promptCharsEqual` was computed in this file and printed nowhere.
+    """
+    control = report([record("q1", prompt_chars=1000, prompt_digest="aaaaaaaaaaaaaaaa")])
+    treated = report([record("q1", prompt_chars=1000, prompt_digest="bbbbbbbbbbbbbbbb")])
+    completed = run(tmp_path, control, treated)
+    assert completed.returncode == 0, completed.stderr
+    assert "prompt identity: 0 digest-equal, 1 digest-differs, 0 unmeasured" in completed.stdout
+    assert "length is not identity: 1 question(s) changed bytes at the same length" in completed.stdout
+    assert "q1" in completed.stdout
+
+
+def test_equal_digests_read_as_equal_and_the_capability_breakdown_agrees(tmp_path: Path) -> None:
+    """A digest is only worth reading if the equal case is reported as loudly as the different one."""
+    body = report(
+        [
+            record("ab1", capability="ABS", prompt_digest="1111111111111111"),
+            record("ie1", capability="IE", prompt_digest="2222222222222222"),
+        ]
+    )
+    completed = run(tmp_path, body, body)
+    assert completed.returncode == 0, completed.stderr
+    assert "prompt identity: 2 digest-equal, 0 digest-differs, 0 unmeasured" in completed.stdout
+    assert "ABS" in completed.stdout and "IE" in completed.stdout
+
+
+def test_an_absent_digest_is_unmeasured_and_never_counts_as_equal(tmp_path: Path) -> None:
+    """Two artifacts that both predate the field do not thereby hold the same prompts.
+
+    The three-state reading is the point: a tool that folded "no digest" into "equal" would report an
+    identity it never checked, and archived artifacts without the field are exactly where that would happen.
+    """
+    body = report([record("q1", prompt_chars=1000)])
+    completed = run(tmp_path, body, body)
+    assert completed.returncode == 0, completed.stderr
+    assert "prompt identity: 0 digest-equal, 0 digest-differs, 1 unmeasured" in completed.stdout
+    assert "length is not identity" not in completed.stdout
