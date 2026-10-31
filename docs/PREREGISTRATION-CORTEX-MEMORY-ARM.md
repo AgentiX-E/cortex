@@ -21946,3 +21946,72 @@ statement about the treatment. But the aggregate `196 → 188` is **not** a feat
 configuration, and the route-scoped run is the first one in which the baseline returns to the shipped reader while
 the feature side carries the treatment. That is the configuration a product ships; it is also the first dispatch that
 can read the knob's own claim.
+
+### 13.199 The first dispatch of the knob: one value against `41196801892`
+
+§13.198 built the reach and §13.197.3 fixed what it should read. This section is the dispatch record, written before the
+run so the reading cannot be chosen after the numbers arrive.
+
+#### 13.199.1 The pair, and why it is that pair
+
+The comparison is **`41196801892`** — the `thinking: disabled` arm of the §13.197 pair — and not the shipped 500-question
+baseline. Three reasons, and the third is the one that decides it:
+
+1. It is the same **220 questions**, so the prediction is stated in counts of the same population rather than as a share
+   of a different one.
+2. It is the same **configuration**: `maxPromptChars 96000`, `400:ellipsis`, `maxTurnCharsRoutes
+   multi-session,temporal`, `temperature 0`, one repetition. Nothing but the reader value moves.
+3. `IE`'s falsification rule is `88 ± 2` on **94 questions**. A 500-question run answers the roster question better and
+   this question worse, because `IE` is 94 of 220 there and 150 of 500 — and the falsification is the part of this
+   registration that can go wrong.
+
+#### 13.199.2 The inputs, and the one value that differs
+
+| input | `41196801892` (control) | this dispatch |
+| --- | --- | --- |
+| `thinking` | `disabled` | **`multi-session+temporal`** |
+| `limit` | `220` | `220` |
+| `ablation_runs` | `1` | `1` |
+| `cortex_memory_max_prompt_chars` | `96000` | `96000` |
+| `cortex_memory_max_turn_chars` | `400:ellipsis` | `400:ellipsis` |
+| `cortex_memory_max_turn_chars_routes` | `multi-session,temporal` | same |
+| `temperature` | `0` | `0` |
+| `model` | `deepseek-chat` | same |
+| everything else | the dispatch table's registered values | identical, unset overrides |
+
+#### 13.199.3 What it must read, and what fails it
+
+| # | prediction | fails if |
+| --- | --- | --- |
+| 1 | **`TR` ≥ 30** — the four `enabled` gained, minus at most one question of same-prompt noise (`§13.194` measured that noise at ≥ 1 question on identical prompts) | `TR` ≤ 27, which is the control's own number: the gain did not happen |
+| 2 | **`IE` ∈ [86, 90]** — the registered `88 ± 2` | outside the band: the loss was not the reader's terseness and the knob is at the wrong layer |
+| 3 | `MR` ∈ [22, 26] | outside: the composite's own axis interacted, and neither is attributable |
+| 4 | `KU` ∈ [28, 30], `ABS` ∈ [28, 30] | outside: the scoped reader reached routes it was not mapped to |
+| 5 | **roster ≥ 197** — the `enabled` arm read 188, the disabled arm 196, and the registered prediction is 201 | ≤ 196: the knob bought nothing over the shipped reader |
+
+Predictions 1 and 2 are the treatment's own claim and are **separate claims**: a run can satisfy one and fail the other,
+and which one failed says which mechanism was wrong (§13.197.2's trade, or the route mapping).
+
+#### 13.199.4 Three wire-level readings, which are not accuracy and are not negotiable
+
+Accuracy can be reinterpreted; a wiring can only be right or wrong. The artifact and the log must show:
+
+1. `memoryArmConfig.reader` carries `thinking: "enabled"` **and** `thinkingRoutes: ["multi-session", "temporal"]`. A
+   record saying only `enabled` is the `40698883428` failure — an artifact describing a configuration the run did not
+   administer.
+2. The rendered config line contains `thinking=enabled on multi-session+temporal`, because that is the line a reader of
+   the Markdown sees.
+3. The job log contains `Route-scoped reader: multi-session,temporal` before the first question — the pair was built, not
+   merely parsed.
+
+**And one invariant that has no tolerance:** every prompt in this run must be **byte-identical** to `41196801892`'s for
+the same question. `thinking` is not an input to the prompt builder, so any prompt that moved means the wiring changed
+something outside the reader — and then the roster delta is not the reader's. `tools/window-pair.mjs` reads exactly this
+(`digest-equal` per capability, and the count of pairs whose prompt changed bytes at the same length).
+
+#### 13.199.5 Why this is not the "third measurement of a two-valued switch"
+
+Because it is not one of the two states. `disabled` and `enabled` were measured; **`enabled on two of six routes with a
+disabled base** was not, and it is the only state a product can ship: it is the one that keeps the four routes that lost
+nothing on the reader every archived number was produced with. A run of `enabled` again would be the third reading of the
+same state, and §13.198.4 refuses it for that reason.
