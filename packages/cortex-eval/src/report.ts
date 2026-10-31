@@ -413,6 +413,15 @@ export type MemoryArmConfig = {
    */
   readonly maxTurnCharsRoutes?: readonly string[] | undefined;
   /**
+   * Whether a turn the per-turn cap cut said so: `'none'` or `'ellipsis'`.
+   *
+   * §13.187.6D's field. Recorded on every run for the reason `reviewPass` is: `none` is a state
+   * this experiment dispatches as its control, so an artifact that spelled nothing could not be
+   * told apart from one written before the field existed. Optional on the type only because
+   * artifacts written before §13.188 do not carry it.
+   */
+  readonly turnCutMarker?: string | undefined;
+  /**
    * The turn roles the evidence was built from, or absent for every role.
    *
    * §13.83's field, and it is recorded for the reason the cap's width is: the treatment is a
@@ -1075,6 +1084,11 @@ export function formatAblationReport(report: AblationReport): string {
         // comma: the line already separates fields with commas, so a comma inside a value would
         // make one field look like three.
         `, \`maxTurnCharsRoutes=${renderReach(memoryArm.maxTurnCharsRoutes)}\`` +
+        // §13.187.6D, beside the width it modifies: the marker is a fact about the same cut, and
+        // a reader comparing a marked run against its control must see the value on both lines.
+        // `none` is spelled rather than omitted, for the reason every always-present field here
+        // is -- the control ran, and that is information.
+        `, \`turnCutMarker=${memoryArm.turnCutMarker ?? 'none'}\`` +
         // §13.83, rendered on every run for the reason the cap is: `all` is a fact about the
         // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
         // two artifacts must be able to see which of them filtered.

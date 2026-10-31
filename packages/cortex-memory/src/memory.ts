@@ -1436,7 +1436,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
       // state `types.ts` records as indistinguishable from absent.
       ...(this.#options.maxTurnChars === undefined || !this.#capReaches(route)
         ? {}
-        : { maxTurnChars: this.#options.maxTurnChars }),
+        : {
+            maxTurnChars: this.#options.maxTurnChars,
+            // Bound to the cap rather than independent of it, because the marker describes a cut
+            // the cap performed: forwarding it on a route the cap does not reach would be a
+            // render option that cannot act, and forwarding it while the cap is absent would be
+            // one with nothing to describe. Both are inert on their own, and the pairing here is
+            // what keeps a config line from claiming a visible cut on a prompt that has none.
+            ...(this.#options.turnCutMarker === undefined
+              ? {}
+              : { turnCutMarker: this.#options.turnCutMarker }),
+          }),
       ...(rendering === undefined ? {} : { rendering }),
       ...(ask === undefined ? {} : { ask }),
       // Forwarded here rather than at each `#prompt*` call site, so the three routes

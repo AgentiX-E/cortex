@@ -581,6 +581,14 @@ async function main(): Promise<void> {
     // artifact's config: a spread deleted here would leave the run's own log and its own
     // config claiming a treatment the prompt never received.
     ...(armOptions.maxTurnChars === undefined ? {} : { maxTurnChars: armOptions.maxTurnChars }),
+    // §13.187.6D's mark. Spread only when named, for the reason every conditional spread in this
+    // constructor is: `none` IS the historical rendering and is expressed by NOT passing the key,
+    // so a run that names no marker reproduces every archived capped prompt byte for byte. The
+    // cast is at this boundary because `cortex-eval` carries the name as a `string` (it cannot
+    // import this package's union) and validates it against its own copy at parse time -- which is
+    // why `readTurnCutMarker` throws on anything unrecognised and `assertMarkerNeedsCap` refuses
+    // it without a cap.
+    ...(armOptions.turnCutMarker === 'ellipsis' ? { turnCutMarker: 'ellipsis' as const } : {}),
     // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
     // number raises the room without touching a single turn, which is the only lever §13.80 left.
     ...(armOptions.maxPromptChars === undefined
@@ -660,6 +668,10 @@ async function main(): Promise<void> {
       // evidence section rather than of a ranking, so `none` is a fact about the prompt. It
       // is also the log's only record of the one spread in this file that no test covers.
       `, maxTurnChars=${armOptions.maxTurnChars ?? 'none'}` +
+      // Printed on every run beside the width it modifies, and for the same reason: the marker is
+      // a fact about the evidence section (`none` = the cut stays silent), and it is the only place
+      // the log and the artifact config can be compared against the prompt that was rendered.
+      `, turnCutMarker=${armOptions.turnCutMarker ?? 'none'}` +
       `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}`,
   );
 

@@ -756,6 +756,7 @@ describe('source trust reaches the artifact', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      turnCutMarker: 'none',
       reviewPass: 'none',
       reviewBareDecline: false,
       queryExpansion: 'none',
@@ -926,6 +927,7 @@ describe('runCortexMemoryArm', () => {
           renderingRoutes: [],
           ask: 'route',
           askRoutes: [],
+          turnCutMarker: 'none',
           reviewPass: 'none',
           reviewBareDecline: false,
         },
@@ -946,6 +948,7 @@ describe('runCortexMemoryArm', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      turnCutMarker: 'none',
       reviewPass: 'none',
       reviewBareDecline: false,
     });
@@ -1264,6 +1267,7 @@ describe('runCortexMemoryArm', () => {
         renderingRoutes: [],
         ask: 'route',
         askRoutes: [],
+        turnCutMarker: 'none',
         reviewPass: 'none',
         reviewBareDecline: false,
         queryExpansion: 'none',
@@ -1678,6 +1682,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       maxTurnCharsRoutes: ALL_ROUTES,
       evidenceRolesRoutes: ALL_ROUTES,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
+      // Projected on a disabled arm for the reason the two reaches are: it cut nothing, so the
+      // only truthful value is the one that says so.
+      turnCutMarker: 'none',
     });
   });
 
@@ -1705,6 +1712,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       renderingRoutes: [],
       ask: 'route',
       askRoutes: [],
+      turnCutMarker: 'none',
       reviewPass: 'none',
       reviewBareDecline: false,
       queryExpansion: 'none',
@@ -4205,5 +4213,126 @@ describe('the report timestamp is taken when the numbers exist, not when the wor
     });
 
     expect(report.generatedAt).toBe('1970-01-01T00:00:00.000Z');
+  });
+});
+
+/**
+ * §13.187.6D: the mark of omission at the per-turn cap.
+ *
+ * The treatment lives in `cortex-memory`'s renderer, so the property that matters **here** is the
+ * arm's: that a dispatch reaches it, that the artifact says which state the run was in, and that
+ * the impossible states are unexpressible rather than merely guarded. The marker rides on the
+ * cap's value -- `<width>:<marker>` -- because the workflow sits one input below GitHub's
+ * 25-input ceiling and this suite forbids the ceiling, and because a marker without a cap is a
+ * claim about a cut that cannot happen.
+ */
+describe('the cut marker on the arm', () => {
+  function line(options: ReturnType<typeof cortextMemoryArmOptions>): string {
+    return formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(options),
+    });
+  }
+
+  const arm = (cap: string): ReturnType<typeof cortextMemoryArmOptions> =>
+    cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_TURN_CHARS: cap });
+
+  it('defaults to `none`, the historical rendering', () => {
+    // Every archived capped run was produced without a marker, so the default must be the state
+    // those runs were in -- not merely an inert value that happens to render the same today.
+    const options = arm('400');
+
+    expect(options.maxTurnChars).toBe(400);
+    expect(options.turnCutMarker).toBe('none');
+    expect(toMemoryArmConfig(options).turnCutMarker).toBe('none');
+    expect(line(options)).toContain('turnCutMarker=none');
+    // And `none` spelled out is the same state, so a registration can name its control.
+    const named = arm('400:none');
+    expect(named.maxTurnChars).toBe(400);
+    expect(named.turnCutMarker).toBe('none');
+  });
+
+  it('accepts the treatment and carries both halves into the artifact', () => {
+    const options = arm('400:ellipsis');
+
+    expect(options.maxTurnChars).toBe(400);
+    expect(options.turnCutMarker).toBe('ellipsis');
+    // The artifact records the two halves as separate fields, so no reader of an artifact has to
+    // parse the dispatch syntax back apart.
+    expect(toMemoryArmConfig(options).maxTurnChars).toBe(400);
+    expect(toMemoryArmConfig(options).turnCutMarker).toBe('ellipsis');
+    expect(line(options)).toContain('maxTurnChars=400');
+    expect(line(options)).toContain('turnCutMarker=ellipsis');
+  });
+
+  it('rejects a marker the product does not implement', () => {
+    // Accepted-and-ignored is the failure that matters: a run dispatched to mark its cuts that
+    // rendered them silently would publish an unchanged number reading as "the mark does not
+    // matter", and only the artifact's own config line would show the difference.
+    for (const bad of ['400:dots', '400:ellipsis.', '400:ELLIPSIS']) {
+      expect(() => arm(bad)).toThrow(/CORTEX_MEMORY_MAX_TURN_CHARS/);
+    }
+  });
+
+  it('lists the accepted marker names in the rejection, so a typo is fixable from the log', () => {
+    expect(() => arm('400:nope')).toThrow(/ellipsis/);
+  });
+
+  it('cannot express a marker without a cap, which is the point of the grammar', () => {
+    // The combination is not guarded, it is unrepresentable: with no width there is no cut, so
+    // a bare marker is a malformed cap rather than a cap-less marker.
+    for (const bad of ['ellipsis', ':ellipsis', 'none:ellipsis']) {
+      expect(() => arm(bad)).toThrow(/CORTEX_MEMORY_MAX_TURN_CHARS/);
+    }
+  });
+
+  it('takes one marker at most', () => {
+    expect(() => arm('400:ellipsis:none')).toThrow(/one optional marker/);
+  });
+
+  it('still refuses a cap of zero and a fraction, for the §13.67 reasons', () => {
+    // The grammar must not become a way past the width's own guard: `400:ellipsis` is fine and
+    // `0:ellipsis` is the same defect as `0`, with a mark of omission on empty evidence.
+    for (const bad of ['0', '1.5', '0:ellipsis', '-400']) {
+      expect(() => arm(bad)).toThrow(/positive integer/);
+    }
+  });
+
+  it('projects `none` on a disabled arm, which cuts nothing', () => {
+    // The arm is off, so there is no prompt to mark. Projecting the identity rather than the
+    // requested value keeps a disabled run's config from claiming a marker it never rendered.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '0',
+      CORTEX_MEMORY_MAX_TURN_CHARS: '400:ellipsis',
+    });
+
+    expect(options.turnCutMarker).toBe('none');
+    expect(line(options)).toContain('turnCutMarker=none');
+  });
+
+  it('spells `none` for a config that predates the field', () => {
+    // An artifact written before §13.188 has no such key, and those runs are the control. The
+    // renderer must say so rather than omit the field, or "ran the control" and "written before
+    // the field existed" would be the same bytes -- the reason `reviewPass` is rendered on
+    // every run.
+    const config = toMemoryArmConfig(arm('400'));
+    const { turnCutMarker: _omitted, ...withoutField } = config;
+
+    expect(
+      formatAblationReport({
+        dataset: 'fixture',
+        questionCount: 0,
+        baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+        feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+        ablation: emptyAblation('cortex-memory'),
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: withoutField as never,
+      }),
+    ).toContain('turnCutMarker=none');
   });
 });

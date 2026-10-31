@@ -8,7 +8,7 @@
  * else. See `docs/AUDIT-CODE-VS-DOCS.md` §6.
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
-import type { EvidenceAsk, PromptContract, RelevanceUnits } from './prompt.js';
+import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -174,6 +174,33 @@ export type CortexMemoryOptions = {
    * whose decisive fact sits deep inside a long narrative loses it.
    */
   maxTurnChars?: number | undefined;
+  /**
+   * Whether a turn the cap cut says so. Absent means it does not, which is every archived run.
+   *
+   * ## The defect it answers, named by its turn
+   *
+   * §13.187 read all five durable MR declines against the stored `featurePromptTexts` and found
+   * their evidence genuinely absent -- except `a4996e51`, whose decisive turn was **delivered
+   * and then cut mid-sentence** at `maxTurnChars`: the prompt reads `…I increase my work hours`,
+   * and the next turn of the same conversation asks how to phrase those hours. Every contract in
+   * `prompt.ts` tells the reader to decline when an operand is missing, so declining was the
+   * correct behaviour on a prompt that had lost the operand without saying so. The artifact's
+   * coverage count still reports the turn as delivered, which is true and does not help.
+   *
+   * ## Why absent is the default and not the treatment
+   *
+   * Every capped run ever dispatched was rendered without a marker, and `prompt-turn-cap.test.ts`
+   * protects those bytes. A default of `'ellipsis'` would make each of them incomparable with the
+   * same configuration re-run today, which is the one thing the campaign's artifacts are for --
+   * so the marker is a dispatched value, exactly like the cap's width and its reach.
+   *
+   * ## Where it can act
+   *
+   * Only on a turn the cap actually cut: without a cap there is no cut, and a turn shorter than
+   * the cap renders byte-identically. Forwarded through `#promptOptions` beside the cap so no
+   * route can receive the marker without the cap that gives it meaning.
+   */
+  turnCutMarker?: TurnCutMarker | undefined;
   /**
    * Which routes the per-turn cap reaches. Absent means all of them.
    *

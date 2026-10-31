@@ -360,6 +360,26 @@ export type CortexMemoryArmOptions = {
    */
   maxTurnCharsRoutes?: readonly string[] | undefined;
   /**
+   * Whether a turn the cap cut says so: `'none'` (the default, and every archived run) or
+   * `'ellipsis'`.
+   *
+   * §13.187's finding, registered as §13.187.6D. One of the five durable MR declines --
+   * `a4996e51` -- is not a retrieval miss: the turn that answers it was **delivered and cut
+   * mid-sentence** by `maxTurnChars`, and the contract tells the reader to decline when an
+   * operand is missing. The reader was right and the prompt was wrong, so the treatment is a
+   * mark of omission at the cut rather than a different retrieval.
+   *
+   * A `string` rather than the product's union, for the reason `promptContract` and `ask` are:
+   * `cortex-memory` is imported type-only here for the acyclicity rule, and the value is
+   * validated against `TURN_CUT_MARKERS` at parse time, so the cast at the boundary in
+   * `bench/run-ablation.ts` states a checked fact rather than widening an option.
+   *
+   * Carried beside `maxTurnChars` and refused without it, because the marker describes a cut:
+   * a run that named the marker and no cap would publish `turnCutMarker=ellipsis` over a prompt
+   * that never cut anything, which is the §7.4 defect the guards in this file exist to prevent.
+   */
+  turnCutMarker?: string | undefined;
+  /**
    * The evidence budget in UTF-16 code units, or absent for the product default (24,000).
    *
    * A separate axis from `maxTurnChars`, and the pair is what §13.80 separated: the cap decides how
@@ -577,6 +597,33 @@ const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
 const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
 
 /**
+ * What the cap's value may also say: whether the cut it makes is visible.
+ *
+ * ## Why this rides on the cap's value instead of an input of its own
+ *
+ * The workflow sits one input below GitHub's 25-input ceiling and the suite **forbids** sitting
+ * at the ceiling, so the campaign's rule for a new knob is a new **value** -- the same rule that
+ * put `bare` and `recover` on `cortex_memory_review_pass`. This is the rare case where the
+ * carrier is also the truer shape: a marker without a cap cannot mark anything, so the grammar
+ * makes the impossible combination unexpressible rather than guarding against it at runtime.
+ *
+ * ## The grammar
+ *
+ *   `<width>`            -- cap at `<width>`, silent cut: the historical rendering
+ *   `<width>:<marker>`   -- cap at `<width>`, the cut says so; `<marker>` is `none` or `ellipsis`
+ *   `none`, or blank     -- no cap at all, which is what every archived run was produced under
+ *
+ * The width is still parsed by the same guard with the same message, so a dispatch that names
+ * `0` or `1.5` is refused for the reason it always was. A malformed marker is refused rather
+ * than ignored: a run dispatched to mark its cuts that rendered them silently would publish an
+ * unchanged number reading as evidence that the mark does not matter, and only its own config
+ * line would show the difference.
+ *
+ * The artifact records the two halves as **separate fields** (`maxTurnChars`, `turnCutMarker`),
+ * so the compound syntax exists only at the dispatch boundary -- which is the only layer that has
+ * a ceiling -- and no reader of an artifact has to parse it back apart.
+ */
+/**
  * Which routes the per-turn cap reaches: `all`, `none`, or a comma-separated list of route names.
  *
  * §13.72 measured one cap over every route and got `+13` on MR and `−30` on IE in the same run, so
@@ -586,6 +633,19 @@ const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
  * `tools/__tests__/test_ask_table_parity.py` asserts the two copies agree.
  */
 const MAX_TURN_CHARS_ROUTES_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES';
+
+/**
+ * The marker names the cap's value may carry, and this module's copy of the product's
+ * `TurnCutMarker`.
+ *
+ * Declared twice for the reason `TURN_CAP_ROUTES` is -- the dependency runs the other way, so
+ * `cortex-eval` cannot import the product's union -- and the parity test in `tools/__tests__`
+ * asserts the two copies agree on the names they accept.
+ */
+const TURN_CUT_MARKERS: Record<string, true> = { none: true, ellipsis: true };
+
+/** The marker a run gets when it does not name one: the historical rendering, byte for byte. */
+const DEFAULT_TURN_CUT_MARKER = 'none';
 
 /**
  * Which turn roles the evidence may be built from: `all` (the identity), or a comma-separated
@@ -817,11 +877,18 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // answers where the filter would have applied, and a run that turned the arm off cannot
       // leave a stale reach behind it.
       evidenceRolesRoutes: ALL_TURN_CAP_ROUTES,
+      // Projected too, because it is a state rather than a treatment: a disabled arm cuts
+      // nothing, so the only truthful value is the one that says so.
+      turnCutMarker: DEFAULT_TURN_CUT_MARKER,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
     };
   }
+  // Parsed once, above the object, because one value carries both halves: the width and whether
+  // the cut it makes is visible. See `readTurnCap` for the grammar and for why the marker rides
+  // on the cap instead of an input of its own.
+  const turnCap = readTurnCap(env[MAX_TURN_CHARS_VARIABLE]);
   return {
     enabled: true,
     threshold: readThreshold(THRESHOLD_VARIABLE, env[THRESHOLD_VARIABLE]),
@@ -859,10 +926,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     })(),
     // Spread rather than assigned, because "no cap" is an absent field on this type rather
     // than an infinite one -- see `CortexMemoryArmOptions.maxTurnChars`.
-    ...(() => {
-      const cap = readMaxTurnChars(env[MAX_TURN_CHARS_VARIABLE]);
-      return cap === undefined ? {} : { maxTurnChars: cap };
-    })(),
+    ...(turnCap.width === undefined ? {} : { maxTurnChars: turnCap.width }),
     // §13.83's filter. Absent for the same reason the cap is: "every role" is the state every
     // archived run was produced under, and a present-but-empty list would be a filter that
     // admits nothing.
@@ -877,6 +941,11 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       env[EVIDENCE_ROLES_ROUTES_VARIABLE],
       EVIDENCE_ROLES_ROUTES_VARIABLE,
     ),
+    // §13.187.6D. Always present for the reason `queryExpansion` is: `none` is a state a run is
+    // dispatched to -- the control arm of this experiment -- so an artifact that spelled nothing
+    // would leave "ran the control" and "predates the field" as the same bytes. It comes from the
+    // same parse as the width, so the two can never describe different caps.
+    turnCutMarker: turnCap.marker,
   };
 }
 
@@ -1423,51 +1492,6 @@ function readRelevanceTopK(raw: string | undefined): number {
 }
 
 /**
- * Read the per-turn character cap, defaulting to none.
- *
- * ## Why zero is refused rather than treated as "no cap"
- *
- * A cap of `0` is not an empty configuration, it is a prompt whose evidence section reads
- * `1. `, `2. `, `3. ` with nothing after the numbers -- while `carried` still reports 26
- * turns and every coverage count is computed from the turns as they arrived. The artifact
- * would then show a run that delivered 54% of its gold with an empty evidence section, and
- * no reader could tell that from a retrieval failure. The guard refuses the state rather
- * than discovering it in a reading.
- *
- * A fraction is refused for the reason the width's fraction is: the unit is characters of
- * text, and `1.5` completes a run whose cap is not the number it names.
- */
-function readMaxTurnChars(raw: string | undefined): number | undefined {
-  // Three spellings of "no cap": absent, blank (what an unfilled `workflow_dispatch` input
-  // actually is), and the literal `none`. The third exists because §10.3 registers the
-  // adopted configuration as `maxTurnChars: none` and the dispatch must send the value the
-  // registration names -- the alternative is a registration that says one thing and a
-  // payload that says another, which is the defect `test_preregistration_config.py` exists
-  // to catch. It is the same sentinel `confidenceSignal` and `relevanceSignal` use, so the
-  // three read alike on a config line.
-  //
-  // The blank rule is restated here rather than delegated to `readNumeric`, and that is a
-  // consequence of the third spelling: `readNumeric` collapses only the blank, so a caller
-  // would have to pre-test `none` and then call it -- and the resulting `value === undefined`
-  // branch is one v8 counts and no input can reach. It was written that way first and the
-  // branch showed up uncovered, which is the census's usual reading: there is no way to
-  // arrive there. `trimmed` is a `string` after the guard, so `Number` needs no second one.
-  const trimmed = raw?.trim() ?? '';
-  if (trimmed === '' || trimmed.toLowerCase() === 'none') return undefined;
-  const value = Number(trimmed);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(
-      `${MAX_TURN_CHARS_VARIABLE} must be a positive integer or unset, got ` +
-        `${JSON.stringify(raw)}. The unit is characters per turn, and a cap of 0 emits every ` +
-        'turn number with no text after it while every coverage count still reports the ' +
-        'turns as they arrived -- a prompt that reads as empty evidence and an artifact ' +
-        'that reads as a delivery.',
-    );
-  }
-  return value;
-}
-
-/**
  * Read the evidence budget, defaulting to the product's 24,000.
  *
  * ## Why a smaller budget is accepted but zero is not
@@ -1489,6 +1513,85 @@ function readMaxPromptChars(raw: string | undefined): number | undefined {
     );
   }
   return value;
+}
+
+/** The cap as the dispatch states it: a width, and whether a cut prints a mark of omission. */
+type TurnCapSpec = {
+  width?: number;
+  marker: string;
+};
+
+/**
+ * Read the per-turn character cap and its marker, defaulting to none.
+ *
+ * ## Why zero is refused rather than treated as "no cap"
+ *
+ * A cap of `0` is not an empty configuration, it is a prompt whose evidence section reads
+ * `1. `, `2. `, `3. ` with nothing after the numbers -- while `carried` still reports 26
+ * turns and every coverage count is computed from the turns as they arrived. The artifact
+ * would then show a run that delivered 54% of its gold with an empty evidence section, and
+ * no reader could tell that from a retrieval failure. The guard refuses the state rather
+ * than discovering it in a reading.
+ *
+ * A fraction is refused for the reason the width's fraction is: the unit is characters of
+ * text, and `1.5` completes a run whose cap is not the number it names.
+ *
+ * ## Why one reader for the width and the marker
+ *
+ * The grammar (`<width>`, `<width>:<marker>`, blank or `none`) makes them one value, so two
+ * readers would have to agree about where the split is. The marker is enumerated from
+ * `TURN_CUT_MARKERS` and refused when unknown, for the reason every guard in this file gives --
+ * a run dispatched to mark its cuts that rendered them silently would publish an unchanged
+ * number reading as evidence that the mark does not matter.
+ *
+ * `none` as a spelling of "no cap" is kept from the original reader because §10.3 registers the
+ * adopted configuration that way and a dispatch must be able to send the value its registration
+ * names.
+ */
+function readTurnCap(raw: string | undefined): TurnCapSpec {
+  const trimmed = raw?.trim() ?? '';
+  if (trimmed === '' || trimmed.toLowerCase() === 'none') {
+    return { marker: DEFAULT_TURN_CUT_MARKER };
+  }
+
+  const parts = trimmed.split(':');
+  const widthText = parts[0] ?? '';
+  const markerText = parts[1];
+  if (parts.length > 2) {
+    throw new Error(
+      `${MAX_TURN_CHARS_VARIABLE} takes one optional marker, got ${JSON.stringify(raw)}. ` +
+        'The grammar is `<width>` or `<width>:<none|ellipsis>`; the marker is a presentation ' +
+        "of the cap's cut, so it cannot be a list.",
+    );
+  }
+  if (markerText !== undefined && !(markerText in TURN_CUT_MARKERS)) {
+    throw new Error(
+      `${MAX_TURN_CHARS_VARIABLE}'s marker must be one of ` +
+        `${Object.keys(TURN_CUT_MARKERS)
+          .map((k) => JSON.stringify(k))
+          .join(', ')}, got ` +
+        `${JSON.stringify(raw)}. An unrecognised marker is rejected rather than ignored: the ` +
+        'run would render every cut silently while its config claimed a mark, and its result ' +
+        'would read as evidence that the mark does not matter.',
+    );
+  }
+
+  const value = Number(widthText);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${MAX_TURN_CHARS_VARIABLE} must be a positive integer or unset, got ` +
+        `${JSON.stringify(raw)}. The unit is characters per turn, and a cap of 0 emits every ` +
+        'turn number with no text after it while every coverage count still reports the ' +
+        'turns as they arrived -- a prompt that reads as empty evidence and an artifact ' +
+        'that reads as a delivery. The optional suffix is the marker: `<width>:ellipsis` ' +
+        'prints a mark of omission where the cap cut.',
+    );
+  }
+
+  return {
+    width: value,
+    marker: markerText ?? DEFAULT_TURN_CUT_MARKER,
+  };
 }
 
 /**
@@ -1818,6 +1921,11 @@ export function toMemoryArmConfig(
     ...(options.maxTurnCharsRoutes === undefined
       ? {}
       : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
+    // §13.187.6D. Always present, unlike the width: `none` is a state the run was dispatched to
+    // (this experiment's control), and the artifact that answered it has to be distinguishable
+    // from one that predates the field. Projected from the option rather than parsed again, so
+    // the config line and the prompt cannot disagree about which marker was rendered.
+    turnCutMarker: options.turnCutMarker ?? DEFAULT_TURN_CUT_MARKER,
     // §13.83. Absent means every role, which is what every archived run read; the routes are
     // always present for the reason the cap's are.
     ...(options.evidenceRoles === undefined ? {} : { evidenceRoles: options.evidenceRoles }),

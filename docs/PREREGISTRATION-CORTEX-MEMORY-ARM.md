@@ -20572,3 +20572,94 @@ prompt changes one byte (the option must be inert when the cap is absent).
    and inherit its blindness: a wrong answer that keeps the gold's number is invisible to it.
 4. `feature.metrics.correct` is repetition 0 (419 of 419/417/425/427) and no field says so. The tool
    prints that sentence above every number for that reason.
+
+### 13.188 The cut now says so — shipped behind a value, and one thing §13.187.6D got wrong
+
+**Registered 2026-10-31, before the dispatch.** Product change in
+`packages/cortex-memory/src/prompt.ts` (`TurnCutMarker`, `cutWithMarker`), forwarded through
+`CortexMemoryOptions.turnCutMarker` and `#promptOptions`; arm in
+`packages/cortex-eval/src/bench-memory-arm.ts` (`readTurnCap`, `TURN_CUT_MARKERS`); artifact field
+`memoryArmConfig.turnCutMarker` and a `turnCutMarker=` term on the config line. Accounting:
+`prompt-turn-cut-marker.test.ts` (11), `bench-memory-arm.test.ts` (+10), and
+`tools/__tests__/test_ask_table_parity.py` (+3 for the third duplicated table).
+
+#### 13.188.1 The defect, stated as the string the reader received
+
+`a4996e51` is one of MR's **17 durable misses** (§13.187.2). Its decisive turn was **delivered and
+then cut** at `maxTurnChars`, and the stored `featurePromptTexts` ends the sentence at
+`…I increase my work hours`; the next turn of the same conversation asks how to phrase those hours.
+The reader declined.
+
+That is not a reader failure and not a retrieval failure. The turn arrived — every coverage count in
+the artifact says so, correctly — and what arrived was a sentence that stops, at a cap whose whole
+purpose is to stop mid-text. Every contract in `prompt.ts` instructs the reader to decline when an
+operand is not stated, so declining was the *correct* response to a prompt that had silently lost the
+operand.
+
+#### 13.188.2 What changed, and the two states that must remain byte-identical
+
+`PromptOptions.turnCutMarker` takes `'none'` (default) or `'ellipsis'`. Under `'ellipsis'` a turn the
+cap cut is rendered as: cut at `maxChars - 1`, back off one unit if that lands on a low surrogate, back
+off further to a whitespace **only if** the nearest one is inside the last 20% of the window, trim, then
+`…`. The marker therefore spends one of the cap's units rather than adding one, so the room the cap
+buys is unchanged: the same number of turns fit.
+
+Two inert states are assertions rather than claims, because both are places a marker would lie:
+
+1. **No cap** — there is no cut to mark, so a marker without a cap renders the previous bytes.
+2. **A turn shorter than the cap** — no cut happened, so nothing is appended.
+
+And the prompt-level clip in `fitToBudget` is deliberately untouched: it spends the room's last
+characters, so a mark there would have to shorten the text by one unit to pay for itself, which is a
+different trade from the one registered here.
+
+#### 13.188.3 §13.187.6D named an input this workflow does not have
+
+That block registered *"workflow input `turn_cut_marker`"*. The workflow declares **24** of GitHub's 25
+`workflow_dispatch` inputs, and `test_dispatch_inputs.py` **forbids** sitting at the ceiling — a rule
+written precisely so the next registration is not blocked by plumbing. So the marker rides on the cap's
+own value:
+
+| value | meaning |
+| --- | --- |
+| blank, or `none` | no cap; every archived run |
+| `<width>` | cap at `<width>`, silent cut; every capped run to date |
+| `<width>:ellipsis` | cap at `<width>`, the cut prints `…` |
+| `<width>:none` | the same state as `<width>`, spelled so a registration can name its control |
+
+The compound syntax exists **only at the dispatch boundary**; the artifact records `maxTurnChars` and
+`turnCutMarker` as separate fields, so no reader of an artifact has to parse it back apart. This is also
+the truer shape: a marker without a cap marks nothing, so the grammar makes the impossible combination
+**unexpressible** instead of guarding against it at runtime — the guard in the arm was written first and
+then deleted, because a state no dispatch can produce does not need a test.
+
+#### 13.188.4 The dispatch
+
+Treatment `cortex_memory_max_turn_chars: 400:ellipsis` against the adopted control `400`, every other
+input identical, read on the **mask** (`paired-flip.ts`), not on the mean.
+
+**Prediction.** At least one of the five §13.187.4 durable declines is answered; the other four do not
+move; every uncapped prompt and every uncut turn is byte-identical.
+
+**Falsified if** none of the five moves (the mark is not enough information), or three or more move in
+either direction (the mark is not the variable), or any prompt without a cut changes a byte, or MR moves
+by fewer than two questions while the other four capabilities move at all.
+
+#### 13.188.5 Cost, in the unit the cap is stated in
+
+The marker replaces one character of text with `…` per cut turn, so per-turn length is **≤** the cap and
+the count of turns delivered is unchanged. The token effect is bounded by the turns that are cut: at a
+400-character cap on the MR route, 26 delivered turns with a median of 272 characters means few turns are
+cut at all, and a `…` is one or two tokens. This is the rare treatment that spends **nothing** to say
+something true.
+
+#### 13.188.6 What this does not claim
+
+1. It does not claim the reader will then answer `a4996e51` correctly — only that it will no longer be
+   declining on text that was never shown. The operand may still be beyond the cap.
+2. It does not touch the four other durable declines: §13.187 read their evidence as genuinely absent
+   (`20%` on Zara jeans for a book question is a decoy numeral, not the answer), so this treatment
+   cannot reach them and predicting otherwise would be predicting a retrieval change from a rendering
+   one.
+3. It says nothing about the ceiling. 101/121 = 83.5% remains the best this class of fix can produce,
+   and this is one question of seventeen.

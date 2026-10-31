@@ -91,6 +91,11 @@ export {
   type EvidenceOrdering,
   type PromptContract,
   type PromptOptions,
+  // The marker's two names, exported for the reason `ASK_ROUTES` is: the arm carries the value as
+  // a `string` (the dependency runs the other way), validates it against its own list at parse
+  // time, and casts at the boundary -- so the union has to be nameable from outside for that cast
+  // to be a statement about a real type rather than about `string`.
+  type TurnCutMarker,
 } from './prompt.js';
 
 // parse

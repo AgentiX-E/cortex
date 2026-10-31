@@ -453,6 +453,38 @@ export type PromptOptions = {
    * `prompt-turn-cap.test.ts` pins that rather than leaving it to the type.
    */
   maxTurnChars?: number | undefined;
+  /**
+   * Whether a turn the cap cut says so. Defaults to `'none'`, which is the previous bytes.
+   *
+   * ## The defect, and the exact turn that showed it
+   *
+   * §13.187 read the five durable MR declines against the stored `featurePromptTexts`. One of
+   * them is not a retrieval miss: `a4996e51`'s decisive turn was **delivered and then cut
+   * mid-sentence** at the per-turn cap, reading `…I increase my work hours`, and the next turn
+   * of the same conversation asks how to phrase those hours. The reader was handed a sentence
+   * that stops, and every contract in this file tells it to decline when an operand is missing
+   * -- so it declined, correctly, on a prompt that had quietly lost the operand. The artifact's
+   * coverage count still says the turn arrived, which is true and beside the point.
+   *
+   * ## Why the default is not the treatment
+   *
+   * `prompt-turn-cap.test.ts` pins the byte-reproducibility of every archived prompt, and
+   * `maxTurnChars`'s own block above argues the same thing from the other side: a default other
+   * than the historical one makes prior artifacts unreproducible from the code. A marker on by
+   * default would change the bytes of every capped run ever dispatched and make its accuracy
+   * incomparable with the same configuration re-run today. So the treatment is a dispatched
+   * value and the default emits exactly what `contentFor` emitted before.
+   *
+   * ## What it may mark, and what it may not
+   *
+   * Only a turn **this cap cut**. Without a cap there is no cut, so the option is inert rather
+   * than a claim about the prompt; and a turn shorter than the cap renders byte-identically,
+   * because a marker on text that was not truncated would assert a truncation that did not
+   * happen. The prompt-level clip in `fitToBudget` is deliberately not covered: it spends the
+   * room's last characters, so marking there would have to shorten the text by one unit to pay
+   * for itself, which is a different trade from the one registered.
+   */
+  turnCutMarker?: TurnCutMarker;
   /** How to present the admitted turns. Defaults to the baseline rendering. */
   rendering?: EvidenceRendering;
   /** Which instruction block to use. Defaults to the route's own. */
@@ -514,6 +546,16 @@ export type PromptOptions = {
 
 /** The unit the evidence room is spent in. */
 export type RelevanceUnits = 'turn' | 'session' | 'session-fill';
+
+/**
+ * Whether a turn the per-turn cap cut says so.
+ *
+ * Two names and no third: `'none'` is the historical rendering, and `'ellipsis'` is the one
+ * treatment §13.187.6D registers. A `'marker'` value with a configurable glyph would make the
+ * prompt's bytes a function of a string a run could typo, and the prompt is the one artifact
+ * whose reproducibility is already load-bearing.
+ */
+export type TurnCutMarker = 'none' | 'ellipsis';
 
 /** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
 export const DEFAULT_MAX_PROMPT_CHARS = 24_000;
@@ -1395,11 +1437,80 @@ function instructionsFor(
  * `sliceCodePointSafe` was written for in the reference pipeline. Using the budget's own
  * function also means the cap and the final clip cut the same way, so a capped turn and a
  * clipped prompt cannot disagree about what a character is.
+ *
+ * The marker travels with the cap rather than being applied afterwards, because it is a claim
+ * about **this cut**: `'ellipsis'` on an uncapped turn has no cut to describe, and on a turn
+ * shorter than the cap it would describe one that did not happen. Both cases fall out of the
+ * two guards below rather than needing their own.
  */
-function contentFor(turn: AdmittedTurn, maxTurnChars: number | undefined): string {
+function contentFor(
+  turn: AdmittedTurn,
+  maxTurnChars: number | undefined,
+  turnCutMarker: TurnCutMarker | undefined,
+): string {
   if (maxTurnChars === undefined) return turn.content;
-  return truncateCodePointSafe(turn.content, maxTurnChars);
+  if (turnCutMarker !== 'ellipsis') return truncateCodePointSafe(turn.content, maxTurnChars);
+  return cutWithMarker(turn.content, maxTurnChars);
 }
+
+/** The character `'ellipsis'` emits, and the reason it is a single UTF-16 unit. */
+const CUT_MARKER = '…';
+
+/**
+ * How far back a word boundary may be and still be worth taking, as a fraction of the cap.
+ *
+ * A back-off with no floor is worse than no back-off: one early space would let the cap render
+ * 51 characters under a 400-character limit and still call the result capped. Twenty percent is
+ * the registered value -- it bounds the loss to what the marker itself costs, in the same unit
+ * the cap is stated in.
+ */
+const WORD_BOUNDARY_FLOOR = 0.8;
+
+/**
+ * Cut `text` to `maxChars` and say so.
+ *
+ * Three decisions, in the order the units are spent:
+ *
+ * 1. The marker is **inside** the cap, not beyond it. A prompt one character over its configured
+ *    limit is an overrun the allocator's arithmetic assumes cannot happen, so the text gets
+ *    `maxChars - 1` and the marker takes the last unit.
+ * 2. The surrogate check runs on the shifted cut point, because reserving the marker's unit
+ *    moves the pair boundary too -- a back-off computed at `maxChars` would leave the orphan
+ *    the first back-off was written to prevent.
+ * 3. Then the word boundary, if and only if the nearest one is inside the last
+ *    `WORD_BOUNDARY_FLOOR` of the window. The failing turn's cut landed inside `hours`; the
+ *    difference between `…my work` and `…my wor` is what this buys.
+ *
+ * `trimEnd` before the marker, because trailing whitespace before a mark of omission is not
+ * information and would render as a visible gap the cap did not intend.
+ */
+function cutWithMarker(text: string, maxChars: number): string {
+  if (maxChars <= 0) return '';
+  if (text.length <= maxChars) return text;
+
+  let end = maxChars - 1;
+  const reserved = text.charCodeAt(end);
+  if (reserved >= 0xdc00 && reserved <= 0xdfff) end -= 1;
+
+  const floor = Math.ceil(maxChars * WORD_BOUNDARY_FLOOR);
+  for (let index = end - 1; index >= floor; index -= 1) {
+    if (WHITESPACE.test(text[index] as string)) {
+      end = index;
+      break;
+    }
+  }
+
+  return `${text.slice(0, end).trimEnd()}${CUT_MARKER}`;
+}
+
+/**
+ * One character, tested for being whitespace.
+ *
+ * A `RegExp` rather than a code-point comparison because `\s` is the definition the rest of the
+ * rendering already uses -- a non-breaking space between two words is a boundary for a reader
+ * and would not be one under `charCodeAt(...) <= 0x20`.
+ */
+const WHITESPACE = /\s/;
 
 /**
  * The cap as a render option, or an empty object to mean "no cap".
@@ -1409,9 +1520,17 @@ function contentFor(turn: AdmittedTurn, maxTurnChars: number | undefined): strin
  * difference is real: `contentFor` tests `=== undefined` and would behave identically, but
  * `formatEvidence`'s option record is also what a reader inspects to see whether a cap was
  * configured at all.
+ *
+ * `turnCutMarker` rides with the cap for the reason `contentFor` gives: a marker without a cap
+ * is inert, so emitting it on the record would let a config line claim a visible cut on a run
+ * that cut nothing.
  */
-function capOption(maxTurnChars: number | undefined): { maxTurnChars?: number } {
-  return maxTurnChars === undefined ? {} : { maxTurnChars };
+function capOption(
+  maxTurnChars: number | undefined,
+  turnCutMarker: TurnCutMarker | undefined,
+): { maxTurnChars?: number; turnCutMarker?: TurnCutMarker } {
+  if (maxTurnChars === undefined) return {};
+  return turnCutMarker === undefined ? { maxTurnChars } : { maxTurnChars, turnCutMarker };
 }
 
 /**
@@ -1446,6 +1565,7 @@ export function formatEvidence(
     sessionIndex?: number;
     rendering?: EvidenceRendering;
     maxTurnChars?: number;
+    turnCutMarker?: TurnCutMarker;
   } = {},
 ): string {
   if (turns.length === 0) return '';
@@ -1454,8 +1574,13 @@ export function formatEvidence(
 
   const body =
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(turns, options.maxTurnChars)
-      : turns.map((turn, i) => `${i + 1}. ${contentFor(turn, options.maxTurnChars)}`).join('\n\n');
+      ? formatEvidenceWithSources(turns, options.maxTurnChars, options.turnCutMarker)
+      : turns
+          .map(
+            (turn, i) =>
+              `${i + 1}. ${contentFor(turn, options.maxTurnChars, options.turnCutMarker)}`,
+          )
+          .join('\n\n');
 
   return `${header}${body}`;
 }
@@ -1498,9 +1623,13 @@ export function formatEvidence(
  * yields `''` -- `[].join('\n\n')` is the empty string. The behaviour is identical and
  * the unreachable path is gone rather than papered over.
  */
-function formatEvidenceWithSources(turns: readonly AdmittedTurn[], maxTurnChars?: number): string {
+function formatEvidenceWithSources(
+  turns: readonly AdmittedTurn[],
+  maxTurnChars?: number,
+  turnCutMarker?: TurnCutMarker,
+): string {
   return turns
-    .map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, maxTurnChars)}`)
+    .map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, maxTurnChars, turnCutMarker)}`)
     .join('\n\n');
 }
 
@@ -1652,8 +1781,8 @@ export function buildRetryPrompt(
 ): string {
   const render = (picked: readonly AdmittedTurn[]): string =>
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(picked, options.maxTurnChars)
-      : formatEvidence(picked, capOption(options.maxTurnChars));
+      ? formatEvidenceWithSources(picked, options.maxTurnChars, options.turnCutMarker)
+      : formatEvidence(picked, capOption(options.maxTurnChars, options.turnCutMarker));
   const evidence = render(turns);
   return [
     `EVIDENCE:\n${evidence.length === 0 ? NO_EVIDENCE : evidence}`,
@@ -1698,8 +1827,8 @@ export function buildPrompt(
   // both of the routes that carried the measured loss.
   const render = (picked: readonly AdmittedTurn[]): string =>
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(picked, options.maxTurnChars)
-      : formatEvidence(picked, capOption(options.maxTurnChars));
+      ? formatEvidenceWithSources(picked, options.maxTurnChars, options.turnCutMarker)
+      : formatEvidence(picked, capOption(options.maxTurnChars, options.turnCutMarker));
 
   // The ordering is applied to the **carried** set, and this is the only place it can be applied without
   // becoming a second variable. Before the budget, a promotion changes which turns survive the cut --
@@ -2328,7 +2457,13 @@ export function buildSessionPrompt(
   const render = (picked: readonly AdmittedTurn[]): string =>
     sessions.length === 0
       ? NO_EVIDENCE
-      : renderSessionBlocks(sessions, picked, options.rendering, options.maxTurnChars);
+      : renderSessionBlocks(
+          sessions,
+          picked,
+          options.rendering,
+          options.maxTurnChars,
+          options.turnCutMarker,
+        );
 
   const body = render(flat);
 
@@ -2449,7 +2584,13 @@ export function buildAuditPrompt(
   // unreachable guard reads as safety while measuring nothing (§57.6). The renderer is total over an
   // empty list anyway; what would be wrong is *claiming* to handle a state the product refuses.
   const render = (picked: readonly AdmittedTurn[]): string =>
-    renderSessionBlocks(sessions, picked, options.rendering, options.maxTurnChars);
+    renderSessionBlocks(
+      sessions,
+      picked,
+      options.rendering,
+      options.maxTurnChars,
+      options.turnCutMarker,
+    );
 
   const instruction = auditInstruction(truncateCodePointSafe(firstPass, firstPassBudget));
   const body = render(flat);
@@ -2506,6 +2647,7 @@ function renderSessionBlocks(
   picked: readonly AdmittedTurn[],
   rendering: EvidenceRendering | undefined,
   maxTurnChars: number | undefined,
+  turnCutMarker: TurnCutMarker | undefined,
 ): string {
   const kept = new Set(picked);
   return sessions
@@ -2521,7 +2663,7 @@ function renderSessionBlocks(
         // The cap reaches the blocks through the same renderer the flat route uses, which is
         // why it is threaded here rather than applied to the joined string: a per-turn cap
         // applied to the joined text would be a per-prompt cap.
-        ...capOption(maxTurnChars),
+        ...capOption(maxTurnChars, turnCutMarker),
       }),
     )
     .join('\n\n');

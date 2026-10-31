@@ -112,6 +112,33 @@ def arm_routes() -> set[str]:
     return keys
 
 
+def product_markers() -> set[str]:
+    """The members of the product's `TurnCutMarker` union."""
+    source = PRODUCT.read_text(encoding="utf-8")
+    union = re.search(r"export type TurnCutMarker =([^;]+);", source)
+    if union is None:
+        raise AssertionError("prompt.ts declares no TurnCutMarker union")
+    members = set(re.findall(r"'([^']+)'", union.group(1)))
+    if not members:
+        raise AssertionError(f"TurnCutMarker parsed to no members: {union.group(1)[:200]}")
+    return members
+
+
+def arm_markers() -> set[str]:
+    """The keys of the arm's `TURN_CUT_MARKERS` table."""
+    source = ARM.read_text(encoding="utf-8")
+    # One line or many: the table is small enough to sit on one, so the match closes at the first
+    # `}` rather than at a newline-indented `};` -- a multi-line-only regex silently captured the
+    # NEXT declaration and reported six routes as markers, which is how this was found.
+    table = re.search(r"const TURN_CUT_MARKERS: [^=]+= \{([^}]*)\}", source, re.S)
+    if table is None:
+        raise AssertionError("bench-memory-arm.ts declares no TURN_CUT_MARKERS table")
+    keys = set(re.findall(r"([A-Za-z][A-Za-z0-9-]*)\s*:\s*true", table.group(1)))
+    if not keys:
+        raise AssertionError(f"TURN_CUT_MARKERS parsed to no keys: {table.group(1)[:200]}")
+    return keys
+
+
 class TestTheTwoAskTablesAgree(unittest.TestCase):
     def test_the_product_and_the_arm_name_the_same_values(self) -> None:
         self.assertEqual(
@@ -175,6 +202,42 @@ class TestTheTwoRouteTablesAgree(unittest.TestCase):
                 ['multi-session', 'temporal', 'flat', 'knowledge-update', 'abstention', 'assistant']
             ),
         )
+
+
+class TestTheTwoMarkerTablesAgree(unittest.TestCase):
+    """§13.188's mark of omission, the third duplicated declaration.
+
+    The marker is dispatched as a suffix of the cap's own value (`<width>:<marker>`), so a name
+    the arm knows and the product does not would be accepted, recorded in the artifact's
+    `turnCutMarker`, and rendered silently -- the artifact claiming a visible cut that never
+    reached a prompt. That direction is undetectable from any number in the run, which is why the
+    parity is a test rather than a sentence beside the table.
+    """
+
+    def test_the_product_and_the_arm_name_the_same_markers(self) -> None:
+        self.assertEqual(
+            sorted(product_markers()),
+            sorted(arm_markers()),
+            f"the product declares {sorted(product_markers())} and the arm {sorted(arm_markers())}. "
+            "A marker belongs to both or to neither: the arm's table is what a dispatched value "
+            "is validated against, and the product's union is what `cutWithMarker` implements.",
+        )
+
+    def test_the_control_is_nameable(self) -> None:
+        # `none` is the state every archived run was in and is dispatched as this experiment's
+        # control. If it were dropped from either table, a registration could not name its own
+        # control -- the §13.69 defect, one axis over.
+        self.assertIn("none", product_markers())
+        self.assertIn("none", arm_markers())
+
+    def test_the_default_in_the_arm_is_a_member(self) -> None:
+        # The default is compared against the table at parse time (`=== DEFAULT_TURN_CUT_MARKER`
+        # in `readTurnCap`), so a default that named a value the table rejects would make every
+        # unset dispatch fail the guard.
+        source = ARM.read_text(encoding="utf-8")
+        declared = re.search(r"const DEFAULT_TURN_CUT_MARKER = '([A-Za-z-]+)';", source)
+        self.assertIsNotNone(declared, "bench-memory-arm.ts declares no DEFAULT_TURN_CUT_MARKER")
+        self.assertIn(declared.group(1), arm_markers())
 
 
 if __name__ == "__main__":
