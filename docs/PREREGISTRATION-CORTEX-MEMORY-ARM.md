@@ -21350,3 +21350,103 @@ adoption.
 
 **What neither run can read.** Accuracy at 500 questions, the judge's tier (§13.184), and the MR ceiling
 (§13.187) — 220 questions cannot reach a 101/121 target even if every prediction holds.
+
+### 13.193 The operand rule converts its question four times out of four, and the reach claim was wrong in the only way that costs 63 questions
+
+**Read 2026-10-31 from `41188431321` (`completed/success`, 500 questions, 4 repetitions), against its control
+`41185512391`.** The artifacts differ in `ask` and `askRoutes` and in nothing else — checked field by field in
+`memoryArmConfig`: `ask: operands` → `operand-gap`, `askRoutes: [multi-session, flat, temporal]` → `[abstention]`.
+
+#### 13.193.1 The criterion
+
+| reading | control | treated |
+| --- | --- | --- |
+| `featureByCapability.ABS` | min 29 / avg 29 / max 29 | **min 30 / avg 30 / max 30** |
+| `baselineByCapability.ABS` | 30 / 30 / 30 | 30 / 30 / 30 |
+| `6456829e_abs`, per-run correct bits | **`0000`**, answer `5 tomato plants` | **`1111`**, answer `INSUFFICIENT_EVIDENCE` |
+| other `ABS` questions that stopped declining | — | **none** |
+
+**The prediction registered in §13.190.4 is met, in all four repetitions, on the one question it named.** The arm
+now reaches the reference pipeline's `ABS` ceiling of 30/30, and it did so without losing a single other `ABS`
+decline — the two ways this treatment could have failed (no conversion, or converting questions whose gold is not
+a decline) both did not happen.
+
+#### 13.193.2 The reach claim is false, and the artifact is unambiguous about it
+
+§13.190.4 opened with "reach and change set are the same single route, which no ask before this one manages", and
+derived from it that MR, IE, KU and TR "read the shipped block **by construction**". `tools/window-pair.mjs`
+says otherwise:
+
+| capability | prompts digest-equal | prompts that moved |
+| --- | ---: | ---: |
+| `KU` | **72 of 72** | 0 |
+| `IE` | 56 of 150 | **94** |
+| `MR` | **0 of 121** | **121** |
+| `TR` | **0 of 127** | **127** |
+| `ABS` | **0 of 30** | **30** |
+
+**372 of 500 prompts moved, across four capabilities, and 335 of them moved at the same length** — which is why
+`length is not identity` earns its line on its first real pair: a reach table asserted against `promptChars` would
+have shown nothing here.
+
+The error is not in the mechanism, it is in what the control was. The claim reasoned about the **abstention**
+instruction's reach — correct, and the reason `operands` never touched `ABS` — but the comparison is against a run
+whose `ask` was `operands`, and `ask` is a **single-valued** input: naming `operand-gap` makes
+`ASK_ROUTES['operand-gap'] = ['abstention']`, so the three routes that had the `operands` block fall back to the
+shipped one. So the treated arm is not "control plus a fix"; it is "control **minus** `operands` on three routes,
+**plus** `operand-gap` on a fourth". The registration wrote "MR is unread here" as a caveat about one capability;
+the artifact says four.
+
+#### 13.193.3 What the removal cost, which nothing had measured until it happened
+
+| capability | control avg | treated avg | Δ |
+| --- | ---: | ---: | ---: |
+| IE | 144.25 | 141.25 | −3.00 |
+| **MR** | **89.75** | **41.00** | **−48.75** |
+| KU | 61.00 | 61.50 | +0.50 |
+| **TR** | **104.25** | **92.50** | **−11.75** |
+| ABS | 29.00 | **30.00** | **+1.00** |
+| **roster (mean of 4)** | **428.3 (0.8565)** | **366.25 (0.7325)** | **−62.05** |
+
+The `operands` block is worth **63 questions** on this arm — 49 on MR alone — and that number did not exist before
+this run, because every run since it was adopted carried it on both sides. Two riders on it: the `operands`
+block's text differs on **all 121** MR questions rather than the seven "derivation" questions §13.190.1 reasoned
+about, so its effect is not confined to the questions that need operand arithmetic; and the loss is
+**route-shaped**, largest where the closing line asks for a count (`MR`), smaller on `TR`, near zero on `KU`,
+which the block never reached.
+
+#### 13.193.4 The same mechanism as §13.192, which is why both are recorded this iteration
+
+Two independent artifacts, one statement: **the closing line decides whether a count is emitted.**
+
+- `thinking: enabled` on the same model takes `MR`'s median answer from 135 characters to **1**, because a
+  thinking pass reads the line and complies (§13.192.8).
+- Removing the `operands` block costs `MR` **49 questions**, because that block is the only thing telling the
+  reader to total a list it has already written (§13.193.3).
+
+So the arm's two worst capabilities are not failing at retrieval and not failing at reasoning: they are failing to
+**state an answer in the shape the contract asked for**, and there are two levers on that — a block that says what
+to state, and a reader that does what it is told. Both are now measured, neither is adopted, and they are not
+independent: a compliant reader makes a vague block less costly, which is a prediction this file can test later
+rather than a design choice to make now.
+
+#### 13.193.5 The wiring defect, and the fix that follows from it
+
+`ask` being one value is the defect. The correct configuration is a **per-route map**: `operands` on
+`multi-session`, `flat` and `temporal`, **and** `operand-gap` on `abstention`. Both rules are already implemented
+and both have now been measured on the route they belong to; what is missing is a way to say "these two at once".
+
+Registered as the next increment, with its own criterion and no code written yet:
+
+1. **Implementation.** A per-route ask (`askRoutes` becomes a map rather than a single name, or a second input
+   `abstentionAsk` defaults to the shipped name and takes `operand-gap`). Backwards-compatible by construction:
+   absent means today's behaviour, which is what every archived prompt was produced under.
+2. **The criterion is one-sided and already has both endpoints.** `ABS` reads **30/30** and `6456829e_abs` declines
+   in all four repetitions; `MR`, `IE`, `TR` read **within their own 4-run range** of `41185512391` — that run's
+   per-capability interval is measured, so the reading is "does the per-route map restore 428.3 ± the arm's floor",
+   not "does it beat 366".
+3. **Falsified if** any of the three routes does not return to its control range, which would mean the `operands`
+   block's effect is not reproducible and §13.193.3's 63 is a draw rather than a mechanism.
+4. **The prompt identity check is now mandatory for this arm.** `window-pair`'s per-capability digest counts are
+   the instrument: the run is only single-variable if `KU` stays 72/72 equal and the three operands routes show
+   the same digest on both sides, with `ABS` alone moving.
