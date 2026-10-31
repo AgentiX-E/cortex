@@ -1122,7 +1122,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     this.#recordEvidence(kept, assembled);
     // §13.107: the outcome is recorded once per question, here rather than inside `#consult`, so a route that
     // consults twice does not enter the census twice.
-    const first = await this.#consult(assembled.prompt);
+    const first = await this.#consult(assembled.prompt, route);
     // The abstention route shares this path and must be excluded here rather than at the call site: `#prompt` is the
     // entry point for it, so a guard on the option alone would reach the one capability whose gold is a decline.
     // `ABS` reads 30/30 with 29 bare tokens; converting one of those would spend a call to turn a right answer into
@@ -1146,7 +1146,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // `fitToBudget` never fires there and this defect is latent -- but it is live at the 24,000 product
     // default every run before §13.82 used, where the median window is nearly twice the ceiling and every
     // retried question re-sent all of it. §13.147 has the arithmetic.
-    const second = await this.#consult(buildRetryPrompt(question, assembled.carried, options));
+    const second = await this.#consult(
+      buildRetryPrompt(question, assembled.carried, options),
+      route,
+    );
     if (second !== null) this.#bareRetries.answered += 1;
     return this.#recordOutcome(second);
   }
@@ -1224,7 +1227,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const answers: Answer[] = [];
     const raws: string[] = [];
     for (let index = 0; index < samples; index++) {
-      answers.push(await this.#consult(assembled.prompt));
+      answers.push(await this.#consult(assembled.prompt, 'multi-session'));
       raws.push(this.#lastRawOutput as string);
     }
     const vote = samples === 1 ? null : voteAnswers(answers);
@@ -1264,7 +1267,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     );
     if (recovery.kind === 'retry') {
       this.#recoveries.attempted += 1;
-      const retried = await this.#consult(buildRecoveryPrompt(question, recovery.items));
+      const retried = await this.#consult(
+        buildRecoveryPrompt(question, recovery.items),
+        'multi-session',
+      );
       // A retry that declines again leaves its own text in `#lastRawOutput`, which is the honest
       // one to keep: the record's `answer` is null either way, and the last thing the reader said
       // about this question is the more informative of the two declines.
@@ -1301,7 +1307,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
       this.#bareRetries.attempted += 1;
       // `assembled.carried`, not `kept`, for the reason `#answerWithBareRetry` records at length: the retry must
       // re-read the evidence the first pass was given, not the window the route admitted.
-      const second = await this.#consult(buildRetryPrompt(question, assembled.carried, options));
+      const second = await this.#consult(
+        buildRetryPrompt(question, assembled.carried, options),
+        'multi-session',
+      );
       if (second !== null) this.#bareRetries.answered += 1;
       this.#recordEvidence(
         sessions.flatMap((session) => session.turns),
@@ -1331,7 +1340,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     }
 
     const audit = buildAuditPrompt(question, sessions, firstRaw, options);
-    const final = await this.#consult(audit.prompt);
+    const final = await this.#consult(audit.prompt, 'multi-session');
     this.#lastReview = { first, final, changed: first !== final };
     // The offer is recorded from the prompt the **answer came from**. Recording the first prompt
     // would describe a consultation whose answer was discarded, and every coverage count in the
@@ -1344,6 +1353,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // counted it would report a question as answered whose answer no reader saw. This is also why
     // the audit run's census used to double — two calls, two outcomes, one question.
     return this.#recordOutcome(final);
+  }
+
+  /**
+   * The reader that answers one route, or the run's reader when the route names none.
+   *
+   * §13.197 measured the reader axis as a **per-route** effect: `temporal` and `multi-session` end their blocks with
+   * *"reply with the Step 2 number alone"*, and the reader that obeys them gained four `TR` questions with none lost,
+   * while the same reader cost `IE` sixteen. A run therefore needs two readers and a rule for which route gets which,
+   * and the rule belongs here because this is the only layer that knows the route at the moment of the call.
+   *
+   * `#llm` is the fallback rather than a required entry: a map covering one route must not force a caller to name the
+   * other five, and absent means exactly the behaviour every archived artifact was produced under.
+   */
+  #readerFor(route: TurnCapRoute): LLM {
+    return this.#options.readerByRoute?.[route] ?? this.#llm;
   }
 
   /**
@@ -1371,8 +1395,8 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * tallying every route the abstention route would otherwise count one decline
    * twice -- and it would overstate exactly the route that was already correct.
    */
-  async #consult(prompt: string): Promise<Answer> {
-    const raw = await this.#llm.complete(prompt);
+  async #consult(prompt: string, route: TurnCapRoute): Promise<Answer> {
+    const raw = await this.#readerFor(route).complete(prompt);
     // Retained before the parse, not after: `parseAnswer` returns the summary
     // and the text it summarised is gone by then. See `#lastRawOutput`.
     this.#lastRawOutput = raw;

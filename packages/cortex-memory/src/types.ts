@@ -137,6 +137,19 @@ export type CortexMemoryOptions = {
    * owns an API key or a network call.
    */
   llm: LLM;
+
+  /**
+   * Per-route readers, for the one axis that was measured as a per-route effect.
+   *
+   * §13.197 ran the same arm on the same 220 questions twice with `thinking` as the only difference: `TR` gained four
+   * questions with none lost and `KU` gained two, while `IE` lost sixteen. The mechanism is the block's closing line —
+   * `temporal` and `multi-session` demand the number alone, and `flat` does not — so a reader that obeys the line is
+   * better on the first two routes and worse on the third. One reader for six routes cannot express that; this map can.
+   *
+   * A route absent from the map uses {@link llm}, so a run that names one route does not have to name the other five,
+   * and a run that supplies no map is **exactly** the behaviour every archived artifact was produced under.
+   */
+  readerByRoute?: Partial<Record<TurnCapRoute, LLM>>;
   /**
    * Epoch milliseconds used for every time-stamped decision. Injected because
    * admission value depends on age, and a test that cannot pin the clock cannot

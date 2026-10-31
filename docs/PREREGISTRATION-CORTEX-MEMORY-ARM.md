@@ -21815,3 +21815,21 @@ exactly the two whose block ends with the answer instruction:
 4. **Why this is a product increment and not another experiment.** `thinking` is a switch on one reader, and this
    campaign has now measured both of its states on the same questions. A route-scoped knob is what a product ships
    after that measurement; a fifth 220-question probe would be measuring the same two states a third time.
+
+#### 13.197.4 The knob cannot have its own input, so it lives in `thinking`'s value
+
+The workflow declares **24** dispatch inputs and GitHub's ceiling is 25 — the same wall that moved `budgetMinutes`
+into a constant (§13.30 / §13.115). A `cortex_memory_thinking_routes` input is therefore not available, and §13.188
+already established the pattern for this: when the input surface is full, the new state goes **inside the value that
+already exists**, and the grammar makes the invalid combinations unrepresentable.
+
+So `thinking` becomes `disabled` (shipped), `enabled` (every route, which is what the pair of §13.197 ran), or a
+route list — `multi-session+temporal` — which is enabled on those routes and disabled on the rest. The artifact's
+reader line has to render it (`thinking=enabled on multi-session+temporal`), because a reader identity that said only
+`enabled` would describe a configuration the run did not administer, which is the `40698883428` failure on a new axis.
+
+The product side of the same change is already in place: `CortexMemoryOptions.readerByRoute` accepts a reader per
+route, the arm constructs the two clients and maps them, and `#readerFor` falls back to `llm` for every route the map
+does not name. `reader-by-route.test.ts` (5 tests) asserts the route decides, the retry goes to the same reader as the
+first pass, the abstention route can be mapped independently, and that an absent map is one reader for every route —
+which is every archived artifact.
