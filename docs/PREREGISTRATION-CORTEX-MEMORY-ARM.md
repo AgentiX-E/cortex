@@ -20157,3 +20157,95 @@ carry:
 - **Not that MR is fixed.** MR mean 87.25 against the reference pipeline's 103.75 on the same
   questions. The 96,000 ceiling did not close a 16-question gap, and `§13.182` now asks whether the
   judge can even see 2 of those questions.
+
+### 13.184 The judge accepts 19.4% of answers that are wrong, and it fails on names rather than numbers
+
+The audit registered in `§13.182` ran as GitHub run `41173396348` on the `41159983913` artifact
+(`limit 120`, `deepseek-chat`, 160 cases, 280 calls, 3m48s). It fails its gate, and the shape of the
+failure is more useful than the rate.
+
+| bucket | accepts | rate | Wilson 95% upper |
+| ------ | ------: | ---: | ---------------: |
+| all kinds | **31 / 160** | **19.38%** | **26.19%** |
+| `number-swap` | 9 / 61 | 14.75% | 25.72% |
+| `entity-swap` | **22 / 49** | **44.90%** | 58.69% |
+| `cross-gold` | 0 / 50 | 0.00% | 7.14% |
+| **control** (unperturbed, re-judged) | **120 / 120** | **100%** | — |
+
+#### 13.184.1 Five predictions, and the one that was falsified is the finding
+
+| prediction | criterion | measured | verdict |
+| ---------- | --------- | -------- | ------- |
+| the gate | upper bound > 5% | **26.19%** | holds |
+| numbers are the weak kind | `number-swap` > `entity-swap` | **14.75% vs 44.90%** — the reverse, by 3× | **falsified** |
+| a wholly wrong gold is caught | `cross-gold` ≤ 10% | **0/50 = 0%** (upper 7.14%) | holds |
+| the judge is reproducible | control ≥ 95% | **120/120 = 100%** | holds |
+| the rate is larger than the effect | `falseAccept × 121 ≥ 2` | **23.5 questions** | holds |
+
+The falsified row is the one to carry forward. Replacing a **name** is three times more likely to be
+accepted than replacing a **number**, and replacing the entire answer is never accepted. Read as one
+statement about the judge: **it checks that the answer is about the right thing with the right shape,
+and does not check that it names the right entity.**
+
+#### 13.184.2 Why that specific failure matters more than 19.4%
+
+A memory system built on extracted atoms has one characteristic error: it retrieves the right sentence
+about the wrong person. `§13.182` was written expecting the numeric failure, because the MR capability
+is mostly counts. The audit says the opposite, and the consequence is uncomfortable:
+
+> **The judge is blindest exactly where this system is weakest.**
+
+A wrong count is caught three times as often as a wrong name. So an arm that answers "3 concerts"
+where the gold is "5" is likely to be marked wrong, while an arm that answers with a fact about the
+wrong colleague is likely to be marked right. MR accuracy is therefore inflated preferentially on the
+substitution errors, and no aggregate reading can say by how much.
+
+#### 13.184.3 What this does to the campaign's headline comparison
+
+`§14` reports MR at **87.25** (mean of four passes) against the reference pipeline's **103.75** on the
+same 121 questions and calls that a 16-question gap. The judge's false-accept rate applied to 121
+questions is **23.5 questions**. The instrument's error is larger than the effect it is being used to
+report.
+
+That does not mean the gap is zero. It means the gap **cannot be attributed to memory** until the
+judge is fixed or the grading is paired, and the honest annotation is:
+
+- MR 87.25 and the 16-question gap are **judge-limited**, not memory-limited.
+- The paired comparison (same question, both arms, count flips) is now mandatory rather than
+  preferred, because a paired flip is a decision the judge made twice on the same question rather than
+  an aggregate that its error can move in one direction.
+- The reference pipeline is graded by the same judge, so the 100–105 it scores is inflated by the same
+  bias. Which of the two it inflates more is unknown, and that asymmetry is now the largest
+  unmeasured quantity in the campaign.
+
+#### 13.184.4 Two things in the design that this reading needed, and one it did not
+
+**Needed:** the control. 120/120 means the judge is perfectly reproducible on these answers, so the
+19.4% is not noise and `§13.135`'s 5.0% floor belongs to the reader rather than to the judge. Without
+this row, 19.4% could have been read as "the judge is unstable", which is a different problem with a
+different fix.
+
+**Needed:** the three kinds. The aggregate 19.4% alone would have supported the false conclusion that
+the judge is equally wrong about everything, and the next step would have been "use a better judge".
+The split says where to spend the effort instead: an entity check, not a model upgrade.
+
+**Not needed, and recorded as an error:** `§13.182.3` registered the plan as **167** cases (59/51/57),
+computed on the previous artifact `40989420944`. The dispatch audited `41159983913` and planned
+**160** (61/49/50). Case refusal is per-question, so the count moves with the artifact; the
+predictions are about rates and are unaffected. The registration is left as written and the
+discrepancy is recorded here — editing a registration after the fact is the one thing that would make
+it worth nothing.
+
+#### 13.184.5 The next step this implies, registered now
+
+**Re-grade MR with an entity check, before any further MR experiment.** Concretely: for every MR
+question the judge accepted, extract the set of names the gold contains and the set the answer
+contains; an accepted answer whose name sets are disjoint from the gold's is a candidate false
+accept. That is a deterministic filter over answers already in the artifact, it needs no new calls,
+and it prices how much of the 44.9% actually landed on MR rather than on `number-swap`-friendly IE
+questions.
+
+Prediction to test, registered before the tool exists: the entity-checked MR accuracy will be **at
+most 84/121 first repetition minus 5** — i.e. at least five of the 84 accepted MR answers name
+something the gold does not. If it is fewer than five, the 44.9% is concentrated in the capabilities
+with more names (IE, TR) and MR's gap stays a memory question.

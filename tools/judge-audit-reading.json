@@ -1,0 +1,94 @@
+{
+  "what": "This repository's own judge, audited on answers that are wrong by construction.",
+  "why": "Every accuracy number this project publishes is the judge's opinion, and the campaign resolves two or three questions on a 121-question capability. The published LoCoMo audit reports that a standard judge accepted 62.81% of topical-but-wrong answers; this repository had never measured its own.",
+  "artifact": {
+    "run": "41159983913",
+    "headSha": "fa51a895",
+    "report": "longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+    "why": "the artifact the campaign is currently read from, not the previous one"
+  },
+  "command": "node tools/judge-audit.mjs --artifact <report.json> --limit 120 --out readings/judge-audit.json",
+  "workflow": "judge-audit.yml dispatched with run_id=41159983913, limit=120, model=deepseek-chat (GitHub run 41173396348)",
+  "sources": 120,
+  "plan": {
+    "cases": 160,
+    "number-swap": 61,
+    "entity-swap": 49,
+    "cross-gold": 50
+  },
+  "reading": {
+    "all": {
+      "accepted": 31,
+      "total": 160,
+      "rate": 0.1938,
+      "upper": 0.2619
+    },
+    "byKind": {
+      "number-swap": {
+        "accepted": 9,
+        "total": 61,
+        "rate": 0.1475,
+        "upper": 0.2572
+      },
+      "entity-swap": {
+        "accepted": 22,
+        "total": 49,
+        "rate": 0.449,
+        "upper": 0.5869
+      },
+      "cross-gold": {
+        "accepted": 0,
+        "total": 50,
+        "rate": 0.0,
+        "upper": 0.0714
+      }
+    },
+    "control": {
+      "accepted": 120,
+      "total": 120,
+      "rate": 1.0,
+      "upper": 1.0
+    }
+  },
+  "criterion": "false-accept Wilson 95% upper bound <= 5%. NOT MET at 26.2%.",
+  "verdict": "fails",
+  "predictions": [
+    {
+      "name": "the gate",
+      "registered": "false-accept upper bound > 5%",
+      "measured": "26.2%",
+      "verdict": "holds"
+    },
+    {
+      "name": "numbers are the weak kind",
+      "registered": "number-swap rate > entity-swap rate",
+      "measured": "14.8% vs 44.9%",
+      "verdict": "falsified"
+    },
+    {
+      "name": "a wholly wrong gold is caught",
+      "registered": "cross-gold rate <= 10%",
+      "measured": "0/50 = 0.0%",
+      "verdict": "holds"
+    },
+    {
+      "name": "the judge is reproducible",
+      "registered": "control >= 95% re-accepted",
+      "measured": "120/120 = 100%",
+      "verdict": "holds"
+    },
+    {
+      "name": "the rate is larger than the effect",
+      "registered": "falseAccept x 121 >= 2 questions on MR",
+      "measured": 23.4,
+      "verdict": "holds"
+    }
+  ],
+  "registrationNote": "13.182.3 registered the plan counts as 167 (59/51/57) because it was computed on run 40989420944; the dispatch audited 41159983913 and planned 160 (61/49/50). The refusal of a case is per-question, so the count moves with the artifact. The predictions are about rates and are unaffected; the count is recorded here rather than corrected in the registration.",
+  "limits": [
+    "One judge (deepseek-chat with the official templates), one perturbation family. It does not measure agreement with a human, and it does not transfer to answers that are wrong by omission — a plausible half-answer, which is the shape the MR failures were already found to have.",
+    "The perturbations substitute tokens; an answer that is wrong because it omits something is not audited here.",
+    "Absention questions are excluded: their template asks whether the model recognised the question as unanswerable, so substituting a name does not make the answer wrong.",
+    "120 questions yield 160 cases, not the 419 accepted answers in the artifact; a larger limit would tighten the bound, not move the direction."
+  ]
+}

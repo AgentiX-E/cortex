@@ -141,3 +141,49 @@ def test_the_plan_prints_what_it_introduced(tmp_path: Path) -> None:
     assert 'introduced' in result.stdout
     assert 'perturbed' in result.stdout
     assert 'original' in result.stdout
+
+
+def test_the_committed_reading_recomputes(tmp_path: Path) -> None:
+    """The arithmetic has to survive a reader who cannot run the audit.
+
+    31 of 160 is 19.38%, and the Wilson upper bound is 26.19% -- the number the gate failed on. The
+    control is 120 of 120, which is what makes the false-accept rate readable at all: a judge that
+    rejected everything would also have produced a 0% rate.
+    """
+    import math
+
+    def wilson_upper(accepted: int, total: int, z: float = 1.96) -> float:
+        if total == 0:
+            return 1.0
+        p = accepted / total
+        denominator = 1 + (z * z) / total
+        centre = p + (z * z) / (2 * total)
+        margin = z * math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total))
+        return min(1.0, (centre + margin) / denominator)
+
+    reading = json.loads((REPO / 'tools' / 'judge-audit-reading.json').read_text())
+    overall = reading['reading']['all']
+    assert abs(overall['rate'] - overall['accepted'] / overall['total']) < 5e-4
+    assert abs(overall['upper'] - wilson_upper(overall['accepted'], overall['total'])) < 5e-4
+    assert reading['verdict'] == 'fails'
+    assert overall['upper'] > 0.05
+
+    kinds = reading['reading']['byKind']
+    assert sum(kind['total'] for kind in kinds.values()) == overall['total']
+    assert sum(kind['accepted'] for kind in kinds.values()) == overall['accepted']
+    for kind, bucket in kinds.items():
+        assert abs(bucket['upper'] - wilson_upper(bucket['accepted'], bucket['total'])) < 5e-4, kind
+
+    # The control is the reason the rate means anything.
+    assert reading['reading']['control']['accepted'] == reading['reading']['control']['total']
+
+
+def test_the_reading_records_which_prediction_it_falsified() -> None:
+    # A reading file that only keeps the numbers invites the next reader to keep only the flattering
+    # one. The falsified prediction is the finding: the weak kind is the name, not the number.
+    reading = json.loads((REPO / 'tools' / 'judge-audit-reading.json').read_text())
+    verdicts = {prediction['name']: prediction['verdict'] for prediction in reading['predictions']}
+    assert verdicts['numbers are the weak kind'] == 'falsified'
+    assert verdicts['the judge is reproducible'] == 'holds'
+    kinds = reading['reading']['byKind']
+    assert kinds['entity-swap']['rate'] > kinds['number-swap']['rate']

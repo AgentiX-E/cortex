@@ -37,6 +37,30 @@ are re-judged in the same run — the **control**. Anything below 100% there is 
 non-reproducibility (`§13.135` measured 5.0% on byte-identical prompts), and it is the noise floor the
 rate has to be read against.
 
+## The reading: `41159983913`, 120 questions, 160 cases, 280 calls
+
+| bucket | accepts | rate | Wilson 95% upper |
+| ------ | ------: | ---: | ---------------: |
+| all kinds | **31 / 160** | **19.38%** | **26.19%** |
+| `number-swap` | 9 / 61 | 14.75% | 25.72% |
+| `entity-swap` | **22 / 49** | **44.90%** | 58.69% |
+| `cross-gold` | 0 / 50 | 0.00% | 7.14% |
+| **control** | **120 / 120** | **100%** | — |
+
+**The gate fails.** And the shape of the failure is the finding: replacing a **name** is three times
+more likely to be accepted than replacing a **number**, and replacing the entire answer is never
+accepted. The judge checks that the answer is about the right thing, not that it names the right
+entity — which is exactly the error an extracted-atom memory system makes. The judge is blindest where
+this system is weakest.
+
+The control at 120/120 is what makes the 19.4% readable: the judge is perfectly reproducible on these
+answers, so this is bias, not noise, and `§13.135`'s 5.0% floor belongs to the reader.
+
+Applied to MR: `19.38% × 121 = 23.5 questions`, against a measured gap of 16 questions to the
+reference pipeline. **The instrument's error is larger than the effect it reports.** MR 87.25 is
+judge-limited, not memory-limited, and paired flip counts become mandatory rather than preferred.
+Registered reading, five prediction verdicts (one falsified), and the next step: `§13.184`.
+
 ## The gate, and why 5%
 
 Exit 1 when the Wilson 95% upper bound exceeds 5%. The campaign resolves about 1.7 points — two
