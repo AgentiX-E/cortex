@@ -19662,3 +19662,8 @@ That was measured the obvious way.
 Two honest limits: the `browser` job covers **Chromium only** (a Firefox job would double the install and the runtime for
 a criterion already enforced offline by `guard:browser`), and it does not re-measure throughput — the job would fail on
 a slow runner for a number `13.178.4` excludes from the criteria on purpose.
+
+Reading, on the commit that added them: `Verify` **`41164403077`** at `d8c375b0` — **`Verify library` success** and
+**`Verify browser suites` success**. The second job's first run is the only evidence that its own machinery works:
+playwright's Chromium installs, the probe finds it through the cache, 400 rows survive the restart, and the comparator
+accepts the fresh reading against the committed one.
